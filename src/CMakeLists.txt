@@ -5,6 +5,10 @@ EternalTCP
 STATIC
 
 EternalTCP.cpp
+Connection.cpp
+ServerConnection.cpp
+BackedWriter.cpp
+BackedReader.cpp
 )
 
 # Make sure the compiler can find include files for our Hello library
@@ -12,4 +16,4 @@ EternalTCP.cpp
 target_include_directories (EternalTCP PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 install(TARGETS EternalTCP DESTINATION lib)
-install(FILES EternalTCP.h DESTINATION include)
+install(FILES EternalTCP.hpp DESTINATION include)
