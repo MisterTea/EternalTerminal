@@ -7,17 +7,18 @@
 #include <unistd.h>
 #include <string.h>
 #include <sys/types.h>
-#include <sys/socket.h>
-#include <netinet/in.h>
-#include <netdb.h>
 #include <pthread.h>    /* POSIX Threads */
+#include <errno.h>
 
 #include <string>
 #include <algorithm>
 #include <iostream>
 #include <vector>
 #include <array>
+#include <memory>
+#include <exception>
 
 #include <boost/circular_buffer.hpp>
+#include <boost/thread.hpp>
 
 #endif

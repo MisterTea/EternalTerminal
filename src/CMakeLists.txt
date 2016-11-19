@@ -9,6 +9,7 @@ Connection.cpp
 ServerConnection.cpp
 BackedWriter.cpp
 BackedReader.cpp
+FakeSocketHandler.cpp
 )
 
 # Make sure the compiler can find include files for our Hello library

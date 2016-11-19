@@ -1,5 +1,9 @@
 #include "ServerConnection.hpp"
 
+#include <sys/socket.h>
+#include <netinet/in.h>
+#include <netdb.h>
+
 void server_error(const char *msg)
 {
     perror(msg);

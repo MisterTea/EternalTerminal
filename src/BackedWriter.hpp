@@ -3,15 +3,21 @@
 
 #include "Headers.hpp"
 
+#include "SocketHandler.hpp"
+
 class BackedWriter {
 public:
-  explicit BackedWriter(int socket_fd);
+  explicit BackedWriter(
+    std::shared_ptr<SocketHandler> socketHandler,
+    int socket_fd);
 
   ssize_t write(const void* buf, size_t count);
 
   bool recover(int new_socket_fd, int64_t lastValidSequenceNumber);
 protected:
   static const int BUFFER_CHUNK_SIZE = 64*1024;
+
+  std::shared_ptr<SocketHandler> socketHandler;
   int socket_fd;
 
   // TODO: Change std::string -> std::array with length, this way it's preallocated

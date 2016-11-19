@@ -1,6 +1,9 @@
 #include "BackedWriter.hpp"
 
-BackedWriter::BackedWriter(int socket_fd_) :
+BackedWriter::BackedWriter(
+  std::shared_ptr<SocketHandler> socketHandler_,
+  int socket_fd_) :
+  socketHandler(socketHandler_),
   socket_fd(socket_fd_),
   immediateBackup(1024),
   sequenceNumber(0) {
@@ -19,7 +22,7 @@ ssize_t BackedWriter::write(const void* buf, size_t count) {
   }
   sequenceNumber += count;
   if (socket_fd>=0) {
-    ssize_t result = ::write(socket_fd, buf, count);
+    ssize_t result = socketHandler->write(socket_fd, buf, count);
     if(result != (ssize_t)count) {
       // Error writing.
       if (errno == EPIPE) {
@@ -63,11 +66,11 @@ bool BackedWriter::recover(int new_socket_fd, int64_t lastValidSequenceNumber) {
     } else {
       // Start recovering
       int64_t bytesToWrite = std::min((int64_t)it->length(),bytesToRecover);
-      ::write(socket_fd, it->c_str() + (it->length() - bytesToWrite), bytesToWrite);
+      socketHandler->write(socket_fd, it->c_str() + (it->length() - bytesToWrite), bytesToWrite);
       for (auto it2 = it.base();
            it2 != immediateBackup.end();
            it2++) {
-        ::write(socket_fd, it->c_str(), it->length());
+        socketHandler->write(socket_fd, it->c_str(), it->length());
       }
       return true;
     }
