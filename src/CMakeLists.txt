@@ -4,6 +4,7 @@ add_library (
 EternalTCP
 STATIC
 
+Headers.cpp
 EternalTCP.cpp
 Connection.cpp
 ServerConnection.cpp

@@ -9,20 +9,19 @@ class BackedReader {
 public:
   explicit BackedReader(
     std::shared_ptr<SocketHandler> socketHandler,
-    int socket_fd);
-
-  explicit BackedReader(
-    std::shared_ptr<SocketHandler> socketHandler,
-    int socket_fd,
-    int client_id,
-    int64_t firstSequenceNumber);
+    int socketFd);
 
   ssize_t read(void* buf, size_t count);
+
+  void revive(int newSocketFd, std::string localBuffer_);
 protected:
+  boost::mutex recoverMutex;
   std::shared_ptr<SocketHandler> socketHandler;
-  int socket_fd;
-  int client_id; //TODO: Change client_id to be a boost::uuids::uuid
-  std::string recoverBuffer;
+  volatile int socketFd;
+  int64_t sequenceNumber;
+  std::string localBuffer;
+
+  void init(int64_t firstSequenceNumber);
 };
 
 #endif // __ETERNAL_TCP_BACKED_READER__

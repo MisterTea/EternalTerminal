@@ -2,59 +2,68 @@
 
 BackedWriter::BackedWriter(
   std::shared_ptr<SocketHandler> socketHandler_,
-  int socket_fd_) :
+  int socketFd_) :
   socketHandler(socketHandler_),
-  socket_fd(socket_fd_),
+  socketFd(socketFd_),
   immediateBackup(1024),
   sequenceNumber(0) {
 }
 
-
-ssize_t BackedWriter::write(const void* buf, size_t count) {
+void BackedWriter::backupBuffer(const void* buf, size_t count) {
   if (immediateBackup.size() > 0 &&
       immediateBackup.back().length()+count < BUFFER_CHUNK_SIZE) {
     // Append to the most recent element
     immediateBackup.back().append((const char*)buf,count);
   } else {
-    // Create a new element
+    // Create a new element.
     std::string s((const char *)buf, count);
     immediateBackup.push_back(s);
   }
+}
+
+ssize_t BackedWriter::write(const void* buf, size_t count) {
+  boost::lock_guard<boost::mutex> guard(recoverMutex);
+  if(socketFd<0) {
+    // If recover started, Wait until finished
+    backupBuffer(buf,count);
+    return count;
+  }
+
+  backupBuffer(buf,count);
   sequenceNumber += count;
-  if (socket_fd>=0) {
-    ssize_t result = socketHandler->write(socket_fd, buf, count);
-    if(result != (ssize_t)count) {
-      // Error writing.
-      if (errno == EPIPE) {
-        // The connection has been severed, handle and hide from the caller
-        // TODO: Start backing up circular buffer to disk/vector
-        socket_fd = -1;
-        return count;
-      } else {
-        // Some other error, don't handle and
-        return result;
-      }
-    } else {
+  ssize_t result = socketHandler->write(socketFd, buf, count);
+  if(result != (ssize_t)count) {
+    // Error writing.
+    if (errno == EPIPE) {
+      // The connection has been severed, handle and hide from the caller
+      // TODO: Start backing up circular buffer to disk/vector
+      socketFd = -1;
       return count;
+    } else {
+      // Some other error, don't handle and
+      return result;
     }
   } else {
-    // Pretend we fnished writing.
     return count;
   }
 }
 
-bool BackedWriter::recover(int new_socket_fd, int64_t lastValidSequenceNumber) {
-  socket_fd = new_socket_fd;
+// TODO: We need to make sure no more data is written after recover is called
+std::string BackedWriter::recover(int64_t lastValidSequenceNumber) {
+  if (socketFd >= 0) {
+    throw new std::runtime_error("Can't recover when the fd is still alive");
+  }
+  recoverMutex.lock(); // Mutex is locked until we call revive
+
   int64_t bytesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (bytesToRecover<0) {
-    fprintf(stderr, "Something went really wrong, client is ahead of server\n");
-    fflush(stderr);
-    exit(1);
+    throw std::runtime_error("Something went really wrong, client is ahead of server");
   }
   if (bytesToRecover==0) {
-    return true;
+    return "";
   }
   int64_t bytesSeen=0;
+  std::string s;
   for (
     auto it = immediateBackup.rbegin();
     it != immediateBackup.rend();
@@ -66,18 +75,19 @@ bool BackedWriter::recover(int new_socket_fd, int64_t lastValidSequenceNumber) {
     } else {
       // Start recovering
       int64_t bytesToWrite = std::min((int64_t)it->length(),bytesToRecover);
-      socketHandler->write(socket_fd, it->c_str() + (it->length() - bytesToWrite), bytesToWrite);
+      s.append(it->c_str() + (it->length() - bytesToWrite), bytesToWrite);
       for (auto it2 = it.base();
            it2 != immediateBackup.end();
            it2++) {
-        socketHandler->write(socket_fd, it->c_str(), it->length());
+        s.append(it->c_str(), it->length());
       }
-      return true;
+      return s;
     }
   }
-  fprintf(stderr, "Client is too far behind server.");
-  fflush(stderr);
-  exit(1);
-  socket_fd = -1;
-  return false;
+  throw new std::runtime_error("Client is too far behind server.");
+}
+
+void BackedWriter::revive(int newSocketFd) {
+  socketFd = newSocketFd;
+  recoverMutex.unlock();
 }

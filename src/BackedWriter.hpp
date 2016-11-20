@@ -9,16 +9,21 @@ class BackedWriter {
 public:
   explicit BackedWriter(
     std::shared_ptr<SocketHandler> socketHandler,
-    int socket_fd);
+    int socketFd);
 
   ssize_t write(const void* buf, size_t count);
 
-  bool recover(int new_socket_fd, int64_t lastValidSequenceNumber);
+  std::string recover(int64_t lastValidSequenceNumber);
+
+  void revive(int newSocketFd);
 protected:
   static const int BUFFER_CHUNK_SIZE = 64*1024;
 
+  void backupBuffer(const void* buf, size_t count);
+
+  boost::mutex recoverMutex;
   std::shared_ptr<SocketHandler> socketHandler;
-  int socket_fd;
+  int socketFd;
 
   // TODO: Change std::string -> std::array with length, this way it's preallocated
   boost::circular_buffer<std::string> immediateBackup;
