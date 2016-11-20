@@ -33,7 +33,7 @@ aux_source_directory(src ${PROJECT_NAME}_SRC)
 # Build the static library.
 add_library(${PROJECT_NAME}-static STATIC ${${PROJECT_NAME}_SRC})
 # Build the shared library.
-add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SRC})
+#add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SRC})
 
 target_link_libraries(
   ${PROJECT_NAME}-static
@@ -41,9 +41,9 @@ target_link_libraries(
 
 # Make sure the compiler can find include files for our Hello library
 # when other libraries or executables link to Hello
-target_include_directories (EternalTCP PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
+target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-install(TARGETS EternalTCP DESTINATION lib)
+install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
 add_subdirectory(sandbox)
