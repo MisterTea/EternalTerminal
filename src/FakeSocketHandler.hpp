@@ -16,8 +16,8 @@ public:
   virtual ssize_t read(int fd, void* buf, size_t count);
   virtual ssize_t write(int fd, const void* buf, size_t count);
 
-protected:
   void push(const char* buf, size_t count);
+protected:
 
   std::shared_ptr<FakeSocketHandler> remoteHandler;
   std::string inBuffer;
