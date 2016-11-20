@@ -20,6 +20,7 @@
 #include <sstream>
 #include <unordered_map>
 #include <thread>
+#include <mutex>
 
 #include <boost/circular_buffer.hpp>
 
