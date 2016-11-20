@@ -18,8 +18,8 @@ public:
   virtual int connect(const std::string &hostname, int port);
   virtual void close(int fd);
 
-protected:
   void push(const char* buf, size_t count);
+protected:
 
   std::shared_ptr<FakeSocketHandler> remoteHandler;
   std::string inBuffer;
