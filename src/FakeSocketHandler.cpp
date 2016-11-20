@@ -39,10 +39,15 @@ ssize_t FakeSocketHandler::write(int, const void* buf, size_t count) {
   return count;
 }
 
-int FakeSocketHandler::connect(const std::string &hostname, int port) {
+int FakeSocketHandler::connect(const std::string &, int) {
+  return 1;
 }
 
-void FakeSocketHandler::close(int fd) {
+int FakeSocketHandler::listen(int) {
+  return 1;
+}
+
+void FakeSocketHandler::close(int) {
 }
 
 void FakeSocketHandler::push(const char* buf, size_t count) {

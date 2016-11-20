@@ -65,18 +65,23 @@ void ClientConnection::pollReconnect() {
     sleep(3000);
     int newSocketFd = socketHandler->connect(hostname, port);
     if (newSocketFd != -1) {
-      int64_t localReaderSequenceNumber = reader->getSequenceNumber();
       socketHandler->writeAll(newSocketFd, &clientId, sizeof(int));
+
+      int64_t localReaderSequenceNumber = reader->getSequenceNumber();
       socketHandler->writeAll(newSocketFd, &localReaderSequenceNumber, sizeof(int64_t));
       int64_t remoteReaderSequenceNumber;
       socketHandler->readAll(newSocketFd, &remoteReaderSequenceNumber, sizeof(int64_t));
+
+      std::string writerCatchupString = writer->recover(remoteReaderSequenceNumber);
+      int64_t writerCatchupStringLength = writerCatchupString.length();
+      socketHandler->writeAll(newSocketFd, &writerCatchupStringLength, sizeof(int64_t));
+      socketHandler->writeAll(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
+
       int64_t readerCatchupBytes;
       socketHandler->readAll(newSocketFd, &readerCatchupBytes, sizeof(int64_t));
       std::string readerCatchupString(readerCatchupBytes, (char)0);
       socketHandler->readAll(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
 
-      std::string writerCatchupString = writer->recover(remoteReaderSequenceNumber);
-      socketHandler->writeAll(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
       socketFd = newSocketFd;
       reader->revive(socketFd, readerCatchupString);
       writer->revive(socketFd);

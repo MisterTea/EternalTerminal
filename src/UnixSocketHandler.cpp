@@ -4,6 +4,10 @@
 #include <netinet/in.h>
 #include <netdb.h>
 
+UnixSocketHandler::UnixSocketHandler() {
+  serverSocket = -1;
+}
+
 ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   return ::read(fd, buf, count);
 }
@@ -39,6 +43,40 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     return -1;
   }
   return sockfd;
+}
+
+int UnixSocketHandler::listen(int port) {
+  if (serverSocket == -1) {
+    // Initialize server socket
+    struct sockaddr_in server;
+
+    //Create socket
+    int socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+    if (socket_desc == -1)
+    {
+      throw new std::runtime_error("Could not create socket");
+    }
+
+    //Prepare the sockaddr_in structure
+    server.sin_family = AF_INET;
+    server.sin_addr.s_addr = INADDR_ANY;
+    server.sin_port = htons( port );
+
+    //Bind
+    if( ::bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
+    {
+      throw new std::runtime_error("Bind Failed");
+    }
+
+    //Listen
+    ::listen(socket_desc , 3);
+    serverSocket = socket_desc;
+  }
+
+  sockaddr_in client;
+  socklen_t c = sizeof(sockaddr_in);
+  int client_sock = ::accept(serverSocket, (sockaddr *)&client, &c);
+  return client_sock;
 }
 
 void UnixSocketHandler::close(int fd) {

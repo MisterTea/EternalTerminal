@@ -32,12 +32,15 @@ public:
 class ServerConnection {
 public:
   explicit ServerConnection(
-    std::shared_ptr<SocketHandler> socketHandler
+    std::shared_ptr<SocketHandler> socketHandler,
+    int port
     );
 
   inline bool clientExists(int clientId) {
     return clients.find(clientId) != clients.end();
   }
+
+  void run();
 
   int newClient(int socketFd);
 
@@ -48,6 +51,7 @@ public:
   bool recoverClient(int clientId, int socketFd);
 protected:
   std::shared_ptr<SocketHandler> socketHandler;
+  int port;
   std::unordered_map<int, ClientState> clients;
 };
 
