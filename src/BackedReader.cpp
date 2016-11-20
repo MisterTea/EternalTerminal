@@ -9,9 +9,11 @@ BackedReader::BackedReader(
 }
 
 ssize_t BackedReader::read(void* buf, size_t count) {
-  while (socketFd<0) {
-    // The socket is dead, wait for it to return
-    sleep(1);
+  if (socketFd<0) {
+    // The socket is dead, return 0 bytes until it returns
+    fprintf(stderr, "Sleeping for 1000 until socket returns");
+    sleep(1000);
+    return 0;
   }
 
   if (localBuffer.length()>0) {
@@ -24,11 +26,14 @@ ssize_t BackedReader::read(void* buf, size_t count) {
 
   // Read from the socket
   ssize_t bytesRead = socketHandler->read(socketFd, buf, count);
-  sequenceNumber += bytesRead;
+  if (bytesRead > 0) {
+    sequenceNumber += bytesRead;
+  }
   return bytesRead;
 }
 
 void BackedReader::revive(int newSocketFd, std::string localBuffer_) {
-  localBuffer = localBuffer_;
+  localBuffer.append(localBuffer_);
+  sequenceNumber += localBuffer.length();
   socketFd = newSocketFd;
 }

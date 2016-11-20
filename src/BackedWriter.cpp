@@ -22,30 +22,20 @@ void BackedWriter::backupBuffer(const void* buf, size_t count) {
 }
 
 ssize_t BackedWriter::write(const void* buf, size_t count) {
-  boost::lock_guard<boost::mutex> guard(recoverMutex);
+  // If recover started, Wait until finished
+  std::lock_guard<std::mutex> guard(recoverMutex);
   if(socketFd<0) {
-    // If recover started, Wait until finished
+    // We have no socket to write to, write to the backup buffer and
+    // exit
     backupBuffer(buf,count);
     return count;
   }
 
+  // We have a socket, let's try to use it.
   backupBuffer(buf,count);
   sequenceNumber += count;
   ssize_t result = socketHandler->write(socketFd, buf, count);
-  if(result != (ssize_t)count) {
-    // Error writing.
-    if (errno == EPIPE) {
-      // The connection has been severed, handle and hide from the caller
-      // TODO: Start backing up circular buffer to disk/vector
-      socketFd = -1;
-      return count;
-    } else {
-      // Some other error, don't handle and
-      return result;
-    }
-  } else {
-    return count;
-  }
+  return result;
 }
 
 // TODO: We need to make sure no more data is written after recover is called

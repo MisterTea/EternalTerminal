@@ -13,7 +13,7 @@ ssize_t FakeSocketHandler::read(int, void* buf, size_t count) {
   while (true) {
     bool keepWaiting = false;
     {
-      boost::lock_guard<boost::mutex> guard(inBufferMutex);
+      std::lock_guard<std::mutex> guard(inBufferMutex);
       if (inBuffer.length() < count) {
         keepWaiting = true;
       }
@@ -23,7 +23,7 @@ ssize_t FakeSocketHandler::read(int, void* buf, size_t count) {
       continue;
     }
     {
-      boost::lock_guard<boost::mutex> guard(inBufferMutex);
+      std::lock_guard<std::mutex> guard(inBufferMutex);
       memcpy(buf,&inBuffer[0],count);
       inBuffer = inBuffer.substr(count); // Very slow, only for testing
       return count;
@@ -39,7 +39,13 @@ ssize_t FakeSocketHandler::write(int, const void* buf, size_t count) {
   return count;
 }
 
+int FakeSocketHandler::connect(const std::string &hostname, int port) {
+}
+
+void FakeSocketHandler::close(int fd) {
+}
+
 void FakeSocketHandler::push(const char* buf, size_t count) {
-  boost::lock_guard<boost::mutex> guard(inBufferMutex);
+  std::lock_guard<std::mutex> guard(inBufferMutex);
   inBuffer.append(buf,count);
 }

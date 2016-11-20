@@ -19,9 +19,9 @@
 #include <exception>
 #include <sstream>
 #include <unordered_map>
+#include <thread>
 
 #include <boost/circular_buffer.hpp>
-#include <boost/thread.hpp>
 
 void equalOrFatal(ssize_t expected, ssize_t actual);
 

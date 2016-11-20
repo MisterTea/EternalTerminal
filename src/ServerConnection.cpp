@@ -22,4 +22,5 @@ int ServerConnection::newClient(int socketFd) {
 bool ServerConnection::recoverClient(int clientId, int socketFd) {
   // fix revive
   clients.find(clientId)->second.revive(socketFd, "");
+  return true;
 }

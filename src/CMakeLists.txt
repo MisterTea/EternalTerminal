@@ -8,9 +8,12 @@ Headers.cpp
 EternalTCP.cpp
 Connection.cpp
 ServerConnection.cpp
+ClientConnection.cpp
 BackedWriter.cpp
 BackedReader.cpp
+SocketHandler.cpp
 FakeSocketHandler.cpp
+UnixSocketHandler.cpp
 )
 
 # Make sure the compiler can find include files for our Hello library

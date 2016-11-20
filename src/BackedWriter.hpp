@@ -16,12 +16,16 @@ public:
   std::string recover(int64_t lastValidSequenceNumber);
 
   void revive(int newSocketFd);
+
+  inline void invalidateSocket() {
+    socketFd = -1;
+  }
 protected:
   static const int BUFFER_CHUNK_SIZE = 64*1024;
 
   void backupBuffer(const void* buf, size_t count);
 
-  boost::mutex recoverMutex;
+  std::mutex recoverMutex;
   std::shared_ptr<SocketHandler> socketHandler;
   int socketFd;
 
