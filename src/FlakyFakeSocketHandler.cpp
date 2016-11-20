@@ -13,7 +13,7 @@ ssize_t FlakyFakeSocketHandler::read(int, void* buf, size_t count) {
   while (true) {
     bool keepWaiting = false;
     {
-      boost::lock_guard<boost::mutex> guard(inBufferMutex);
+      std::lock_guard<std::mutex> guard(inBufferMutex);
       if (inBuffer.length() < count) {
         keepWaiting = true;
       }
@@ -23,7 +23,7 @@ ssize_t FlakyFakeSocketHandler::read(int, void* buf, size_t count) {
       continue;
     }
     {
-      boost::lock_guard<boost::mutex> guard(inBufferMutex);
+      std::lock_guard<std::mutex> guard(inBufferMutex);
       memcpy(buf,&inBuffer[0],count);
       inBuffer = inBuffer.substr(count); // Very slow, only for testing
       return count;

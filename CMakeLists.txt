@@ -9,7 +9,7 @@ if(UNIX)
 endif()
 
 # Include external directories.
-add_subdirectory(${CMAKE_SOURCE_DIR}/cmake) 
+add_subdirectory(${CMAKE_SOURCE_DIR}/cmake)
 
 # Find packages
 find_package(Boost COMPONENTS system REQUIRED)
@@ -31,9 +31,9 @@ aux_source_directory(src ${PROJECT_NAME}_SRC)
   #  )
 
 # Build the static library.
-add_library(${PROJECT_NAME}-static STATIC ${${PROJECT_NAME}_SRC}) 
+add_library(${PROJECT_NAME}-static STATIC ${${PROJECT_NAME}_SRC})
 # Build the shared library.
-add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SRC}) 
+add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SRC})
 
 target_link_libraries(
   ${PROJECT_NAME}-static
@@ -53,4 +53,3 @@ if(BUILD_TEST) # Build unit tests.
   enable_testing()
   add_subdirectory(test)
 endif()
-

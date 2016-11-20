@@ -7,6 +7,8 @@
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 
+extern const int NULL_CLIENT_ID;
+
 class ClientConnection {
 public:
   explicit ClientConnection(
@@ -21,8 +23,6 @@ public:
 
   ssize_t read(void* buf, size_t count);
   ssize_t write(const void* buf, size_t count);
-
-  static const int NULL_CLIENT_ID = -1;
 protected:
   void closeSocket();
   void pollReconnect();

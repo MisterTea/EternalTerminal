@@ -1,5 +1,7 @@
 #include "ClientConnection.hpp"
 
+const int NULL_CLIENT_ID = -1;
+
 ClientConnection::ClientConnection(
   std::shared_ptr<SocketHandler> _socketHandler,
   const std::string& _hostname,
