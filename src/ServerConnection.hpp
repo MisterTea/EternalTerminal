@@ -49,9 +49,22 @@ public:
   }
 
   bool recoverClient(int clientId, int socketFd);
+
+  ClientState& getClient(int clientId) {
+    return clients.find(clientId)->second;
+  }
+
+  set<int> getClientIds() {
+    set<int> retval;
+    for (auto it : clients) {
+      retval.insert(it.first);
+    }
+    return retval;
+  }
 protected:
   std::shared_ptr<SocketHandler> socketHandler;
   int port;
+  bool stop;
   std::unordered_map<int, ClientState> clients;
 };
 

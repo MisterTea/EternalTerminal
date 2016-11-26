@@ -5,13 +5,16 @@ ServerConnection::ServerConnection(
   int _port
   ) :
   socketHandler(_socketHandler),
-  port(_port) {
+  port(_port),
+  stop(false) {
 }
 
 void ServerConnection::run() {
-  while(true) {
+  while(!stop) {
     int clientSocketFd = socketHandler->listen(port);
+    cout << "got client socket fd: " << clientSocketFd << endl;
     if (clientSocketFd < 0) {
+      stop=true;
       break;
     }
     int clientId;
@@ -30,6 +33,7 @@ void ServerConnection::run() {
 
 int ServerConnection::newClient(int socketFd) {
   int clientId = rand();
+  cout << "Created client with id " << clientId << endl;
   while (clientExists(clientId)) {
     clientId++;
     if (clientId<0) {

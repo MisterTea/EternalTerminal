@@ -14,6 +14,7 @@
 #include <algorithm>
 #include <iostream>
 #include <vector>
+#include <set>
 #include <array>
 #include <memory>
 #include <exception>
@@ -22,6 +23,8 @@
 #include <thread>
 
 #include <boost/circular_buffer.hpp>
+
+using namespace std;
 
 void equalOrFatal(ssize_t expected, ssize_t actual);
 

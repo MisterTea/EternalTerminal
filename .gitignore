@@ -1,6 +1,11 @@
 # Cmake build dir
 build
 
+# GTags
+GPATH
+GRTAGS
+GTAGS
+
 # Compiled Object files
 *.slo
 *.lo

@@ -46,6 +46,7 @@ target_include_directories (EternalTCP PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 install(TARGETS EternalTCP DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
+enable_testing() # TODO: Temporary until gunit works
 add_subdirectory(sandbox)
 
 if(BUILD_TEST) # Build unit tests.

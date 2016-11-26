@@ -31,3 +31,14 @@ ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 )
 add_test(TestBacked TestBacked)
+
+add_executable (TestConnection TestConnection.cpp)
+target_link_libraries (
+TestConnection
+LINK_PUBLIC
+EternalTCP
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+)
+add_test(TestConnection TestConnection)

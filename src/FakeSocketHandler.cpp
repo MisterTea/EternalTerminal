@@ -44,7 +44,12 @@ int FakeSocketHandler::connect(const std::string &, int) {
 }
 
 int FakeSocketHandler::listen(int) {
-  return 1;
+  static bool first=true;
+  if(first) {
+    first=false;
+    return 1;
+  }
+  return -1;
 }
 
 void FakeSocketHandler::close(int) {
