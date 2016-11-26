@@ -32,7 +32,7 @@ add_executable (TestConnection TestConnection.cpp)
 target_link_libraries (
 TestConnection
 LINK_PUBLIC
-EternalTCP
+EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
