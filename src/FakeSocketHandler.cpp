@@ -6,7 +6,8 @@ FakeSocketHandler::FakeSocketHandler() :
 
 FakeSocketHandler::FakeSocketHandler(
   std::shared_ptr<FakeSocketHandler> remoteHandler_) :
-  remoteHandler(remoteHandler_) {
+  remoteHandler(remoteHandler_),
+  nextFd(1) {
 }
 
 ssize_t FakeSocketHandler::read(int, void* buf, size_t count) {
@@ -40,16 +41,18 @@ ssize_t FakeSocketHandler::write(int, const void* buf, size_t count) {
 }
 
 int FakeSocketHandler::connect(const std::string &, int) {
-  return 1;
+  int fd = nextFd++;
+  remoteHandler->addConnection();
+  return fd;
 }
 
 int FakeSocketHandler::listen(int) {
-  static bool first=true;
-  if(first) {
-    first=false;
-    return 1;
+  if(futureConnections.empty()) {
+    return -1;
   }
-  return -1;
+  int retval = futureConnections.back();
+  futureConnections.pop_back();
+  return retval;
 }
 
 void FakeSocketHandler::close(int) {
@@ -58,4 +61,8 @@ void FakeSocketHandler::close(int) {
 void FakeSocketHandler::push(const char* buf, size_t count) {
   std::lock_guard<std::mutex> guard(inBufferMutex);
   inBuffer.append(buf,count);
+}
+
+void FakeSocketHandler::addConnection() {
+  futureConnections.push_back(nextFd++);
 }

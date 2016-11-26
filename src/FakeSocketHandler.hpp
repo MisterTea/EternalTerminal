@@ -20,11 +20,14 @@ public:
   virtual void close(int fd);
 
   void push(const char* buf, size_t count);
+  void addConnection();
 protected:
 
   std::shared_ptr<FakeSocketHandler> remoteHandler;
   std::string inBuffer;
   std::mutex inBufferMutex;
+  int nextFd;
+  vector<int> futureConnections;
 };
 
 #endif // __ETERNAL_TCP_FAKE_SOCKET_HANDLER__

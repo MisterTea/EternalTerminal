@@ -12,11 +12,10 @@ ServerConnection::ServerConnection(
 void ServerConnection::run() {
   while(!stop) {
     int clientSocketFd = socketHandler->listen(port);
-    cout << "got client socket fd: " << clientSocketFd << endl;
     if (clientSocketFd < 0) {
-      stop=true;
-      break;
+      continue;
     }
+    cout << "got client socket fd: " << clientSocketFd << endl;
     int clientId;
     socketHandler->read(clientSocketFd,&clientId,sizeof(int));
     //TODO: I think we need to spin off a thread/process to listen to this client

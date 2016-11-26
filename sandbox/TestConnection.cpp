@@ -5,6 +5,11 @@
 
 ServerConnection *globalServer;
 
+void runServer(
+  std::shared_ptr<ServerConnection> server) {
+  server->run();
+}
+
 void runClient(
   std::shared_ptr<FakeSocketHandler> clientSocket,
   std::array<char,64*1024> s
@@ -46,11 +51,12 @@ int main() {
   s[64*1024 - 1] = 0;
 
   printf("Creating server\n");
-  ServerConnection server(serverSocket, 1000);
-  globalServer = &server;
+  shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
+    new ServerConnection(serverSocket, 1000));
+  globalServer = server.get();
   int nullId = -1;
   clientSocket->write(-1,&nullId,sizeof(int));
-  server.run();
+  thread serverThread(runServer, server);
 
   std::thread t1(runClient, clientSocket, s);
   printf("Init complete!\n");
