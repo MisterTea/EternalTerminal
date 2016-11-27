@@ -4,32 +4,32 @@ if(BUILD_TEST)
   ExternalProject_Add(
 	googletest_external
 	URL ${CMAKE_SOURCE_DIR}/cmake/external/googletest
-	CONFIGURE_COMMAND "" 
-	BUILD_COMMAND "" 
+	CONFIGURE_COMMAND ""
+	BUILD_COMMAND ""
 	INSTALL_COMMAND ""
-	BUILD_IN_SOURCE 1 
-	LOG_CONFIGURE 1 
-	LOG_BUILD 1 
+	BUILD_IN_SOURCE 1
+	LOG_CONFIGURE 1
+	LOG_BUILD 1
 	)
 #Add our own configure step
 ExternalProject_Add_Step(
-	googletest_external 
-	googletest_configure	
+	googletest_external
+	googletest_configure
 	WORKING_DIRECTORY <SOURCE_DIR>/
 	DEPENDEES patch
 	DEPENDERS configure
-  COMMAND cmake ./  
+  COMMAND cmake ./
 	ALWAYS 1
 	LOG 1
 	)
 #Add our own build step
 ExternalProject_Add_Step(
-	googletest_external 
+	googletest_external
 	googletest_build
 	WORKING_DIRECTORY <SOURCE_DIR>/
 	DEPENDEES configure
 	DEPENDERS build
-	COMMAND make 
+	COMMAND make
 	ALWAYS 1
 	LOG 1
 	)
@@ -45,4 +45,3 @@ ExternalProject_Add_Step(
   set(GTEST_LIB_DIR ${binary_dir}/googlemock/gtest PARENT_SCOPE)
   set(GMOCK_LIB_DIR ${binary_dir}/googlemock PARENT_SCOPE)
 endif()
-

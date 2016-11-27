@@ -17,12 +17,20 @@ public:
     int port
     );
 
+  void connect();
+
   int getSocketFd() {
     return socketFd;
   }
+  int getClientId() {
+    return clientId;
+  }
 
   ssize_t read(void* buf, size_t count);
+  ssize_t readAll(void* buf, size_t count);
+
   ssize_t write(const void* buf, size_t count);
+  ssize_t writeAll(const void* buf, size_t count);
 protected:
   void closeSocket();
   void pollReconnect();

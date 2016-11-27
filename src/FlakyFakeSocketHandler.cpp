@@ -9,32 +9,20 @@ FlakyFakeSocketHandler::FlakyFakeSocketHandler(
   FakeSocketHandler(remoteHandler_) {
 }
 
-ssize_t FlakyFakeSocketHandler::read(int, void* buf, size_t count) {
-  while (true) {
-    bool keepWaiting = false;
-    {
-      std::lock_guard<std::mutex> guard(inBufferMutex);
-      if (inBuffer.length() < count) {
-        keepWaiting = true;
-      }
-    }
-    if (keepWaiting) {
-      sleep(1);
-      continue;
-    }
-    {
-      std::lock_guard<std::mutex> guard(inBufferMutex);
-      memcpy(buf,&inBuffer[0],count);
-      inBuffer = inBuffer.substr(count); // Very slow, only for testing
-      return count;
-    }
+ssize_t FlakyFakeSocketHandler::read(int i, void* buf, size_t count) {
+  if (rand()%4==1) {
+    cout << "read failed\n";
+    errno = ECONNRESET;
+    return -1;
   }
+  return FakeSocketHandler::read(i,buf,count);
 }
 
-ssize_t FlakyFakeSocketHandler::write(int, const void* buf, size_t count) {
-  if (remoteHandler.get() == NULL) {
-    throw std::runtime_error("Invalid remote handler");
+ssize_t FlakyFakeSocketHandler::write(int i, const void* buf, size_t count) {
+  if (rand()%4==1) {
+    cout << "write failed\n";
+    errno = EPIPE;
+    return -1;
   }
-  remoteHandler->push((const char*)buf,count);
-  return count;
+  return FakeSocketHandler::write(i,buf,count);
 }

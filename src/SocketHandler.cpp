@@ -6,7 +6,7 @@ ssize_t SocketHandler::readAll(int fd, void* buf, size_t count) {
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
       fprintf(stderr, "Failed a call to readAll: %s\n", strerror(errno));
-      throw new std::runtime_error("Failed a call to readAll");
+      throw std::runtime_error("Failed a call to readAll");
     }
     pos += bytesRead;
   }
@@ -19,9 +19,45 @@ ssize_t SocketHandler::writeAll(int fd, const void* buf, size_t count) {
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
       fprintf(stderr, "Failed a call to writeAll: %s\n", strerror(errno));
-      throw new std::runtime_error("Failed a call to writeAll");
+      throw std::runtime_error("Failed a call to writeAll");
     }
     pos += bytesWritten;
+  }
+  return count;
+}
+
+#define SOCKET_TIMEOUT (5)
+
+ssize_t SocketHandler::readAllTimeout(int fd, void* buf, size_t count) {
+  time_t timeout = time(NULL) + SOCKET_TIMEOUT;
+  size_t pos=0;
+  while (pos<count) {
+    ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
+    if (bytesRead < 0) {
+      fprintf(stderr, "Failed a call to readAll: %s\n", strerror(errno));
+      throw std::runtime_error("Failed a call to readAll");
+    }
+    pos += bytesRead;
+    if (timeout < time(NULL)) {
+      throw runtime_error("Timeout");
+    }
+  }
+  return count;
+}
+
+ssize_t SocketHandler::writeAllTimeout(int fd, const void* buf, size_t count) {
+  time_t timeout = time(NULL) + SOCKET_TIMEOUT;
+  size_t pos=0;
+  while (pos<count) {
+    ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
+    if (bytesWritten < 0) {
+      fprintf(stderr, "Failed a call to writeAll: %s\n", strerror(errno));
+      throw std::runtime_error("Failed a call to writeAll");
+    }
+    pos += bytesWritten;
+    if (timeout < time(NULL)) {
+      throw runtime_error("Timeout");
+    }
   }
   return count;
 }

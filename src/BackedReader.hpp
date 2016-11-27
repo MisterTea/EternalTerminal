@@ -16,6 +16,7 @@ public:
   void revive(int newSocketFd, std::string localBuffer_);
 
   inline void invalidateSocket() {
+    // TODO: Close the socket
     socketFd = -1;
   }
 

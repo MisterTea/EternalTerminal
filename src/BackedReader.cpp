@@ -11,8 +11,8 @@ BackedReader::BackedReader(
 ssize_t BackedReader::read(void* buf, size_t count) {
   if (socketFd<0) {
     // The socket is dead, return 0 bytes until it returns
-    fprintf(stderr, "Sleeping for 1000 until socket returns");
-    sleep(1000);
+    fprintf(stderr, "Sleeping for 1 until socket returns\n");
+    sleep(1);
     return 0;
   }
 

@@ -41,6 +41,11 @@ public:
   }
 
   void run();
+  inline void close() {
+    stop=true;
+  }
+
+  void clientHandler(int clientSocketFd);
 
   int newClient(int socketFd);
 
@@ -54,8 +59,8 @@ public:
     return clients.find(clientId)->second;
   }
 
-  set<int> getClientIds() {
-    set<int> retval;
+  unordered_set<int> getClientIds() {
+    unordered_set<int> retval;
     for (auto it : clients) {
       retval.insert(it.first);
     }
@@ -66,6 +71,7 @@ protected:
   int port;
   bool stop;
   std::unordered_map<int, ClientState> clients;
+  vector<shared_ptr<thread> > threadPool;
 };
 
 

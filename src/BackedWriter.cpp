@@ -41,8 +41,9 @@ ssize_t BackedWriter::write(const void* buf, size_t count) {
 // TODO: We need to make sure no more data is written after recover is called
 std::string BackedWriter::recover(int64_t lastValidSequenceNumber) {
   if (socketFd >= 0) {
-    throw new std::runtime_error("Can't recover when the fd is still alive");
+    throw std::runtime_error("Can't recover when the fd is still alive");
   }
+  cout << int64_t(this) << ": Manually locking recover mutex!" << endl;
   recoverMutex.lock(); // Mutex is locked until we call revive
 
   int64_t bytesToRecover = sequenceNumber - lastValidSequenceNumber;
@@ -79,5 +80,4 @@ std::string BackedWriter::recover(int64_t lastValidSequenceNumber) {
 
 void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
-  recoverMutex.unlock();
 }

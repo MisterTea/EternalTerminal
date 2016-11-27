@@ -19,13 +19,15 @@ public:
   virtual int listen(int port);
   virtual void close(int fd);
 
-  void push(const char* buf, size_t count);
-  void addConnection();
+  void push(int fd, const char* buf, size_t count);
+  void addConnection(int fd);
+  bool hasPendingConnection();
 protected:
 
   std::shared_ptr<FakeSocketHandler> remoteHandler;
-  std::string inBuffer;
-  std::mutex inBufferMutex;
+  unordered_map<int, std::string> inBuffers;
+  unordered_set<int> closedFds;
+  mutex handlerMutex;
   int nextFd;
   vector<int> futureConnections;
 };
