@@ -5,6 +5,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )
 add_test(TestTransfer TestTransfer)
 
@@ -15,6 +16,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )
 add_test(TestFakeSocketHandler TestFakeSocketHandler)
 
@@ -25,6 +27,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )
 add_test(TestBacked TestBacked)
 
@@ -36,6 +39,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )
 add_test(TestConnection TestConnection)
 
@@ -47,6 +51,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )
 add_test(TestFlakyConnection TestFlakyConnection)
 
@@ -58,4 +63,5 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+glog
 )

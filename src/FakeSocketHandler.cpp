@@ -28,7 +28,7 @@ ssize_t FakeSocketHandler::read(int fd, void* buf, size_t count) {
       return -1;
     }
     bool keepWaiting = false;
-    //cout << int64_t(this) << ": Reading on fd " << fd << endl;
+    //VLOG(1) << int64_t(this) << ": Reading on fd " << fd << endl;
     {
       std::lock_guard<std::mutex> guard(handlerMutex);
       if (closedFds.find(fd) != closedFds.end()) {
@@ -67,13 +67,13 @@ int FakeSocketHandler::connect(const std::string &, int) {
   {
     std::lock_guard<std::mutex> guard(handlerMutex);
     fd = nextFd++;
-    cout << "CLIENT: Connecting to server with fd " << fd << endl;
+    VLOG(1) << "CLIENT: Connecting to server with fd " << fd << endl;
     inBuffers[fd] = "";
   }
   remoteHandler->addConnection(fd);
   while (true) {
     if (!remoteHandler->hasPendingConnection()) {
-      cout << "CLIENT: Connect finished with server and fd " << fd << endl;
+      VLOG(1) << "CLIENT: Connect finished with server and fd " << fd << endl;
       return fd;
     }
   }
@@ -85,7 +85,7 @@ int FakeSocketHandler::listen(int) {
     return -1;
   }
   int retval = futureConnections.back();
-  cout << "SERVER: Accepting client with fd " << retval << endl;
+  VLOG(1) << "SERVER: Accepting client with fd " << retval << endl;
   inBuffers[retval] = "";
   futureConnections.pop_back();
   return retval;
@@ -95,18 +95,18 @@ void FakeSocketHandler::close(int fd) {
   std::lock_guard<std::mutex> guard(handlerMutex);
   closedFds.insert(fd);
   if (inBuffers.find(fd) == inBuffers.end()) {
-    cout << int64_t(this) << ": Got request to erase client " << fd << " but it was already gone " << endl;
+    VLOG(1) << int64_t(this) << ": Got request to erase client " << fd << " but it was already gone " << endl;
     return;
   }
-  cout << int64_t(this) << ": Erasing client " << fd << endl;
+  VLOG(1) << int64_t(this) << ": Erasing client " << fd << endl;
   inBuffers.erase(inBuffers.find(fd));
 }
 
 void FakeSocketHandler::push(int fd, const char* buf, size_t count) {
   std::lock_guard<std::mutex> guard(handlerMutex);
-  //cout << "Accepting buffer from " << fd << " of size " << count << endl;
+  //VLOG(1) << "Accepting buffer from " << fd << " of size " << count << endl;
   if (inBuffers.find(fd) == inBuffers.end()) {
-    cout << "Tried to accept buffer from invalid fd" << endl;
+    VLOG(1) << "Tried to accept buffer from invalid fd" << endl;
     return;
   }
   inBuffers[fd].append(buf,count);
@@ -114,7 +114,7 @@ void FakeSocketHandler::push(int fd, const char* buf, size_t count) {
 
 void FakeSocketHandler::addConnection(int fd) {
   std::lock_guard<std::mutex> guard(handlerMutex);
-  cout << "SERVER: Adding pending connection from " << fd << endl;
+  VLOG(1) << "SERVER: Adding pending connection from " << fd << endl;
   futureConnections.push_back(fd);
 }
 

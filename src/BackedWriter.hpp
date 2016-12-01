@@ -16,10 +16,7 @@ public:
   std::string recover(int64_t lastValidSequenceNumber);
 
   void revive(int newSocketFd);
-  inline void unlock() {
-    cout << int64_t(this) << ": Manually unlocking recover mutex!" << endl;
-    recoverMutex.unlock();
-  }
+  void unlock();
 
   inline int getSocketFd() {
     return socketFd;

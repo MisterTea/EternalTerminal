@@ -10,10 +10,12 @@ endif()
 
 # Include external directories.
 add_subdirectory(${CMAKE_SOURCE_DIR}/cmake)
+LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Find packages
 find_package(Boost COMPONENTS system REQUIRED)
 find_package(Threads REQUIRED)
+find_package(Glog REQUIRED)
 
 include_directories(src)
 aux_source_directory(src ${PROJECT_NAME}_SRC)

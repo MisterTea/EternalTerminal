@@ -26,6 +26,8 @@
 
 #include <boost/circular_buffer.hpp>
 
+#include <glog/logging.h>
+
 using namespace std;
 
 void equalOrFatal(ssize_t expected, ssize_t actual);

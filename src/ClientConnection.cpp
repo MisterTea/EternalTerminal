@@ -21,17 +21,17 @@ ClientConnection::~ClientConnection() {
 
 void ClientConnection::connect() {
   try {
-    cout << "Connecting" << endl;
+    VLOG(1) << "Connecting" << endl;
     socketFd = socketHandler->connect(hostname, port);
-    cout << "Sending null id" << endl;
+    VLOG(1) << "Sending null id" << endl;
     socketHandler->writeAllTimeout(socketFd, &NULL_CLIENT_ID, sizeof(int));
-    cout << "Receiving client id" << endl;
+    VLOG(1) << "Receiving client id" << endl;
     socketHandler->readAllTimeout(socketFd, &clientId, sizeof(int));
-    cout << "Creating backed reader" << endl;
+    VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(new BackedReader(socketHandler, socketFd));
-    cout << "Creating backed writer" << endl;
+    VLOG(1) << "Creating backed writer" << endl;
     writer = std::shared_ptr<BackedWriter>(new BackedWriter(socketHandler, socketFd));
-    cout << "Client Connection established" << endl;
+    VLOG(1) << "Client Connection established" << endl;
   } catch (const runtime_error& err) {
     socketHandler->close(socketFd);
     throw err;
@@ -58,7 +58,7 @@ ssize_t ClientConnection::readAll(void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesRead = read(((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
-      fprintf(stderr, "Failed a call to readAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to readAll: %s\n" << strerror(errno);
       throw std::runtime_error("Failed a call to readAll");
     }
     pos += bytesRead;
@@ -89,7 +89,7 @@ ssize_t ClientConnection::writeAll(const void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesWritten = write(((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
-      fprintf(stderr, "Failed a call to writeAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to writeAll");
     }
     pos += bytesWritten;
@@ -105,7 +105,7 @@ void ClientConnection::closeSocket() {
   writer->invalidateSocket();
   socketFd = -1;
   socketHandler->close(socketFd);
-  cout << "CLIENT: Closed socket\n";
+  VLOG(1) << "CLIENT: Closed socket\n";
 
   // Spin up a thread to poll for reconnects
   if (reconnectThread.get()) {
@@ -144,11 +144,11 @@ void ClientConnection::pollReconnect() {
         writer->unlock();
         break;
       } catch (const runtime_error& err) {
-        cout << "Failed while recovering" << endl;
+        VLOG(1) << "Failed while recovering" << endl;
         writer->unlock();
       }
     } else {
-      fprintf(stderr, "Waiting to retry...\n");
+      VLOG(1) << "Waiting to retry...";
       sleep(1);
     }
   }

@@ -47,6 +47,7 @@ termios terminal_backup;
 
 int main(int argc, char** argv) {
   srand(1);
+  google::InitGoogleLogging(argv[0]);
 
   if (argc < 2) {
     cout << "usage: Terminal (username)" << endl;

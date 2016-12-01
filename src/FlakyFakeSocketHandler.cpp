@@ -14,7 +14,7 @@ FlakyFakeSocketHandler::FlakyFakeSocketHandler(
 
 ssize_t FlakyFakeSocketHandler::read(int i, void* buf, size_t count) {
   if (rand()%chance==1) {
-    cout << "read failed\n";
+    VLOG(1) << "read failed\n";
     errno = ECONNRESET;
     return -1;
   }
@@ -23,7 +23,7 @@ ssize_t FlakyFakeSocketHandler::read(int i, void* buf, size_t count) {
 
 ssize_t FlakyFakeSocketHandler::write(int i, const void* buf, size_t count) {
   if (rand()%chance==1) {
-    cout << "write failed\n";
+    VLOG(1) << "write failed\n";
     errno = EPIPE;
     return -1;
   }

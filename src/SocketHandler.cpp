@@ -5,7 +5,7 @@ ssize_t SocketHandler::readAll(int fd, void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
-      fprintf(stderr, "Failed a call to readAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to readAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to readAll");
     }
     pos += bytesRead;
@@ -18,7 +18,7 @@ ssize_t SocketHandler::writeAll(int fd, const void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
-      fprintf(stderr, "Failed a call to writeAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to writeAll");
     }
     pos += bytesWritten;
@@ -34,7 +34,7 @@ ssize_t SocketHandler::readAllTimeout(int fd, void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
-      fprintf(stderr, "Failed a call to readAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to readAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to readAll");
     }
     pos += bytesRead;
@@ -51,7 +51,7 @@ ssize_t SocketHandler::writeAllTimeout(int fd, const void* buf, size_t count) {
   while (pos<count) {
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
-      fprintf(stderr, "Failed a call to writeAll: %s\n", strerror(errno));
+      VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to writeAll");
     }
     pos += bytesWritten;

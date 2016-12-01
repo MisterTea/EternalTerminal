@@ -18,13 +18,13 @@ ServerConnection::~ServerConnection() {
 
 void ServerConnection::run() {
   while(!stop) {
-    //cout << "Listening for connection" << endl;
+    //VLOG(1) << "Listening for connection" << endl;
     int clientSocketFd = socketHandler->listen(port);
     if (clientSocketFd < 0) {
       sleep(1);
       continue;
     }
-    cout << "SERVER: got client socket fd: " << clientSocketFd << endl;
+    VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd << endl;
     if (clientConnectThread) {
       clientConnectThread->join();
     }
@@ -53,7 +53,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
 int ServerConnection::newClient(int socketFd) {
   int clientId = rand();
-  cout << "Created client with id " << clientId << endl;
+  VLOG(1) << "Created client with id " << clientId << endl;
   while (clientExists(clientId)) {
     clientId++;
     if (clientId<0) {
@@ -73,7 +73,7 @@ bool ServerConnection::recoverClient(int clientId, int newSocketFd) {
   // If we didn't know the client disconnected, we do now.  Invalidate the old client.
   int socket = writer->getSocketFd();
   if (socket != -1) {
-    cout << "Invalidating socket" << endl;
+    VLOG(1) << "Invalidating socket" << endl;
     writer->invalidateSocket();
     reader->invalidateSocket();
     socketHandler->close(socket);
