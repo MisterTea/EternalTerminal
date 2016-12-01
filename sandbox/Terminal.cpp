@@ -48,6 +48,18 @@ termios terminal_backup;
 int main(int argc, char** argv) {
   srand(1);
 
+  if (argc < 2) {
+    cout << "usage: Terminal (username)" << endl;
+  }
+  string user = string(argv[1]);
+  cout << "user: " << user << endl;
+  passwd* pwd = getpwnam(user.c_str());
+  if (pwd == NULL) {
+    cout << "Could not find user " << user << endl;
+    exit(1);
+  }
+  cout << "Got uid: " << pwd << endl;
+
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
   std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
   serverSocket->setRemoteHandler(clientSocket);
@@ -106,9 +118,12 @@ int main(int argc, char** argv) {
     FAIL_FATAL(pid);
   case 0:
     // child
+    setuid(pwd->pw_uid);
+    setgid(pwd->pw_gid);
     terminal = terminal.substr(0,terminal.length()-1);
     cout << "Child process " << terminal << endl;
-    execl(terminal.c_str(), terminal.c_str(), NULL);
+    execl("/bin/bash", "/bin/bash", NULL);
+    //execl(terminal.c_str(), terminal.c_str(), NULL);
     exit(0);
     break;
   default:
