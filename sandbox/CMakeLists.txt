@@ -6,6 +6,7 @@ ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 glog
+gflags
 )
 add_test(TestTransfer TestTransfer)
 
@@ -17,6 +18,7 @@ ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 glog
+gflags
 )
 add_test(TestFakeSocketHandler TestFakeSocketHandler)
 
@@ -28,6 +30,7 @@ ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 glog
+gflags
 )
 add_test(TestBacked TestBacked)
 
@@ -40,6 +43,7 @@ ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 glog
+gflags
 )
 add_test(TestConnection TestConnection)
 
@@ -64,4 +68,5 @@ ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 glog
+gflags
 )

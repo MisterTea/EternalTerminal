@@ -16,6 +16,7 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 find_package(Boost COMPONENTS system REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
+find_package(gflags REQUIRED)
 
 include_directories(src)
 aux_source_directory(src ${PROJECT_NAME}_SRC)

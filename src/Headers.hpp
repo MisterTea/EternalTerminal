@@ -27,6 +27,7 @@
 #include <boost/circular_buffer.hpp>
 
 #include <glog/logging.h>
+#include <gflags/gflags.h>
 
 using namespace std;
 

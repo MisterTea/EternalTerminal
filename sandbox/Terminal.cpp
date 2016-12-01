@@ -45,14 +45,18 @@ std::string getTerminal() {
 
 termios terminal_backup;
 
+DEFINE_string(username, "",
+                 "name of user to log in as");
+
 int main(int argc, char** argv) {
   srand(1);
   google::InitGoogleLogging(argv[0]);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   if (argc < 2) {
     cout << "usage: Terminal (username)" << endl;
   }
-  string user = string(argv[1]);
+  string user = FLAGS_username;
   cout << "user: " << user << endl;
   passwd* pwd = getpwnam(user.c_str());
   if (pwd == NULL) {
