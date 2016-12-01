@@ -32,19 +32,32 @@ std::string getTerminal() {
 #endif
 }
 
+termios terminal_backup;
+
 int main(int argc, char** argv) {
   int masterfd;
   char* slaveFileName = new char[4096];
-  termios* slaveTerminalParameters = new termios();
-  winsize* windowParameters = new winsize();
+
+  termios terminal_local;
+  tcgetattr(0,&terminal_local);
+  memcpy(&terminal_backup,&terminal_local,sizeof(struct termios));
+  struct winsize win = { 0, 0, 0, 0 };
+  ioctl(1, TIOCGWINSZ, &win);
+  cfmakeraw(&terminal_local);
+  tcsetattr(0,TCSANOW,&terminal_local);
+  cout << win.ws_row << " "
+       << win.ws_col << " "
+       << win.ws_xpixel << " "
+       << win.ws_ypixel << endl;
+
 
   std::string terminal = getTerminal();
 
   pid_t pid = forkpty(
     &masterfd,
-    slaveFileName,
-    slaveTerminalParameters,
-    windowParameters);
+    NULL,
+    NULL,
+    &win);
   switch (pid) {
   case -1:
     FAIL_FATAL(pid);
@@ -52,25 +65,15 @@ int main(int argc, char** argv) {
     // child
     terminal = terminal.substr(0,terminal.length()-1);
     cout << "Child process " << terminal << endl;
-    execlp(terminal.c_str(), terminal.c_str(), NULL);
+    execl(terminal.c_str(), terminal.c_str(), NULL);
     exit(0);
     break;
   default:
     // parent
     cout << "pty opened " << masterfd << endl;
-    cout << slaveFileName << endl;
-    cout << windowParameters->ws_row << " "
-         << windowParameters->ws_col << " "
-         << windowParameters->ws_xpixel << " "
-         << windowParameters->ws_ypixel << endl;
+    ioctl(masterfd, TIOCSWINSZ, win);
     // Whether the TE should keep running.
     bool run = true;
-
-    // remove the echo
-    struct termios tios;
-    tcgetattr(masterfd, &tios);
-    tios.c_lflag &= ~(ECHO | ECHONL);
-    tcsetattr(masterfd, TCSAFLUSH, &tios);
 
     // TE sends/receives data to/from the shell one char at a time.
     char b, c;
@@ -100,9 +103,10 @@ int main(int argc, char** argv) {
       {
         int rc = read(masterfd, &c, 1);
         FAIL_FATAL(rc);
-        if (rc > 0)
+        if (rc > 0) {
+          //cout << "\n_*_" << int(c) << "_*_" << endl;
           write(STDOUT_FILENO, &c, 1);
-        else if (rc==0)
+        } else if (rc==0)
           run = false;
         else
           cout << "This shouldn't happen\n";
@@ -118,5 +122,6 @@ int main(int argc, char** argv) {
     break;
   }
 
+  tcsetattr(0,TCSANOW,&terminal_backup);
   return 0;
 }
