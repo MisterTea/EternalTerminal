@@ -49,3 +49,13 @@ ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 )
 add_test(TestFlakyConnection TestFlakyConnection)
+
+add_executable (Terminal Terminal.cpp)
+target_link_libraries (
+Terminal
+LINK_PUBLIC
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+)

@@ -45,5 +45,4 @@ protected:
   std::shared_ptr<std::thread> reconnectThread;
 };
 
-
 #endif // __ETERNAL_TCP_SERVER_CONNECTION__
