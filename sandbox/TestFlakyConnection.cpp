@@ -33,9 +33,10 @@ void runClient(
   int clientId = client->getClientId();
   shared_ptr<ClientState> serverClientState = globalServer->getClient(clientId);
   std::array<char,64*1024> result;
-  for (int a=0;a<64;a++) {
-    serverClientState->writer->write((void*)(&s[0] + a*1024), 1024);
-    client->readAll((void*)(&result[0] + a*1024), 1024);
+  for (int a=0;a<64*1024;a++) {
+    serverClientState->writer->write((void*)(&s[0] + a), 1);
+    client->readAll((void*)(&result[0] + a), 1);
+    cout << "Finished byte " << a << endl;
   }
 
   if (s == result) {
@@ -49,11 +50,13 @@ void runClient(
   exit(1);
 }
 
-int main() {
+int main(int argc, char** argv) {
   srand(1);
+  google::InitGoogleLogging(argv[0]);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
-  std::shared_ptr<FlakyFakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 4));
+  std::shared_ptr<FlakyFakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 5000));
   serverSocket->setRemoteHandler(clientSocket);
 
   std::array<char,64*1024> s;

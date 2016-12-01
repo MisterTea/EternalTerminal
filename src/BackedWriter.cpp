@@ -19,23 +19,36 @@ void BackedWriter::backupBuffer(const void* buf, size_t count) {
     std::string s((const char *)buf, count);
     immediateBackup.push_back(s);
   }
+  sequenceNumber += count;
 }
 
 ssize_t BackedWriter::write(const void* buf, size_t count) {
-  // If recover started, Wait until finished
-  std::lock_guard<std::mutex> guard(recoverMutex);
-  if(socketFd<0) {
-    // We have no socket to write to, write to the backup buffer and
-    // exit
-    backupBuffer(buf,count);
-    return count;
-  }
+  size_t bytesWritten = 0;
+  while (bytesWritten < count) {
+    // If recover started, Wait until finished
+    std::lock_guard<std::mutex> guard(recoverMutex);
+    if(socketFd<0) {
+      // We have no socket to write to, write to the backup buffer and
+      // exit
+      backupBuffer(buf,count);
+      return count;
+    }
 
-  // We have a socket, let's try to use it.
+    // We have a socket, let's try to use it.
+    ssize_t result = socketHandler->write(
+      socketFd, ((char*)buf) + bytesWritten, count - bytesWritten);
+    if (result >= 0) {
+      bytesWritten += result;
+    } else {
+      backupBuffer(buf,bytesWritten);
+      return result;
+    }
+  }
+  if (bytesWritten > count) {
+    LOG(FATAL) << "Oops, wrote too many bytes by accident";
+  }
   backupBuffer(buf,count);
-  sequenceNumber += count;
-  ssize_t result = socketHandler->write(socketFd, buf, count);
-  return result;
+  return count;
 }
 
 // TODO: We need to make sure no more data is written after recover is called
@@ -53,6 +66,7 @@ std::string BackedWriter::recover(int64_t lastValidSequenceNumber) {
   if (bytesToRecover==0) {
     return "";
   }
+  VLOG(1) << int64_t(this) << ": Recovering " << bytesToRecover << " Bytes";
   int64_t bytesSeen=0;
   std::string s;
   for (
@@ -62,15 +76,21 @@ std::string BackedWriter::recover(int64_t lastValidSequenceNumber) {
     if (bytesSeen + (int64_t)it->length() < bytesToRecover) {
       // We need to keep going in the circular buffer
       bytesSeen += it->length();
+      VLOG(1) << "Seen: " << bytesSeen << " " << it->length() << " " << bytesToRecover;
       continue;
     } else {
       // Start recovering
-      int64_t bytesToWrite = std::min((int64_t)it->length(),bytesToRecover);
+      int64_t bytesToWrite = std::min((int64_t)it->length(),bytesToRecover - bytesSeen);
+      VLOG(1) << "Reached end: " << bytesSeen << " " << it->length() << " " << bytesToRecover << " " << bytesToWrite;
       s.append(it->c_str() + (it->length() - bytesToWrite), bytesToWrite);
       for (auto it2 = it.base();
            it2 != immediateBackup.end();
            it2++) {
-        s.append(it->c_str(), it->length());
+        s.append(it2->c_str(), it2->length());
+        VLOG(1) << "Adding entire buffer: " << it2->length() << " " << s.length();
+      }
+      if (int64_t(s.length()) != bytesToRecover) {
+        LOG(FATAL) << "Error, did not recover the correct number of bytes: " << bytesToRecover << " " << s.length();
       }
       return s;
     }

@@ -171,8 +171,8 @@ int main(int argc, char** argv) {
     setgid(pwd->pw_gid);
     terminal = terminal.substr(0,terminal.length()-1);
     cout << "Child process " << terminal << endl;
-    execl("/bin/bash", "/bin/bash", NULL);
-    //execl(terminal.c_str(), terminal.c_str(), NULL);
+    //execl("/bin/bash", "/bin/bash", NULL);
+    execl(terminal.c_str(), terminal.c_str(), NULL);
     exit(0);
     break;
   default:
@@ -223,18 +223,24 @@ int main(int argc, char** argv) {
       {
         // Read from stdin and write to our client that will then send it to the server.
         read(STDIN_FILENO, &b, 1);
-        globalClient->write(&b,1);
+        globalClient->writeAll(&b,1);
       }
 
       while (globalClient->hasData()) {
-        globalClient->read(&b, 1);
-        write(STDOUT_FILENO, &b, 1);
+        int rc = globalClient->read(&b, 1);
+        FATAL_FAIL(rc);
+        if(rc>0) {
+          write(STDOUT_FILENO, &b, 1);
+        }
       }
 
       while (serverClientState->reader->hasData()) {
         // Read from the server and write to our fake terminal
-        serverClientState->reader->read(&b,1);
-        write(masterfd, &b, 1);
+        int rc = serverClientState->reader->read(&b,1);
+        FATAL_FAIL(rc);
+        if(rc>0) {
+          write(masterfd, &b, 1);
+        }
       }
     }
     break;

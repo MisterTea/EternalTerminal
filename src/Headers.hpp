@@ -33,4 +33,6 @@ using namespace std;
 
 void equalOrFatal(ssize_t expected, ssize_t actual);
 
+#define FATAL_FAIL(X) if((X == -1)) LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
+
 #endif

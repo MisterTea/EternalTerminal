@@ -65,6 +65,7 @@ ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
+gflags
 ${COREFOUNDATION_LIBRARY}
 )
 add_test(TestFlakyConnection TestFlakyConnection)
