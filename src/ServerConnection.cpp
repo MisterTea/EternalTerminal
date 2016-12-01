@@ -18,7 +18,7 @@ ServerConnection::~ServerConnection() {
 
 void ServerConnection::run() {
   while(!stop) {
-    //VLOG(1) << "Listening for connection" << endl;
+    VLOG(1) << "Listening for connection" << endl;
     int clientSocketFd = socketHandler->listen(port);
     if (clientSocketFd < 0) {
       sleep(1);
@@ -31,6 +31,11 @@ void ServerConnection::run() {
     clientConnectThread = shared_ptr<thread>(
       new thread(&ServerConnection::clientHandler, this, clientSocketFd));
   }
+}
+
+void ServerConnection::close() {
+  stop=true;
+  socketHandler->stopListening();
 }
 
 void ServerConnection::clientHandler(int clientSocketFd) {

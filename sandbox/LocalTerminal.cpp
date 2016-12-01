@@ -2,7 +2,6 @@
 #include "ClientConnection.hpp"
 #include "ServerConnection.hpp"
 #include "FlakyFakeSocketHandler.hpp"
-#include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
 
 #include <errno.h>
@@ -89,19 +88,13 @@ termios terminal_backup;
 
 DEFINE_string(username, "",
                  "name of user to log in as");
-DEFINE_int32(port, -1, "");
 
 int main(int argc, char** argv) {
+  srand(1);
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   gcrypt_init();
-
-  srand(time(NULL));
-  // Set the port before we fix the random seed so that the port is truly random.
-  const int PORT = (FLAGS_port>=0?FLAGS_port:(10000 + (rand()%1000)));
-  VLOG(1) << "PORT: " << PORT << endl;
-
-  srand(1);
 
   if (argc < 2) {
     cout << "usage: Terminal (username)" << endl;
@@ -115,8 +108,9 @@ int main(int argc, char** argv) {
   }
   cout << "Got uid: " << pwd << endl;
 
-  std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
-  std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
+  std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
+  std::shared_ptr<FakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 1000));
+  serverSocket->setRemoteHandler(clientSocket);
 
   std::array<char,64*1024> s;
   for (int a=0;a<64*1024 - 1;a++) {
@@ -126,12 +120,12 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, PORT));
+    new ServerConnection(serverSocket, 1000));
   globalServer = server;
   thread serverThread(runServer, server);
 
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, "localhost", PORT));
+    new ClientConnection(clientSocket, "localhost", 1000));
   globalClient = client;
   while(true) {
     try {

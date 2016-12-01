@@ -43,9 +43,8 @@ public:
   }
 
   void run();
-  inline void close() {
-    stop=true;
-  }
+
+  void close();
 
   void clientHandler(int clientSocketFd);
 

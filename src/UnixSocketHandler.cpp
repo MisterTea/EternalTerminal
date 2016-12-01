@@ -2,6 +2,7 @@
 
 #include <sys/socket.h>
 #include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <netdb.h>
 
 UnixSocketHandler::UnixSocketHandler() {
@@ -14,7 +15,7 @@ bool UnixSocketHandler::hasData(int fd) {
   FD_SET(fd, &input);
   struct timeval timeout;
   timeout.tv_sec  = 0;
-  timeout.tv_usec = 1 * 1000;
+  timeout.tv_usec = 1 * 100;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
     //something wrong
@@ -42,12 +43,13 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
   sockfd = socket(AF_INET, SOCK_STREAM, 0);
   if (sockfd < 0) {
-    fprintf(stderr, "ERROR opening socket\n");
+    LOG(ERROR) << "ERROR opening socket";
     return -1;
   }
+  initSocket(sockfd);
   server = gethostbyname(hostname.c_str());
   if (server == NULL) {
-    fprintf(stderr, "ERROR, no such host\n");
+    LOG(ERROR) << "ERROR, no such host";
     return -1;
   }
   bzero((char *) &serv_addr, sizeof(serv_addr));
@@ -57,7 +59,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
         server->h_length);
   serv_addr.sin_port = htons(port);
   if (::connect(sockfd,(sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
-    fprintf(stderr, "ERROR connecting\n");
+    LOG(ERROR) << "ERROR connecting";
     ::close(sockfd);
     return -1;
   }
@@ -71,9 +73,10 @@ int UnixSocketHandler::listen(int port) {
 
     //Create socket
     int socket_desc = socket(AF_INET , SOCK_STREAM , 0);
+    initSocket(socket_desc);
     if (socket_desc == -1)
     {
-      throw new std::runtime_error("Could not create socket");
+      throw std::runtime_error("Could not create socket");
     }
 
     //Prepare the sockaddr_in structure
@@ -84,7 +87,7 @@ int UnixSocketHandler::listen(int port) {
     //Bind
     if( ::bind(socket_desc,(struct sockaddr *)&server , sizeof(server)) < 0)
     {
-      throw new std::runtime_error("Bind Failed");
+      throw std::runtime_error("Bind Failed");
     }
 
     //Listen
@@ -95,9 +98,27 @@ int UnixSocketHandler::listen(int port) {
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(serverSocket, (sockaddr *)&client, &c);
+  if (client_sock >= 0) {
+    initSocket(client_sock);
+  }
   return client_sock;
+}
+
+void UnixSocketHandler::stopListening() {
+  close(serverSocket);
 }
 
 void UnixSocketHandler::close(int fd) {
   ::close(fd);
+}
+
+void UnixSocketHandler::initSocket(int fd) {
+  int flag=1;
+  int result = setsockopt(fd,            /* socket affected */
+                          IPPROTO_TCP,     /* set option at TCP level */
+                          TCP_NODELAY,     /* name of option */
+                          (char *) &flag,  /* the cast is historical
+                                              cruft */
+                          sizeof(int));    /* length of option value */
+  FATAL_FAIL(result);
 }

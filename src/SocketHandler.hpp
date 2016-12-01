@@ -17,6 +17,7 @@ public:
 
   virtual int connect(const std::string &hostname, int port) = 0;
   virtual int listen(int port) = 0;
+  virtual void stopListening() = 0;
   virtual void close(int fd) = 0;
 };
 
