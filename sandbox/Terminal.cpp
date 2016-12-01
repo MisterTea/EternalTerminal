@@ -2,6 +2,7 @@
 #include "ClientConnection.hpp"
 #include "ServerConnection.hpp"
 #include "FlakyFakeSocketHandler.hpp"
+#include "ProcessHelper.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -165,6 +166,7 @@ int main(int argc, char** argv) {
     FAIL_FATAL(pid);
   case 0:
     // child
+    ProcessHelper::initChildProcess();
     setuid(pwd->pw_uid);
     setgid(pwd->pw_gid);
     terminal = terminal.substr(0,terminal.length()-1);

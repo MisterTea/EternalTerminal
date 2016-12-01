@@ -8,6 +8,7 @@ ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
 gflags
+${COREFOUNDATION_LIBRARY}
 )
 add_test(TestTransfer TestTransfer)
 
@@ -21,6 +22,7 @@ ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
 gflags
+${COREFOUNDATION_LIBRARY}
 )
 add_test(TestFakeSocketHandler TestFakeSocketHandler)
 
@@ -34,6 +36,7 @@ ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
 gflags
+${COREFOUNDATION_LIBRARY}
 )
 add_test(TestBacked TestBacked)
 
@@ -48,6 +51,7 @@ ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
 gflags
+${COREFOUNDATION_LIBRARY}
 )
 add_test(TestConnection TestConnection)
 
@@ -61,6 +65,7 @@ ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
+${COREFOUNDATION_LIBRARY}
 )
 add_test(TestFlakyConnection TestFlakyConnection)
 
@@ -75,4 +80,5 @@ ${CMAKE_THREAD_LIBS_INIT}
 gcrypt
 glog
 gflags
+${COREFOUNDATION_LIBRARY}
 )
