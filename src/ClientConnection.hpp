@@ -17,6 +17,8 @@ public:
     int port
     );
 
+  ~ClientConnection();
+
   void connect();
 
   int getSocketFd() {

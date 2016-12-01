@@ -53,7 +53,7 @@ int main() {
   srand(1);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
-  std::shared_ptr<FlakyFakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket));
+  std::shared_ptr<FlakyFakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 4));
   serverSocket->setRemoteHandler(clientSocket);
 
   std::array<char,64*1024> s;

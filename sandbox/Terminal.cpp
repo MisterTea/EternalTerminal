@@ -61,7 +61,7 @@ int main(int argc, char** argv) {
   cout << "Got uid: " << pwd << endl;
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
-  std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
+  std::shared_ptr<FakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 1000));
   serverSocket->setRemoteHandler(clientSocket);
 
   std::array<char,64*1024> s;
@@ -177,12 +177,12 @@ int main(int argc, char** argv) {
         globalClient->write(&b,1);
       }
 
-      if (globalClient->hasData()) {
+      while (globalClient->hasData()) {
         globalClient->read(&b, 1);
         write(STDOUT_FILENO, &b, 1);
       }
 
-      if (serverClientState->reader->hasData()) {
+      while (serverClientState->reader->hasData()) {
         // Read from the server and write to our fake terminal
         serverClientState->reader->read(&b,1);
         write(masterfd, &b, 1);

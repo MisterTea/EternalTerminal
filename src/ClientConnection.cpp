@@ -12,6 +12,13 @@ ClientConnection::ClientConnection(
   port(_port) {
 }
 
+ClientConnection::~ClientConnection() {
+  if (reconnectThread) {
+    reconnectThread->join();
+    reconnectThread.reset();
+  }
+}
+
 void ClientConnection::connect() {
   try {
     cout << "Connecting" << endl;
