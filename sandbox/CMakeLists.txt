@@ -5,6 +5,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 gflags
 )
@@ -17,6 +18,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 gflags
 )
@@ -29,6 +31,7 @@ LINK_PUBLIC
 ${PROJECT_NAME}-static
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 gflags
 )
@@ -42,6 +45,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 gflags
 )
@@ -55,6 +59,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 )
 add_test(TestFlakyConnection TestFlakyConnection)
@@ -67,6 +72,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+gcrypt
 glog
 gflags
 )
