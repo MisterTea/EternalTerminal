@@ -12,11 +12,33 @@
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
 
+std::string commandToString(const char* cmd) {
+    char buffer[128];
+    std::string result = "";
+    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
+    if (!pipe) throw std::runtime_error("popen() failed!");
+    while (!feof(pipe.get())) {
+        if (fgets(buffer, 128, pipe.get()) != NULL)
+            result += buffer;
+    }
+    return result;
+}
+
+std::string getTerminal() {
+#if __APPLE__
+  return commandToString("dscl /Search -read \"/Users/$USER\" UserShell | awk '{print $2}'");
+#else
+  return commandToString("grep ^$(id -un): /etc/passwd | cut -d : -f 7-");
+#endif
+}
+
 int main(int argc, char** argv) {
   int masterfd;
   char* slaveFileName = new char[4096];
   termios* slaveTerminalParameters = new termios();
   winsize* windowParameters = new winsize();
+
+  std::string terminal = getTerminal();
 
   pid_t pid = forkpty(
     &masterfd,
@@ -28,8 +50,9 @@ int main(int argc, char** argv) {
     FAIL_FATAL(pid);
   case 0:
     // child
-    cout << "Child process" << endl;
-    execlp("bash", "/bin/bash", NULL);
+    terminal = terminal.substr(0,terminal.length()-1);
+    cout << "Child process " << terminal << endl;
+    execlp(terminal.c_str(), terminal.c_str(), NULL);
     exit(0);
     break;
   default:
