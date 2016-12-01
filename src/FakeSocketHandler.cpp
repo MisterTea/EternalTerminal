@@ -13,6 +13,13 @@ FakeSocketHandler::FakeSocketHandler(
 
 #define FAKE_READ_TIMEOUT (5)
 
+bool FakeSocketHandler::hasData(int fd) {
+  if (inBuffers[fd].length() > 0) {
+    return true;
+  }
+  return false;
+}
+
 ssize_t FakeSocketHandler::read(int fd, void* buf, size_t count) {
   time_t timeout = time(NULL) + FAKE_READ_TIMEOUT;
   while (true) {
@@ -97,7 +104,7 @@ void FakeSocketHandler::close(int fd) {
 
 void FakeSocketHandler::push(int fd, const char* buf, size_t count) {
   std::lock_guard<std::mutex> guard(handlerMutex);
-  cout << "Accepting buffer from " << fd << " of size " << count << endl;
+  //cout << "Accepting buffer from " << fd << " of size " << count << endl;
   if (inBuffers.find(fd) == inBuffers.end()) {
     cout << "Tried to accept buffer from invalid fd" << endl;
     return;

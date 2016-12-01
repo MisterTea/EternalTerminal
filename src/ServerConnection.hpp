@@ -36,6 +36,8 @@ public:
     int port
     );
 
+  ~ServerConnection();
+
   inline bool clientExists(int clientId) {
     return clients.find(clientId) != clients.end();
   }
@@ -55,7 +57,7 @@ public:
 
   bool recoverClient(int clientId, int socketFd);
 
-  ClientState& getClient(int clientId) {
+  shared_ptr<ClientState> getClient(int clientId) {
     return clients.find(clientId)->second;
   }
 
@@ -70,8 +72,8 @@ protected:
   std::shared_ptr<SocketHandler> socketHandler;
   int port;
   bool stop;
-  std::unordered_map<int, ClientState> clients;
-  vector<shared_ptr<thread> > threadPool;
+  std::unordered_map<int, shared_ptr<ClientState> > clients;
+  shared_ptr<thread> clientConnectThread;
 };
 
 

@@ -8,6 +8,25 @@ UnixSocketHandler::UnixSocketHandler() {
   serverSocket = -1;
 }
 
+bool UnixSocketHandler::hasData(int fd) {
+  fd_set input;
+  FD_ZERO(&input);
+  FD_SET(fd, &input);
+  struct timeval timeout;
+  timeout.tv_sec  = 0;
+  timeout.tv_usec = 1 * 1000;
+  int n = select(fd + 1, &input, NULL, NULL, &timeout);
+  if (n == -1) {
+    //something wrong
+    throw runtime_error("Oops");
+  } else if (n == 0)
+    return false;
+  if (!FD_ISSET(fd, &input)) {
+    throw runtime_error("Oops");
+  }
+  return true;
+}
+
 ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   return ::read(fd, buf, count);
 }

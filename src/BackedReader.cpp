@@ -8,6 +8,18 @@ BackedReader::BackedReader(
   sequenceNumber(0) {
 }
 
+bool BackedReader::hasData() {
+  if (socketFd < 0) {
+    return false;
+  }
+
+  if (localBuffer.length()>0) {
+    return true;
+  }
+
+  return socketHandler->hasData(socketFd);
+}
+
 ssize_t BackedReader::read(void* buf, size_t count) {
   if (socketFd<0) {
     // The socket is dead, return 0 bytes until it returns

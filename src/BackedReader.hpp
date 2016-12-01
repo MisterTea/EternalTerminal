@@ -11,6 +11,7 @@ public:
     std::shared_ptr<SocketHandler> socketHandler,
     int socketFd);
 
+  bool hasData();
   ssize_t read(void* buf, size_t count);
 
   void revive(int newSocketFd, std::string localBuffer_);

@@ -9,18 +9,27 @@ ServerConnection::ServerConnection(
   stop(false) {
 }
 
+ServerConnection::~ServerConnection() {
+  if(clientConnectThread) {
+    clientConnectThread->join();
+    clientConnectThread.reset();
+  }
+}
+
 void ServerConnection::run() {
   while(!stop) {
-    cout << "Listening for connection" << endl;
+    //cout << "Listening for connection" << endl;
     int clientSocketFd = socketHandler->listen(port);
     if (clientSocketFd < 0) {
       sleep(1);
       continue;
     }
     cout << "SERVER: got client socket fd: " << clientSocketFd << endl;
-    threadPool.push_back(
-      shared_ptr<thread>(
-        new thread(&ServerConnection::clientHandler, this, clientSocketFd)));
+    if (clientConnectThread) {
+      clientConnectThread->join();
+    }
+    clientConnectThread = shared_ptr<thread>(
+      new thread(&ServerConnection::clientHandler, this, clientSocketFd));
   }
 }
 
@@ -53,13 +62,13 @@ int ServerConnection::newClient(int socketFd) {
   }
 
   socketHandler->writeAllTimeout(socketFd, &clientId, sizeof(int));
-  clients.insert(std::make_pair(clientId, ClientState(socketHandler,clientId,socketFd)));
+  clients.insert(std::make_pair(clientId, shared_ptr<ClientState>(new ClientState(socketHandler,clientId,socketFd))));
   return clientId;
 }
 
 bool ServerConnection::recoverClient(int clientId, int newSocketFd) {
-  std::shared_ptr<BackedReader> reader = clients.find(clientId)->second.reader;
-  std::shared_ptr<BackedWriter> writer = clients.find(clientId)->second.writer;
+  std::shared_ptr<BackedReader> reader = clients.find(clientId)->second->reader;
+  std::shared_ptr<BackedWriter> writer = clients.find(clientId)->second->writer;
 
   // If we didn't know the client disconnected, we do now.  Invalidate the old client.
   int socket = writer->getSocketFd();
@@ -87,7 +96,7 @@ bool ServerConnection::recoverClient(int clientId, int newSocketFd) {
     std::string readerCatchupString(readerCatchupBytes, (char)0);
     socketHandler->readAllTimeout(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
 
-    clients.find(clientId)->second.revive(newSocketFd, readerCatchupString);
+    clients.find(clientId)->second->revive(newSocketFd, readerCatchupString);
   } catch (const runtime_error& err) {
   }
   writer->unlock();

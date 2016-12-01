@@ -31,6 +31,10 @@ void ClientConnection::connect() {
   }
 }
 
+bool ClientConnection::hasData() {
+  return reader->hasData();
+}
+
 ssize_t ClientConnection::read(void* buf, size_t count) {
   ssize_t bytesRead = reader->read(buf, count);
   if (bytesRead == -1 && errno == ECONNRESET) {

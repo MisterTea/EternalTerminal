@@ -1,4 +1,7 @@
 #include "Headers.hpp"
+#include "ClientConnection.hpp"
+#include "ServerConnection.hpp"
+#include "FlakyFakeSocketHandler.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -9,6 +12,14 @@
 #else
 #include <pty.h>
 #endif
+
+shared_ptr<ServerConnection> globalServer;
+shared_ptr<ClientConnection> globalClient;
+
+void runServer(
+  std::shared_ptr<ServerConnection> server) {
+  server->run();
+}
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
 
@@ -35,9 +46,41 @@ std::string getTerminal() {
 termios terminal_backup;
 
 int main(int argc, char** argv) {
-  int masterfd;
-  char* slaveFileName = new char[4096];
+  srand(1);
 
+  std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
+  std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
+  serverSocket->setRemoteHandler(clientSocket);
+
+  std::array<char,64*1024> s;
+  for (int a=0;a<64*1024 - 1;a++) {
+    s[a] = rand()%26 + 'A';
+  }
+  s[64*1024 - 1] = 0;
+
+  printf("Creating server\n");
+  shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
+    new ServerConnection(serverSocket, 1000));
+  globalServer = server;
+  thread serverThread(runServer, server);
+
+  shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
+    new ClientConnection(clientSocket, "localhost", 1000));
+  globalClient = client;
+  while(true) {
+    try {
+      client->connect();
+    } catch (const runtime_error& err) {
+      cout << "Connecting failed, retrying" << endl;
+      continue;
+    }
+    break;
+  }
+  cout << "Client created with id: " << client->getClientId() << endl;
+  int clientId = client->getClientId();
+  shared_ptr<ClientState> serverClientState = globalServer->getClient(clientId);
+
+  int masterfd;
   termios terminal_local;
   tcgetattr(0,&terminal_local);
   memcpy(&terminal_backup,&terminal_local,sizeof(struct termios));
@@ -71,12 +114,11 @@ int main(int argc, char** argv) {
   default:
     // parent
     cout << "pty opened " << masterfd << endl;
-    ioctl(masterfd, TIOCSWINSZ, win);
     // Whether the TE should keep running.
     bool run = true;
 
     // TE sends/receives data to/from the shell one char at a time.
-    char b, c;
+    char b;
 
     while (run)
     {
@@ -101,11 +143,11 @@ int main(int argc, char** argv) {
       // on the same master descriptor (line 90).
       if (FD_ISSET(masterfd, &rfd))
       {
-        int rc = read(masterfd, &c, 1);
+        // Read from fake terminal and write to server
+        int rc = read(masterfd, &b, 1);
         FAIL_FATAL(rc);
         if (rc > 0) {
-          //cout << "\n_*_" << int(c) << "_*_" << endl;
-          write(STDOUT_FILENO, &c, 1);
+          serverClientState->writer->write(&b, 1);
         } else if (rc==0)
           run = false;
         else
@@ -115,7 +157,19 @@ int main(int argc, char** argv) {
       // Check for data to send.
       if (FD_ISSET(STDIN_FILENO, &rfd))
       {
+        // Read from stdin and write to our client that will then send it to the server.
         read(STDIN_FILENO, &b, 1);
+        globalClient->write(&b,1);
+      }
+
+      if (globalClient->hasData()) {
+        globalClient->read(&b, 1);
+        write(STDOUT_FILENO, &b, 1);
+      }
+
+      if (serverClientState->reader->hasData()) {
+        // Read from the server and write to our fake terminal
+        serverClientState->reader->read(&b,1);
         write(masterfd, &b, 1);
       }
     }
@@ -123,5 +177,17 @@ int main(int argc, char** argv) {
   }
 
   tcsetattr(0,TCSANOW,&terminal_backup);
+  cout << "Shutting down server" << endl;
+  server->close();
+  serverThread.join();
+  cout << "Server shut down" << endl;
+  serverClientState.reset();
+  cout << "ServerClientState down" << endl;
+  globalServer.reset();
+  server.reset();
+  cout << "Server dereferenced" << endl;
+  globalClient.reset();
+  client.reset();
+  cout << "Client derefernced" << endl;
   return 0;
 }
