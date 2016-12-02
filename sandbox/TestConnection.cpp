@@ -52,7 +52,7 @@ int main() {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, 1000));
+    new ServerConnection(serverSocket, 1000, NULL));
   globalServer = server.get();
   int nullId = -1;
   clientSocket->write(-1,&nullId,sizeof(int));

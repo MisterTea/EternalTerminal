@@ -6,11 +6,17 @@
 #include "SocketHandler.hpp"
 #include "ServerClientConnection.hpp"
 
+class TerminalServerHandler {
+public:
+  virtual bool newClient() = 0;
+};
+
 class ServerConnection {
 public:
   explicit ServerConnection(
     std::shared_ptr<SocketHandler> socketHandler,
-    int port
+    int port,
+    shared_ptr<TerminalServerHandler> serverHandler
     );
 
   ~ServerConnection();
@@ -45,8 +51,9 @@ public:
     return retval;
   }
 protected:
-  std::shared_ptr<SocketHandler> socketHandler;
+  shared_ptr<SocketHandler> socketHandler;
   int port;
+  shared_ptr<TerminalServerHandler> serverHandler;
   bool stop;
   std::unordered_map<int, shared_ptr<ServerClientConnection> > clients;
   shared_ptr<thread> clientConnectThread;

@@ -7,9 +7,7 @@
 
 #include <errno.h>
 #include <sys/ioctl.h>
-#include <sys/types.h>
 #include <termios.h>
-#include <pwd.h>
 
 #if __APPLE__
 #include <util.h>
@@ -128,7 +126,7 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, PORT));
+    new ServerConnection(serverSocket, PORT, NULL));
   globalServer = server;
   thread serverThread(runServer, server);
 

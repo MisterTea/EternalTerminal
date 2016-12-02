@@ -120,7 +120,7 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, 1000));
+    new ServerConnection(serverSocket, 1000, NULL));
   globalServer = server;
   thread serverThread(runServer, server);
 

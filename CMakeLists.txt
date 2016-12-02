@@ -39,6 +39,7 @@ src/BackedReader.cpp
 src/BackedWriter.cpp
 src/ClientConnection.cpp
 src/Connection.cpp
+src/CryptoHandler.cpp
 src/FakeSocketHandler.cpp
 src/FlakyFakeSocketHandler.cpp
 src/Headers.cpp

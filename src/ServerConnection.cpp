@@ -2,10 +2,12 @@
 
 ServerConnection::ServerConnection(
   std::shared_ptr<SocketHandler> _socketHandler,
-  int _port
+  int _port,
+  shared_ptr<TerminalServerHandler> _serverHandler
   ) :
   socketHandler(_socketHandler),
   port(_port),
+  serverHandler(_serverHandler),
   stop(false) {
 }
 
@@ -49,6 +51,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         throw std::runtime_error("Tried to revive an unknown client");
       }
       recoverClient(clientId, clientSocketFd);
+    }
+    if(serverHandler && !serverHandler->newClient()) {
+      // Destroy the new client
+      removeClient(clientId);
+      socketHandler->close(clientSocketFd);
     }
   } catch (const runtime_error& err) {
     // Comm failed, close the connection
