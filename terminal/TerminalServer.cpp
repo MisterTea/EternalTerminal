@@ -26,7 +26,9 @@ void runServer(
   server->run();
 }
 
-#define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
+#define FAIL_FATAL(X) if((X) == -1) { \
+    printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); \
+  }
 
 std::string commandToString(string cmd) {
   char buffer[128];
@@ -50,24 +52,18 @@ std::string getTerminal(string username) {
 
 termios terminal_backup;
 
-DEFINE_string(username, "", "name of user to log in as");
 DEFINE_int32(port, 10023, "Port to listen on");
 
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(
     shared_ptr<ServerClientConnection> serverClientState) {
-    passwd* pwd = getpwnam(FLAGS_username.c_str());
-    if (pwd == NULL) {
-      cout << "Could not find user " << FLAGS_username << endl;
-      return false;
-    }
-    cout << "Got uid: " << pwd << endl;
+    passwd* pwd = getpwuid(getuid());
 
     // TODO: Get window size from client
     struct winsize win = { 0, 0, 0, 0 };
     int masterfd;
 
-    std::string terminal = getTerminal(FLAGS_username);
+    std::string terminal = getTerminal(pwd->pw_name);
 
     pid_t pid = forkpty(
       &masterfd,
@@ -80,8 +76,11 @@ class TerminalServerHandler : public ServerConnectionHandler {
     case 0:
       // child
       ProcessHelper::initChildProcess();
-      setuid(pwd->pw_uid);
-      setgid(pwd->pw_gid);
+
+      // Not needed since server is running in userspace
+      //setuid(pwd->pw_uid);
+      //setgid(pwd->pw_gid);
+
       terminal = terminal.substr(0,terminal.length()-1);
       cout << "Child process " << terminal << endl;
       //execl("/bin/bash", "/bin/bash", NULL);

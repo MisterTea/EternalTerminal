@@ -18,7 +18,6 @@ shared_ptr<ClientConnection> globalClient;
 
 termios terminal_backup;
 
-DEFINE_string(username, "", "name of user to log in as");
 DEFINE_string(host, "", "host to join");
 DEFINE_int32(port, 10022, "port to connect on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");

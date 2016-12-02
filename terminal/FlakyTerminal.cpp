@@ -86,9 +86,6 @@ std::string getTerminal() {
 
 termios terminal_backup;
 
-DEFINE_string(username, "",
-                 "name of user to log in as");
-
 int main(int argc, char** argv) {
   srand(1);
   google::InitGoogleLogging(argv[0]);
@@ -96,14 +93,8 @@ int main(int argc, char** argv) {
 
   gcrypt_init();
 
-  if (argc < 2) {
-    cout << "usage: Terminal (username)" << endl;
-  }
-  string user = FLAGS_username;
-  cout << "user: " << user << endl;
-  passwd* pwd = getpwnam(user.c_str());
+  passwd* pwd = getpwuid(getuid());
   if (pwd == NULL) {
-    cout << "Could not find user " << user << endl;
     exit(1);
   }
   cout << "Got uid: " << pwd << endl;
