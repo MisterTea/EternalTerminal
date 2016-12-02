@@ -45,7 +45,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   try {
     socketHandler->readAllTimeout(clientSocketFd,&clientId,sizeof(int));
     if (clientId == -1) {
-      newClient(clientSocketFd);
+      clientId = newClient(clientSocketFd);
     } else {
       if (!clientExists(clientId)) {
         throw std::runtime_error("Tried to revive an unknown client");
@@ -66,16 +66,18 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
 int ServerConnection::newClient(int socketFd) {
   int clientId = rand();
-  VLOG(1) << "Created client with id " << clientId << endl;
   while (clientExists(clientId)) {
     clientId++;
     if (clientId<0) {
       throw std::runtime_error("Ran out of client ids");
     }
   }
+  VLOG(1) << "Created client with id " << clientId << endl;
 
   socketHandler->writeAllTimeout(socketFd, &clientId, sizeof(int));
-  clients.insert(std::make_pair(clientId, shared_ptr<ServerClientConnection>(new ServerClientConnection(socketHandler,clientId,socketFd))));
+  shared_ptr<ServerClientConnection> scc(
+    new ServerClientConnection(socketHandler,clientId,socketFd));
+  clients.insert(std::make_pair(clientId, scc));
   return clientId;
 }
 

@@ -12,7 +12,7 @@ void runServer(
 
 void runClient(
   std::shared_ptr<FlakyFakeSocketHandler> clientSocket,
-  std::array<char,64*1024> s
+  std::array<char,4*1024> s
   ) {
   printf("Creating client\n");
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
@@ -29,11 +29,10 @@ void runClient(
   cout << "Client created with id: " << client->getClientId() << endl;
 
   printf("Creating server-client state\n");
-  //int clientId = *(globalServer->getClientIds().begin());
   int clientId = client->getClientId();
   shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
-  std::array<char,64*1024> result;
-  for (int a=0;a<64*1024;a++) {
+  std::array<char,4*1024> result;
+  for (int a=0;a<4*1024;a++) {
     serverClientState->write((void*)(&s[0] + a), 1);
     client->readAll((void*)(&result[0] + a), 1);
     cout << "Finished byte " << a << endl;
@@ -59,11 +58,11 @@ int main(int argc, char** argv) {
   std::shared_ptr<FlakyFakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 5000));
   serverSocket->setRemoteHandler(clientSocket);
 
-  std::array<char,64*1024> s;
-  for (int a=0;a<64*1024 - 1;a++) {
+  std::array<char,4*1024> s;
+  for (int a=0;a<4*1024 - 1;a++) {
     s[a] = rand()%26 + 'A';
   }
-  s[64*1024 - 1] = 0;
+  s[4*1024 - 1] = 0;
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
@@ -73,7 +72,6 @@ int main(int argc, char** argv) {
   thread serverThread(runServer, server);
   thread clientThread(runClient, clientSocket, s);
   printf("Init complete!\n");
-  // TODO: The server needs to be shut down at some point
 
 
   clientThread.join();

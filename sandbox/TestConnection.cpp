@@ -12,21 +12,31 @@ void runServer(
 
 void runClient(
   std::shared_ptr<FakeSocketHandler> clientSocket,
-  std::array<char,64*1024> s
+  std::array<char,4*1024> s
   ) {
   printf("Creating client\n");
-  ClientConnection client(clientSocket, "localhost", 1000);
-  printf("Client created!\n");
+  shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
+    new ClientConnection(clientSocket, "localhost", 1000));
+  while(true) {
+    try {
+      client->connect();
+    } catch (const runtime_error& err) {
+      cout << "Connecting failed, retrying" << endl;
+      continue;
+    }
+    break;
+  }
+  cout << "Client created with id: " << client->getClientId() << endl;
 
   printf("Creating server-client state\n");
-  int clientId = *(globalServer->getClientIds().begin());
+  int clientId = client->getClientId();
   shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
-  for (int a=0;a<64;a++) {
-    serverClientState->write((void*)(&s[0] + a*1024), 1024);
+  std::array<char,4*1024> result;
+  for (int a=0;a<4*1024;a++) {
+    serverClientState->write((void*)(&s[0] + a), 1);
+    client->readAll((void*)(&result[0] + a), 1);
+    cout << "Finished byte " << a << endl;
   }
-
-  std::array<char,64*1024> result;
-  client.read((void*)&result[0], 64*1024);
 
   if (s == result) {
     cout << "Works!\n";
@@ -39,30 +49,34 @@ void runClient(
   exit(1);
 }
 
-int main() {
+int main(int argc, char** argv) {
+  srand(1);
+  google::InitGoogleLogging(argv[0]);
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
   std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
   serverSocket->setRemoteHandler(clientSocket);
 
-  std::array<char,64*1024> s;
-  for (int a=0;a<64*1024 - 1;a++) {
+  std::array<char,4*1024> s;
+  for (int a=0;a<4*1024 - 1;a++) {
     s[a] = rand()%26 + 'A';
   }
-  s[64*1024 - 1] = 0;
+  s[4*1024 - 1] = 0;
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
     new ServerConnection(serverSocket, 1000, NULL));
   globalServer = server.get();
-  int nullId = -1;
-  clientSocket->write(-1,&nullId,sizeof(int));
+
   thread serverThread(runServer, server);
-
-  std::thread t1(runClient, clientSocket, s);
+  thread clientThread(runClient, clientSocket, s);
   printf("Init complete!\n");
-  // TODO: The server needs to be shut down at some point
 
 
-  t1.join();
+  clientThread.join();
+  cout << "CLOSING SERVER\n";
+  server->close();
+  serverThread.join();
   return 0;
 }

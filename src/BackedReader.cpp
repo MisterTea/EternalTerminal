@@ -23,12 +23,12 @@ bool BackedReader::hasData() {
 ssize_t BackedReader::read(void* buf, size_t count) {
   if (socketFd<0) {
     // The socket is dead, return 0 bytes until it returns
-    fprintf(stderr, "Sleeping for 1 until socket returns\n");
-    sleep(1);
+    VLOG(1) << "Tried to read from a dead socket";
     return 0;
   }
 
   if (localBuffer.length()>0) {
+    VLOG(1) << "Reading from local buffer";
     // Read whatever we can from our local buffer and return
     size_t bytesToCopy = std::min(count, localBuffer.length());
     memcpy(buf, &localBuffer[0], bytesToCopy);
@@ -38,6 +38,7 @@ ssize_t BackedReader::read(void* buf, size_t count) {
 
   // Read from the socket
   ssize_t bytesRead = socketHandler->read(socketFd, buf, count);
+  VLOG(1) << "Read " << bytesRead << " from socket";
   if (bytesRead > 0) {
     sequenceNumber += bytesRead;
   }

@@ -28,6 +28,9 @@ FOREACH(srcfile ${GTEST_SRC})
     gtest_main
     gmock
     gmock_main
+    glog
+    gflags
+    gcrypt
     )
   add_test(NAME ${TESTPREFIX}${srcfile} COMMAND ${TESTPREFIX}${srcfile})
   #install (TARGETS ${TESTPREFIX}${srcfile} DESTINATION ${CMAKE_BINARY_DIR})
