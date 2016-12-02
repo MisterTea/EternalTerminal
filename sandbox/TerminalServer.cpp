@@ -53,8 +53,9 @@ termios terminal_backup;
 DEFINE_string(username, "", "name of user to log in as");
 DEFINE_int32(port, 10023, "Port to listen on");
 
-class TerminalServerHandler : public ServerHandler {
-  virtual bool newClient() {
+class TerminalServerHandler : public ServerConnectionHandler {
+  virtual bool newClient(
+    shared_ptr<ServerClientConnection> serverClientState) {
     passwd* pwd = getpwnam(FLAGS_username.c_str());
     if (pwd == NULL) {
       cout << "Could not find user " << FLAGS_username << endl;
@@ -62,12 +63,11 @@ class TerminalServerHandler : public ServerHandler {
     }
     cout << "Got uid: " << pwd << endl;
 
-    shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
-
     // TODO: Get window size from client
+    struct winsize win = { 0, 0, 0, 0 };
     int masterfd;
 
-    std::string terminal = getTerminal();
+    std::string terminal = getTerminal(FLAGS_username);
 
     pid_t pid = forkpty(
       &masterfd,
@@ -159,17 +159,16 @@ int main(int argc, char** argv) {
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
     new ServerConnection(
       serverSocket,
-      PORT,
+      FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
   globalServer = server;
   runServer(server);
+}
+
+void halt() {
   cout << "Shutting down server" << endl;
-  server->close();
-  serverThread.join();
-  cout << "Server shut down" << endl;
-  serverClientState.reset();
-  cout << "ServerClientState down" << endl;
-  globalServer.reset();
-  server.reset();
-  cout << "Server dereferenced" << endl;
+  globalServer->close();
+  cout << "Waiting for server to finish" << endl;
+  sleep(3);
+  exit(0);
 }

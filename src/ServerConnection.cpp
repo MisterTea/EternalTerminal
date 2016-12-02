@@ -3,7 +3,7 @@
 ServerConnection::ServerConnection(
   std::shared_ptr<SocketHandler> _socketHandler,
   int _port,
-  shared_ptr<TerminalServerHandler> _serverHandler
+  shared_ptr<ServerConnectionHandler> _serverHandler
   ) :
   socketHandler(_socketHandler),
   port(_port),
@@ -52,7 +52,8 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       }
       recoverClient(clientId, clientSocketFd);
     }
-    if(serverHandler && !serverHandler->newClient()) {
+    shared_ptr<ServerClientConnection> serverClientState = getClient(clientId);
+    if(serverHandler && !serverHandler->newClient(serverClientState)) {
       // Destroy the new client
       removeClient(clientId);
       socketHandler->close(clientSocketFd);

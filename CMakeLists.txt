@@ -24,6 +24,7 @@ find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(gflags REQUIRED)
 find_package(LibGCrypt REQUIRED)
+find_package(Protobuf REQUIRED)
 
 # Apple specific packages
 IF (APPLE)
@@ -32,7 +33,13 @@ ELSE (APPLE)
    SET(COREFOUNDATION_LIBRARY "")
 ENDIF (APPLE)
 
-include_directories(src)
+include_directories(
+src
+${PROTOBUF_INCLUDE_DIRS}
+${CMAKE_CURRENT_BINARY_DIR}
+)
+
+PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS proto/ET.proto)
 
 set(${PROJECT_NAME}_SRC
 src/BackedReader.cpp
@@ -48,6 +55,7 @@ src/ServerClientConnection.cpp
 src/ServerConnection.cpp
 src/SocketHandler.cpp
 src/UnixSocketHandler.cpp
+${PROTO_SRCS} ${PROTO_HDRS}
 )
 
 # Build the static library.

@@ -4,6 +4,13 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
+#include "CryptoHandler.hpp"
+
+#include <errno.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <termios.h>
+#include <pwd.h>
 
 shared_ptr<ClientConnection> globalClient;
 
@@ -37,9 +44,7 @@ int main(int argc, char** argv) {
     break;
   }
   cout << "Client created with id: " << client->getClientId() << endl;
-  int clientId = client->getClientId();
 
-  int masterfd;
   termios terminal_local;
   tcgetattr(0,&terminal_local);
   memcpy(&terminal_backup,&terminal_local,sizeof(struct termios));
@@ -52,8 +57,6 @@ int main(int argc, char** argv) {
        << win.ws_xpixel << " "
        << win.ws_ypixel << endl;
 
-
-  std::string terminal = getTerminal();
 
   // Whether the TE should keep running.
   bool run = true;
