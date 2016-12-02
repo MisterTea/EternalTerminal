@@ -72,10 +72,10 @@ string CryptoHandler::decrypt(const string& buffer) {
   return retval;
 }
 
-void CryptoHandler::encryptInPlace(string& buffer) {
-  GCRYPT_FAIL(gcry_cipher_encrypt(handle, &buffer[0], buffer.length(), NULL, 0));
+void CryptoHandler::encryptInPlace(char* buffer, int length) {
+  GCRYPT_FAIL(gcry_cipher_encrypt(handle, buffer, length, NULL, 0));
 }
 
-void CryptoHandler::decryptInPlace(string& buffer) {
-  GCRYPT_FAIL(gcry_cipher_decrypt(handle, &buffer[0], buffer.length(), NULL, 0));
+void CryptoHandler::decryptInPlace(char* buffer, int length) {
+  GCRYPT_FAIL(gcry_cipher_decrypt(handle, buffer, length, NULL, 0));
 }

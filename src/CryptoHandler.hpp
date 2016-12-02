@@ -13,8 +13,8 @@ public:
   string encrypt(const string& buffer);
   string decrypt(const string& buffer);
 
-  void encryptInPlace(string& buffer);
-  void decryptInPlace(string& buffer);
+  void encryptInPlace(char* buffer, int length);
+  void decryptInPlace(char* buffer, int length);
 protected:
   gcry_cipher_hd_t handle;
 };
