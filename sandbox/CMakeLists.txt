@@ -82,4 +82,5 @@ gcrypt
 glog
 gflags
 ${COREFOUNDATION_LIBRARY}
+util
 )

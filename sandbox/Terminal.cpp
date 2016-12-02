@@ -7,7 +7,9 @@
 
 #include <errno.h>
 #include <sys/ioctl.h>
+#include <sys/types.h>
 #include <termios.h>
+#include <pwd.h>
 
 #if __APPLE__
 #include <util.h>
