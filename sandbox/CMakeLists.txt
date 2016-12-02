@@ -82,6 +82,7 @@ gcrypt
 glog
 gflags
 ${COREFOUNDATION_LIBRARY}
+util
 )
 
 add_executable (FlakyTerminal FlakyTerminal.cpp)

@@ -5,7 +5,6 @@
 #include <stdlib.h>
 #include <fcntl.h>
 #include <sys/types.h>
-#include <sys/event.h>
 #include <sys/time.h>
 #include <errno.h>
 #include <string.h>
@@ -13,6 +12,7 @@
 
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
+#include <sys/event.h>
 #else
 #endif
 
