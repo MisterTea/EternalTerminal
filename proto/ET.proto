@@ -2,22 +2,28 @@ syntax = "proto3";
 package ET;
 
 enum PacketType {
-  NEW_PASSKEY=0;
+  CONNECT=0;
   NEW_TERMINAL=1;
   RESIZE_TERMINAL=2;
-  TERMINAL_INPUT=3;
-  TERMINAL_OUTPUT=4;
-  TERMINAL_DEATH=5;
+  CLOSE_TERMINAL=3;
+  TERMINAL_INPUT=4;
+  TERMINAL_OUTPUT=5;
+  DISCONNECT=6;
+}
+
+message ConnectRequest {
+  string encryptedUsername = 1;
+  string passkey = 2;
+}
+
+message ConnectResponse {
+  int32 clientId = 1;
 }
 
 message TerminalInfo {
-  int32 id=1;
+  string id=1;
   int32 rows = 2;
   int32 columns = 3;
   int32 width = 4;
   int32 height = 5;
-}
-
-service SearchService {
-  //rpc Search (SearchRequest) returns (SearchResponse);
 }

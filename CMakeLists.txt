@@ -55,7 +55,6 @@ src/ServerClientConnection.cpp
 src/ServerConnection.cpp
 src/SocketHandler.cpp
 src/UnixSocketHandler.cpp
-${PROTO_SRCS} ${PROTO_HDRS}
 )
 
 # Build the static library.
@@ -74,8 +73,8 @@ target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE
 install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
-enable_testing() # TODO: Temporary until gunit works
 add_subdirectory(sandbox)
+add_subdirectory(terminal)
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
