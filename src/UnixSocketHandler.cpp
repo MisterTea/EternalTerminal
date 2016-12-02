@@ -59,7 +59,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
         server->h_length);
   serv_addr.sin_port = htons(port);
   if (::connect(sockfd,(sockaddr *) &serv_addr,sizeof(serv_addr)) < 0) {
-    LOG(ERROR) << "ERROR connecting";
+    LOG(ERROR) << "ERROR connecting to " << hostname << ":" << port;
     ::close(sockfd);
     return -1;
   }

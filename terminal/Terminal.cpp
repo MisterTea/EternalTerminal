@@ -4,6 +4,7 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
+#include "ConsoleUtils.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -15,46 +16,6 @@
 #include <pty.h>
 #endif
 
-#include <gcrypt.h>
-
-void gcrypt_init()
-{
-    /* Version check should be the very first call because it
-       makes sure that important subsystems are intialized. */
-    if (!gcry_check_version (GCRYPT_VERSION))
-    {
-      LOG(FATAL) << "gcrypt: library version mismatch";
-    }
-
-    gcry_error_t err = 0;
-
-    /* We don't want to see any warnings, e.g. because we have not yet
-       parsed program options which might be used to suppress such
-       warnings. */
-    err = gcry_control (GCRYCTL_SUSPEND_SECMEM_WARN);
-
-    /* ... If required, other initialization goes here.  Note that the
-       process might still be running with increased privileges and that
-       the secure memory has not been intialized.  */
-
-    /* Allocate a pool of 16k secure memory.  This make the secure memory
-       available and also drops privileges where needed.  */
-    err |= gcry_control (GCRYCTL_INIT_SECMEM, 16384, 0);
-
-    /* It is now okay to let Libgcrypt complain when there was/is
-       a problem with the secure memory. */
-    err |= gcry_control (GCRYCTL_RESUME_SECMEM_WARN);
-
-    /* ... If required, other initialization goes here.  */
-
-    /* Tell Libgcrypt that initialization has completed. */
-    err |= gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-
-    if (err) {
-      LOG(FATAL) << "gcrypt: failed initialization";
-    }
-}
-
 shared_ptr<ServerConnection> globalServer;
 shared_ptr<ClientConnection> globalClient;
 
@@ -65,26 +26,6 @@ void runServer(
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
 
-std::string commandToString(const char* cmd) {
-    char buffer[128];
-    std::string result = "";
-    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) throw std::runtime_error("popen() failed!");
-    while (!feof(pipe.get())) {
-        if (fgets(buffer, 128, pipe.get()) != NULL)
-            result += buffer;
-    }
-    return result;
-}
-
-std::string getTerminal() {
-#if __APPLE__
-  return commandToString("dscl /Search -read \"/Users/$USER\" UserShell | awk '{print $2}'");
-#else
-  return commandToString("grep ^$(id -un): /etc/passwd | cut -d : -f 7-");
-#endif
-}
-
 termios terminal_backup;
 
 DEFINE_int32(port, -1, "");
@@ -92,7 +33,6 @@ DEFINE_int32(port, -1, "");
 int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  gcrypt_init();
 
   srand(time(NULL));
   // Set the port before we fix the random seed so that the port is truly random.

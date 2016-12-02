@@ -51,6 +51,11 @@ ssize_t ServerClientConnection::readAll(void* buf, size_t count) {
 
 ssize_t ServerClientConnection::write(const void* buf, size_t count) {
   BackedWriterWriteState bwws = writer->write(buf, count);
+
+  if(bwws == BackedWriterWriteState::SKIPPED) {
+    return 0;
+  }
+
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
     if (errno == EPIPE) {
@@ -62,6 +67,15 @@ ssize_t ServerClientConnection::write(const void* buf, size_t count) {
   }
 
   return count;
+}
+
+void ServerClientConnection::writeAll(const void* buf, size_t count) {
+  while(true) {
+    if(write(buf, count)) {
+      return;
+    }
+    sleep(0);
+  }
 }
 
 void ServerClientConnection::closeSocket() {

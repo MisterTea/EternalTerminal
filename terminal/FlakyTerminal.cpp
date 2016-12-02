@@ -3,6 +3,7 @@
 #include "ServerConnection.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "ProcessHelper.hpp"
+#include "ConsoleUtils.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -14,46 +15,6 @@
 #include <pty.h>
 #endif
 
-#include <gcrypt.h>
-
-void gcrypt_init()
-{
-    /* Version check should be the very first call because it
-       makes sure that important subsystems are intialized. */
-    if (!gcry_check_version (GCRYPT_VERSION))
-    {
-      LOG(FATAL) << "gcrypt: library version mismatch";
-    }
-
-    gcry_error_t err = 0;
-
-    /* We don't want to see any warnings, e.g. because we have not yet
-       parsed program options which might be used to suppress such
-       warnings. */
-    err = gcry_control (GCRYCTL_SUSPEND_SECMEM_WARN);
-
-    /* ... If required, other initialization goes here.  Note that the
-       process might still be running with increased privileges and that
-       the secure memory has not been intialized.  */
-
-    /* Allocate a pool of 16k secure memory.  This make the secure memory
-       available and also drops privileges where needed.  */
-    err |= gcry_control (GCRYCTL_INIT_SECMEM, 16384, 0);
-
-    /* It is now okay to let Libgcrypt complain when there was/is
-       a problem with the secure memory. */
-    err |= gcry_control (GCRYCTL_RESUME_SECMEM_WARN);
-
-    /* ... If required, other initialization goes here.  */
-
-    /* Tell Libgcrypt that initialization has completed. */
-    err |= gcry_control (GCRYCTL_INITIALIZATION_FINISHED, 0);
-
-    if (err) {
-      LOG(FATAL) << "gcrypt: failed initialization";
-    }
-}
-
 shared_ptr<ServerConnection> globalServer;
 shared_ptr<ClientConnection> globalClient;
 
@@ -64,40 +25,13 @@ void runServer(
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
 
-std::string commandToString(const char* cmd) {
-    char buffer[128];
-    std::string result = "";
-    std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
-    if (!pipe) throw std::runtime_error("popen() failed!");
-    while (!feof(pipe.get())) {
-        if (fgets(buffer, 128, pipe.get()) != NULL)
-            result += buffer;
-    }
-    return result;
-}
-
-std::string getTerminal() {
-#if __APPLE__
-  return commandToString("dscl /Search -read \"/Users/$USER\" UserShell | awk '{print $2}'");
-#else
-  return commandToString("grep ^$(id -un): /etc/passwd | cut -d : -f 7-");
-#endif
-}
-
 termios terminal_backup;
 
 int main(int argc, char** argv) {
-  srand(1);
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
-  gcrypt_init();
-
-  passwd* pwd = getpwuid(getuid());
-  if (pwd == NULL) {
-    exit(1);
-  }
-  cout << "Got uid: " << pwd << endl;
+  srand(1);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
   std::shared_ptr<FakeSocketHandler> clientSocket(new FlakyFakeSocketHandler(serverSocket, 1000));
@@ -158,9 +92,7 @@ int main(int argc, char** argv) {
   case 0:
     // child
     ProcessHelper::initChildProcess();
-    setuid(pwd->pw_uid);
-    setgid(pwd->pw_gid);
-    terminal = terminal.substr(0,terminal.length()-1);
+    cout << "Child process " << terminal << endl;
     cout << "Child process " << terminal << endl;
     //execl("/bin/bash", "/bin/bash", NULL);
     execl(terminal.c_str(), terminal.c_str(), NULL);
@@ -203,10 +135,12 @@ int main(int argc, char** argv) {
         FAIL_FATAL(rc);
         if (rc > 0) {
           serverClientState->write(&b, 1);
-        } else if (rc==0)
+        } else if (rc==0) {
+          LOG(INFO) << "Got empty read, connection is closed";
           run = false;
-        else
+        } else {
           cout << "This shouldn't happen\n";
+        }
       }
 
       // Check for data to send.
@@ -214,7 +148,7 @@ int main(int argc, char** argv) {
       {
         // Read from stdin and write to our client that will then send it to the server.
         read(STDIN_FILENO, &b, 1);
-        globalClient->write(&b,1);
+        globalClient->writeAll(&b,1);
       }
 
       while (globalClient->hasData()) {

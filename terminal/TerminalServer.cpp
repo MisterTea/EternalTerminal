@@ -5,6 +5,7 @@
 #include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
 #include "CryptoHandler.hpp"
+#include "ConsoleUtils.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -30,41 +31,20 @@ void runServer(
     printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); \
   }
 
-std::string commandToString(string cmd) {
-  char buffer[128];
-  std::string result = "";
-  std::shared_ptr<FILE> pipe(popen(cmd.c_str(), "r"), pclose);
-  if (!pipe) throw std::runtime_error("popen() failed!");
-  while (!feof(pipe.get())) {
-    if (fgets(buffer, 128, pipe.get()) != NULL)
-      result += buffer;
-  }
-  return result;
-}
-
-std::string getTerminal(string username) {
-#if __APPLE__
-  return commandToString(string("dscl /Search -read \"/Users/") + username + string("\" UserShell | awk '{print $2}'"));
-#else
-  return commandToString(string("grep ^") + username + string(": /etc/passwd | cut -d : -f 7-"));
-#endif
-}
-
 termios terminal_backup;
 
-DEFINE_int32(port, 10023, "Port to listen on");
+DEFINE_int32(port, 10022, "Port to listen on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(
     shared_ptr<ServerClientConnection> serverClientState) {
-    passwd* pwd = getpwuid(getuid());
 
     // TODO: Get window size from client
     struct winsize win = { 0, 0, 0, 0 };
     int masterfd;
 
-    std::string terminal = getTerminal(pwd->pw_name);
+    std::string terminal = getTerminal();
 
     pid_t pid = forkpty(
       &masterfd,
@@ -112,7 +92,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
         FD_SET(masterfd, &rfd);
         FD_SET(STDIN_FILENO, &rfd);
         tv.tv_sec = 0;
-        tv.tv_usec = 100000;
+        tv.tv_usec = 1000;
         select(masterfd + 1, &rfd, &wfd, &efd, &tv);
 
         // Check for data to receive; the received

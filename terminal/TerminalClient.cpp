@@ -18,7 +18,7 @@ shared_ptr<ClientConnection> globalClient;
 
 termios terminal_backup;
 
-DEFINE_string(host, "", "host to join");
+DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 10022, "port to connect on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 
@@ -76,7 +76,7 @@ int main(int argc, char** argv) {
     FD_ZERO(&efd);
     FD_SET(STDIN_FILENO, &rfd);
     tv.tv_sec = 0;
-    tv.tv_usec = 100000;
+    tv.tv_usec = 1000;
     select(STDIN_FILENO + 1, &rfd, &wfd, &efd, &tv);
 
     // Check for data to send.

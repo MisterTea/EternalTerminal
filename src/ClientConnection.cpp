@@ -82,6 +82,11 @@ ssize_t ClientConnection::readAll(void* buf, size_t count) {
 
 ssize_t ClientConnection::write(const void* buf, size_t count) {
   BackedWriterWriteState bwws = writer->write(buf, count);
+
+  if(bwws == BackedWriterWriteState::SKIPPED) {
+    return 0;
+  }
+
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
     if (errno == EPIPE) {

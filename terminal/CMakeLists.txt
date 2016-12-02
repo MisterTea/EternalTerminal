@@ -1,7 +1,16 @@
+add_library(
+TerminalCommon
+STATIC
+
+ConsoleUtils.cpp
+${PROTO_SRCS} ${PROTO_HDRS}
+)
+
 add_executable (Terminal Terminal.cpp)
 target_link_libraries (
 Terminal
 LINK_PUBLIC
+TerminalCommon
 EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
@@ -17,6 +26,7 @@ add_executable (FlakyTerminal FlakyTerminal.cpp)
 target_link_libraries (
 FlakyTerminal
 LINK_PUBLIC
+TerminalCommon
 EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
@@ -25,13 +35,6 @@ gcrypt
 glog
 gflags
 ${COREFOUNDATION_LIBRARY}
-)
-
-add_library(
-TerminalCommon
-STATIC
-
-${PROTO_SRCS} ${PROTO_HDRS}
 )
 
 add_executable (TerminalServer TerminalServer.cpp)
