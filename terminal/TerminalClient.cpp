@@ -25,7 +25,6 @@ DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  CryptoHandler::init();
   srand(1);
 
   std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());

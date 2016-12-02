@@ -7,31 +7,25 @@
 TEST ( A, B ) { SUCCEED ( ); }
 
 TEST(CryptoHandler, DoesEncryptDecrypt) {
-  CryptoHandler::init();
   string key = "12345678901234567890123456789012";
-  string message = "";
-  for (int a=0;a<key.length();a++) {
-    // The message length has to be a multiple of the key length
-    message.append("ET Phone Home");
-  }
-  string encryptedMessage = CryptoHandler::encrypt(message, key);
+  shared_ptr<CryptoHandler> encryptHandler(new CryptoHandler(key));
+  shared_ptr<CryptoHandler> decryptHandler(new CryptoHandler(key));
+  string message = "ET Phone Home";
+  string encryptedMessage = encryptHandler->encrypt(message);
   EXPECT_NE(message, encryptedMessage);
-  string decryptedMessage = CryptoHandler::decrypt(encryptedMessage, key);
+  string decryptedMessage = decryptHandler->decrypt(encryptedMessage);
   EXPECT_EQ(message, decryptedMessage);
 }
 
 TEST(CryptoHandler, DoesEncryptDecryptInPlace) {
-  CryptoHandler::init();
   string key = "12345678901234567890123456789012";
-  string message = "";
-  for (int a=0;a<key.length();a++) {
-    // The message length has to be a multiple of the key length
-    message.append("ET Phone Home");
-  }
+  shared_ptr<CryptoHandler> encryptHandler(new CryptoHandler(key));
+  shared_ptr<CryptoHandler> decryptHandler(new CryptoHandler(key));
+  string message = "ET Phone Home";
   string originalMessage = message;
-  CryptoHandler::encryptInPlace(message, key);
+  encryptHandler->encryptInPlace(message);
   EXPECT_NE(originalMessage, message);
-  CryptoHandler::decryptInPlace(message, key);
+  decryptHandler->decryptInPlace(message);
   EXPECT_EQ(originalMessage, message);
 }
 

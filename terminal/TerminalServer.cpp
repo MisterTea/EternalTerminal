@@ -149,7 +149,6 @@ class TerminalServerHandler : public ServerConnectionHandler {
 int main(int argc, char** argv) {
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  CryptoHandler::init();
   srand(1);
 
   std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
