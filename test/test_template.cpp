@@ -20,6 +20,21 @@ TEST(CryptoHandler, DoesEncryptDecrypt) {
   EXPECT_EQ(message, decryptedMessage);
 }
 
+TEST(CryptoHandler, DoesEncryptDecryptInPlace) {
+  CryptoHandler::init();
+  string key = "12345678901234567890123456789012";
+  string message = "";
+  for (int a=0;a<key.length();a++) {
+    // The message length has to be a multiple of the key length
+    message.append("ET Phone Home");
+  }
+  string originalMessage = message;
+  CryptoHandler::encryptInPlace(message, key);
+  EXPECT_NE(originalMessage, message);
+  CryptoHandler::decryptInPlace(message, key);
+  EXPECT_EQ(originalMessage, message);
+}
+
 
 int main ( int argc, char **argv ) {
   srand(1);

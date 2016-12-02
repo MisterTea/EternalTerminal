@@ -44,7 +44,7 @@ void CryptoHandler::init() {
 
 #define GCRYPT_FAIL(X) { int rc = (X); if((rc)) LOG(FATAL) << "Error: (" << rc << "): " << gcry_strsource(rc) << "/" << gcry_strerror(rc); }
 
-string CryptoHandler::encrypt(string buffer, string key) {
+string CryptoHandler::encrypt(const string& buffer, string key) {
   if (key.length()*8 != 256) {
     throw runtime_error("Invalid key length");
   }
@@ -57,7 +57,7 @@ string CryptoHandler::encrypt(string buffer, string key) {
   return retval;
 }
 
-string CryptoHandler::decrypt(string buffer, string key) {
+string CryptoHandler::decrypt(const string& buffer, string key) {
   if (key.length()*8 != 256) {
     throw runtime_error("Invalid key length");
   }
@@ -68,4 +68,26 @@ string CryptoHandler::decrypt(string buffer, string key) {
   GCRYPT_FAIL(gcry_cipher_decrypt(handle, &retval[0], retval.length(), buffer.c_str(), buffer.length()));
   gcry_cipher_close(handle);
   return retval;
+}
+
+void CryptoHandler::encryptInPlace(string& buffer, string key) {
+  if (key.length()*8 != 256) {
+    throw runtime_error("Invalid key length");
+  }
+  gcry_cipher_hd_t handle;
+  GCRYPT_FAIL(gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0));
+  GCRYPT_FAIL(gcry_cipher_setkey(handle, key.c_str(), 256/8));
+  GCRYPT_FAIL(gcry_cipher_encrypt(handle, &buffer[0], buffer.length(), NULL, 0));
+  gcry_cipher_close(handle);
+}
+
+void CryptoHandler::decryptInPlace(string& buffer, string key) {
+  if (key.length()*8 != 256) {
+    throw runtime_error("Invalid key length");
+  }
+  gcry_cipher_hd_t handle;
+  GCRYPT_FAIL(gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0));
+  GCRYPT_FAIL(gcry_cipher_setkey(handle, key.c_str(), 256/8));
+  GCRYPT_FAIL(gcry_cipher_decrypt(handle, &buffer[0], buffer.length(), NULL, 0));
+  gcry_cipher_close(handle);
 }
