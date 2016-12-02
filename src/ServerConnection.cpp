@@ -3,12 +3,14 @@
 ServerConnection::ServerConnection(
   std::shared_ptr<SocketHandler> _socketHandler,
   int _port,
-  shared_ptr<ServerConnectionHandler> _serverHandler
+  shared_ptr<ServerConnectionHandler> _serverHandler,
+  const string& _key
   ) :
   socketHandler(_socketHandler),
   port(_port),
   serverHandler(_serverHandler),
-  stop(false) {
+  stop(false),
+  key(_key) {
 }
 
 ServerConnection::~ServerConnection() {
@@ -76,7 +78,7 @@ int ServerConnection::newClient(int socketFd) {
 
   socketHandler->writeAllTimeout(socketFd, &clientId, sizeof(int));
   shared_ptr<ServerClientConnection> scc(
-    new ServerClientConnection(socketHandler,clientId,socketFd));
+    new ServerClientConnection(socketHandler,clientId,socketFd,key));
   clients.insert(std::make_pair(clientId, scc));
   return clientId;
 }

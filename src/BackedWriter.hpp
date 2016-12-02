@@ -4,14 +4,22 @@
 #include "Headers.hpp"
 
 #include "SocketHandler.hpp"
+#include "CryptoHandler.hpp"
+
+enum class BackedWriterWriteState {
+  SKIPPED=0,
+  SUCCESS=1,
+  WROTE_WITH_FAILURE=2
+};
 
 class BackedWriter {
 public:
   explicit BackedWriter(
-    std::shared_ptr<SocketHandler> socketHandler,
+    shared_ptr<SocketHandler> socketHandler,
+    shared_ptr<CryptoHandler> cryptoHandler,
     int socketFd);
 
-  ssize_t write(const void* buf, size_t count);
+  BackedWriterWriteState write(const void* buf, size_t count);
 
   std::string recover(int64_t lastValidSequenceNumber);
 
@@ -31,8 +39,9 @@ protected:
 
   void backupBuffer(const void* buf, size_t count);
 
-  std::mutex recoverMutex;
-  std::shared_ptr<SocketHandler> socketHandler;
+  mutex recoverMutex;
+  shared_ptr<SocketHandler> socketHandler;
+  shared_ptr<CryptoHandler> cryptoHandler;
   int socketFd;
 
   // TODO: Change std::string -> std::array with length, this way it's preallocated

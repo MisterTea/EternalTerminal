@@ -118,12 +118,12 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, PORT, NULL));
+    new ServerConnection(serverSocket, PORT, NULL, "12345678901234567890123456789012"));
   globalServer = server;
   thread serverThread(runServer, server);
 
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, "localhost", PORT));
+    new ClientConnection(clientSocket, "localhost", PORT, "12345678901234567890123456789012"));
   globalClient = client;
   while(true) {
     try {

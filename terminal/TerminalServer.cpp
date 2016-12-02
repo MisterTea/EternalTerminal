@@ -53,6 +53,7 @@ std::string getTerminal(string username) {
 termios terminal_backup;
 
 DEFINE_int32(port, 10023, "Port to listen on");
+DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(
@@ -158,7 +159,8 @@ int main(int argc, char** argv) {
     new ServerConnection(
       serverSocket,
       FLAGS_port,
-      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
+      shared_ptr<TerminalServerHandler>(new TerminalServerHandler()),
+      FLAGS_passkey));
   globalServer = server;
   runServer(server);
 }

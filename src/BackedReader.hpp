@@ -4,11 +4,13 @@
 #include "Headers.hpp"
 
 #include "SocketHandler.hpp"
+#include "CryptoHandler.hpp"
 
 class BackedReader {
 public:
   explicit BackedReader(
-    std::shared_ptr<SocketHandler> socketHandler,
+    shared_ptr<SocketHandler> socketHandler,
+    shared_ptr<CryptoHandler> cryptoHandler,
     int socketFd);
 
   bool hasData();
@@ -25,8 +27,9 @@ public:
     return sequenceNumber;
   }
 protected:
-  std::mutex recoverMutex;
-  std::shared_ptr<SocketHandler> socketHandler;
+  mutex recoverMutex;
+  shared_ptr<SocketHandler> socketHandler;
+  shared_ptr<CryptoHandler> cryptoHandler;
   volatile int socketFd;
   int64_t sequenceNumber;
   std::string localBuffer;

@@ -111,12 +111,12 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, 1000, NULL));
+    new ServerConnection(serverSocket, 1000, NULL, "12345678901234567890123456789012"));
   globalServer = server;
   thread serverThread(runServer, server);
 
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, "localhost", 1000));
+    new ClientConnection(clientSocket, "localhost", 1000, "12345678901234567890123456789012"));
   globalClient = client;
   while(true) {
     try {
@@ -214,7 +214,7 @@ int main(int argc, char** argv) {
       {
         // Read from stdin and write to our client that will then send it to the server.
         read(STDIN_FILENO, &b, 1);
-        globalClient->writeAll(&b,1);
+        globalClient->write(&b,1);
       }
 
       while (globalClient->hasData()) {

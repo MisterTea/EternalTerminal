@@ -16,7 +16,7 @@ void runClient(
   ) {
   printf("Creating client\n");
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, "localhost", 1000));
+    new ClientConnection(clientSocket, "localhost", 1000, "12345678901234567890123456789012"));
   while(true) {
     try {
       client->connect();
@@ -66,7 +66,7 @@ int main(int argc, char** argv) {
 
   printf("Creating server\n");
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, 1000, NULL));
+    new ServerConnection(serverSocket, 1000, NULL, "12345678901234567890123456789012"));
   globalServer = server.get();
 
   thread serverThread(runServer, server);

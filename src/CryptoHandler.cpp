@@ -2,6 +2,7 @@
 
 #define GCRYPT_FAIL(X) { int rc = (X); if((rc)) LOG(FATAL) << "Error: (" << rc << "): " << gcry_strsource(rc) << "/" << gcry_strerror(rc); }
 
+mutex cryptoMutex;
 int CryptoHandlerInitialized = 0;
 void initCryptoHandler() {
   /* Version check should be the very first call because it
@@ -45,37 +46,46 @@ void initCryptoHandler() {
 #define STREAMING_GCRY_MODE GCRY_CIPHER_MODE_CTR
 
 CryptoHandler::CryptoHandler(const string& key) {
+  lock_guard<std::mutex> guard(cryptoMutex);
   if (CryptoHandlerInitialized == 0) {
-    initCryptoHandler();
     CryptoHandlerInitialized = 1;
+    initCryptoHandler();
   }
   GCRYPT_FAIL(gcry_cipher_open(&handle, BLOCK_GCRY_CIPHER, STREAMING_GCRY_MODE, 0));
   if (key.length()*8 != 256) {
     throw runtime_error("Invalid key length");
   }
   GCRYPT_FAIL(gcry_cipher_setkey(handle, key.c_str(), 256/8));
+  int blklen = gcry_cipher_get_algo_blklen(GCRY_CIPHER_AES256);
+  string counter(blklen, '\0'); // TODO: Make the counter a random string
+  GCRYPT_FAIL(gcry_cipher_setctr (handle, &counter[0], counter.length()))
 }
 
 CryptoHandler::~CryptoHandler() {
+  lock_guard<std::mutex> guard(cryptoMutex);
   gcry_cipher_close(handle);
 }
 
 string CryptoHandler::encrypt(const string& buffer) {
+  lock_guard<std::mutex> guard(cryptoMutex);
   string retval(buffer.length(), '\0');
   GCRYPT_FAIL(gcry_cipher_encrypt(handle, &retval[0], retval.length(), buffer.c_str(), buffer.length()));
   return retval;
 }
 
 string CryptoHandler::decrypt(const string& buffer) {
+  lock_guard<std::mutex> guard(cryptoMutex);
   string retval(buffer.length(), '\0');
   GCRYPT_FAIL(gcry_cipher_decrypt(handle, &retval[0], retval.length(), buffer.c_str(), buffer.length()));
   return retval;
 }
 
 void CryptoHandler::encryptInPlace(char* buffer, int length) {
+  lock_guard<std::mutex> guard(cryptoMutex);
   GCRYPT_FAIL(gcry_cipher_encrypt(handle, buffer, length, NULL, 0));
 }
 
 void CryptoHandler::decryptInPlace(char* buffer, int length) {
+  lock_guard<std::mutex> guard(cryptoMutex);
   GCRYPT_FAIL(gcry_cipher_decrypt(handle, buffer, length, NULL, 0));
 }

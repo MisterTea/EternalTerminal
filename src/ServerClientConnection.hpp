@@ -9,14 +9,9 @@ public:
   explicit ServerClientConnection(
     const std::shared_ptr<SocketHandler>& _socketHandler,
     int _clientId,
-    int _socketFd
-    ) :
-    socketHandler(_socketHandler),
-    socketFd(_socketFd),
-    clientId(_clientId),
-    reader(new BackedReader(socketHandler, _socketFd)),
-    writer(new BackedWriter(socketHandler, _socketFd)) {
-  }
+    int _socketFd,
+    const string& key
+    );
 
   void revive(int _socketFd, const std::string &localBuffer) {
     socketFd = _socketFd;
@@ -29,7 +24,6 @@ public:
   ssize_t readAll(void* buf, size_t count);
 
   ssize_t write(const void* buf, size_t count);
-  ssize_t writeAll(const void* buf, size_t count);
 
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }

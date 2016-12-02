@@ -2,8 +2,10 @@
 
 BackedReader::BackedReader(
   std::shared_ptr<SocketHandler> socketHandler_,
+  std::shared_ptr<CryptoHandler> cryptoHandler_,
   int socketFd_) :
   socketHandler(socketHandler_),
+  cryptoHandler(cryptoHandler_),
   socketFd(socketFd_),
   sequenceNumber(0) {
 }
@@ -33,6 +35,7 @@ ssize_t BackedReader::read(void* buf, size_t count) {
     size_t bytesToCopy = std::min(count, localBuffer.length());
     memcpy(buf, &localBuffer[0], bytesToCopy);
     localBuffer = localBuffer.substr(bytesToCopy); // TODO: Optimize
+    cryptoHandler->decryptInPlace((char*)buf, bytesToCopy);
     return bytesToCopy;
   }
 
@@ -41,6 +44,7 @@ ssize_t BackedReader::read(void* buf, size_t count) {
   VLOG(1) << "Read " << bytesRead << " from socket";
   if (bytesRead > 0) {
     sequenceNumber += bytesRead;
+    cryptoHandler->decryptInPlace((char*)buf, bytesRead);
   }
   return bytesRead;
 }

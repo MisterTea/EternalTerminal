@@ -11,13 +11,25 @@ int main(int argc, char** argv) {
   std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
   serverSocket->setRemoteHandler(clientSocket);
 
-  BackedReader serverReader(serverSocket, 0);
-  BackedWriter serverWriter(serverSocket, 0);
+  BackedReader serverReader(
+    serverSocket,
+    shared_ptr<CryptoHandler>(new CryptoHandler("12345678901234567890123456789012")),
+    0);
+  BackedWriter serverWriter(
+    serverSocket,
+    shared_ptr<CryptoHandler>(new CryptoHandler("12345678901234567890123456789012")),
+    0);
   serverSocket->addConnection(0);
   serverSocket->listen(0);
 
-  BackedReader clientReader(clientSocket, 0);
-  BackedWriter clientWriter(clientSocket, 0);
+  BackedReader clientReader(
+    clientSocket,
+    shared_ptr<CryptoHandler>(new CryptoHandler("12345678901234567890123456789012")),
+    0);
+  BackedWriter clientWriter(
+    clientSocket,
+    shared_ptr<CryptoHandler>(new CryptoHandler("12345678901234567890123456789012")),
+    0);
   clientSocket->addConnection(0);
   clientSocket->listen(0);
 
@@ -28,8 +40,8 @@ int main(int argc, char** argv) {
   s[64*1024 - 1] = 0;
 
   for (int a=0;a<64;a++) {
-    int r = serverWriter.write((void*)(&s[0] + a*1024), 1024);
-    if (r != 1024) {
+    BackedWriterWriteState r = serverWriter.write((void*)(&s[0] + a*1024), 1024);
+    if (r != BackedWriterWriteState::SUCCESS) {
       throw runtime_error("Oops");
     }
   }

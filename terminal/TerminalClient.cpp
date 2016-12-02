@@ -30,7 +30,7 @@ int main(int argc, char** argv) {
   std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
 
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, FLAGS_host, FLAGS_port));
+    new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, FLAGS_passkey));
   globalClient = client;
   while(true) {
     try {

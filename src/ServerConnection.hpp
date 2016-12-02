@@ -18,7 +18,8 @@ public:
   explicit ServerConnection(
     std::shared_ptr<SocketHandler> socketHandler,
     int port,
-    shared_ptr<ServerConnectionHandler> serverHandler
+    shared_ptr<ServerConnectionHandler> serverHandler,
+    const string& key
     );
 
   ~ServerConnection();
@@ -59,6 +60,7 @@ protected:
   bool stop;
   std::unordered_map<int, shared_ptr<ServerClientConnection> > clients;
   shared_ptr<thread> clientConnectThread;
+  string key;
 };
 
 

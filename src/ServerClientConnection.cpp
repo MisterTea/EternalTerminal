@@ -1,5 +1,26 @@
 #include "ServerClientConnection.hpp"
 
+ServerClientConnection::ServerClientConnection(
+  const std::shared_ptr<SocketHandler>& _socketHandler,
+  int _clientId,
+  int _socketFd,
+  const string& key
+  ) :
+  socketHandler(_socketHandler),
+  socketFd(_socketFd),
+  clientId(_clientId) {
+  reader = shared_ptr<BackedReader>(
+    new BackedReader(
+      socketHandler,
+      shared_ptr<CryptoHandler>(new CryptoHandler(key)),
+      _socketFd));
+  writer = shared_ptr<BackedWriter>(
+    new BackedWriter(
+      socketHandler,
+      shared_ptr<CryptoHandler>(new CryptoHandler(key)),
+      _socketFd));
+}
+
 bool ServerClientConnection::hasData() {
   return reader->hasData();
 }
@@ -29,30 +50,17 @@ ssize_t ServerClientConnection::readAll(void* buf, size_t count) {
 }
 
 ssize_t ServerClientConnection::write(const void* buf, size_t count) {
-  ssize_t bytesWritten = writer->write(buf, count);
-  if(bytesWritten == -1) {
+  BackedWriterWriteState bwws = writer->write(buf, count);
+  if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
     if (errno == EPIPE) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
-      bytesWritten = 0;
+    } else {
+      throw runtime_error("Oops");
     }
   }
 
-  // Success or some other error.
-  return bytesWritten;
-}
-
-ssize_t ServerClientConnection::writeAll(const void* buf, size_t count) {
-  size_t pos=0;
-  while (pos<count) {
-    ssize_t bytesWritten = write(((const char*)buf) + pos, count - pos);
-    if (bytesWritten < 0) {
-      VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
-      throw std::runtime_error("Failed a call to writeAll");
-    }
-    pos += bytesWritten;
-  }
   return count;
 }
 

@@ -5,11 +5,13 @@ const int NULL_CLIENT_ID = -1;
 ClientConnection::ClientConnection(
   std::shared_ptr<SocketHandler> _socketHandler,
   const std::string& _hostname,
-  int _port
+  int _port,
+  const string& _key
   ) :
   socketHandler(_socketHandler),
   hostname(_hostname),
-  port(_port) {
+  port(_port),
+  key(_key) {
 }
 
 ClientConnection::~ClientConnection() {
@@ -28,9 +30,17 @@ void ClientConnection::connect() {
     VLOG(1) << "Receiving client id" << endl;
     socketHandler->readAllTimeout(socketFd, &clientId, sizeof(int));
     VLOG(1) << "Creating backed reader" << endl;
-    reader = std::shared_ptr<BackedReader>(new BackedReader(socketHandler, socketFd));
+    reader = std::shared_ptr<BackedReader>(
+      new BackedReader(
+        socketHandler,
+        shared_ptr<CryptoHandler>(new CryptoHandler(key)),
+        socketFd));
     VLOG(1) << "Creating backed writer" << endl;
-    writer = std::shared_ptr<BackedWriter>(new BackedWriter(socketHandler, socketFd));
+    writer = std::shared_ptr<BackedWriter>(
+      new BackedWriter(
+        socketHandler,
+        shared_ptr<CryptoHandler>(new CryptoHandler(key)),
+        socketFd));
     VLOG(1) << "Client Connection established" << endl;
   } catch (const runtime_error& err) {
     socketHandler->close(socketFd);
@@ -71,42 +81,35 @@ ssize_t ClientConnection::readAll(void* buf, size_t count) {
 }
 
 ssize_t ClientConnection::write(const void* buf, size_t count) {
-  ssize_t bytesWritten = writer->write(buf, count);
-  if(bytesWritten == -1) {
+  BackedWriterWriteState bwws = writer->write(buf, count);
+  if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
     if (errno == EPIPE) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
 
-      // Tell the caller that no bytes were written
-      bytesWritten = 0;
+      // Tell the caller that bytes were written
+    } else {
+      throw runtime_error("Unhandled exception");
     }
   }
 
   // Success or some other error.
-  return bytesWritten;
+  return count;
 }
 
-ssize_t ClientConnection::writeAll(const void* buf, size_t count) {
-  size_t pos=0;
-  while (pos<count) {
-    ssize_t bytesWritten = write(((const char*)buf) + pos, count - pos);
-    if (bytesWritten < 0) {
-      VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
-      throw std::runtime_error("Failed a call to writeAll");
+void ClientConnection::writeAll(const void* buf, size_t count) {
+  while(true) {
+    if(write(buf, count)) {
+      return;
     }
-    pos += bytesWritten;
-    if(pos<count) {
-      // Yield the processor
-      sleep(0);
-    }
+    sleep(0);
   }
-  return count;
 }
 
 void ClientConnection::closeSocket() {
   if (socketFd == -1) {
-    throw std::runtime_error("Tried to close a non-existent socket");
+    LOG(ERROR) << "Tried to close a non-existent socket";
   }
   reader->invalidateSocket();
   writer->invalidateSocket();

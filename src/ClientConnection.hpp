@@ -14,7 +14,8 @@ public:
   explicit ClientConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
     const std::string& hostname,
-    int port
+    int port,
+    const string& key
     );
 
   ~ClientConnection();
@@ -33,7 +34,7 @@ public:
   ssize_t readAll(void* buf, size_t count);
 
   ssize_t write(const void* buf, size_t count);
-  ssize_t writeAll(const void* buf, size_t count);
+  void writeAll(const void* buf, size_t count);
 protected:
   void closeSocket();
   void pollReconnect();
@@ -41,6 +42,7 @@ protected:
   std::shared_ptr<SocketHandler> socketHandler;
   std::string hostname;
   int port;
+  string key;
   int socketFd;
   int clientId;
   std::shared_ptr<BackedReader> reader;
