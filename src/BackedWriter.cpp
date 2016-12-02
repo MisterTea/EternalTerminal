@@ -23,32 +23,23 @@ void BackedWriter::backupBuffer(const void* buf, size_t count) {
 }
 
 ssize_t BackedWriter::write(const void* buf, size_t count) {
-  size_t bytesWritten = 0;
-  while (bytesWritten < count) {
-    // If recover started, Wait until finished
-    std::lock_guard<std::mutex> guard(recoverMutex);
-    if(socketFd<0) {
-      // We have no socket to write to, write to the backup buffer and
-      // exit
-      backupBuffer(buf,count);
-      return count;
-    }
+  // If recover started, Wait until finished
+  std::lock_guard<std::mutex> guard(recoverMutex);
+  if(socketFd<0) {
+    // We have no socket to write to, block until we can write
+    return 0;
+  }
 
-    // We have a socket, let's try to use it.
-    ssize_t result = socketHandler->write(
-      socketFd, ((char*)buf) + bytesWritten, count - bytesWritten);
-    if (result >= 0) {
-      bytesWritten += result;
-    } else {
-      backupBuffer(buf,bytesWritten);
-      return result;
-    }
+  // We have a socket, let's try to use it.
+  ssize_t result = socketHandler->write(
+    socketFd, ((char*)buf), count);
+  if (result >= 0) {
+    backupBuffer(buf,result);
+    return result;
+  } else {
+    // We had an error, invalidate the socket and poll
+    return result;
   }
-  if (bytesWritten > count) {
-    LOG(FATAL) << "Oops, wrote too many bytes by accident";
-  }
-  backupBuffer(buf,count);
-  return count;
 }
 
 // TODO: We need to make sure no more data is written after recover is called

@@ -107,9 +107,9 @@ void FakeSocketHandler::close(int fd) {
 
 void FakeSocketHandler::push(int fd, const char* buf, size_t count) {
   std::lock_guard<std::mutex> guard(handlerMutex);
-  //VLOG(1) << "Accepting buffer from " << fd << " of size " << count << endl;
+  VLOG(1) << "Accepting buffer from " << fd << " of size " << count << endl;
   if (inBuffers.find(fd) == inBuffers.end()) {
-    VLOG(1) << "Tried to accept buffer from invalid fd" << endl;
+    VLOG(1) << "Tried to accept buffer from invalid fd: " << fd << endl;
     return;
   }
   inBuffers[fd].append(buf,count);

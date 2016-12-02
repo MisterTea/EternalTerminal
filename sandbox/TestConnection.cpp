@@ -20,9 +20,9 @@ void runClient(
 
   printf("Creating server-client state\n");
   int clientId = *(globalServer->getClientIds().begin());
-  shared_ptr<ClientState> serverClientState = globalServer->getClient(clientId);
+  shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
   for (int a=0;a<64;a++) {
-    serverClientState->writer->write((void*)(&s[0] + a*1024), 1024);
+    serverClientState->write((void*)(&s[0] + a*1024), 1024);
   }
 
   std::array<char,64*1024> result;

@@ -144,7 +144,7 @@ int main(int argc, char** argv) {
   }
   cout << "Client created with id: " << client->getClientId() << endl;
   int clientId = client->getClientId();
-  shared_ptr<ClientState> serverClientState = globalServer->getClient(clientId);
+  shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
 
   int masterfd;
   termios terminal_local;
@@ -217,7 +217,7 @@ int main(int argc, char** argv) {
         int rc = read(masterfd, &b, 1);
         FAIL_FATAL(rc);
         if (rc > 0) {
-          serverClientState->writer->write(&b, 1);
+          serverClientState->write(&b, 1);
         } else if (rc==0)
           run = false;
         else
@@ -240,9 +240,9 @@ int main(int argc, char** argv) {
         }
       }
 
-      while (serverClientState->reader->hasData()) {
+      while (serverClientState->hasData()) {
         // Read from the server and write to our fake terminal
-        int rc = serverClientState->reader->read(&b,1);
+        int rc = serverClientState->read(&b,1);
         FATAL_FAIL(rc);
         if(rc>0) {
           write(masterfd, &b, 1);

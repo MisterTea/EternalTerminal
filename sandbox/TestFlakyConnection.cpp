@@ -31,10 +31,10 @@ void runClient(
   printf("Creating server-client state\n");
   //int clientId = *(globalServer->getClientIds().begin());
   int clientId = client->getClientId();
-  shared_ptr<ClientState> serverClientState = globalServer->getClient(clientId);
+  shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
   std::array<char,64*1024> result;
   for (int a=0;a<64*1024;a++) {
-    serverClientState->writer->write((void*)(&s[0] + a), 1);
+    serverClientState->write((void*)(&s[0] + a), 1);
     client->readAll((void*)(&result[0] + a), 1);
     cout << "Finished byte " << a << endl;
   }

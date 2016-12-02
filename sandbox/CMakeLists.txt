@@ -83,3 +83,17 @@ glog
 gflags
 ${COREFOUNDATION_LIBRARY}
 )
+
+add_executable (FlakyTerminal FlakyTerminal.cpp)
+target_link_libraries (
+FlakyTerminal
+LINK_PUBLIC
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+gcrypt
+glog
+gflags
+${COREFOUNDATION_LIBRARY}
+)

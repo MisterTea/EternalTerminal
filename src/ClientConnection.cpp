@@ -62,6 +62,10 @@ ssize_t ClientConnection::readAll(void* buf, size_t count) {
       throw std::runtime_error("Failed a call to readAll");
     }
     pos += bytesRead;
+    if(pos<count) {
+      // Yield the processor
+      sleep(0);
+    }
   }
   return count;
 }
@@ -72,11 +76,10 @@ ssize_t ClientConnection::write(const void* buf, size_t count) {
     // Error writing.
     if (errno == EPIPE) {
       // The connection has been severed, handle and hide from the caller
-      // TODO: Start backing up circular buffer to disk/vector
       closeSocket();
 
-      // Try to write again, will go immediately to backup buffer
-      return write(buf, count);
+      // Tell the caller that no bytes were written
+      bytesWritten = 0;
     }
   }
 
@@ -93,13 +96,17 @@ ssize_t ClientConnection::writeAll(const void* buf, size_t count) {
       throw std::runtime_error("Failed a call to writeAll");
     }
     pos += bytesWritten;
+    if(pos<count) {
+      // Yield the processor
+      sleep(0);
+    }
   }
   return count;
 }
 
 void ClientConnection::closeSocket() {
   if (socketFd == -1) {
-    throw new std::runtime_error("Tried to close a non-existent socket");
+    throw std::runtime_error("Tried to close a non-existent socket");
   }
   reader->invalidateSocket();
   writer->invalidateSocket();

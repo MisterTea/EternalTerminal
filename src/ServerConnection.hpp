@@ -4,30 +4,7 @@
 #include "Headers.hpp"
 
 #include "SocketHandler.hpp"
-#include "BackedReader.hpp"
-#include "BackedWriter.hpp"
-
-class ClientState {
-public:
-  explicit ClientState(
-    std::shared_ptr<SocketHandler> socketHandler,
-    int _clientId,
-    int _socketFd
-    ) :
-    clientId(_clientId),
-    reader(new BackedReader(socketHandler, _socketFd)),
-    writer(new BackedWriter(socketHandler, _socketFd)) {
-  }
-
-  void revive(int socketFd, const std::string &localBuffer) {
-    reader->revive(socketFd, localBuffer);
-    writer->revive(socketFd);
-  }
-
-  int clientId;
-  std::shared_ptr<BackedReader> reader;
-  std::shared_ptr<BackedWriter> writer;
-};
+#include "ServerClientConnection.hpp"
 
 class ServerConnection {
 public:
@@ -56,7 +33,7 @@ public:
 
   bool recoverClient(int clientId, int socketFd);
 
-  shared_ptr<ClientState> getClient(int clientId) {
+  shared_ptr<ServerClientConnection> getClient(int clientId) {
     return clients.find(clientId)->second;
   }
 
@@ -71,7 +48,7 @@ protected:
   std::shared_ptr<SocketHandler> socketHandler;
   int port;
   bool stop;
-  std::unordered_map<int, shared_ptr<ClientState> > clients;
+  std::unordered_map<int, shared_ptr<ServerClientConnection> > clients;
   shared_ptr<thread> clientConnectThread;
 };
 

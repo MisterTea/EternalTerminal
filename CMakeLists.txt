@@ -43,6 +43,7 @@ src/FakeSocketHandler.cpp
 src/FlakyFakeSocketHandler.cpp
 src/Headers.cpp
 src/ProcessHelper.cpp
+src/ServerClientConnection.cpp
 src/ServerConnection.cpp
 src/SocketHandler.cpp
 src/UnixSocketHandler.cpp

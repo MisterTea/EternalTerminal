@@ -67,13 +67,13 @@ int ServerConnection::newClient(int socketFd) {
   }
 
   socketHandler->writeAllTimeout(socketFd, &clientId, sizeof(int));
-  clients.insert(std::make_pair(clientId, shared_ptr<ClientState>(new ClientState(socketHandler,clientId,socketFd))));
+  clients.insert(std::make_pair(clientId, shared_ptr<ServerClientConnection>(new ServerClientConnection(socketHandler,clientId,socketFd))));
   return clientId;
 }
 
 bool ServerConnection::recoverClient(int clientId, int newSocketFd) {
-  std::shared_ptr<BackedReader> reader = clients.find(clientId)->second->reader;
-  std::shared_ptr<BackedWriter> writer = clients.find(clientId)->second->writer;
+  std::shared_ptr<BackedReader> reader = clients.find(clientId)->second->getReader();
+  std::shared_ptr<BackedWriter> writer = clients.find(clientId)->second->getWriter();
 
   // If we didn't know the client disconnected, we do now.  Invalidate the old client.
   int socket = writer->getSocketFd();
