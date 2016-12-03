@@ -2,18 +2,12 @@ syntax = "proto3";
 package ET;
 
 enum PacketType {
-  CONNECT=0;
-  NEW_TERMINAL=1;
-  RESIZE_TERMINAL=2;
-  CLOSE_TERMINAL=3;
-  TERMINAL_INPUT=4;
-  TERMINAL_OUTPUT=5;
-  DISCONNECT=6;
-}
-
-message ConnectRequest {
-  string encryptedUsername = 1;
-  string passkey = 2;
+  NEW_TERMINAL=0;
+  RESIZE_TERMINAL=1;
+  CLOSE_TERMINAL=2;
+  TERMINAL_INPUT=3;
+  TERMINAL_OUTPUT=4;
+  DISCONNECT=5;
 }
 
 message ConnectResponse {

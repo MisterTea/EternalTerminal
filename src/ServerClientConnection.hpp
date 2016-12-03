@@ -13,6 +13,17 @@ public:
     const string& key
     );
 
+  ~ServerClientConnection() {
+    close();
+  }
+
+  void close() {
+    if (socketFd>0) {
+      socketHandler->close(socketFd);
+      socketFd = -1;
+    }
+  }
+
   void revive(int _socketFd, const std::string &localBuffer) {
     socketFd = _socketFd;
     reader->revive(socketFd, localBuffer);
@@ -28,6 +39,8 @@ public:
 
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
+
+  inline int getId() { return clientId; }
 
 protected:
   void closeSocket();

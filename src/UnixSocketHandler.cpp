@@ -29,7 +29,11 @@ bool UnixSocketHandler::hasData(int fd) {
 }
 
 ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
-  return ::read(fd, buf, count);
+  ssize_t readBytes = ::read(fd, buf, count);
+  if (readBytes == 0) {
+    throw runtime_error("Remote host closed connection");
+  }
+  return readBytes;
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
