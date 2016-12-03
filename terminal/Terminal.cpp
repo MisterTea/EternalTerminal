@@ -14,6 +14,7 @@
 #include <util.h>
 #else
 #include <pty.h>
+#include <pwd.h>
 #endif
 
 shared_ptr<ServerConnection> globalServer;

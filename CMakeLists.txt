@@ -33,13 +33,13 @@ ELSE (APPLE)
    SET(COREFOUNDATION_LIBRARY "")
 ENDIF (APPLE)
 
+PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS proto/ET.proto)
+
 include_directories(
 src
 ${PROTOBUF_INCLUDE_DIRS}
 ${CMAKE_CURRENT_BINARY_DIR}
 )
-
-PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS proto/ET.proto)
 
 set(${PROJECT_NAME}_SRC
 src/BackedReader.cpp
@@ -74,7 +74,82 @@ install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
 add_subdirectory(sandbox)
-add_subdirectory(terminal)
+#add_subdirectory(terminal)
+
+add_library(
+TerminalCommon
+STATIC
+
+terminal/ConsoleUtils.cpp
+${PROTO_SRCS} ${PROTO_HDRS}
+)
+
+add_executable (Terminal terminal/Terminal.cpp)
+target_link_libraries (
+Terminal
+LINK_PUBLIC
+TerminalCommon
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+gcrypt
+glog
+gflags
+${COREFOUNDATION_LIBRARY}
+util
+)
+
+add_executable (FlakyTerminal terminal/FlakyTerminal.cpp)
+target_link_libraries (
+FlakyTerminal
+LINK_PUBLIC
+TerminalCommon
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+gcrypt
+glog
+gflags
+${COREFOUNDATION_LIBRARY}
+util
+)
+
+add_executable (TerminalServer terminal/TerminalServer.cpp)
+target_link_libraries (
+TerminalServer
+LINK_PUBLIC
+TerminalCommon
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+${PROTOBUF_LIBRARIES}
+gcrypt
+glog
+gflags
+${COREFOUNDATION_LIBRARY}
+util
+)
+
+add_executable (TerminalClient terminal/TerminalClient.cpp)
+target_link_libraries (
+TerminalClient
+LINK_PUBLIC
+TerminalCommon
+EternalTCP-static
+${Boost_THREAD_LIBRARY}
+${Boost_SYSTEM_LIBRARY}
+${CMAKE_THREAD_LIBS_INIT}
+${PROTOBUF_LIBRARIES}
+gcrypt
+glog
+gflags
+${COREFOUNDATION_LIBRARY}
+util
+)
+
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
