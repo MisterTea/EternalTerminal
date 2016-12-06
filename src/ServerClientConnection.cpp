@@ -58,11 +58,13 @@ ssize_t ServerClientConnection::write(const void* buf, size_t count) {
 
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
-    if (errno == EPIPE || errno == ETIMEDOUT) {
+    if (!errno) {
+      // The socket was already closed
+    } else if (errno == EPIPE || errno == ETIMEDOUT || errno == 0) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
     } else {
-      throw runtime_error("Oops");
+      LOG(FATAL) << "Unexpected socket error: " << errno << " " << strerror(errno);
     }
   }
 

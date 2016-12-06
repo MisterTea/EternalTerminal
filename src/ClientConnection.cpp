@@ -91,13 +91,13 @@ ssize_t ClientConnection::write(const void* buf, size_t count) {
 
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
-    if (errno == EPIPE || errno == ETIMEDOUT) {
+    if (errno == 0) {
+      // Socket was closed.
+    } else if (errno == EPIPE || errno == ETIMEDOUT) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
-
-      // Tell the caller that bytes were written
     } else {
-      throw runtime_error("Unhandled exception");
+      LOG(FATAL) << "Unexpected socket error: " << errno << " " << strerror(errno);
     }
   }
 
