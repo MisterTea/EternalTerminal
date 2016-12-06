@@ -45,6 +45,7 @@ void monitorParentDeath() {
   while(true) {
     if (parent_pid != getppid()) {
       // parent pid has changed, parent must have died.
+      LOG(INFO) << "exit! parent process (pid " << parent_pid << ") died. no need for us (pid " << getppid() << ") to stick around";
       break;
     }
     sleep(1);
