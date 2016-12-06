@@ -117,6 +117,7 @@ void ClientConnection::writeAll(const void* buf, size_t count) {
 void ClientConnection::closeSocket() {
   if (socketFd == -1) {
     LOG(ERROR) << "Tried to close a non-existent socket";
+    return;
   }
   reader->invalidateSocket();
   writer->invalidateSocket();
@@ -124,11 +125,12 @@ void ClientConnection::closeSocket() {
   socketHandler->close(socketFd);
   VLOG(1) << "CLIENT: Closed socket\n";
 
-  // Spin up a thread to poll for reconnects
   if (reconnectThread.get()) {
     reconnectThread->join();
+    reconnectThread.reset();
   }
   if (socketFd == -1) {
+    // Spin up a thread to poll for reconnects
     reconnectThread = std::shared_ptr<std::thread>(new std::thread(&ClientConnection::pollReconnect, this));
   }
 }
@@ -156,13 +158,14 @@ void ClientConnection::pollReconnect() {
         std::string readerCatchupString(readerCatchupBytes, (char)0);
         socketHandler->readAllTimeout(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
 
+        reader->revive(newSocketFd, readerCatchupString);
+        writer->revive(newSocketFd);
         socketFd = newSocketFd;
-        reader->revive(socketFd, readerCatchupString);
-        writer->revive(socketFd);
         writer->unlock();
         break;
       } catch (const runtime_error& err) {
         VLOG(1) << "Failed while recovering" << endl;
+        socketHandler->close(newSocketFd);
         writer->unlock();
       }
     } else {
