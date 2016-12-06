@@ -26,7 +26,7 @@ ssize_t SocketHandler::writeAll(int fd, const void* buf, size_t count) {
   return count;
 }
 
-#define SOCKET_TIMEOUT (5)
+#define SOCKET_TIMEOUT (60)
 
 ssize_t SocketHandler::readAllTimeout(int fd, void* buf, size_t count) {
   time_t timeout = time(NULL) + SOCKET_TIMEOUT;
@@ -37,6 +37,7 @@ ssize_t SocketHandler::readAllTimeout(int fd, void* buf, size_t count) {
       VLOG(1) << "Failed a call to readAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to readAll");
     }
+    VLOG(1) << "Read " << bytesRead << " bytes...";
     pos += bytesRead;
     if (timeout < time(NULL)) {
       throw runtime_error("Timeout");
@@ -54,6 +55,7 @@ ssize_t SocketHandler::writeAllTimeout(int fd, const void* buf, size_t count) {
       VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
       throw std::runtime_error("Failed a call to writeAll");
     }
+    VLOG(1) << "Written " << bytesWritten << " bytes...";
     pos += bytesWritten;
     if (timeout < time(NULL)) {
       throw runtime_error("Timeout");
