@@ -1,71 +1,31 @@
-add_executable (TestTransfer TestTransfer.cpp)
-target_link_libraries (
-TestTransfer
-LINK_PUBLIC
-${PROJECT_NAME}-static
-${Boost_SYSTEM_LIBRARY}
-${CMAKE_THREAD_LIBS_INIT}
-gcrypt
-glog
-gflags
-${COREFOUNDATION_LIBRARY}
-)
-add_test(TestTransfer TestTransfer)
 
-add_executable (TestFakeSocketHandler TestFakeSocketHandler.cpp)
-target_link_libraries (
-TestFakeSocketHandler
-LINK_PUBLIC
-${PROJECT_NAME}-static
-${Boost_SYSTEM_LIBRARY}
-${CMAKE_THREAD_LIBS_INIT}
-gcrypt
-glog
-gflags
-${COREFOUNDATION_LIBRARY}
-)
-add_test(TestFakeSocketHandler TestFakeSocketHandler)
+set(SANDBOX_PATH ${PROJECT_SOURCE_DIR}/sandbox)
 
-add_executable (TestBacked TestBacked.cpp)
-target_link_libraries (
-TestBacked
-LINK_PUBLIC
-${PROJECT_NAME}-static
-${Boost_SYSTEM_LIBRARY}
-${CMAKE_THREAD_LIBS_INIT}
-gcrypt
-glog
-gflags
-${COREFOUNDATION_LIBRARY}
-)
-add_test(TestBacked TestBacked)
+set (SANDBOX_SRC 
+  TestTransfer.cpp
+  TestFakeSocketHandler.cpp
+  TestConnection.cpp
+  TestFlakyConnection.cpp
+  )
 
-add_executable (TestConnection TestConnection.cpp)
-target_link_libraries (
-TestConnection
-LINK_PUBLIC
-EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
-${CMAKE_THREAD_LIBS_INIT}
-gcrypt
-glog
-gflags
-${COREFOUNDATION_LIBRARY}
-)
-add_test(TestConnection TestConnection)
 
-add_executable (TestFlakyConnection TestFlakyConnection.cpp)
-target_link_libraries (
-TestFlakyConnection
-LINK_PUBLIC
-EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
-${CMAKE_THREAD_LIBS_INIT}
-gcrypt
-glog
-gflags
-${COREFOUNDATION_LIBRARY}
-)
-add_test(TestFlakyConnection TestFlakyConnection)
+foreach(SRC_LINE ${SANDBOX_SRC})
+  string(REPLACE ".cpp" "" FILE_LINE ${SRC_LINE})
+  message(STATUS ${FILE_LINE})
+  message(STATUS ${SRC_LINE})
+
+  add_executable(${FILE_LINE} ${SRC_LINE})
+  target_link_libraries(
+    ${FILE_LINE}
+    LINK_PUBLIC
+    ${PROJECT_NAME}-static
+    ${Boost_SYSTEM_LIBRARY}
+    ${CMAKE_THREAD_LIBS_INIT}
+    gcrypt
+    glog
+    gflags
+    ${COREFOUNDATION_LIBRARY}
+    )
+    add_test(${FILE_LINE} ${FILE_LINE})
+endforeach()
+
