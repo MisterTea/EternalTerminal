@@ -103,9 +103,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         int rc = read(masterfd, &b, 1);
         FAIL_FATAL(rc);
         if (rc > 0) {
-          //cout << "Writing byte to client...";
+          VLOG(2) << "Writing byte to client...";
           serverClientState->write(&b, 1);
-          //cout << "done" << endl;
+          VLOG(2) << "done" << endl;
         } else if (rc==0) {
           run = false;
           globalServer->removeClient(serverClientState->getId());
@@ -118,9 +118,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         int rc = serverClientState->read(&b,1);
         FATAL_FAIL(rc);
         if(rc>0) {
-          cout << "Getting byte from client..";
+          VLOG(2) << "Getting byte from client..";
           write(masterfd, &b, 1);
-          cout << "done: " << int(b) << endl;
+          VLOG(2) << "done: " << int(b) << endl;
         }
       } catch(const runtime_error& re) {
         cout << "Connection error: " << re.what() << endl;
