@@ -23,8 +23,10 @@ DEFINE_int32(port, 10022, "port to connect on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 
 int main(int argc, char** argv) {
-  google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
+  google::InitGoogleLogging(argv[0]);
+  FLAGS_logbufsecs = 0;
+  FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
   std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
@@ -37,6 +39,7 @@ int main(int argc, char** argv) {
       client->connect();
     } catch (const runtime_error& err) {
       cout << "Connecting failed, retrying" << endl;
+      sleep(1);
       continue;
     }
     break;
@@ -82,6 +85,7 @@ int main(int argc, char** argv) {
     // Check for data to send.
     if (FD_ISSET(STDIN_FILENO, &rfd))
     {
+      VLOG(1) << "Sending byte: " << int(b);
       // Read from stdin and write to our client that will then send it to the server.
       read(STDIN_FILENO, &b, 1);
       globalClient->writeAll(&b,1);
@@ -89,6 +93,7 @@ int main(int argc, char** argv) {
 
     while (globalClient->hasData()) {
       int rc = globalClient->read(&b, 1);
+      VLOG(1) << "Got byte: " << int(b);
       FATAL_FAIL(rc);
       if(rc>0) {
         write(STDOUT_FILENO, &b, 1);
