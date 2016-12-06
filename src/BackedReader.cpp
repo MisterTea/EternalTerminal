@@ -42,7 +42,6 @@ ssize_t BackedReader::read(void* buf, size_t count) {
   // Read from the socket
   ssize_t bytesRead = socketHandler->read(socketFd, buf, count);
   if (bytesRead > 0) {
-    VLOG(1) << "Read " << bytesRead << " from socket";
     sequenceNumber += bytesRead;
     cryptoHandler->decryptInPlace((char*)buf, bytesRead);
   }
