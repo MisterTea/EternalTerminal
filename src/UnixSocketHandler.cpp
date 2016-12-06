@@ -18,8 +18,8 @@ bool UnixSocketHandler::hasData(int fd) {
   timeout.tv_usec = 1 * 100;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
-    //something wrong
-    throw runtime_error("Oops");
+    // Select timed out or failed.
+    return false;
   } else if (n == 0)
     return false;
   if (!FD_ISSET(fd, &input)) {
@@ -127,11 +127,28 @@ void UnixSocketHandler::close(int fd) {
 
 void UnixSocketHandler::initSocket(int fd) {
   int flag=1;
-  int result = setsockopt(fd,            /* socket affected */
-                          IPPROTO_TCP,     /* set option at TCP level */
-                          TCP_NODELAY,     /* name of option */
-                          (char *) &flag,  /* the cast is historical
-                                              cruft */
-                          sizeof(int));    /* length of option value */
-  FATAL_FAIL(result);
+  FATAL_FAIL(
+    setsockopt(
+      fd,            /* socket affected */
+      IPPROTO_TCP,     /* set option at TCP level */
+      TCP_NODELAY,     /* name of option */
+      (char *) &flag,  /* the cast is historical cruft */
+      sizeof(int)));    /* length of option value */
+  timeval tv;
+  tv.tv_sec = 5;
+  tv.tv_usec = 0;
+  FATAL_FAIL(
+    setsockopt(
+      fd,
+      SOL_SOCKET,
+      SO_RCVTIMEO,
+      (char *) &tv,
+      sizeof(tv)));
+  FATAL_FAIL(
+    setsockopt(
+      fd,
+      SOL_SOCKET,
+      SO_SNDTIMEO,
+      (char *) &tv,
+      sizeof(tv)));
 }

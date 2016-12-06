@@ -55,7 +55,10 @@ bool ClientConnection::hasData() {
 ssize_t ClientConnection::read(void* buf, size_t count) {
   ssize_t bytesRead = reader->read(buf, count);
   if (bytesRead == -1) {
-    if (errno == ECONNRESET || errno == ETIMEDOUT) {
+    if (errno == ECONNRESET ||
+        errno == ETIMEDOUT ||
+        errno == EAGAIN ||
+        errno == EWOULDBLOCK) {
       // The connection has reset, close the socket and invalidate, then
       // return 0 bytes
       closeSocket();
@@ -93,7 +96,11 @@ ssize_t ClientConnection::write(const void* buf, size_t count) {
     // Error writing.
     if (errno == 0) {
       // Socket was closed.
-    } else if (errno == EPIPE || errno == ETIMEDOUT) {
+    } else if (
+      errno == EPIPE ||
+      errno == ETIMEDOUT ||
+      errno == EAGAIN ||
+      errno == EWOULDBLOCK) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
     } else {

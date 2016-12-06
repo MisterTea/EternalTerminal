@@ -22,7 +22,7 @@ ServerConnection::~ServerConnection() {
 
 void ServerConnection::run() {
   while(!stop) {
-    VLOG(1) << "Listening for connection" << endl;
+    VLOG(2) << "Listening for connection" << endl;
     int clientSocketFd = socketHandler->listen(port);
     if (clientSocketFd < 0) {
       sleep(1);
