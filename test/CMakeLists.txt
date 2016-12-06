@@ -1,14 +1,6 @@
 
-find_package(Threads REQUIRED)
-# fixes issue about pthread missing
-#if(CMAKE_USE_PTHREADS_INIT)
-#  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -pthread")
-#endif()
-
-include_directories(${gtest_SOURCE_DIR}/include ${gtest_SOURCE_DIR})
-include_directories(${GMOCK_INC_DIR})
 # set the path for all test files
-set(TPATH ${PROJECT_SOURCE_DIR}/test)
+set(GTEST_PATH ${PROJECT_SOURCE_DIR}/test)
 #
 # Add your unit tests here
 #
@@ -17,11 +9,14 @@ set(GTEST_SRC
  )
 # Add test executable target
 set(TESTPREFIX gtest_)
-FOREACH(srcfile ${GTEST_SRC})
-  add_executable(${TESTPREFIX}${srcfile} ${TPATH}/${srcfile})
-  add_dependencies("${TESTPREFIX}${srcfile}" ${PROJECT_NAME}-static gtest gtest_main gmock gmock_main)
+foreach(SRC_LINE ${GTEST_SRC})
+  string(REPLACE ".cpp" "" FILE_LINE ${SRC_LINE})
+  
+  add_executable(${FILE_LINE} ${SRC_LINE})
+  add_dependencies(${FILE_LINE} ${PROJECT_NAME}-static gtest gtest_main gmock gmock_main)
 
-  target_link_libraries("${TESTPREFIX}${srcfile}"
+  target_link_libraries(
+    ${FILE_LINE}
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROJECT_NAME}-static
     gtest
@@ -32,6 +27,5 @@ FOREACH(srcfile ${GTEST_SRC})
     gflags
     gcrypt
     )
-  add_test(NAME ${TESTPREFIX}${srcfile} COMMAND ${TESTPREFIX}${srcfile})
-  #install (TARGETS ${TESTPREFIX}${srcfile} DESTINATION ${CMAKE_BINARY_DIR})
-ENDFOREACH()
+    add_test(${FILE_LINE} ${FILE_LINE})
+endforeach()
