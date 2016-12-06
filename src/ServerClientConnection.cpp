@@ -84,7 +84,7 @@ void ServerClientConnection::closeSocket() {
   }
   reader->invalidateSocket();
   writer->invalidateSocket();
-  socketFd = -1;
   socketHandler->close(socketFd);
+  socketFd = -1;
   VLOG(1) << "Closed socket\n";
 }

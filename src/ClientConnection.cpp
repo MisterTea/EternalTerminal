@@ -121,8 +121,8 @@ void ClientConnection::closeSocket() {
   }
   reader->invalidateSocket();
   writer->invalidateSocket();
-  socketFd = -1;
   socketHandler->close(socketFd);
+  socketFd = -1;
   VLOG(1) << "CLIENT: Closed socket\n";
 
   if (reconnectThread.get()) {
