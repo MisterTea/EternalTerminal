@@ -54,11 +54,13 @@ bool ClientConnection::hasData() {
 
 ssize_t ClientConnection::read(void* buf, size_t count) {
   ssize_t bytesRead = reader->read(buf, count);
-  if (bytesRead == -1 && errno == ECONNRESET) {
-    // The connection has reset, close the socket and invalidate, then
-    // return 0 bytes
-    closeSocket();
-    bytesRead = 0;
+  if (bytesRead == -1) {
+    if (errno == ECONNRESET || errno == ETIMEDOUT) {
+      // The connection has reset, close the socket and invalidate, then
+      // return 0 bytes
+      closeSocket();
+      bytesRead = 0;
+    }
   }
   return bytesRead;
 }
@@ -89,7 +91,7 @@ ssize_t ClientConnection::write(const void* buf, size_t count) {
 
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
-    if (errno == EPIPE) {
+    if (errno == EPIPE || errno == ETIMEDOUT) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
 
@@ -133,6 +135,7 @@ void ClientConnection::closeSocket() {
 
 void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
+    LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
     int newSocketFd = socketHandler->connect(hostname, port);
     if (newSocketFd != -1) {
       try {
