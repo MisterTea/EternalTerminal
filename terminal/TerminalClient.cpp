@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
       }
     } catch (const runtime_error &re) {
       cout << "Error: " << re.what() << endl;
-      run = !false;
+      run = false;
     }
   }
 
