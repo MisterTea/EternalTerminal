@@ -108,8 +108,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           } else if (rc==0) {
             run = false;
             globalServer->removeClient(serverClientState->getId());
-          } else
-            cout << "This shouldn't happen\n";
+          } else {
+            LOG(FATAL) << "This shouldn't happen\n";
+          }
         }
 
         while (serverClientState->hasData()) {
@@ -118,7 +119,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           FATAL_FAIL(rc);
           if(rc>0) {
             VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
-            write(masterfd, &b, 1);
+            do {
+              rc = write(masterfd, &b, 1);
+              FATAL_FAIL(rc);
+              if (rc==0) {
+                LOG(ERROR) << "Could not write byte, trying again...";
+              }
+            } while(!rc);
           }
         }
       } catch(const runtime_error& re) {

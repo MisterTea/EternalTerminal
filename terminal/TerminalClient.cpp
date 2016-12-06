@@ -92,6 +92,8 @@ int main(int argc, char** argv) {
         if (rc > 0) {
           VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
           globalClient->writeAll(&b,1);
+        } else {
+          LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
       }
 
@@ -100,7 +102,10 @@ int main(int argc, char** argv) {
         FATAL_FAIL(rc);
         if(rc>0) {
           VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
-          write(STDOUT_FILENO, &b, 1);
+          do {
+            rc = write(STDOUT_FILENO, &b, 1);
+            FATAL_FAIL(rc);
+          } while (!rc);
         }
       }
     } catch (const runtime_error &re) {
