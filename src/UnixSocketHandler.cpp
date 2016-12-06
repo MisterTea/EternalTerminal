@@ -114,7 +114,14 @@ void UnixSocketHandler::stopListening() {
 
 void UnixSocketHandler::close(int fd) {
   VLOG(1) << "Shutting down connection: " << fd << endl;
-  FATAL_FAIL(::shutdown(fd, SHUT_RDWR));
+  int rc = ::shutdown(fd, SHUT_RDWR);
+  if (rc == -1) {
+    if (errno == ENOTCONN) {
+      // This is harmless
+    } else {
+      FATAL_FAIL(rc);
+    }
+  }
   FATAL_FAIL(::close(fd));
 }
 
