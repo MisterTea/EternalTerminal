@@ -103,9 +103,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         int rc = read(masterfd, &b, 1);
         FAIL_FATAL(rc);
         if (rc > 0) {
-          cout << "Writing byte to client...";
+          //cout << "Writing byte to client...";
           serverClientState->write(&b, 1);
-          cout << "done" << endl;
+          //cout << "done" << endl;
         } else if (rc==0) {
           run = false;
           globalServer->removeClient(serverClientState->getId());
@@ -120,7 +120,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         if(rc>0) {
           cout << "Getting byte from client..";
           write(masterfd, &b, 1);
-          cout << "done" << endl;
+          cout << "done: " << int(b) << endl;
         }
       }
     }
