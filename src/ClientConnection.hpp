@@ -35,6 +35,9 @@ public:
 
   ssize_t write(const void* buf, size_t count);
   void writeAll(const void* buf, size_t count);
+
+  inline shared_ptr<BackedReader> getReader() { return reader; }
+  inline shared_ptr<BackedWriter> getWriter() { return writer; }
 protected:
   void closeSocket();
   void pollReconnect();

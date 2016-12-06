@@ -86,17 +86,20 @@ int main(int argc, char** argv) {
       // Check for data to send.
       if (FD_ISSET(STDIN_FILENO, &rfd))
       {
-        VLOG(1) << "Sending byte: " << int(b) << " " << char(b);
         // Read from stdin and write to our client that will then send it to the server.
-        read(STDIN_FILENO, &b, 1);
-        globalClient->writeAll(&b,1);
+        int rc = read(STDIN_FILENO, &b, 1);
+        FAIL_FATAL(rc);
+        if (rc > 0) {
+          VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
+          globalClient->writeAll(&b,1);
+        }
       }
 
       while (globalClient->hasData()) {
         int rc = globalClient->read(&b, 1);
-        VLOG(1) << "Got byte: " << int(b) << " " << char(b);
         FATAL_FAIL(rc);
         if(rc>0) {
+          VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
           write(STDOUT_FILENO, &b, 1);
         }
       }

@@ -34,6 +34,8 @@ public:
     // TODO: Close the socket
     socketFd = -1;
   }
+
+  inline int64_t getSequenceNumber() { return sequenceNumber; }
 protected:
   static const int BUFFER_CHUNK_SIZE = 64*1024;
 

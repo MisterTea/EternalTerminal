@@ -104,7 +104,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           int rc = read(masterfd, &b, 1);
           FAIL_FATAL(rc);
           if (rc > 0) {
-            VLOG(2) << "Writing byte to client... " << int(b) << " " << char(b);
+            VLOG(2) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
             serverClientState->write(&b, 1);
           } else if (rc==0) {
             run = false;
@@ -118,8 +118,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           int rc = serverClientState->read(&b,1);
           FATAL_FAIL(rc);
           if(rc>0) {
+            VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
             write(masterfd, &b, 1);
-            VLOG(2) << "Got byte from client... " << int(b) << " " << char(b);
           }
         }
       } catch(const runtime_error& re) {
