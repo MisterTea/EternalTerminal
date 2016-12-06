@@ -20,7 +20,6 @@
 #endif
 
 shared_ptr<ServerConnection> globalServer;
-shared_ptr<ClientConnection> globalClient;
 
 void runServer(
   std::shared_ptr<ServerConnection> server) {
@@ -104,7 +103,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           int rc = read(masterfd, &b, 1);
           FAIL_FATAL(rc);
           if (rc > 0) {
-            VLOG(2) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
+            VLOG(2) << "Sending byte: " << int(b) << " " << char(b) << " " << serverClientState->getWriter()->getSequenceNumber();
             serverClientState->write(&b, 1);
           } else if (rc==0) {
             run = false;
@@ -118,7 +117,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           int rc = serverClientState->read(&b,1);
           FATAL_FAIL(rc);
           if(rc>0) {
-            VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
+            VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
             write(masterfd, &b, 1);
           }
         }
