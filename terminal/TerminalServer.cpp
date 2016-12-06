@@ -94,34 +94,39 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       tv.tv_usec = 1000;
       select(masterfd + 1, &rfd, &wfd, &efd, &tv);
 
-      // Check for data to receive; the received
-      // data includes also the data previously sent
-      // on the same master descriptor (line 90).
-      if (FD_ISSET(masterfd, &rfd))
-      {
-        // Read from fake terminal and write to server
-        int rc = read(masterfd, &b, 1);
-        FAIL_FATAL(rc);
-        if (rc > 0) {
-          //cout << "Writing byte to client...";
-          serverClientState->write(&b, 1);
-          //cout << "done" << endl;
-        } else if (rc==0) {
-          run = false;
-          globalServer->removeClient(serverClientState->getId());
-        } else
-          cout << "This shouldn't happen\n";
-      }
-
-      while (serverClientState->hasData()) {
-        // Read from the server and write to our fake terminal
-        int rc = serverClientState->read(&b,1);
-        FATAL_FAIL(rc);
-        if(rc>0) {
-          cout << "Getting byte from client..";
-          write(masterfd, &b, 1);
-          cout << "done: " << int(b) << endl;
+      try {
+        // Check for data to receive; the received
+        // data includes also the data previously sent
+        // on the same master descriptor (line 90).
+        if (FD_ISSET(masterfd, &rfd))
+        {
+          // Read from fake terminal and write to server
+          int rc = read(masterfd, &b, 1);
+          FAIL_FATAL(rc);
+          if (rc > 0) {
+            VLOG(2) << "Writing byte to client...";
+            serverClientState->write(&b, 1);
+            VLOG(2) << "done" << endl;
+          } else if (rc==0) {
+            run = false;
+            globalServer->removeClient(serverClientState->getId());
+          } else
+            cout << "This shouldn't happen\n";
         }
+
+        while (serverClientState->hasData()) {
+          // Read from the server and write to our fake terminal
+          int rc = serverClientState->read(&b,1);
+          FATAL_FAIL(rc);
+          if(rc>0) {
+            VLOG(2) << "Getting byte from client..";
+            write(masterfd, &b, 1);
+            VLOG(2) << "done: " << int(b) << endl;
+          }
+        }
+      } catch(const runtime_error& re) {
+        cout << "Connection error: " << re.what() << endl;
+        run=false;
       }
     }
     break;
