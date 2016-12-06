@@ -113,7 +113,8 @@ void UnixSocketHandler::stopListening() {
 }
 
 void UnixSocketHandler::close(int fd) {
-  ::close(fd);
+  FATAL_FAIL(::shutdown(fd, SHUT_RDWR));
+  FATAL_FAIL(::close(fd));
 }
 
 void UnixSocketHandler::initSocket(int fd) {

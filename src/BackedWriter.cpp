@@ -26,10 +26,12 @@ void BackedWriter::backupBuffer(const void* buf, size_t count) {
 
 BackedWriterWriteState BackedWriter::write(const void* buf, size_t count) {
   // If recover started, Wait until finished
-  lock_guard<std::mutex> guard(recoverMutex);
-  if(socketFd<0) {
-    // We have no socket to write to, don't bother trying to write
-    return BackedWriterWriteState::SKIPPED;
+  {
+    lock_guard<std::mutex> guard(recoverMutex);
+    if(socketFd<0) {
+      // We have no socket to write to, don't bother trying to write
+      return BackedWriterWriteState::SKIPPED;
+    }
   }
 
   // Once we encrypt and the encryption state is updated, there's no
@@ -41,6 +43,10 @@ BackedWriterWriteState BackedWriter::write(const void* buf, size_t count) {
   size_t bytesWritten=0;
   while (true) {
     // We have a socket, let's try to use it.
+    lock_guard<std::mutex> guard(recoverMutex);
+    if (socketFd<0) {
+      return BackedWriterWriteState::WROTE_WITH_FAILURE;
+    }
     ssize_t result = socketHandler->write(
       socketFd, ((char*)&s[0]) + bytesWritten, count - bytesWritten);
     if (result >= 0) {
