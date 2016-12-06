@@ -73,7 +73,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
     bool run = true;
 
     // TE sends/receives data to/from the shell one char at a time.
-    char b;
+#define BUF_SIZE (1024)
+    char b[BUF_SIZE];
 
     while (run)
     {
@@ -100,11 +101,22 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         if (FD_ISSET(masterfd, &rfd))
         {
           // Read from fake terminal and write to server
-          int rc = read(masterfd, &b, 1);
+          memset(b,0,BUF_SIZE);
+          int rc = read(masterfd, b, BUF_SIZE);
           FAIL_FATAL(rc);
           if (rc > 0) {
-            VLOG(2) << "Sending byte: " << int(b) << " " << char(b) << " " << serverClientState->getWriter()->getSequenceNumber();
-            serverClientState->write(&b, 1);
+            //VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " " << serverClientState->getWriter()->getSequenceNumber();
+            while (true) {
+              int bytesWritten = serverClientState->write(b, rc);
+              if (bytesWritten == 0) {
+                sleep(0);
+                continue;
+              } else if (bytesWritten == rc) {
+                break;
+              } else {
+                LOG(FATAL) << "Somehow wrote a partial packet: " << bytesWritten << " " << rc;
+              }
+            }
           } else if (rc==0) {
             run = false;
             globalServer->removeClient(serverClientState->getId());
@@ -115,12 +127,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 
         while (serverClientState->hasData()) {
           // Read from the server and write to our fake terminal
-          int rc = serverClientState->read(&b,1);
+          memset(b,0,BUF_SIZE);
+          int rc = serverClientState->read(b,BUF_SIZE);
           FATAL_FAIL(rc);
           if(rc>0) {
-            VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
+            //VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
             do {
-              rc = write(masterfd, &b, 1);
+              rc = write(masterfd, b, rc);
               FATAL_FAIL(rc);
               if (rc==0) {
                 LOG(ERROR) << "Could not write byte, trying again...";

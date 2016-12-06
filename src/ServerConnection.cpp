@@ -48,17 +48,17 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     socketHandler->readAllTimeout(clientSocketFd,&clientId,sizeof(int));
     if (clientId == -1) {
       clientId = newClient(clientSocketFd);
+      shared_ptr<ServerClientConnection> serverClientState = getClient(clientId);
+      if(serverHandler && !serverHandler->newClient(serverClientState)) {
+        // Destroy the new client
+        removeClient(clientId);
+        socketHandler->close(clientSocketFd);
+      }
     } else {
       if (!clientExists(clientId)) {
         throw std::runtime_error("Tried to revive an unknown client");
       }
       recoverClient(clientId, clientSocketFd);
-    }
-    shared_ptr<ServerClientConnection> serverClientState = getClient(clientId);
-    if(serverHandler && !serverHandler->newClient(serverClientState)) {
-      // Destroy the new client
-      removeClient(clientId);
-      socketHandler->close(clientSocketFd);
     }
   } catch (const runtime_error& err) {
     // Comm failed, close the connection

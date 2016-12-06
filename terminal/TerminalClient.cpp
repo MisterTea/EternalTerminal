@@ -63,7 +63,8 @@ int main(int argc, char** argv) {
   bool run = true;
 
   // TE sends/receives data to/from the shell one char at a time.
-  char b;
+#define BUF_SIZE (1024)
+  char b[BUF_SIZE];
 
   while (run)
   {
@@ -87,23 +88,23 @@ int main(int argc, char** argv) {
       if (FD_ISSET(STDIN_FILENO, &rfd))
       {
         // Read from stdin and write to our client that will then send it to the server.
-        int rc = read(STDIN_FILENO, &b, 1);
+        int rc = read(STDIN_FILENO, b, BUF_SIZE);
         FAIL_FATAL(rc);
         if (rc > 0) {
-          VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
-          globalClient->writeAll(&b,1);
+          //VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
+          globalClient->writeAll(b,rc);
         } else {
           LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
       }
 
       while (globalClient->hasData()) {
-        int rc = globalClient->read(&b, 1);
+        int rc = globalClient->read(b, BUF_SIZE);
         FATAL_FAIL(rc);
         if(rc>0) {
-          VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
+          //VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
           do {
-            rc = write(STDOUT_FILENO, &b, 1);
+            rc = write(STDOUT_FILENO, b, rc);
             FATAL_FAIL(rc);
           } while (!rc);
         }

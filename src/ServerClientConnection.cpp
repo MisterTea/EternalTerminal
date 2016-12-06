@@ -58,7 +58,7 @@ ssize_t ServerClientConnection::write(const void* buf, size_t count) {
 
   if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     // Error writing.
-    if (errno == EPIPE) {
+    if (errno == EPIPE || errno == ETIMEDOUT) {
       // The connection has been severed, handle and hide from the caller
       closeSocket();
     } else {
