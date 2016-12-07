@@ -3,13 +3,11 @@
 
 #include "Headers.hpp"
 
-#include "SocketHandler.hpp"
-#include "BackedReader.hpp"
-#include "BackedWriter.hpp"
+#include "Connection.hpp"
 
 extern const int NULL_CLIENT_ID;
 
-class ClientConnection {
+class ClientConnection : public Connection {
 public:
   explicit ClientConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
@@ -18,38 +16,15 @@ public:
     const string& key
     );
 
-  ~ClientConnection();
+  virtual ~ClientConnection();
 
   void connect();
-
-  int getSocketFd() {
-    return socketFd;
-  }
-  int getClientId() {
-    return clientId;
-  }
-
-  bool hasData();
-  ssize_t read(void* buf, size_t count);
-  ssize_t readAll(void* buf, size_t count);
-
-  ssize_t write(const void* buf, size_t count);
-  void writeAll(const void* buf, size_t count);
-
-  inline shared_ptr<BackedReader> getReader() { return reader; }
-  inline shared_ptr<BackedWriter> getWriter() { return writer; }
 protected:
-  void closeSocket();
+  virtual void closeSocket();
   void pollReconnect();
 
-  std::shared_ptr<SocketHandler> socketHandler;
   std::string hostname;
   int port;
-  string key;
-  int socketFd;
-  int clientId;
-  std::shared_ptr<BackedReader> reader;
-  std::shared_ptr<BackedWriter> writer;
   std::shared_ptr<std::thread> reconnectThread;
 };
 

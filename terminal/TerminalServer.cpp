@@ -119,7 +119,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             }
           } else if (rc==0) {
             run = false;
-            globalServer->removeClient(serverClientState->getId());
+            globalServer->removeClient(serverClientState->getClientId());
           } else {
             LOG(FATAL) << "This shouldn't happen\n";
           }
@@ -149,7 +149,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
     break;
   }
 
-  serverClientState->close();
+  serverClientState.reset();
   halt();
 }
 

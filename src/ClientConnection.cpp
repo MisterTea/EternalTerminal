@@ -8,10 +8,9 @@ ClientConnection::ClientConnection(
   int _port,
   const string& _key
   ) :
-  socketHandler(_socketHandler),
+  Connection(_socketHandler, _key),
   hostname(_hostname),
-  port(_port),
-  key(_key) {
+  port(_port) {
 }
 
 ClientConnection::~ClientConnection() {
@@ -48,89 +47,8 @@ void ClientConnection::connect() {
   }
 }
 
-bool ClientConnection::hasData() {
-  return reader->hasData();
-}
-
-ssize_t ClientConnection::read(void* buf, size_t count) {
-  ssize_t bytesRead = reader->read(buf, count);
-  if (bytesRead == -1) {
-    if (errno == ECONNRESET ||
-        errno == ETIMEDOUT ||
-        errno == EAGAIN ||
-        errno == EWOULDBLOCK) {
-      // The connection has reset, close the socket and invalidate, then
-      // return 0 bytes
-      closeSocket();
-      bytesRead = 0;
-    }
-  }
-  return bytesRead;
-}
-
-ssize_t ClientConnection::readAll(void* buf, size_t count) {
-  size_t pos=0;
-  while (pos<count) {
-    ssize_t bytesRead = read(((char*)buf) + pos, count - pos);
-    if (bytesRead < 0) {
-      VLOG(1) << "Failed a call to readAll: %s\n" << strerror(errno);
-      throw std::runtime_error("Failed a call to readAll");
-    }
-    pos += bytesRead;
-    if(pos<count) {
-      // Yield the processor
-      sleep(0);
-    }
-  }
-  return count;
-}
-
-ssize_t ClientConnection::write(const void* buf, size_t count) {
-  BackedWriterWriteState bwws = writer->write(buf, count);
-
-  if(bwws == BackedWriterWriteState::SKIPPED) {
-    return 0;
-  }
-
-  if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
-    // Error writing.
-    if (errno == 0) {
-      // Socket was closed.
-    } else if (
-      errno == EPIPE ||
-      errno == ETIMEDOUT ||
-      errno == EAGAIN ||
-      errno == EWOULDBLOCK) {
-      // The connection has been severed, handle and hide from the caller
-      closeSocket();
-    } else {
-      LOG(FATAL) << "Unexpected socket error: " << errno << " " << strerror(errno);
-    }
-  }
-
-  // Success or some other error.
-  return count;
-}
-
-void ClientConnection::writeAll(const void* buf, size_t count) {
-  while(true) {
-    if(write(buf, count)) {
-      return;
-    }
-    sleep(0);
-  }
-}
-
 void ClientConnection::closeSocket() {
-  if (socketFd == -1) {
-    LOG(ERROR) << "Tried to close a non-existent socket";
-    return;
-  }
-  reader->invalidateSocket();
-  writer->invalidateSocket();
-  socketHandler->close(socketFd);
-  socketFd = -1;
-  VLOG(1) << "CLIENT: Closed socket\n";
+  Connection::closeSocket();
 
   if (reconnectThread.get()) {
     reconnectThread->join();
@@ -147,34 +65,9 @@ void ClientConnection::pollReconnect() {
     LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
     int newSocketFd = socketHandler->connect(hostname, port);
     if (newSocketFd != -1) {
-      try {
-        socketHandler->writeAllTimeout(newSocketFd, &clientId, sizeof(int));
+      socketHandler->writeAllTimeout(newSocketFd, &clientId, sizeof(int));
 
-        int64_t localReaderSequenceNumber = reader->getSequenceNumber();
-        socketHandler->writeAllTimeout(newSocketFd, &localReaderSequenceNumber, sizeof(int64_t));
-        int64_t remoteReaderSequenceNumber;
-        socketHandler->readAllTimeout(newSocketFd, &remoteReaderSequenceNumber, sizeof(int64_t));
-
-        std::string writerCatchupString = writer->recover(remoteReaderSequenceNumber);
-        int64_t writerCatchupStringLength = writerCatchupString.length();
-        socketHandler->writeAllTimeout(newSocketFd, &writerCatchupStringLength, sizeof(int64_t));
-        socketHandler->writeAllTimeout(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
-
-        int64_t readerCatchupBytes;
-        socketHandler->readAllTimeout(newSocketFd, &readerCatchupBytes, sizeof(int64_t));
-        std::string readerCatchupString(readerCatchupBytes, (char)0);
-        socketHandler->readAllTimeout(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
-
-        reader->revive(newSocketFd, readerCatchupString);
-        writer->revive(newSocketFd);
-        socketFd = newSocketFd;
-        writer->unlock();
-        break;
-      } catch (const runtime_error& err) {
-        VLOG(1) << "Failed while recovering" << endl;
-        socketHandler->close(newSocketFd);
-        writer->unlock();
-      }
+      recover(newSocketFd);
     } else {
       VLOG(1) << "Waiting to retry...";
       sleep(1);
