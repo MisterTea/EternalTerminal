@@ -73,9 +73,6 @@ target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE
 install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
-add_subdirectory(sandbox)
-#add_subdirectory(terminal)
-
 add_library(
 TerminalCommon
 STATIC
@@ -154,5 +151,6 @@ util
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
   enable_testing()
+  add_subdirectory(sandbox)
   add_subdirectory(test)
 endif()
