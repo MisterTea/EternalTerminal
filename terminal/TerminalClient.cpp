@@ -12,6 +12,8 @@
 #include <termios.h>
 #include <pwd.h>
 
+#include "ETerminal.pb.h"
+
 shared_ptr<ClientConnection> globalClient;
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }
@@ -25,6 +27,7 @@ DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 int main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
@@ -38,7 +41,7 @@ int main(int argc, char** argv) {
     try {
       client->connect();
     } catch (const runtime_error& err) {
-      cout << "Connecting failed, retrying" << endl;
+      LOG(ERROR) << "Connecting to server failed: " << err.what() << endl;
       sleep(1);
       continue;
     }
@@ -92,22 +95,29 @@ int main(int argc, char** argv) {
         FAIL_FATAL(rc);
         if (rc > 0) {
           //VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " << globalClient->getWriter()->getSequenceNumber();
-          globalClient->writeAll(b,rc);
+          string s(b,rc);
+          et::TerminalBuffer tb;
+          tb.set_buffer(s);
+          globalClient->writeProto(tb);
         } else {
           LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
       }
 
       while (globalClient->hasData()) {
-        int rc = globalClient->read(b, BUF_SIZE);
-        FATAL_FAIL(rc);
-        if(rc>0) {
-          //VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
-          do {
-            rc = write(STDOUT_FILENO, b, rc);
-            FATAL_FAIL(rc);
-          } while (!rc);
-        }
+        et::TerminalBuffer tb =
+          globalClient->readProto<et::TerminalBuffer>();
+        const string& s = tb.buffer();
+        //VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
+        size_t bytesWritten = 0;
+        do {
+          int rc = write(STDOUT_FILENO, &s[0] + bytesWritten, s.length() - bytesWritten);
+          FATAL_FAIL(rc);
+          if (rc==0) {
+            LOG(ERROR) << "Could not write byte, trying again...";
+          }
+          bytesWritten += rc;
+        } while(bytesWritten != s.length());
       }
     } catch (const runtime_error &re) {
       cout << "Error: " << re.what() << endl;

@@ -19,6 +19,8 @@
 #include <pty.h>
 #endif
 
+#include "ETerminal.pb.h"
+
 shared_ptr<ServerConnection> globalServer;
 
 void runServer(
@@ -106,17 +108,10 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           FAIL_FATAL(rc);
           if (rc > 0) {
             //VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " " << serverClientState->getWriter()->getSequenceNumber();
-            while (true) {
-              int bytesWritten = serverClientState->write(b, rc);
-              if (bytesWritten == 0) {
-                sleep(0);
-                continue;
-              } else if (bytesWritten == rc) {
-                break;
-              } else {
-                LOG(FATAL) << "Somehow wrote a partial packet: " << bytesWritten << " " << rc;
-              }
-            }
+            string s(b,rc);
+            et::TerminalBuffer tb;
+            tb.set_buffer(s);
+            serverClientState->writeProto(tb);
           } else if (rc==0) {
             run = false;
             globalServer->removeClient(serverClientState->getClientId());
@@ -127,19 +122,19 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 
         while (serverClientState->hasData()) {
           // Read from the server and write to our fake terminal
-          memset(b,0,BUF_SIZE);
-          int rc = serverClientState->read(b,BUF_SIZE);
-          FATAL_FAIL(rc);
-          if(rc>0) {
-            //VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
-            do {
-              rc = write(masterfd, b, rc);
-              FATAL_FAIL(rc);
-              if (rc==0) {
-                LOG(ERROR) << "Could not write byte, trying again...";
-              }
-            } while(!rc);
-          }
+          et::TerminalBuffer tb =
+            serverClientState->readProto<et::TerminalBuffer>();
+          const string& s = tb.buffer();
+          //VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
+          size_t bytesWritten = 0;
+          do {
+            int rc = write(masterfd, &s[0] + bytesWritten, s.length() - bytesWritten);
+            FATAL_FAIL(rc);
+            if (rc==0) {
+              LOG(ERROR) << "Could not write byte, trying again...";
+            }
+            bytesWritten += rc;
+          } while(bytesWritten != s.length());
         }
       } catch(const runtime_error& re) {
         cout << "Connection error: " << re.what() << endl;
@@ -164,6 +159,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
 int main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);

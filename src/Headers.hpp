@@ -29,6 +29,9 @@
 #include <glog/logging.h>
 #include <gflags/gflags.h>
 
+#include <google/protobuf/message.h>
+#include "ET.pb.h"
+
 using namespace std;
 
 void equalOrFatal(ssize_t expected, ssize_t actual);

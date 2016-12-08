@@ -1,6 +1,6 @@
 #include "SocketHandler.hpp"
 
-ssize_t SocketHandler::readAll(int fd, void* buf, size_t count) {
+void SocketHandler::readAll(int fd, void* buf, size_t count) {
   size_t pos=0;
   while (pos<count) {
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
@@ -10,10 +10,9 @@ ssize_t SocketHandler::readAll(int fd, void* buf, size_t count) {
     }
     pos += bytesRead;
   }
-  return count;
 }
 
-ssize_t SocketHandler::writeAll(int fd, const void* buf, size_t count) {
+void SocketHandler::writeAll(int fd, const void* buf, size_t count) {
   size_t pos=0;
   while (pos<count) {
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
@@ -23,5 +22,4 @@ ssize_t SocketHandler::writeAll(int fd, const void* buf, size_t count) {
     }
     pos += bytesWritten;
   }
-  return count;
 }

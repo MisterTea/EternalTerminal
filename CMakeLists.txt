@@ -33,7 +33,12 @@ ELSE (APPLE)
    SET(COREFOUNDATION_LIBRARY "")
 ENDIF (APPLE)
 
-PROTOBUF_GENERATE_CPP(PROTO_SRCS PROTO_HDRS proto/ET.proto)
+PROTOBUF_GENERATE_CPP(
+ET_SRCS
+ET_HDRS
+
+proto/ET.proto
+)
 
 include_directories(
 src
@@ -42,6 +47,7 @@ ${CMAKE_CURRENT_BINARY_DIR}
 )
 
 set(${PROJECT_NAME}_SRC
+
 src/BackedReader.cpp
 src/BackedWriter.cpp
 src/ClientConnection.cpp
@@ -54,6 +60,8 @@ src/ServerClientConnection.cpp
 src/ServerConnection.cpp
 src/SocketHandler.cpp
 src/UnixSocketHandler.cpp
+
+${ET_SRCS} ${ET_HDRS}
 )
 
 # Build the static library.
@@ -72,14 +80,23 @@ target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE
 install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
 install(FILES EternalTCP.hpp DESTINATION include)
 
+PROTOBUF_GENERATE_CPP(
+ETERMINAL_SRCS
+ETERMINAL_HDRS
+
+proto/ETerminal.proto
+)
+
 add_library(
 TerminalCommon
 STATIC
 
 terminal/ConsoleUtils.cpp
 terminal/ProcessHelper.cpp
-${PROTO_SRCS} ${PROTO_HDRS}
+
+${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
 )
+add_dependencies(TerminalCommon EternalTCP-static)
 
 add_executable (Terminal terminal/Terminal.cpp)
 target_link_libraries (
@@ -90,6 +107,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+${PROTOBUF_LIBRARIES}
 gcrypt
 glog
 gflags
@@ -106,6 +124,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+${PROTOBUF_LIBRARIES}
 gcrypt
 glog
 gflags
@@ -123,6 +142,7 @@ ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 ${PROTOBUF_LIBRARIES}
+${PROTOBUF_LIBRARIES}
 gcrypt
 glog
 gflags
@@ -139,6 +159,7 @@ EternalTCP-static
 ${Boost_THREAD_LIBRARY}
 ${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
+${PROTOBUF_LIBRARIES}
 ${PROTOBUF_LIBRARIES}
 gcrypt
 glog

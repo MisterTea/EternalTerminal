@@ -57,6 +57,9 @@ ssize_t FakeSocketHandler::write(int fd, const void* buf, size_t count) {
   if (remoteHandler.get() == NULL) {
     throw std::runtime_error("Invalid remote handler");
   }
+  if (fd<0) {
+    LOG(FATAL) << "Tried to write with an invalid socket descriptor: " << fd;
+  }
   //std::lock_guard<std::mutex> guard(handlerMutex);
   remoteHandler->push(fd, (const char*)buf,count);
   return count;

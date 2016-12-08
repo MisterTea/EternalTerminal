@@ -94,23 +94,29 @@ void Connection::closeSocket() {
 
 bool Connection::recover(int newSocketFd) {
   try {
-    int64_t localReaderSequenceNumber = reader->getSequenceNumber();
-    socketHandler->writeAll(newSocketFd, &localReaderSequenceNumber, sizeof(int64_t));
-    int64_t remoteReaderSequenceNumber;
-    socketHandler->readAll(newSocketFd, &remoteReaderSequenceNumber, sizeof(int64_t));
+    {
+      // Write the current sequence number
+      et::SequenceHeader sh;
+      sh.set_sequencenumber(reader->getSequenceNumber());
+      socketHandler->writeProto(newSocketFd, sh);
+    }
 
-    std::string writerCatchupString = writer->recover(remoteReaderSequenceNumber);
-    int64_t writerCatchupStringLength = writerCatchupString.length();
-    socketHandler->writeAll(newSocketFd, &writerCatchupStringLength, sizeof(int64_t));
-    socketHandler->writeAll(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
+    // Read the remote sequence number
+    et::SequenceHeader remoteHeader =
+      socketHandler->readProto<et::SequenceHeader>(newSocketFd);
 
-    int64_t readerCatchupBytes;
-    socketHandler->readAll(newSocketFd, &readerCatchupBytes, sizeof(int64_t));
-    std::string readerCatchupString(readerCatchupBytes, (char)0);
-    socketHandler->readAll(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
+    {
+      // Fetch the catchup bytes and send
+      et::CatchupBuffer catchupBuffer;
+      catchupBuffer.set_buffer(writer->recover(remoteHeader.sequencenumber()));
+      socketHandler->writeProto(newSocketFd, catchupBuffer);
+    }
+
+    et::CatchupBuffer catchupBuffer =
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd);
 
     socketFd = newSocketFd;
-    reader->revive(socketFd, readerCatchupString);
+    reader->revive(socketFd, catchupBuffer.buffer());
     writer->revive(socketFd);
     writer->unlock();
     return true;

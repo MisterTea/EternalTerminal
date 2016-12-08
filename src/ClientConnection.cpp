@@ -25,9 +25,13 @@ void ClientConnection::connect() {
     VLOG(1) << "Connecting" << endl;
     socketFd = socketHandler->connect(hostname, port);
     VLOG(1) << "Sending null id" << endl;
-    socketHandler->writeAll(socketFd, &NULL_CLIENT_ID, sizeof(int));
+    et::ConnectRequest request;
+    request.set_clientid(NULL_CLIENT_ID);
+    socketHandler->writeProto(socketFd, request);
     VLOG(1) << "Receiving client id" << endl;
-    socketHandler->readAll(socketFd, &clientId, sizeof(int));
+    et::ConnectResponse response =
+      socketHandler->readProto<et::ConnectResponse>(socketFd);
+    clientId = response.clientid();
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(
       new BackedReader(
@@ -65,7 +69,9 @@ void ClientConnection::pollReconnect() {
     LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
     int newSocketFd = socketHandler->connect(hostname, port);
     if (newSocketFd != -1) {
-      socketHandler->writeAll(newSocketFd, &clientId, sizeof(int));
+      et::ConnectRequest request;
+      request.set_clientid(clientId);
+      socketHandler->writeProto(newSocketFd, request);
 
       recover(newSocketFd);
     } else {

@@ -31,7 +31,7 @@ public:
   }
 
   inline void invalidateSocket() {
-    // TODO: Close the socket
+    lock_guard<std::mutex> guard(recoverMutex);
     socketFd = -1;
   }
 

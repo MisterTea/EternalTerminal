@@ -1,23 +1,18 @@
 syntax = "proto3";
-package ET;
+package et;
 
-enum PacketType {
-  NEW_TERMINAL=0;
-  RESIZE_TERMINAL=1;
-  CLOSE_TERMINAL=2;
-  TERMINAL_INPUT=3;
-  TERMINAL_OUTPUT=4;
-  DISCONNECT=5;
+message ConnectRequest {
+  int32 clientId = 1;
 }
 
 message ConnectResponse {
   int32 clientId = 1;
 }
 
-message TerminalInfo {
-  string id=1;
-  int32 rows = 2;
-  int32 columns = 3;
-  int32 width = 4;
-  int32 height = 5;
+message SequenceHeader {
+  int32 sequenceNumber = 1;
+}
+
+message CatchupBuffer {
+  bytes buffer = 1;
 }

@@ -19,7 +19,7 @@ public:
   void revive(int newSocketFd, std::string localBuffer_);
 
   inline void invalidateSocket() {
-    // TODO: Close the socket
+    lock_guard<std::mutex> guard(recoverMutex);
     socketFd = -1;
   }
 

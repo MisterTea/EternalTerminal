@@ -22,6 +22,24 @@ public:
   ssize_t write(const void* buf, size_t count);
   void writeAll(const void* buf, size_t count);
 
+  template<typename T> inline T readProto() {
+    T t;
+    int64_t length;
+    readAll(&length, sizeof(int64_t));
+    string s(length, 0);
+    readAll(&s[0], length);
+    t.ParseFromString(s);
+    return t;
+  }
+
+  template<typename T> inline void writeProto(const T& t) {
+    string s;
+    t.SerializeToString(&s);
+    int64_t length = s.length();
+    writeAll(&length, sizeof(int64_t));
+    writeAll(&s[0], length);
+  }
+
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
 
