@@ -33,7 +33,7 @@ void runServer(
 void halt();
 
 #define FAIL_FATAL(X) if((X) == -1) {                               \
-    printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); \
+    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
   }
 
 termios terminal_backup;
@@ -120,6 +120,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             LOG(INFO) << "Terminal session ended";
             run = false;
             globalServer->removeClient(serverClientState);
+            break;
           } else {
             LOG(FATAL) << "This shouldn't happen\n";
           }

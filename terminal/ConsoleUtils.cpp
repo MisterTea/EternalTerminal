@@ -23,13 +23,20 @@ std::string getTerminal ( ) {
   throw runtime_error ( "Oops" );
 #else
   string terminal = commandToString ( "grep ^$(id -un): /etc/passwd | cut -d : -f 7-" );
-  for ( int a = 0; a < terminal.length ( ); a++ ) {
+  for ( int a = 0; a < (int)terminal.length ( ); a++ ) {
     if ( terminal[ a ] == '\n' ) {
       return terminal.substr ( 0, a );
     }
   }
-  throw runtime_error ( "Oops" );
 
+  // If we didn't find the terminal that way, let's try the environment variable
+  terminal = ::getenv( "SHELL" );
+  if (terminal.length() > 0) {
+    return terminal;
+  }
+
+  LOG(FATAL) << "Could not find terminal";
+  return "";
 #endif
 }
 }

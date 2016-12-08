@@ -24,7 +24,7 @@ bool UnixSocketHandler::hasData ( int fd ) {
   } else if ( n == 0 )
     return false;
   if ( !FD_ISSET ( fd, &input ) ) {
-    throw runtime_error ( "Oops" );
+    LOG(FATAL) << "FD_ISSET is false but we should have data by now.";
   }
   return true;
 }
@@ -92,7 +92,7 @@ int UnixSocketHandler::listen ( int port ) {
     memset(&hints, 0, sizeof hints);
     hints.ai_family = AF_UNSPEC;
     hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE | AI_CANONNAME; // use my IP address
+    hints.ai_flags = AI_PASSIVE; // use my IP address
 
     std::string portname = std::to_string(port);
 
@@ -107,22 +107,34 @@ int UnixSocketHandler::listen ( int port ) {
       int sockfd;
       if ((sockfd = socket(p->ai_family, p->ai_socktype,
                            p->ai_protocol)) == -1) {
-        LOG(INFO) << "Error creating socket " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+        LOG(INFO) << "Error creating socket " << p->ai_family << "/" << p->ai_socktype << "/" << p->ai_protocol << ": " << errno << " " << strerror(errno);
         continue;
       }
       initSocket(sockfd);
       // Also set the accept socket as non-blocking
       fcntl(sockfd, F_SETFL, O_NONBLOCK);
 
+      if (p->ai_family == AF_INET6) {
+        // Also ensure that IPV6 sockets only listen on IPV6
+        // interfaces.  We will create another socket object for IPV4
+        // if it doesn't already exist.
+        int flag = 1;
+        FATAL_FAIL ( setsockopt ( sockfd,
+                                  IPPROTO_IPV6,
+                                  IPV6_V6ONLY,
+                                  ( char * ) &flag,
+                                  sizeof ( int ) ) );
+      }
+
       if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-        LOG(INFO) << "Error binding " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+        LOG(INFO) << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/" << p->ai_protocol << ": " << errno << " " << strerror(errno);
         close(sockfd);
         continue;
       }
 
       // Listen
       FATAL_FAIL(::listen ( sockfd, 32 ));
-      LOG(INFO) << "Listening on " << p->ai_canonname;
+      LOG(INFO) << "Listening on " << p->ai_family << "/" << p->ai_socktype << "/" << p->ai_protocol;
 
       // if we get here, we must have connected successfully
       serverSockets.push_back(sockfd);
