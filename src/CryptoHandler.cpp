@@ -45,9 +45,8 @@ void initCryptoHandler ( ) {
   }
 }
 
-#define BLOCK_GCRY_CIPHER GCRY_CIPHER_AES256  // Pick the cipher here
-#define BLOCK_GCRY_MODE GCRY_CIPHER_MODE_CBC  // Pick the cipher mode here
-#define STREAMING_GCRY_MODE GCRY_CIPHER_MODE_CTR
+#define GCRY_CIPHER GCRY_CIPHER_SALSA20
+#define GCRY_MODE GCRY_CIPHER_MODE_STREAM
 
 CryptoHandler::CryptoHandler ( const string& key ) {
   lock_guard< std::mutex > guard ( cryptoMutex );
@@ -55,14 +54,11 @@ CryptoHandler::CryptoHandler ( const string& key ) {
     CryptoHandlerInitialized = 1;
     initCryptoHandler ( );
   }
-  GCRYPT_FAIL ( gcry_cipher_open ( &handle, BLOCK_GCRY_CIPHER, STREAMING_GCRY_MODE, 0 ) );
+  GCRYPT_FAIL ( gcry_cipher_open ( &handle, GCRY_CIPHER, GCRY_MODE, 0 ) );
   if ( key.length ( ) * 8 != 256 ) {
     throw runtime_error ( "Invalid key length" );
   }
   GCRYPT_FAIL ( gcry_cipher_setkey ( handle, key.c_str ( ), 256 / 8 ) );
-  int blklen = gcry_cipher_get_algo_blklen ( GCRY_CIPHER_AES256 );
-  string counter ( blklen, '\0' );  // TODO: Make the counter a random string
-  GCRYPT_FAIL ( gcry_cipher_setctr ( handle, &counter[ 0 ], counter.length ( ) ) )
 }
 
 CryptoHandler::~CryptoHandler ( ) {
