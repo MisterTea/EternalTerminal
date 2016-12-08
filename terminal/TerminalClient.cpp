@@ -5,6 +5,7 @@
 #include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
 #include "CryptoHandler.hpp"
+#include "SocketUtils.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -70,6 +71,9 @@ int main(int argc, char** argv) {
 #define BUF_SIZE (1024)
   char b[BUF_SIZE];
 
+  time_t keepaliveTime = time(NULL) + 5;
+  bool waitingOnKeepalive = false;
+
   while (run)
   {
     // Data structures needed for select() and
@@ -99,26 +103,51 @@ int main(int argc, char** argv) {
           string s(b,rc);
           et::TerminalBuffer tb;
           tb.set_buffer(s);
+
+          char c = et::PacketType::TERMINAL_BUFFER;
+          globalClient->writeAll(&c,1);
           globalClient->writeProto(tb);
+          keepaliveTime = time(NULL) + 5;
         } else {
           LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
       }
 
       while (globalClient->hasData()) {
-        et::TerminalBuffer tb =
-          globalClient->readProto<et::TerminalBuffer>();
-        const string& s = tb.buffer();
-        //VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
-        size_t bytesWritten = 0;
-        do {
-          int rc = write(STDOUT_FILENO, &s[0] + bytesWritten, s.length() - bytesWritten);
-          FATAL_FAIL(rc);
-          if (rc==0) {
-            LOG(ERROR) << "Could not write byte, trying again...";
+        char packetType;
+        globalClient->readAll(&packetType,1);
+        switch (packetType) {
+        case et::PacketType::TERMINAL_BUFFER:
+        {
+          // Read from the server and write to our fake terminal
+          et::TerminalBuffer tb =
+            globalClient->readProto<et::TerminalBuffer>();
+          const string& s = tb.buffer();
+          //VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " << globalClient->getReader()->getSequenceNumber();
+          keepaliveTime = time(NULL) + 1;
+          FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+          break;
+        }
+        case et::PacketType::KEEP_ALIVE:
+          waitingOnKeepalive = false;
+          break;
+        default:
+          LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+        }
+      }
+
+      if (keepaliveTime < time(NULL)) {
+          keepaliveTime = time(NULL) + 5;
+          if (waitingOnKeepalive) {
+            LOG(INFO) << "Missed a keepalive, killing connection.";
+            globalClient->closeSocket();
+            waitingOnKeepalive = false;
+          } else {
+            VLOG(1) << "Writing keepalive packet";
+            char c = et::PacketType::KEEP_ALIVE;
+            globalClient->writeAll(&c,1);
+            waitingOnKeepalive = true;
           }
-          bytesWritten += rc;
-        } while(bytesWritten != s.length());
       }
     } catch (const runtime_error &re) {
       cout << "Error: " << re.what() << endl;

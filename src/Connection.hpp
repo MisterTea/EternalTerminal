@@ -47,8 +47,9 @@ class Connection {
 
   inline bool hasData ( ) { return reader->hasData ( ); }
 
- protected:
   virtual void closeSocket ( );
+
+protected:
   bool recover ( int newSocketFd );
 
   shared_ptr< SocketHandler > socketHandler;

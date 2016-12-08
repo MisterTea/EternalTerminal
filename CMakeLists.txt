@@ -93,6 +93,7 @@ STATIC
 
 terminal/ConsoleUtils.cpp
 terminal/ProcessHelper.cpp
+terminal/SocketUtils.cpp
 
 ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
 )

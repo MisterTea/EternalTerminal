@@ -40,6 +40,7 @@ ssize_t Connection::write ( const void* buf, size_t count ) {
   BackedWriterWriteState bwws = writer->write ( buf, count );
 
   if ( bwws == BackedWriterWriteState::SKIPPED ) {
+    VLOG(1) << "Write skipped";
     return 0;
   }
 
@@ -47,7 +48,9 @@ ssize_t Connection::write ( const void* buf, size_t count ) {
     // Error writing.
     if ( !errno ) {
       // The socket was already closed
+      VLOG(1) << "Socket closed";
     } else if ( errno == EPIPE || errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK ) {
+      VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
       closeSocket ( );
     } else {

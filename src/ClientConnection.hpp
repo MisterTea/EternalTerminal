@@ -19,8 +19,9 @@ class ClientConnection : public Connection {
 
   void connect ( );
 
- protected:
   virtual void closeSocket ( );
+
+protected:
   void pollReconnect ( );
 
   std::string hostname;

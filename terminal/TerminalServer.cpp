@@ -6,6 +6,7 @@
 #include "ProcessHelper.hpp"
 #include "CryptoHandler.hpp"
 #include "ConsoleUtils.hpp"
+#include "SocketUtils.hpp"
 
 #include <errno.h>
 #include <sys/ioctl.h>
@@ -109,6 +110,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           FAIL_FATAL(rc);
           if (rc > 0) {
             //VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " " << serverClientState->getWriter()->getSequenceNumber();
+            char c = et::PacketType::TERMINAL_BUFFER;
+            serverClientState->writeAll(&c,1);
             string s(b,rc);
             et::TerminalBuffer tb;
             tb.set_buffer(s);
@@ -122,20 +125,30 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         }
 
         while (serverClientState->hasData()) {
-          // Read from the server and write to our fake terminal
-          et::TerminalBuffer tb =
-            serverClientState->readProto<et::TerminalBuffer>();
-          const string& s = tb.buffer();
-          //VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
-          size_t bytesWritten = 0;
-          do {
-            int rc = write(masterfd, &s[0] + bytesWritten, s.length() - bytesWritten);
-            FATAL_FAIL(rc);
-            if (rc==0) {
-              LOG(ERROR) << "Could not write byte, trying again...";
-            }
-            bytesWritten += rc;
-          } while(bytesWritten != s.length());
+          char packetType;
+          serverClientState->readAll(&packetType,1);
+          switch (packetType) {
+          case et::PacketType::TERMINAL_BUFFER:
+          {
+            // Read from the server and write to our fake terminal
+            et::TerminalBuffer tb =
+              serverClientState->readProto<et::TerminalBuffer>();
+            const string& s = tb.buffer();
+            //VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " << serverClientState->getReader()->getSequenceNumber();
+            FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+            break;
+          }
+          case et::PacketType::KEEP_ALIVE:
+          {
+            // Echo keepalive back to client
+            VLOG(1) << "Got keep alive";
+            char c = et::PacketType::KEEP_ALIVE;
+            serverClientState->writeAll(&c,1);
+            break;
+          }
+          default:
+            LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+          }
         }
       } catch(const runtime_error& re) {
         cout << "Connection error: " << re.what() << endl;
