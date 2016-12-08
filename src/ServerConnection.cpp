@@ -25,6 +25,7 @@ void ServerConnection::run ( ) {
     }
     VLOG ( 1 ) << "SERVER: got client socket fd: " << clientSocketFd << endl;
     if ( clientConnectThread ) {
+      // TODO: Terminate reconnect early if we get another reconnect request.
       clientConnectThread->join ( );
     }
     clientConnectThread =

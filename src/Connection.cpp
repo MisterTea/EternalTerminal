@@ -45,7 +45,6 @@ ssize_t Connection::write ( const void* buf, size_t count ) {
   BackedWriterWriteState bwws = writer->write ( buf, count );
 
   if ( bwws == BackedWriterWriteState::SKIPPED ) {
-    VLOG(1) << "Write skipped";
     return 0;
   }
 

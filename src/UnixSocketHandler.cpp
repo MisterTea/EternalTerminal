@@ -71,9 +71,11 @@ int UnixSocketHandler::connect ( const std::string &hostname, int port ) {
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
       LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno << " " << strerror(errno);
       close(sockfd);
+      sockfd = -1;
       continue;
     }
 
+    LOG(INFO) << "Connected to server: " << p->ai_canonname;
     break; // if we get here, we must have connected successfully
   }
 
