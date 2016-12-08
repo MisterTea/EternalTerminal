@@ -95,19 +95,19 @@ void Connection::closeSocket() {
 bool Connection::recover(int newSocketFd) {
   try {
     int64_t localReaderSequenceNumber = reader->getSequenceNumber();
-    socketHandler->writeAllTimeout(newSocketFd, &localReaderSequenceNumber, sizeof(int64_t));
+    socketHandler->writeAll(newSocketFd, &localReaderSequenceNumber, sizeof(int64_t));
     int64_t remoteReaderSequenceNumber;
-    socketHandler->readAllTimeout(newSocketFd, &remoteReaderSequenceNumber, sizeof(int64_t));
+    socketHandler->readAll(newSocketFd, &remoteReaderSequenceNumber, sizeof(int64_t));
 
     std::string writerCatchupString = writer->recover(remoteReaderSequenceNumber);
     int64_t writerCatchupStringLength = writerCatchupString.length();
-    socketHandler->writeAllTimeout(newSocketFd, &writerCatchupStringLength, sizeof(int64_t));
-    socketHandler->writeAllTimeout(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
+    socketHandler->writeAll(newSocketFd, &writerCatchupStringLength, sizeof(int64_t));
+    socketHandler->writeAll(newSocketFd, &writerCatchupString[0], writerCatchupString.length());
 
     int64_t readerCatchupBytes;
-    socketHandler->readAllTimeout(newSocketFd, &readerCatchupBytes, sizeof(int64_t));
+    socketHandler->readAll(newSocketFd, &readerCatchupBytes, sizeof(int64_t));
     std::string readerCatchupString(readerCatchupBytes, (char)0);
-    socketHandler->readAllTimeout(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
+    socketHandler->readAll(newSocketFd, &readerCatchupString[0], readerCatchupBytes);
 
     socketFd = newSocketFd;
     reader->revive(socketFd, readerCatchupString);

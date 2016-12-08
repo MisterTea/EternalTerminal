@@ -45,7 +45,7 @@ void ServerConnection::close() {
 void ServerConnection::clientHandler(int clientSocketFd) {
   int clientId;
   try {
-    socketHandler->readAllTimeout(clientSocketFd,&clientId,sizeof(int));
+    socketHandler->readAll(clientSocketFd,&clientId,sizeof(int));
     if (clientId == -1) {
       clientId = newClient(clientSocketFd);
       shared_ptr<ServerClientConnection> serverClientState = getClient(clientId);
@@ -77,7 +77,7 @@ int ServerConnection::newClient(int socketFd) {
   }
   VLOG(1) << "Created client with id " << clientId << endl;
 
-  socketHandler->writeAllTimeout(socketFd, &clientId, sizeof(int));
+  socketHandler->writeAll(socketFd, &clientId, sizeof(int));
   shared_ptr<ServerClientConnection> scc(
     new ServerClientConnection(socketHandler,clientId,socketFd,key));
   clients.insert(std::make_pair(clientId, scc));

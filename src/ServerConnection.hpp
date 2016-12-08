@@ -8,6 +8,9 @@
 
 class ServerConnectionHandler {
 public:
+  virtual ~ServerConnectionHandler() {
+  }
+
   virtual bool newClient(
     shared_ptr<ServerClientConnection> serverClientState
     ) = 0;

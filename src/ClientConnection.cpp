@@ -25,9 +25,9 @@ void ClientConnection::connect() {
     VLOG(1) << "Connecting" << endl;
     socketFd = socketHandler->connect(hostname, port);
     VLOG(1) << "Sending null id" << endl;
-    socketHandler->writeAllTimeout(socketFd, &NULL_CLIENT_ID, sizeof(int));
+    socketHandler->writeAll(socketFd, &NULL_CLIENT_ID, sizeof(int));
     VLOG(1) << "Receiving client id" << endl;
-    socketHandler->readAllTimeout(socketFd, &clientId, sizeof(int));
+    socketHandler->readAll(socketFd, &clientId, sizeof(int));
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(
       new BackedReader(
@@ -65,7 +65,7 @@ void ClientConnection::pollReconnect() {
     LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
     int newSocketFd = socketHandler->connect(hostname, port);
     if (newSocketFd != -1) {
-      socketHandler->writeAllTimeout(newSocketFd, &clientId, sizeof(int));
+      socketHandler->writeAll(newSocketFd, &clientId, sizeof(int));
 
       recover(newSocketFd);
     } else {
