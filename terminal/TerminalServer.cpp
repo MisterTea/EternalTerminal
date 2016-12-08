@@ -154,7 +154,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         }
       } catch(const runtime_error& re) {
         cout << "Connection error: " << re.what() << endl;
-        run=false;
+        // If the client disconnects the session, it shuoldn't end
+        //because the client may be starting a new one.  TODO: Start a
+        //timer which eventually kills the server.
+
+        //run=false;
       }
     }
     break;
