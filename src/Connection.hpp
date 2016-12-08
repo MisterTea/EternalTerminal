@@ -3,24 +3,22 @@
 
 #include "Headers.hpp"
 
-#include "SocketHandler.hpp"
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
+#include "SocketHandler.hpp"
 
+namespace et {
 class Connection {
-public:
-  Connection(
-    std::shared_ptr<SocketHandler> _socketHandler,
-    const string& key
-    );
+ public:
+  Connection ( std::shared_ptr< SocketHandler > _socketHandler, const string& key );
 
-  virtual ~Connection();
+  virtual ~Connection ( );
 
-  ssize_t read(void* buf, size_t count);
-  ssize_t readAll(void* buf, size_t count);
+  ssize_t read ( void* buf, size_t count );
+  ssize_t readAll ( void* buf, size_t count );
 
-  ssize_t write(const void* buf, size_t count);
-  void writeAll(const void* buf, size_t count);
+  ssize_t write ( const void* buf, size_t count );
+  void writeAll ( const void* buf, size_t count );
 
   template<typename T> inline T readProto() {
     T t;
@@ -40,31 +38,26 @@ public:
     writeAll(&s[0], length);
   }
 
-  inline shared_ptr<BackedReader> getReader() { return reader; }
-  inline shared_ptr<BackedWriter> getWriter() { return writer; }
+  inline shared_ptr< BackedReader > getReader ( ) { return reader; }
+  inline shared_ptr< BackedWriter > getWriter ( ) { return writer; }
 
-  int getSocketFd() {
-    return socketFd;
-  }
+  int getSocketFd ( ) { return socketFd; }
 
-  int getClientId() {
-    return clientId;
-  }
+  int getClientId ( ) { return clientId; }
 
-  inline bool hasData() {
-    return reader->hasData();
-  }
-protected:
-  virtual void closeSocket();
-  bool recover(int newSocketFd);
+  inline bool hasData ( ) { return reader->hasData ( ); }
 
-  shared_ptr<SocketHandler> socketHandler;
+ protected:
+  virtual void closeSocket ( );
+  bool recover ( int newSocketFd );
+
+  shared_ptr< SocketHandler > socketHandler;
   string key;
-  std::shared_ptr<BackedReader> reader;
-  std::shared_ptr<BackedWriter> writer;
+  std::shared_ptr< BackedReader > reader;
+  std::shared_ptr< BackedWriter > writer;
   int socketFd;
   int clientId;
 };
+}
 
-
-#endif // __ETERNAL_TCP_CONNECTION__
+#endif  // __ETERNAL_TCP_CONNECTION__

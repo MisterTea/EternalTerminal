@@ -21,6 +21,7 @@
 
 #include "ETerminal.pb.h"
 
+using namespace et;
 shared_ptr<ServerConnection> globalServer;
 
 void runServer(

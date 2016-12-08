@@ -2,6 +2,8 @@
 #include "BackedWriter.hpp"
 #include "FakeSocketHandler.hpp"
 
+using namespace et;
+
 int main(int argc, char** argv) {
   srand(1);
   google::InitGoogleLogging(argv[0]);

@@ -5,27 +5,28 @@
 
 #include "Connection.hpp"
 
+namespace et {
 extern const int NULL_CLIENT_ID;
 
 class ClientConnection : public Connection {
-public:
-  explicit ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler,
-    const std::string& hostname,
-    int port,
-    const string& key
-    );
+ public:
+  ClientConnection ( std::shared_ptr< SocketHandler > _socketHandler,  //
+                     const std::string& hostname,                      //
+                     int port,                                         //
+                     const string& key );
 
-  virtual ~ClientConnection();
+  virtual ~ClientConnection ( );
 
-  void connect();
-protected:
-  virtual void closeSocket();
-  void pollReconnect();
+  void connect ( );
+
+ protected:
+  virtual void closeSocket ( );
+  void pollReconnect ( );
 
   std::string hostname;
   int port;
-  std::shared_ptr<std::thread> reconnectThread;
+  std::shared_ptr< std::thread > reconnectThread;
 };
+}
 
-#endif // __ETERNAL_TCP_SERVER_CONNECTION__
+#endif  // __ETERNAL_TCP_SERVER_CONNECTION__

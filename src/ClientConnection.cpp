@@ -1,26 +1,24 @@
 #include "ClientConnection.hpp"
 
+namespace et {
 const int NULL_CLIENT_ID = -1;
 
-ClientConnection::ClientConnection(
-  std::shared_ptr<SocketHandler> _socketHandler,
-  const std::string& _hostname,
-  int _port,
-  const string& _key
-  ) :
-  Connection(_socketHandler, _key),
-  hostname(_hostname),
-  port(_port) {
-}
+ClientConnection::ClientConnection ( std::shared_ptr< SocketHandler > _socketHandler,  //
+                                     const std::string& _hostname,                     //
+                                     int _port,                                        //
+                                     const string& _key )
+    : Connection ( _socketHandler, _key ),  //
+      hostname ( _hostname ),               //
+      port ( _port ) {}
 
-ClientConnection::~ClientConnection() {
-  if (reconnectThread) {
-    reconnectThread->join();
-    reconnectThread.reset();
+ClientConnection::~ClientConnection ( ) {
+  if ( reconnectThread ) {
+    reconnectThread->join ( );
+    reconnectThread.reset ( );
   }
 }
 
-void ClientConnection::connect() {
+void ClientConnection::connect ( ) {
   try {
     VLOG(1) << "Connecting" << endl;
     socketFd = socketHandler->connect(hostname, port);
@@ -51,16 +49,16 @@ void ClientConnection::connect() {
   }
 }
 
-void ClientConnection::closeSocket() {
-  Connection::closeSocket();
+void ClientConnection::closeSocket ( ) {
+  Connection::closeSocket ( );
 
-  if (reconnectThread.get()) {
-    reconnectThread->join();
-    reconnectThread.reset();
+  if ( reconnectThread.get ( ) ) {
+    reconnectThread->join ( );
+    reconnectThread.reset ( );
   }
-  if (socketFd == -1) {
+  if ( socketFd == -1 ) {
     // Spin up a thread to poll for reconnects
-    reconnectThread = std::shared_ptr<std::thread>(new std::thread(&ClientConnection::pollReconnect, this));
+    reconnectThread = std::shared_ptr< std::thread > ( new std::thread ( &ClientConnection::pollReconnect, this ) );
   }
 }
 
@@ -73,10 +71,11 @@ void ClientConnection::pollReconnect() {
       request.set_clientid(clientId);
       socketHandler->writeProto(newSocketFd, request);
 
-      recover(newSocketFd);
+      recover ( newSocketFd );
     } else {
-      VLOG(1) << "Waiting to retry...";
-      sleep(1);
+      VLOG ( 1 ) << "Waiting to retry...";
+      sleep ( 1 );
     }
   }
+}
 }

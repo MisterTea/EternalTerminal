@@ -10,6 +10,8 @@
 #include <string.h>
 #include <inttypes.h>
 
+using namespace et;
+
 #if __APPLE__
 #include <CoreFoundation/CoreFoundation.h>
 #include <sys/event.h>

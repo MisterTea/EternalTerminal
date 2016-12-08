@@ -1,5 +1,6 @@
 #include "SocketHandler.hpp"
 
+namespace et {
 void SocketHandler::readAll(int fd, void* buf, size_t count) {
   size_t pos=0;
   while (pos<count) {
@@ -22,4 +23,5 @@ void SocketHandler::writeAll(int fd, const void* buf, size_t count) {
     }
     pos += bytesWritten;
   }
+}
 }

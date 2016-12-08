@@ -4,6 +4,8 @@
 
 #include "CryptoHandler.hpp"
 
+using namespace et;
+
 TEST ( A, B ) { SUCCEED ( ); }
 
 TEST(CryptoHandler, DoesEncryptDecrypt) {

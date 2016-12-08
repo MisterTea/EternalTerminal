@@ -3,11 +3,12 @@
 
 #include "Headers.hpp"
 
+namespace et {
 class SocketHandler {
-public:
-  virtual bool hasData(int fd) = 0;
-  virtual ssize_t read(int fd, void* buf, size_t count) = 0;
-  virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
+ public:
+  virtual bool hasData ( int fd ) = 0;
+  virtual ssize_t read ( int fd, void* buf, size_t count ) = 0;
+  virtual ssize_t write ( int fd, const void* buf, size_t count ) = 0;
 
   void readAll(int fd, void* buf, size_t count);
   void writeAll(int fd, const void* buf, size_t count);
@@ -30,10 +31,11 @@ public:
     writeAll(fd, &s[0], length);
   }
 
-  virtual int connect(const std::string &hostname, int port) = 0;
-  virtual int listen(int port) = 0;
-  virtual void stopListening() = 0;
-  virtual void close(int fd) = 0;
+  virtual int connect ( const std::string& hostname, int port ) = 0;
+  virtual int listen ( int port ) = 0;
+  virtual void stopListening ( ) = 0;
+  virtual void close ( int fd ) = 0;
 };
+}
 
-#endif // __ETERNAL_TCP_SOCKET_HANDLER__
+#endif  // __ETERNAL_TCP_SOCKET_HANDLER__

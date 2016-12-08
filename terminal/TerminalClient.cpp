@@ -14,6 +14,7 @@
 
 #include "ETerminal.pb.h"
 
+using namespace et;
 shared_ptr<ClientConnection> globalClient;
 
 #define FAIL_FATAL(X) if((X) == -1) { printf("Error: (%d), %s\n",errno,strerror(errno)); exit(errno); }

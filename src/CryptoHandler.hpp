@@ -5,18 +5,22 @@
 
 #include <gcrypt.h>
 
+namespace et {
+
 class CryptoHandler {
-public:
-  explicit CryptoHandler(const string& key);
-  ~CryptoHandler();
+ public:
+  explicit CryptoHandler ( const string& key );
+  ~CryptoHandler ( );
 
-  string encrypt(const string& buffer);
-  string decrypt(const string& buffer);
+  string encrypt ( const string& buffer );
+  string decrypt ( const string& buffer );
 
-  void encryptInPlace(char* buffer, int length);
-  void decryptInPlace(char* buffer, int length);
-protected:
+  void encryptInPlace ( char* buffer, int length );
+  void decryptInPlace ( char* buffer, int length );
+
+ protected:
   gcry_cipher_hd_t handle;
 };
+}
 
-#endif // __ETERNAL_TCP_CRYPTO_HANDLER__
+#endif  // __ETERNAL_TCP_CRYPTO_HANDLER__

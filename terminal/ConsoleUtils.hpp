@@ -3,8 +3,10 @@
 
 #include "Headers.hpp"
 
-string commandToString(const char* cmd);
+namespace et {
+string commandToString ( const char* cmd );
 
-std::string getTerminal();
+std::string getTerminal ( );
+}
 
-#endif // __ETERNAL_TCP_CONSOLE_UTILS__
+#endif  // __ETERNAL_TCP_CONSOLE_UTILS__

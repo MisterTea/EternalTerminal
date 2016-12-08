@@ -1,98 +1,85 @@
 #include "Connection.hpp"
 
-Connection::Connection(
-  std::shared_ptr<SocketHandler> _socketHandler,
-  const string& _key
-  ) :
-  socketHandler(_socketHandler),
-  key(_key) {
-  }
+namespace et {
+Connection::Connection ( std::shared_ptr< SocketHandler > _socketHandler, const string& _key )
+    : socketHandler ( _socketHandler ), key ( _key ) {}
 
-Connection::~Connection() {
-  closeSocket();
-}
+Connection::~Connection ( ) { closeSocket ( ); }
 
-ssize_t Connection::read(void* buf, size_t count) {
-  ssize_t bytesRead = reader->read(buf, count);
-  if (bytesRead == -1) {
-    if (errno == ECONNRESET ||
-        errno == ETIMEDOUT ||
-        errno == EAGAIN ||
-        errno == EWOULDBLOCK) {
+ssize_t Connection::read ( void* buf, size_t count ) {
+  ssize_t bytesRead = reader->read ( buf, count );
+  if ( bytesRead == -1 ) {
+    if ( errno == ECONNRESET || errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK ) {
       // The connection has reset, close the socket and invalidate, then
       // return 0 bytes
-      closeSocket();
+      closeSocket ( );
       bytesRead = 0;
     }
   }
   return bytesRead;
 }
 
-ssize_t Connection::readAll(void* buf, size_t count) {
-  size_t pos=0;
-  while (pos<count) {
-    ssize_t bytesRead = read(((char*)buf) + pos, count - pos);
-    if (bytesRead < 0) {
-      VLOG(1) << "Failed a call to readAll: %s\n" << strerror(errno);
-      throw std::runtime_error("Failed a call to readAll");
+ssize_t Connection::readAll ( void* buf, size_t count ) {
+  size_t pos = 0;
+  while ( pos < count ) {
+    ssize_t bytesRead = read ( ( ( char* ) buf ) + pos, count - pos );
+    if ( bytesRead < 0 ) {
+      VLOG ( 1 ) << "Failed a call to readAll: %s\n" << strerror ( errno );
+      throw std::runtime_error ( "Failed a call to readAll" );
     }
     pos += bytesRead;
-    if(pos<count) {
+    if ( pos < count ) {
       // Yield the processor
-      sleep(0);
+      sleep ( 0 );
     }
   }
   return count;
 }
 
-ssize_t Connection::write(const void* buf, size_t count) {
-  BackedWriterWriteState bwws = writer->write(buf, count);
+ssize_t Connection::write ( const void* buf, size_t count ) {
+  BackedWriterWriteState bwws = writer->write ( buf, count );
 
-  if(bwws == BackedWriterWriteState::SKIPPED) {
+  if ( bwws == BackedWriterWriteState::SKIPPED ) {
     return 0;
   }
 
-  if(bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
+  if ( bwws == BackedWriterWriteState::WROTE_WITH_FAILURE ) {
     // Error writing.
-    if (!errno) {
+    if ( !errno ) {
       // The socket was already closed
-    } else if (
-      errno == EPIPE ||
-      errno == ETIMEDOUT ||
-      errno == EAGAIN ||
-      errno == EWOULDBLOCK) {
+    } else if ( errno == EPIPE || errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK ) {
       // The connection has been severed, handle and hide from the caller
-      closeSocket();
+      closeSocket ( );
     } else {
-      LOG(FATAL) << "Unexpected socket error: " << errno << " " << strerror(errno);
+      LOG ( FATAL ) << "Unexpected socket error: " << errno << " " << strerror ( errno );
     }
   }
 
   return count;
 }
 
-void Connection::writeAll(const void* buf, size_t count) {
-  while(true) {
-    if(write(buf, count)) {
+void Connection::writeAll ( const void* buf, size_t count ) {
+  while ( true ) {
+    if ( write ( buf, count ) ) {
       return;
     }
-    sleep(0);
+    sleep ( 0 );
   }
 }
 
-void Connection::closeSocket() {
-  if (socketFd == -1) {
-    LOG(ERROR) << "Tried to close a non-existent socket";
+void Connection::closeSocket ( ) {
+  if ( socketFd == -1 ) {
+    LOG ( ERROR ) << "Tried to close a non-existent socket";
     return;
   }
-  reader->invalidateSocket();
-  writer->invalidateSocket();
-  socketHandler->close(socketFd);
+  reader->invalidateSocket ( );
+  writer->invalidateSocket ( );
+  socketHandler->close ( socketFd );
   socketFd = -1;
-  VLOG(1) << "Closed socket\n";
+  VLOG ( 1 ) << "Closed socket\n";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover ( int newSocketFd ) {
   try {
     {
       // Write the current sequence number
@@ -120,10 +107,11 @@ bool Connection::recover(int newSocketFd) {
     writer->revive(socketFd);
     writer->unlock();
     return true;
-  } catch (const runtime_error& err) {
-    LOG(ERROR) << "Error recovering: " << err.what();
-    socketHandler->close(newSocketFd);
-    writer->unlock();
+  } catch ( const runtime_error& err ) {
+    LOG ( ERROR ) << "Error recovering: " << err.what ( );
+    socketHandler->close ( newSocketFd );
+    writer->unlock ( );
     return false;
   }
+}
 }
