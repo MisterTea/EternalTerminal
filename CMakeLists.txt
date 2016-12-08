@@ -50,7 +50,6 @@ src/CryptoHandler.cpp
 src/FakeSocketHandler.cpp
 src/FlakyFakeSocketHandler.cpp
 src/Headers.cpp
-src/ProcessHelper.cpp
 src/ServerClientConnection.cpp
 src/ServerConnection.cpp
 src/SocketHandler.cpp
@@ -78,6 +77,7 @@ TerminalCommon
 STATIC
 
 terminal/ConsoleUtils.cpp
+terminal/ProcessHelper.cpp
 ${PROTO_SRCS} ${PROTO_HDRS}
 )
 
