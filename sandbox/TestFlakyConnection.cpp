@@ -3,6 +3,7 @@
 #include "ServerConnection.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 
+using namespace et;
 ServerConnection *globalServer;
 
 void runServer(

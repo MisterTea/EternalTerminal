@@ -5,22 +5,20 @@
 
 #include "Connection.hpp"
 
+namespace et {
 class ServerClientConnection : public Connection {
-public:
-  explicit ServerClientConnection(
-    const std::shared_ptr<SocketHandler>& _socketHandler,
-    int _clientId,
-    int _socketFd,
-    const string& key
-    );
+ public:
+  explicit ServerClientConnection ( const std::shared_ptr< SocketHandler >& _socketHandler,  //
+                                    int _clientId,                                           //
+                                    int _socketFd,                                           //
+                                    const string& key );
 
-  ~ServerClientConnection() {
-    closeSocket();
-  }
+  ~ServerClientConnection ( ) { closeSocket ( ); }
 
-  bool recoverClient(int newSocketFd);
+  bool recoverClient ( int newSocketFd );
 
-protected:
+ protected:
 };
+}
 
-#endif // __ETERNAL_TCP_SERVER_CLIENT_CONNECTION__
+#endif  // __ETERNAL_TCP_SERVER_CLIENT_CONNECTION__
