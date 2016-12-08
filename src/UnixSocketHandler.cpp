@@ -4,9 +4,11 @@
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <sys/socket.h>
+#include <unistd.h>
+#include <fcntl.h>
 
 namespace et {
-UnixSocketHandler::UnixSocketHandler ( ) { serverSocket = -1; }
+UnixSocketHandler::UnixSocketHandler ( ) { }
 
 bool UnixSocketHandler::hasData ( int fd ) {
   fd_set input;
@@ -38,73 +40,120 @@ ssize_t UnixSocketHandler::read ( int fd, void *buf, size_t count ) {
 ssize_t UnixSocketHandler::write ( int fd, const void *buf, size_t count ) { return ::write ( fd, buf, count ); }
 
 int UnixSocketHandler::connect ( const std::string &hostname, int port ) {
-  int sockfd;
-  sockaddr_in serv_addr;
-  hostent *server;
+  int sockfd = -1;
+  addrinfo* results;
+  addrinfo* p;
+  addrinfo hints;
+  memset(&hints,0,sizeof(addrinfo));
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_CANONNAME;
+  std::string portname = std::to_string(port);
 
-  sockfd = socket ( AF_INET, SOCK_STREAM, 0 );
-  if ( sockfd < 0 ) {
-    LOG ( ERROR ) << "ERROR opening socket";
+  int rc = getaddrinfo ( hostname.c_str ( ), portname.c_str(), &hints, &results);
+
+  if (rc == -1) {
+    freeaddrinfo(results);
+    LOG(ERROR) << "Error getting address info for " << hostname << ":" << portname << ": "
+               << rc << " (" << gai_strerror(rc) << ")";
     return -1;
   }
-  initSocket ( sockfd );
-  server = gethostbyname ( hostname.c_str ( ) );
-  if ( server == NULL ) {
-    LOG ( ERROR ) << "ERROR, no such host";
-    return -1;
+
+  // loop through all the results and connect to the first we can
+  for(p = results; p != NULL; p = p->ai_next) {
+    if ((sockfd = socket(p->ai_family, p->ai_socktype,
+                         p->ai_protocol)) == -1) {
+      LOG(INFO) << "Error creating socket " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+      continue;
+    }
+    initSocket ( sockfd );
+
+    if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+      LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+      close(sockfd);
+      continue;
+    }
+
+    break; // if we get here, we must have connected successfully
   }
-  bzero ( ( char * ) &serv_addr, sizeof ( serv_addr ) );
-  serv_addr.sin_family = AF_INET;
-  bcopy((char *)server->h_addr,
-        (char *)&serv_addr.sin_addr.s_addr,
-        server->h_length);
-  serv_addr.sin_port = htons(port);
-  int rc = ::connect(sockfd,(sockaddr *) &serv_addr,sizeof(serv_addr));
-  if (rc < 0) {
-    LOG(ERROR) << "ERROR connecting to " << hostname << ":" << port << ". " << rc << " " << strerror(rc);
-    ::close(sockfd);
-    return -1;
+
+  if (sockfd == -1) {
+    LOG ( ERROR ) << "ERROR, no host found";
   }
+
   return sockfd;
 }
 
 int UnixSocketHandler::listen ( int port ) {
-  if ( serverSocket == -1 ) {
-    // Initialize server socket
-    struct sockaddr_in server;
+  if ( serverSockets.empty() ) {
+    addrinfo hints, *servinfo, *p;
+    int rc;
 
-    // Create socket
-    int socket_desc = socket ( AF_INET, SOCK_STREAM, 0 );
-    initSocket ( socket_desc );
-    if ( socket_desc == -1 ) {
-      throw std::runtime_error ( "Could not create socket" );
+    memset(&hints, 0, sizeof hints);
+    hints.ai_family = AF_UNSPEC;
+    hints.ai_socktype = SOCK_STREAM;
+    hints.ai_flags = AI_PASSIVE | AI_CANONNAME; // use my IP address
+
+    std::string portname = std::to_string(port);
+
+    if ((rc = getaddrinfo(NULL, portname.c_str(), &hints, &servinfo)) != 0) {
+      LOG(ERROR) << "Error getting address info for " << port << ": "
+                 << rc << " (" << gai_strerror(rc) << ")";
+      exit(1);
     }
 
-    // Prepare the sockaddr_in structure
-    server.sin_family = AF_INET;
-    server.sin_addr.s_addr = INADDR_ANY;
-    server.sin_port = htons ( port );
+    // loop through all the results and bind to the first we can
+    for(p = servinfo; p != NULL; p = p->ai_next) {
+      int sockfd;
+      if ((sockfd = socket(p->ai_family, p->ai_socktype,
+                           p->ai_protocol)) == -1) {
+        LOG(INFO) << "Error creating socket " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+        continue;
+      }
+      initSocket(sockfd);
+      // Also set the accept socket as non-blocking
+      fcntl(sockfd, F_SETFL, O_NONBLOCK);
 
-    // Bind
-    if (::bind ( socket_desc, ( struct sockaddr * ) &server, sizeof ( server ) ) < 0 ) {
-      throw std::runtime_error ( "Bind Failed" );
+      if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+        LOG(INFO) << "Error binding " << p->ai_canonname << ": " << errno << " " << strerror(errno);
+        close(sockfd);
+        continue;
+      }
+
+      // Listen
+      FATAL_FAIL(::listen ( sockfd, 32 ));
+      LOG(INFO) << "Listening on " << p->ai_canonname;
+
+      // if we get here, we must have connected successfully
+      serverSockets.push_back(sockfd);
     }
 
-    // Listen
-    ::listen ( socket_desc, 3 );
-    serverSocket = socket_desc;
+    if (serverSockets.empty()) {
+      LOG(FATAL) << "Could not bind to any interface!";
+    }
+
   }
 
-  sockaddr_in client;
-  socklen_t c = sizeof ( sockaddr_in );
-  int client_sock = ::accept ( serverSocket, ( sockaddr * ) &client, &c );
-  if ( client_sock >= 0 ) {
-    initSocket ( client_sock );
+  for (int sockfd : serverSockets) {
+    sockaddr_in client;
+    socklen_t c = sizeof ( sockaddr_in );
+    int client_sock = ::accept ( sockfd, ( sockaddr * ) &client, &c );
+    if ( client_sock >= 0 ) {
+      initSocket ( client_sock );
+      return client_sock;
+    } else if(errno != EAGAIN && errno != EWOULDBLOCK) {
+      FATAL_FAIL(-1); // LOG(FATAL) with the error
+    }
   }
-  return client_sock;
+
+  return -1;
 }
 
-void UnixSocketHandler::stopListening ( ) { close ( serverSocket ); }
+void UnixSocketHandler::stopListening ( ) {
+  for (int sockfd : serverSockets) {
+    close(sockfd);
+  }
+}
 
 void UnixSocketHandler::close ( int fd ) {
   VLOG ( 1 ) << "Shutting down connection: " << fd << endl;

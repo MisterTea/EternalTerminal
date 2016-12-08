@@ -2,9 +2,14 @@
 
 namespace et {
 Connection::Connection ( std::shared_ptr< SocketHandler > _socketHandler, const string& _key )
-    : socketHandler ( _socketHandler ), key ( _key ) {}
+  : socketHandler ( _socketHandler ), key ( _key ), shuttingDown(false) {}
 
-Connection::~Connection ( ) { closeSocket ( ); }
+Connection::~Connection ( ) {
+  if (!shuttingDown) {
+    LOG(ERROR) << "Call shutdown before destructing a Connection.";
+  }
+  closeSocket ( );
+}
 
 ssize_t Connection::read ( void* buf, size_t count ) {
   ssize_t bytesRead = reader->read ( buf, count );
@@ -21,7 +26,7 @@ ssize_t Connection::read ( void* buf, size_t count ) {
 
 ssize_t Connection::readAll ( void* buf, size_t count ) {
   size_t pos = 0;
-  while ( pos < count ) {
+  while ( pos < count && !shuttingDown ) {
     ssize_t bytesRead = read ( ( ( char* ) buf ) + pos, count - pos );
     if ( bytesRead < 0 ) {
       VLOG ( 1 ) << "Failed a call to readAll: %s\n" << strerror ( errno );
@@ -62,7 +67,7 @@ ssize_t Connection::write ( const void* buf, size_t count ) {
 }
 
 void Connection::writeAll ( const void* buf, size_t count ) {
-  while ( true ) {
+  while ( !shuttingDown ) {
     if ( write ( buf, count ) ) {
       return;
     }
@@ -117,4 +122,10 @@ bool Connection::recover ( int newSocketFd ) {
     return false;
   }
 }
+
+  void Connection::shutdown() {
+    LOG(INFO) << "Shutting down connection";
+    shuttingDown = true;
+    closeSocket();
+  }
 }

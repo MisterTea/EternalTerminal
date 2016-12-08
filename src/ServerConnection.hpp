@@ -31,9 +31,7 @@ class ServerConnection {
 
   int newClient ( int socketFd );
 
-  bool removeClient ( int clientId ) { return clients.erase ( clientId ) == 1; }
-
-  bool recoverClient ( int clientId, int socketFd );
+  bool removeClient ( shared_ptr<ServerClientConnection> connection );
 
   shared_ptr< ServerClientConnection > getClient ( int clientId ) { return clients.find ( clientId )->second; }
 

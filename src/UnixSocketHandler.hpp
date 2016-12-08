@@ -16,7 +16,7 @@ class UnixSocketHandler : public SocketHandler {
   virtual void close ( int fd );
 
  protected:
-  int serverSocket;
+  vector<int> serverSockets;
   void initSocket ( int fd );
 };
 }

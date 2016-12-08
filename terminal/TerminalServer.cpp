@@ -117,8 +117,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             tb.set_buffer(s);
             serverClientState->writeProto(tb);
           } else if (rc==0) {
+            LOG(INFO) << "Terminal session ended";
             run = false;
-            globalServer->removeClient(serverClientState->getClientId());
+            globalServer->removeClient(serverClientState);
           } else {
             LOG(FATAL) << "This shouldn't happen\n";
           }

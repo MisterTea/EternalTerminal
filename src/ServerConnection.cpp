@@ -17,7 +17,7 @@ ServerConnection::~ServerConnection ( ) {
 
 void ServerConnection::run ( ) {
   while ( !stop ) {
-    VLOG ( 2 ) << "Listening for connection" << endl;
+    VLOG_EVERY_N ( 2, 30 ) << "Listening for connection" << endl;
     int clientSocketFd = socketHandler->listen ( port );
     if ( clientSocketFd < 0 ) {
       sleep ( 1 );
@@ -48,7 +48,7 @@ void ServerConnection::clientHandler ( int clientSocketFd ) {
       shared_ptr<ServerClientConnection> serverClientState = getClient(clientId);
       if(serverHandler && !serverHandler->newClient(serverClientState)) {
         // Destroy the new client
-        removeClient ( clientId );
+        removeClient ( serverClientState );
         socketHandler->close ( clientSocketFd );
       }
     } else {
@@ -82,4 +82,9 @@ int ServerConnection::newClient ( int socketFd ) {
   clients.insert(std::make_pair(clientId, scc));
   return clientId;
 }
+
+  bool ServerConnection::removeClient ( shared_ptr<ServerClientConnection> connection ) {
+    connection->shutdown();
+    return clients.erase ( connection->getClientId() ) == 1;
+  }
 }

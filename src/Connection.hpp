@@ -49,6 +49,8 @@ class Connection {
 
   virtual void closeSocket ( );
 
+  void shutdown();
+
 protected:
   bool recover ( int newSocketFd );
 
@@ -58,6 +60,7 @@ protected:
   std::shared_ptr< BackedWriter > writer;
   int socketFd;
   int clientId;
+  bool shuttingDown;
 };
 }
 
