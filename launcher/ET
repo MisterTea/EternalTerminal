@@ -7,10 +7,10 @@ SERVER_BINARY="TerminalServer"
 CLIENT_BINARY="TerminalClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
-SSH_PASSWORD_COMMAND="echo \`$PASSWORD_GENERATOR\`"
-PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND"`
+SSH_PASSWORD_COMMAND="echo PASSWORD:\`$PASSWORD_GENERATOR\`"
+PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2`
 
-SSH_SERVER_COMMAND="setsid $SERVER_BINARY --v=9 --alsologtostderr --passkey=$PASSWD --port=$PORT </dev/zero &>/dev/null &"
-ssh "$SSH_COMMAND" "$SSH_SERVER_COMMAND"
+SSH_SERVER_COMMAND="nohup $SERVER_BINARY --v=9 --alsologtostderr --passkey=$PASSWD --port=$PORT </dev/zero &>/dev/null &"
+echo "$SSH_SERVER_COMMAND" | ssh "$SSH_COMMAND"
 
 $CLIENT_BINARY --passkey="$PASSWD" --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD
