@@ -1,7 +1,7 @@
 ---
 layout: page
-title: How ET Works
-subtitle: A primer on how ET works under the hood
+title: How Eternal Terminal Works
+subtitle: A primer on how Eternal Terminal (ET) works under the hood
 ---
 
 # Eternal TCP
