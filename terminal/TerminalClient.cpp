@@ -55,14 +55,8 @@ int main(int argc, char** argv) {
   tcgetattr(0,&terminal_local);
   memcpy(&terminal_backup,&terminal_local,sizeof(struct termios));
   struct winsize win = { 0, 0, 0, 0 };
-  ioctl(1, TIOCGWINSZ, &win);
   cfmakeraw(&terminal_local);
   tcsetattr(0,TCSANOW,&terminal_local);
-  cout << win.ws_row << " "
-       << win.ws_col << " "
-       << win.ws_xpixel << " "
-       << win.ws_ypixel << endl;
-
 
   // Whether the TE should keep running.
   bool run = true;
@@ -149,6 +143,30 @@ int main(int argc, char** argv) {
             waitingOnKeepalive = true;
           }
       }
+
+      winsize tmpwin;
+      ioctl(1, TIOCGWINSZ, &tmpwin);
+      if (
+        win.ws_row != tmpwin.ws_row ||
+        win.ws_col != tmpwin.ws_col ||
+        win.ws_xpixel != tmpwin.ws_xpixel ||
+        win.ws_ypixel != tmpwin.ws_ypixel) {
+        win = tmpwin;
+        cout << "Window size changed: "
+             << win.ws_row << " "
+             << win.ws_col << " "
+             << win.ws_xpixel << " "
+             << win.ws_ypixel << endl;
+        TerminalInfo ti;
+        ti.set_rows(win.ws_row);
+        ti.set_columns(win.ws_col);
+        ti.set_width(win.ws_xpixel);
+        ti.set_height(win.ws_ypixel);
+        char c = et::PacketType::TERMINAL_INFO;
+        globalClient->writeAll(&c,1);
+        globalClient->writeProto(ti);
+      }
+
     } catch (const runtime_error &re) {
       cout << "Error: " << re.what() << endl;
       run = false;

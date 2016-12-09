@@ -148,6 +148,19 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             serverClientState->writeAll(&c,1);
             break;
           }
+          case et::PacketType::TERMINAL_INFO:
+          {
+            VLOG(1) << "Got terminal info";
+            et::TerminalInfo ti =
+              serverClientState->readProto<et::TerminalInfo>();
+            winsize tmpwin;
+            tmpwin.ws_row = ti.rows();
+            tmpwin.ws_col = ti.columns();
+            tmpwin.ws_xpixel = ti.width();
+            tmpwin.ws_ypixel = ti.height();
+            ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+            break;
+          }
           default:
             LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
           }
