@@ -46,6 +46,11 @@ ${PROTOBUF_INCLUDE_DIRS}
 ${CMAKE_CURRENT_BINARY_DIR}
 )
 
+# Needed to bring in locally build gcrypt on linux
+link_directories(
+  /usr/local/lib
+)
+
 set(${PROJECT_NAME}_SRC
 
 src/BackedReader.cpp
