@@ -17,6 +17,7 @@ ssize_t Connection::read ( void* buf, size_t count ) {
     if ( errno == ECONNRESET || errno == ETIMEDOUT || errno == EAGAIN || errno == EWOULDBLOCK ) {
       // The connection has reset, close the socket and invalidate, then
       // return 0 bytes
+      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
       closeSocket ( );
       bytesRead = 0;
     }
