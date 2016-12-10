@@ -117,11 +117,9 @@ void ProcessHelper::daemonize() {
   umask(0);
 
   /* Close all open file descriptors */
-  int x;
-  for (x = sysconf(_SC_OPEN_MAX); x>0; x--)
-  {
-    close (x);
-  }
+  fclose(stderr);
+  fclose(stdin);
+  fclose(stdout);
 
   /* Open the log file */
   openlog ("ETServer", LOG_PID, LOG_DAEMON);
