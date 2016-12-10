@@ -3,14 +3,14 @@
 SSH_COMMAND=$1
 HOSTNAME=$2
 PORT=$3
-SERVER_BINARY="TerminalServer"
-CLIENT_BINARY="TerminalClient"
+SERVER_BINARY="ETServer"
+CLIENT_BINARY="ETClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
-SSH_PASSWORD_COMMAND="echo PASSWORD:\`$PASSWORD_GENERATOR\`"
+SSH_PASSWORD_COMMAND="
+export PASSWD=\`$PASSWORD_GENERATOR\` &&
+echo PASSWORD:\$PASSWD &&
+$SERVER_BINARY --v=9 --alsologtostderr --passkey=\$PASSWD --port=$PORT --daemon=true"
 PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2`
-
-SSH_SERVER_COMMAND="nohup $SERVER_BINARY --v=9 --alsologtostderr --passkey=$PASSWD --port=$PORT </dev/zero &>/dev/null &"
-echo "$SSH_SERVER_COMMAND" | ssh "$SSH_COMMAND"
 
 $CLIENT_BINARY --passkey="$PASSWD" --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD
