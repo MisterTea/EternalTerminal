@@ -114,7 +114,13 @@ int UnixSocketHandler::listen ( int port ) {
       }
       initSocket(sockfd);
       // Also set the accept socket as non-blocking
-      fcntl(sockfd, F_SETFL, O_NONBLOCK);
+      {
+        int opts;
+        opts = fcntl(sockfd,F_GETFL);
+        FATAL_FAIL(opts);
+        opts |= O_NONBLOCK;
+        FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
+      }
 
       if (p->ai_family == AF_INET6) {
         // Also ensure that IPV6 sockets only listen on IPV6
@@ -154,6 +160,14 @@ int UnixSocketHandler::listen ( int port ) {
     int client_sock = ::accept ( sockfd, ( sockaddr * ) &client, &c );
     if ( client_sock >= 0 ) {
       initSocket ( client_sock );
+      // Make sure that socket becomes blocking once it's attached to a client.
+      {
+        int opts;
+        opts = fcntl(client_sock,F_GETFL);
+        FATAL_FAIL(opts);
+        opts &= (~O_NONBLOCK);
+        FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
+      }
       return client_sock;
     } else if(errno != EAGAIN && errno != EWOULDBLOCK) {
       FATAL_FAIL(-1); // LOG(FATAL) with the error
