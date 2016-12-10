@@ -133,9 +133,9 @@ ${COREFOUNDATION_LIBRARY}
 util
 )
 
-add_executable (TerminalServer terminal/TerminalServer.cpp)
+add_executable (ETServer terminal/TerminalServer.cpp)
 target_link_libraries (
-TerminalServer
+ETServer
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
@@ -151,9 +151,9 @@ ${COREFOUNDATION_LIBRARY}
 util
 )
 
-add_executable (TerminalClient terminal/TerminalClient.cpp)
+add_executable (ETClient terminal/TerminalClient.cpp)
 target_link_libraries (
-TerminalClient
+ETClient
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
