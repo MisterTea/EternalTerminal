@@ -31,7 +31,7 @@ of the writer and the reader.
 Both the client and the server of a TCP connection need both a
 BackedReader and BackedWriter so they can send and receive messages.
 
-Eternal TCP is an implmentation of resumable TCP that can be used by any application.
+Eternal TCP is an implementation of resumable TCP that can be used by any application.
 
 # The Eternal Terminal (ET).
 
@@ -71,7 +71,7 @@ features, it's not implemented at the moment.
 
 Tmux control center (activated by running tmux with the -CC flag) is
 supported in ET since it does not rely on the ssh protocol and is
-effectively it's own protocol written in terminal escape sequences.
+effectively its own protocol written in terminal escape sequences.
 This means that it's possible to have tabs and split screen support
 within ET.  Unfortunately, iTerm2 for OS/X and an unsupported fork of
 the Terminator terminal are the only terminals that support Tmux
