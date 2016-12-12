@@ -11,7 +11,7 @@ set(GTEST_SRC
 set(TESTPREFIX gtest_)
 foreach(SRC_LINE ${GTEST_SRC})
   string(REPLACE ".cpp" "" FILE_LINE ${SRC_LINE})
-  
+
   add_executable(${FILE_LINE} ${SRC_LINE})
   add_dependencies(${FILE_LINE} ${PROJECT_NAME}-static gtest gtest_main gmock gmock_main)
 
@@ -26,6 +26,7 @@ foreach(SRC_LINE ${GTEST_SRC})
     glog
     gflags
     gcrypt
+    util
     )
     add_test(${FILE_LINE} ${FILE_LINE})
 endforeach()

@@ -19,12 +19,16 @@ endif()
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Find packages
-find_package(Boost COMPONENTS system REQUIRED)
+find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(gflags REQUIRED)
 find_package(LibGCrypt REQUIRED)
 find_package(Protobuf REQUIRED)
+
+# Apply gcrypt flags
+add_definitions(${LIBGCRYPT_CFLAGS})
+SET( CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${LIBGCRYPT_LIBRARIES}" )
 
 # Apple specific packages
 IF (APPLE)
@@ -44,11 +48,6 @@ include_directories(
 src
 ${PROTOBUF_INCLUDE_DIRS}
 ${CMAKE_CURRENT_BINARY_DIR}
-)
-
-# Needed to bring in locally build gcrypt on linux
-link_directories(
-  /usr/local/lib
 )
 
 set(${PROJECT_NAME}_SRC
@@ -82,9 +81,6 @@ target_link_libraries(
 # when other libraries or executables link to Hello
 target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
-install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
-install(FILES EternalTCP.hpp DESTINATION include)
-
 PROTOBUF_GENERATE_CPP(
 ETERMINAL_SRCS
 ETERMINAL_HDRS
@@ -110,12 +106,9 @@ Terminal
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 ${PROTOBUF_LIBRARIES}
-gcrypt
-glog
+${GLOG_LIBRARY}
 gflags
 ${COREFOUNDATION_LIBRARY}
 util
@@ -127,12 +120,9 @@ FlakyTerminal
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 ${PROTOBUF_LIBRARIES}
-gcrypt
-glog
+${GLOG_LIBRARY}
 gflags
 ${COREFOUNDATION_LIBRARY}
 util
@@ -144,13 +134,10 @@ ETServer
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 ${PROTOBUF_LIBRARIES}
 ${PROTOBUF_LIBRARIES}
-gcrypt
-glog
+${GLOG_LIBRARY}
 gflags
 ${COREFOUNDATION_LIBRARY}
 util
@@ -162,18 +149,19 @@ ETClient
 LINK_PUBLIC
 TerminalCommon
 EternalTCP-static
-${Boost_THREAD_LIBRARY}
-${Boost_SYSTEM_LIBRARY}
 ${CMAKE_THREAD_LIBS_INIT}
 ${PROTOBUF_LIBRARIES}
 ${PROTOBUF_LIBRARIES}
-gcrypt
-glog
+${GLOG_LIBRARY}
 gflags
 ${COREFOUNDATION_LIBRARY}
 util
 )
 
+install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
+install(TARGETS ETClient ETServer DESTINATION bin)
+install(FILES src/BackedWriter.hpp DESTINATION include/etcp)
+install(FILES launcher/ET DESTINATION bin)
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")

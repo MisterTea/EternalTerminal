@@ -19,13 +19,13 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     ${FILE_LINE}
     LINK_PUBLIC
     ${PROJECT_NAME}-static
-    ${Boost_SYSTEM_LIBRARY}
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
     gcrypt
     glog
     gflags
     ${COREFOUNDATION_LIBRARY}
+    util
     )
     add_test(${FILE_LINE} ${FILE_LINE})
 endforeach()
