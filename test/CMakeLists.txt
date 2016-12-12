@@ -26,6 +26,7 @@ foreach(SRC_LINE ${GTEST_SRC})
     glog
     gflags
     gcrypt
+    ${LIBGCRYPT_LIBRARIES}
     util
     )
     add_test(${FILE_LINE} ${FILE_LINE})
