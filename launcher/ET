@@ -8,9 +8,15 @@ CLIENT_BINARY="ETClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 SSH_PASSWORD_COMMAND="
+export TMPFILE=\$(mktemp /tmp/et.XXXXXX) &&
 export PASSWD=\`$PASSWORD_GENERATOR\` &&
+echo \$PASSWD > \$TMPFILE &&
 echo PASSWORD:\$PASSWD &&
-$SERVER_BINARY --v=9 --alsologtostderr --passkey=\$PASSWD --port=$PORT --daemon=true"
+$SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT --daemon=true
+"
 PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2`
 
-$CLIENT_BINARY --passkey="$PASSWD" --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD
+TMPFILE=$(mktemp /tmp/et.XXXXXX)
+echo $PASSWD > $TMPFILE
+
+$CLIENT_BINARY --passkeyfile=$TMPFILE --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD
