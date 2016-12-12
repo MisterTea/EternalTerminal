@@ -25,6 +25,7 @@ termios terminal_backup;
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 10022, "port to connect on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
+DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
 
 int main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
@@ -36,8 +37,24 @@ int main(int argc, char** argv) {
 
   std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
 
+  string passkey = FLAGS_passkey;
+  if (passkey.length()==0 && FLAGS_passkeyfile.length()>0) {
+    // Check for passkey file
+    std::ifstream t(FLAGS_passkeyfile.c_str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    passkey = buffer.str();
+    // Trim whitespace
+    passkey.erase(passkey.find_last_not_of(" \n\r\t")+1);
+    // Delete the file with the passkey
+    remove(FLAGS_passkeyfile.c_str());
+  }
+  if (passkey.length() != 32) {
+    LOG(FATAL) << "Invalid/missing passkey: " << passkey << " " << passkey.length();
+  }
+
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, FLAGS_passkey));
+    new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, passkey));
   globalClient = client;
   while(true) {
     try {

@@ -40,6 +40,7 @@ termios terminal_backup;
 
 DEFINE_int32(port, 10022, "Port to listen on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
+DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
 DEFINE_bool(daemon, false, "Whether the server should run as a daemon");
 
 thread* terminalThread = NULL;
@@ -205,12 +206,29 @@ int main(int argc, char** argv) {
   std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
 
   printf("Creating server\n");
+
+  string passkey = FLAGS_passkey;
+  if (passkey.length()==0 && FLAGS_passkeyfile.length()>0) {
+    // Check for passkey file
+    std::ifstream t(FLAGS_passkeyfile.c_str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    passkey = buffer.str();
+    // Trim whitespace
+    passkey.erase(passkey.find_last_not_of(" \n\r\t")+1);
+    // Delete the file with the passkey
+    remove(FLAGS_passkeyfile.c_str());
+  }
+  if (passkey.length() != 32) {
+    LOG(FATAL) << "Invalid/missing passkey: " << passkey;
+  }
+
   shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
     new ServerConnection(
       serverSocket,
       FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler()),
-      FLAGS_passkey));
+      passkey));
   globalServer = server;
   runServer(server);
 }

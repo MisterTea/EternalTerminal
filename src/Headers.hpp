@@ -15,6 +15,9 @@
 #include <array>
 #include <exception>
 #include <iostream>
+#include <fstream>
+#include <sstream>
+#include <streambuf>
 #include <memory>
 #include <mutex>
 #include <sstream>
