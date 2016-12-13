@@ -8,6 +8,7 @@ CLIENT_BINARY="ETClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 SSH_PASSWORD_COMMAND="
+killall ETServer ;
 export TMPFILE=\$(mktemp /tmp/et.XXXXXX) &&
 export PASSWD=\`$PASSWORD_GENERATOR\` &&
 echo \$PASSWD > \$TMPFILE &&
