@@ -20,4 +20,4 @@ PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut
 TMPFILE=$(mktemp /tmp/et.XXXXXX)
 echo $PASSWD > $TMPFILE
 
-$CLIENT_BINARY --passkeyfile=$TMPFILE --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD
+$CLIENT_BINARY --passkeyfile=$TMPFILE --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD 2>> /tmp/et_err
