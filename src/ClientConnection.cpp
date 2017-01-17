@@ -50,29 +50,42 @@ void ClientConnection::connect ( ) {
 }
 
 void ClientConnection::closeSocket ( ) {
-  Connection::closeSocket ( );
-
+  LOG(INFO) << "Closing socket";
   if ( reconnectThread.get ( ) ) {
     reconnectThread->join ( );
     reconnectThread.reset ( );
   }
-  if ( socketFd == -1 ) {
-    // Spin up a thread to poll for reconnects
-    reconnectThread = std::shared_ptr< std::thread > ( new std::thread ( &ClientConnection::pollReconnect, this ) );
-  }
+  // Close the socket
+  Connection::closeSocket ( );
+  // Spin up a thread to poll for reconnects
+  reconnectThread = std::shared_ptr< std::thread > ( new std::thread ( &ClientConnection::pollReconnect, this ) );
+}
+
+ssize_t ClientConnection::read ( void* buf, size_t count ) {
+  lock_guard< std::mutex > guard ( reconnectMutex );
+  return Connection::read(buf, count);
+}
+ssize_t ClientConnection::write ( const void* buf, size_t count ) {
+  lock_guard< std::mutex > guard ( reconnectMutex );
+  return Connection::write(buf, count);
 }
 
 void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
-    LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
-    int newSocketFd = socketHandler->connect(hostname, port);
-    if (newSocketFd != -1) {
-      et::ConnectRequest request;
-      request.set_clientid(clientId);
-      socketHandler->writeProto(newSocketFd, request);
+    {
+      lock_guard< std::mutex > guard ( reconnectMutex );
+      LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
+      int newSocketFd = socketHandler->connect(hostname, port);
+      if (newSocketFd != -1) {
+        et::ConnectRequest request;
+        request.set_clientid(clientId);
+        socketHandler->writeProto(newSocketFd, request);
 
-      recover ( newSocketFd );
-    } else {
+        recover ( newSocketFd );
+      }
+    }
+
+    if (socketFd == -1) {
       VLOG ( 1 ) << "Waiting to retry...";
       sleep ( 1 );
     }

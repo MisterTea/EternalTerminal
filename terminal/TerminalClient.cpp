@@ -185,14 +185,16 @@ int main(int argc, char** argv) {
       }
 
     } catch (const runtime_error &re) {
-      cout << "Error: " << re.what() << endl;
+      LOG(ERROR) << "Error: " << re.what() << endl;
       run = false;
     }
+
+    usleep(1000);
   }
 
   tcsetattr(0,TCSANOW,&terminal_backup);
   globalClient.reset();
   client.reset();
-  cout << "Client derefernced" << endl;
+  LOG(INFO) << "Client derefernced" << endl;
   return 0;
 }

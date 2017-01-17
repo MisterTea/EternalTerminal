@@ -25,6 +25,9 @@ ssize_t BackedReader::read ( void* buf, size_t count ) {
   if ( socketFd < 0 ) {
     // The socket is dead, return 0 bytes until it returns
     VLOG ( 1 ) << "Tried to read from a dead socket";
+
+    // Sleep for a second
+    sleep(1);
     return 0;
   }
 
@@ -35,6 +38,7 @@ ssize_t BackedReader::read ( void* buf, size_t count ) {
     memcpy ( buf, &localBuffer[ 0 ], bytesToCopy );
     localBuffer = localBuffer.substr ( bytesToCopy );  // TODO: Optimize
     cryptoHandler->decryptInPlace ( ( char* ) buf, bytesToCopy );
+    VLOG(1) << "New local buffer size: " << localBuffer.length();
     return bytesToCopy;
   }
 

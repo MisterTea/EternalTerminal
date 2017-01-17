@@ -30,14 +30,25 @@ bool UnixSocketHandler::hasData ( int fd ) {
 }
 
 ssize_t UnixSocketHandler::read ( int fd, void *buf, size_t count ) {
+  if (fd <= 0) {
+    LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
+  }
   ssize_t readBytes = ::read ( fd, buf, count );
   if ( readBytes == 0 ) {
     throw runtime_error ( "Remote host closed connection" );
   }
+  if (readBytes < 0) {
+    LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno) << endl;
+  }
   return readBytes;
 }
 
-ssize_t UnixSocketHandler::write ( int fd, const void *buf, size_t count ) { return ::write ( fd, buf, count ); }
+ssize_t UnixSocketHandler::write ( int fd, const void *buf, size_t count ) {
+  if (fd <= 0) {
+    LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
+  }
+  return ::write ( fd, buf, count );
+}
 
 int UnixSocketHandler::connect ( const std::string &hostname, int port ) {
   int sockfd = -1;
@@ -70,12 +81,12 @@ int UnixSocketHandler::connect ( const std::string &hostname, int port ) {
 
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
       LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno << " " << strerror(errno);
-      close(sockfd);
+      ::close(sockfd);
       sockfd = -1;
       continue;
     }
 
-    LOG(INFO) << "Connected to server: " << p->ai_canonname;
+    LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd " << sockfd;
     break; // if we get here, we must have connected successfully
   }
 
@@ -184,6 +195,9 @@ void UnixSocketHandler::stopListening ( ) {
 }
 
 void UnixSocketHandler::close ( int fd ) {
+  if (fd == -1) {
+    return;
+  }
   VLOG ( 1 ) << "Shutting down connection: " << fd << endl;
   int rc = ::shutdown ( fd, SHUT_RDWR );
   if ( rc == -1 ) {

@@ -20,6 +20,7 @@ ssize_t FakeSocketHandler::read ( int fd, void* buf, size_t count ) {
   time_t timeout = time ( NULL ) + FAKE_READ_TIMEOUT;
   while ( true ) {
     if ( time ( NULL ) > timeout ) {
+      LOG(ERROR) << "Timeout during read " << fd;
       errno = ECONNRESET;
       return -1;
     }
@@ -29,6 +30,7 @@ ssize_t FakeSocketHandler::read ( int fd, void* buf, size_t count ) {
       std::lock_guard< std::mutex > guard ( handlerMutex );
       if ( closedFds.find ( fd ) != closedFds.end ( ) ) {
         // Socket was closed by force, this is a goner
+        LOG(INFO) << "Trying to read from closed socket";
         errno = ECONNRESET;
         return -1;
       }

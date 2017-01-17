@@ -14,11 +14,11 @@ class Connection {
 
   virtual ~Connection ( );
 
-  ssize_t read ( void* buf, size_t count );
-  ssize_t readAll ( void* buf, size_t count );
+  virtual ssize_t read ( void* buf, size_t count );
+  virtual ssize_t readAll ( void* buf, size_t count );
 
-  ssize_t write ( const void* buf, size_t count );
-  void writeAll ( const void* buf, size_t count );
+  virtual ssize_t write ( const void* buf, size_t count );
+  virtual void writeAll ( const void* buf, size_t count );
 
   template<typename T> inline T readProto() {
     T t;
