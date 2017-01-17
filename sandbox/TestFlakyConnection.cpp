@@ -34,7 +34,7 @@ void runClient(
   shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
   std::array<char,4*1024> result;
   for (int a=0;a<4*1024;a++) {
-    serverClientState->write((void*)(&s[0] + a), 1);
+    serverClientState->writeAll((void*)(&s[0] + a), 1);
     client->readAll((void*)(&result[0] + a), 1);
     cout << "Finished byte " << a << endl;
   }
