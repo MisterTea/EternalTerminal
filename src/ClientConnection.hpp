@@ -10,26 +10,26 @@ extern const int NULL_CLIENT_ID;
 
 class ClientConnection : public Connection {
  public:
-  ClientConnection ( std::shared_ptr< SocketHandler > _socketHandler,  //
-                     const std::string& hostname,                      //
-                     int port,                                         //
-                     const string& key );
+  ClientConnection(std::shared_ptr<SocketHandler> _socketHandler,  //
+                   const std::string& hostname,                    //
+                   int port,                                       //
+                   const string& key);
 
-  virtual ~ClientConnection ( );
+  virtual ~ClientConnection();
 
-  virtual ssize_t read ( void* buf, size_t count );
-  virtual ssize_t write ( const void* buf, size_t count );
+  virtual ssize_t read(void* buf, size_t count);
+  virtual ssize_t write(const void* buf, size_t count);
 
-  void connect ( );
+  void connect();
 
-  virtual void closeSocket ( );
+  virtual void closeSocket();
 
-protected:
-  void pollReconnect ( );
+ protected:
+  void pollReconnect();
 
   std::string hostname;
   int port;
-  std::shared_ptr< std::thread > reconnectThread;
+  std::shared_ptr<std::thread> reconnectThread;
   mutex reconnectMutex;
 };
 }

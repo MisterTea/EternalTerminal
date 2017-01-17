@@ -15,36 +15,38 @@ enum class BackedWriterWriteState {
 
 class BackedWriter {
  public:
-  BackedWriter ( shared_ptr< SocketHandler > socketHandler, shared_ptr< CryptoHandler > cryptoHandler, int socketFd );
+  BackedWriter(shared_ptr<SocketHandler> socketHandler,
+               shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
-  BackedWriterWriteState write ( const void* buf, size_t count );
+  BackedWriterWriteState write(const void* buf, size_t count);
 
-  std::string recover ( int64_t lastValidSequenceNumber );
+  std::string recover(int64_t lastValidSequenceNumber);
 
-  void revive ( int newSocketFd );
-  void unlock ( );
+  void revive(int newSocketFd);
+  void unlock();
 
-  inline int getSocketFd ( ) { return socketFd; }
+  inline int getSocketFd() { return socketFd; }
 
   inline void invalidateSocket() {
     lock_guard<std::mutex> guard(recoverMutex);
     socketFd = -1;
   }
 
-  inline int64_t getSequenceNumber ( ) { return sequenceNumber; }
+  inline int64_t getSequenceNumber() { return sequenceNumber; }
 
  protected:
   static const int BUFFER_CHUNK_SIZE = 64 * 1024;
 
-  void backupBuffer ( const void* buf, size_t count );
+  void backupBuffer(const void* buf, size_t count);
 
   mutex recoverMutex;
-  shared_ptr< SocketHandler > socketHandler;
-  shared_ptr< CryptoHandler > cryptoHandler;
+  shared_ptr<SocketHandler> socketHandler;
+  shared_ptr<CryptoHandler> cryptoHandler;
   int socketFd;
 
-  // TODO: Change std::string -> std::array with length, this way it's preallocated
-  boost::circular_buffer< std::string > immediateBackup;
+  // TODO: Change std::string -> std::array with length, this way it's
+  // preallocated
+  boost::circular_buffer<std::string> immediateBackup;
   // std::vector<std::string> longTermBackup; // Not implemented yet
   int64_t sequenceNumber;
 };

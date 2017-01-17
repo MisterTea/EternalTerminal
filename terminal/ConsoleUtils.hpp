@@ -4,9 +4,9 @@
 #include "Headers.hpp"
 
 namespace et {
-string commandToString ( const char* cmd );
+string commandToString(const char* cmd);
 
-std::string getTerminal ( );
+std::string getTerminal();
 }
 
 #endif  // __ETERNAL_TCP_CONSOLE_UTILS__

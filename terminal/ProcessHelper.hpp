@@ -4,9 +4,9 @@
 #include "Headers.hpp"
 
 class ProcessHelper {
-public:
+ public:
   static void initChildProcess();
   static void daemonize();
 };
 
-#endif // __ETERNAL_TCP_PROCESS_HELPER__
+#endif  // __ETERNAL_TCP_PROCESS_HELPER__

@@ -6,7 +6,7 @@
 
 using namespace et;
 
-TEST ( A, B ) { SUCCEED ( ); }
+TEST(A, B) { SUCCEED(); }
 
 TEST(CryptoHandler, DoesEncryptDecrypt) {
   string key = "12345678901234567890123456789012";
@@ -39,7 +39,7 @@ TEST(CryptoHandler, DoesEncryptDecryptStreaming) {
   string originalMessage = message;
   encryptHandler->encryptInPlace(&message[0], message.length());
   EXPECT_NE(originalMessage, message);
-  for (int a=0;a<message.length();a++) {
+  for (int a = 0; a < message.length(); a++) {
     decryptHandler->decryptInPlace(&message[a], 1);
   }
   EXPECT_EQ(originalMessage, message);
@@ -51,7 +51,7 @@ TEST(CryptoHandler, DoesEncryptStreamingDecrypt) {
   shared_ptr<CryptoHandler> decryptHandler(new CryptoHandler(key));
   string message = "ET Phone Home";
   string originalMessage = message;
-  for (int a=0;a<message.length();a++) {
+  for (int a = 0; a < message.length(); a++) {
     decryptHandler->encryptInPlace(&message[a], 1);
   }
   EXPECT_NE(originalMessage, message);
@@ -59,11 +59,10 @@ TEST(CryptoHandler, DoesEncryptStreamingDecrypt) {
   EXPECT_EQ(originalMessage, message);
 }
 
-
-int main ( int argc, char **argv ) {
+int main(int argc, char **argv) {
   srand(1);
   google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
-  testing::InitGoogleTest ( &argc, argv );
-  return RUN_ALL_TESTS ( );
+  testing::InitGoogleTest(&argc, argv);
+  return RUN_ALL_TESTS();
 }

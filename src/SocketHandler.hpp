@@ -6,14 +6,15 @@
 namespace et {
 class SocketHandler {
  public:
-  virtual bool hasData ( int fd ) = 0;
-  virtual ssize_t read ( int fd, void* buf, size_t count ) = 0;
-  virtual ssize_t write ( int fd, const void* buf, size_t count ) = 0;
+  virtual bool hasData(int fd) = 0;
+  virtual ssize_t read(int fd, void* buf, size_t count) = 0;
+  virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
 
   void readAll(int fd, void* buf, size_t count);
   void writeAll(int fd, const void* buf, size_t count);
 
-  template<typename T> inline T readProto(int fd) {
+  template <typename T>
+  inline T readProto(int fd) {
     T t;
     int64_t length;
     readAll(fd, &length, sizeof(int64_t));
@@ -23,7 +24,8 @@ class SocketHandler {
     return t;
   }
 
-  template<typename T> inline void writeProto(int fd, const T& t) {
+  template <typename T>
+  inline void writeProto(int fd, const T& t) {
     string s;
     t.SerializeToString(&s);
     int64_t length = s.length();
@@ -31,10 +33,10 @@ class SocketHandler {
     writeAll(fd, &s[0], length);
   }
 
-  virtual int connect ( const std::string& hostname, int port ) = 0;
-  virtual int listen ( int port ) = 0;
-  virtual void stopListening ( ) = 0;
-  virtual void close ( int fd ) = 0;
+  virtual int connect(const std::string& hostname, int port) = 0;
+  virtual int listen(int port) = 0;
+  virtual void stopListening() = 0;
+  virtual void close(int fd) = 0;
 };
 }
 

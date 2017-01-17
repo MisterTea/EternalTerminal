@@ -1,24 +1,20 @@
-#include "Headers.hpp"
 #include "ClientConnection.hpp"
-#include "ServerConnection.hpp"
 #include "FakeSocketHandler.hpp"
+#include "Headers.hpp"
+#include "ServerConnection.hpp"
 
 using namespace et;
-ServerConnection *globalServer;
+ServerConnection* globalServer;
 
-void runServer(
-  std::shared_ptr<ServerConnection> server) {
-  server->run();
-}
+void runServer(std::shared_ptr<ServerConnection> server) { server->run(); }
 
-void runClient(
-  std::shared_ptr<FakeSocketHandler> clientSocket,
-  std::array<char,4*1024> s
-  ) {
+void runClient(std::shared_ptr<FakeSocketHandler> clientSocket,
+               std::array<char, 4 * 1024> s) {
   printf("Creating client\n");
-  shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-    new ClientConnection(clientSocket, "localhost", 1000, "12345678901234567890123456789012"));
-  while(true) {
+  shared_ptr<ClientConnection> client =
+      shared_ptr<ClientConnection>(new ClientConnection(
+          clientSocket, "localhost", 1000, "12345678901234567890123456789012"));
+  while (true) {
     try {
       client->connect();
     } catch (const runtime_error& err) {
@@ -31,9 +27,10 @@ void runClient(
 
   printf("Creating server-client state\n");
   int clientId = client->getClientId();
-  shared_ptr<ServerClientConnection> serverClientState = globalServer->getClient(clientId);
-  std::array<char,4*1024> result;
-  for (int a=0;a<4*1024;a++) {
+  shared_ptr<ServerClientConnection> serverClientState =
+      globalServer->getClient(clientId);
+  std::array<char, 4 * 1024> result;
+  for (int a = 0; a < 4 * 1024; a++) {
     serverClientState->write((void*)(&s[0] + a), 1);
     client->readAll((void*)(&result[0] + a), 1);
     cout << "Finished byte " << a << endl;
@@ -46,7 +43,7 @@ void runClient(
 
   std::string sString(s.begin(), s.end());
   std::string resultString(result.begin(), result.end());
-  printf("%s != %s",sString.c_str(),resultString.c_str());
+  printf("%s != %s", sString.c_str(), resultString.c_str());
   exit(1);
 }
 
@@ -56,24 +53,25 @@ int main(int argc, char** argv) {
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
-  std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler(serverSocket));
+  std::shared_ptr<FakeSocketHandler> clientSocket(
+      new FakeSocketHandler(serverSocket));
   serverSocket->setRemoteHandler(clientSocket);
 
-  std::array<char,4*1024> s;
-  for (int a=0;a<4*1024 - 1;a++) {
-    s[a] = rand()%26 + 'A';
+  std::array<char, 4 * 1024> s;
+  for (int a = 0; a < 4 * 1024 - 1; a++) {
+    s[a] = rand() % 26 + 'A';
   }
-  s[4*1024 - 1] = 0;
+  s[4 * 1024 - 1] = 0;
 
   printf("Creating server\n");
-  shared_ptr<ServerConnection> server = shared_ptr<ServerConnection>(
-    new ServerConnection(serverSocket, 1000, NULL, "12345678901234567890123456789012"));
+  shared_ptr<ServerConnection> server =
+      shared_ptr<ServerConnection>(new ServerConnection(
+          serverSocket, 1000, NULL, "12345678901234567890123456789012"));
   globalServer = server.get();
 
   thread serverThread(runServer, server);
   thread clientThread(runClient, clientSocket, s);
   printf("Init complete!\n");
-
 
   clientThread.join();
   cout << "CLOSING SERVER\n";

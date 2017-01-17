@@ -8,14 +8,15 @@
 namespace et {
 class ServerClientConnection : public Connection {
  public:
-  explicit ServerClientConnection ( const std::shared_ptr< SocketHandler >& _socketHandler,  //
-                                    int _clientId,                                           //
-                                    int _socketFd,                                           //
-                                    const string& key );
+  explicit ServerClientConnection(
+      const std::shared_ptr<SocketHandler>& _socketHandler,  //
+      int _clientId,                                         //
+      int _socketFd,                                         //
+      const string& key);
 
-  ~ServerClientConnection ( ) { closeSocket ( ); }
+  ~ServerClientConnection() { closeSocket(); }
 
-  bool recoverClient ( int newSocketFd );
+  bool recoverClient(int newSocketFd);
 
  protected:
 };

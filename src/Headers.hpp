@@ -14,13 +14,13 @@
 #include <algorithm>
 #include <array>
 #include <exception>
-#include <iostream>
 #include <fstream>
-#include <sstream>
-#include <streambuf>
+#include <iostream>
 #include <memory>
 #include <mutex>
 #include <sstream>
+#include <sstream>
+#include <streambuf>
 #include <string>
 #include <thread>
 #include <unordered_map>
@@ -38,10 +38,10 @@
 using namespace std;
 
 namespace et {
-void equalOrFatal ( ssize_t expected, ssize_t actual );
+void equalOrFatal(ssize_t expected, ssize_t actual);
 }
 
-#define FATAL_FAIL( X ) \
-  if ( ( X == -1 ) ) LOG ( FATAL ) << "Error: (" << errno << "): " << strerror ( errno );
+#define FATAL_FAIL(X) \
+  if ((X == -1)) LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
 #endif
