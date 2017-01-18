@@ -80,6 +80,19 @@ int main(int argc, char** argv) {
   cfmakeraw(&terminal_local);
   tcsetattr(0, TCSANOW, &terminal_local);
 
+  char* term = getenv("TERM");
+  if (term) {
+    LOG(INFO) << "Sending command to set terminal to " << term;
+    // Set terminal
+    string s = std::string("export TERM=") + std::string(term) + std::string("\n");
+    et::TerminalBuffer tb;
+    tb.set_buffer(s);
+
+    char c = et::PacketType::TERMINAL_BUFFER;
+    globalClient->writeAll(&c, 1);
+    globalClient->writeProto(tb);
+  }
+
   // Whether the TE should keep running.
   bool run = true;
 
@@ -172,8 +185,8 @@ int main(int argc, char** argv) {
           win.ws_xpixel != tmpwin.ws_xpixel ||
           win.ws_ypixel != tmpwin.ws_ypixel) {
         win = tmpwin;
-        cout << "Window size changed: " << win.ws_row << " " << win.ws_col
-             << " " << win.ws_xpixel << " " << win.ws_ypixel << endl;
+        LOG(INFO) << "Window size changed: " << win.ws_row << " " << win.ws_col
+                  << " " << win.ws_xpixel << " " << win.ws_ypixel << endl;
         TerminalInfo ti;
         ti.set_rows(win.ws_row);
         ti.set_columns(win.ws_col);
