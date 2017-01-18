@@ -177,10 +177,6 @@ ${COREFOUNDATION_LIBRARY}
 util
 )
 
-install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
-#install(TARGETS ETClient ETServer DESTINATION bin)
-install(FILES src/BackedWriter.hpp DESTINATION include/etcp)
-#install(FILES launcher/ET DESTINATION bin)
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
@@ -188,7 +184,6 @@ if(BUILD_TEST) # Build unit tests.
   add_subdirectory(sandbox)
   add_subdirectory(test)
 endif()
-
 
 if(BUILD_PACKAGE)
   message(STATUS "Building Package for ${PROJECT_NAME}")
@@ -219,11 +214,8 @@ if(BUILD_PACKAGE)
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jason G")
-    install (TARGETS ETServer
-      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
-      DESTINATION "bin"
-      )
-    install (TARGETS ETClient
+
+    install (TARGETS ETServer ETClient
       PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
       DESTINATION "bin"
       )
