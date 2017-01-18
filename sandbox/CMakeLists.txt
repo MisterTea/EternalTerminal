@@ -9,6 +9,7 @@ set (SANDBOX_SRC
   TestFakeSocketHandler.cpp
   TestConnection.cpp
   TestFlakyConnection.cpp
+  TestNCurses.cpp
   )
 # Add test executable target
 foreach(SRC_LINE ${SANDBOX_SRC})
@@ -18,7 +19,9 @@ foreach(SRC_LINE ${SANDBOX_SRC})
   target_link_libraries(
     ${FILE_LINE}
     LINK_PUBLIC
+    TerminalCommon
     ${PROJECT_NAME}-static
+    ${CURSES_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
     gcrypt

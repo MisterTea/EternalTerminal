@@ -13,8 +13,8 @@ message TerminalBuffer {
 
 message TerminalInfo {
   string id=1;
-  int32 rows = 2;
-  int32 columns = 3;
+  int32 row = 2;
+  int32 column = 3;
   int32 width = 4;
   int32 height = 5;
 }
