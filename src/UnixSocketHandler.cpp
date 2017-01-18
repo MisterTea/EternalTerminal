@@ -147,11 +147,16 @@ int UnixSocketHandler::listen(int port) {
       }
 
       if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-        LOG(INFO) << "Error binding " << p->ai_family << "/" << p->ai_socktype
-                  << "/" << p->ai_protocol << ": " << errno << " "
-                  << strerror(errno);
-        close(sockfd);
-        continue;
+        // This most often happens because the port is in use.
+        LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
+                   << "/" << p->ai_protocol << ": " << errno << " "
+                   << strerror(errno);
+        cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype
+             << "/" << p->ai_protocol << ": " << errno << " "
+             << strerror(errno) << flush;
+        exit(1);
+        // close(sockfd);
+        // continue;
       }
 
       // Listen
