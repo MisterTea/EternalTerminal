@@ -136,6 +136,12 @@ int UnixSocketHandler::listen(int port) {
         opts |= O_NONBLOCK;
         FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
       }
+      // Also set the accept socket as reusable
+      {
+        int flag = 1;
+        FATAL_FAIL(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
+                              sizeof(int)));
+      }
 
       if (p->ai_family == AF_INET6) {
         // Also ensure that IPV6 sockets only listen on IPV6
@@ -151,9 +157,9 @@ int UnixSocketHandler::listen(int port) {
         LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
                    << "/" << p->ai_protocol << ": " << errno << " "
                    << strerror(errno);
-        cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype
-             << "/" << p->ai_protocol << ": " << errno << " "
-             << strerror(errno) << flush;
+        cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
+             << p->ai_protocol << ": " << errno << " " << strerror(errno)
+             << flush;
         exit(1);
         // close(sockfd);
         // continue;
