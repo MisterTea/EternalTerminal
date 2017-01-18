@@ -188,8 +188,8 @@ int main(int argc, char** argv) {
         LOG(INFO) << "Window size changed: " << win.ws_row << " " << win.ws_col
                   << " " << win.ws_xpixel << " " << win.ws_ypixel << endl;
         TerminalInfo ti;
-        ti.set_rows(win.ws_row);
-        ti.set_columns(win.ws_col);
+        ti.set_row(win.ws_row);
+        ti.set_column(win.ws_col);
         ti.set_width(win.ws_xpixel);
         ti.set_height(win.ws_ypixel);
         char c = et::PacketType::TERMINAL_INFO;

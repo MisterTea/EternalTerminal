@@ -144,8 +144,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
                 et::TerminalInfo ti =
                     serverClientState->readProto<et::TerminalInfo>();
                 winsize tmpwin;
-                tmpwin.ws_row = ti.rows();
-                tmpwin.ws_col = ti.columns();
+                tmpwin.ws_row = ti.row();
+                tmpwin.ws_col = ti.column();
                 tmpwin.ws_xpixel = ti.width();
                 tmpwin.ws_ypixel = ti.height();
                 ioctl(masterfd, TIOCSWINSZ, &tmpwin);
