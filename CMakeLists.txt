@@ -2,6 +2,12 @@ cmake_minimum_required (VERSION 2.8.12)
 project (EternalTCP)
 
 option(BUILD_TEST "Build all unit test" OFF) # {boolean} Turn on or off unit tests (defaults to off/false).
+option(BUILD_PACKAGE "Builds the package" OFF) 
+
+
+set (${PROJECT_NAME}_VERSION_MAJOR 0)
+set (${PROJECT_NAME}_VERSION_MINOR 0)
+set (${PROJECT_NAME}_VERSION_PATCH 0)
 
 IF(BUILD_TEST)
   add_subdirectory(${CMAKE_SOURCE_DIR}/cmake/external/googletest)
@@ -163,9 +169,9 @@ util
 )
 
 install(TARGETS ${PROJECT_NAME}-static DESTINATION lib)
-install(TARGETS ETClient ETServer DESTINATION bin)
+#install(TARGETS ETClient ETServer DESTINATION bin)
 install(FILES src/BackedWriter.hpp DESTINATION include/etcp)
-install(FILES launcher/ET DESTINATION bin)
+#install(FILES launcher/ET DESTINATION bin)
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
@@ -173,3 +179,57 @@ if(BUILD_TEST) # Build unit tests.
   add_subdirectory(sandbox)
   add_subdirectory(test)
 endif()
+
+
+if(BUILD_PACKAGE)
+  message(STATUS "Building Package for ${PROJECT_NAME}")
+
+  set(CPACK_PACKAGE_NAME ${PROJECT_NAME})
+  set(CPACK_PACKAGE_VERSION_MAJOR ${${PROJECT_NAME}_VERSION_MAJOR}) 
+  set(CPACK_PACKAGE_VERSION_MINOR ${${PROJECT_NAME}_VERSION_MINOR}) 
+  set(CPACK_PACKAGE_VERSION_PATCH ${${PROJECT_NAME}_VERSION_PATCH})
+
+  set(CPACK_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION_MAJOR}.${CPACK_PACKAGE_VERSION_MINOR}.${CPACK_PACKAGE_VERSION_PATCH}")
+  set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-${CPACK_PACKAGE_VERSION}")  
+  set(CPACK_PACKAGE_VENDOR "Add Vendor") 
+  set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Add Summary") 
+  set(CPACK_PACKAGE_DESCRIPTION "Add a longer description") 
+  set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md") 
+  if(WIN32 AND NOT UNIX) 
+    # for windows 
+  elseif(APPLE) 
+    # for mac
+  else() 
+    set(CPACK_GENERATOR "DEB") 
+    # Strip files currently does not work, may be related to install TARGET
+    set(CPACK_SOURCE_STRIP_FILES "")
+    set(CPACK_STRIP_FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}")
+    set(CPACK_PACKAGING_INSTALL_PREFIX "/usr/")
+    set(CPACK_DEBIAN_PACKAGE_SECTION "bin")
+    # This will resolve dependencies automatically
+    set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
+
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jason G")
+    install (TARGETS ETServer 
+      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
+      DESTINATION "bin"
+      )
+    install (TARGETS ETClient
+      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
+      DESTINATION "bin"
+      )
+
+    install(FILES launcher/ET 
+      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
+      DESTINATION "bin")
+    
+    #To build and verify  
+    #cpack && lintian -c EternalTCP-#.#.#-Linux.deb 
+  endif()
+
+  include(CPack)
+
+endif()
+
+
+

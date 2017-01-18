@@ -18,3 +18,14 @@ sudo apt install libgoogle-glog-dev libgflags-dev
   cmake ../ -DBUILD_TEST=1
   make
   ```
+
+### Build Package
+  To build a package 
+
+  ```
+  cd build/
+  cmake ../ -DBUILD_PACKAGE=1
+  make
+  cpack
+  ```
+
