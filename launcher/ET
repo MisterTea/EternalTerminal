@@ -1,23 +1,88 @@
 #!/bin/bash
 
-SSH_COMMAND=$1
-HOSTNAME=$2
-PORT=$3
+PORT="2022"
+USER=${USER}
+ET_COMMAND=""
+SSH_COMMAND=""
+LOG_DIR="/tmp"
+
+for i in "$@"
+do
+case $i in
+    -s=*|--ssh=*)
+    SSH_COMMAND="${i#*=}"
+    shift
+    ;;
+    -p=*|--port=*)
+    PORT="${i#*=}"
+    shift
+    ;;
+    -u=*|--user=*)
+    USER="${i#*=}"
+    shift
+    ;;
+    -l=*|--logdir=*)
+    LOG_DIR="${i#*=}"
+    shift
+    ;;
+    *)
+    ET_COMMAND="${i}"
+    ;;
+esac
+done
+
+ET_COMMAND_REGEX="^(([0-9a-zA-z]+)@)?([^\/:?@#]+)(:([0-9]+))?$"
+
+if [[ $ET_COMMAND =~ $ET_COMMAND_REGEX ]]; then
+    ET_USER="${BASH_REMATCH[2]}"
+    ET_HOSTNAME="${BASH_REMATCH[3]}"
+    ET_PORT="${BASH_REMATCH[5]}"
+    if [[ -n "$ET_USER" ]]; then
+        USER=$ET_USER
+    fi
+    if [[ -n "$ET_HOSTNAME" ]]; then
+        HOSTNAME=$ET_HOSTNAME
+    fi
+    if [[ -n "$ET_PORT" ]]; then
+        PORT=$ET_PORT
+    fi
+else
+    echo "Usage: ET (options) [user@]hostname[:port]"
+    exit 1
+fi
+
+if [[ -z "$SSH_COMMAND" ]]; then
+    # Assume we want to bring the user into the ssh command but not
+    # the port.
+    SSH_COMMAND=${USER}@${HOSTNAME}
+fi
+
 SERVER_BINARY="ETServer"
 CLIENT_BINARY="ETClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 SSH_PASSWORD_COMMAND="
-killall ETServer ;
-export TMPFILE=\$(mktemp /tmp/et.XXXXXX) &&
-export PASSWD=\`$PASSWORD_GENERATOR\` &&
-echo \$PASSWD > \$TMPFILE &&
-echo PASSWORD:\$PASSWD &&
-$SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT --daemon=true
+ET_SERVER_COMMANDS=\`ps xwwo pid,command | grep ETServer\`
+while read -r line; do
+    PORT_REGEX=\"--port=([0-9]+)\"
+    if [[ \$line =~ \$PORT_REGEX ]]; then
+        SERVER_PORT=\"\${BASH_REMATCH[1]}\"
+        if [[ $PORT == \"\$SERVER_PORT\" ]]; then
+            echo \"Killing stale server.  Please wait 5 seconds...\"
+            echo \"\$line\" | cut -d' ' -f1 | xargs kill -9
+            sleep 3
+        fi
+    fi
+done <<< \"\$ET_SERVER_COMMANDS\"
+export TMPFILE=\$(mktemp /tmp/et.XXXXXX)
+export PASSWD=\`$PASSWORD_GENERATOR\`
+echo \$PASSWD > \$TMPFILE
+nohup $SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT --daemon=false > /tmp/et_err 2>&1 &
+echo PASSWORD:\$PASSWD
 "
-PASSWD=`echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2`
+PASSWD=$(echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
 
 TMPFILE=$(mktemp /tmp/et.XXXXXX)
-echo $PASSWD > $TMPFILE
+echo "$PASSWD" > "$TMPFILE"
 
-$CLIENT_BINARY --passkeyfile=$TMPFILE --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir=$PWD 2>> /tmp/et_err
+$CLIENT_BINARY --passkeyfile="$TMPFILE" --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
