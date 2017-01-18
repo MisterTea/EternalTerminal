@@ -101,7 +101,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             // Read from fake terminal and write to server
             memset(b, 0, BUF_SIZE);
             int rc = read(masterfd, b, BUF_SIZE);
-            FAIL_FATAL(rc);
             if (rc > 0) {
               // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
               // << serverClientState->getWriter()->getSequenceNumber();
@@ -111,13 +110,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               et::TerminalBuffer tb;
               tb.set_buffer(s);
               serverClientState->writeProto(tb);
-            } else if (rc == 0) {
+            } else {
               LOG(INFO) << "Terminal session ended";
               run = false;
               globalServer->removeClient(serverClientState);
               break;
-            } else {
-              LOG(FATAL) << "This shouldn't happen\n";
             }
           }
 
