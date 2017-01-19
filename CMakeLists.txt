@@ -15,11 +15,8 @@ ENDIF(BUILD_TEST)
 
 # Enable C++-11
 if(UNIX)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 endif()
-
-# Include external directories.
-#add_subdirectory(${CMAKE_SOURCE_DIR}/cmake)
 
 # Add cmake script directory.
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -40,43 +37,43 @@ SET( CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${LIBGCRYPT_LIBRARIES}" 
 
 # Apple specific packages
 IF (APPLE)
-   FIND_LIBRARY(COREFOUNDATION_LIBRARY CoreFoundation)
+  FIND_LIBRARY(COREFOUNDATION_LIBRARY CoreFoundation)
 ELSE (APPLE)
-   SET(COREFOUNDATION_LIBRARY "")
+  SET(COREFOUNDATION_LIBRARY "")
 ENDIF (APPLE)
 
 PROTOBUF_GENERATE_CPP(
-ET_SRCS
-ET_HDRS
+  ET_SRCS
+  ET_HDRS
 
-proto/ET.proto
-)
+  proto/ET.proto
+  )
 
 include_directories(
-src
-terminal
-${PROTOBUF_INCLUDE_DIRS}
-${CMAKE_CURRENT_BINARY_DIR}
-${CURSES_INCLUDE_DIR}
-)
+  src
+  terminal
+  ${PROTOBUF_INCLUDE_DIRS}
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CURSES_INCLUDE_DIR}
+  )
 
 set(${PROJECT_NAME}_SRC
 
-src/BackedReader.cpp
-src/BackedWriter.cpp
-src/ClientConnection.cpp
-src/Connection.cpp
-src/CryptoHandler.cpp
-src/FakeSocketHandler.cpp
-src/FlakyFakeSocketHandler.cpp
-src/Headers.cpp
-src/ServerClientConnection.cpp
-src/ServerConnection.cpp
-src/SocketHandler.cpp
-src/UnixSocketHandler.cpp
+  src/BackedReader.cpp
+  src/BackedWriter.cpp
+  src/ClientConnection.cpp
+  src/Connection.cpp
+  src/CryptoHandler.cpp
+  src/FakeSocketHandler.cpp
+  src/FlakyFakeSocketHandler.cpp
+  src/Headers.cpp
+  src/ServerClientConnection.cpp
+  src/ServerConnection.cpp
+  src/SocketHandler.cpp
+  src/UnixSocketHandler.cpp
 
-${ET_SRCS} ${ET_HDRS}
-)
+  ${ET_SRCS} ${ET_HDRS}
+  )
 
 # Build the static library.
 add_library(${PROJECT_NAME}-static STATIC ${${PROJECT_NAME}_SRC})
@@ -92,90 +89,90 @@ target_link_libraries(
 target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
 
 PROTOBUF_GENERATE_CPP(
-ETERMINAL_SRCS
-ETERMINAL_HDRS
+  ETERMINAL_SRCS
+  ETERMINAL_HDRS
 
-proto/ETerminal.proto
-)
+  proto/ETerminal.proto
+  )
 
 add_library(
-TerminalCommon
-STATIC
+  TerminalCommon
+  STATIC
 
-terminal/ConsoleUtils.cpp
-terminal/NCursesOverlay.cpp
-terminal/ProcessHelper.cpp
-terminal/SocketUtils.cpp
+  terminal/ConsoleUtils.cpp
+  terminal/NCursesOverlay.cpp
+  terminal/ProcessHelper.cpp
+  terminal/SocketUtils.cpp
 
-${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
-)
+  ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
+  )
 add_dependencies(TerminalCommon EternalTCP-static)
 
 add_executable (Terminal terminal/Terminal.cpp)
 target_link_libraries (
-Terminal
-LINK_PUBLIC
-TerminalCommon
-EternalTCP-static
-${CMAKE_THREAD_LIBS_INIT}
-${PROTOBUF_LIBRARIES}
-${GLOG_LIBRARY}
-gflags
-${LIBGCRYPT_LIBRARIES}
-${COREFOUNDATION_LIBRARY}
-util
-)
+  Terminal
+  LINK_PUBLIC
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARY}
+  gflags
+  ${LIBGCRYPT_LIBRARIES}
+  ${COREFOUNDATION_LIBRARY}
+  util
+  )
 
 add_executable (FlakyTerminal terminal/FlakyTerminal.cpp)
 target_link_libraries (
-FlakyTerminal
-LINK_PUBLIC
-TerminalCommon
-EternalTCP-static
-${CMAKE_THREAD_LIBS_INIT}
-${PROTOBUF_LIBRARIES}
-${GLOG_LIBRARY}
-gflags
-${LIBGCRYPT_LIBRARIES}
-${COREFOUNDATION_LIBRARY}
-util
-)
+  FlakyTerminal
+  LINK_PUBLIC
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARY}
+  gflags
+  ${LIBGCRYPT_LIBRARIES}
+  ${COREFOUNDATION_LIBRARY}
+  util
+  )
 
 add_executable (ETServer terminal/TerminalServer.cpp)
 target_link_libraries (
-ETServer
-LINK_PUBLIC
-TerminalCommon
-EternalTCP-static
-${CMAKE_THREAD_LIBS_INIT}
-${PROTOBUF_LIBRARIES}
-${PROTOBUF_LIBRARIES}
-${GLOG_LIBRARY}
-gflags
-${LIBGCRYPT_LIBRARIES}
-${COREFOUNDATION_LIBRARY}
-util
-)
+  ETServer
+  LINK_PUBLIC
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARY}
+  gflags
+  ${LIBGCRYPT_LIBRARIES}
+  ${COREFOUNDATION_LIBRARY}
+  util
+  )
 
 add_executable (
-ETClient
-terminal/TerminalClient.cpp
-)
+  ETClient
+  terminal/TerminalClient.cpp
+  )
 target_link_libraries (
-ETClient
-LINK_PUBLIC
-TerminalCommon
-EternalTCP-static
-${CURSES_LIBRARIES}
-${CMAKE_THREAD_LIBS_INIT}
-${PROTOBUF_LIBRARIES}
-${PROTOBUF_LIBRARIES}
-${GLOG_LIBRARY}
-gflags
-${LIBGCRYPT_LIBRARIES}
-${COREFOUNDATION_LIBRARY}
-util
-)
+  ETClient
+  LINK_PUBLIC
+  TerminalCommon
+  EternalTCP-static
+  ${CURSES_LIBRARIES}
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARY}
+  gflags
+  ${LIBGCRYPT_LIBRARIES}
+  ${COREFOUNDATION_LIBRARY}
+  util
+  )
 
 
 if(BUILD_TEST) # Build unit tests.
@@ -213,16 +210,7 @@ if(BUILD_PACKAGE)
     # This will resolve dependencies automatically
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
 
-    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jason G")
-
-    install (TARGETS ETServer ETClient
-      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
-      DESTINATION "bin"
-      )
-
-    install(FILES launcher/ET
-      PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
-      DESTINATION "bin")
+    set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jason Gauci")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb
@@ -231,3 +219,13 @@ if(BUILD_PACKAGE)
   include(CPack)
 
 endif()
+
+install(TARGETS ETServer ETClient
+  PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
+  DESTINATION "bin"
+  )
+
+install(FILES launcher/ET
+  PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_WRITE GROUP_READ WORLD_EXECUTE WORLD_WRITE WORLD_READ
+  DESTINATION "bin"
+  )
