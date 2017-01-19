@@ -45,6 +45,8 @@ class Connection {
 
   int getSocketFd() { return socketFd; }
 
+  bool isDisconnected() { return socketFd == -1; }
+
   int getClientId() { return clientId; }
 
   inline bool hasData() { return reader->hasData(); }

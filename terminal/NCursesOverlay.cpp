@@ -24,7 +24,8 @@ namespace et {
   }
 
   void NCursesWindow::drawTextCentered(string text, int row) {
-    mvwprintw(window, row, info.width()/2 - int(text.length())/2, "%s", text.c_str());
+    int drawcol = max(0, info.width()/2 - int(text.length())/2);
+    mvwprintw(window, row, drawcol, "%s", text.c_str());
   }
 
   void NCursesWindow::refresh() {
@@ -35,6 +36,7 @@ namespace et {
     stdIoBuffer = shared_ptr<StdIoBuffer>(new StdIoBuffer());
     initscr();
     curs_set(0);
+    refresh();
   }
 
   NCursesOverlay::~NCursesOverlay() {
@@ -44,6 +46,8 @@ namespace et {
       }
     }
     windows.clear();
+    curs_set(1);
+    ::refresh();
     endwin();
     stdIoBuffer.reset();
   }

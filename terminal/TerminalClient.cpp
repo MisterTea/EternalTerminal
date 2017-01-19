@@ -6,6 +6,7 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "NCursesOverlay.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -61,12 +62,16 @@ int main(int argc, char** argv) {
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
       new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, passkey));
   globalClient = client;
+  int connectFailCount=0;
   while (true) {
     try {
       client->connect();
     } catch (const runtime_error& err) {
-      LOG(ERROR) << "Connecting to server failed: " << err.what() << endl;
-      sleep(1);
+      LOG(ERROR) << "Connecting to server failed: " << err.what();
+      connectFailCount++;
+      if (connectFailCount == 3) {
+        LOG(FATAL) << "Could not make initial connection to server";
+      }
       continue;
     }
     break;
@@ -103,7 +108,36 @@ int main(int argc, char** argv) {
   time_t keepaliveTime = time(NULL) + 5;
   bool waitingOnKeepalive = false;
 
+  unique_ptr<NCursesOverlay> disconnectedOverlay;
+  string offlineBuffer;
   while (run) {
+#if 0 // This doesn't work with tmux and when combined with a curses
+      // app on the server side causes weird graphical glitches.
+
+    // TODO: Figure out why this causes issues.
+    if (disconnectedOverlay.get()==NULL && globalClient->isDisconnected()) {
+      disconnectedOverlay.reset(new NCursesOverlay());
+      shared_ptr<NCursesWindow> popupWindow;
+      {
+        TerminalInfo terminfo;
+        terminfo.set_id("popup");
+        terminfo.set_height(7);
+        terminfo.set_width(41);
+        terminfo.set_row(disconnectedOverlay->rows()/2 - 3);
+        terminfo.set_column(disconnectedOverlay->cols()/2 - 20);
+
+        popupWindow = disconnectedOverlay->createWindow(terminfo, true);
+        popupWindow->drawTextCentered(FLAGS_host, 1);
+        popupWindow->drawTextCentered("Connection lost.", 3);
+        popupWindow->drawTextCentered("Please wait...", 5);
+      }
+      disconnectedOverlay->refresh();
+    }
+    if (disconnectedOverlay.get() && !globalClient->isDisconnected()) {
+      disconnectedOverlay.reset(NULL);
+      FATAL_FAIL(writeAll(STDOUT_FILENO, &offlineBuffer[0], offlineBuffer.length()));
+    }
+#endif
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -154,7 +188,11 @@ int main(int argc, char** argv) {
             // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
             // globalClient->getReader()->getSequenceNumber();
             keepaliveTime = time(NULL) + 1;
-            FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+            if (disconnectedOverlay.get()) {
+              offlineBuffer += s;
+            } else {
+              FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+            }
             break;
           }
           case et::PacketType::KEEP_ALIVE:
@@ -205,6 +243,7 @@ int main(int argc, char** argv) {
     usleep(1000);
   }
 
+  disconnectedOverlay.release();
   tcsetattr(0, TCSANOW, &terminal_backup);
   globalClient.reset();
   client.reset();

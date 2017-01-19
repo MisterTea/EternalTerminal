@@ -5,6 +5,10 @@
 
 struct StdIoBuffer {
     StdIoBuffer() {
+      cout.flush();
+      cerr.flush();
+      fflush(stdout);
+      fflush(stderr);
       oldStdout = cout.rdbuf(stdoutBuffer.rdbuf());
       oldStderr = cerr.rdbuf(stderrBuffer.rdbuf());
     }
@@ -14,6 +18,8 @@ struct StdIoBuffer {
       cerr.rdbuf(oldStderr);
       cout << stdoutBuffer.str();
       cerr << stderrBuffer.str();
+      cout.flush();
+      cerr.flush();
     }
 
 private:

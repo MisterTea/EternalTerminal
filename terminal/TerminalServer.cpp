@@ -43,9 +43,9 @@ DEFINE_bool(daemon, false, "Whether the server should run as a daemon");
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
-  // TODO: Get window size from client
   struct winsize win = {0, 0, 0, 0};
   int masterfd;
+  string disconnectBuffer;
 
   std::string terminal = getTerminal();
 
