@@ -69,7 +69,7 @@ while read -r line; do
         SERVER_PORT=\"\${BASH_REMATCH[1]}\"
         if [[ $PORT == \"\$SERVER_PORT\" ]]; then
             echo \"Killing stale server.  Please wait 5 seconds...\"
-            echo \"\$line\" | cut -d' ' -f1 | xargs kill -9
+            echo \"\$line\" | cut -d' ' -f1 | xargs -I repme kill -9 -repme
             sleep 3
         fi
     fi
