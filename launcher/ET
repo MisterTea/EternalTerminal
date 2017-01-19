@@ -8,27 +8,38 @@ LOG_DIR="/tmp"
 
 for i in "$@"
 do
-case $i in
-    -s=*|--ssh=*)
-    SSH_COMMAND="${i#*=}"
-    shift
-    ;;
-    -p=*|--port=*)
-    PORT="${i#*=}"
-    shift
-    ;;
-    -u=*|--user=*)
-    USER="${i#*=}"
-    shift
-    ;;
-    -l=*|--logdir=*)
-    LOG_DIR="${i#*=}"
-    shift
-    ;;
-    *)
-    ET_COMMAND="${i}"
-    ;;
-esac
+    case $i in
+        -s=*|--ssh=*)
+            SSH_COMMAND="${i#*=}"
+            shift
+            ;;
+        -p=*|--port=*)
+            PORT="${i#*=}"
+            shift
+            ;;
+        -u=*|--user=*)
+            USER="${i#*=}"
+            shift
+            ;;
+        -l=*|--logdir=*)
+            LOG_DIR="${i#*=}"
+            shift
+            ;;
+        -h|--help)
+            echo "ET (options) [user@]hostname[:port]
+
+Options:
+-h Basic usage
+-s Special ssh command if necessary, otherwise set to user@hostname:22
+-p Port for ETServer to run on.  Don't set to the same port as ssh.  Default: 2022
+-u Username to connect to ssh & ET
+-l Directory where logs will go"
+            exit 0
+            ;;
+        *)
+            ET_COMMAND="${i}"
+            ;;
+    esac
 done
 
 ET_COMMAND_REGEX="^(([0-9a-zA-z]+)@)?([^\/:?@#]+)(:([0-9]+))?$"
