@@ -52,8 +52,11 @@ void ClientConnection::closeSocket() {
     reconnectThread->join();
     reconnectThread.reset();
   }
-  // Close the socket
-  Connection::closeSocket();
+  {
+    // Close the socket
+    lock_guard<std::mutex> guard(reconnectMutex);
+    Connection::closeSocket();
+  }
   // Spin up a thread to poll for reconnects
   reconnectThread = std::shared_ptr<std::thread>(
       new std::thread(&ClientConnection::pollReconnect, this));
