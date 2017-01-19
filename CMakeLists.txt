@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.8.12)
 project (EternalTCP)
 
-option(BUILD_TEST "Build all unit test" OFF) # {boolean} Turn on or off unit tests (defaults to off/false).
+option(BUILD_TEST "Build all unit test" ON)
 option(BUILD_PACKAGE "Builds the package" OFF)
 
 
