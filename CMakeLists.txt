@@ -5,7 +5,7 @@ option(BUILD_TEST "Build all unit test" OFF) # {boolean} Turn on or off unit tes
 option(BUILD_PACKAGE "Builds the package" OFF)
 
 
-set (${PROJECT_NAME}_VERSION_MAJOR 0)
+set (${PROJECT_NAME}_VERSION_MAJOR 1)
 set (${PROJECT_NAME}_VERSION_MINOR 0)
 set (${PROJECT_NAME}_VERSION_PATCH 0)
 
