@@ -30,7 +30,7 @@ class ClientConnection : public Connection {
   std::string hostname;
   int port;
   std::shared_ptr<std::thread> reconnectThread;
-  mutex reconnectMutex;
+  recursive_mutex reconnectMutex;
 };
 }
 
