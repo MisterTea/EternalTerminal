@@ -22,7 +22,6 @@ endif()
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Find packages
-find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(gflags REQUIRED)
@@ -50,6 +49,7 @@ PROTOBUF_GENERATE_CPP(
   )
 
 include_directories(
+  ext
   src
   terminal
   ${PROTOBUF_INCLUDE_DIRS}
