@@ -9,7 +9,6 @@ int main(int argc, char** argv) {
 
   {
     NCursesOverlay overlay;
-    overlay.refresh();
     shared_ptr<NCursesWindow> popupWindow;
     {
       TerminalInfo terminfo;
@@ -21,6 +20,7 @@ int main(int argc, char** argv) {
 
       popupWindow = overlay.createWindow(terminfo, true);
       popupWindow->drawTextCentered("Please wait, reconnecting...", 3);
+      popupWindow->drawTextCentered("Please wait, reconnecting...", 4);
     }
     overlay.refresh();
     cout << "This stdout should be delayed" << endl;
