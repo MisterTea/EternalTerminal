@@ -73,7 +73,7 @@ CLIENT_BINARY="ETClient"
 
 PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 SSH_PASSWORD_COMMAND="
-ET_SERVER_COMMANDS=\`ps xwwo pid,command | grep ETServer\`
+ET_SERVER_COMMANDS=\`ps xwwo pgid,command | grep ETServer\`
 while read -r line; do
     PORT_REGEX=\"--port=([0-9]+)\"
     if [[ \$line =~ \$PORT_REGEX ]]; then
