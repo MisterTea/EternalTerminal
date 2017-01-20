@@ -142,6 +142,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     LOG(ERROR) << "ERROR, no host found";
   }
 
+  freeaddrinfo(results);
   return sockfd;
 }
 
