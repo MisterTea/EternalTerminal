@@ -109,7 +109,9 @@ int main(int argc, char** argv) {
   bool waitingOnKeepalive = false;
 
   unique_ptr<NCursesOverlay> disconnectedOverlay;
+#if 0
   string offlineBuffer;
+#endif
   while (run) {
 #if 0 // This doesn't work with tmux and when combined with a curses
       // app on the server side causes weird graphical glitches.
@@ -188,11 +190,15 @@ int main(int argc, char** argv) {
             // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
             // globalClient->getReader()->getSequenceNumber();
             keepaliveTime = time(NULL) + 1;
+#if 0
             if (disconnectedOverlay.get()) {
               offlineBuffer += s;
             } else {
+#endif
               FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+#if 0
             }
+#endif
             break;
           }
           case et::PacketType::KEEP_ALIVE:
