@@ -108,36 +108,6 @@ add_library(
   )
 add_dependencies(TerminalCommon EternalTCP-static)
 
-add_executable (Terminal terminal/Terminal.cpp)
-target_link_libraries (
-  Terminal
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
-  ${LIBGCRYPT_LIBRARIES}
-  ${COREFOUNDATION_LIBRARY}
-  util
-  )
-
-add_executable (FlakyTerminal terminal/FlakyTerminal.cpp)
-target_link_libraries (
-  FlakyTerminal
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
-  ${LIBGCRYPT_LIBRARIES}
-  ${COREFOUNDATION_LIBRARY}
-  util
-  )
-
 add_executable (etserver terminal/TerminalServer.cpp)
 target_link_libraries (
   etserver
