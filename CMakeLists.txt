@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 2.8.12)
 project (EternalTCP)
 
-option(BUILD_TEST "Build all unit test" ON)
+option(BUILD_TEST "Build all unit test" OFF)
 option(BUILD_PACKAGE "Builds the package" OFF)
 
 
@@ -193,20 +193,19 @@ if(BUILD_PACKAGE)
   set(CPACK_PACKAGE_VENDOR "Jason Gauci")
   set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Remote shell supporting IP roaming and connection loss.")
   set(CPACK_PACKAGE_DESCRIPTION_FILE "${CMAKE_SOURCE_DIR}/README.md")
+
+  # Strip files currently does not work, may be related to install TARGET
+  set(CPACK_SOURCE_STRIP_FILES "")
+  set(CPACK_STRIP_FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}")
+
   if(WIN32 AND NOT UNIX)
     # for windows
   elseif(APPLE)
     # for mac
+    set(CPACK_PACKAGE_FILE_NAME "${CPACK_PACKAGE_NAME}-mac-${CPACK_PACKAGE_VERSION}")
+    set(CPACK_GENERATOR "TGZ")
   else()
     set(CPACK_GENERATOR "DEB" "RPM")
-    # Strip files currently does not work, may be related to install TARGET
-    set(CPACK_SOURCE_STRIP_FILES "")
-    set(CPACK_STRIP_FILES "${CMAKE_BINARY_DIR}/${PROJECT_NAME}")
-
-    # RPM-specific
-    set(CPACK_RPM_PACKAGE_NAME "et")
-    set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
-    set(CPACK_RPM_PACKAGE_REQUIRES "ncurses, libgcrypt, protobuf, gflags, glog")
 
     # Debian-specific
     set(CPACK_DEBIAN_PACKAGE_NAME "et")
@@ -215,6 +214,11 @@ if(BUILD_PACKAGE)
     # This will resolve dependencies automatically
     set(CPACK_DEBIAN_PACKAGE_SHLIBDEPS ON)
     set(CPACK_DEBIAN_PACKAGE_MAINTAINER "Jason Gauci")
+
+    # RPM-specific
+    set(CPACK_RPM_PACKAGE_NAME "et")
+    set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
+    set(CPACK_RPM_PACKAGE_REQUIRES "ncurses, libgcrypt, protobuf, gflags, glog")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb
