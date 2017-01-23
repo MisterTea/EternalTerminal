@@ -80,7 +80,7 @@ ssize_t Connection::write(const void* buf, size_t count) {
 void Connection::writeAll(const void* buf, size_t count) {
   while (!shuttingDown) {
     ssize_t bytesWritten = write(buf, count);
-    if (bytesWritten > 0 && bytesWritten != count) {
+    if (bytesWritten > 0 && bytesWritten != (ssize_t)count) {
       LOG(FATAL) << "Somehow wrote a partial stream.  This shouldn't happen";
     }
     if (bytesWritten) {

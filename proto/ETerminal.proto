@@ -1,4 +1,4 @@
-syntax = "proto3";
+syntax = "proto2";
 package et;
 
 enum PacketType {
@@ -8,13 +8,13 @@ enum PacketType {
 }
 
 message TerminalBuffer {
-  bytes buffer = 1;
+  optional bytes buffer = 1;
 }
 
 message TerminalInfo {
-  string id=1;
-  int32 row = 2;
-  int32 column = 3;
-  int32 width = 4;
-  int32 height = 5;
+  optional string id=1;
+  optional int32 row = 2;
+  optional int32 column = 3;
+  optional int32 width = 4;
+  optional int32 height = 5;
 }

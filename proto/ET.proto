@@ -1,18 +1,18 @@
-syntax = "proto3";
+syntax = "proto2";
 package et;
 
 message ConnectRequest {
-  int32 clientId = 1;
+  optional int32 clientId = 1;
 }
 
 message ConnectResponse {
-  int32 clientId = 1;
+  optional int32 clientId = 1;
 }
 
 message SequenceHeader {
-  int32 sequenceNumber = 1;
+  optional int32 sequenceNumber = 1;
 }
 
 message CatchupBuffer {
-  bytes buffer = 1;
+  optional bytes buffer = 1;
 }

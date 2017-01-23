@@ -39,7 +39,6 @@ termios terminal_backup;
 DEFINE_int32(port, 10022, "Port to listen on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
-DEFINE_bool(daemon, false, "Whether the server should run as a daemon");
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
@@ -188,13 +187,9 @@ int main(int argc, char** argv) {
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
-  if (FLAGS_daemon) {
-    ProcessHelper::daemonize();
-  }
-
   std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
 
-  printf("Creating server\n");
+  LOG(INFO) << "Creating server";
 
   string passkey = FLAGS_passkey;
   if (passkey.length() == 0 && FLAGS_passkeyfile.length() > 0) {
