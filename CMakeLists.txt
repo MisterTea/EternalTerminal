@@ -146,7 +146,6 @@ target_link_libraries (
   EternalTCP-static
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARY}
   gflags
   ${LIBGCRYPT_LIBRARIES}
@@ -165,7 +164,6 @@ target_link_libraries (
   EternalTCP-static
   ${CURSES_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARY}
   gflags
@@ -208,7 +206,7 @@ if(BUILD_PACKAGE)
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
     set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
-    set(CPACK_RPM_PACKAGE_REQUIRES "ncurses, libgcrypt, protobuf >= 3.0, gflags, glog")
+    set(CPACK_RPM_PACKAGE_REQUIRES "ncurses, libgcrypt, protobuf, gflags, glog")
 
     # Debian-specific
     set(CPACK_DEBIAN_PACKAGE_NAME "et")
