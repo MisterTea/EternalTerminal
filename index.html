@@ -4,17 +4,19 @@ title: Eternal Terminal
 subtitle: Remote terminal for the busy and impatient
 ---
 
+<div>Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.  Learn how to install and use it <a href="{{ '/usermanual' | prepend: site.baseurl }}">here</a>.</div>
+
 <div class="posts-list">
   {% for post in paginator.posts %}
   <article class="post-preview">
     <a href="{{ post.url | prepend: site.baseurl }}">
-	  <h2 class="post-title">{{ post.title }}</h2>
+    <h2 class="post-title">{{ post.title }}</h2>
 
-	  {% if post.subtitle %}
-	  <h3 class="post-subtitle">
-	    {{ post.subtitle }}
-	  </h3>
-	  {% endif %}
+    {% if post.subtitle %}
+    <h3 class="post-subtitle">
+      {{ post.subtitle }}
+    </h3>
+    {% endif %}
     </a>
 
     <p class="post-meta">
