@@ -4,6 +4,6 @@ tar cvzf /tmp/etclientLogs.tar.gz /tmp/et_err /tmp/etclient.INFO
 
 Then run this on your server:
 
-tar cvzf /tmp/ETServerLogs.tar.gz /tmp/et_err /tmp/etserver.INFO
+tar cvzf /tmp/etserverLogs.tar.gz /tmp/et_err /tmp/etserver.INFO
 
 The logs will contain the IP addresses & username of the client and server, but will not contain any of the data transmitted.
