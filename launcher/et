@@ -88,7 +88,7 @@ done <<< \"\$ET_SERVER_COMMANDS\"
 export TMPFILE=\$(mktemp /tmp/et.XXXXXX)
 export PASSWD=\`$PASSWORD_GENERATOR\`
 echo \$PASSWD > \$TMPFILE
-nohup $SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT --daemon=false > /tmp/et_err 2>&1 &
+nohup $SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
 echo PASSWORD:\$PASSWD
 "
 PASSWD=$(echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
