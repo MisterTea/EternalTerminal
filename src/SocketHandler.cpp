@@ -14,8 +14,9 @@ void SocketHandler::readAll(int fd, void* buf, size_t count) {
         VLOG(1) << "Failed a call to readAll: " << strerror(errno);
         throw std::runtime_error("Failed a call to readAll");
       }
+    } else {
+      pos += bytesRead;
     }
-    pos += bytesRead;
   }
 }
 
@@ -32,8 +33,9 @@ void SocketHandler::writeAll(int fd, const void* buf, size_t count) {
         VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
         throw std::runtime_error("Failed a call to writeAll");
       }
+    } else {
+      pos += bytesWritten;
     }
-    pos += bytesWritten;
   }
 }
 }
