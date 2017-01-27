@@ -86,7 +86,7 @@
   {% elsif site.avatar %}
   <meta property="og:image" content="{{ site.url }}{{ site.avatar }}" />
   {% endif %}
-  
+
 
   <!-- Twitter summary cards -->
   <meta name="twitter:card" content="summary" />
@@ -115,4 +115,7 @@
   <meta name="twitter:image" content="{{ site.url }}{{ site.avatar }}" />
   {% endif %}
 
+  <link rel="shortcut icon" type="image/png" href="{{ '/img/avatar-icon.png' | prepend: site.baseurl }}" >
+
+  {% seo %}
 </head>
