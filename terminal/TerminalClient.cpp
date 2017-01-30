@@ -70,7 +70,9 @@ int main(int argc, char** argv) {
       LOG(ERROR) << "Connecting to server failed: " << err.what();
       connectFailCount++;
       if (connectFailCount == 3) {
-        LOG(FATAL) << "Could not make initial connection to server";
+        LOG(INFO) << "Could not make initial connection to server";
+        cout << "Could not make initial connection to " << FLAGS_host << ": " << err.what() << endl;
+        return 1;
       }
       continue;
     }
