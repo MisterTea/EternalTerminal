@@ -16,8 +16,11 @@ class UnixSocketHandler : public SocketHandler {
   virtual void close(int fd);
 
  protected:
-  vector<int> serverSockets;
   void initSocket(int fd);
+
+  vector<int> serverSockets;
+  set<int> activeSockets;
+  recursive_mutex mutex;
 };
 }
 

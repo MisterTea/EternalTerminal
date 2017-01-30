@@ -11,6 +11,7 @@ namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
@@ -30,6 +31,7 @@ bool UnixSocketHandler::hasData(int fd) {
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
@@ -44,6 +46,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
@@ -51,6 +54,7 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 }
 
 int UnixSocketHandler::connect(const std::string &hostname, int port) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   int sockfd = -1;
   addrinfo *results;
   addrinfo *p;
@@ -147,6 +151,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 }
 
 int UnixSocketHandler::listen(int port) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (serverSockets.empty()) {
     addrinfo hints, *servinfo, *p;
     int rc;
@@ -219,6 +224,7 @@ int UnixSocketHandler::listen(int port) {
 
       // if we get here, we must have connected successfully
       serverSockets.push_back(sockfd);
+      activeSockets.insert(sockfd);
     }
 
     if (serverSockets.empty()) {
@@ -232,6 +238,7 @@ int UnixSocketHandler::listen(int port) {
     int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
     if (client_sock >= 0) {
       initSocket(client_sock);
+      activeSockets.insert(client_sock);
       // Make sure that socket becomes blocking once it's attached to a client.
       {
         int opts;
@@ -250,15 +257,23 @@ int UnixSocketHandler::listen(int port) {
 }
 
 void UnixSocketHandler::stopListening() {
+  lock_guard<std::recursive_mutex> guard(mutex);
   for (int sockfd : serverSockets) {
     close(sockfd);
   }
 }
 
 void UnixSocketHandler::close(int fd) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (fd == -1) {
     return;
   }
+  if (activeSockets.find(fd) == activeSockets.end()) {
+    // Connection was already killed.
+    LOG(ERROR) << "Tried to close a connection that doesn't exist: " << fd;
+    return;
+  }
+  activeSockets.erase(activeSockets.find(fd));
   VLOG(1) << "Shutting down connection: " << fd << endl;
   int rc = ::shutdown(fd, SHUT_RDWR);
   if (rc == -1) {
