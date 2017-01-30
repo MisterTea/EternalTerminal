@@ -56,12 +56,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       // child
       ProcessHelper::initChildProcess();
 
-      // Not needed since server is running in userspace
-      // setuid(pwd->pw_uid);
-      // setgid(pwd->pw_gid);
-
       cout << "Child process " << terminal << endl;
-      // execl("/bin/bash", "/bin/bash", NULL);
       execl(terminal.c_str(), terminal.c_str(), NULL);
       exit(0);
       break;

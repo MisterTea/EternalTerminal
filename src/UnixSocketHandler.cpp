@@ -275,6 +275,7 @@ void UnixSocketHandler::close(int fd) {
   }
   activeSockets.erase(activeSockets.find(fd));
   VLOG(1) << "Shutting down connection: " << fd << endl;
+#if 0
   int rc = ::shutdown(fd, SHUT_RDWR);
   if (rc == -1) {
     if (errno == ENOTCONN || errno == EADDRNOTAVAIL) {
@@ -286,6 +287,7 @@ void UnixSocketHandler::close(int fd) {
       FATAL_FAIL(rc);
     }
   }
+#endif
   FATAL_FAIL(::close(fd));
 }
 
