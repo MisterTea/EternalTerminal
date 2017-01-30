@@ -10,27 +10,27 @@ class SocketHandler {
   virtual ssize_t read(int fd, void* buf, size_t count) = 0;
   virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
 
-  void readAll(int fd, void* buf, size_t count);
-  void writeAll(int fd, const void* buf, size_t count);
+  void readAll(int fd, void* buf, size_t count, bool timeout);
+  void writeAll(int fd, const void* buf, size_t count, bool timeout);
 
   template <typename T>
-  inline T readProto(int fd) {
+  inline T readProto(int fd, bool timeout) {
     T t;
     int64_t length;
-    readAll(fd, &length, sizeof(int64_t));
+    readAll(fd, &length, sizeof(int64_t), timeout);
     string s(length, 0);
-    readAll(fd, &s[0], length);
+    readAll(fd, &s[0], length, timeout);
     t.ParseFromString(s);
     return t;
   }
 
   template <typename T>
-  inline void writeProto(int fd, const T& t) {
+  inline void writeProto(int fd, const T& t, bool timeout) {
     string s;
     t.SerializeToString(&s);
     int64_t length = s.length();
-    writeAll(fd, &length, sizeof(int64_t));
-    writeAll(fd, &s[0], length);
+    writeAll(fd, &length, sizeof(int64_t), timeout);
+    writeAll(fd, &s[0], length, timeout);
   }
 
   virtual int connect(const std::string& hostname, int port) = 0;

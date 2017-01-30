@@ -1,9 +1,16 @@
 #include "SocketHandler.hpp"
 
 namespace et {
-void SocketHandler::readAll(int fd, void* buf, size_t count) {
+#define SOCKET_DATA_TRANSFER_TIMEOUT (10)
+
+void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
+  time_t startTime = time(NULL);
   size_t pos = 0;
   while (pos < count) {
+    time_t currentTime = time(NULL);
+    if (timeout && currentTime > startTime+10) {
+      throw std::runtime_error("Socket Timeout");
+    }
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
       if (errno == EAGAIN ||
@@ -16,13 +23,22 @@ void SocketHandler::readAll(int fd, void* buf, size_t count) {
       }
     } else {
       pos += bytesRead;
+      if (bytesRead > 0) {
+        // Reset the timeout as long as we are reading bytes
+        startTime = currentTime;
+      }
     }
   }
 }
 
-void SocketHandler::writeAll(int fd, const void* buf, size_t count) {
+void SocketHandler::writeAll(int fd, const void* buf, size_t count, bool timeout) {
+  time_t startTime = time(NULL);
   size_t pos = 0;
   while (pos < count) {
+    time_t currentTime = time(NULL);
+    if (timeout && currentTime > startTime+10) {
+      throw std::runtime_error("Socket Timeout");
+    }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
       if (errno == EAGAIN ||
@@ -35,6 +51,10 @@ void SocketHandler::writeAll(int fd, const void* buf, size_t count) {
       }
     } else {
       pos += bytesWritten;
+      if (bytesWritten > 0) {
+        // Reset the timeout as long as we are writing bytes
+        startTime = currentTime;
+      }
     }
   }
 }

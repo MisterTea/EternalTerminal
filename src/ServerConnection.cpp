@@ -43,7 +43,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   int clientId;
   try {
     et::ConnectRequest request =
-        socketHandler->readProto<et::ConnectRequest>(clientSocketFd);
+      socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
     clientId = request.clientid();
     if (clientId == -1) {
       clientId = newClient(clientSocketFd);
@@ -81,7 +81,7 @@ int ServerConnection::newClient(int socketFd) {
 
   et::ConnectResponse response;
   response.set_clientid(clientId);
-  socketHandler->writeProto(socketFd, response);
+  socketHandler->writeProto(socketFd, response, true);
   shared_ptr<ServerClientConnection> scc(
       new ServerClientConnection(socketHandler, clientId, socketFd, key));
   clients.insert(std::make_pair(clientId, scc));

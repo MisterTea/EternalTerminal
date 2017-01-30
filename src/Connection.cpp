@@ -109,22 +109,22 @@ bool Connection::recover(int newSocketFd) {
       // Write the current sequence number
       et::SequenceHeader sh;
       sh.set_sequencenumber(reader->getSequenceNumber());
-      socketHandler->writeProto(newSocketFd, sh);
+      socketHandler->writeProto(newSocketFd, sh, true);
     }
 
     // Read the remote sequence number
     et::SequenceHeader remoteHeader =
-        socketHandler->readProto<et::SequenceHeader>(newSocketFd);
+      socketHandler->readProto<et::SequenceHeader>(newSocketFd, true);
 
     {
       // Fetch the catchup bytes and send
       et::CatchupBuffer catchupBuffer;
       catchupBuffer.set_buffer(writer->recover(remoteHeader.sequencenumber()));
-      socketHandler->writeProto(newSocketFd, catchupBuffer);
+      socketHandler->writeProto(newSocketFd, catchupBuffer, true);
     }
 
     et::CatchupBuffer catchupBuffer =
-        socketHandler->readProto<et::CatchupBuffer>(newSocketFd);
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
     socketFd = newSocketFd;
     reader->revive(socketFd, catchupBuffer.buffer());
