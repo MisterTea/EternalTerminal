@@ -64,6 +64,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     }
   } catch (const runtime_error& err) {
     // Comm failed, close the connection
+    LOG(ERROR) << "Error handling new client: " << err.what();
     socketHandler->close(clientSocketFd);
   }
 }
