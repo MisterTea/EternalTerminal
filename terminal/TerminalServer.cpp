@@ -25,13 +25,11 @@
 using namespace et;
 shared_ptr<ServerConnection> globalServer;
 
-void runServer(std::shared_ptr<ServerConnection> server) { server->run(); }
-
 void halt();
 
-#define FAIL_FATAL(X)                                              \
-  if ((X) == -1) {                                                 \
-    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
+#define FAIL_FATAL(X)                                               \
+  if ((X) == -1) {                                                  \
+    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);  \
   }
 
 termios terminal_backup;
@@ -41,135 +39,145 @@ DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
 
 thread* terminalThread = NULL;
-void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
-  struct winsize win = {0, 0, 0, 0};
-  int masterfd;
+void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
+  int masterfd) {
   string disconnectBuffer;
 
-  std::string terminal = getTerminal();
-
-  pid_t pid = forkpty(&masterfd, NULL, NULL, &win);
-  switch (pid) {
-    case -1:
-      FAIL_FATAL(pid);
-    case 0:
-      // child
-      ProcessHelper::initChildProcess();
-
-      cout << "Child process " << terminal << endl;
-      execl(terminal.c_str(), terminal.c_str(), NULL);
-      exit(0);
-      break;
-    default:
-      // parent
-      cout << "pty opened " << masterfd << endl;
-      // Whether the TE should keep running.
-      bool run = true;
+  // Whether the TE should keep running.
+  bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (1024)
-      char b[BUF_SIZE];
+  char b[BUF_SIZE];
 
-      while (run) {
-        // Data structures needed for select() and
-        // non-blocking I/O.
-        fd_set rfd;
-        fd_set wfd;
-        fd_set efd;
-        timeval tv;
+  while (run) {
+    // Data structures needed for select() and
+    // non-blocking I/O.
+    fd_set rfd;
+    fd_set wfd;
+    fd_set efd;
+    timeval tv;
 
-        FD_ZERO(&rfd);
-        FD_ZERO(&wfd);
-        FD_ZERO(&efd);
-        FD_SET(masterfd, &rfd);
-        FD_SET(STDIN_FILENO, &rfd);
-        tv.tv_sec = 0;
-        tv.tv_usec = 1000;
-        select(masterfd + 1, &rfd, &wfd, &efd, &tv);
+    FD_ZERO(&rfd);
+    FD_ZERO(&wfd);
+    FD_ZERO(&efd);
+    FD_SET(masterfd, &rfd);
+    FD_SET(STDIN_FILENO, &rfd);
+    tv.tv_sec = 0;
+    tv.tv_usec = 1000;
+    select(masterfd + 1, &rfd, &wfd, &efd, &tv);
 
-        try {
-          // Check for data to receive; the received
-          // data includes also the data previously sent
-          // on the same master descriptor (line 90).
-          if (FD_ISSET(masterfd, &rfd)) {
-            // Read from fake terminal and write to server
-            memset(b, 0, BUF_SIZE);
-            int rc = read(masterfd, b, BUF_SIZE);
-            if (rc > 0) {
-              // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
-              // << serverClientState->getWriter()->getSequenceNumber();
-              char c = et::PacketType::TERMINAL_BUFFER;
-              serverClientState->writeAll(&c, 1);
-              string s(b, rc);
-              et::TerminalBuffer tb;
-              tb.set_buffer(s);
-              serverClientState->writeProto(tb);
-            } else {
-              LOG(INFO) << "Terminal session ended";
-              run = false;
-              globalServer->removeClient(serverClientState);
-              break;
-            }
-          }
-
-          while (serverClientState->hasData()) {
-            char packetType;
-            serverClientState->readAll(&packetType, 1);
-            switch (packetType) {
-              case et::PacketType::TERMINAL_BUFFER: {
-                // Read from the server and write to our fake terminal
-                et::TerminalBuffer tb =
-                    serverClientState->readProto<et::TerminalBuffer>();
-                const string& s = tb.buffer();
-                // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
-                // serverClientState->getReader()->getSequenceNumber();
-                FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
-                break;
-              }
-              case et::PacketType::KEEP_ALIVE: {
-                // Echo keepalive back to client
-                VLOG(1) << "Got keep alive";
-                char c = et::PacketType::KEEP_ALIVE;
-                serverClientState->writeAll(&c, 1);
-                break;
-              }
-              case et::PacketType::TERMINAL_INFO: {
-                VLOG(1) << "Got terminal info";
-                et::TerminalInfo ti =
-                    serverClientState->readProto<et::TerminalInfo>();
-                winsize tmpwin;
-                tmpwin.ws_row = ti.row();
-                tmpwin.ws_col = ti.column();
-                tmpwin.ws_xpixel = ti.width();
-                tmpwin.ws_ypixel = ti.height();
-                ioctl(masterfd, TIOCSWINSZ, &tmpwin);
-                break;
-              }
-              default:
-                LOG(FATAL) << "Unknown packet type: " << int(packetType)
-                           << endl;
-            }
-          }
-        } catch (const runtime_error& re) {
-          LOG(INFO) << "Connection error: " << re.what();
-          serverClientState->closeSocket();
-          // If the client disconnects the session, it shuoldn't end
-          // because the client may be starting a new one.  TODO: Start a
-          // timer which eventually kills the server.
-
-          // run=false;
+    try {
+      // Check for data to receive; the received
+      // data includes also the data previously sent
+      // on the same master descriptor (line 90).
+      if (FD_ISSET(masterfd, &rfd)) {
+        // Read from fake terminal and write to server
+        memset(b, 0, BUF_SIZE);
+        int rc = read(masterfd, b, BUF_SIZE);
+        if (rc > 0) {
+          // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
+          // << serverClientState->getWriter()->getSequenceNumber();
+          char c = et::PacketType::TERMINAL_BUFFER;
+          serverClientState->writeAll(&c, 1);
+          string s(b, rc);
+          et::TerminalBuffer tb;
+          tb.set_buffer(s);
+          serverClientState->writeProto(tb);
+        } else {
+          LOG(INFO) << "Terminal session ended";
+          run = false;
+          globalServer->removeClient(serverClientState);
+          break;
         }
       }
-      break;
-  }
 
+      while (serverClientState->hasData()) {
+        char packetType;
+        serverClientState->readAll(&packetType, 1);
+        switch (packetType) {
+        case et::PacketType::TERMINAL_BUFFER: {
+          // Read from the server and write to our fake terminal
+          et::TerminalBuffer tb =
+            serverClientState->readProto<et::TerminalBuffer>();
+          const string& s = tb.buffer();
+          // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
+          // serverClientState->getReader()->getSequenceNumber();
+          FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+          break;
+        }
+        case et::PacketType::KEEP_ALIVE: {
+          // Echo keepalive back to client
+          VLOG(1) << "Got keep alive";
+          char c = et::PacketType::KEEP_ALIVE;
+          serverClientState->writeAll(&c, 1);
+          break;
+        }
+        case et::PacketType::TERMINAL_INFO: {
+          VLOG(1) << "Got terminal info";
+          et::TerminalInfo ti =
+            serverClientState->readProto<et::TerminalInfo>();
+          winsize tmpwin;
+          tmpwin.ws_row = ti.row();
+          tmpwin.ws_col = ti.column();
+          tmpwin.ws_xpixel = ti.width();
+          tmpwin.ws_ypixel = ti.height();
+          ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+          break;
+        }
+        default:
+          LOG(FATAL) << "Unknown packet type: " << int(packetType)
+                     << endl;
+        }
+      }
+    } catch (const runtime_error& re) {
+      LOG(INFO) << "Connection error: " << re.what();
+      serverClientState->closeSocket();
+      // If the client disconnects the session, it shuoldn't end
+      // because the client may be starting a new one.  TODO: Start a
+      // timer which eventually kills the server.
+
+      // run=false;
+    }
+  }
   serverClientState.reset();
   halt();
 }
 
+void startTerminal(shared_ptr<ServerClientConnection> serverClientState) {
+  struct winsize win = {0, 0, 0, 0};
+  int masterfd;
+  std::string terminal = getTerminal();
+
+  pid_t pid = forkpty(&masterfd, NULL, NULL, &win);
+  switch (pid) {
+  case -1:
+    FAIL_FATAL(pid);
+  case 0:
+    // child
+    ProcessHelper::initChildProcess();
+
+    LOG(INFO) << "Closing server in fork" << endl;
+    // Close server on client process
+    globalServer->close();
+    globalServer.reset();
+
+    LOG(INFO) << "Child process " << terminal << endl;
+    execl(terminal.c_str(), terminal.c_str(), NULL);
+    exit(0);
+    break;
+  default:
+    // parent
+    cout << "pty opened " << masterfd << endl;
+    terminalThread = new thread(runTerminal, serverClientState, masterfd);
+    break;
+  }
+
+}
+
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
-    terminalThread = new thread(runTerminal, serverClientState);
+    startTerminal(serverClientState);
     return true;
   }
 };
@@ -202,13 +210,12 @@ int main(int argc, char** argv) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey;
   }
 
-  shared_ptr<ServerConnection> server =
-      shared_ptr<ServerConnection>(new ServerConnection(
-          serverSocket, FLAGS_port,
-          shared_ptr<TerminalServerHandler>(new TerminalServerHandler()),
-          passkey));
-  globalServer = server;
-  runServer(server);
+  globalServer =
+    shared_ptr<ServerConnection>(new ServerConnection(
+                                   serverSocket, FLAGS_port,
+                                   shared_ptr<TerminalServerHandler>(new TerminalServerHandler()),
+                                   passkey));
+  globalServer->run();
 }
 
 void halt() {

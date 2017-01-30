@@ -17,6 +17,13 @@ ServerClientConnection::ServerClientConnection(
       _socketFd));
 }
 
+ServerClientConnection::~ServerClientConnection() {
+  if (socketFd != -1) {
+    closeSocket();
+  }
+}
+
+
 bool ServerClientConnection::recoverClient(int newSocketFd) {
   closeSocket();
   return recover(newSocketFd);

@@ -92,7 +92,7 @@ void Connection::writeAll(const void* buf, size_t count) {
 
 void Connection::closeSocket() {
   if (socketFd == -1) {
-    LOG(ERROR) << "Tried to close a non-existent socket";
+    LOG(ERROR) << "Tried to close a dead socket";
     return;
   }
   reader->invalidateSocket();

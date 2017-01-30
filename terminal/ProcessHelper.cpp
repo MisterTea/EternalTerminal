@@ -64,7 +64,7 @@ void ProcessHelper::initChildProcess() {
 #if __APPLE__
   int parent_pid = getppid();
   int our_pid = getpid();
-  LOG(ERROR) << "suicide_if_we_become_a_zombie(). parent process (pid "
+  LOG(INFO) << "suicide_if_we_become_a_zombie(). parent process (pid "
              << parent_pid << ") that we monitor. our pid " << our_pid;
 
   int fd = kqueue();

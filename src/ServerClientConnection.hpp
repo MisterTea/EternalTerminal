@@ -14,7 +14,7 @@ class ServerClientConnection : public Connection {
       int _socketFd,                                         //
       const string& key);
 
-  virtual ~ServerClientConnection() { closeSocket(); }
+  virtual ~ServerClientConnection();
 
   bool recoverClient(int newSocketFd);
 

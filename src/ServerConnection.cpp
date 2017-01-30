@@ -10,10 +10,6 @@ ServerConnection::ServerConnection(
       key(_key) {}
 
 ServerConnection::~ServerConnection() {
-  if (clientConnectThread) {
-    clientConnectThread->join();
-    clientConnectThread.reset();
-  }
 }
 
 void ServerConnection::run() {
@@ -25,18 +21,17 @@ void ServerConnection::run() {
       continue;
     }
     VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd << endl;
-    if (clientConnectThread) {
-      // TODO: Terminate reconnect early if we get another reconnect request.
-      clientConnectThread->join();
-    }
-    clientConnectThread = shared_ptr<thread>(
-        new thread(&ServerConnection::clientHandler, this, clientSocketFd));
+    clientHandler(clientSocketFd);
   }
 }
 
 void ServerConnection::close() {
   stop = true;
   socketHandler->stopListening();
+  for (const auto& it : clients) {
+    it.second->closeSocket();
+  }
+  clients.clear();
 }
 
 void ServerConnection::clientHandler(int clientSocketFd) {
