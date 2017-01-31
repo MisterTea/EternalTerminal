@@ -59,6 +59,22 @@ int main(int argc, char** argv) {
                << passkey.length();
   }
 
+  InitialPayload payload;
+  winsize win;
+  ioctl(1, TIOCGWINSZ, &win);
+  TerminalInfo* ti = payload.mutable_terminal();
+  ti->set_row(win.ws_row);
+  ti->set_column(win.ws_col);
+  ti->set_width(win.ws_xpixel);
+  ti->set_height(win.ws_ypixel);
+  char* term = getenv("TERM");
+  if (term) {
+    LOG(INFO) << "Sending command to set terminal to " << term;
+    // Set terminal
+    string s = std::string("TERM=") + std::string(term);
+    payload.add_environmentvar(s);
+  }
+
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
       new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, passkey));
   globalClient = client;
@@ -66,6 +82,7 @@ int main(int argc, char** argv) {
   while (true) {
     try {
       client->connect();
+      client->writeProto(payload);
     } catch (const runtime_error& err) {
       LOG(ERROR) << "Connecting to server failed: " << err.what();
       connectFailCount++;
@@ -83,22 +100,8 @@ int main(int argc, char** argv) {
   termios terminal_local;
   tcgetattr(0, &terminal_local);
   memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
-  struct winsize win = {0, 0, 0, 0};
   cfmakeraw(&terminal_local);
   tcsetattr(0, TCSANOW, &terminal_local);
-
-  char* term = getenv("TERM");
-  if (term) {
-    LOG(INFO) << "Sending command to set terminal to " << term;
-    // Set terminal
-    string s = std::string("export TERM=") + std::string(term) + std::string("\n");
-    et::TerminalBuffer tb;
-    tb.set_buffer(s);
-
-    char c = et::PacketType::TERMINAL_BUFFER;
-    globalClient->writeAll(&c, 1);
-    globalClient->writeProto(tb);
-  }
 
   // Whether the TE should keep running.
   bool run = true;

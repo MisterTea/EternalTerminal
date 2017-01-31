@@ -23,6 +23,9 @@ void ClientConnection::connect() {
   try {
     VLOG(1) << "Connecting" << endl;
     socketFd = socketHandler->connect(hostname, port);
+    if (socketFd == -1) {
+      throw std::runtime_error("Could not connect to host");
+    }
     VLOG(1) << "Sending null id" << endl;
     et::ConnectRequest request;
     request.set_clientid(NULL_CLIENT_ID);
@@ -41,7 +44,9 @@ void ClientConnection::connect() {
         socketFd));
     VLOG(1) << "Client Connection established" << endl;
   } catch (const runtime_error& err) {
-    socketHandler->close(socketFd);
+    if (socketFd != -1) {
+      socketHandler->close(socketFd);
+    }
     throw err;
   }
 }

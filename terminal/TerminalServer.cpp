@@ -144,8 +144,25 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
   halt();
 }
 
-void startTerminal(shared_ptr<ServerClientConnection> serverClientState) {
-  struct winsize win = {0, 0, 0, 0};
+void startTerminal(
+  shared_ptr<ServerClientConnection> serverClientState,
+  InitialPayload payload) {
+  const TerminalInfo& ti = payload.terminal();
+  winsize win;
+  win.ws_row = ti.row();
+  win.ws_col = ti.column();
+  win.ws_xpixel = ti.width();
+  win.ws_ypixel = ti.height();
+  for (const string &it : payload.environmentvar()) {
+    size_t equalsPos = it.find("=");
+    if (equalsPos == string::npos) {
+      LOG(FATAL) << "Invalid environment variable";
+    }
+    string name = it.substr(0,equalsPos);
+    string value = it.substr(equalsPos+1);
+    setenv(name.c_str(), value.c_str(), 1);
+  }
+
   int masterfd;
   std::string terminal = getTerminal();
 
@@ -157,12 +174,12 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState) {
     // child
     ProcessHelper::initChildProcess();
 
-    LOG(INFO) << "Closing server in fork" << endl;
+    VLOG(1) << "Closing server in fork" << endl;
     // Close server on client process
     globalServer->close();
     globalServer.reset();
 
-    LOG(INFO) << "Child process " << terminal << endl;
+    VLOG(1) << "Child process " << terminal << endl;
     execl(terminal.c_str(), terminal.c_str(), NULL);
     exit(0);
     break;
@@ -177,7 +194,8 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
-    startTerminal(serverClientState);
+    InitialPayload payload = serverClientState->readProto<InitialPayload>();
+    startTerminal(serverClientState, payload);
     return true;
   }
 };
