@@ -114,7 +114,7 @@ bool Connection::recover(int newSocketFd) {
 
     // Read the remote sequence number
     et::SequenceHeader remoteHeader =
-      socketHandler->readProto<et::SequenceHeader>(newSocketFd, true);
+        socketHandler->readProto<et::SequenceHeader>(newSocketFd, true);
 
     {
       // Fetch the catchup bytes and send
@@ -124,7 +124,7 @@ bool Connection::recover(int newSocketFd) {
     }
 
     et::CatchupBuffer catchupBuffer =
-      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+        socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
     socketFd = newSocketFd;
     reader->revive(socketFd, catchupBuffer.buffer());

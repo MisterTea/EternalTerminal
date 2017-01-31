@@ -1,3 +1,6 @@
+# OS/X Junk file
+.DS_Store
+
 # Cmake build dir
 build
 

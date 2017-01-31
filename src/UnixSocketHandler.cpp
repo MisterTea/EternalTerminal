@@ -91,7 +91,8 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       opts |= O_NONBLOCK;
       FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
     }
-    if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 && errno != EINPROGRESS) {
+    if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
+        errno != EINPROGRESS) {
       LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
                 << " " << strerror(errno);
       ::close(sockfd);
@@ -103,35 +104,35 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     FD_ZERO(&fdset);
     FD_SET(sockfd, &fdset);
     timeval tv;
-    tv.tv_sec = 3;             /* 3 second timeout */
+    tv.tv_sec = 3; /* 3 second timeout */
     tv.tv_usec = 0;
 
-    if (::select(sockfd + 1, NULL, &fdset, NULL, &tv) == 1)
-    {
-        int so_error;
-        socklen_t len = sizeof so_error;
+    if (::select(sockfd + 1, NULL, &fdset, NULL, &tv) == 1) {
+      int so_error;
+      socklen_t len = sizeof so_error;
 
-        getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+      getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
 
-        if (so_error == 0) {
-          LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
-                    << sockfd;
-          // Make sure that socket becomes blocking once it's attached to a server.
-          {
-            int opts;
-            opts = fcntl(sockfd, F_GETFL);
-            FATAL_FAIL(opts);
-            opts &= (~O_NONBLOCK);
-            FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
-          }
-          break;  // if we get here, we must have connected successfully
-        } else {
-          LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
-                    << " " << strerror(errno);
-          ::close(sockfd);
-          sockfd = -1;
-          continue;
+      if (so_error == 0) {
+        LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
+                  << sockfd;
+        // Make sure that socket becomes blocking once it's attached to a
+        // server.
+        {
+          int opts;
+          opts = fcntl(sockfd, F_GETFL);
+          FATAL_FAIL(opts);
+          opts &= (~O_NONBLOCK);
+          FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
         }
+        break;  // if we get here, we must have connected successfully
+      } else {
+        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
+                  << errno << " " << strerror(errno);
+        ::close(sockfd);
+        sockfd = -1;
+        continue;
+      }
     } else {
       LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
                 << " " << strerror(errno);
@@ -139,7 +140,6 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       sockfd = -1;
       continue;
     }
-
   }
 
   if (sockfd == -1) {

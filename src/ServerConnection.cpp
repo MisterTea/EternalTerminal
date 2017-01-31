@@ -9,8 +9,7 @@ ServerConnection::ServerConnection(
       stop(false),
       key(_key) {}
 
-ServerConnection::~ServerConnection() {
-}
+ServerConnection::~ServerConnection() {}
 
 void ServerConnection::run() {
   while (!stop) {
@@ -38,7 +37,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   int clientId;
   try {
     et::ConnectRequest request =
-      socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
+        socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
     clientId = request.clientid();
     if (clientId == -1) {
       clientId = newClient(clientSocketFd);

@@ -65,7 +65,7 @@ void ProcessHelper::initChildProcess() {
   int parent_pid = getppid();
   int our_pid = getpid();
   LOG(INFO) << "suicide_if_we_become_a_zombie(). parent process (pid "
-             << parent_pid << ") that we monitor. our pid " << our_pid;
+            << parent_pid << ") that we monitor. our pid " << our_pid;
 
   int fd = kqueue();
   struct kevent kev;

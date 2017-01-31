@@ -15,8 +15,8 @@ int main(int argc, char** argv) {
       terminfo.set_id("popup");
       terminfo.set_height(7);
       terminfo.set_width(41);
-      terminfo.set_row(overlay.rows()/2 - 3);
-      terminfo.set_column(overlay.cols()/2 - 20);
+      terminfo.set_row(overlay.rows() / 2 - 3);
+      terminfo.set_column(overlay.cols() / 2 - 20);
 
       popupWindow = overlay.createWindow(terminfo, true);
       popupWindow->drawTextCentered("Please wait, reconnecting...", 3);

@@ -27,9 +27,9 @@ shared_ptr<ServerConnection> globalServer;
 
 void halt();
 
-#define FAIL_FATAL(X)                                               \
-  if ((X) == -1) {                                                  \
-    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);  \
+#define FAIL_FATAL(X)                                              \
+  if ((X) == -1) {                                                 \
+    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
   }
 
 termios terminal_backup;
@@ -40,7 +40,7 @@ DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-  int masterfd) {
+                 int masterfd) {
   string disconnectBuffer;
 
   // Whether the TE should keep running.
@@ -96,38 +96,37 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         char packetType;
         serverClientState->readAll(&packetType, 1);
         switch (packetType) {
-        case et::PacketType::TERMINAL_BUFFER: {
-          // Read from the server and write to our fake terminal
-          et::TerminalBuffer tb =
-            serverClientState->readProto<et::TerminalBuffer>();
-          const string& s = tb.buffer();
-          // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
-          // serverClientState->getReader()->getSequenceNumber();
-          FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
-          break;
-        }
-        case et::PacketType::KEEP_ALIVE: {
-          // Echo keepalive back to client
-          VLOG(1) << "Got keep alive";
-          char c = et::PacketType::KEEP_ALIVE;
-          serverClientState->writeAll(&c, 1);
-          break;
-        }
-        case et::PacketType::TERMINAL_INFO: {
-          VLOG(1) << "Got terminal info";
-          et::TerminalInfo ti =
-            serverClientState->readProto<et::TerminalInfo>();
-          winsize tmpwin;
-          tmpwin.ws_row = ti.row();
-          tmpwin.ws_col = ti.column();
-          tmpwin.ws_xpixel = ti.width();
-          tmpwin.ws_ypixel = ti.height();
-          ioctl(masterfd, TIOCSWINSZ, &tmpwin);
-          break;
-        }
-        default:
-          LOG(FATAL) << "Unknown packet type: " << int(packetType)
-                     << endl;
+          case et::PacketType::TERMINAL_BUFFER: {
+            // Read from the server and write to our fake terminal
+            et::TerminalBuffer tb =
+                serverClientState->readProto<et::TerminalBuffer>();
+            const string& s = tb.buffer();
+            // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
+            // serverClientState->getReader()->getSequenceNumber();
+            FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+            break;
+          }
+          case et::PacketType::KEEP_ALIVE: {
+            // Echo keepalive back to client
+            VLOG(1) << "Got keep alive";
+            char c = et::PacketType::KEEP_ALIVE;
+            serverClientState->writeAll(&c, 1);
+            break;
+          }
+          case et::PacketType::TERMINAL_INFO: {
+            VLOG(1) << "Got terminal info";
+            et::TerminalInfo ti =
+                serverClientState->readProto<et::TerminalInfo>();
+            winsize tmpwin;
+            tmpwin.ws_row = ti.row();
+            tmpwin.ws_col = ti.column();
+            tmpwin.ws_xpixel = ti.width();
+            tmpwin.ws_ypixel = ti.height();
+            ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+            break;
+          }
+          default:
+            LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
         }
       }
     } catch (const runtime_error& re) {
@@ -144,22 +143,21 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
   halt();
 }
 
-void startTerminal(
-  shared_ptr<ServerClientConnection> serverClientState,
-  InitialPayload payload) {
+void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
+                   InitialPayload payload) {
   const TerminalInfo& ti = payload.terminal();
   winsize win;
   win.ws_row = ti.row();
   win.ws_col = ti.column();
   win.ws_xpixel = ti.width();
   win.ws_ypixel = ti.height();
-  for (const string &it : payload.environmentvar()) {
+  for (const string& it : payload.environmentvar()) {
     size_t equalsPos = it.find("=");
     if (equalsPos == string::npos) {
       LOG(FATAL) << "Invalid environment variable";
     }
-    string name = it.substr(0,equalsPos);
-    string value = it.substr(equalsPos+1);
+    string name = it.substr(0, equalsPos);
+    string value = it.substr(equalsPos + 1);
     setenv(name.c_str(), value.c_str(), 1);
   }
 
@@ -168,28 +166,27 @@ void startTerminal(
 
   pid_t pid = forkpty(&masterfd, NULL, NULL, &win);
   switch (pid) {
-  case -1:
-    FAIL_FATAL(pid);
-  case 0:
-    // child
-    ProcessHelper::initChildProcess();
+    case -1:
+      FAIL_FATAL(pid);
+    case 0:
+      // child
+      ProcessHelper::initChildProcess();
 
-    VLOG(1) << "Closing server in fork" << endl;
-    // Close server on client process
-    globalServer->close();
-    globalServer.reset();
+      VLOG(1) << "Closing server in fork" << endl;
+      // Close server on client process
+      globalServer->close();
+      globalServer.reset();
 
-    VLOG(1) << "Child process " << terminal << endl;
-    execl(terminal.c_str(), terminal.c_str(), NULL);
-    exit(0);
-    break;
-  default:
-    // parent
-    cout << "pty opened " << masterfd << endl;
-    terminalThread = new thread(runTerminal, serverClientState, masterfd);
-    break;
+      VLOG(1) << "Child process " << terminal << endl;
+      execl(terminal.c_str(), terminal.c_str(), NULL);
+      exit(0);
+      break;
+    default:
+      // parent
+      cout << "pty opened " << masterfd << endl;
+      terminalThread = new thread(runTerminal, serverClientState, masterfd);
+      break;
   }
-
 }
 
 class TerminalServerHandler : public ServerConnectionHandler {
@@ -228,11 +225,9 @@ int main(int argc, char** argv) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey;
   }
 
-  globalServer =
-    shared_ptr<ServerConnection>(new ServerConnection(
-                                   serverSocket, FLAGS_port,
-                                   shared_ptr<TerminalServerHandler>(new TerminalServerHandler()),
-                                   passkey));
+  globalServer = shared_ptr<ServerConnection>(new ServerConnection(
+      serverSocket, FLAGS_port,
+      shared_ptr<TerminalServerHandler>(new TerminalServerHandler()), passkey));
   globalServer->run();
 }
 

@@ -2,11 +2,11 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "NCursesOverlay.hpp"
 #include "ProcessHelper.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
-#include "NCursesOverlay.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -78,7 +78,7 @@ int main(int argc, char** argv) {
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
       new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, passkey));
   globalClient = client;
-  int connectFailCount=0;
+  int connectFailCount = 0;
   while (true) {
     try {
       client->connect();
@@ -88,7 +88,8 @@ int main(int argc, char** argv) {
       connectFailCount++;
       if (connectFailCount == 3) {
         LOG(INFO) << "Could not make initial connection to server";
-        cout << "Could not make initial connection to " << FLAGS_host << ": " << err.what() << endl;
+        cout << "Could not make initial connection to " << FLAGS_host << ": "
+             << err.what() << endl;
         exit(1);
       }
       continue;
@@ -118,7 +119,7 @@ int main(int argc, char** argv) {
   string offlineBuffer;
 #endif
   while (run) {
-#if 0 // This doesn't work with tmux and when combined with a curses
+#if 0  // This doesn't work with tmux and when combined with a curses
       // app on the server side causes weird graphical glitches.
 
     // TODO: Figure out why this causes issues.
@@ -200,7 +201,7 @@ int main(int argc, char** argv) {
               offlineBuffer += s;
             } else {
 #endif
-              FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+            FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
 #if 0
             }
 #endif

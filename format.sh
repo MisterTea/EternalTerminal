@@ -1,1 +1,1 @@
-find ./ -type f | grep "\.[hc]pp" | grep -v /external/ | xargs clang-format --style=Google -i
+find ./ -type f | grep "\.[hc]pp" | grep -v /ext/ | grep -v /external/ | xargs clang-format --style=Google -i

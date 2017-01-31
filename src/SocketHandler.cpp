@@ -8,13 +8,12 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
   size_t pos = 0;
   while (pos < count) {
     time_t currentTime = time(NULL);
-    if (timeout && currentTime > startTime+10) {
+    if (timeout && currentTime > startTime + 10) {
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead < 0) {
-      if (errno == EAGAIN ||
-          errno == EWOULDBLOCK) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
         usleep(1000 * 100);
       } else {
@@ -31,18 +30,18 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
   }
 }
 
-void SocketHandler::writeAll(int fd, const void* buf, size_t count, bool timeout) {
+void SocketHandler::writeAll(int fd, const void* buf, size_t count,
+                             bool timeout) {
   time_t startTime = time(NULL);
   size_t pos = 0;
   while (pos < count) {
     time_t currentTime = time(NULL);
-    if (timeout && currentTime > startTime+10) {
+    if (timeout && currentTime > startTime + 10) {
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
     if (bytesWritten < 0) {
-      if (errno == EAGAIN ||
-          errno == EWOULDBLOCK) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
         usleep(1000 * 100);
       } else {

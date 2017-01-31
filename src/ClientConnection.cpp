@@ -32,7 +32,7 @@ void ClientConnection::connect() {
     socketHandler->writeProto(socketFd, request, true);
     VLOG(1) << "Receiving client id" << endl;
     et::ConnectResponse response =
-      socketHandler->readProto<et::ConnectResponse>(socketFd, true);
+        socketHandler->readProto<et::ConnectResponse>(socketFd, true);
     clientId = response.clientid();
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(new BackedReader(
@@ -91,7 +91,7 @@ void ClientConnection::pollReconnect() {
           request.set_clientid(clientId);
           socketHandler->writeProto(newSocketFd, request, true);
           recover(newSocketFd);
-        } catch (const std::runtime_error &re) {
+        } catch (const std::runtime_error& re) {
           socketHandler->close(newSocketFd);
         }
       }

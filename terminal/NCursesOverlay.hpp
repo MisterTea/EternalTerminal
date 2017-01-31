@@ -9,7 +9,7 @@
 
 namespace et {
 class NCursesWindow {
-public:
+ public:
   NCursesWindow(const TerminalInfo& info, bool showBorder);
 
   ~NCursesWindow();
@@ -18,28 +18,38 @@ public:
 
   void refresh();
 
-protected:
+ protected:
   const TerminalInfo info;
   bool showBorder;
   WINDOW* window;
 };
 
 class NCursesOverlay {
-public:
+ public:
   NCursesOverlay();
 
   ~NCursesOverlay();
 
-  shared_ptr<NCursesWindow> createWindow(const TerminalInfo& info, bool showBorder);
+  shared_ptr<NCursesWindow> createWindow(const TerminalInfo& info,
+                                         bool showBorder);
 
   void refresh();
 
-  inline int rows() { int rows,cols; getmaxyx(stdscr,rows,cols); return rows; }
-  inline int cols() { int rows,cols; getmaxyx(stdscr,rows,cols); return cols; }
-protected:
+  inline int rows() {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    return rows;
+  }
+  inline int cols() {
+    int rows, cols;
+    getmaxyx(stdscr, rows, cols);
+    return cols;
+  }
+
+ protected:
   vector<shared_ptr<NCursesWindow> > windows;
   shared_ptr<StdIoBuffer> stdIoBuffer;
 };
 }
 
-#endif // __NCURSES_OVERLAY_H__
+#endif  // __NCURSES_OVERLAY_H__

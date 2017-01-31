@@ -23,7 +23,6 @@ ServerClientConnection::~ServerClientConnection() {
   }
 }
 
-
 bool ServerClientConnection::recoverClient(int newSocketFd) {
   closeSocket();
   return recover(newSocketFd);
