@@ -14,7 +14,12 @@ Connection::~Connection() {
 
 inline bool isSkippableError() {
   return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EAGAIN ||
-          errno == EWOULDBLOCK || errno == EHOSTUNREACH);
+          errno == EWOULDBLOCK || errno == EHOSTUNREACH ||
+          errno == EBADF // Bad file descriptor can happen when
+                         // there's a race condition between ta thread
+                         // closing a connection and one
+                         // reading/writing.
+          );
 }
 
 ssize_t Connection::read(void* buf, size_t count) {
@@ -95,6 +100,9 @@ void Connection::closeSocket() {
     LOG(ERROR) << "Tried to close a dead socket";
     return;
   }
+  //TODO: There is a race condition where we invalidate and another
+  //thread can try to read/write to the socket.  For now we handle the
+  //error but it would be better to avoid it.
   reader->invalidateSocket();
   writer->invalidateSocket();
   socketHandler->close(socketFd);
