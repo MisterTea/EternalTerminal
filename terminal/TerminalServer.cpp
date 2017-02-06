@@ -221,6 +221,10 @@ int main(int argc, char** argv) {
     // Delete the file with the passkey
     remove(FLAGS_passkeyfile.c_str());
   }
+  if (passkey.length() == 0) {
+    cout << "Unless you are doing development on Eternal Terminal,\nplease do not call etserver directly.\n\nThe et launcher (run on the client) uses ssh to remotely call etserver with the correct parameters.\nThis ensures a secure connection.\n\nIf you intended to call etserver directly, please provide a passkey\n(run \"etserver --help\" for details)." << endl;
+    exit(1);
+  }
   if (passkey.length() != 32) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey;
   }
