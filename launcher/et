@@ -5,6 +5,7 @@ USER=${USER}
 ET_COMMAND=""
 SSH_COMMAND=""
 LOG_DIR="/tmp"
+VERBOSITY=""
 
 for i in "$@"
 do
@@ -23,6 +24,10 @@ do
             ;;
         -l=*|--logdir=*)
             LOG_DIR="${i#*=}"
+            shift
+            ;;
+        -v)
+            VERBOSITY="--v=9"
             shift
             ;;
         -h|--help)
@@ -88,7 +93,7 @@ done <<< \"\$ET_SERVER_COMMANDS\"
 export TMPFILE=\$(mktemp /tmp/et.XXXXXX)
 export PASSWD=\`$PASSWORD_GENERATOR\`
 echo \$PASSWD > \$TMPFILE
-nohup $SERVER_BINARY --v=9 --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
+nohup $SERVER_BINARY $VERBOSITY --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
 echo PASSWORD:\$PASSWD
 "
 PASSWD=$(echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
@@ -96,4 +101,4 @@ PASSWD=$(echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cu
 TMPFILE=$(mktemp /tmp/et.XXXXXX)
 echo "$PASSWD" > "$TMPFILE"
 
-$CLIENT_BINARY --passkeyfile="$TMPFILE" --v=9 --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
+$CLIENT_BINARY --passkeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err

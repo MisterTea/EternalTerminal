@@ -106,7 +106,7 @@ int main(int argc, char** argv) {
     }
     break;
   }
-  cout << "Client created with id: " << client->getClientId() << endl;
+  VLOG(1) << "Client created with id: " << client->getClientId() << endl;
 
   termios terminal_local;
   tcgetattr(0, &terminal_local);
