@@ -189,7 +189,7 @@ if(BUILD_PACKAGE)
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
     set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
-    set(CPACK_RPM_PACKAGE_REQUIRES "ncurses, libgcrypt, protobuf, gflags, glog")
+    set(CPACK_RPM_PACKAGE_REQUIRES "boost, ncurses, libgcrypt, protobuf, gflags, glog")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb
