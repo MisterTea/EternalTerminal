@@ -6,8 +6,8 @@ option(BUILD_PACKAGE "Builds the package" OFF)
 
 
 set (${PROJECT_NAME}_VERSION_MAJOR 1)
-set (${PROJECT_NAME}_VERSION_MINOR 0)
-set (${PROJECT_NAME}_VERSION_PATCH 4)
+set (${PROJECT_NAME}_VERSION_MINOR 1)
+set (${PROJECT_NAME}_VERSION_PATCH 0)
 
 IF(BUILD_TEST)
   add_subdirectory(${CMAKE_SOURCE_DIR}/cmake/external/googletest)
