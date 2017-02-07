@@ -56,6 +56,7 @@ include_directories(
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CURSES_INCLUDE_DIR}
+  ${Boost_INCLUDE_DIR}
   )
 
 set(${PROJECT_NAME}_SRC
