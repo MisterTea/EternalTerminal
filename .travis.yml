@@ -10,7 +10,7 @@ compiler:
 
 before_install:
   - git submodule update --init --recursive
-  - if [ $TRAVIS_OS_NAME == linux ]; then 
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then 
       sudo apt-get install libboost-dev  
     fi
 
