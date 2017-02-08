@@ -41,9 +41,7 @@ E.T. the Extra-Terrestrial was a movie about an alien and a boy that
 together build a device to "phone home" and send the alien back to his
 family and homeworld.
 
-Just like the E.T. Communicator, the Eternal Terminal (ET) was
-initially cobbled together by a couple of hackers from UCF.  It needs
-your love and attention to thrive.
+Just like the E.T. Communicator, the Eternal Terminal (ET) exists to allow developers to keep in contact with their remote machines.  ET survives IP roaming and other connection loss events.
 
 ## It all starts with SSH
 
