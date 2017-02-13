@@ -7,7 +7,7 @@ option(BUILD_PACKAGE "Builds the package" OFF)
 
 set (${PROJECT_NAME}_VERSION_MAJOR 1)
 set (${PROJECT_NAME}_VERSION_MINOR 1)
-set (${PROJECT_NAME}_VERSION_PATCH 0)
+set (${PROJECT_NAME}_VERSION_PATCH 1)
 
 IF(BUILD_TEST)
   add_subdirectory(${CMAKE_SOURCE_DIR}/cmake/external/googletest)
@@ -189,7 +189,7 @@ if(BUILD_PACKAGE)
 
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
-    set(CPACK_RPM_PACKAGE_VERSION "1.0.0")
+    set(CPACK_RPM_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}")
     set(CPACK_RPM_PACKAGE_REQUIRES "boost, ncurses, libgcrypt, protobuf, gflags, glog")
 
     #To build and verify
