@@ -98,7 +98,7 @@ int BackedReader::getPartialMessageLength() {
 
 void BackedReader::constructPartialMessage(string* buf) {
   int messageSize = getPartialMessageLength();
-  if (partialMessage.length()-4 < messageSize) {
+  if (int(partialMessage.length())-4 < messageSize) {
     LOG(FATAL) << "Tried to construct a message that wasn't complete";
   }
   *buf = cryptoHandler->decrypt(partialMessage.substr(4, messageSize));
