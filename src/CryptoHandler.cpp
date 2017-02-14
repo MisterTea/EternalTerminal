@@ -1,86 +1,63 @@
 #include "CryptoHandler.hpp"
 
-#define GCRYPT_FAIL(X)                                                     \
+#define SODIUM_FAIL(X)                                                     \
   {                                                                        \
     int rc = (X);                                                          \
-    if ((rc))                                                              \
-      LOG(FATAL) << "Error: (" << rc << "): " << gcry_strsource(rc) << "/" \
-                 << gcry_strerror(rc);                                     \
+    if ((rc) == -1)                                                              \
+      LOG(FATAL) << "Crypto Error: (" << rc << ")";                                     \
   }
 namespace et {
 
 mutex cryptoMutex;
 int CryptoHandlerInitialized = 0;
 void initCryptoHandler() {
-  /* Version check should be the very first call because it
-     makes sure that important subsystems are intialized. */
-  if (!gcry_check_version(GCRYPT_VERSION)) {
-    LOG(FATAL) << "gcrypt: library version mismatch";
-  }
-
-  gcry_error_t err = 0;
-
-  /* We don't want to see any warnings, e.g. because we have not yet
-     parsed program options which might be used to suppress such
-     warnings. */
-  err = gcry_control(GCRYCTL_SUSPEND_SECMEM_WARN);
-
-  /* ... If required, other initialization goes here.  Note that the
-     process might still be running with increased privileges and that
-     the secure memory has not been intialized.  */
-
-  /* Allocate a pool of 16k secure memory.  This make the secure memory
-     available and also drops privileges where needed.  */
-  err |= gcry_control(GCRYCTL_INIT_SECMEM, 16384, 0);
-
-  /* It is now okay to let Libgcrypt complain when there was/is
-     a problem with the secure memory. */
-  err |= gcry_control(GCRYCTL_RESUME_SECMEM_WARN);
-
-  /* ... If required, other initialization goes here.  */
-
-  /* Tell Libgcrypt that initialization has completed. */
-  err |= gcry_control(GCRYCTL_INITIALIZATION_FINISHED, 0);
-
-  if (err) {
-    LOG(FATAL) << "gcrypt: failed initialization";
-  }
+  SODIUM_FAIL(sodium_init());
 }
 
-#define GCRY_CIPHER GCRY_CIPHER_SALSA20
-#define GCRY_MODE GCRY_CIPHER_MODE_STREAM
-
-CryptoHandler::CryptoHandler(const string& key) {
+CryptoHandler::CryptoHandler(const string& _key) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (CryptoHandlerInitialized == 0) {
     CryptoHandlerInitialized = 1;
     initCryptoHandler();
   }
-  GCRYPT_FAIL(gcry_cipher_open(&handle, GCRY_CIPHER, GCRY_MODE, 0));
-  if (key.length() * 8 != 256) {
-    throw runtime_error("Invalid key length");
+  if (_key.length() != crypto_secretbox_KEYBYTES) {
+    LOG(FATAL) << "Invalid key length";
   }
-  GCRYPT_FAIL(gcry_cipher_setkey(handle, key.c_str(), 256 / 8));
+  memcpy(key, &_key[0], _key.length());
+  memset(nonce, 0, crypto_secretbox_NONCEBYTES);
 }
 
 CryptoHandler::~CryptoHandler() {
-  lock_guard<std::mutex> guard(cryptoMutex);
-  gcry_cipher_close(handle);
 }
 
 string CryptoHandler::encrypt(const string& buffer) {
   lock_guard<std::mutex> guard(cryptoMutex);
-  string retval(buffer.length(), '\0');
-  GCRYPT_FAIL(gcry_cipher_encrypt(handle, &retval[0], retval.length(),
-                                  buffer.c_str(), buffer.length()));
+  incrementNonce();
+  string retval(buffer.length() + crypto_secretbox_MACBYTES, '\0');
+  SODIUM_FAIL(crypto_secretbox_easy((unsigned char*)&retval[0], (const unsigned char*)buffer.c_str(), buffer.length(), nonce, key));
+  VLOG(2) << "Encrypt: " << buffer << " => " << retval;
   return retval;
 }
 
 string CryptoHandler::decrypt(const string& buffer) {
   lock_guard<std::mutex> guard(cryptoMutex);
-  string retval(buffer.length(), '\0');
-  GCRYPT_FAIL(gcry_cipher_decrypt(handle, &retval[0], retval.length(),
-                                  buffer.c_str(), buffer.length()));
+  incrementNonce();
+  string retval(buffer.length() - crypto_secretbox_MACBYTES, '\0');
+  SODIUM_FAIL(crypto_secretbox_open_easy((unsigned char*)&retval[0],
+                                         (const unsigned char*)buffer.c_str(), buffer.length(),
+                                         nonce, key));
+  VLOG(2) << "Decrypt: " << buffer << " => " << retval;
   return retval;
+}
+
+void CryptoHandler::incrementNonce() {
+  // Increment nonce
+  for (int a=0;a<crypto_secretbox_NONCEBYTES;a++) {
+    nonce[a]++;
+    if (nonce[a]) {
+      // When nonce[a]==0, it means we rolled over to the next digit;
+      break;
+    }
+  }
 }
 }

@@ -25,8 +25,7 @@ foreach(SRC_LINE ${GTEST_SRC})
     gmock_main
     glog
     gflags
-    gcrypt
-    ${LIBGCRYPT_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
     util
     )
     add_test(${FILE_LINE} ${FILE_LINE})

@@ -3,7 +3,7 @@
 
 #include "Headers.hpp"
 
-#include <gcrypt.h>
+#include <sodium.h>
 
 namespace et {
 
@@ -16,7 +16,9 @@ class CryptoHandler {
   string decrypt(const string& buffer);
 
  protected:
-  gcry_cipher_hd_t handle;
+  void incrementNonce();
+  unsigned char nonce[crypto_secretbox_NONCEBYTES];
+  unsigned char key[crypto_secretbox_KEYBYTES];
 };
 }
 

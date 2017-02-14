@@ -26,14 +26,10 @@ find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(gflags REQUIRED)
-find_package(LibGCrypt REQUIRED)
 find_package(Protobuf REQUIRED)
 set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
-
-# Apply gcrypt flags
-add_definitions(${LIBGCRYPT_CFLAGS})
-SET( CMAKE_EXE_LINKER_FLAGS  "${CMAKE_EXE_LINKER_FLAGS} ${LIBGCRYPT_LIBRARIES}" )
+find_package(Sodium REQUIRED)
 
 # Apple specific packages
 IF (APPLE)
@@ -57,6 +53,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CURSES_INCLUDE_DIR}
   ${Boost_INCLUDE_DIR}
+  ${Sodium_INCLUDE_DIR}
   )
 
 set(${PROJECT_NAME}_SRC
@@ -120,7 +117,7 @@ target_link_libraries (
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARY}
   gflags
-  ${LIBGCRYPT_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
   ${COREFOUNDATION_LIBRARY}
   util
   )
@@ -139,7 +136,7 @@ target_link_libraries (
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARY}
   gflags
-  ${LIBGCRYPT_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
   ${COREFOUNDATION_LIBRARY}
   util
   )
@@ -190,7 +187,7 @@ if(BUILD_PACKAGE)
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
     set(CPACK_RPM_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}")
-    set(CPACK_RPM_PACKAGE_REQUIRES "boost, ncurses, libgcrypt, protobuf, gflags, glog")
+    set(CPACK_RPM_PACKAGE_REQUIRES "boost, ncurses, libsodium, protobuf, gflags, glog")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb

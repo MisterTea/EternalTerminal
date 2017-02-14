@@ -27,7 +27,7 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     gcrypt
     glog
     gflags
-    ${LIBGCRYPT_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
     ${COREFOUNDATION_LIBRARY}
     util
     )
