@@ -65,7 +65,6 @@ set(${PROJECT_NAME}_SRC
   src/CryptoHandler.cpp
   src/FakeSocketHandler.cpp
   src/FlakyFakeSocketHandler.cpp
-  src/Headers.cpp
   src/ServerClientConnection.cpp
   src/ServerConnection.cpp
   src/SocketHandler.cpp
