@@ -47,7 +47,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
   bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024 * 1024)
+#define BUF_SIZE (1024)
   char b[BUF_SIZE];
 
   while (run) {
@@ -79,7 +79,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
           // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
           // << serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
-          serverClientState->writeAll(&c, 1);
+          serverClientState->writeMessage(string(1,c));
           string s(b, rc);
           et::TerminalBuffer tb;
           tb.set_buffer(s);
@@ -93,8 +93,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
       }
 
       while (serverClientState->hasData()) {
-        char packetType;
-        serverClientState->readAll(&packetType, 1);
+        string packetTypeString;
+        if(!serverClientState->readMessage(&packetTypeString)) {
+          break;
+        }
+        char packetType = packetTypeString[0];
         switch (packetType) {
           case et::PacketType::TERMINAL_BUFFER: {
             // Read from the server and write to our fake terminal
@@ -110,7 +113,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
             // Echo keepalive back to client
             VLOG(1) << "Got keep alive";
             char c = et::PacketType::KEEP_ALIVE;
-            serverClientState->writeAll(&c, 1);
+            serverClientState->writeMessage(string(1,c));
             break;
           }
           case et::PacketType::TERMINAL_INFO: {

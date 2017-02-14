@@ -70,13 +70,13 @@ void ClientConnection::closeSocket() {
       new std::thread(&ClientConnection::pollReconnect, this));
 }
 
-ssize_t ClientConnection::read(void* buf, size_t count) {
+ssize_t ClientConnection::read(string* buf) {
   lock_guard<std::recursive_mutex> guard(reconnectMutex);
-  return Connection::read(buf, count);
+  return Connection::read(buf);
 }
-ssize_t ClientConnection::write(const void* buf, size_t count) {
+ssize_t ClientConnection::write(const string& buf) {
   lock_guard<std::recursive_mutex> guard(reconnectMutex);
-  return Connection::write(buf, count);
+  return Connection::write(buf);
 }
 
 void ClientConnection::pollReconnect() {

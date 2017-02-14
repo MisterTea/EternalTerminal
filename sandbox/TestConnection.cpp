@@ -31,8 +31,15 @@ void runClient(std::shared_ptr<FakeSocketHandler> clientSocket,
       globalServer->getClient(clientId);
   std::array<char, 4 * 1024> result;
   for (int a = 0; a < 4 * 1024; a++) {
-    serverClientState->write((void*)(&s[0] + a), 1);
-    client->readAll((void*)(&result[0] + a), 1);
+    serverClientState->writeMessage(string(&s[0] + a, 1));
+    string receivedMessage;
+    if(!client->readMessage(&receivedMessage)) {
+      LOG(FATAL) << "Error reading message";
+    }
+    if (receivedMessage.length() != 1) {
+      LOG(FATAL) << "Message is the wrong length";
+    }
+    result[a] = receivedMessage[0];
     cout << "Finished byte " << a << endl;
   }
 

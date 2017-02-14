@@ -18,6 +18,7 @@ bool FakeSocketHandler::hasData(int fd) {
 }
 
 ssize_t FakeSocketHandler::read(int fd, void* buf, size_t count) {
+  LOG(INFO) << "Reading " << count << " bytes";
   time_t timeout = time(NULL) + FAKE_READ_TIMEOUT;
   while (true) {
     if (time(NULL) > timeout) {

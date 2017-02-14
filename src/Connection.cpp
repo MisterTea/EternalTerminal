@@ -22,43 +22,45 @@ inline bool isSkippableError() {
           );
 }
 
-ssize_t Connection::read(void* buf, size_t count) {
-  ssize_t bytesRead = reader->read(buf, count);
-  if (bytesRead == -1) {
+ssize_t Connection::read(string* buf) {
+  ssize_t messagesRead = reader->read(buf);
+  if (messagesRead == -1) {
     if (isSkippableError()) {
       // The connection has reset, close the socket and invalidate, then
       // return 0 bytes
       LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
       closeSocket();
-      bytesRead = 0;
+      messagesRead = 0;
     }
   }
-  return bytesRead;
+  return messagesRead;
 }
 
-ssize_t Connection::readAll(void* buf, size_t count) {
-  size_t pos = 0;
-  while (pos < count && !shuttingDown) {
-    ssize_t bytesRead = read(((char*)buf) + pos, count - pos);
-    if (bytesRead < 0) {
+bool Connection::readMessage(string* buf) {
+  while (!shuttingDown) {
+    ssize_t messagesRead = read(buf);
+    if (messagesRead > 1 || messagesRead < -1) {
+      LOG(FATAL) << "Invalid value for read(...) " << messagesRead;
+    }
+    if (messagesRead == 1) {
+      return true;
+    }
+    if (messagesRead == -1) {
       VLOG(1) << "Failed a call to readAll: %s\n" << strerror(errno);
       throw std::runtime_error("Failed a call to readAll");
     }
-    pos += bytesRead;
-    if (pos < count) {
-      // Yield the processor
-      usleep(1000);
-    }
+    // Yield the processor
+    usleep(1000);
   }
-  return count;
+  return false;
 }
 
-ssize_t Connection::write(const void* buf, size_t count) {
+ssize_t Connection::write(const string& buf) {
   if (socketFd == -1) {
     return 0;
   }
 
-  BackedWriterWriteState bwws = writer->write(buf, count);
+  BackedWriterWriteState bwws = writer->write(buf);
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     return 0;
@@ -79,15 +81,12 @@ ssize_t Connection::write(const void* buf, size_t count) {
     }
   }
 
-  return count;
+  return 1;
 }
 
-void Connection::writeAll(const void* buf, size_t count) {
+void Connection::writeMessage(const string& buf) {
   while (!shuttingDown) {
-    ssize_t bytesWritten = write(buf, count);
-    if (bytesWritten > 0 && bytesWritten != (ssize_t)count) {
-      LOG(FATAL) << "Somehow wrote a partial stream.  This shouldn't happen";
-    }
+    ssize_t bytesWritten = write(buf);
     if (bytesWritten) {
       return;
     }
@@ -127,7 +126,10 @@ bool Connection::recover(int newSocketFd) {
     {
       // Fetch the catchup bytes and send
       et::CatchupBuffer catchupBuffer;
-      catchupBuffer.set_buffer(writer->recover(remoteHeader.sequencenumber()));
+      vector<string> recoveredMessages = writer->recover(remoteHeader.sequencenumber());
+      for (auto it : recoveredMessages) {
+        catchupBuffer.add_buffer(it);
+      }
       socketHandler->writeProto(newSocketFd, catchupBuffer, true);
     }
 
@@ -135,7 +137,9 @@ bool Connection::recover(int newSocketFd) {
         socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
     socketFd = newSocketFd;
-    reader->revive(socketFd, catchupBuffer.buffer());
+    vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
+                                     catchupBuffer.buffer().end());
+    reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);
     writer->unlock();
     LOG(INFO) << "Finished recovering";

@@ -13,9 +13,9 @@ class BackedReader {
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
   bool hasData();
-  ssize_t read(void* buf, size_t count);
+  int read(string* buf);
 
-  void revive(int newSocketFd, std::string localBuffer_);
+  void revive(int newSocketFd, vector<string> localBuffer_);
 
   inline void invalidateSocket() {
     lock_guard<std::mutex> guard(recoverMutex);
@@ -30,9 +30,13 @@ class BackedReader {
   shared_ptr<CryptoHandler> cryptoHandler;
   volatile int socketFd;
   int64_t sequenceNumber;
-  std::string localBuffer;
+  deque<string> localBuffer;
+
+  string partialMessage;
 
   void init(int64_t firstSequenceNumber);
+  int getPartialMessageLength();
+  void constructPartialMessage(string* buf);
 };
 }
 

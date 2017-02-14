@@ -18,9 +18,9 @@ class BackedWriter {
   BackedWriter(shared_ptr<SocketHandler> socketHandler,
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
-  BackedWriterWriteState write(const void* buf, size_t count);
+  BackedWriterWriteState write(const string& buf);
 
-  std::string recover(int64_t lastValidSequenceNumber);
+  vector<std::string> recover(int64_t lastValidSequenceNumber);
 
   void revive(int newSocketFd);
   void unlock();
@@ -35,19 +35,14 @@ class BackedWriter {
   inline int64_t getSequenceNumber() { return sequenceNumber; }
 
  protected:
-  static const int BUFFER_CHUNK_SIZE = 64 * 1024;
-
-  void backupBuffer(const void* buf, size_t count);
-
   mutex recoverMutex;
   shared_ptr<SocketHandler> socketHandler;
   shared_ptr<CryptoHandler> cryptoHandler;
   int socketFd;
 
-  // TODO: Change std::string -> std::array with length, this way it's
-  // preallocated
-  boost::circular_buffer<std::string> immediateBackup;
-  // std::vector<std::string> longTermBackup; // Not implemented yet
+  static const int MAX_BACKUP_BYTES = 64 * 1024 * 1024;
+  std::deque<string> backupBuffer;
+  int64_t backupSize;
   int64_t sequenceNumber;
 };
 }

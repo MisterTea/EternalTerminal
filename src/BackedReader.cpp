@@ -14,14 +14,14 @@ bool BackedReader::hasData() {
     return false;
   }
 
-  if (localBuffer.length() > 0) {
+  if (localBuffer.size() > 0) {
     return true;
   }
 
   return socketHandler->hasData(socketFd);
 }
 
-ssize_t BackedReader::read(void* buf, size_t count) {
+int BackedReader::read(string* buf) {
   if (socketFd < 0) {
     // The socket is dead, return 0 bytes until it returns
     VLOG(1) << "Tried to read from a dead socket";
@@ -31,32 +31,78 @@ ssize_t BackedReader::read(void* buf, size_t count) {
     return 0;
   }
 
-  if (localBuffer.length() > 0) {
+  if (localBuffer.size() > 0) {
     VLOG(1) << "Reading from local buffer";
-    // Read whatever we can from our local buffer and return
-    size_t bytesToCopy = std::min(count, localBuffer.length());
-    string s = string(&localBuffer[0], bytesToCopy);
-    s = cryptoHandler->decrypt(s);
-    memcpy(buf, &s[0], bytesToCopy);
-    localBuffer = localBuffer.substr(bytesToCopy);  // TODO: Optimize
-    VLOG(1) << "New local buffer size: " << localBuffer.length();
-    return bytesToCopy;
+    string s = cryptoHandler->decrypt(localBuffer.front());
+    localBuffer.pop_front();
+    VLOG(1) << "New local buffer size: " << localBuffer.size();
+    *buf = s;
+    return 1;
   }
 
   // Read from the socket
-  ssize_t bytesRead = socketHandler->read(socketFd, buf, count);
-  if (bytesRead > 0) {
-    sequenceNumber += bytesRead;
-    string s((char*)buf, bytesRead);
-    s = cryptoHandler->decrypt(s);
-    memcpy(buf, &s[0], bytesRead);
+  if (partialMessage.length() < 4) {
+    // Read the header
+    char tmpBuf[4];
+    ssize_t bytesRead = socketHandler->read(socketFd, tmpBuf, 4 - partialMessage.length());
+    if (bytesRead > 0) {
+      partialMessage.append(tmpBuf, bytesRead);
+    }
+    if (bytesRead < 0) {
+      return bytesRead;
+    }
   }
-  return bytesRead;
+  if (partialMessage.length() < 4) {
+    // We didn't get the full header yet.
+    return 0;
+  }
+  int messageLength = getPartialMessageLength();
+  VLOG(2) << "Reading message of length: " << messageLength << endl;
+  int messageRemainder = messageLength - (partialMessage.length() - 4);
+  if (messageRemainder) {
+    VLOG(2) << "bytes remaining: " << messageRemainder;
+    string s(messageRemainder, '\0');
+    ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
+    if (bytesRead < 0) {
+      return bytesRead;
+    }
+    if (bytesRead > 0) {
+      partialMessage.append(&s[0], bytesRead);
+      messageRemainder -= bytesRead;
+    }
+  }
+  if (!messageRemainder) {
+    constructPartialMessage(buf);
+    return true;
+  }
+
+  return false;
 }
 
-void BackedReader::revive(int newSocketFd, std::string localBuffer_) {
-  localBuffer.append(localBuffer_);
-  sequenceNumber += localBuffer.length();
+void BackedReader::revive(int newSocketFd, vector<string> localBuffer_) {
+  partialMessage = "";
+  localBuffer.insert(localBuffer.end(), localBuffer_.begin(), localBuffer_.end());
+  sequenceNumber += localBuffer_.size();
   socketFd = newSocketFd;
+}
+
+int BackedReader::getPartialMessageLength() {
+  if (partialMessage.length() < 4) {
+    LOG(FATAL) << "Tried to construct a message header that wasn't complete";
+  }
+  int messageSize;
+  memcpy(&messageSize, &partialMessage[0], sizeof(int));
+  messageSize = ntohl(messageSize);
+  return messageSize;
+}
+
+void BackedReader::constructPartialMessage(string* buf) {
+  int messageSize = getPartialMessageLength();
+  if (partialMessage.length()-4 < messageSize) {
+    LOG(FATAL) << "Tried to construct a message that wasn't complete";
+  }
+  *buf = cryptoHandler->decrypt(partialMessage.substr(4, messageSize));
+  partialMessage = partialMessage.substr(4 + messageSize);
+  sequenceNumber++;
 }
 }

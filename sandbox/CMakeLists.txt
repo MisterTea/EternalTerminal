@@ -33,33 +33,3 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     )
     add_test(${FILE_LINE} ${FILE_LINE})
 endforeach()
-
-add_executable (TerminalTest ../terminal/Terminal.cpp)
-target_link_libraries (
-  TerminalTest
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
-  ${LIBGCRYPT_LIBRARIES}
-  ${COREFOUNDATION_LIBRARY}
-  util
-  )
-
-add_executable (FlakyTerminal ../terminal/FlakyTerminal.cpp)
-target_link_libraries (
-  FlakyTerminal
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
-  ${LIBGCRYPT_LIBRARIES}
-  ${COREFOUNDATION_LIBRARY}
-  util
-  )

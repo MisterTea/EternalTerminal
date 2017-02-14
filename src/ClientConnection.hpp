@@ -17,14 +17,13 @@ class ClientConnection : public Connection {
 
   virtual ~ClientConnection();
 
-  virtual ssize_t read(void* buf, size_t count);
-  virtual ssize_t write(const void* buf, size_t count);
-
   void connect();
 
   virtual void closeSocket();
 
  protected:
+  virtual ssize_t read(string* buf);
+  virtual ssize_t write(const string& buf);
   void pollReconnect();
 
   std::string hostname;

@@ -14,5 +14,5 @@ message SequenceHeader {
 }
 
 message CatchupBuffer {
-  optional bytes buffer = 1;
+  repeated bytes buffer = 1;
 }

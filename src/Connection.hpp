@@ -14,20 +14,17 @@ class Connection {
 
   virtual ~Connection();
 
-  virtual ssize_t read(void* buf, size_t count);
-  virtual ssize_t readAll(void* buf, size_t count);
-
-  virtual ssize_t write(const void* buf, size_t count);
-  virtual void writeAll(const void* buf, size_t count);
+  virtual bool readMessage(string* buf);
+  virtual void writeMessage(const string& message);
 
   template <typename T>
   inline T readProto() {
     T t;
-    int64_t length;
-    readAll(&length, sizeof(int64_t));
-    string s(length, 0);
-    readAll(&s[0], length);
-    t.ParseFromString(s);
+    string s;
+    ssize_t readMessages = readMessage(&s);
+    if (readMessages) {
+      t.ParseFromString(s);
+    }
     return t;
   }
 
@@ -35,9 +32,7 @@ class Connection {
   inline void writeProto(const T& t) {
     string s;
     t.SerializeToString(&s);
-    int64_t length = s.length();
-    writeAll(&length, sizeof(int64_t));
-    writeAll(&s[0], length);
+    writeMessage(s);
   }
 
   inline shared_ptr<BackedReader> getReader() { return reader; }
@@ -56,6 +51,8 @@ class Connection {
   void shutdown();
 
  protected:
+  virtual ssize_t read(string* buf);
+  virtual ssize_t write(const string& buf);
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;

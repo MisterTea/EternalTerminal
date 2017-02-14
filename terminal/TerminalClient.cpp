@@ -118,7 +118,7 @@ int main(int argc, char** argv) {
   bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024 * 1024)
+#define BUF_SIZE (1024)
   char b[BUF_SIZE];
 
   time_t keepaliveTime = time(NULL) + 5;
@@ -186,7 +186,8 @@ int main(int argc, char** argv) {
           tb.set_buffer(s);
 
           char c = et::PacketType::TERMINAL_BUFFER;
-          globalClient->writeAll(&c, 1);
+          string headerString(1,c);
+          globalClient->writeMessage(headerString);
           globalClient->writeProto(tb);
           keepaliveTime = time(NULL) + 5;
         } else {
@@ -195,8 +196,14 @@ int main(int argc, char** argv) {
       }
 
       while (globalClient->hasData()) {
-        char packetType;
-        globalClient->readAll(&packetType, 1);
+        string packetTypeString;
+        if (!globalClient->readMessage(&packetTypeString)) {
+          break;
+        }
+        if (packetTypeString.length() != 1) {
+          LOG(FATAL) << "Invalid packet header size: " << packetTypeString.length();
+        }
+        char packetType = packetTypeString[0];
         switch (packetType) {
           case et::PacketType::TERMINAL_BUFFER: {
             // Read from the server and write to our fake terminal
@@ -233,8 +240,8 @@ int main(int argc, char** argv) {
           waitingOnKeepalive = false;
         } else {
           VLOG(1) << "Writing keepalive packet";
-          char c = et::PacketType::KEEP_ALIVE;
-          globalClient->writeAll(&c, 1);
+          string s(1, (char)et::PacketType::KEEP_ALIVE);
+          globalClient->writeMessage(s);
           waitingOnKeepalive = true;
         }
       }
@@ -252,8 +259,8 @@ int main(int argc, char** argv) {
         ti.set_column(win.ws_col);
         ti.set_width(win.ws_xpixel);
         ti.set_height(win.ws_ypixel);
-        char c = et::PacketType::TERMINAL_INFO;
-        globalClient->writeAll(&c, 1);
+        string s(1, (char)et::PacketType::TERMINAL_INFO);
+        globalClient->writeMessage(s);
         globalClient->writeProto(ti);
       }
 
