@@ -33,7 +33,7 @@ void runClient(std::shared_ptr<FlakyFakeSocketHandler> clientSocket,
   for (int a = 0; a < 4 * 1024; a++) {
     serverClientState->writeMessage(string(&s[0] + a, 1));
     string receivedMessage;
-    if(!client->readMessage(&receivedMessage)) {
+    if (!client->readMessage(&receivedMessage)) {
       LOG(FATAL) << "Error reading message";
     }
     if (receivedMessage.length() != 1) {

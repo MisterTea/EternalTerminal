@@ -1,6 +1,7 @@
 #ifndef __ETERNAL_TCP_HEADERS__
 #define __ETERNAL_TCP_HEADERS__
 
+#include <arpa/inet.h>
 #include <errno.h>
 #include <pthread.h> /* POSIX Threads */
 #include <stdint.h>
@@ -10,7 +11,6 @@
 #include <sys/types.h>
 #include <time.h>
 #include <unistd.h>
-#include <arpa/inet.h>
 
 #include <algorithm>
 #include <array>

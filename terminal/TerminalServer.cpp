@@ -79,7 +79,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
           // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
           // << serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
-          serverClientState->writeMessage(string(1,c));
+          serverClientState->writeMessage(string(1, c));
           string s(b, rc);
           et::TerminalBuffer tb;
           tb.set_buffer(s);
@@ -94,7 +94,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
 
       while (serverClientState->hasData()) {
         string packetTypeString;
-        if(!serverClientState->readMessage(&packetTypeString)) {
+        if (!serverClientState->readMessage(&packetTypeString)) {
           break;
         }
         char packetType = packetTypeString[0];
@@ -113,7 +113,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
             // Echo keepalive back to client
             VLOG(1) << "Got keep alive";
             char c = et::PacketType::KEEP_ALIVE;
-            serverClientState->writeMessage(string(1,c));
+            serverClientState->writeMessage(string(1, c));
             break;
           }
           case et::PacketType::TERMINAL_INFO: {

@@ -44,7 +44,8 @@ int BackedReader::read(string* buf) {
   if (partialMessage.length() < 4) {
     // Read the header
     char tmpBuf[4];
-    ssize_t bytesRead = socketHandler->read(socketFd, tmpBuf, 4 - partialMessage.length());
+    ssize_t bytesRead =
+        socketHandler->read(socketFd, tmpBuf, 4 - partialMessage.length());
     if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
     }
@@ -81,7 +82,8 @@ int BackedReader::read(string* buf) {
 
 void BackedReader::revive(int newSocketFd, vector<string> localBuffer_) {
   partialMessage = "";
-  localBuffer.insert(localBuffer.end(), localBuffer_.begin(), localBuffer_.end());
+  localBuffer.insert(localBuffer.end(), localBuffer_.begin(),
+                     localBuffer_.end());
   sequenceNumber += localBuffer_.size();
   socketFd = newSocketFd;
 }
@@ -98,7 +100,7 @@ int BackedReader::getPartialMessageLength() {
 
 void BackedReader::constructPartialMessage(string* buf) {
   int messageSize = getPartialMessageLength();
-  if (int(partialMessage.length())-4 < messageSize) {
+  if (int(partialMessage.length()) - 4 < messageSize) {
     LOG(FATAL) << "Tried to construct a message that wasn't complete";
   }
   *buf = cryptoHandler->decrypt(partialMessage.substr(4, messageSize));

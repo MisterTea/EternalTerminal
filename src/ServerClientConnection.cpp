@@ -10,10 +10,12 @@ ServerClientConnection::ServerClientConnection(
   socketFd = _socketFd;
   clientId = _clientId;
   reader = shared_ptr<BackedReader>(new BackedReader(
-      socketHandler, shared_ptr<CryptoHandler>(new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
+      socketHandler, shared_ptr<CryptoHandler>(
+                         new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
       _socketFd));
   writer = shared_ptr<BackedWriter>(new BackedWriter(
-      socketHandler, shared_ptr<CryptoHandler>(new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
+      socketHandler, shared_ptr<CryptoHandler>(
+                         new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
       _socketFd));
 }
 

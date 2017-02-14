@@ -1,5 +1,8 @@
 # Change Log
 
+## [et-v1.1.1](https://github.com/MisterTea/EternalTCP/tree/et-v1.1.1) (2017-02-13)
+[Full Changelog](https://github.com/MisterTea/EternalTCP/compare/v1.1.0...et-v1.1.1)
+
 ## [v1.1.0](https://github.com/MisterTea/EternalTCP/tree/v1.1.0) (2017-02-07)
 [Full Changelog](https://github.com/MisterTea/EternalTCP/compare/v1.0.4...v1.1.0)
 

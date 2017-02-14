@@ -186,7 +186,7 @@ int main(int argc, char** argv) {
           tb.set_buffer(s);
 
           char c = et::PacketType::TERMINAL_BUFFER;
-          string headerString(1,c);
+          string headerString(1, c);
           globalClient->writeMessage(headerString);
           globalClient->writeProto(tb);
           keepaliveTime = time(NULL) + 5;
@@ -201,7 +201,8 @@ int main(int argc, char** argv) {
           break;
         }
         if (packetTypeString.length() != 1) {
-          LOG(FATAL) << "Invalid packet header size: " << packetTypeString.length();
+          LOG(FATAL) << "Invalid packet header size: "
+                     << packetTypeString.length();
         }
         char packetType = packetTypeString[0];
         switch (packetType) {

@@ -59,8 +59,7 @@ void *server_main(void *) {
   // Also set the accept socket as reusable
   {
     int flag = 1;
-    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-               sizeof(int));
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int));
   }
   if (bind(sockfd, (sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     server_error("ERROR on binding");

@@ -82,14 +82,15 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   if (messagesToRecover == 0) {
     return vector<std::string>();
   }
-  VLOG(1) << int64_t(this) << ": Recovering " << messagesToRecover << " Messages";
+  VLOG(1) << int64_t(this) << ": Recovering " << messagesToRecover
+          << " Messages";
   int64_t messagesSeen = 0;
   vector<string> retval;
   for (auto it = backupBuffer.begin(); it != backupBuffer.end(); ++it) {
     retval.push_back(*it);
     messagesSeen++;
     if (messagesSeen == messagesToRecover) {
-      reverse(retval.begin(),retval.end());
+      reverse(retval.begin(), retval.end());
       return retval;
     }
   }

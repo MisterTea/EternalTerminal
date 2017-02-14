@@ -42,11 +42,13 @@ void ClientConnection::connect() {
     clientId = response.clientid();
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(new BackedReader(
-        socketHandler, shared_ptr<CryptoHandler>(new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
+        socketHandler, shared_ptr<CryptoHandler>(
+                           new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
         socketFd));
     VLOG(1) << "Creating backed writer" << endl;
     writer = std::shared_ptr<BackedWriter>(new BackedWriter(
-        socketHandler, shared_ptr<CryptoHandler>(new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
+        socketHandler, shared_ptr<CryptoHandler>(
+                           new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
         socketFd));
     VLOG(1) << "Client Connection established" << endl;
   } catch (const runtime_error& err) {

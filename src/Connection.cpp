@@ -126,7 +126,8 @@ bool Connection::recover(int newSocketFd) {
     {
       // Fetch the catchup bytes and send
       et::CatchupBuffer catchupBuffer;
-      vector<string> recoveredMessages = writer->recover(remoteHeader.sequencenumber());
+      vector<string> recoveredMessages =
+          writer->recover(remoteHeader.sequencenumber());
       for (auto it : recoveredMessages) {
         catchupBuffer.add_buffer(it);
       }
