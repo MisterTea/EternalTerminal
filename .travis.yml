@@ -10,11 +10,9 @@ compiler:
 
 before_install:
   - git submodule update --init --recursive
-  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then 
-      sudo apt-get install libboost-dev  
-    fi
+  - if [[ "$TRAVIS_OS_NAME" == "linux" ]]; then sudo apt-get install libboost-dev; fi
 
-script: 
+script:
   - mkdir build
   - cd build
   - cmake ../ -DBUILD_TEST=1 && make
