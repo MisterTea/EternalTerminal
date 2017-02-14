@@ -9,7 +9,7 @@ namespace et {
 
 class CryptoHandler {
  public:
-  explicit CryptoHandler(const string& key);
+  explicit CryptoHandler(const string& key, unsigned char nonceMSB);
   ~CryptoHandler();
 
   string encrypt(const string& buffer);

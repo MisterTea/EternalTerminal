@@ -14,7 +14,7 @@ void initCryptoHandler() {
   SODIUM_FAIL(sodium_init());
 }
 
-CryptoHandler::CryptoHandler(const string& _key) {
+CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (CryptoHandlerInitialized == 0) {
     CryptoHandlerInitialized = 1;
@@ -25,6 +25,7 @@ CryptoHandler::CryptoHandler(const string& _key) {
   }
   memcpy(key, &_key[0], _key.length());
   memset(nonce, 0, crypto_secretbox_NONCEBYTES);
+  nonce[crypto_secretbox_NONCEBYTES - 1] = nonceMSB;
 }
 
 CryptoHandler::~CryptoHandler() {

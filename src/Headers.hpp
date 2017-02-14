@@ -38,7 +38,12 @@
 
 using namespace std;
 
+// The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 2;
+
+// Nonces for CryptoHandler
+static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
+static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
 
 #define FATAL_FAIL(X) \
   if ((X == -1)) LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
