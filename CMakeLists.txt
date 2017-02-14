@@ -53,7 +53,7 @@ include_directories(
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CURSES_INCLUDE_DIR}
   ${Boost_INCLUDE_DIR}
-  ${Sodium_INCLUDE_DIR}
+  ${sodium_INCLUDE_DIR}
   )
 
 set(${PROJECT_NAME}_SRC
