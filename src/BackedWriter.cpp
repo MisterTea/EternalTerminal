@@ -36,7 +36,7 @@ BackedWriterWriteState BackedWriter::write(const void* buf, size_t count) {
   // Once we encrypt and the encryption state is updated, there's no
   // going back.
   string s((char*)buf, count);
-  cryptoHandler->encryptInPlace(&s[0], count);
+  s = cryptoHandler->encrypt(s);
   backupBuffer(&s[0], count);
 
   size_t bytesWritten = 0;

@@ -83,14 +83,4 @@ string CryptoHandler::decrypt(const string& buffer) {
                                   buffer.c_str(), buffer.length()));
   return retval;
 }
-
-void CryptoHandler::encryptInPlace(char* buffer, int length) {
-  lock_guard<std::mutex> guard(cryptoMutex);
-  GCRYPT_FAIL(gcry_cipher_encrypt(handle, buffer, length, NULL, 0));
-}
-
-void CryptoHandler::decryptInPlace(char* buffer, int length) {
-  lock_guard<std::mutex> guard(cryptoMutex);
-  GCRYPT_FAIL(gcry_cipher_decrypt(handle, buffer, length, NULL, 0));
-}
 }

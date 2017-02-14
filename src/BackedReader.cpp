@@ -35,9 +35,10 @@ ssize_t BackedReader::read(void* buf, size_t count) {
     VLOG(1) << "Reading from local buffer";
     // Read whatever we can from our local buffer and return
     size_t bytesToCopy = std::min(count, localBuffer.length());
-    memcpy(buf, &localBuffer[0], bytesToCopy);
+    string s = string(&localBuffer[0], bytesToCopy);
+    s = cryptoHandler->decrypt(s);
+    memcpy(buf, &s[0], bytesToCopy);
     localBuffer = localBuffer.substr(bytesToCopy);  // TODO: Optimize
-    cryptoHandler->decryptInPlace((char*)buf, bytesToCopy);
     VLOG(1) << "New local buffer size: " << localBuffer.length();
     return bytesToCopy;
   }
@@ -46,7 +47,9 @@ ssize_t BackedReader::read(void* buf, size_t count) {
   ssize_t bytesRead = socketHandler->read(socketFd, buf, count);
   if (bytesRead > 0) {
     sequenceNumber += bytesRead;
-    cryptoHandler->decryptInPlace((char*)buf, bytesRead);
+    string s((char*)buf, bytesRead);
+    s = cryptoHandler->decrypt(s);
+    memcpy(buf, &s[0], bytesRead);
   }
   return bytesRead;
 }
