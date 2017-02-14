@@ -7,6 +7,7 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
     : socketHandler(socketHandler_),
       cryptoHandler(cryptoHandler_),
       socketFd(socketFd_),
+      backupSize(0),
       sequenceNumber(0) {}
 
 BackedWriterWriteState BackedWriter::write(const string& buf) {
