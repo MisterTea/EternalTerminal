@@ -56,6 +56,12 @@ void *server_main(void *) {
   serv_addr.sin_family = AF_INET;
   serv_addr.sin_addr.s_addr = INADDR_ANY;
   serv_addr.sin_port = htons(portno);
+  // Also set the accept socket as reusable
+  {
+    int flag = 1;
+    setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
+               sizeof(int));
+  }
   if (bind(sockfd, (sockaddr *)&serv_addr, sizeof(serv_addr)) < 0)
     server_error("ERROR on binding");
   listen(sockfd, 5);
