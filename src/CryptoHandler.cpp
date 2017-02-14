@@ -34,8 +34,7 @@ string CryptoHandler::encrypt(const string& buffer) {
   lock_guard<std::mutex> guard(cryptoMutex);
   incrementNonce();
   string retval(buffer.length() + crypto_secretbox_MACBYTES, '\0');
-  SODIUM_FAIL(crypto_secretbox_easy((unsigned char*)&retval[0], (const unsigned char*)buffer.c_str(), buffer.length(), nonce, key));
-  VLOG(2) << "Encrypt: " << buffer << " => " << retval;
+  SODIUM_FAIL(crypto_secretbox_easy((unsigned char*)&retval[0], (const unsigned char*)buffer.c_str(), buffer.length(), nonce, key) == -1);
   return retval;
 }
 
@@ -43,10 +42,11 @@ string CryptoHandler::decrypt(const string& buffer) {
   lock_guard<std::mutex> guard(cryptoMutex);
   incrementNonce();
   string retval(buffer.length() - crypto_secretbox_MACBYTES, '\0');
-  SODIUM_FAIL(crypto_secretbox_open_easy((unsigned char*)&retval[0],
+  if(crypto_secretbox_open_easy((unsigned char*)&retval[0],
                                          (const unsigned char*)buffer.c_str(), buffer.length(),
-                                         nonce, key));
-  VLOG(2) << "Decrypt: " << buffer << " => " << retval;
+                                nonce, key) == -1) {
+    throw std::runtime_error("Decrypt failed.  Possible key mismatch?");
+  }
   return retval;
 }
 

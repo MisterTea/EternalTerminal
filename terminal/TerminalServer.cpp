@@ -133,7 +133,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         }
       }
     } catch (const runtime_error& re) {
-      LOG(INFO) << "Connection error: " << re.what();
+      LOG(ERROR) << "Error: " << re.what();
+      cerr << "Error: " << re.what();
       serverClientState->closeSocket();
       // If the client disconnects the session, it shuoldn't end
       // because the client may be starting a new one.  TODO: Start a

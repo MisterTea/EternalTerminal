@@ -266,6 +266,7 @@ int main(int argc, char** argv) {
 
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what() << endl;
+      cerr << "Error: " << re.what() << endl;
       run = false;
     }
 
