@@ -38,6 +38,17 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   try {
     et::ConnectRequest request =
         socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
+    int version = request.version();
+    if (version != PROTOCOL_VERSION) {
+      et::ConnectResponse response;
+
+      std::ostringstream errorStream;
+      errorStream << "Mismatched protocol versions.  Client: " << request.version() << " != Server: " << PROTOCOL_VERSION;
+      response.set_error(errorStream.str());
+      socketHandler->writeProto(clientSocketFd, response, true);
+      socketHandler->close(clientSocketFd);
+      return;
+    }
     clientId = request.clientid();
     if (clientId == -1) {
       clientId = newClient(clientSocketFd);

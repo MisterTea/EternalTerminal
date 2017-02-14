@@ -29,10 +29,16 @@ void ClientConnection::connect() {
     VLOG(1) << "Sending null id" << endl;
     et::ConnectRequest request;
     request.set_clientid(NULL_CLIENT_ID);
+    request.set_version(PROTOCOL_VERSION);
     socketHandler->writeProto(socketFd, request, true);
     VLOG(1) << "Receiving client id" << endl;
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
+    if (response.has_error()) {
+      LOG(ERROR) << "Error connecting to server: " << response.error();
+      cerr << "Error connecting to server: " << response.error() << endl;
+      exit(1);
+    }
     clientId = response.clientid();
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(new BackedReader(

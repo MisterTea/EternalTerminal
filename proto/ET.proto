@@ -3,10 +3,12 @@ package et;
 
 message ConnectRequest {
   optional int32 clientId = 1;
+  optional int32 version = 2;
 }
 
 message ConnectResponse {
   optional int32 clientId = 1;
+  optional string error = 2;
 }
 
 message SequenceHeader {

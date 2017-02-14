@@ -38,6 +38,8 @@
 
 using namespace std;
 
+static const int PROTOCOL_VERSION = 2;
+
 #define FATAL_FAIL(X) \
   if ((X == -1)) LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
