@@ -4,7 +4,8 @@ PORT="2022"
 USER=${USER}
 ET_COMMAND=""
 SSH_COMMAND=""
-LOG_DIR="/tmp"
+TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}}
+LOG_DIR=$TMP_DIR
 VERBOSITY=""
 
 for i in "$@"
@@ -31,7 +32,7 @@ do
             shift
             ;;
         -h|--help)
-            echo "et (options) [user@]hostname[:port]
+            printf "et (options) [user@]hostname[:port]
 
 Options:
 -h Basic usage
@@ -63,7 +64,7 @@ if [[ $ET_COMMAND =~ $ET_COMMAND_REGEX ]]; then
         PORT=$ET_PORT
     fi
 else
-    echo "Usage: ET (options) [user@]hostname[:port]"
+    printf "Usage: ET (options) [user@]hostname[:port]"
     exit 1
 fi
 
@@ -84,21 +85,22 @@ while read -r line; do
     if [[ \$line =~ \$PORT_REGEX ]]; then
         SERVER_PORT=\"\${BASH_REMATCH[1]}\"
         if [[ $PORT == \"\$SERVER_PORT\" ]]; then
-            echo \"Killing stale server.  Please wait 5 seconds...\"
-            echo \"\$line\" | cut -d' ' -f1 | xargs -I repme kill -9 -repme
+            printf \"Killing stale server.  Please wait 5 seconds...\\n\"
+            printf \"\$line\\n\" | cut -d' ' -f1 | xargs -I repme kill -9 -repme
             sleep 3
         fi
     fi
 done <<< \"\$ET_SERVER_COMMANDS\"
-export TMPFILE=\$(mktemp /tmp/et.XXXXXX)
+export SERVER_TMP_DIR=\${TMPDIR:-\${TMP:-\${TEMP:-/tmp}}}
+export TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et.XXXXXX)
 export PASSWD=\`$PASSWORD_GENERATOR\`
-echo \$PASSWD > \$TMPFILE
+printf \"%s\\n\" \"\$PASSWD\" > \$TMPFILE
 nohup $SERVER_BINARY $VERBOSITY --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
-echo PASSWORD:\$PASSWD
+printf \"PASSWORD:\$PASSWD\\n\"
 "
-PASSWD=$(echo "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
+PASSWD=$(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
 
-TMPFILE=$(mktemp /tmp/et.XXXXXX)
-echo "$PASSWD" > "$TMPFILE"
+TMPFILE=$(mktemp "$TMP_DIR"/et.XXXXXX)
+printf "%s\n" "$PASSWD" > "$TMPFILE"
 
 $CLIENT_BINARY --passkeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
