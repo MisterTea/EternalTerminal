@@ -23,8 +23,8 @@ foreach(SRC_LINE ${GTEST_SRC})
     gtest_main
     gmock
     gmock_main
-    glog
-    gflags
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     util
     )

@@ -25,7 +25,7 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
-find_package(gflags REQUIRED)
+find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
@@ -54,6 +54,8 @@ include_directories(
   ${CURSES_INCLUDE_DIR}
   ${Boost_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
+  ${GFLAGS_INCLUDE_DIRS}
+  ${GLOG_INCLUDE_DIRS}
   )
 
 set(${PROJECT_NAME}_SRC
@@ -114,8 +116,8 @@ target_link_libraries (
   EternalTCP-static
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${COREFOUNDATION_LIBRARY}
   util
@@ -133,8 +135,8 @@ target_link_libraries (
   ${CURSES_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARY}
-  gflags
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${COREFOUNDATION_LIBRARY}
   util

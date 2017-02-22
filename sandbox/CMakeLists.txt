@@ -24,9 +24,8 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     ${CURSES_LIBRARIES}
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
-    gcrypt
-    glog
-    gflags
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${COREFOUNDATION_LIBRARY}
     util
