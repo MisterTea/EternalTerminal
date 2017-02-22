@@ -11,9 +11,31 @@ The easiest way to install is using homebrew:
 brew install MisterTea/et/et
 ```
 
-# Linux
+# Ubuntu
 
-Rpm and Deb files can be downloaded from the ET releases page: [https://github.com/MisterTea/EternalTCP/releases](https://github.com/MisterTea/EternalTCP/releases)
+For Ubuntu, use our PPA:
+
+```
+sudo add-apt-repository ppa:jgmath2000/et
+sudo apt-get update
+sudo apt-get install et
+```
+
+# Other Linux
+
+Download and install from source (you may need some dependencies):
+
+```
+wget https://github.com/MisterTea/EternalTCP/archive/master.zip
+unzip master.zip
+cd master
+mkdir build
+cd build
+cmake ../
+make
+sudo make install
+```
+
 
 # Windows
 
