@@ -5,7 +5,7 @@ title: Tutorial
 
 # Installing
 
-1. Follow the instructions on the [download page](http://127.0.0.1:4001/EternalTCP/download) for both your client and server.
+1. Follow the instructions on the [download page](https://mistertea.github.io/EternalTCP/download) for both your client and server.
 2. Verify that the client is installed correctly by looking for the et executable: ```which et```
 3. Verify that the server is installed correctly by looking for the etserver executable: ```which etserver```
 4. You are ready to start using ET!
