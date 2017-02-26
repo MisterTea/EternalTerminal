@@ -13,14 +13,13 @@ before_install:
   - sudo echo "deb-src http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list;
   - sudo apt-get update -qq 
   - sudo apt-get install libsodium-dev -y;
+  - sudo apt-get install libgoogle-glog-dev libgflags-dev -y;
 
 addons:
   apt:
     sources:
     - ubuntu-toolchain-r-test
     packages:
-    - gcc-5
-    - g++-5
     - cmake
     - protobuf-compiler 
     - libboost-dev 
