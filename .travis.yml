@@ -9,9 +9,10 @@ before_install:
   - git submodule update --init --recursive
 
   - sudo add-apt-repository ppa:chris-lea/libsodium -y;
-  - sudo echo "deb http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" >> /etc/apt/sources.list;
-  - sudo echo "deb-src http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" >> /etc/apt/sources.list;
-  - sudo apt-get update && sudo apt-get install libsodium-dev;
+  - sudo echo "deb http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list;
+  - sudo echo "deb-src http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list;
+  - sudo apt-get update -qq 
+  - sudo apt-get install libsodium-dev -y;
 
 addons:
   apt:
