@@ -22,14 +22,14 @@ before_install:
   - tar zxvf google-glog_0.3.4.orig.tar.gz  
   - cd glog-0.3.4
   - ./configure
-  - make && make install
+  - make && sudo make install
     # gflags
   - wget http://archive.ubuntu.com/ubuntu/pool/universe/g/gflags/gflags_2.1.2.orig.tar.gz
   - unzip gflags_2.1.2.orig.tar.gz
   - cd gflags-2.1.2
   - mkdir build && cd build
   - export CXXFLAGS="-fPIC" && cmake .. && make VERBOSE=1
-  - make && make install
+  - make && sudo make install
   
 addons:
   apt:
