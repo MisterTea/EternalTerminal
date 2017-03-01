@@ -39,7 +39,8 @@ Options:
 -s Special ssh command if necessary, otherwise set to user@hostname:22
 -p Port for etserver to run on.  Don't set to the same port as ssh.  Default: 2022
 -u Username to connect to ssh & ET
--l Directory where logs will go"
+-l Directory where logs will go
+"
             exit 0
             ;;
         *)
@@ -64,7 +65,7 @@ if [[ $ET_COMMAND =~ $ET_COMMAND_REGEX ]]; then
         PORT=$ET_PORT
     fi
 else
-    printf "Usage: ET (options) [user@]hostname[:port]"
+    printf "Usage: ET (options) [user@]hostname[:port]\n"
     exit 1
 fi
 
