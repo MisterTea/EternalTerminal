@@ -48,7 +48,7 @@ Options:
     esac
 done
 
-ET_COMMAND_REGEX="^(([0-9a-zA-z]+)@)?([^\/:?@#]+)(:([0-9]+))?$"
+ET_COMMAND_REGEX="^(([0-9a-zA-Z]+)@)?([^\/:?@#]+)(:([0-9]+))?$"
 
 if [[ $ET_COMMAND =~ $ET_COMMAND_REGEX ]]; then
     ET_USER="${BASH_REMATCH[2]}"
