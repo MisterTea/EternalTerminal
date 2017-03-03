@@ -87,7 +87,7 @@ while read -r line; do
         if [[ \$line =~ \"\$PORT_REGEX\" ]]; then
             SERVER_PORT=\"\$match[1]\"
             if [[ $PORT == \"\$SERVER_PORT\" ]]; then
-                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -repme
+                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -- -repme
                 sleep 3
             fi
         fi
@@ -95,7 +95,7 @@ while read -r line; do
         if [[ \$line =~ \$PORT_REGEX ]]; then
             SERVER_PORT=\"\${BASH_REMATCH[1]}\"
             if [[ $PORT == \"\$SERVER_PORT\" ]]; then
-                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -repme
+                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -- -repme
                 sleep 3
             fi
         fi
