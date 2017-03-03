@@ -99,7 +99,7 @@ printf \"%s\\n\" \"\$PASSWD\" > \$TMPFILE
 nohup $SERVER_BINARY $VERBOSITY --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
 printf \"PASSWORD:\$PASSWD\\n\"
 "
-PASSWD=$(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh "$SSH_COMMAND" | grep PASSWORD: | cut -d: -f2)
+PASSWD=$(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh $SSH_COMMAND | grep PASSWORD: | cut -d: -f2)
 
 TMPFILE=$(mktemp "$TMP_DIR"/et.XXXXXX)
 printf "%s\n" "$PASSWD" > "$TMPFILE"
