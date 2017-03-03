@@ -78,7 +78,7 @@ fi
 SERVER_BINARY="etserver"
 CLIENT_BINARY="etclient"
 
-PASSWORD_GENERATOR="env LC_CTYPE=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
+PASSWORD_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 SSH_PASSWORD_COMMAND="
 ET_SERVER_COMMANDS=\`ps xwwo pgid,command | grep etserver\`
 while read -r line; do
