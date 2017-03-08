@@ -19,10 +19,10 @@
 using namespace et;
 shared_ptr<ClientConnection> globalClient;
 
-#define FAIL_FATAL(X)                                    \
-  if ((X) == -1) {                                       \
-    printf("Error: (%d), %s\n", errno, strerror(errno)); \
-    exit(errno);                                         \
+#define FAIL_FATAL(X)                                     \
+  if ((X) == -1) {                                        \
+    printf("Error: (%d), %s\n", errno, strerror(errno));  \
+    exit(errno);                                          \
   }
 
 termios terminal_backup;
@@ -56,11 +56,11 @@ int main(int argc, char** argv) {
   }
   if (passkey.length() == 0) {
     cout << "Unless you are doing development on Eternal Terminal,\nplease do "
-            "not call etclient directly.\n\nThe et launcher (run on the "
-            "client) calls etclient with the correct parameters.\nThis ensures "
-            "a secure connection.\n\nIf you intended to call etclient "
-            "directly, please provide a passkey\n(run \"etclient --help\" for "
-            "details)."
+        "not call etclient directly.\n\nThe et launcher (run on the "
+        "client) calls etclient with the correct parameters.\nThis ensures "
+        "a secure connection.\n\nIf you intended to call etclient "
+        "directly, please provide a passkey\n(run \"etclient --help\" for "
+        "details)."
          << endl;
     exit(1);
   }
@@ -117,7 +117,7 @@ int main(int argc, char** argv) {
   // Whether the TE should keep running.
   bool run = true;
 
-// TE sends/receives data to/from the shell one char at a time.
+  // TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (1024)
   char b[BUF_SIZE];
 
@@ -130,7 +130,7 @@ int main(int argc, char** argv) {
 #endif
   while (run) {
 #if 0  // This doesn't work with tmux and when combined with a curses
-      // app on the server side causes weird graphical glitches.
+    // app on the server side causes weird graphical glitches.
 
     // TODO: Figure out why this causes issues.
     if (disconnectedOverlay.get()==NULL && globalClient->isDisconnected()) {
@@ -159,17 +159,19 @@ int main(int argc, char** argv) {
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
-    fd_set wfd;
-    fd_set efd;
     timeval tv;
 
     FD_ZERO(&rfd);
-    FD_ZERO(&wfd);
-    FD_ZERO(&efd);
+    int maxfd = STDIN_FILENO;
     FD_SET(STDIN_FILENO, &rfd);
+    int clientFd = globalClient->getSocketFd();
+    if (clientFd > 0) {
+      FD_SET(clientFd, &rfd);
+      maxfd = max(maxfd, clientFd);
+    }
     tv.tv_sec = 0;
-    tv.tv_usec = 1000;
-    select(STDIN_FILENO + 1, &rfd, &wfd, &efd, &tv);
+    tv.tv_usec = 10000;
+    int bitsSet = select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
       // Check for data to send.
@@ -195,45 +197,47 @@ int main(int argc, char** argv) {
         }
       }
 
-      while (globalClient->hasData()) {
-        string packetTypeString;
-        if (!globalClient->readMessage(&packetTypeString)) {
-          break;
-        }
-        if (packetTypeString.length() != 1) {
-          LOG(FATAL) << "Invalid packet header size: "
-                     << packetTypeString.length();
-        }
-        char packetType = packetTypeString[0];
-        switch (packetType) {
-          case et::PacketType::TERMINAL_BUFFER: {
-            // Read from the server and write to our fake terminal
-            et::TerminalBuffer tb =
-                globalClient->readProto<et::TerminalBuffer>();
-            const string& s = tb.buffer();
-            // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
-            // globalClient->getReader()->getSequenceNumber();
-            keepaliveTime = time(NULL) + 1;
-#if 0
-            if (disconnectedOverlay.get()) {
-              offlineBuffer += s;
-            } else {
-#endif
-            FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
-#if 0
-            }
-#endif
+      if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
+        while (globalClient->hasData()) {
+          string packetTypeString;
+          if (!globalClient->readMessage(&packetTypeString)) {
             break;
           }
-          case et::PacketType::KEEP_ALIVE:
-            waitingOnKeepalive = false;
-            break;
-          default:
-            LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+          if (packetTypeString.length() != 1) {
+            LOG(FATAL) << "Invalid packet header size: "
+                       << packetTypeString.length();
+          }
+          char packetType = packetTypeString[0];
+          switch (packetType) {
+            case et::PacketType::TERMINAL_BUFFER: {
+              // Read from the server and write to our fake terminal
+              et::TerminalBuffer tb =
+                  globalClient->readProto<et::TerminalBuffer>();
+              const string& s = tb.buffer();
+              // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
+              // globalClient->getReader()->getSequenceNumber();
+              keepaliveTime = time(NULL) + 1;
+#if 0
+              if (disconnectedOverlay.get()) {
+                offlineBuffer += s;
+              } else {
+#endif
+                FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+#if 0
+              }
+#endif
+              break;
+            }
+            case et::PacketType::KEEP_ALIVE:
+              waitingOnKeepalive = false;
+              break;
+            default:
+              LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+          }
         }
       }
 
-      if (keepaliveTime < time(NULL)) {
+      if (clientFd > 0 && keepaliveTime < time(NULL)) {
         keepaliveTime = time(NULL) + 5;
         if (waitingOnKeepalive) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
@@ -270,8 +274,6 @@ int main(int argc, char** argv) {
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
-
-    usleep(1000);
   }
 
   disconnectedOverlay.release();

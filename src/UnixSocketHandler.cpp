@@ -17,7 +17,7 @@ bool UnixSocketHandler::hasData(int fd) {
   FD_SET(fd, &input);
   struct timeval timeout;
   timeout.tv_sec = 0;
-  timeout.tv_usec = 1 * 100;
+  timeout.tv_usec = 0;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
     // Select timed out or failed.
