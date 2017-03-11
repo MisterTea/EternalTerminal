@@ -23,6 +23,11 @@
 #include "ETerminal.pb.h"
 
 using namespace et;
+namespace google {}
+namespace gflags {}
+using namespace google;
+using namespace gflags;
+
 shared_ptr<ServerConnection> globalServer;
 
 void halt();
@@ -202,7 +207,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
 };
 
 int main(int argc, char** argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   FLAGS_logbufsecs = 0;
