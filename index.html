@@ -12,7 +12,7 @@ subtitle: Remote terminal for the busy and impatient
 <div>ET was heavily inspired by several other projects:</div>
 <ul>
   <li>
-    <a href="https://www.openssh.com/" target="_blank"><b>ssh</b></a>: Ssh is a great remote terminal program, and in fact ET uses ssh to establish the connection.  The big difference between ET and ssh is that an ET session can survive network outages and IP roaming.
+    <a href="https://www.openssh.com/" target="_blank"><b>ssh</b></a>: Ssh is a great remote terminal program, and in fact ET uses ssh to initialize the connection.  The big difference between ET and ssh is that an ET session can survive network outages and IP roaming.  With ssh, one must kill the ssh session and reconnect after a network outage.
   </li>
   <li>
     <a href="https://linux.die.net/man/1/autossh" target="_blank"><b>autossh</b></a>:  Autossh is a utility that automatically restarts an ssh session when it detects a reconnect.  It's a more advanced version of doing "while true; ssh myhost.com".  Although autossh will automatically reconnect, it will start a new session each time.  This means, if we use tmux with control mode, we must wait for the ssh connection to die and then re-attach.  ET saves valuable time by maintaining your tmux session even when the TCP connection dies and resuming quickly.
