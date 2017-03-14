@@ -4,19 +4,35 @@ title: Eternal Terminal
 subtitle: Remote terminal for the busy and impatient
 ---
 
-<div>Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.  Learn how to install and use it <a href="{{ '/usermanual' | prepend: site.baseurl }}">here</a>.</div>
+<div>
+  Eternal Terminal (ET) is a remote shell that automatically reconnects without interrupting the session.  Learn how to install and use it <a href="{{ '/usermanual' | prepend: site.baseurl }}">here</a>.
+</div>
+
+<h2>Inspirations</h2>
+<div>ET was heavily inspired by several other projects:</div>
+<ul>
+  <li>
+    <a href="https://www.openssh.com/" target="_blank"><b>ssh</b></a>: Ssh is a great remote terminal program, and in fact ET uses ssh to establish the connection.  The big difference between ET and ssh is that an ET session can survive network outages and IP roaming.
+  </li>
+  <li>
+    <a href="https://linux.die.net/man/1/autossh" target="_blank"><b>autossh</b></a>:  Autossh is a cool utility that automatically restart an ssh session when it detects a reconnect.  It's a more advanced version of doing "while true; ssh myhost.com".  Although autossh will automatically reconnect, it will start a new session each time.  This means, if we use tmux with control mode, we must wait for the ssh connection to die and then re-attach.  ET saves valuable time by maintaining your tmux session even when the TCP connection dies.
+  </li>
+  <li>
+    <a href="https://mosh.org/" target="_blank"><b>mosh</b></a>:  Mosh is a popular alternative to ET.  While mosh provides the same core funtionality as ET, it does not support native scrolling nor tmux control mode (tmux -CC).
+  </li>
+</ul>
 
 <div class="posts-list">
   {% for post in paginator.posts %}
   <article class="post-preview">
     <a href="{{ post.url | prepend: site.baseurl }}">
-    <h2 class="post-title">{{ post.title }}</h2>
+      <h2 class="post-title">{{ post.title }}</h2>
 
-    {% if post.subtitle %}
-    <h3 class="post-subtitle">
-      {{ post.subtitle }}
-    </h3>
-    {% endif %}
+      {% if post.subtitle %}
+      <h3 class="post-subtitle">
+        {{ post.subtitle }}
+      </h3>
+      {% endif %}
     </a>
 
     <p class="post-meta">
@@ -27,7 +43,7 @@ subtitle: Remote terminal for the busy and impatient
       {{ post.excerpt | strip_html | xml_escape | truncatewords: site.excerpt_length }}
       {% assign excerpt_word_count = post.excerpt | number_of_words %}
       {% if post.content != post.excerpt or excerpt_word_count > site.excerpt_length %}
-        <a href="{{ post.url | prepend: site.baseurl }}" class="post-read-more">[Read&nbsp;More]</a>
+      <a href="{{ post.url | prepend: site.baseurl }}" class="post-read-more">[Read&nbsp;More]</a>
       {% endif %}
     </div>
 
@@ -39,12 +55,12 @@ subtitle: Remote terminal for the busy and impatient
       <a href="{{ site.baseurl }}/tag/{{ tag }}">{{ tag }}</a>
       {% endfor %}
       {% else %}
-        {{ post.tags | join: ", " }}
+      {{ post.tags | join: ", " }}
       {% endif %}
     </div>
     {% endif %}
 
-   </article>
+  </article>
   {% endfor %}
 </div>
 
