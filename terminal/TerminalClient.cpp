@@ -17,6 +17,11 @@
 #include "ETerminal.pb.h"
 
 using namespace et;
+namespace google {}
+namespace gflags {}
+using namespace google;
+using namespace gflags;
+
 shared_ptr<ClientConnection> globalClient;
 
 #define FAIL_FATAL(X)                                     \
@@ -33,7 +38,7 @@ DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
 
 int main(int argc, char** argv) {
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   FLAGS_logbufsecs = 0;
