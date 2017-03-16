@@ -77,7 +77,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   // loop through all the results and connect to the first we can
   for (p = results; p != NULL; p = p->ai_next) {
     if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      LOG(INFO) << "Error creating socket " << p->ai_canonname << ": " << errno
+      LOG(INFO) << "Error creating socket: " << errno
                 << " " << strerror(errno);
       continue;
     }
