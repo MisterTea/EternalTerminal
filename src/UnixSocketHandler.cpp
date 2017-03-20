@@ -67,7 +67,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
-  if (rc == -1) {
+  if (rc != 0) {
     freeaddrinfo(results);
     LOG(ERROR) << "Error getting address info for " << hostname << ":"
                << portname << ": " << rc << " (" << gai_strerror(rc) << ")";
