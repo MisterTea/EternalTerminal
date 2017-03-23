@@ -63,18 +63,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
-    fd_set wfd;
-    fd_set efd;
     timeval tv;
 
     FD_ZERO(&rfd);
-    FD_ZERO(&wfd);
-    FD_ZERO(&efd);
     FD_SET(masterfd, &rfd);
-    FD_SET(STDIN_FILENO, &rfd);
     tv.tv_sec = 0;
     tv.tv_usec = 1000;
-    select(masterfd + 1, &rfd, &wfd, &efd, &tv);
+    select(masterfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
       // Check for data to receive; the received
