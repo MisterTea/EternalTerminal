@@ -39,7 +39,8 @@ Options:
 -s Special ssh command if necessary, otherwise set to user@hostname:22
 -p Port for etserver to run on.  Don't set to the same port as ssh.  Default: 2022
 -u Username to connect to ssh & ET
--l Directory where logs will go
+-l Directory where log files will go
+-v verbose log files
 "
             exit 0
             ;;
