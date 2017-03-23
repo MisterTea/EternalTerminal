@@ -4,8 +4,6 @@
 #include "Headers.hpp"
 
 namespace et {
-string commandToString(const char* cmd);
-
 std::string getTerminal();
 }
 
