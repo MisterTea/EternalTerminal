@@ -16,6 +16,11 @@
 
 #if __APPLE__
 #include <util.h>
+#elif __FreeBSD__
+#include <sys/types.h>
+#include <sys/ioctl.h>
+#include <termios.h>
+#include <libutil.h>
 #else
 #include <pty.h>
 #endif
