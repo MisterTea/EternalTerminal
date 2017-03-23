@@ -31,13 +31,6 @@ set(CURSES_NEED_NCURSES TRUE)
 find_package(Curses REQUIRED)
 find_package(Sodium REQUIRED)
 
-# Apple specific packages
-IF (APPLE)
-  FIND_LIBRARY(COREFOUNDATION_LIBRARY CoreFoundation)
-ELSE (APPLE)
-  SET(COREFOUNDATION_LIBRARY "")
-ENDIF (APPLE)
-
 PROTOBUF_GENERATE_CPP(
   ET_SRCS
   ET_HDRS
@@ -118,7 +111,6 @@ target_link_libraries (
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
-  ${COREFOUNDATION_LIBRARY}
   util
   )
 
@@ -137,7 +129,6 @@ target_link_libraries (
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
-  ${COREFOUNDATION_LIBRARY}
   util
   )
 
