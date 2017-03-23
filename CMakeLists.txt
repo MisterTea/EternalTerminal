@@ -27,8 +27,6 @@ find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
-set(CURSES_NEED_NCURSES TRUE)
-find_package(Curses REQUIRED)
 find_package(Sodium REQUIRED)
 
 PROTOBUF_GENERATE_CPP(
@@ -93,7 +91,6 @@ add_library(
   STATIC
 
   terminal/ConsoleUtils.cpp
-  terminal/NCursesOverlay.cpp
   terminal/SocketUtils.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
@@ -123,7 +120,6 @@ target_link_libraries (
   LINK_PUBLIC
   TerminalCommon
   EternalTCP-static
-  ${CURSES_LIBRARIES}
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARIES}
@@ -178,7 +174,7 @@ if(BUILD_PACKAGE)
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
     set(CPACK_RPM_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}")
-    set(CPACK_RPM_PACKAGE_REQUIRES "boost, ncurses, libsodium, protobuf, gflags, glog")
+    set(CPACK_RPM_PACKAGE_REQUIRES "boost, libsodium, protobuf, gflags, glog")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb
