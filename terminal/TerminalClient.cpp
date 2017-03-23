@@ -3,7 +3,6 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "NCursesOverlay.hpp"
-#include "ProcessHelper.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"

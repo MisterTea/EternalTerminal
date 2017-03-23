@@ -101,7 +101,6 @@ add_library(
 
   terminal/ConsoleUtils.cpp
   terminal/NCursesOverlay.cpp
-  terminal/ProcessHelper.cpp
   terminal/SocketUtils.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}

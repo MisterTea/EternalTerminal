@@ -3,7 +3,6 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
-#include "ProcessHelper.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
@@ -184,8 +183,6 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       FAIL_FATAL(pid);
     case 0:
       // child
-      ProcessHelper::initChildProcess();
-
       VLOG(1) << "Closing server in fork" << endl;
       // Close server on client process
       globalServer->close();
