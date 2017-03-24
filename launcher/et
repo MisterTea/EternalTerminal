@@ -82,8 +82,7 @@ CLIENT_BINARY="etclient"
 PASSWORD_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 TMPFILE=$(mktemp "$TMP_DIR"/et-client.XXXXXXXXXXXX)
 SSH_PASSWORD_COMMAND="
-ET_SERVER_COMMANDS=\`ps xwwo pgid,command | grep etserver\`
-while read -r line; do
+ps xwwo pgid,command | grep etserver | while read -r line; do
     PORT_REGEX=\"--port=([0-9]+)\"
     if [ -n \"\$ZSH_VERSION\" ]; then
         if [[ \$line =~ \"\$PORT_REGEX\" ]]; then
@@ -102,7 +101,7 @@ while read -r line; do
             fi
         fi
     fi
-done <<< \"\$ET_SERVER_COMMANDS\"
+done
 export SERVER_TMP_DIR=\${TMPDIR:-\${TMP:-\${TEMP:-/tmp}}}
 export TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et-server.XXXXXXXXXXXX)
 ( $PASSWORD_GENERATOR; printf \"\\n\" ) > \"\${TMPFILE}\"
