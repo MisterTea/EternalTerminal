@@ -7,18 +7,10 @@
   }
 namespace et {
 
-void initCryptoHandler()
-{
-  if (-1 == sodium_init()) {
-    throw std::runtime_error("libsodium init failed");
-  }
-}
-
 CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
-  if (CryptoHandlerInitialized == 0) {
-    CryptoHandlerInitialized = 1;
-    initCryptoHandler();
+  if (-1 == sodium_init()) {
+    throw std::runtime_error("libsodium init failed");
   }
   if (_key.length() != crypto_secretbox_KEYBYTES) {
     LOG(FATAL) << "Invalid key length";
