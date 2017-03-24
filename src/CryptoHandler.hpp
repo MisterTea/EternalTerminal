@@ -21,7 +21,6 @@ class CryptoHandler {
   unsigned char key[crypto_secretbox_KEYBYTES];
  private:
   mutex cryptoMutex;
-  int CryptoHandlerInitialized = 0;
 };
 }
 
