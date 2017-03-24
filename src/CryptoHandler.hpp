@@ -19,6 +19,9 @@ class CryptoHandler {
   void incrementNonce();
   unsigned char nonce[crypto_secretbox_NONCEBYTES];
   unsigned char key[crypto_secretbox_KEYBYTES];
+ private:
+  mutex cryptoMutex;
+  int CryptoHandlerInitialized = 0;
 };
 }
 

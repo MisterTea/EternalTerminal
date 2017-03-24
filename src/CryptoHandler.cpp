@@ -7,9 +7,12 @@
   }
 namespace et {
 
-mutex cryptoMutex;
-int CryptoHandlerInitialized = 0;
-void initCryptoHandler() { SODIUM_FAIL(sodium_init()); }
+void initCryptoHandler()
+{
+  if (-1 == sodium_init()) {
+    throw std::runtime_error("libsodium init failed");
+  }
+}
 
 CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
