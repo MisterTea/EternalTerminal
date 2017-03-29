@@ -67,9 +67,15 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
 
     FD_ZERO(&rfd);
     FD_SET(masterfd, &rfd);
+    int maxfd = masterfd;
+    int serverClientFd = serverClientState->getSocketFd();
+    if (serverClientFd > 0) {
+      FD_SET(serverClientFd, &rfd);
+      maxfd = max(maxfd, serverClientFd);
+    }
     tv.tv_sec = 0;
-    tv.tv_usec = 1000;
-    select(masterfd + 1, &rfd, NULL, NULL, &tv);
+    tv.tv_usec = 10000;
+    select(maxfd + 1, &rfd, &wfd, &efd, &tv);
 
     try {
       // Check for data to receive; the received
@@ -96,44 +102,46 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         }
       }
 
-      while (serverClientState->hasData()) {
-        string packetTypeString;
-        if (!serverClientState->readMessage(&packetTypeString)) {
-          break;
-        }
-        char packetType = packetTypeString[0];
-        switch (packetType) {
-          case et::PacketType::TERMINAL_BUFFER: {
-            // Read from the server and write to our fake terminal
-            et::TerminalBuffer tb =
-                serverClientState->readProto<et::TerminalBuffer>();
-            const string& s = tb.buffer();
-            // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
-            // serverClientState->getReader()->getSequenceNumber();
-            FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+      if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
+        while (serverClientState->hasData()) {
+          string packetTypeString;
+          if (!serverClientState->readMessage(&packetTypeString)) {
             break;
           }
-          case et::PacketType::KEEP_ALIVE: {
-            // Echo keepalive back to client
-            VLOG(1) << "Got keep alive";
-            char c = et::PacketType::KEEP_ALIVE;
-            serverClientState->writeMessage(string(1, c));
-            break;
+          char packetType = packetTypeString[0];
+          switch (packetType) {
+            case et::PacketType::TERMINAL_BUFFER: {
+              // Read from the server and write to our fake terminal
+              et::TerminalBuffer tb =
+                  serverClientState->readProto<et::TerminalBuffer>();
+              const string& s = tb.buffer();
+              // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
+              // serverClientState->getReader()->getSequenceNumber();
+              FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+              break;
+            }
+            case et::PacketType::KEEP_ALIVE: {
+              // Echo keepalive back to client
+              VLOG(1) << "Got keep alive";
+              char c = et::PacketType::KEEP_ALIVE;
+              serverClientState->writeMessage(string(1, c));
+              break;
+            }
+            case et::PacketType::TERMINAL_INFO: {
+              VLOG(1) << "Got terminal info";
+              et::TerminalInfo ti =
+                  serverClientState->readProto<et::TerminalInfo>();
+              winsize tmpwin;
+              tmpwin.ws_row = ti.row();
+              tmpwin.ws_col = ti.column();
+              tmpwin.ws_xpixel = ti.width();
+              tmpwin.ws_ypixel = ti.height();
+              ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+              break;
+            }
+            default:
+              LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
           }
-          case et::PacketType::TERMINAL_INFO: {
-            VLOG(1) << "Got terminal info";
-            et::TerminalInfo ti =
-                serverClientState->readProto<et::TerminalInfo>();
-            winsize tmpwin;
-            tmpwin.ws_row = ti.row();
-            tmpwin.ws_col = ti.column();
-            tmpwin.ws_xpixel = ti.width();
-            tmpwin.ws_ypixel = ti.height();
-            ioctl(masterfd, TIOCSWINSZ, &tmpwin);
-            break;
-          }
-          default:
-            LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
         }
       }
     } catch (const runtime_error& re) {
