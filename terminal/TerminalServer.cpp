@@ -75,7 +75,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
     }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    select(maxfd + 1, &rfd, &wfd, &efd, &tv);
+    select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
       // Check for data to receive; the received
