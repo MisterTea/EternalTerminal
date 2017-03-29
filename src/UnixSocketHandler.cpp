@@ -35,6 +35,10 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
+  if (activeSockets.find(fd) == activeSockets.end()) {
+    LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
+    return 0;
+  }
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes == 0) {
     throw runtime_error("Remote host closed connection");
@@ -143,6 +147,11 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
   if (sockfd == -1) {
     LOG(ERROR) << "ERROR, no host found";
+  } else {
+      if (activeSockets.find(sockfd) != activeSockets.end()) {
+        LOG(FATAL) << "Tried to insert an fd that already exists: " << sockfd;
+      }
+      activeSockets.insert(sockfd);
   }
 
   freeaddrinfo(results);
