@@ -23,6 +23,7 @@ inline bool isSkippableError() {
 }
 
 ssize_t Connection::read(string* buf) {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   ssize_t messagesRead = reader->read(buf);
   if (messagesRead == -1) {
     if (isSkippableError()) {
@@ -57,6 +58,7 @@ bool Connection::readMessage(string* buf) {
 }
 
 ssize_t Connection::write(const string& buf) {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
     return 0;
   }
@@ -96,6 +98,7 @@ void Connection::writeMessage(const string& buf) {
 }
 
 void Connection::closeSocket() {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
     LOG(ERROR) << "Tried to close a dead socket";
     return;

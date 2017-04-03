@@ -68,8 +68,6 @@ void ClientConnection::closeSocket() {
   }
   {
     // Close the socket
-    lock_guard<std::recursive_mutex> guard(reconnectMutex);
-    LOG(INFO) << "Locked reconnect mutex";
     Connection::closeSocket();
   }
   LOG(INFO) << "Socket closed.  Starting new reconnect thread";
@@ -79,18 +77,16 @@ void ClientConnection::closeSocket() {
 }
 
 ssize_t ClientConnection::read(string* buf) {
-  lock_guard<std::recursive_mutex> guard(reconnectMutex);
   return Connection::read(buf);
 }
 ssize_t ClientConnection::write(const string& buf) {
-  lock_guard<std::recursive_mutex> guard(reconnectMutex);
   return Connection::write(buf);
 }
 
 void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
     {
-      lock_guard<std::recursive_mutex> guard(reconnectMutex);
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
       LOG(INFO) << "Trying to reconnect to " << hostname << ":" << port << endl;
       int newSocketFd = socketHandler->connect(hostname, port);
       if (newSocketFd != -1) {

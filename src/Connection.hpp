@@ -62,6 +62,7 @@ class Connection {
   int socketFd;
   int clientId;
   bool shuttingDown;
+  recursive_mutex connectionMutex;
 };
 }
 
