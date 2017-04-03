@@ -256,9 +256,9 @@ int main(int argc, char** argv) {
 }
 
 void halt() {
-  cout << "Shutting down server" << endl;
+  LOG(INFO) << "Shutting down server" << endl;
   globalServer->close();
-  cout << "Waiting for server to finish" << endl;
+  LOG(INFO) << "Waiting for server to finish" << endl;
   sleep(3);
   exit(0);
 }
