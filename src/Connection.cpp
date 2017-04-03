@@ -26,10 +26,11 @@ ssize_t Connection::read(string* buf) {
   ssize_t messagesRead = reader->read(buf);
   if (messagesRead == -1) {
     if (isSkippableError()) {
-      // The connection has reset, close the socket and invalidate, then
-      // return 0 bytes
-      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
-      closeSocket();
+      if (errno != EAGAIN) {
+        // Close the socket and invalidate, then return 0 messages
+        LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
+        closeSocket();
+      }
       messagesRead = 0;
     }
   }
