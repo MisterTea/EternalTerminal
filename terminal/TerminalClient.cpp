@@ -34,6 +34,7 @@ DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 10022, "port to connect on");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
+DEFINE_string(id, "", "Unique ID assigned to this session");
 
 int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
@@ -45,6 +46,7 @@ int main(int argc, char** argv) {
 
   std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
 
+  string id = FLAGS_id;
   string passkey = FLAGS_passkey;
   if (passkey.length() == 0 && FLAGS_passkeyfile.length() > 0) {
     // Check for passkey file
@@ -57,7 +59,7 @@ int main(int argc, char** argv) {
     // Delete the file with the passkey
     remove(FLAGS_passkeyfile.c_str());
   }
-  if (passkey.length() == 0) {
+  if (passkey.length() == 0 || id.length()==0) {
     cout << "Unless you are doing development on Eternal Terminal,\nplease do "
         "not call etclient directly.\n\nThe et launcher (run on the "
         "client) calls etclient with the correct parameters.\nThis ensures "
@@ -89,7 +91,7 @@ int main(int argc, char** argv) {
   }
 
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-      new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, passkey));
+      new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, id, passkey));
   globalClient = client;
   int connectFailCount = 0;
   while (true) {
@@ -109,7 +111,7 @@ int main(int argc, char** argv) {
     }
     break;
   }
-  VLOG(1) << "Client created with id: " << client->getClientId() << endl;
+  VLOG(1) << "Client created with id: " << client->getId() << endl;
 
   termios terminal_local;
   tcgetattr(0, &terminal_local);
@@ -143,7 +145,7 @@ int main(int argc, char** argv) {
     }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    int bitsSet = select(maxfd + 1, &rfd, NULL, NULL, &tv);
+    select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
       // Check for data to send.

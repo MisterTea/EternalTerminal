@@ -3,12 +3,11 @@
 namespace et {
 ServerClientConnection::ServerClientConnection(
     const std::shared_ptr<SocketHandler>& _socketHandler,
-    int _clientId,  //
-    int _socketFd,  //
+    const string& clientId,
+    int _socketFd,
     const string& key)
-    : Connection(_socketHandler, key) {
+    : Connection(_socketHandler, clientId, key) {
   socketFd = _socketFd;
-  clientId = _clientId;
   reader = shared_ptr<BackedReader>(new BackedReader(
       socketHandler, shared_ptr<CryptoHandler>(
                          new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),

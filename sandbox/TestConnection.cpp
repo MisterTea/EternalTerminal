@@ -13,7 +13,7 @@ void runClient(std::shared_ptr<FakeSocketHandler> clientSocket,
   printf("Creating client\n");
   shared_ptr<ClientConnection> client =
       shared_ptr<ClientConnection>(new ClientConnection(
-          clientSocket, "localhost", 1000, "12345678901234567890123456789012"));
+          clientSocket, "localhost", 1000, "me", "12345678901234567890123456789012"));
   while (true) {
     try {
       client->connect();
@@ -23,12 +23,12 @@ void runClient(std::shared_ptr<FakeSocketHandler> clientSocket,
     }
     break;
   }
-  cout << "Client created with id: " << client->getClientId() << endl;
+  cout << "Client created with id: " << client->getId() << endl;
 
   printf("Creating server-client state\n");
-  int clientId = client->getClientId();
+  string clientId = client->getId();
   shared_ptr<ServerClientConnection> serverClientState =
-      globalServer->getClient(clientId);
+      globalServer->getClientConnection(clientId);
   std::array<char, 4 * 1024> result;
   for (int a = 0; a < 4 * 1024; a++) {
     serverClientState->writeMessage(string(&s[0] + a, 1));
@@ -73,7 +73,8 @@ int main(int argc, char** argv) {
   printf("Creating server\n");
   shared_ptr<ServerConnection> server =
       shared_ptr<ServerConnection>(new ServerConnection(
-          serverSocket, 1000, NULL, "12345678901234567890123456789012"));
+          serverSocket, 1000, NULL));
+  server->addClientKey("me","12345678901234567890123456789012");
   globalServer = server.get();
 
   thread serverThread(runServer, server);

@@ -19,32 +19,43 @@ class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
                             int port,
-                            shared_ptr<ServerConnectionHandler> serverHandler,
-                            const string& key);
+                            shared_ptr<ServerConnectionHandler> serverHandler);
 
   ~ServerConnection();
 
-  inline bool clientExists(int clientId) {
-    return clients.find(clientId) != clients.end();
+  inline bool clientKeyExists(const string& clientId) {
+    return clientKeys.find(clientId) != clientKeys.end();
+  }
+
+  inline bool clientConnectionExists(const string& clientId) {
+    return clientConnections.find(clientId) != clientConnections.end();
   }
 
   void run();
 
   void close();
 
-  void clientHandler(int clientSocketFd);
-
-  int newClient(int socketFd);
-
-  bool removeClient(shared_ptr<ServerClientConnection> connection);
-
-  shared_ptr<ServerClientConnection> getClient(int clientId) {
-    return clients.find(clientId)->second;
+  inline void addClientKey(
+      const string& id,
+      const string& key) {
+    clientKeys[id] = key;
   }
 
-  unordered_set<int> getClientIds() {
-    unordered_set<int> retval;
-    for (auto it : clients) {
+  void clientHandler(int clientSocketFd);
+
+  void newClientConnection(
+      const string& clientId,
+      int socketFd);
+
+  bool removeClient(const string& id);
+
+  shared_ptr<ServerClientConnection> getClientConnection(const string& clientId) {
+    return clientConnections.find(clientId)->second;
+  }
+
+  unordered_set<string> getClientIds() {
+    unordered_set<string> retval;
+    for (auto it : clientKeys) {
       retval.insert(it.first);
     }
     return retval;
@@ -55,9 +66,9 @@ class ServerConnection {
   int port;
   shared_ptr<ServerConnectionHandler> serverHandler;
   bool stop;
-  std::unordered_map<int, shared_ptr<ServerClientConnection> > clients;
+  std::unordered_map<string, string> clientKeys;
+  std::unordered_map<string, shared_ptr<ServerClientConnection> > clientConnections;
   shared_ptr<thread> clientConnectThread;
-  string key;
 };
 }
 

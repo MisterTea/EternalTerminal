@@ -2,12 +2,13 @@
 namespace et {
 ServerConnection::ServerConnection(
     std::shared_ptr<SocketHandler> _socketHandler, int _port,
-    shared_ptr<ServerConnectionHandler> _serverHandler, const string& _key)
+    shared_ptr<ServerConnectionHandler> _serverHandler)
     : socketHandler(_socketHandler),
       port(_port),
       serverHandler(_serverHandler),
-      stop(false),
-      key(_key) {}
+      stop(false)
+{
+}
 
 ServerConnection::~ServerConnection() {}
 
@@ -27,19 +28,18 @@ void ServerConnection::run() {
 void ServerConnection::close() {
   stop = true;
   socketHandler->stopListening();
-  for (const auto& it : clients) {
+  for (const auto& it : clientConnections) {
     it.second->closeSocket();
   }
-  clients.clear();
+  clientConnections.clear();
 }
 
 void ServerConnection::clientHandler(int clientSocketFd) {
-  int clientId;
+  string clientId;
   try {
     et::ConnectRequest request =
         socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
-    clientId = request.clientid();
-    if (clientId == -1) {
+    {
       int version = request.version();
       if (version != PROTOCOL_VERSION) {
         et::ConnectResponse response;
@@ -52,20 +52,23 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         socketHandler->close(clientSocketFd);
         return;
       }
-      clientId = newClient(clientSocketFd);
+    }
+    clientId = request.clientid();
+    if (!clientKeyExists(clientId)) {
+      LOG(ERROR) << "Got a client that we have no key for";
+      socketHandler->close(clientSocketFd);
+    } else if (!clientConnectionExists(clientId)) {
+      newClientConnection(clientId, clientSocketFd);
       shared_ptr<ServerClientConnection> serverClientState =
-          getClient(clientId);
+          getClientConnection(clientId);
       if (serverHandler && !serverHandler->newClient(serverClientState)) {
-        // Destroy the new client
-        removeClient(serverClientState);
+        // Client creation failed, Destroy the new client
+        removeClient(clientId);
         socketHandler->close(clientSocketFd);
       }
     } else {
-      if (!clientExists(clientId)) {
-        throw std::runtime_error("Tried to revive an unknown client");
-      }
       shared_ptr<ServerClientConnection> serverClientState =
-          getClient(clientId);
+          getClientConnection(clientId);
       serverClientState->recoverClient(clientSocketFd);
     }
   } catch (const runtime_error& err) {
@@ -75,28 +78,30 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   }
 }
 
-int ServerConnection::newClient(int socketFd) {
-  int clientId = rand();
-  while (clientExists(clientId)) {
-    clientId++;
-    if (clientId < 0) {
-      throw std::runtime_error("Ran out of client ids");
-    }
-  }
+void ServerConnection::newClientConnection(
+    const string& clientId,
+    int socketFd) {
   VLOG(1) << "Created client with id " << clientId << endl;
 
   et::ConnectResponse response;
-  response.set_clientid(clientId);
   socketHandler->writeProto(socketFd, response, true);
   shared_ptr<ServerClientConnection> scc(
-      new ServerClientConnection(socketHandler, clientId, socketFd, key));
-  clients.insert(std::make_pair(clientId, scc));
-  return clientId;
+      new ServerClientConnection(socketHandler, clientId, socketFd, clientKeys[clientId]));
+  clientConnections.insert(std::make_pair(clientId, scc));
 }
 
 bool ServerConnection::removeClient(
-    shared_ptr<ServerClientConnection> connection) {
+    const string &id) {
+  if (clientKeys.find(id) == clientKeys.end()) {
+    return false;
+  }
+  clientKeys.erase(id);
+  if (clientConnections.find(id) == clientConnections.end()) {
+    return true;
+  }
+  auto connection = clientConnections[id];
   connection->shutdown();
-  return clients.erase(connection->getClientId()) == 1;
+  clientConnections.erase(id);
+  return true;
 }
 }

@@ -1,15 +1,14 @@
 #include "ClientConnection.hpp"
 
 namespace et {
-const int NULL_CLIENT_ID = -1;
-
 ClientConnection::ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler,  //
-    const std::string& _hostname,                   //
-    int _port,                                      //
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const std::string& _hostname,
+    int _port,
+    const string& _id,
     const string& _key)
-    : Connection(_socketHandler, _key),  //
-      hostname(_hostname),               //
+    : Connection(_socketHandler, _id, _key),
+      hostname(_hostname),
       port(_port) {}
 
 ClientConnection::~ClientConnection() {
@@ -28,7 +27,7 @@ void ClientConnection::connect() {
     }
     VLOG(1) << "Sending null id" << endl;
     et::ConnectRequest request;
-    request.set_clientid(NULL_CLIENT_ID);
+    request.set_clientid(id);
     request.set_version(PROTOCOL_VERSION);
     socketHandler->writeProto(socketFd, request, true);
     VLOG(1) << "Receiving client id" << endl;
@@ -39,7 +38,6 @@ void ClientConnection::connect() {
       cerr << "Error connecting to server: " << response.error() << endl;
       exit(1);
     }
-    clientId = response.clientid();
     VLOG(1) << "Creating backed reader" << endl;
     reader = std::shared_ptr<BackedReader>(new BackedReader(
         socketHandler, shared_ptr<CryptoHandler>(
@@ -92,7 +90,8 @@ void ClientConnection::pollReconnect() {
       if (newSocketFd != -1) {
         try {
           et::ConnectRequest request;
-          request.set_clientid(clientId);
+          request.set_clientid(id);
+          request.set_version(PROTOCOL_VERSION);
           socketHandler->writeProto(newSocketFd, request, true);
           recover(newSocketFd);
         } catch (const std::runtime_error& re) {

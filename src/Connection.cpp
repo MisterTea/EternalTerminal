@@ -1,9 +1,11 @@
 #include "Connection.hpp"
 
 namespace et {
-Connection::Connection(std::shared_ptr<SocketHandler> _socketHandler,
-                       const string& _key)
-    : socketHandler(_socketHandler), key(_key), shuttingDown(false) {}
+Connection::Connection(
+    shared_ptr<SocketHandler> _socketHandler,
+    const string& _id,
+    const string& _key)
+    : socketHandler(_socketHandler), id(_id), key(_key), shuttingDown(false) {}
 
 Connection::~Connection() {
   if (!shuttingDown) {

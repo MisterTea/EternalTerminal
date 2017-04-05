@@ -28,8 +28,7 @@
 #include <unordered_set>
 #include <set>
 #include <vector>
-
-#include <boost/circular_buffer.hpp>
+#include <deque>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -40,7 +39,7 @@
 using namespace std;
 
 // The ET protocol version supported by this binary
-static const int PROTOCOL_VERSION = 2;
+static const int PROTOCOL_VERSION = 3;
 
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;

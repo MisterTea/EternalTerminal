@@ -10,7 +10,10 @@
 namespace et {
 class Connection {
  public:
-  Connection(std::shared_ptr<SocketHandler> _socketHandler, const string& key);
+  Connection(
+      shared_ptr<SocketHandler> _socketHandler,
+      const string& _id,
+      const string& _key);
 
   virtual ~Connection();
 
@@ -42,7 +45,7 @@ class Connection {
 
   bool isDisconnected() { return socketFd == -1; }
 
-  int getClientId() { return clientId; }
+  string getId() { return id; }
 
   inline bool hasData() { return reader->hasData(); }
 
@@ -56,11 +59,11 @@ class Connection {
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;
+  string id;
   string key;
   std::shared_ptr<BackedReader> reader;
   std::shared_ptr<BackedWriter> writer;
   int socketFd;
-  int clientId;
   bool shuttingDown;
   recursive_mutex connectionMutex;
 };

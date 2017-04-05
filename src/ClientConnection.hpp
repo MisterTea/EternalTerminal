@@ -12,8 +12,9 @@ class ClientConnection : public Connection {
  public:
   ClientConnection(std::shared_ptr<SocketHandler> _socketHandler,  //
                    const std::string& hostname,                    //
-                   int port,                                       //
-                   const string& key);
+                   int _port,                                       //
+                   const string& _id,
+                   const string& _key);
 
   virtual ~ClientConnection();
 

@@ -6,12 +6,21 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "ProcessHelper.hpp"
 
 #include <errno.h>
 #include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
 #include <termios.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <errno.h>
+#include <string.h>
+#include <fcntl.h>
+#include <sys/types.h>
+#include <sys/stat.h>
+#include <unistd.h>
 
 #if __APPLE__
 #include <util.h>
@@ -41,11 +50,43 @@ void halt();
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
   }
 
-termios terminal_backup;
-
 DEFINE_int32(port, 10022, "Port to listen on");
-DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
-DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
+DEFINE_string(client, "", "If set, uses IPC to send a client id/key to the server daemon");
+DEFINE_bool(daemon, false, "Daemonize the server");
+
+thread* clientListenerThread = NULL;
+#define FIFO_NAME "etserver.client.fifo"
+void clientListener() {
+  string buf;
+  int num, fd;
+
+  mknod(FIFO_NAME, S_IFIFO | 0666, 0);
+
+  fd = open(FIFO_NAME, O_RDONLY);
+  LOG(INFO) << "Listening to id/key FIFO";
+
+  do {
+    char c;
+    if ((num = read(fd, &c, 1)) == -1) {
+      LOG(FATAL) << "Error while reading from id/key FIFO: " << errno;
+    } else if (num == 1) {
+      if (c == '\0') {
+        VLOG(1) << "Got client: " << buf << endl;
+        size_t slashIndex = buf.find("/");
+        if (slashIndex == string::npos) {
+          LOG(ERROR) << "Invalid client id/key pair: " << buf;
+        } else {
+          string id = buf.substr(0, slashIndex);
+          string key = buf.substr(slashIndex+1);
+          globalServer->addClientKey(id, key);
+        }
+        buf = "";
+      } else {
+        buf += c;
+      }
+    }
+  } while (num >= 0);
+};
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
@@ -97,7 +138,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
-          globalServer->removeClient(serverClientState);
+          globalServer->removeClient(serverClientState->getId());
           break;
         }
       }
@@ -155,8 +196,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
       // run=false;
     }
   }
-  serverClientState.reset();
-  halt();
+  {
+    string id = serverClientState->getId();
+    serverClientState.reset();
+    globalServer->removeClient(id);
+  }
 }
 
 void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
@@ -219,39 +263,38 @@ int main(int argc, char** argv) {
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
+  if (FLAGS_client.length() > 0) {
+    string client = FLAGS_client;
+    client += '\0';
+    // Special flag to send the client data to the server daemon
+    int num, fd;
+
+    mknod(FIFO_NAME, S_IFIFO | 0666, 0);
+
+    printf("waiting for readers...\n");
+    fd = open(FIFO_NAME, O_WRONLY);
+    printf("got a reader--type some stuff\n");
+
+    if ((num = write(fd, &(client[0]), client.length())) == -1)
+      perror("write");
+    else
+      printf("speak: wrote %d bytes\n", num);
+
+    return 0;
+  }
+
+  if (FLAGS_daemon) {
+    ProcessHelper::daemonize();
+  }
+
   std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
 
   LOG(INFO) << "Creating server";
 
-  string passkey = FLAGS_passkey;
-  if (passkey.length() == 0 && FLAGS_passkeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_passkeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    passkey = buffer.str();
-    // Trim whitespace
-    passkey.erase(passkey.find_last_not_of(" \n\r\t") + 1);
-    // Delete the file with the passkey
-    remove(FLAGS_passkeyfile.c_str());
-  }
-  if (passkey.length() == 0) {
-    cout << "Unless you are doing development on Eternal Terminal,\nplease do "
-            "not call etserver directly.\n\nThe et launcher (run on the "
-            "client) uses ssh to remotely call etserver with the correct "
-            "parameters.\nThis ensures a secure connection.\n\nIf you intended "
-            "to call etserver directly, please provide a passkey\n(run "
-            "\"etserver --help\" for details)."
-         << endl;
-    exit(1);
-  }
-  if (passkey.length() != 32) {
-    LOG(FATAL) << "Invalid/missing passkey: " << passkey;
-  }
-
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       serverSocket, FLAGS_port,
-      shared_ptr<TerminalServerHandler>(new TerminalServerHandler()), passkey));
+      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
+  clientListenerThread = new thread(clientListener);
   globalServer->run();
 }
 

@@ -9,9 +9,9 @@ namespace et {
 class ServerClientConnection : public Connection {
  public:
   explicit ServerClientConnection(
-      const std::shared_ptr<SocketHandler>& _socketHandler,  //
-      int _clientId,                                         //
-      int _socketFd,                                         //
+      const std::shared_ptr<SocketHandler>& _socketHandler,
+      const string& clientId,
+      int _socketFd,
       const string& key);
 
   virtual ~ServerClientConnection();
