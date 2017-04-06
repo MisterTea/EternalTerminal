@@ -7,6 +7,7 @@
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
 #include "ProcessHelper.hpp"
+#include "IdPasskeyHandler.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -41,6 +42,7 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
+map<string, int64_t> idPidMap;
 shared_ptr<ServerConnection> globalServer;
 
 void halt();
@@ -56,40 +58,6 @@ DEFINE_string(idpasskeyfile, "", "If set, uses IPC to send a client id/key to th
 DEFINE_bool(daemon, false, "Daemonize the server");
 
 thread* idPasskeyListenerThread = NULL;
-#define FIFO_NAME "/tmp/etserver.idpasskey.fifo"
-void idPasskeyListener() {
-  string buf;
-  int num, fd;
-
-  mknod(FIFO_NAME, S_IFIFO | 0666, 0);
-
-  fd = open(FIFO_NAME, O_RDONLY);
-  LOG(INFO) << "Listening to id/key FIFO";
-
-  do {
-    char c;
-    if ((num = read(fd, &c, 1)) == -1) {
-      LOG(FATAL) << "Error while reading from id/key FIFO: " << errno;
-    } else if (num == 1) {
-      if (c == '\0') {
-        VLOG(1) << "Got idPasskey: " << buf << endl;
-        size_t slashIndex = buf.find("/");
-        if (slashIndex == string::npos) {
-          LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
-        } else {
-          string id = buf.substr(0, slashIndex);
-          string key = buf.substr(slashIndex+1);
-          globalServer->addClientKey(id, key);
-        }
-        buf = "";
-      } else {
-        buf += c;
-      }
-    } else if (num == 0) {
-      sleep(1);
-    }
-  } while (num >= 0);
-};
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
@@ -231,17 +199,30 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
   switch (pid) {
     case -1:
       FAIL_FATAL(pid);
-    case 0:
+    case 0: {
       // child
       VLOG(1) << "Closing server in fork" << endl;
       // Close server on client process
       globalServer->close();
       globalServer.reset();
+      string id = serverClientState->getId();
+      if (idPidMap.find(id) == idPidMap.end()) {
+        LOG(FATAL) << "Error: PID for ID not found";
+      }
+      passwd* pwd = getpwuid(idPidMap[id]);
+      setuid(pwd->pw_uid);
+      seteuid(pwd->pw_uid);
+      setgid(pwd->pw_gid);
+      setegid(pwd->pw_gid);
+      if (pwd->pw_shell) {
+        terminal = pwd->pw_shell;
+      }
 
       VLOG(1) << "Child process " << terminal << endl;
       execl(terminal.c_str(), terminal.c_str(), NULL);
       exit(0);
       break;
+    }
     default:
       // parent
       cout << "pty opened " << masterfd << endl;
@@ -257,6 +238,8 @@ class TerminalServerHandler : public ServerConnectionHandler {
     return true;
   }
 };
+
+bool doneListening=false;
 
 int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
@@ -280,18 +263,7 @@ int main(int argc, char** argv) {
       remove(FLAGS_idpasskeyfile.c_str());
     }
     idpasskey += '\0';
-    // Special flag to send the client data to the server daemon
-    int num, fd;
-
-    mknod(FIFO_NAME, S_IFIFO | 0666, 0);
-
-    fd = open(FIFO_NAME, O_WRONLY);
-
-    if ((num = write(fd, &(idpasskey[0]), idpasskey.length())) != idpasskey.length()) {
-      LOG(FATAL) << "Could not write idpasskey";
-    }
-
-    close(fd);
+    IdPasskeyHandler::send(idpasskey);
 
     return 0;
   }
@@ -307,12 +279,13 @@ int main(int argc, char** argv) {
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       serverSocket, FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  idPasskeyListenerThread = new thread(idPasskeyListener);
+  idPasskeyListenerThread = new thread(IdPasskeyHandler::runServer, &doneListening);
   globalServer->run();
 }
 
 void halt() {
   LOG(INFO) << "Shutting down server" << endl;
+  doneListening = true;
   globalServer->close();
   LOG(INFO) << "Waiting for server to finish" << endl;
   sleep(3);

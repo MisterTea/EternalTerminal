@@ -93,6 +93,7 @@ add_library(
   terminal/ConsoleUtils.cpp
   terminal/SocketUtils.cpp
   terminal/ProcessHelper.cpp
+  terminal/IdPasskeyHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
