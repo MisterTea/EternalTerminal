@@ -65,7 +65,7 @@ int main(int argc, char** argv) {
       LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
     }
     // Delete the file with the passkey
-    //remove(FLAGS_idpasskeyfile.c_str());
+    remove(FLAGS_idpasskeyfile.c_str());
   }
   if (passkey.length() == 0 || id.length()==0) {
     cout << "Unless you are doing development on Eternal Terminal,\nplease do "
