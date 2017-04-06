@@ -245,12 +245,12 @@ int main(int argc, char** argv) {
 
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what() << endl;
+      tcsetattr(0, TCSANOW, &terminal_backup);
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
   }
 
-  tcsetattr(0, TCSANOW, &terminal_backup);
   globalClient.reset();
   client.reset();
   LOG(INFO) << "Client derefernced" << endl;
