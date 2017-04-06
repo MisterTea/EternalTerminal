@@ -31,10 +31,10 @@ shared_ptr<ClientConnection> globalClient;
 termios terminal_backup;
 
 DEFINE_string(host, "localhost", "host to join");
-DEFINE_int32(port, 10022, "port to connect on");
-DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
-DEFINE_string(passkeyfile, "", "Passkey file to encrypt/decrypt packets");
+DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(id, "", "Unique ID assigned to this session");
+DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
+DEFINE_string(idpasskeyfile, "", "File containing client ID and key to encrypt/decrypt packets");
 
 int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
@@ -48,16 +48,24 @@ int main(int argc, char** argv) {
 
   string id = FLAGS_id;
   string passkey = FLAGS_passkey;
-  if (passkey.length() == 0 && FLAGS_passkeyfile.length() > 0) {
+  if (FLAGS_idpasskeyfile.length() > 0) {
     // Check for passkey file
-    std::ifstream t(FLAGS_passkeyfile.c_str());
+    std::ifstream t(FLAGS_idpasskeyfile.c_str());
     std::stringstream buffer;
     buffer << t.rdbuf();
-    passkey = buffer.str();
+    string idpasskeypair = buffer.str();
     // Trim whitespace
-    passkey.erase(passkey.find_last_not_of(" \n\r\t") + 1);
+    idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
+    size_t slashIndex = idpasskeypair.find("/");
+    if (slashIndex == string::npos) {
+      LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
+    } else {
+      id = idpasskeypair.substr(0, slashIndex);
+      passkey = idpasskeypair.substr(slashIndex+1);
+      LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
+    }
     // Delete the file with the passkey
-    remove(FLAGS_passkeyfile.c_str());
+    //remove(FLAGS_idpasskeyfile.c_str());
   }
   if (passkey.length() == 0 || id.length()==0) {
     cout << "Unless you are doing development on Eternal Terminal,\nplease do "

@@ -42,6 +42,8 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     {
       int version = request.version();
       if (version != PROTOCOL_VERSION) {
+        LOG(ERROR) << "Got a client request but the client version does not match.  Client: " <<
+            version << " != Server: " << PROTOCOL_VERSION;
         et::ConnectResponse response;
 
         std::ostringstream errorStream;
@@ -54,10 +56,12 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       }
     }
     clientId = request.clientid();
+    LOG(INFO) << "Got client with id: " << clientId << endl;
     if (!clientKeyExists(clientId)) {
       LOG(ERROR) << "Got a client that we have no key for";
       socketHandler->close(clientSocketFd);
     } else if (!clientConnectionExists(clientId)) {
+      LOG(INFO) << "New client.  Setting up connection";
       newClientConnection(clientId, clientSocketFd);
       shared_ptr<ServerClientConnection> serverClientState =
           getClientConnection(clientId);

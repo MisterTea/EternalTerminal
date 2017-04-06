@@ -114,7 +114,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       int so_error;
       socklen_t len = sizeof so_error;
 
-      getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len);
+      FATAL_FAIL(::getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len));
 
       if (so_error == 0) {
         LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
@@ -130,8 +130,13 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
         }
         break;  // if we get here, we must have connected successfully
       } else {
-        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
-                  << errno << " " << strerror(errno);
+        if (p->ai_canonname) {
+          LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
+                    << so_error << " " << strerror(so_error);
+        } else {
+          LOG(INFO) << "Error connecting to " << hostname << ": "
+                    << so_error << " " << strerror(so_error);
+        }
         ::close(sockfd);
         sockfd = -1;
         continue;
@@ -227,7 +232,7 @@ int UnixSocketHandler::listen(int port) {
 
       // Listen
       FATAL_FAIL(::listen(sockfd, 32));
-      LOG(INFO) << "Listening on " << p->ai_family << "/" << p->ai_socktype
+      LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << "/" << p->ai_family << "/" << p->ai_socktype
                 << "/" << p->ai_protocol;
 
       // if we get here, we must have connected successfully

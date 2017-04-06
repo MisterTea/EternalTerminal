@@ -80,37 +80,19 @@ SERVER_BINARY="etserver"
 CLIENT_BINARY="etclient"
 
 PASSWORD_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
+ID_GENERATOR=${PASSWORD_GENERATOR}
 TMPFILE=$(mktemp "$TMP_DIR"/et-client.XXXXXXXXXXXX)
 SSH_PASSWORD_COMMAND="
-ps xwwo pgid,command | grep etserver | while read -r line; do
-    PORT_REGEX=\"--port=([0-9]+)\"
-    if [ -n \"\$ZSH_VERSION\" ]; then
-        if [[ \$line =~ \"\$PORT_REGEX\" ]]; then
-            SERVER_PORT=\"\$match[1]\"
-            if [[ $PORT == \"\$SERVER_PORT\" ]]; then
-                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -- -repme
-                sleep 3
-            fi
-        fi
-    else
-        if [[ \$line =~ \$PORT_REGEX ]]; then
-            SERVER_PORT=\"\${BASH_REMATCH[1]}\"
-            if [[ $PORT == \"\$SERVER_PORT\" ]]; then
-                printf \"\$line\\n\" | cut -d\" \" -f1 | xargs -I repme kill -- -repme
-                sleep 3
-            fi
-        fi
-    fi
-done
 export SERVER_TMP_DIR=\${TMPDIR:-\${TMP:-\${TEMP:-/tmp}}}
 export TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et-server.XXXXXXXXXXXX)
-( $PASSWORD_GENERATOR; printf \"\\n\" ) > \"\${TMPFILE}\"
-nohup $SERVER_BINARY $VERBOSITY --alsologtostderr --passkeyfile=\$TMPFILE --port=$PORT > /tmp/et_err 2>&1 &
-printf \"PASSWORD:\"
-cat \"\${TMPFILE}\"
-printf \"\\n\"
+PASSWORD=\$($PASSWORD_GENERATOR)
+ID=\$($ID_GENERATOR)
+echo \$PASSWORD
+echo \$ID
+printf \"%s/%s\\n\" \"\$ID\" \"\$PASSWORD\" > \"\${TMPFILE}\"
+$SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\"
+printf \"PASSWORD:%s/%s\\n\" \"\$ID\" \"\$PASSWORD\"
 "
 (printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
-printf '\n' >> ${TMPFILE}
 
-$CLIENT_BINARY --passkeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
+$CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err

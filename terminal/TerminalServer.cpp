@@ -50,13 +50,14 @@ void halt();
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
   }
 
-DEFINE_int32(port, 10022, "Port to listen on");
-DEFINE_string(client, "", "If set, uses IPC to send a client id/key to the server daemon");
+DEFINE_int32(port, 2022, "Port to listen on");
+DEFINE_string(idpasskey, "", "If set, uses IPC to send a client id/key to the server daemon");
+DEFINE_string(idpasskeyfile, "", "If set, uses IPC to send a client id/key to the server daemon from a file");
 DEFINE_bool(daemon, false, "Daemonize the server");
 
-thread* clientListenerThread = NULL;
-#define FIFO_NAME "etserver.client.fifo"
-void clientListener() {
+thread* idPasskeyListenerThread = NULL;
+#define FIFO_NAME "/tmp/etserver.idpasskey.fifo"
+void idPasskeyListener() {
   string buf;
   int num, fd;
 
@@ -71,10 +72,10 @@ void clientListener() {
       LOG(FATAL) << "Error while reading from id/key FIFO: " << errno;
     } else if (num == 1) {
       if (c == '\0') {
-        VLOG(1) << "Got client: " << buf << endl;
+        VLOG(1) << "Got idPasskey: " << buf << endl;
         size_t slashIndex = buf.find("/");
         if (slashIndex == string::npos) {
-          LOG(ERROR) << "Invalid client id/key pair: " << buf;
+          LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
         } else {
           string id = buf.substr(0, slashIndex);
           string key = buf.substr(slashIndex+1);
@@ -84,6 +85,8 @@ void clientListener() {
       } else {
         buf += c;
       }
+    } else if (num == 0) {
+      sleep(1);
     }
   } while (num >= 0);
 };
@@ -263,22 +266,32 @@ int main(int argc, char** argv) {
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
-  if (FLAGS_client.length() > 0) {
-    string client = FLAGS_client;
-    client += '\0';
+  if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
+    string idpasskey = FLAGS_idpasskey;
+    if (FLAGS_idpasskeyfile.length() > 0) {
+      // Check for passkey file
+      std::ifstream t(FLAGS_idpasskeyfile.c_str());
+      std::stringstream buffer;
+      buffer << t.rdbuf();
+      idpasskey = buffer.str();
+      // Trim whitespace
+      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+      // Delete the file with the passkey
+      remove(FLAGS_idpasskeyfile.c_str());
+    }
+    idpasskey += '\0';
     // Special flag to send the client data to the server daemon
     int num, fd;
 
     mknod(FIFO_NAME, S_IFIFO | 0666, 0);
 
-    printf("waiting for readers...\n");
     fd = open(FIFO_NAME, O_WRONLY);
-    printf("got a reader--type some stuff\n");
 
-    if ((num = write(fd, &(client[0]), client.length())) == -1)
-      perror("write");
-    else
-      printf("speak: wrote %d bytes\n", num);
+    if ((num = write(fd, &(idpasskey[0]), idpasskey.length())) != idpasskey.length()) {
+      LOG(FATAL) << "Could not write idpasskey";
+    }
+
+    close(fd);
 
     return 0;
   }
@@ -294,7 +307,7 @@ int main(int argc, char** argv) {
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       serverSocket, FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  clientListenerThread = new thread(clientListener);
+  idPasskeyListenerThread = new thread(idPasskeyListener);
   globalServer->run();
 }
 
