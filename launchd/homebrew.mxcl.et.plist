@@ -1,0 +1,35 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+  <dict>
+    <key>Label</key>
+    <string>homebrew.mxcl.et</string>
+    <key>ProgramArguments</key>
+    <array>
+      <string>/usr/local/bin/etserver</string>
+      <string>--cfgFile</string>
+      <string>/usr/local/etc/et.conf</string>
+      <string>--daemon</string>
+    </array>
+    <key>RunAtLoad</key>
+    <true/>
+    <key>KeepAlive</key>
+    <false/>
+    <key>WorkingDirectory</key>
+    <string>/usr/local</string>
+    <key>StandardErrorPath</key>
+    <string>/tmp/et_err</string>
+    <key>StandardOutPath</key>
+    <string>/tmp/et_err</string>
+    <key>HardResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>4096</integer>
+    </dict>
+    <key>SoftResourceLimits</key>
+    <dict>
+      <key>NumberOfFiles</key>
+      <integer>4096</integer>
+    </dict>
+  </dict>
+</plist>
