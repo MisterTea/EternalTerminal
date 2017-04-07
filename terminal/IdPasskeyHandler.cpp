@@ -48,7 +48,7 @@ struct PeerInfo
 void IdPasskeyHandler::runServer(bool* done) {
   int num, fd;
 
-  unsigned int s2;
+  int s2;
   sockaddr_un local, remote;
 
   fd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -81,9 +81,9 @@ void IdPasskeyHandler::runServer(bool* done) {
     PeerInfo peer = { false, 0, false, 0, false, 0 };
 
 #if defined(SO_PEERCRED)
-    struct ucred ucred;
-    len = sizeof(struct ucred);
-    FATAL_FAIL(getsockopt(s2, SOL_SOCKET, SO_PEERCRED, &ucred, &len));
+    struct ucred cred;
+    size_t len = sizeof(struct ucred);
+    FATAL_FAIL(getsockopt(s2, SOL_SOCKET, SO_PEERCRED, &cred, &len));
     peer = { true, cred.pid, true, cred.uid, true, cred.gid };
 #elif defined(LOCAL_PEERCRED)
     xucred cred;
