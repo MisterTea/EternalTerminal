@@ -66,6 +66,7 @@ void IdPasskeyHandler::runServer(bool* done) {
 
   FATAL_FAIL(::bind(fd, (struct sockaddr *)&local, sizeof(sockaddr_un)));
   listen(fd, 5);
+  chmod(local.sun_path, 0777);
 
   LOG(INFO) << "Listening to id/key FIFO";
   while(!(*done)) {
@@ -133,7 +134,7 @@ void IdPasskeyHandler::send(const string& idPasskey) {
 
   if (connect(fd, (struct sockaddr *) &remote, sizeof(sockaddr_un)) < 0) {
     close(fd);
-    FATAL_FAIL(fd);
+    FATAL_FAIL(-1);
   }
   FATAL_FAIL(write(fd, &(idPasskey[0]), idPasskey.length()));
   close(fd);
