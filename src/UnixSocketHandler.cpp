@@ -232,7 +232,7 @@ int UnixSocketHandler::listen(int port) {
 
       // Listen
       FATAL_FAIL(::listen(sockfd, 32));
-      LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << "/" << p->ai_family << "/" << p->ai_socktype
+      LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port << "/" << p->ai_family << "/" << p->ai_socktype
                 << "/" << p->ai_protocol;
 
       // if we get here, we must have connected successfully
