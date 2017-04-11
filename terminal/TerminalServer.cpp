@@ -58,7 +58,7 @@ DEFINE_int32(port, 0, "Port to listen on");
 DEFINE_string(idpasskey, "", "If set, uses IPC to send a client id/key to the server daemon");
 DEFINE_string(idpasskeyfile, "", "If set, uses IPC to send a client id/key to the server daemon from a file");
 DEFINE_bool(daemon, false, "Daemonize the server");
-DEFINE_string(cfgFile, "/etc/et.cfg", "Location of the config file");
+DEFINE_string(cfgfile, "", "Location of the config file");
 
 thread* idPasskeyListenerThread = NULL;
 
@@ -252,15 +252,19 @@ int main(int argc, char** argv) {
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
-  // Load the config file
-  CSimpleIniA ini(true, true, true);
-  SI_Error rc = ini.LoadFile(FLAGS_cfgFile.c_str());
-  if (rc == 0) {
-    if (FLAGS_port == 0) {
-      const char* portString = ini.GetValue("Networking", "Port", NULL);
-      if (portString) {
-        FLAGS_port = stoi(portString);
+  if (FLAGS_cfgfile.length()) {
+    // Load the config file
+    CSimpleIniA ini(true, true, true);
+    SI_Error rc = ini.LoadFile(FLAGS_cfgfile.c_str());
+    if (rc == 0) {
+      if (FLAGS_port == 0) {
+        const char* portString = ini.GetValue("Networking", "Port", NULL);
+        if (portString) {
+          FLAGS_port = stoi(portString);
+        }
       }
+    } else {
+      LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
   }
 
