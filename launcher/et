@@ -110,7 +110,7 @@ printf \"PASSWORD:\"
 cat \"\${TMPFILE}\"
 printf \"\\n\"
 "
-(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
+(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND '/bin/bash' | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
 printf '\n' >> ${TMPFILE}
 
 $CLIENT_BINARY --passkeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
