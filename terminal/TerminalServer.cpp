@@ -221,8 +221,9 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
         terminal = pwd->pw_shell;
       }
 
-      VLOG(1) << "Child process " << terminal << endl;
-      execl(terminal.c_str(), terminal.c_str(), NULL);
+      VLOG(1) << "User name " << pwd->pw_name << endl;
+      string execString = string("login -f ") + pwd->pw_name;
+      system(execString.c_str());
       exit(0);
       break;
     }
