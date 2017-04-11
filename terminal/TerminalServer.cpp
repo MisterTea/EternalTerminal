@@ -220,10 +220,17 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       if (pwd->pw_shell) {
         terminal = pwd->pw_shell;
       }
+      setenv("SHELL", terminal.c_str(), 1);
 
-      VLOG(1) << "User name " << pwd->pw_name << endl;
-      string execString = string("login -f ") + pwd->pw_name;
-      system(execString.c_str());
+      const char *homedir = pwd->pw_dir;
+      setenv("HOME", homedir, 1);
+      setenv("USER", pwd->pw_name, 1);
+      setenv("LOGNAME", pwd->pw_name, 1);
+      setenv("PATH", "/usr/local/bin:/bin:/usr/bin", 1);
+      chdir(pwd->pw_dir);
+
+      VLOG(1) << "Child process " << terminal << endl;
+      execl(terminal.c_str(), terminal.c_str(), NULL);
       exit(0);
       break;
     }
