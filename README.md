@@ -30,7 +30,7 @@ Download and install from source:
 
 	wget https://github.com/MisterTea/EternalTCP/archive/master.zip
 	unzip master.zip
-	cd master
+	cd EternalTCP-master
 	mkdir build
 	cd build
 	cmake ../
