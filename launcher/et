@@ -90,8 +90,7 @@ ID=\$($ID_GENERATOR)
 echo \$PASSWORD
 echo \$ID
 printf \"%s/%s\\n\" \"\$ID\" \"\$PASSWORD\" > \"\${TMPFILE}\"
-$SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\"
-printf \"PASSWORD:%s/%s\\n\" \"\$ID\" \"\$PASSWORD\"
+$SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\" && printf \"PASSWORD:%s/%s\\n\" \"\$ID\" \"\$PASSWORD\"
 "
 (printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
 
