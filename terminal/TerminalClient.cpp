@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + 1;
-	      FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+              FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
               break;
             }
             case et::PacketType::KEEP_ALIVE:

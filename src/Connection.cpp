@@ -16,7 +16,7 @@ Connection::~Connection() {
 
 inline bool isSkippableError() {
   return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EAGAIN ||
-          errno == EWOULDBLOCK || errno == EHOSTUNREACH ||
+          errno == EWOULDBLOCK || errno == EHOSTUNREACH || errno == EPIPE ||
           errno == EBADF  // Bad file descriptor can happen when
                           // there's a race condition between ta thread
                           // closing a connection and one

@@ -54,7 +54,11 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
+#ifdef MSG_NOSIGNAL
+  return ::send(fd, buf, count, MSG_NOSIGNAL);
+#else
   return ::write(fd, buf, count);
+#endif
 }
 
 int UnixSocketHandler::connect(const std::string &hostname, int port) {
@@ -317,5 +321,10 @@ void UnixSocketHandler::initSocket(int fd) {
   tv.tv_usec = 0;
   FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv)));
   FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(tv)));
+#ifndef MSG_NOSIGNAL
+  // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
+  int val = 1;
+  FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&val, sizeof(val)));
+#endif
 }
 }
