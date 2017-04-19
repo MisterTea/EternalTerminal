@@ -54,6 +54,10 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
+  if (activeSockets.find(fd) == activeSockets.end()) {
+    LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
+    return 0;
+  }
 #ifdef MSG_NOSIGNAL
   return ::send(fd, buf, count, MSG_NOSIGNAL);
 #else
