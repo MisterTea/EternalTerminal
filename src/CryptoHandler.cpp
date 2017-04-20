@@ -46,7 +46,7 @@ string CryptoHandler::decrypt(const string& buffer) {
 
 void CryptoHandler::incrementNonce() {
   // Increment nonce
-  for (int a = 0; a < crypto_secretbox_NONCEBYTES; a++) {
+  for (int a = 0; a < int(crypto_secretbox_NONCEBYTES); a++) {
     nonce[a]++;
     if (nonce[a]) {
       // When nonce[a]==0, it means we rolled over to the next digit;
