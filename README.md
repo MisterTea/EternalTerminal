@@ -24,13 +24,13 @@ For Ubuntu, use our PPA:
 
 Install dependencies:
 
-	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev libgflags-dev
+	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev libgflags-dev unzip wget
 
 Download and install from source:
 
 	wget https://github.com/MisterTea/EternalTCP/archive/master.zip
 	unzip master.zip
-	cd master
+	cd EternalTCP-master
 	mkdir build
 	cd build
 	cmake ../
