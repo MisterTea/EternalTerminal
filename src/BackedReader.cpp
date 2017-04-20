@@ -65,19 +65,21 @@ int BackedReader::read(string* buf) {
     string s(messageRemainder, '\0');
     ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
     if (bytesRead < 0) {
+      VLOG(2) << "Error while reading";
       return bytesRead;
-    }
-    if (bytesRead > 0) {
+    } else if (bytesRead > 0) {
       partialMessage.append(&s[0], bytesRead);
       messageRemainder -= bytesRead;
+    } else {
+      VLOG(2) << "Nothing to read";
     }
   }
   if (!messageRemainder) {
     constructPartialMessage(buf);
-    return true;
+    return 1;
   }
 
-  return false;
+  return 0;
 }
 
 void BackedReader::revive(int newSocketFd, vector<string> localBuffer_) {

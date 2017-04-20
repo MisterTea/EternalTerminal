@@ -8,7 +8,8 @@
 #include <unistd.h>
 
 namespace et {
-UnixSocketHandler::UnixSocketHandler() {}
+UnixSocketHandler::UnixSocketHandler() {
+}
 
 bool UnixSocketHandler::hasData(int fd) {
   lock_guard<std::recursive_mutex> guard(mutex);
@@ -41,7 +42,11 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   }
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes == 0) {
-    throw runtime_error("Remote host closed connection");
+    // Connection is closed.  Instead of closing the socket, set EPIPE.
+    // In EternalTCP, the server needs to explictly tell the client that
+    // the session is over.
+    errno = EPIPE;
+    return -1;
   }
   if (readBytes < 0) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno) << endl;
@@ -296,6 +301,8 @@ void UnixSocketHandler::close(int fd) {
   }
   activeSockets.erase(activeSockets.find(fd));
 #if 0
+  // Shutting down connection before closing to prevent the server
+  // from closing it.
   VLOG(1) << "Shutting down connection: " << fd << endl;
   int rc = ::shutdown(fd, SHUT_RDWR);
   if (rc == -1) {

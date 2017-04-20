@@ -49,6 +49,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         std::ostringstream errorStream;
         errorStream << "Mismatched protocol versions.  Client: "
                     << request.version() << " != Server: " << PROTOCOL_VERSION;
+        response.set_status(MISMATCHED_PROTOCOL);
         response.set_error(errorStream.str());
         socketHandler->writeProto(clientSocketFd, response, true);
         socketHandler->close(clientSocketFd);
@@ -59,8 +60,21 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     LOG(INFO) << "Got client with id: " << clientId << endl;
     if (!clientKeyExists(clientId)) {
       LOG(ERROR) << "Got a client that we have no key for";
+
+      et::ConnectResponse response;
+      std::ostringstream errorStream;
+      errorStream << "Client is not registered";
+      response.set_error(errorStream.str());
+      response.set_status(INVALID_KEY);
+      socketHandler->writeProto(clientSocketFd, response, true);
+
       socketHandler->close(clientSocketFd);
     } else if (!clientConnectionExists(clientId)) {
+
+      et::ConnectResponse response;
+      response.set_status(NEW_CLIENT);
+      socketHandler->writeProto(clientSocketFd, response, true);
+
       LOG(INFO) << "New client.  Setting up connection";
       newClientConnection(clientId, clientSocketFd);
       shared_ptr<ServerClientConnection> serverClientState =
@@ -71,6 +85,10 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         socketHandler->close(clientSocketFd);
       }
     } else {
+      et::ConnectResponse response;
+      response.set_status(RETURNING_CLIENT);
+      socketHandler->writeProto(clientSocketFd, response, true);
+
       shared_ptr<ServerClientConnection> serverClientState =
           getClientConnection(clientId);
       serverClientState->recoverClient(clientSocketFd);
@@ -87,8 +105,6 @@ void ServerConnection::newClientConnection(
     int socketFd) {
   VLOG(1) << "Created client with id " << clientId << endl;
 
-  et::ConnectResponse response;
-  socketHandler->writeProto(socketFd, response, true);
   shared_ptr<ServerClientConnection> scc(
       new ServerClientConnection(socketHandler, clientId, socketFd, clientKeys[clientId]));
   clientConnections.insert(std::make_pair(clientId, scc));

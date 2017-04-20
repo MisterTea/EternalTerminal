@@ -53,6 +53,10 @@ class Connection {
 
   void shutdown();
 
+  inline bool isShuttingDown() {
+    return shuttingDown;
+  }
+
  protected:
   virtual ssize_t read(string* buf);
   virtual ssize_t write(const string& buf);

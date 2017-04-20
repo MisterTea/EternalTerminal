@@ -33,9 +33,9 @@ void ClientConnection::connect() {
     VLOG(1) << "Receiving client id" << endl;
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
-    if (response.has_error()) {
-      LOG(ERROR) << "Error connecting to server: " << response.error();
-      cerr << "Error connecting to server: " << response.error() << endl;
+    if (response.status() != NEW_CLIENT) {
+      LOG(ERROR) << "Error connecting to server: " << response.status() << ": " << response.error();
+      cerr << "Error connecting to server: " << response.status() << ": " << response.error() << endl;
       exit(1);
     }
     VLOG(1) << "Creating backed reader" << endl;
@@ -93,7 +93,22 @@ void ClientConnection::pollReconnect() {
           request.set_clientid(id);
           request.set_version(PROTOCOL_VERSION);
           socketHandler->writeProto(newSocketFd, request, true);
-          recover(newSocketFd);
+          et::ConnectResponse response =
+              socketHandler->readProto<et::ConnectResponse>(newSocketFd, true);
+          LOG(INFO) << "Got response with status: " << response.status() << " " << INVALID_KEY;
+          if (response.status() == INVALID_KEY) {
+            LOG(INFO) << "Got invalid key on reconnect, assume that server has terminated the session.";
+            // This means that the server has terminated the connection.
+            shuttingDown = true;
+            return;
+          }
+          if (response.status() != RETURNING_CLIENT) {
+            LOG(ERROR) << "Error reconnecting to server: " << response.status() << ": " << response.error();
+            cerr << "Error reconnecting to server: " << response.status() << ": " << response.error() << endl;
+            socketHandler->close(newSocketFd);
+          } else {
+            recover(newSocketFd);
+          }
         } catch (const std::runtime_error& re) {
           socketHandler->close(newSocketFd);
         }

@@ -137,7 +137,7 @@ int main(int argc, char** argv) {
   time_t keepaliveTime = time(NULL) + 5;
   bool waitingOnKeepalive = false;
 
-  while (run) {
+  while (run && !globalClient->isShuttingDown()) {
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -254,5 +254,7 @@ int main(int argc, char** argv) {
   globalClient.reset();
   client.reset();
   LOG(INFO) << "Client derefernced" << endl;
+  tcsetattr(0, TCSANOW, &terminal_backup);
+  cout << "Session terminated" << endl;
   return 0;
 }
