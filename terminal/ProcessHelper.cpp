@@ -62,9 +62,9 @@ void ProcessHelper::daemonize() {
 
   /* Reopen stdin (fd = 0), stdout (fd = 1), stderr (fd = 2) */
   stdin = fopen("/dev/null", "r");
-  stdout = fopen("/tmp/et_err", "w+");
+  stdout = fopen("/tmp/etserver_err", "w+");
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  stderr = fopen("/tmp/et_err", "w+");
+  stderr = fopen("/tmp/etserver_err", "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 
   /* Open the log file */

@@ -94,4 +94,4 @@ $SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\" && printf \"PASSWORD:%s/%s\\n\" \
 "
 (printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
 
-$CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/et_err
+$CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/etclient_err
