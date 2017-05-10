@@ -83,15 +83,32 @@ PASSWORD_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 3
 ID_GENERATOR=${PASSWORD_GENERATOR}
 TMPFILE=$(mktemp "$TMP_DIR"/et-client.XXXXXXXXXXXX)
 SSH_PASSWORD_COMMAND="
-export SERVER_TMP_DIR=\${TMPDIR:-\${TMP:-\${TEMP:-/tmp}}}
-export TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et-server.XXXXXXXXXXXX)
-PASSWORD=\$($PASSWORD_GENERATOR)
+SERVER_TMP_DIR=\${TMPDIR:-\${TMP:-\${TEMP:-/tmp}}}
+TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et-server.XXXXXXXXXXXX)
+PASSWORD=\$(env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32)
 ID=\$($ID_GENERATOR)
-echo \$PASSWORD
-echo \$ID
 printf \"%s/%s\\n\" \"\$ID\" \"\$PASSWORD\" > \"\${TMPFILE}\"
 $SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\" && printf \"PASSWORD:%s/%s\\n\" \"\$ID\" \"\$PASSWORD\"
+true
 "
-(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND '/bin/bash' | grep PASSWORD: | cut -d: -f2) > ${TMPFILE}
+SSH_OUTPUT=$(printf "%s\n" "$SSH_PASSWORD_COMMAND" | ssh -T $SSH_COMMAND '/bin/bash')
 
-$CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/etclient_err
+SSH_EXIT_STATUS=$?
+
+if [[ $SSH_EXIT_STATUS != 0 ]]
+then
+    echo "SSH handshake failed."
+    exit $SSH_EXIT_STATUS
+fi
+
+PASSKEY=$(printf "%s" "$SSH_OUTPUT" | grep PASSWORD: | cut -d: -f2)
+if [ -z "$PASSKEY" ]
+then
+    echo "Error communicating with ET daemon."
+    echo "${SSH_OUTPUT}"
+else
+    echo "${PASSKEY}" > "${TMPFILE}"
+    PASSKEY=""
+    SSH_OUTPUT=""
+    $CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/etclient_err
+fi

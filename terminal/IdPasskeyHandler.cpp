@@ -134,7 +134,12 @@ void IdPasskeyHandler::send(const string& idPasskey) {
 
   if (connect(fd, (struct sockaddr *) &remote, sizeof(sockaddr_un)) < 0) {
     close(fd);
-    FATAL_FAIL(-1);
+    if (errno == ECONNREFUSED) {
+      cout << "Error:  The Eternal Terminal daemon is not running.  Please (re)start the et daemon on the server." << endl;
+    } else {
+      cout << "Error:  Connection error communicating with et deamon: " << strerror(errno) << "." << endl;
+    }
+    exit(1);
   }
   FATAL_FAIL(write(fd, &(idPasskey[0]), idPasskey.length()));
   close(fd);
