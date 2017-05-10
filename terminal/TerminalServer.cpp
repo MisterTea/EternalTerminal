@@ -6,7 +6,6 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
-#include "ProcessHelper.hpp"
 #include "IdPasskeyHandler.hpp"
 
 #include "simpleini/SimpleIni.h"
@@ -300,7 +299,13 @@ int main(int argc, char** argv) {
   }
 
   if (FLAGS_daemon) {
-    ProcessHelper::daemonize();
+    if (::daemon(0,0) == -1) {
+      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+    }
+    stdout = fopen("/tmp/etserver_err", "w+");
+    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+    stderr = fopen("/tmp/etserver_err", "w+");
+    setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   }
 
   std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
