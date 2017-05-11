@@ -36,6 +36,11 @@
 #include <pty.h>
 #endif
 
+#ifdef WITH_SELINUX
+#include <selinux/selinux.h>
+#include <selinux/get_context_list.h>
+#endif
+
 #include "ETerminal.pb.h"
 
 using namespace et;
@@ -215,9 +220,15 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       passwd* pwd = getpwuid(idPidMap[id]);
       gid_t groups[65536];
       int ngroups = 65536;
-#ifdef security_context_t
-      security_context_t user_ctx = ssh_selinux_getctxbyname(pwd->pw_name);
+#ifdef WITH_SELINUX
+      char* sename = NULL;
+      char* level = NULL;
+      FATAL_FAIL(getseuserbyname(pwd->pw_name, &sename, &level));
+      security_context_t user_ctx = NULL;
+      FATAL_FAIL(get_default_context_with_level(sename, level, NULL, &user_ctx));
       setexeccon(user_ctx);
+      free(sename);
+      free(level);
 #endif
 
 #ifdef __APPLE__

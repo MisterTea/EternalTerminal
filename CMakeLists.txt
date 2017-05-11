@@ -28,6 +28,14 @@ find_package(Glog REQUIRED)
 find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
+find_package(SELinux)
+
+IF(SELINUX_FOUND)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
+ELSE()
+  SET(SELINUX_INCLUDE_DIR "")
+  SET(SELINUX_LIBRARIES "")
+ENDIF()
 
 PROTOBUF_GENERATE_CPP(
   ET_SRCS
@@ -47,6 +55,7 @@ include_directories(
   ${sodium_INCLUDE_DIR}
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
+  ${SELINUX_INCLUDE_DIR}
   )
 
 set(${PROJECT_NAME}_SRC
@@ -109,6 +118,7 @@ target_link_libraries (
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
   util
   )
 
