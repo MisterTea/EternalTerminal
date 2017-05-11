@@ -23,6 +23,7 @@
 #include <sys/types.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#include <grp.h>
 
 #if __APPLE__
 #include <util.h>
@@ -212,10 +213,43 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
         LOG(FATAL) << "Error: PID for ID not found";
       }
       passwd* pwd = getpwuid(idPidMap[id]);
-      setuid(pwd->pw_uid);
-      seteuid(pwd->pw_uid);
-      setgid(pwd->pw_gid);
-      setegid(pwd->pw_gid);
+      gid_t groups[65536];
+      int ngroups = 65536;
+#ifdef security_context_t
+      security_context_t user_ctx = ssh_selinux_getctxbyname(pwd->pw_name);
+      setexeccon(user_ctx);
+#endif
+
+#ifdef __APPLE__
+      if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) == -1) {
+        LOG(FATAL) << "User is part of more than 65536 groups!";
+      }
+#else
+      if (getgrouplist(pwd->pw_name, pwd->pw_gid, groups, &ngroups) == -1) {
+        LOG(FATAL) << "User is part of more than 65536 groups!";
+      }
+#endif
+
+#ifdef setresgid
+      FATAL_FAIL(setresgid(pwd->pw_gid, pwd->pw_gid, pwd->pw_gid));
+#else // OS/X
+      FATAL_FAIL(setregid(pwd->pw_gid, pwd->pw_gid));
+#endif
+
+#ifdef __APPLE__
+      /*
+       * OS X requires initgroups after setgid to opt back into
+       * memberd support for >16 supplemental groups.
+       */
+      FATAL_FAIL(initgroups(pwd->pw_name, pwd->pw_gid));
+#endif
+
+      FATAL_FAIL(::setgroups(ngroups, groups));
+#ifdef setresuid
+      FATAL_FAIL(setresuid(pwd->pw_uid, pwd->pw_uid, pwd->pw_uid));
+#else // OS/X
+      FATAL_FAIL(setreuid(pwd->pw_uid, pwd->pw_uid));
+#endif
       if (pwd->pw_shell) {
         terminal = pwd->pw_shell;
       }
