@@ -34,9 +34,7 @@
 #include <libutil.h>
 #else
 #include <pty.h>
-// _POSIX_C_SOURCE needed for siginfo_t
-#define _POSIX_C_SOURCE (199309L)
-#include <sys/siginfo.h>
+#include <signal.h>
 #endif
 
 #ifdef WITH_SELINUX
