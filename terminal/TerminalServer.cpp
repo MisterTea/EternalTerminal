@@ -69,7 +69,8 @@ thread* idPasskeyListenerThread = NULL;
 
 thread* terminalThread = NULL;
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                 int masterfd) {
+                 int masterfd,
+                 pid_t childPid) {
   string disconnectBuffer;
 
   // Whether the TE should keep running.
@@ -116,6 +117,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
           serverClientState->writeProto(tb);
         } else {
           LOG(INFO) << "Terminal session ended";
+          siginfo_t childInfo;
+          FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
           run = false;
           globalServer->removeClient(serverClientState->getId());
           break;
@@ -278,7 +281,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
     default:
       // parent
       cout << "pty opened " << masterfd << endl;
-      terminalThread = new thread(runTerminal, serverClientState, masterfd);
+      terminalThread = new thread(runTerminal, serverClientState, masterfd, pid);
       break;
   }
 }
