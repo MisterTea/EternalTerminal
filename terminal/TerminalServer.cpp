@@ -248,14 +248,11 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
 #endif
 
 #ifdef __APPLE__
-      /*
-       * OS X requires initgroups after setgid to opt back into
-       * memberd support for >16 supplemental groups.
-       */
       FATAL_FAIL(initgroups(pwd->pw_name, pwd->pw_gid));
+#else
+      FATAL_FAIL(::setgroups(ngroups, groups));
 #endif
 
-      FATAL_FAIL(::setgroups(ngroups, groups));
 #ifdef setresuid
       FATAL_FAIL(setresuid(pwd->pw_uid, pwd->pw_uid, pwd->pw_uid));
 #else // OS/X
