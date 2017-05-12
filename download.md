@@ -39,8 +39,10 @@ sudo make install
 
 # Windows
 
-Currently only unix sockets are supported.  If you would like winsock
-support, file an issue.
+ET works under WSL (Windows Subsystem for Linux), but you must be running xenial or higher.  See this issue for details: https://github.com/Microsoft/BashOnWindows/issues/482
+
+As long as you are running Xenial, you can follow the ubuntu instructions for installation.
+
 
 # Source Code
 
