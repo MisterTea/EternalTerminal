@@ -34,6 +34,7 @@
 #include <libutil.h>
 #else
 #include <pty.h>
+#include <sys/siginfo.h>
 #endif
 
 #ifdef WITH_SELINUX
