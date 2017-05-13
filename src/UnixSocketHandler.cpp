@@ -79,10 +79,15 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   memset(&hints, 0, sizeof(addrinfo));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_CANONNAME;
+  hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG);
   std::string portname = std::to_string(port);
 
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
+
+  if (rc == EAI_NONAME) {
+    VLOG_EVERY_N(1, 100) << "Cannot resolve hostname: " << gai_strerror(rc);
+    return -1;
+  }
 
   if (rc != 0) {
     LOG(ERROR) << "Error getting address info for " << hostname << ":"
