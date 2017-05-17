@@ -85,7 +85,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc == EAI_NONAME) {
-    VLOG_EVERY_N(1, 100) << "Cannot resolve hostname: " << gai_strerror(rc);
+    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << gai_strerror(rc);
     return -1;
   }
 
