@@ -68,11 +68,31 @@ DEFINE_bool(daemon, false, "Daemonize the server");
 DEFINE_string(cfgfile, "", "Location of the config file");
 
 thread* idPasskeyListenerThread = NULL;
+thread* finishClientMonitorThread = NULL;
 
-thread* terminalThread = NULL;
+int nextThreadId=0;
+map<int, shared_ptr<thread>> terminalThreads;
+vector<int> finishedThreads;
+mutex terminalThreadMutex;
+
+void finishClientMonitor() {
+  while (true) {
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      for (int id : finishedThreads) {
+        terminalThreads[id]->join();
+        terminalThreads.erase(id);
+      }
+      finishedThreads.clear();
+    }
+    sleep(1);
+  }
+}
+
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
                  int masterfd,
-                 pid_t childPid) {
+                 pid_t childPid,
+                 int threadId) {
   string disconnectBuffer;
 
   // Whether the TE should keep running.
@@ -105,12 +125,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (FD_ISSET(masterfd, &rfd)) {
-        // Read from fake terminal and write to server
+        // Read from fake terminal and write to client
         memset(b, 0, BUF_SIZE);
         int rc = read(masterfd, b, BUF_SIZE);
         if (rc > 0) {
-          // VLOG(2) << "Sending bytes: " << int(b) << " " << char(b) << " "
-          // << serverClientState->getWriter()->getSequenceNumber();
+          //VLOG(2) << "Sending bytes from terminal: " << rc << " "
+          //<< serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
           serverClientState->writeMessage(string(1, c));
           string s(b, rc);
@@ -140,8 +160,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               et::TerminalBuffer tb =
                   serverClientState->readProto<et::TerminalBuffer>();
               const string& s = tb.buffer();
-              // VLOG(2) << "Got byte: " << int(b) << " " << char(b) << " " <<
-              // serverClientState->getReader()->getSequenceNumber();
+              //VLOG(2) << "Got bytes from client: " << s.length() << " " <<
+              //serverClientState->getReader()->getSequenceNumber();
               FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
               break;
             }
@@ -184,6 +204,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
     string id = serverClientState->getId();
     serverClientState.reset();
     globalServer->removeClient(id);
+    finishedThreads.push_back(threadId);
   }
 }
 
@@ -214,10 +235,6 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       FAIL_FATAL(pid);
     case 0: {
       // child
-      VLOG(1) << "Closing server in fork" << endl;
-      // Close server on client process
-      globalServer->close();
-      globalServer.reset();
       string id = serverClientState->getId();
       if (idPidMap.find(id) == idPidMap.end()) {
         LOG(FATAL) << "Error: PID for ID not found";
@@ -280,11 +297,15 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       exit(0);
       break;
     }
-    default:
+    default: {
       // parent
       cout << "pty opened " << masterfd << endl;
-      terminalThread = new thread(runTerminal, serverClientState, masterfd, pid);
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      shared_ptr<thread> t = shared_ptr<thread>(new thread(runTerminal, serverClientState, masterfd, pid, nextThreadId));
+      terminalThreads.insert(pair<int,shared_ptr<thread>>(nextThreadId, t));
+      nextThreadId++;
       break;
+    }
   }
 }
 
@@ -363,6 +384,7 @@ int main(int argc, char** argv) {
       serverSocket, FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
   idPasskeyListenerThread = new thread(IdPasskeyHandler::runServer, &doneListening);
+  finishClientMonitorThread = new thread(finishClientMonitor);
   globalServer->run();
 }
 
