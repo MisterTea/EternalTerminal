@@ -239,7 +239,25 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       if (idPidMap.find(id) == idPidMap.end()) {
         LOG(FATAL) << "Error: PID for ID not found";
       }
-      passwd* pwd = getpwuid(idPidMap[id]);
+      int64_t pid = idPidMap[id];
+      passwd* pwd = getpwuid(pid);
+
+      // Set /proc/self/loginuid if it exists
+      bool loginuidExists=false;
+      {
+        ifstream infile("/proc/self/loginuid");
+        loginuidExists = infile.good();
+      }
+      if (loginuidExists) {
+        ofstream outfile("/proc/self/loginuid");
+        if (!outfile.is_open()) {
+          LOG(ERROR) << "/proc/self/loginuid is not writable.";
+        } else {
+          outfile << pid;
+          outfile.close();
+        }
+      }
+
       gid_t groups[65536];
       int ngroups = 65536;
 #ifdef WITH_SELINUX
