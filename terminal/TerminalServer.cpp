@@ -293,7 +293,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       chdir(pwd->pw_dir);
 
       VLOG(1) << "Child process " << terminal << endl;
-      execl(terminal.c_str(), terminal.c_str(), NULL);
+      execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
       exit(0);
       break;
     }
