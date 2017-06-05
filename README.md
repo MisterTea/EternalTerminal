@@ -39,7 +39,7 @@ Download and install from source:
 
 ### Windows
 
-Currently only unix sockets are supported. If you would like winsock support, file an issue.
+Eternal Terminal works under WSL (Windows Subsystem for Linux).  Follow the ubuntu instructions.
 
 ## Verifying
 
@@ -56,6 +56,22 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
 Once you have an open port, the syntax is similar to `ssh`: `et user@hostname[:port]`. You can pass additional arguments to `ssh` using the `-s` parameter. For instance, if you have `sshd` listening on port 5000: `et -s="-p 5000 user@host" user@host`.
+
+## Building from source
+
+### OS/X
+
+To build eternal terminal on mac, the easiest way is to grab dependencies with homebrew:
+
+```
+brew install --only-dependencies MisterTea/et/et
+git clone https://github.com/MisterTea/EternalTCP.git
+cd EternalTCP
+mkdir build
+cd build
+cmake ../
+make
+```
 
 ## Reporting issues
 
