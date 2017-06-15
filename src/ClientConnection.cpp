@@ -117,7 +117,7 @@ void ClientConnection::pollReconnect() {
 
     if (socketFd == -1) {
       VLOG_EVERY_N(1, 10) << "Waiting to retry...";
-      usleep(100 * 1000);
+      usleep(1000 * 1000);
     }
   }
 }

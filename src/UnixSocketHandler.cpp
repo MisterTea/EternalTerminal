@@ -86,12 +86,18 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
   if (rc == EAI_NONAME) {
     VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << gai_strerror(rc);
+    if (results) {
+      freeaddrinfo(results);
+    }
     return -1;
   }
 
   if (rc != 0) {
     LOG(ERROR) << "Error getting address info for " << hostname << ":"
                << portname << ": " << rc << " (" << gai_strerror(rc) << ")";
+    if (results) {
+      freeaddrinfo(results);
+    }
     return -1;
   }
 
