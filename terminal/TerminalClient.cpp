@@ -22,12 +22,6 @@ using namespace gflags;
 
 shared_ptr<ClientConnection> globalClient;
 
-#define FAIL_FATAL(X)                                     \
-  if ((X) == -1) {                                        \
-    printf("Error: (%d), %s\n", errno, strerror(errno));  \
-    exit(errno);                                          \
-  }
-
 termios terminal_backup;
 
 DEFINE_string(host, "localhost", "host to join");
@@ -36,16 +30,7 @@ DEFINE_string(id, "", "Unique ID assigned to this session");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(idpasskeyfile, "", "File containing client ID and key to encrypt/decrypt packets");
 
-int main(int argc, char** argv) {
-  ParseCommandLineFlags(&argc, &argv, true);
-  google::InitGoogleLogging(argv[0]);
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-  FLAGS_logbufsecs = 0;
-  FLAGS_logbuflevel = google::GLOG_INFO;
-  srand(1);
-
-  std::shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
-
+shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
   string passkey = FLAGS_passkey;
   if (FLAGS_idpasskeyfile.length() > 0) {
@@ -98,9 +83,10 @@ int main(int argc, char** argv) {
     payload.add_environmentvar(s);
   }
 
+  shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
       new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, id, passkey));
-  globalClient = client;
+
   int connectFailCount = 0;
   while (true) {
     try {
@@ -120,6 +106,41 @@ int main(int argc, char** argv) {
     break;
   }
   VLOG(1) << "Client created with id: " << client->getId() << endl;
+
+  return client;
+};
+
+void handleWindowChanged(winsize* win) {
+  winsize tmpwin;
+  ioctl(1, TIOCGWINSZ, &tmpwin);
+  if (win->ws_row != tmpwin.ws_row || win->ws_col != tmpwin.ws_col ||
+      win->ws_xpixel != tmpwin.ws_xpixel ||
+      win->ws_ypixel != tmpwin.ws_ypixel) {
+    *win = tmpwin;
+    LOG(INFO) << "Window size changed: " << win->ws_row << " " << win->ws_col
+              << " " << win->ws_xpixel << " " << win->ws_ypixel << endl;
+    TerminalInfo ti;
+    ti.set_row(win->ws_row);
+    ti.set_column(win->ws_col);
+    ti.set_width(win->ws_xpixel);
+    ti.set_height(win->ws_ypixel);
+    string s(1, (char)et::PacketType::TERMINAL_INFO);
+    globalClient->writeMessage(s);
+    globalClient->writeProto(ti);
+  }
+}
+
+int main(int argc, char** argv) {
+  ParseCommandLineFlags(&argc, &argv, true);
+  google::InitGoogleLogging(argv[0]);
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+  FLAGS_logbufsecs = 0;
+  FLAGS_logbuflevel = google::GLOG_INFO;
+  srand(1);
+
+  globalClient = createClient();
+  winsize win;
+  ioctl(1, TIOCGWINSZ, &win);
 
   termios terminal_local;
   tcgetattr(0, &terminal_local);
@@ -161,7 +182,7 @@ int main(int argc, char** argv) {
         // Read from stdin and write to our client that will then send it to the
         // server.
         int rc = read(STDIN_FILENO, b, BUF_SIZE);
-        FAIL_FATAL(rc);
+        FATAL_FAIL(rc);
         if (rc > 0) {
           // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
           // globalClient->getWriter()->getSequenceNumber();
@@ -225,24 +246,7 @@ int main(int argc, char** argv) {
         }
       }
 
-      winsize tmpwin;
-      ioctl(1, TIOCGWINSZ, &tmpwin);
-      if (win.ws_row != tmpwin.ws_row || win.ws_col != tmpwin.ws_col ||
-          win.ws_xpixel != tmpwin.ws_xpixel ||
-          win.ws_ypixel != tmpwin.ws_ypixel) {
-        win = tmpwin;
-        LOG(INFO) << "Window size changed: " << win.ws_row << " " << win.ws_col
-                  << " " << win.ws_xpixel << " " << win.ws_ypixel << endl;
-        TerminalInfo ti;
-        ti.set_row(win.ws_row);
-        ti.set_column(win.ws_col);
-        ti.set_width(win.ws_xpixel);
-        ti.set_height(win.ws_ypixel);
-        string s(1, (char)et::PacketType::TERMINAL_INFO);
-        globalClient->writeMessage(s);
-        globalClient->writeProto(ti);
-      }
-
+      handleWindowChanged(&win);
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what() << endl;
       tcsetattr(0, TCSANOW, &terminal_backup);
@@ -252,7 +256,6 @@ int main(int argc, char** argv) {
   }
 
   globalClient.reset();
-  client.reset();
   LOG(INFO) << "Client derefernced" << endl;
   tcsetattr(0, TCSANOW, &terminal_backup);
   cout << "Session terminated" << endl;
