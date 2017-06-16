@@ -29,6 +29,7 @@ DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(id, "", "Unique ID assigned to this session");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(idpasskeyfile, "", "File containing client ID and key to encrypt/decrypt packets");
+DEFINE_string(command, "", "Command to run immediately after connecting");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -157,6 +158,17 @@ int main(int argc, char** argv) {
 
   time_t keepaliveTime = time(NULL) + 5;
   bool waitingOnKeepalive = false;
+
+  if (FLAGS_command.length()) {
+    LOG(INFO) << "Got command: " << FLAGS_command << endl;
+    et::TerminalBuffer tb;
+    tb.set_buffer(FLAGS_command + "\n");
+
+    char c = et::PacketType::TERMINAL_BUFFER;
+    string headerString(1, c);
+    globalClient->writeMessage(headerString);
+    globalClient->writeProto(tb);
+  }
 
   while (run && !globalClient->isShuttingDown()) {
     // Data structures needed for select() and

@@ -7,6 +7,7 @@ SSH_COMMAND=""
 TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}}
 LOG_DIR=$TMP_DIR
 VERBOSITY=""
+INITIAL_COMMAND=""
 
 for i in "$@"
 do
@@ -31,6 +32,10 @@ do
             VERBOSITY="--v=9"
             shift
             ;;
+        -c=*|--command=*)
+            INITIAL_COMMAND="${i#*=}"
+            shift
+            ;;
         -h|--help)
             printf "et (options) [user@]hostname[:port]
 
@@ -41,6 +46,7 @@ Options:
 -u Username to connect to ssh & ET
 -l Directory where log files will go
 -v verbose log files
+-c Initial command to execute upon connecting
 "
             exit 0
             ;;
@@ -110,5 +116,5 @@ else
     echo "${PASSKEY}" > "${TMPFILE}"
     PASSKEY=""
     SSH_OUTPUT=""
-    $CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" 2> /tmp/etclient_err
+    $CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" --command="$INITIAL_COMMAND" 2> /tmp/etclient_err
 fi
