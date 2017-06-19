@@ -33,15 +33,6 @@ endif()
 
 # static library option
 option(sodium_USE_STATIC_LIBS "enable to statically link against sodium")
-if(NOT (sodium_USE_STATIC_LIBS EQUAL sodium_USE_STATIC_LIBS_LAST))
-  unset(sodium_LIBRARY CACHE)
-  unset(sodium_LIBRARY_DEBUG CACHE)
-  unset(sodium_LIBRARY_RELEASE CACHE)
-  unset(sodium_DLL_DEBUG CACHE)
-  unset(sodium_DLL_RELEASE CACHE)
-  set(sodium_USE_STATIC_LIBS_LAST ${sodium_USE_STATIC_LIBS} CACHE INTERNAL "internal change tracking variable")
-endif()
-
 
 ########################################################################
 # UNIX
