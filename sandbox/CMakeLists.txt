@@ -26,6 +26,7 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${COREFOUNDATION_LIBRARY}
+    resolv
     util
     )
     add_test(${FILE_LINE} ${FILE_LINE})

@@ -117,6 +117,7 @@ target_link_libraries (
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
+  resolv
   util
   )
 
@@ -134,6 +135,7 @@ target_link_libraries (
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
+  resolv
   util
   )
 

@@ -6,6 +6,7 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <resolv.h>
 
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {
@@ -73,8 +74,8 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 int UnixSocketHandler::connect(const std::string &hostname, int port) {
   lock_guard<std::recursive_mutex> guard(mutex);
   int sockfd = -1;
-  addrinfo *results;
-  addrinfo *p;
+  addrinfo *results = NULL;
+  addrinfo *p = NULL;
   addrinfo hints;
   memset(&hints, 0, sizeof(addrinfo));
   hints.ai_family = AF_UNSPEC;
@@ -82,16 +83,24 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG);
   std::string portname = std::to_string(port);
 
+  // (re)initialize the DNS system
+  ::res_init();
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc == EAI_NONAME) {
     VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << gai_strerror(rc);
+    if (results) {
+      freeaddrinfo(results);
+    }
     return -1;
   }
 
   if (rc != 0) {
     LOG(ERROR) << "Error getting address info for " << hostname << ":"
                << portname << ": " << rc << " (" << gai_strerror(rc) << ")";
+    if (results) {
+      freeaddrinfo(results);
+    }
     return -1;
   }
 
