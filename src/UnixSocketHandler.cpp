@@ -6,6 +6,7 @@
 #include <netinet/tcp.h>
 #include <sys/socket.h>
 #include <unistd.h>
+#include <resolv.h>
 
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {
@@ -82,6 +83,8 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG);
   std::string portname = std::to_string(port);
 
+  // (re)initialize the DNS system
+  ::res_init();
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc == EAI_NONAME) {

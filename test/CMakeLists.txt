@@ -26,6 +26,7 @@ foreach(SRC_LINE ${GTEST_SRC})
     ${GLOG_LIBRARIES}
     ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
+    resolv
     util
     )
     add_test(${FILE_LINE} ${FILE_LINE})
