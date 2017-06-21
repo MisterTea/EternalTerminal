@@ -22,7 +22,6 @@ endif()
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Find packages
-find_package(Boost REQUIRED)
 find_package(Threads REQUIRED)
 find_package(Glog REQUIRED)
 find_package(GFlags REQUIRED)
@@ -51,7 +50,6 @@ include_directories(
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CURSES_INCLUDE_DIR}
-  ${Boost_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
@@ -185,7 +183,7 @@ if(BUILD_PACKAGE)
     # RPM-specific
     set(CPACK_RPM_PACKAGE_NAME "et")
     set(CPACK_RPM_PACKAGE_VERSION "${CPACK_PACKAGE_VERSION}")
-    set(CPACK_RPM_PACKAGE_REQUIRES "boost, libsodium, protobuf, gflags, glog")
+    set(CPACK_RPM_PACKAGE_REQUIRES "libsodium, protobuf, gflags, glog")
 
     #To build and verify
     #cpack && lintian -c EternalTCP-#.#.#-Linux.deb
