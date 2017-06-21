@@ -73,8 +73,8 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 int UnixSocketHandler::connect(const std::string &hostname, int port) {
   lock_guard<std::recursive_mutex> guard(mutex);
   int sockfd = -1;
-  addrinfo *results;
-  addrinfo *p;
+  addrinfo *results = NULL;
+  addrinfo *p = NULL;
   addrinfo hints;
   memset(&hints, 0, sizeof(addrinfo));
   hints.ai_family = AF_UNSPEC;
