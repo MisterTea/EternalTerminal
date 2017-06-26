@@ -1,7 +1,6 @@
 #!/bin/bash
 
 PORT="2022"
-USER=${USER}
 ET_COMMAND=""
 SSH_COMMAND=""
 TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}}
@@ -79,7 +78,11 @@ fi
 if [[ -z "$SSH_COMMAND" ]]; then
     # Assume we want to bring the user into the ssh command but not
     # the port.
-    SSH_COMMAND=${USER}@${HOSTNAME}
+    if [[ -n "$USER" ]]; then
+        SSH_COMMAND=${USER}@${HOSTNAME}
+    else
+        SSH_COMMAND=${HOSTNAME}
+    fi
 fi
 
 SERVER_BINARY="etserver"
