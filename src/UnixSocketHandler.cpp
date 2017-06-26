@@ -123,8 +123,13 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     }
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
-      LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
-                << " " << strerror(errno);
+      if (p->ai_canonname) {
+        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
+                  << " " << strerror(errno);
+      } else {
+        LOG(INFO) << "Error connecting: " << errno
+                  << " " << strerror(errno);
+      }
       ::close(sockfd);
       sockfd = -1;
       continue;
@@ -144,8 +149,12 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       FATAL_FAIL(::getsockopt(sockfd, SOL_SOCKET, SO_ERROR, &so_error, &len));
 
       if (so_error == 0) {
-        LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
-                  << sockfd;
+        if (p->ai_canonname) {
+          LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
+                    << sockfd;
+        } else {
+          LOG(ERROR) << "Connected to server but canonname is null somehow";
+        }
         // Make sure that socket becomes blocking once it's attached to a
         // server.
         {
@@ -169,8 +178,13 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
         continue;
       }
     } else {
-      LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
-                << " " << strerror(errno);
+      if (p->ai_canonname) {
+        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
+                  << " " << strerror(errno);
+      } else {
+        LOG(INFO) << "Error connecting to " << hostname << ": " << errno
+                  << " " << strerror(errno);
+      }
       ::close(sockfd);
       sockfd = -1;
       continue;
