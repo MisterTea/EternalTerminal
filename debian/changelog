@@ -1,42 +1,6 @@
-et (3.0.5-1ubuntu1) xenial; urgency=medium
+et (3.0.5-1) unstable; urgency=medium
 
   * Use interactive shell command
   * set /proc/self/loginuid on linux
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 19 May 2017 17:32:51 -0800
-
-
-et (3.0.4-1ubuntu1) xenial; urgency=medium
-
-  * Fixes server hang when a client dies unexpectedly.
-  * Clean up zombie process on client exit.
-
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 17 May 2017 10:57:51 -0800
-
-et (3.0.2-1ubuntu1) xenial; urgency=medium
-
-  * Set group/grouplist
-  * Set SELinux context
-
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 20 Apr 2017 10:57:51 -0800
-
-et (3.0.0-1ubuntu1) xenial; urgency=medium
-
-  * Added daemon to handle multiple clients
-  * Many bug fixes and improvements
-
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 20 Apr 2017 10:57:51 -0800
-
-et (2.1.0-1ubuntu1) xenial; urgency=medium
-
-  * Compiles now on debian and other linux systems with older gflags implementations.
-  * CPU overhead is massively reduced
-  * Fixed logic in launcher to kill stale sessions
-
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 14 Mar 2017 10:57:51 -0800
-
-et (2.0.1-1ubuntu1) xenial; urgency=medium
-
-  * Initial release
-
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 22 Feb 2017 10:57:51 -0800
+ -- Jason Gauci <jgmath2000@gmail.com>  Sun, 25 Jun 2017 17:32:51 -0800
