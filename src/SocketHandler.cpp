@@ -12,6 +12,13 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
+    if (bytesRead == 0) {
+      // Connection is closed.  Instead of closing the socket, set EPIPE.
+      // In EternalTCP, the server needs to explictly tell the client that
+      // the session is over.
+      errno = EPIPE;
+      bytesRead = -1;
+    }
     if (bytesRead < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz

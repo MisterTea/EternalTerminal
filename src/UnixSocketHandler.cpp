@@ -42,13 +42,6 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     return 0;
   }
   ssize_t readBytes = ::read(fd, buf, count);
-  if (readBytes == 0) {
-    // Connection is closed.  Instead of closing the socket, set EPIPE.
-    // In EternalTCP, the server needs to explictly tell the client that
-    // the session is over.
-    errno = EPIPE;
-    return -1;
-  }
   if (readBytes < 0) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno) << endl;
   }

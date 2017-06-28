@@ -46,6 +46,13 @@ int BackedReader::read(string* buf) {
     char tmpBuf[4];
     ssize_t bytesRead =
         socketHandler->read(socketFd, tmpBuf, 4 - partialMessage.length());
+    if (bytesRead == 0) {
+      // Connection is closed.  Instead of closing the socket, set EPIPE.
+      // In EternalTCP, the server needs to explictly tell the client that
+      // the session is over.
+      errno = EPIPE;
+      bytesRead = -1;
+    }
     if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
     }
@@ -64,14 +71,19 @@ int BackedReader::read(string* buf) {
     VLOG(2) << "bytes remaining: " << messageRemainder;
     string s(messageRemainder, '\0');
     ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
+    if (bytesRead == 0) {
+      // Connection is closed.  Instead of closing the socket, set EPIPE.
+      // In EternalTCP, the server needs to explictly tell the client that
+      // the session is over.
+      errno = EPIPE;
+      bytesRead = -1;
+    }
     if (bytesRead < 0) {
       VLOG(2) << "Error while reading";
       return bytesRead;
     } else if (bytesRead > 0) {
       partialMessage.append(&s[0], bytesRead);
       messageRemainder -= bytesRead;
-    } else {
-      VLOG(2) << "Nothing to read";
     }
   }
   if (!messageRemainder) {
