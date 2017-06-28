@@ -100,7 +100,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
   bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024)
+#define BUF_SIZE (1024 * 1024)
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
