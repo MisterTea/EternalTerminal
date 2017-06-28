@@ -29,13 +29,13 @@ class SocketHandler {
     string s;
     t.SerializeToString(&s);
     int64_t length = s.length();
-    writeAll(fd, &length, sizeof(int64_t), timeout);
-    writeAll(fd, &s[0], length, timeout);
+    writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
+    writeAllOrThrow(fd, &s[0], length, timeout);
   }
 
   virtual int connect(const std::string& hostname, int port) = 0;
   virtual int listen(int port) = 0;
-  virtual void stopListening() = 0;
+  virtual void stopListening(int port) = 0;
   virtual void close(int fd) = 0;
 };
 }

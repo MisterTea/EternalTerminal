@@ -27,7 +27,7 @@ void ServerConnection::run() {
 
 void ServerConnection::close() {
   stop = true;
-  socketHandler->stopListening();
+  socketHandler->stopListening(port);
   for (const auto& it : clientConnections) {
     it.second->closeSocket();
   }

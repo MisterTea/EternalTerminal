@@ -94,7 +94,7 @@ int FakeSocketHandler::listen(int) {
   return retval;
 }
 
-void FakeSocketHandler::stopListening() {}
+void FakeSocketHandler::stopListening(int) {}
 
 void FakeSocketHandler::close(int fd) {
   std::lock_guard<std::mutex> guard(handlerMutex);

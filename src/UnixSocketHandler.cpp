@@ -187,98 +187,108 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   if (sockfd == -1) {
     LOG(ERROR) << "ERROR, no host found";
   } else {
-      if (activeSockets.find(sockfd) != activeSockets.end()) {
-        LOG(FATAL) << "Tried to insert an fd that already exists: " << sockfd;
-      }
-      activeSockets.insert(sockfd);
+    if (activeSockets.find(sockfd) != activeSockets.end()) {
+      LOG(FATAL) << "Tried to insert an fd that already exists: " << sockfd;
+    }
+    activeSockets.insert(sockfd);
   }
 
   freeaddrinfo(results);
   return sockfd;
 }
 
-int UnixSocketHandler::listen(int port) {
-  lock_guard<std::recursive_mutex> guard(mutex);
-  if (serverSockets.empty()) {
-    addrinfo hints, *servinfo, *p;
-    int rc;
-
-    memset(&hints, 0, sizeof hints);
-    hints.ai_family = AF_UNSPEC;
-    hints.ai_socktype = SOCK_STREAM;
-    hints.ai_flags = AI_PASSIVE;  // use my IP address
-
-    std::string portname = std::to_string(port);
-
-    if ((rc = getaddrinfo(NULL, portname.c_str(), &hints, &servinfo)) != 0) {
-      LOG(ERROR) << "Error getting address info for " << port << ": " << rc
-                 << " (" << gai_strerror(rc) << ")";
-      exit(1);
-    }
-
-    // loop through all the results and bind to the first we can
-    for (p = servinfo; p != NULL; p = p->ai_next) {
-      int sockfd;
-      if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) ==
-          -1) {
-        LOG(INFO) << "Error creating socket " << p->ai_family << "/"
-                  << p->ai_socktype << "/" << p->ai_protocol << ": " << errno
-                  << " " << strerror(errno);
-        continue;
-      }
-      initSocket(sockfd);
-      // Also set the accept socket as non-blocking
-      {
-        int opts;
-        opts = fcntl(sockfd, F_GETFL);
-        FATAL_FAIL(opts);
-        opts |= O_NONBLOCK;
-        FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
-      }
-      // Also set the accept socket as reusable
-      {
-        int flag = 1;
-        FATAL_FAIL(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-                              sizeof(int)));
-      }
-
-      if (p->ai_family == AF_INET6) {
-        // Also ensure that IPV6 sockets only listen on IPV6
-        // interfaces.  We will create another socket object for IPV4
-        // if it doesn't already exist.
-        int flag = 1;
-        FATAL_FAIL(setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&flag,
-                              sizeof(int)));
-      }
-
-      if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
-        // This most often happens because the port is in use.
-        LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
-                   << "/" << p->ai_protocol << ": " << errno << " "
-                   << strerror(errno);
-        cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
-             << p->ai_protocol << ": " << errno << " " << strerror(errno)
-             << flush;
-        exit(1);
-        // close(sockfd);
-        // continue;
-      }
-
-      // Listen
-      FATAL_FAIL(::listen(sockfd, 32));
-      LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port << "/" << p->ai_family << "/" << p->ai_socktype
-                << "/" << p->ai_protocol;
-
-      // if we get here, we must have connected successfully
-      serverSockets.push_back(sockfd);
-      activeSockets.insert(sockfd);
-    }
-
-    if (serverSockets.empty()) {
-      LOG(FATAL) << "Could not bind to any interface!";
-    }
+void UnixSocketHandler::createServerSockets(int port) {
+  if (portServerSockets.find(port) != portServerSockets.end()) {
+    LOG(FATAL) << "Error: server sockets for port " << port << " already exist.";
   }
 
+  addrinfo hints, *servinfo, *p;
+  int rc;
+
+  memset(&hints, 0, sizeof hints);
+  hints.ai_family = AF_UNSPEC;
+  hints.ai_socktype = SOCK_STREAM;
+  hints.ai_flags = AI_PASSIVE;  // use my IP address
+
+  std::string portname = std::to_string(port);
+
+  if ((rc = getaddrinfo(NULL, portname.c_str(), &hints, &servinfo)) != 0) {
+    LOG(ERROR) << "Error getting address info for " << port << ": " << rc
+               << " (" << gai_strerror(rc) << ")";
+    exit(1);
+  }
+
+  set<int> serverSockets;
+  // loop through all the results and bind to the first we can
+  for (p = servinfo; p != NULL; p = p->ai_next) {
+    int sockfd;
+    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) ==
+        -1) {
+      LOG(INFO) << "Error creating socket " << p->ai_family << "/"
+                << p->ai_socktype << "/" << p->ai_protocol << ": " << errno
+                << " " << strerror(errno);
+      continue;
+    }
+    initSocket(sockfd);
+    // Also set the accept socket as non-blocking
+    {
+      int opts;
+      opts = fcntl(sockfd, F_GETFL);
+      FATAL_FAIL(opts);
+      opts |= O_NONBLOCK;
+      FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
+    }
+    // Also set the accept socket as reusable
+    {
+      int flag = 1;
+      FATAL_FAIL(setsockopt(sockfd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
+                            sizeof(int)));
+    }
+
+    if (p->ai_family == AF_INET6) {
+      // Also ensure that IPV6 sockets only listen on IPV6
+      // interfaces.  We will create another socket object for IPV4
+      // if it doesn't already exist.
+      int flag = 1;
+      FATAL_FAIL(setsockopt(sockfd, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&flag,
+                            sizeof(int)));
+    }
+
+    if (::bind(sockfd, p->ai_addr, p->ai_addrlen) == -1) {
+      // This most often happens because the port is in use.
+      LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
+                 << "/" << p->ai_protocol << ": " << errno << " "
+                 << strerror(errno);
+      cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
+           << p->ai_protocol << ": " << errno << " " << strerror(errno)
+           << flush;
+      exit(1);
+      // close(sockfd);
+      // continue;
+    }
+
+    // Listen
+    FATAL_FAIL(::listen(sockfd, 32));
+    LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port << "/" << p->ai_family << "/" << p->ai_socktype
+              << "/" << p->ai_protocol;
+
+    // if we get here, we must have connected successfully
+    serverSockets.insert(sockfd);
+  }
+
+  if (serverSockets.empty()) {
+    LOG(FATAL) << "Could not bind to any interface!";
+  }
+
+  portServerSockets[port] = serverSockets;
+}
+
+int UnixSocketHandler::listen(int port) {
+  lock_guard<std::recursive_mutex> guard(mutex);
+  if (portServerSockets.find(port) == portServerSockets.end()) {
+    createServerSockets(port);
+  }
+  auto& serverSockets = portServerSockets.find(port)->second;
   for (int sockfd : serverSockets) {
     sockaddr_in client;
     socklen_t c = sizeof(sockaddr_in);
@@ -303,8 +313,13 @@ int UnixSocketHandler::listen(int port) {
   return -1;
 }
 
-void UnixSocketHandler::stopListening() {
+void UnixSocketHandler::stopListening(int port) {
   lock_guard<std::recursive_mutex> guard(mutex);
+  auto it = portServerSockets.find(port);
+  if (it == portServerSockets.end()) {
+    LOG(FATAL) << "Tried to stop listening to a port that we weren't listening on";
+  }
+  auto& serverSockets = it->second;
   for (int sockfd : serverSockets) {
     close(sockfd);
   }
