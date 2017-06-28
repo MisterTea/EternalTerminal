@@ -105,7 +105,11 @@ add_library(
   )
 add_dependencies(TerminalCommon EternalTCP-static)
 
-add_executable (etserver terminal/TerminalServer.cpp)
+add_executable (
+  etserver
+  terminal/TerminalServer.cpp
+  terminal/PortForwardServerHandler.cpp
+  )
 target_link_libraries (
   etserver
   LINK_PUBLIC
@@ -124,6 +128,8 @@ target_link_libraries (
 add_executable (
   etclient
   terminal/TerminalClient.cpp
+  terminal/PortForwardClientRouter.cpp
+  terminal/PortForwardClientListener.cpp
   )
 target_link_libraries (
   etclient

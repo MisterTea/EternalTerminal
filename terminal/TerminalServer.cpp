@@ -7,6 +7,7 @@
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
 #include "IdPasskeyHandler.hpp"
+#include "PortForwardServerHandler.hpp"
 
 #include "simpleini/SimpleIni.h"
 
@@ -102,6 +103,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
 #define BUF_SIZE (1024)
   char b[BUF_SIZE];
 
+  shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
+  unordered_map<int, shared_ptr<PortForwardServerHandler>> portForwardHandlers;
+
   while (run) {
     // Data structures needed for select() and
     // non-blocking I/O.
@@ -147,6 +151,24 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         }
       }
 
+      vector<PortForwardData> dataToSend;
+      for (auto& it : portForwardHandlers) {
+        it.second->update(&dataToSend);
+        if (it.second->getFd() == -1) {
+          // Kill the handler and don't update the rest: we'll pick
+          // them up later
+          portForwardHandlers.erase(it.first);
+          break;
+        }
+      }
+      for (auto& pwd : dataToSend) {
+        char c = PacketType::PORT_FORWARD_DATA;
+        string headerString(1, c);
+        serverClientState->writeMessage(headerString);
+        serverClientState->writeProto(pwd);
+      }
+
+
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         while (serverClientState->hasData()) {
           string packetTypeString;
@@ -182,6 +204,65 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               tmpwin.ws_xpixel = ti.width();
               tmpwin.ws_ypixel = ti.height();
               ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+              break;
+            }
+            case PacketType::PORT_FORWARD_REQUEST: {
+              LOG(INFO) << "Got new port forward";
+              PortForwardRequest pfr =
+                  serverClientState->readProto<PortForwardRequest>();
+              int fd = socketHandler->connect("localhost", pfr.port());
+              PortForwardResponse pfresponse;
+              pfresponse.set_clientfd(pfr.fd());
+              if (fd == -1) {
+                pfresponse.set_error(strerror(errno));
+              } else {
+                int socketId = rand();
+                int attempts = 0;
+                while (portForwardHandlers.find(socketId) != portForwardHandlers.end()) {
+                  socketId = rand();
+                  attempts++;
+                  if (attempts >= 100000) {
+                    pfresponse.set_error("Could not find empty socket id");
+                    break;
+                  }
+                }
+                if (!pfresponse.has_error()) {
+                  LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
+                  portForwardHandlers[socketId] =
+                      shared_ptr<PortForwardServerHandler>(
+                          new PortForwardServerHandler(
+                              socketHandler,
+                              fd,
+                              socketId));
+                  pfresponse.set_socketid(socketId);
+                }
+              }
+
+              char c = PacketType::PORT_FORWARD_RESPONSE;
+              serverClientState->writeMessage(string(1, c));
+              serverClientState->writeProto(pfresponse);
+              break;
+            }
+            case PacketType::PORT_FORWARD_DATA: {
+              PortForwardData pwd = serverClientState->readProto<PortForwardData>();
+              LOG(INFO) << "Got data for socket: " << pwd.socketid();
+              auto it = portForwardHandlers.find(pwd.socketid());
+              if (it == portForwardHandlers.end()) {
+                LOG(ERROR) << "Got data for a socket id that doesn't exist: " << pwd.socketid();
+              } else {
+                if (pwd.has_closed()) {
+                  LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
+                  it->second->close();
+                  portForwardHandlers.erase(it);
+                } else if(pwd.has_error()) {
+                  // TODO: Probably need to do something better here
+                  LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
+                  it->second->close();
+                  portForwardHandlers.erase(it);
+                } else {
+                  it->second->write(pwd.buffer());
+                }
+              }
               break;
             }
             default:

@@ -2,9 +2,12 @@ syntax = "proto2";
 package et;
 
 enum PacketType {
-  KEEP_ALIVE=0;
-  TERMINAL_BUFFER=1;
-  TERMINAL_INFO=2;
+  KEEP_ALIVE = 0;
+  TERMINAL_BUFFER = 1;
+  TERMINAL_INFO = 2;
+  PORT_FORWARD_REQUEST = 3;
+  PORT_FORWARD_RESPONSE = 4;
+  PORT_FORWARD_DATA = 5;
 }
 
 message TerminalBuffer {
@@ -12,11 +15,29 @@ message TerminalBuffer {
 }
 
 message TerminalInfo {
-  optional string id=1;
+  optional string id = 1;
   optional int32 row = 2;
   optional int32 column = 3;
   optional int32 width = 4;
   optional int32 height = 5;
+}
+
+message PortForwardRequest {
+  optional int32 port = 1;
+  optional int32 fd = 2;
+}
+
+message PortForwardResponse {
+  optional int32 clientfd = 1;
+  optional int32 socketid = 2;
+  optional string error = 3;
+}
+
+message PortForwardData {
+  optional int32 socketid = 1;
+  optional bytes buffer = 2;
+  optional string error = 3;
+  optional bool closed = 4;
 }
 
 message InitialPayload {

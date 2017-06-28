@@ -31,6 +31,10 @@ class ServerConnection {
     return clientConnections.find(clientId) != clientConnections.end();
   }
 
+  inline shared_ptr<SocketHandler> getSocketHandler() {
+    return socketHandler;
+  }
+
   void run();
 
   void close();

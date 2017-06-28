@@ -5,6 +5,8 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "PortForwardClientListener.hpp"
+#include "PortForwardClientRouter.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -30,6 +32,7 @@ DEFINE_string(id, "", "Unique ID assigned to this session");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
 DEFINE_string(idpasskeyfile, "", "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
+DEFINE_string(portforward,"","Array of source:destination ports (e.g. 10080:80,10443:443)");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -140,6 +143,8 @@ int main(int argc, char** argv) {
   srand(1);
 
   globalClient = createClient();
+  shared_ptr<UnixSocketHandler> socketHandler =
+      static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
   winsize win;
   ioctl(1, TIOCGWINSZ, &win);
 
@@ -170,6 +175,23 @@ int main(int argc, char** argv) {
     globalClient->writeProto(tb);
   }
 
+  PortForwardClientRouter portForwardRouter;
+  if (FLAGS_portforward.length()) {
+    auto j = split(FLAGS_portforward, ',');
+    for (auto& pair : j) {
+      vector<string> sourceDestination = split(pair, ':');
+      // TODO: Handle bad input
+      int sourcePort = stoi(sourceDestination[0]);
+      int destinationPort = stoi(sourceDestination[1]);
+
+      portForwardRouter.addListener(
+          shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
+              socketHandler,
+              sourcePort,
+              destinationPort)));
+    }
+  }
+
   while (run && !globalClient->isShuttingDown()) {
     // Data structures needed for select() and
     // non-blocking I/O.
@@ -184,6 +206,7 @@ int main(int argc, char** argv) {
       FD_SET(clientFd, &rfd);
       maxfd = max(maxfd, clientFd);
     }
+    // TODO: set port forward sockets as well for performance reasons.
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
@@ -238,6 +261,31 @@ int main(int argc, char** argv) {
             case et::PacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
               break;
+            case PacketType::PORT_FORWARD_RESPONSE: {
+              PortForwardResponse pfr = globalClient->readProto<PortForwardResponse>();
+              if (pfr.has_error()) {
+                LOG(INFO) << "Could not connect to server through tunnel: " << pfr.error();
+                portForwardRouter.closeClientFd(pfr.clientfd());
+              } else {
+                LOG(INFO) << "Received socket/fd map from server: " << pfr.socketid() << " " << pfr.clientfd();
+                portForwardRouter.addSocketId(pfr.socketid(), pfr.clientfd());
+              }
+              break;
+            }
+            case PacketType::PORT_FORWARD_DATA: {
+              PortForwardData pwd = globalClient->readProto<PortForwardData>();
+              LOG(INFO) << "Got data for socket: " << pwd.socketid();
+              if (pwd.has_closed()) {
+                LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
+                portForwardRouter.closeSocketId(pwd.socketid());
+              } else if(pwd.has_error()) {
+                // TODO: Probably need to do something better here
+                portForwardRouter.closeSocketId(pwd.socketid());
+              } else {
+                portForwardRouter.sendDataOnSocket(pwd.socketid(), pwd.buffer());
+              }
+              break;
+            }
             default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
           }
@@ -259,6 +307,22 @@ int main(int argc, char** argv) {
       }
 
       handleWindowChanged(&win);
+
+      vector<PortForwardRequest> requests;
+      vector<PortForwardData> dataToSend;
+      portForwardRouter.update(&requests, &dataToSend);
+      for (auto& pfr : requests) {
+        char c = et::PacketType::PORT_FORWARD_REQUEST;
+        string headerString(1, c);
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pfr);
+      }
+      for (auto& pwd : dataToSend) {
+        char c = PacketType::PORT_FORWARD_DATA;
+        string headerString(1, c);
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pwd);
+      }
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what() << endl;
       tcsetattr(0, TCSANOW, &terminal_backup);

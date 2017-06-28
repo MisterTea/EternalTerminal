@@ -11,7 +11,8 @@ class SocketHandler {
   virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
 
   void readAll(int fd, void* buf, size_t count, bool timeout);
-  void writeAll(int fd, const void* buf, size_t count, bool timeout);
+  int writeAllOrReturn(int fd, const void* buf, size_t count);
+  void writeAllOrThrow(int fd, const void* buf, size_t count, bool timeout);
 
   template <typename T>
   inline T readProto(int fd, bool timeout) {

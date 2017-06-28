@@ -43,6 +43,10 @@ class Connection {
 
   int getSocketFd() { return socketFd; }
 
+  inline shared_ptr<SocketHandler> getSocketHandler() {
+    return socketHandler;
+  }
+
   bool isDisconnected() { return socketFd == -1; }
 
   string getId() { return id; }
