@@ -8,6 +8,9 @@ TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}}
 LOG_DIR=$TMP_DIR
 VERBOSITY=""
 INITIAL_COMMAND=""
+TUNNEL=""
+SERVER_BINARY="etserver"
+CLIENT_BINARY="etclient"
 
 for i in "$@"
 do
@@ -34,6 +37,10 @@ do
             ;;
         -c=*|--command=*)
             INITIAL_COMMAND="${i#*=}"
+            shift
+            ;;
+        -t=*|--tunnel=*)
+            TUNNEL="${i#*=}"
             shift
             ;;
         -h|--help)
@@ -82,9 +89,6 @@ if [[ -z "$SSH_COMMAND" ]]; then
     SSH_COMMAND=${USER}@${HOSTNAME}
 fi
 
-SERVER_BINARY="etserver"
-CLIENT_BINARY="etclient"
-
 PASSWORD_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 ID_GENERATOR=${PASSWORD_GENERATOR}
 TMPFILE=$(mktemp "$TMP_DIR"/et-client.XXXXXXXXXXXX)
@@ -116,5 +120,5 @@ else
     echo "${PASSKEY}" > "${TMPFILE}"
     PASSKEY=""
     SSH_OUTPUT=""
-    $CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" --command="$INITIAL_COMMAND" 2> /tmp/etclient_err
+    $CLIENT_BINARY --idpasskeyfile="$TMPFILE" $VERBOSITY --host="$HOSTNAME" --port="$PORT" --log_dir="$LOG_DIR" --command="$INITIAL_COMMAND" --portforward="$TUNNEL" 2> /tmp/etclient_err
 fi
