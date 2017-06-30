@@ -210,7 +210,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               LOG(INFO) << "Got new port forward";
               PortForwardRequest pfr =
                   serverClientState->readProto<PortForwardRequest>();
-              int fd = socketHandler->connect("localhost", pfr.port());
+              // Try ipv6 first
+              int fd = socketHandler->connect("::1", pfr.port());
+              if (fd == -1) {
+                // Try ipv4 next
+                fd = socketHandler->connect("127.0.0.1", pfr.port());
+              }
               PortForwardResponse pfresponse;
               pfresponse.set_clientfd(pfr.fd());
               if (fd == -1) {

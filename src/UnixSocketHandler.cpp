@@ -73,7 +73,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   memset(&hints, 0, sizeof(addrinfo));
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG);
+  hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG | AI_ALL);
   std::string portname = std::to_string(port);
 
   // (re)initialize the DNS system
