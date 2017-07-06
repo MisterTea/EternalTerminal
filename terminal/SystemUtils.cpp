@@ -3,6 +3,8 @@
 #include <pwd.h>
 #include <sys/types.h>
 
+#include <grp.h>
+
 #ifdef WITH_SELINUX
 #include <selinux/get_context_list.h>
 #include <selinux/selinux.h>
