@@ -403,7 +403,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
     }
     default: {
       // parent
-      cout << "pty opened " << masterfd << endl;
+      VLOG(1) << "pty opened " << masterfd << endl;
       lock_guard<std::mutex> guard(terminalThreadMutex);
       shared_ptr<thread> t = shared_ptr<thread>(new thread(runTerminal, serverClientState, masterfd, pid, nextThreadId));
       terminalThreads.insert(pair<int,shared_ptr<thread>>(nextThreadId, t));
