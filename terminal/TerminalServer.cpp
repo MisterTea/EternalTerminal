@@ -3,45 +3,43 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "IdPasskeyHandler.hpp"
+#include "PortForwardServerHandler.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
-#include "IdPasskeyHandler.hpp"
-#include "PortForwardServerHandler.hpp"
 
 #include "simpleini/SimpleIni.h"
 
 #include <errno.h>
+#include <fcntl.h>
+#include <grp.h>
 #include <pwd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <errno.h>
 #include <string.h>
-#include <fcntl.h>
+#include <sys/ioctl.h>
+#include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/wait.h>
-#include <sys/stat.h>
+#include <termios.h>
 #include <unistd.h>
-#include <grp.h>
 
 #if __APPLE__
 #include <util.h>
 #elif __FreeBSD__
-#include <sys/types.h>
-#include <sys/ioctl.h>
-#include <termios.h>
 #include <libutil.h>
+#include <sys/ioctl.h>
+#include <sys/types.h>
+#include <termios.h>
 #else
 #include <pty.h>
 #include <signal.h>
 #endif
 
 #ifdef WITH_SELINUX
-#include <selinux/selinux.h>
 #include <selinux/get_context_list.h>
+#include <selinux/selinux.h>
 #endif
 
 #include "ETerminal.pb.h"
@@ -63,15 +61,18 @@ void halt();
   }
 
 DEFINE_int32(port, 0, "Port to listen on");
-DEFINE_string(idpasskey, "", "If set, uses IPC to send a client id/key to the server daemon");
-DEFINE_string(idpasskeyfile, "", "If set, uses IPC to send a client id/key to the server daemon from a file");
+DEFINE_string(idpasskey, "",
+              "If set, uses IPC to send a client id/key to the server daemon");
+DEFINE_string(idpasskeyfile, "",
+              "If set, uses IPC to send a client id/key to the server daemon "
+              "from a file");
 DEFINE_bool(daemon, false, "Daemonize the server");
 DEFINE_string(cfgfile, "", "Location of the config file");
 
 thread* idPasskeyListenerThread = NULL;
 thread* finishClientMonitorThread = NULL;
 
-int nextThreadId=0;
+int nextThreadId = 0;
 map<int, shared_ptr<thread>> terminalThreads;
 vector<int> finishedThreads;
 mutex terminalThreadMutex;
@@ -91,9 +92,7 @@ void finishClientMonitor() {
 }
 
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                 int masterfd,
-                 pid_t childPid,
-                 int threadId) {
+                 int masterfd, pid_t childPid, int threadId) {
   string disconnectBuffer;
 
   // Whether the TE should keep running.
@@ -133,7 +132,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         memset(b, 0, BUF_SIZE);
         int rc = read(masterfd, b, BUF_SIZE);
         if (rc > 0) {
-          //VLOG(2) << "Sending bytes from terminal: " << rc << " "
+          // VLOG(2) << "Sending bytes from terminal: " << rc << " "
           //<< serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
           serverClientState->writeMessage(string(1, c));
@@ -168,7 +167,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
         serverClientState->writeProto(pwd);
       }
 
-
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         while (serverClientState->hasData()) {
           string packetTypeString;
@@ -182,8 +180,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               et::TerminalBuffer tb =
                   serverClientState->readProto<et::TerminalBuffer>();
               const string& s = tb.buffer();
-              //VLOG(2) << "Got bytes from client: " << s.length() << " " <<
-              //serverClientState->getReader()->getSequenceNumber();
+              // VLOG(2) << "Got bytes from client: " << s.length() << " " <<
+              // serverClientState->getReader()->getSequenceNumber();
               FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
               break;
             }
@@ -223,7 +221,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               } else {
                 int socketId = rand();
                 int attempts = 0;
-                while (portForwardHandlers.find(socketId) != portForwardHandlers.end()) {
+                while (portForwardHandlers.find(socketId) !=
+                       portForwardHandlers.end()) {
                   socketId = rand();
                   attempts++;
                   if (attempts >= 100000) {
@@ -232,13 +231,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
                   }
                 }
                 if (!pfresponse.has_error()) {
-                  LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
+                  LOG(INFO)
+                      << "Created socket/fd pair: " << socketId << ' ' << fd;
                   portForwardHandlers[socketId] =
                       shared_ptr<PortForwardServerHandler>(
-                          new PortForwardServerHandler(
-                              socketHandler,
-                              fd,
-                              socketId));
+                          new PortForwardServerHandler(socketHandler, fd,
+                                                       socketId));
                   pfresponse.set_socketid(socketId);
                 }
               }
@@ -249,19 +247,22 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               break;
             }
             case PacketType::PORT_FORWARD_DATA: {
-              PortForwardData pwd = serverClientState->readProto<PortForwardData>();
+              PortForwardData pwd =
+                  serverClientState->readProto<PortForwardData>();
               LOG(INFO) << "Got data for socket: " << pwd.socketid();
               auto it = portForwardHandlers.find(pwd.socketid());
               if (it == portForwardHandlers.end()) {
-                LOG(ERROR) << "Got data for a socket id that doesn't exist: " << pwd.socketid();
+                LOG(ERROR) << "Got data for a socket id that doesn't exist: "
+                           << pwd.socketid();
               } else {
                 if (pwd.has_closed()) {
                   LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
                   it->second->close();
                   portForwardHandlers.erase(it);
-                } else if(pwd.has_error()) {
+                } else if (pwd.has_error()) {
                   // TODO: Probably need to do something better here
-                  LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
+                  LOG(INFO)
+                      << "Port forward socket errored: " << pwd.socketid();
                   it->second->close();
                   portForwardHandlers.erase(it);
                 } else {
@@ -329,7 +330,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       passwd* pwd = getpwuid(pid);
 
       // Set /proc/self/loginuid if it exists
-      bool loginuidExists=false;
+      bool loginuidExists = false;
       {
         ifstream infile("/proc/self/loginuid");
         loginuidExists = infile.good();
@@ -351,7 +352,8 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       char* level = NULL;
       FATAL_FAIL(getseuserbyname(pwd->pw_name, &sename, &level));
       security_context_t user_ctx = NULL;
-      FATAL_FAIL(get_default_context_with_level(sename, level, NULL, &user_ctx));
+      FATAL_FAIL(
+          get_default_context_with_level(sename, level, NULL, &user_ctx));
       setexeccon(user_ctx);
       free(sename);
       free(level);
@@ -364,7 +366,8 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       chown("/dev/stdout", user_id, group_id);
 
 #ifdef __APPLE__
-      if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) == -1) {
+      if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) ==
+          -1) {
         LOG(FATAL) << "User is part of more than 65536 groups!";
       }
 #else
@@ -375,7 +378,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
 
 #ifdef setresgid
       FATAL_FAIL(setresgid(pwd->pw_gid, pwd->pw_gid, pwd->pw_gid));
-#else // OS/X
+#else  // OS/X
       FATAL_FAIL(setregid(pwd->pw_gid, pwd->pw_gid));
 #endif
 
@@ -387,7 +390,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
 
 #ifdef setresuid
       FATAL_FAIL(setresuid(pwd->pw_uid, pwd->pw_uid, pwd->pw_uid));
-#else // OS/X
+#else  // OS/X
       FATAL_FAIL(setreuid(pwd->pw_uid, pwd->pw_uid));
 #endif
       if (pwd->pw_shell) {
@@ -395,7 +398,7 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       }
       setenv("SHELL", terminal.c_str(), 1);
 
-      const char *homedir = pwd->pw_dir;
+      const char* homedir = pwd->pw_dir;
       setenv("HOME", homedir, 1);
       setenv("USER", pwd->pw_name, 1);
       setenv("LOGNAME", pwd->pw_name, 1);
@@ -411,8 +414,9 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       // parent
       VLOG(1) << "pty opened " << masterfd << endl;
       lock_guard<std::mutex> guard(terminalThreadMutex);
-      shared_ptr<thread> t = shared_ptr<thread>(new thread(runTerminal, serverClientState, masterfd, pid, nextThreadId));
-      terminalThreads.insert(pair<int,shared_ptr<thread>>(nextThreadId, t));
+      shared_ptr<thread> t = shared_ptr<thread>(new thread(
+          runTerminal, serverClientState, masterfd, pid, nextThreadId));
+      terminalThreads.insert(pair<int, shared_ptr<thread>>(nextThreadId, t));
       nextThreadId++;
       break;
     }
@@ -427,7 +431,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
   }
 };
 
-bool doneListening=false;
+bool doneListening = false;
 
 int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
@@ -477,7 +481,7 @@ int main(int argc, char** argv) {
   }
 
   if (FLAGS_daemon) {
-    if (::daemon(0,0) == -1) {
+    if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
     stdout = fopen("/tmp/etserver_err", "w+");
@@ -493,7 +497,8 @@ int main(int argc, char** argv) {
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       serverSocket, FLAGS_port,
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  idPasskeyListenerThread = new thread(IdPasskeyHandler::runServer, &doneListening);
+  idPasskeyListenerThread =
+      new thread(IdPasskeyHandler::runServer, &doneListening);
   finishClientMonitorThread = new thread(finishClientMonitor);
   globalServer->run();
 }

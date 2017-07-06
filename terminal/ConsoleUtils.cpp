@@ -1,7 +1,7 @@
-#include <sys/types.h>
+#include "ConsoleUtils.hpp"
 #include <paths.h>
 #include <pwd.h>
-#include "ConsoleUtils.hpp"
+#include <sys/types.h>
 
 namespace et {
 std::string getTerminal() {
@@ -15,4 +15,4 @@ std::string getTerminal() {
   }
   return string(pwent->pw_shell);
 }
-}
+}  // namespace et

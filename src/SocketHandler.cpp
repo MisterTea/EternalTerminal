@@ -66,7 +66,7 @@ int SocketHandler::writeAllOrReturn(int fd, const void* buf, size_t count) {
 }
 
 void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
-                             bool timeout) {
+                                    bool timeout) {
   time_t startTime = time(NULL);
   size_t pos = 0;
   while (pos < count) {

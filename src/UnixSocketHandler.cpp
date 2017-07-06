@@ -4,13 +4,12 @@
 #include <netdb.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <resolv.h>
 #include <sys/socket.h>
 #include <unistd.h>
-#include <resolv.h>
 
 namespace et {
-UnixSocketHandler::UnixSocketHandler() {
-}
+UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
   lock_guard<std::recursive_mutex> guard(mutex);
@@ -100,8 +99,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
   // loop through all the results and connect to the first we can
   for (p = results; p != NULL; p = p->ai_next) {
     if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      LOG(INFO) << "Error creating socket: " << errno
-                << " " << strerror(errno);
+      LOG(INFO) << "Error creating socket: " << errno << " " << strerror(errno);
       continue;
     }
     initSocket(sockfd);
@@ -117,11 +115,10 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
-        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
-                  << " " << strerror(errno);
+        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
+                  << errno << " " << strerror(errno);
       } else {
-        LOG(INFO) << "Error connecting: " << errno
-                  << " " << strerror(errno);
+        LOG(INFO) << "Error connecting: " << errno << " " << strerror(errno);
       }
       ::close(sockfd);
       sockfd = -1;
@@ -143,8 +140,8 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
       if (so_error == 0) {
         if (p->ai_canonname) {
-          LOG(INFO) << "Connected to server: " << p->ai_canonname << " using fd "
-                    << sockfd;
+          LOG(INFO) << "Connected to server: " << p->ai_canonname
+                    << " using fd " << sockfd;
         } else {
           LOG(ERROR) << "Connected to server but canonname is null somehow";
         }
@@ -163,8 +160,8 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
           LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                     << so_error << " " << strerror(so_error);
         } else {
-          LOG(INFO) << "Error connecting to " << hostname << ": "
-                    << so_error << " " << strerror(so_error);
+          LOG(INFO) << "Error connecting to " << hostname << ": " << so_error
+                    << " " << strerror(so_error);
         }
         ::close(sockfd);
         sockfd = -1;
@@ -172,11 +169,11 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       }
     } else {
       if (p->ai_canonname) {
-        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": " << errno
-                  << " " << strerror(errno);
+        LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
+                  << errno << " " << strerror(errno);
       } else {
-        LOG(INFO) << "Error connecting to " << hostname << ": " << errno
-                  << " " << strerror(errno);
+        LOG(INFO) << "Error connecting to " << hostname << ": " << errno << " "
+                  << strerror(errno);
       }
       ::close(sockfd);
       sockfd = -1;
@@ -199,7 +196,8 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
 
 void UnixSocketHandler::createServerSockets(int port) {
   if (portServerSockets.find(port) != portServerSockets.end()) {
-    LOG(FATAL) << "Error: server sockets for port " << port << " already exist.";
+    LOG(FATAL) << "Error: server sockets for port " << port
+               << " already exist.";
   }
 
   addrinfo hints, *servinfo, *p;
@@ -222,8 +220,7 @@ void UnixSocketHandler::createServerSockets(int port) {
   // loop through all the results and bind to the first we can
   for (p = servinfo; p != NULL; p = p->ai_next) {
     int sockfd;
-    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) ==
-        -1) {
+    if ((sockfd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
       LOG(INFO) << "Error creating socket " << p->ai_family << "/"
                 << p->ai_socktype << "/" << p->ai_protocol << ": " << errno
                 << " " << strerror(errno);
@@ -269,8 +266,10 @@ void UnixSocketHandler::createServerSockets(int port) {
 
     // Listen
     FATAL_FAIL(::listen(sockfd, 32));
-    LOG(INFO) << "Listening on " << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port << "/" << p->ai_family << "/" << p->ai_socktype
-              << "/" << p->ai_protocol;
+    LOG(INFO) << "Listening on "
+              << inet_ntoa(((sockaddr_in *)p->ai_addr)->sin_addr) << ":" << port
+              << "/" << p->ai_family << "/" << p->ai_socktype << "/"
+              << p->ai_protocol;
 
     // if we get here, we must have connected successfully
     serverSockets.insert(sockfd);
@@ -288,7 +287,7 @@ int UnixSocketHandler::listen(int port) {
   if (portServerSockets.find(port) == portServerSockets.end()) {
     createServerSockets(port);
   }
-  auto& serverSockets = portServerSockets.find(port)->second;
+  auto &serverSockets = portServerSockets.find(port)->second;
   for (int sockfd : serverSockets) {
     sockaddr_in client;
     socklen_t c = sizeof(sockaddr_in);
@@ -317,9 +316,10 @@ void UnixSocketHandler::stopListening(int port) {
   lock_guard<std::recursive_mutex> guard(mutex);
   auto it = portServerSockets.find(port);
   if (it == portServerSockets.end()) {
-    LOG(FATAL) << "Tried to stop listening to a port that we weren't listening on";
+    LOG(FATAL)
+        << "Tried to stop listening to a port that we weren't listening on";
   }
-  auto& serverSockets = it->second;
+  auto &serverSockets = it->second;
   for (int sockfd : serverSockets) {
     close(sockfd);
   }
@@ -371,7 +371,8 @@ void UnixSocketHandler::initSocket(int fd) {
 #ifndef MSG_NOSIGNAL
   // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
   int val = 1;
-  FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void*)&val, sizeof(val)));
+  FATAL_FAIL(
+      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
 #endif
 }
-}
+}  // namespace et

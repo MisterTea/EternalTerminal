@@ -2,11 +2,11 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "PortForwardClientListener.hpp"
+#include "PortForwardClientRouter.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
-#include "PortForwardClientListener.hpp"
-#include "PortForwardClientRouter.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -30,9 +30,11 @@ DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(id, "", "Unique ID assigned to this session");
 DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
-DEFINE_string(idpasskeyfile, "", "File containing client ID and key to encrypt/decrypt packets");
+DEFINE_string(idpasskeyfile, "",
+              "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
-DEFINE_string(portforward,"","Array of source:destination ports (e.g. 10080:80,10443:443)");
+DEFINE_string(portforward, "",
+              "Array of source:destination ports (e.g. 10080:80,10443:443)");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -50,19 +52,19 @@ shared_ptr<ClientConnection> createClient() {
       LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
     } else {
       id = idpasskeypair.substr(0, slashIndex);
-      passkey = idpasskeypair.substr(slashIndex+1);
+      passkey = idpasskeypair.substr(slashIndex + 1);
       LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
     }
     // Delete the file with the passkey
     remove(FLAGS_idpasskeyfile.c_str());
   }
-  if (passkey.length() == 0 || id.length()==0) {
+  if (passkey.length() == 0 || id.length() == 0) {
     cout << "Unless you are doing development on Eternal Terminal,\nplease do "
-        "not call etclient directly.\n\nThe et launcher (run on the "
-        "client) calls etclient with the correct parameters.\nThis ensures "
-        "a secure connection.\n\nIf you intended to call etclient "
-        "directly, please provide a passkey\n(run \"etclient --help\" for "
-        "details)."
+            "not call etclient directly.\n\nThe et launcher (run on the "
+            "client) calls etclient with the correct parameters.\nThis ensures "
+            "a secure connection.\n\nIf you intended to call etclient "
+            "directly, please provide a passkey\n(run \"etclient --help\" for "
+            "details)."
          << endl;
     exit(1);
   }
@@ -157,7 +159,7 @@ int main(int argc, char** argv) {
   // Whether the TE should keep running.
   bool run = true;
 
-  // TE sends/receives data to/from the shell one char at a time.
+// TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (1024 * 1024)
   char b[BUF_SIZE];
 
@@ -186,9 +188,7 @@ int main(int argc, char** argv) {
 
       portForwardRouter.addListener(
           shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
-              socketHandler,
-              sourcePort,
-              destinationPort)));
+              socketHandler, sourcePort, destinationPort)));
     }
   }
 
@@ -262,12 +262,15 @@ int main(int argc, char** argv) {
               waitingOnKeepalive = false;
               break;
             case PacketType::PORT_FORWARD_RESPONSE: {
-              PortForwardResponse pfr = globalClient->readProto<PortForwardResponse>();
+              PortForwardResponse pfr =
+                  globalClient->readProto<PortForwardResponse>();
               if (pfr.has_error()) {
-                LOG(INFO) << "Could not connect to server through tunnel: " << pfr.error();
+                LOG(INFO) << "Could not connect to server through tunnel: "
+                          << pfr.error();
                 portForwardRouter.closeClientFd(pfr.clientfd());
               } else {
-                LOG(INFO) << "Received socket/fd map from server: " << pfr.socketid() << " " << pfr.clientfd();
+                LOG(INFO) << "Received socket/fd map from server: "
+                          << pfr.socketid() << " " << pfr.clientfd();
                 portForwardRouter.addSocketId(pfr.socketid(), pfr.clientfd());
               }
               break;
@@ -278,11 +281,12 @@ int main(int argc, char** argv) {
               if (pwd.has_closed()) {
                 LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
                 portForwardRouter.closeSocketId(pwd.socketid());
-              } else if(pwd.has_error()) {
+              } else if (pwd.has_error()) {
                 // TODO: Probably need to do something better here
                 portForwardRouter.closeSocketId(pwd.socketid());
               } else {
-                portForwardRouter.sendDataOnSocket(pwd.socketid(), pwd.buffer());
+                portForwardRouter.sendDataOnSocket(pwd.socketid(),
+                                                   pwd.buffer());
               }
               break;
             }

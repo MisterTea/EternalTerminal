@@ -39,6 +39,6 @@ class SocketHandler {
   virtual void stopListening(int port) = 0;
   virtual void close(int fd) = 0;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_SOCKET_HANDLER__

@@ -6,9 +6,8 @@ void PortForwardClientRouter::addListener(
   listeners.push_back(listener);
 }
 
-void PortForwardClientRouter::update(
-    vector<PortForwardRequest>* requests,
-    vector<PortForwardData>* dataToSend) {
+void PortForwardClientRouter::update(vector<PortForwardRequest>* requests,
+                                     vector<PortForwardData>* dataToSend) {
   for (auto& it : listeners) {
     it->update(dataToSend);
     int fd = it->listen();
@@ -23,12 +22,14 @@ void PortForwardClientRouter::update(
 
 void PortForwardClientRouter::closeClientFd(int fd) {
   for (auto& it : listeners) {
-    if(it->hasUnassignedFd(fd)) {
+    if (it->hasUnassignedFd(fd)) {
       it->closeUnassignedFd(fd);
       return;
     }
   }
-  LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe it was already removed?): " << fd;
+  LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe "
+                "it was already removed?): "
+             << fd;
 }
 
 void PortForwardClientRouter::addSocketId(int socketId, int clientFd) {
@@ -39,7 +40,9 @@ void PortForwardClientRouter::addSocketId(int socketId, int clientFd) {
       return;
     }
   }
-  LOG(ERROR) << "Tried to add a socketId but the corresponding clientFd is already dead: " << socketId << " " << clientFd;
+  LOG(ERROR) << "Tried to add a socketId but the corresponding clientFd is "
+                "already dead: "
+             << socketId << " " << clientFd;
 }
 
 void PortForwardClientRouter::closeSocketId(int socketId) {
@@ -52,14 +55,14 @@ void PortForwardClientRouter::closeSocketId(int socketId) {
   socketIdListenerMap.erase(socketId);
 }
 
-void PortForwardClientRouter::sendDataOnSocket(
-    int socketId,
-    const string& data) {
+void PortForwardClientRouter::sendDataOnSocket(int socketId,
+                                               const string& data) {
   auto it = socketIdListenerMap.find(socketId);
   if (it == socketIdListenerMap.end()) {
-    LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: " << socketId;
+    LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: "
+               << socketId;
     return;
   }
   it->second->sendDataOnSocket(socketId, data);
 }
-}
+}  // namespace et

@@ -2,14 +2,9 @@
 
 namespace et {
 ClientConnection::ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler,
-    const std::string& _hostname,
-    int _port,
-    const string& _id,
-    const string& _key)
-    : Connection(_socketHandler, _id, _key),
-      hostname(_hostname),
-      port(_port) {}
+    std::shared_ptr<SocketHandler> _socketHandler, const std::string& _hostname,
+    int _port, const string& _id, const string& _key)
+    : Connection(_socketHandler, _id, _key), hostname(_hostname), port(_port) {}
 
 ClientConnection::~ClientConnection() {
   if (reconnectThread) {
@@ -34,20 +29,24 @@ void ClientConnection::connect() {
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
     if (response.status() != NEW_CLIENT) {
-      LOG(ERROR) << "Error connecting to server: " << response.status() << ": " << response.error();
-      cerr << "Error connecting to server: " << response.status() << ": " << response.error() << endl;
+      LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
+                 << response.error();
+      cerr << "Error connecting to server: " << response.status() << ": "
+           << response.error() << endl;
       exit(1);
     }
     VLOG(1) << "Creating backed reader" << endl;
-    reader = std::shared_ptr<BackedReader>(new BackedReader(
-        socketHandler, shared_ptr<CryptoHandler>(
-                           new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
-        socketFd));
+    reader = std::shared_ptr<BackedReader>(
+        new BackedReader(socketHandler,
+                         shared_ptr<CryptoHandler>(
+                             new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
+                         socketFd));
     VLOG(1) << "Creating backed writer" << endl;
-    writer = std::shared_ptr<BackedWriter>(new BackedWriter(
-        socketHandler, shared_ptr<CryptoHandler>(
-                           new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
-        socketFd));
+    writer = std::shared_ptr<BackedWriter>(
+        new BackedWriter(socketHandler,
+                         shared_ptr<CryptoHandler>(
+                             new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
+                         socketFd));
     VLOG(1) << "Client Connection established" << endl;
   } catch (const runtime_error& err) {
     if (socketFd != -1) {
@@ -74,9 +73,7 @@ void ClientConnection::closeSocket() {
       new std::thread(&ClientConnection::pollReconnect, this));
 }
 
-ssize_t ClientConnection::read(string* buf) {
-  return Connection::read(buf);
-}
+ssize_t ClientConnection::read(string* buf) { return Connection::read(buf); }
 ssize_t ClientConnection::write(const string& buf) {
   return Connection::write(buf);
 }
@@ -85,7 +82,8 @@ void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
-      LOG_EVERY_N(INFO, 10) << "Trying to reconnect to " << hostname << ":" << port << endl;
+      LOG_EVERY_N(INFO, 10)
+          << "Trying to reconnect to " << hostname << ":" << port << endl;
       int newSocketFd = socketHandler->connect(hostname, port);
       if (newSocketFd != -1) {
         try {
@@ -95,16 +93,20 @@ void ClientConnection::pollReconnect() {
           socketHandler->writeProto(newSocketFd, request, true);
           et::ConnectResponse response =
               socketHandler->readProto<et::ConnectResponse>(newSocketFd, true);
-          LOG(INFO) << "Got response with status: " << response.status() << " " << INVALID_KEY;
+          LOG(INFO) << "Got response with status: " << response.status() << " "
+                    << INVALID_KEY;
           if (response.status() == INVALID_KEY) {
-            LOG(INFO) << "Got invalid key on reconnect, assume that server has terminated the session.";
+            LOG(INFO) << "Got invalid key on reconnect, assume that server has "
+                         "terminated the session.";
             // This means that the server has terminated the connection.
             shuttingDown = true;
             return;
           }
           if (response.status() != RETURNING_CLIENT) {
-            LOG(ERROR) << "Error reconnecting to server: " << response.status() << ": " << response.error();
-            cerr << "Error reconnecting to server: " << response.status() << ": " << response.error() << endl;
+            LOG(ERROR) << "Error reconnecting to server: " << response.status()
+                       << ": " << response.error();
+            cerr << "Error reconnecting to server: " << response.status()
+                 << ": " << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {
             recover(newSocketFd);
@@ -121,4 +123,4 @@ void ClientConnection::pollReconnect() {
     }
   }
 }
-}
+}  // namespace et

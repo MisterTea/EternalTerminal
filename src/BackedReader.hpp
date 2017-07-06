@@ -38,6 +38,6 @@ class BackedReader {
   int getPartialMessageLength();
   void constructPartialMessage(string* buf);
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_BACKED_READER__

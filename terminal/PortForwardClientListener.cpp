@@ -2,26 +2,23 @@
 
 namespace et {
 PortForwardClientListener::PortForwardClientListener(
-    shared_ptr<SocketHandler> _socketHandler,
-    int _sourcePort,
-    int _destinationPort) :
-    socketHandler(_socketHandler),
-    sourcePort(_sourcePort),
-    destinationPort(_destinationPort) {
-
-}
+    shared_ptr<SocketHandler> _socketHandler, int _sourcePort,
+    int _destinationPort)
+    : socketHandler(_socketHandler),
+      sourcePort(_sourcePort),
+      destinationPort(_destinationPort) {}
 
 int PortForwardClientListener::listen() {
   int fd = socketHandler->listen(sourcePort);
   if (fd > -1) {
-    LOG(INFO) << "Tunnel " << sourcePort << " -> " << destinationPort << " socket created with fd " << fd;
+    LOG(INFO) << "Tunnel " << sourcePort << " -> " << destinationPort
+              << " socket created with fd " << fd;
     unassignedFds.insert(fd);
   }
   return fd;
 }
 
-void PortForwardClientListener::update(
-      vector<PortForwardData>* data) {
+void PortForwardClientListener::update(vector<PortForwardData>* data) {
   vector<int> socketsToRemove;
 
   for (auto& it : socketFdMap) {
@@ -31,22 +28,22 @@ void PortForwardClientListener::update(
     while (socketHandler->hasData(fd)) {
       char buf[1024];
       int bytesRead = socketHandler->read(fd, buf, 1024);
-      if (bytesRead == -1 && (errno == EAGAIN ||
-                              errno == EWOULDBLOCK)) {
+      if (bytesRead == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
         // Bail for now
         break;
       }
       PortForwardData pwd;
       pwd.set_socketid(socketId);
       if (bytesRead == -1) {
-        VLOG(1) << "Got error reading socket " << socketId << " " << strerror(errno);
+        VLOG(1) << "Got error reading socket " << socketId << " "
+                << strerror(errno);
         pwd.set_error(strerror(errno));
       } else if (bytesRead == 0) {
         VLOG(1) << "Got close reading socket " << socketId;
         pwd.set_closed(true);
       } else {
         VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
-        pwd.set_buffer(string(buf,bytesRead));
+        pwd.set_buffer(string(buf, bytesRead));
       }
       data->push_back(pwd);
       if (bytesRead < 1) {
@@ -76,7 +73,8 @@ void PortForwardClientListener::closeUnassignedFd(int fd) {
 
 void PortForwardClientListener::addSocket(int socketId, int clientFd) {
   if (unassignedFds.find(clientFd) == unassignedFds.end()) {
-    LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist " << clientFd;
+    LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist "
+               << clientFd;
     return;
   }
   LOG(INFO) << "Adding socket: " << socketId << " " << clientFd;
@@ -84,9 +82,8 @@ void PortForwardClientListener::addSocket(int socketId, int clientFd) {
   socketFdMap[socketId] = clientFd;
 }
 
-void PortForwardClientListener::sendDataOnSocket(
-    int socketId,
-    const string &data) {
+void PortForwardClientListener::sendDataOnSocket(int socketId,
+                                                 const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
     LOG(ERROR) << "Tried to write to a socket that no longer exists!";
     return;
@@ -107,4 +104,4 @@ void PortForwardClientListener::closeSocket(int socketId) {
     socketFdMap.erase(it);
   }
 }
-}
+}  // namespace et

@@ -45,6 +45,6 @@ class BackedWriter {
   int64_t backupSize;
   int64_t sequenceNumber;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_BACKED_WRITER__

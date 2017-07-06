@@ -6,9 +6,7 @@ ServerConnection::ServerConnection(
     : socketHandler(_socketHandler),
       port(_port),
       serverHandler(_serverHandler),
-      stop(false)
-{
-}
+      stop(false) {}
 
 ServerConnection::~ServerConnection() {}
 
@@ -42,8 +40,9 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     {
       int version = request.version();
       if (version != PROTOCOL_VERSION) {
-        LOG(ERROR) << "Got a client request but the client version does not match.  Client: " <<
-            version << " != Server: " << PROTOCOL_VERSION;
+        LOG(ERROR) << "Got a client request but the client version does not "
+                      "match.  Client: "
+                   << version << " != Server: " << PROTOCOL_VERSION;
         et::ConnectResponse response;
 
         std::ostringstream errorStream;
@@ -70,7 +69,6 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
       socketHandler->close(clientSocketFd);
     } else if (!clientConnectionExists(clientId)) {
-
       et::ConnectResponse response;
       response.set_status(NEW_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
@@ -100,18 +98,16 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   }
 }
 
-void ServerConnection::newClientConnection(
-    const string& clientId,
-    int socketFd) {
+void ServerConnection::newClientConnection(const string& clientId,
+                                           int socketFd) {
   VLOG(1) << "Created client with id " << clientId << endl;
 
-  shared_ptr<ServerClientConnection> scc(
-      new ServerClientConnection(socketHandler, clientId, socketFd, clientKeys[clientId]));
+  shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
+      socketHandler, clientId, socketFd, clientKeys[clientId]));
   clientConnections.insert(std::make_pair(clientId, scc));
 }
 
-bool ServerConnection::removeClient(
-    const string &id) {
+bool ServerConnection::removeClient(const string& id) {
   if (clientKeys.find(id) == clientKeys.end()) {
     return false;
   }
@@ -124,4 +120,4 @@ bool ServerConnection::removeClient(
   clientConnections.erase(id);
   return true;
 }
-}
+}  // namespace et

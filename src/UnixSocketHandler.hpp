@@ -23,6 +23,6 @@ class UnixSocketHandler : public SocketHandler {
   map<int, set<int>> portServerSockets;
   recursive_mutex mutex;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_UNIX_SOCKET_HANDLER__

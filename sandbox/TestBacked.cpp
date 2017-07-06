@@ -12,25 +12,25 @@ int main(int argc, char** argv) {
       new FakeSocketHandler(serverSocket));
   serverSocket->setRemoteHandler(clientSocket);
 
-  BackedReader serverReader(
-      serverSocket, shared_ptr<CryptoHandler>(
-                        new CryptoHandler("12345678901234567890123456789012")),
-      0);
-  BackedWriter serverWriter(
-      serverSocket, shared_ptr<CryptoHandler>(
-                        new CryptoHandler("12345678901234567890123456789012")),
-      0);
+  BackedReader serverReader(serverSocket,
+                            shared_ptr<CryptoHandler>(new CryptoHandler(
+                                "12345678901234567890123456789012")),
+                            0);
+  BackedWriter serverWriter(serverSocket,
+                            shared_ptr<CryptoHandler>(new CryptoHandler(
+                                "12345678901234567890123456789012")),
+                            0);
   serverSocket->addConnection(0);
   serverSocket->listen(0);
 
-  BackedReader clientReader(
-      clientSocket, shared_ptr<CryptoHandler>(
-                        new CryptoHandler("12345678901234567890123456789012")),
-      0);
-  BackedWriter clientWriter(
-      clientSocket, shared_ptr<CryptoHandler>(
-                        new CryptoHandler("12345678901234567890123456789012")),
-      0);
+  BackedReader clientReader(clientSocket,
+                            shared_ptr<CryptoHandler>(new CryptoHandler(
+                                "12345678901234567890123456789012")),
+                            0);
+  BackedWriter clientWriter(clientSocket,
+                            shared_ptr<CryptoHandler>(new CryptoHandler(
+                                "12345678901234567890123456789012")),
+                            0);
   clientSocket->addConnection(0);
   clientSocket->listen(0);
 

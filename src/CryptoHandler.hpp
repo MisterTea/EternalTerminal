@@ -19,9 +19,10 @@ class CryptoHandler {
   void incrementNonce();
   unsigned char nonce[crypto_secretbox_NONCEBYTES];
   unsigned char key[crypto_secretbox_KEYBYTES];
+
  private:
   mutex cryptoMutex;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_CRYPTO_HANDLER__

@@ -31,29 +31,24 @@ class ServerConnection {
     return clientConnections.find(clientId) != clientConnections.end();
   }
 
-  inline shared_ptr<SocketHandler> getSocketHandler() {
-    return socketHandler;
-  }
+  inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
   void run();
 
   void close();
 
-  inline void addClientKey(
-      const string& id,
-      const string& key) {
+  inline void addClientKey(const string& id, const string& key) {
     clientKeys[id] = key;
   }
 
   void clientHandler(int clientSocketFd);
 
-  void newClientConnection(
-      const string& clientId,
-      int socketFd);
+  void newClientConnection(const string& clientId, int socketFd);
 
   bool removeClient(const string& id);
 
-  shared_ptr<ServerClientConnection> getClientConnection(const string& clientId) {
+  shared_ptr<ServerClientConnection> getClientConnection(
+      const string& clientId) {
     return clientConnections.find(clientId)->second;
   }
 
@@ -71,9 +66,10 @@ class ServerConnection {
   shared_ptr<ServerConnectionHandler> serverHandler;
   bool stop;
   std::unordered_map<string, string> clientKeys;
-  std::unordered_map<string, shared_ptr<ServerClientConnection> > clientConnections;
+  std::unordered_map<string, shared_ptr<ServerClientConnection> >
+      clientConnections;
   shared_ptr<thread> clientConnectThread;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_SERVER_CONNECTION__

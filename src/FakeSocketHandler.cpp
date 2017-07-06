@@ -128,4 +128,4 @@ bool FakeSocketHandler::hasPendingConnection() {
   std::lock_guard<std::mutex> guard(handlerMutex);
   return !futureConnections.empty();
 }
-}
+}  // namespace et

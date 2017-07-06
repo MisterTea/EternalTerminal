@@ -27,4 +27,4 @@ ssize_t FlakyFakeSocketHandler::write(int i, const void* buf, size_t count) {
   }
   return FakeSocketHandler::write(i, buf, count);
 }
-}
+}  // namespace et

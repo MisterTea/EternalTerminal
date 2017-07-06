@@ -121,4 +121,4 @@ void BackedReader::constructPartialMessage(string* buf) {
   partialMessage = partialMessage.substr(4 + messageSize);
   sequenceNumber++;
 }
-}
+}  // namespace et

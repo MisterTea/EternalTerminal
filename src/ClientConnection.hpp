@@ -12,9 +12,8 @@ class ClientConnection : public Connection {
  public:
   ClientConnection(std::shared_ptr<SocketHandler> _socketHandler,  //
                    const std::string& hostname,                    //
-                   int _port,                                       //
-                   const string& _id,
-                   const string& _key);
+                   int _port,                                      //
+                   const string& _id, const string& _key);
 
   virtual ~ClientConnection();
 
@@ -31,6 +30,6 @@ class ClientConnection : public Connection {
   int port;
   std::shared_ptr<std::thread> reconnectThread;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_SERVER_CONNECTION__

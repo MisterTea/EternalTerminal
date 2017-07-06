@@ -4,9 +4,9 @@
 #include "Headers.hpp"
 
 class IdPasskeyHandler {
-public:
+ public:
   static void runServer(bool* done);
   static void send(const string& idPasskey);
 };
 
-#endif // __ETERNAL_TCP_ID_PASSKEY_HANDLER__
+#endif  // __ETERNAL_TCP_ID_PASSKEY_HANDLER__

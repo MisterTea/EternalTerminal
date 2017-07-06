@@ -17,6 +17,6 @@ class FlakyFakeSocketHandler : public FakeSocketHandler {
  protected:
   int chance;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_FLAKY_FAKE_SOCKET_HANDLER__

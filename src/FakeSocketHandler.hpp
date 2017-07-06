@@ -35,6 +35,6 @@ class FakeSocketHandler : public SocketHandler {
   int nextFd;
   vector<int> futureConnections;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_FAKE_SOCKET_HANDLER__

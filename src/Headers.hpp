@@ -14,21 +14,20 @@
 
 #include <algorithm>
 #include <array>
+#include <deque>
 #include <exception>
 #include <fstream>
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <sstream>
+#include <set>
 #include <sstream>
 #include <streambuf>
 #include <string>
 #include <thread>
 #include <unordered_map>
 #include <unordered_set>
-#include <set>
 #include <vector>
-#include <deque>
 
 #include <gflags/gflags.h>
 #include <glog/logging.h>
@@ -46,23 +45,23 @@ static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
 static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
 
 #define FATAL_FAIL(X) \
-  if (((X) == -1)) LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
+  if (((X) == -1))    \
+    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
-template<typename Out>
+template <typename Out>
 inline void split(const std::string &s, char delim, Out result) {
-    std::stringstream ss;
-    ss.str(s);
-    std::string item;
-    while (std::getline(ss, item, delim)) {
-        *(result++) = item;
-    }
+  std::stringstream ss;
+  ss.str(s);
+  std::string item;
+  while (std::getline(ss, item, delim)) {
+    *(result++) = item;
+  }
 }
 
-
 inline std::vector<std::string> split(const std::string &s, char delim) {
-    std::vector<std::string> elems;
-    split(s, delim, std::back_inserter(elems));
-    return elems;
+  std::vector<std::string> elems;
+  split(s, delim, std::back_inserter(elems));
+  return elems;
 }
 
 #endif

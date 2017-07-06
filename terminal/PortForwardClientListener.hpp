@@ -3,16 +3,14 @@
 
 #include "Headers.hpp"
 
-#include "SocketHandler.hpp"
 #include "ETerminal.pb.h"
+#include "SocketHandler.hpp"
 
 namespace et {
 class PortForwardClientListener {
  public:
-  PortForwardClientListener(
-      shared_ptr<SocketHandler> _socketHandler,
-      int _sourcePort,
-      int _destinationPort);
+  PortForwardClientListener(shared_ptr<SocketHandler> _socketHandler,
+                            int _sourcePort, int _destinationPort);
 
   int listen();
 
@@ -26,9 +24,10 @@ class PortForwardClientListener {
 
   void closeSocket(int socketId);
 
-  void sendDataOnSocket(int socketId, const string &data);
+  void sendDataOnSocket(int socketId, const string& data);
 
   inline int getDestinationPort() { return destinationPort; }
+
  protected:
   shared_ptr<SocketHandler> socketHandler;
   int sourcePort;
@@ -36,6 +35,6 @@ class PortForwardClientListener {
   unordered_set<int> unassignedFds;
   unordered_map<int, int> socketFdMap;
 };
-}
+}  // namespace et
 
-#endif // __PORT_FORWARD_CLIENT_LISTENER_H__
+#endif  // __PORT_FORWARD_CLIENT_LISTENER_H__

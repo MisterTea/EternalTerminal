@@ -14,9 +14,8 @@ class PortForwardClientRouter {
 
   void addListener(shared_ptr<PortForwardClientListener> listener);
 
-  void update(
-      vector<PortForwardRequest>* requests,
-      vector<PortForwardData>* dataToSend);
+  void update(vector<PortForwardRequest>* requests,
+              vector<PortForwardData>* dataToSend);
 
   void closeClientFd(int fd);
 
@@ -25,10 +24,11 @@ class PortForwardClientRouter {
   void closeSocketId(int socketId);
 
   void sendDataOnSocket(int socketId, const string& data);
+
  protected:
   vector<shared_ptr<PortForwardClientListener>> listeners;
   unordered_map<int, shared_ptr<PortForwardClientListener>> socketIdListenerMap;
 };
-}
+}  // namespace et
 
 #endif  // __PORT_FORWARD_ROUTER_H__

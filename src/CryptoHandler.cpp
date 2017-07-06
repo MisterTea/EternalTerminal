@@ -54,4 +54,4 @@ void CryptoHandler::incrementNonce() {
     }
   }
 }
-}
+}  // namespace et

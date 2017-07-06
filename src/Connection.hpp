@@ -10,10 +10,8 @@
 namespace et {
 class Connection {
  public:
-  Connection(
-      shared_ptr<SocketHandler> _socketHandler,
-      const string& _id,
-      const string& _key);
+  Connection(shared_ptr<SocketHandler> _socketHandler, const string& _id,
+             const string& _key);
 
   virtual ~Connection();
 
@@ -43,9 +41,7 @@ class Connection {
 
   int getSocketFd() { return socketFd; }
 
-  inline shared_ptr<SocketHandler> getSocketHandler() {
-    return socketHandler;
-  }
+  inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
   bool isDisconnected() { return socketFd == -1; }
 
@@ -57,9 +53,7 @@ class Connection {
 
   void shutdown();
 
-  inline bool isShuttingDown() {
-    return shuttingDown;
-  }
+  inline bool isShuttingDown() { return shuttingDown; }
 
  protected:
   virtual ssize_t read(string* buf);
@@ -75,6 +69,6 @@ class Connection {
   bool shuttingDown;
   recursive_mutex connectionMutex;
 };
-}
+}  // namespace et
 
 #endif  // __ETERNAL_TCP_CONNECTION__

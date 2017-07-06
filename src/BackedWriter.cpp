@@ -103,4 +103,4 @@ void BackedWriter::unlock() {
   VLOG(1) << int64_t(this) << ": Manually unlocking recover mutex!" << endl;
   recoverMutex.unlock();
 }
-}
+}  // namespace et
