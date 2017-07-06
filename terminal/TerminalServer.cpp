@@ -345,6 +345,12 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
         }
       }
 
+      // chmod /dev/stdin and /dev/stdout before dropping out of root
+      uid_t user_id = pwd->pw_uid;
+      gid_t group_id = pwd->pw_gid;
+      chown("/dev/stdin", user_id, group_id);
+      chown("/dev/stdout", user_id, group_id);
+
       gid_t groups[65536];
       int ngroups = 65536;
 #ifdef WITH_SELINUX
@@ -358,12 +364,6 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       free(sename);
       free(level);
 #endif
-
-      // chmod /dev/stdin and /dev/stdout before dropping out of root
-      uid_t user_id = pwd->pw_uid;
-      gid_t group_id = pwd->pw_gid;
-      chown("/dev/stdin", user_id, group_id);
-      chown("/dev/stdout", user_id, group_id);
 
 #ifdef __APPLE__
       if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) ==
