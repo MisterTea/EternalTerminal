@@ -3,6 +3,11 @@
 #include <pwd.h>
 #include <sys/types.h>
 
+#ifdef WITH_SELINUX
+#include <selinux/get_context_list.h>
+#include <selinux/selinux.h>
+#endif
+
 namespace et {
 void rootToUser(passwd* pwd) {
   string terminal;

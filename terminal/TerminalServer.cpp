@@ -37,11 +37,6 @@
 #include <signal.h>
 #endif
 
-#ifdef WITH_SELINUX
-#include <selinux/get_context_list.h>
-#include <selinux/selinux.h>
-#endif
-
 #include "ETerminal.pb.h"
 
 using namespace et;
