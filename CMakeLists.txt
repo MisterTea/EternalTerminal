@@ -97,7 +97,7 @@ add_library(
   TerminalCommon
   STATIC
 
-  terminal/ConsoleUtils.cpp
+  terminal/SystemUtils.cpp
   terminal/SocketUtils.cpp
   terminal/IdPasskeyHandler.cpp
 
