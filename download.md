@@ -23,11 +23,22 @@ sudo apt-get install et
 
 # Debian
 
-For debian, use our deb repo:
+For debian, use our deb repo.  For jessie:
 
 ```
 echo "
 deb https://mistertea.github.io/debian-et/debian-source/ jessie main
+" | sudo tee -a /etc/apt/sources.list
+curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
+sudo apt update
+sudo apt install et
+```
+
+For stretch:
+
+```
+echo "
+deb https://mistertea.github.io/debian-et/debian-source/ stretch main
 " | sudo tee -a /etc/apt/sources.list
 curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
 sudo apt update
