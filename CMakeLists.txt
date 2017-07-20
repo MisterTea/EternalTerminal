@@ -97,9 +97,10 @@ add_library(
   TerminalCommon
   STATIC
 
-  terminal/SystemUtils.cpp
-  terminal/SocketUtils.cpp
   terminal/IdPasskeyHandler.cpp
+  terminal/PamHandler.cpp
+  terminal/SocketUtils.cpp
+  terminal/SystemUtils.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -121,6 +122,7 @@ target_link_libraries (
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
+  pam
   resolv
   util
   )

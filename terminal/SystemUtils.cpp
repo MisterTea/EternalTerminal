@@ -11,21 +11,14 @@
 #endif
 
 namespace et {
-void rootToUser(passwd* pwd) {
+// Many thanks to https://github.com/NWilson/netlogind
+shared_ptr<PamHandler> rootToUser(passwd* pwd) {
+  shared_ptr<PamHandler> pamHandler(new PamHandler(pwd));
+  pamHandler->initialize();
+
   string terminal;
   gid_t groups[65536];
   int ngroups = 65536;
-#ifdef WITH_SELINUX
-  char* sename = NULL;
-  char* level = NULL;
-  FATAL_FAIL(getseuserbyname(pwd->pw_name, &sename, &level));
-  security_context_t user_ctx = NULL;
-  FATAL_FAIL(
-      get_default_context_with_level(sename, level, NULL, &user_ctx));
-  setexeccon(user_ctx);
-  free(sename);
-  free(level);
-#endif
 
 #ifdef __APPLE__
   if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) ==
@@ -50,11 +43,26 @@ void rootToUser(passwd* pwd) {
   FATAL_FAIL(::setgroups(ngroups, groups));
 #endif
 
+  pamHandler->beginSession();
+
+#ifdef WITH_SELINUX
+  char* sename = NULL;
+  char* level = NULL;
+  FATAL_FAIL(getseuserbyname(pwd->pw_name, &sename, &level));
+  security_context_t user_ctx = NULL;
+  FATAL_FAIL(
+      get_default_context_with_level(sename, level, NULL, &user_ctx));
+  setexeccon(user_ctx);
+  free(sename);
+  free(level);
+#endif
+
 #ifdef setresuid
   FATAL_FAIL(setresuid(pwd->pw_uid, pwd->pw_uid, pwd->pw_uid));
 #else  // OS/X
   FATAL_FAIL(setreuid(pwd->pw_uid, pwd->pw_uid));
 #endif
+
   if (pwd->pw_shell) {
     terminal = pwd->pw_shell;
   } else {
@@ -71,7 +79,17 @@ void rootToUser(passwd* pwd) {
   setenv("HOME", homedir, 1);
   setenv("USER", pwd->pw_name, 1);
   setenv("LOGNAME", pwd->pw_name, 1);
-  setenv("PATH", "/usr/local/bin:/bin:/usr/bin", 1);
+  char* path = getenv("PATH");
+  if (path) {
+    setenv("PATH", path, 1);
+  } else {
+    setenv("PATH", "/usr/local/bin:/bin:/usr/bin", 1);
+  }
+
+  pamHandler->setupEnvironment();
+
   chdir(pwd->pw_dir);
+
+  return pamHandler;
 }
 }  // namespace et

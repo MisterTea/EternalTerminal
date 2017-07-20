@@ -93,7 +93,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
   bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024 * 1024)
+#define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
@@ -344,11 +344,12 @@ void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
       chown("/dev/stdin", user_id, group_id);
       chown("/dev/stdout", user_id, group_id);
 
-      rootToUser(pwd);
+      shared_ptr<PamHandler> pamHandler = rootToUser(pwd);
 
       string terminal = string(::getenv("SHELL"));
       VLOG(1) << "Child process " << pid << " launching terminal " << terminal << endl;
-      execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
+      execl(terminal.c_str(), terminal.c_str(), "--login", "-i", NULL);
+      pamHandler->cleanup();
       exit(0);
       break;
     }

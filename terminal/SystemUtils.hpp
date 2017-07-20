@@ -3,10 +3,12 @@
 
 #include "Headers.hpp"
 
+#include "PamHandler.hpp"
+
 #include <pwd.h>
 
 namespace et {
-void rootToUser(passwd* pwd);
+shared_ptr<PamHandler> rootToUser(passwd* pwd);
 }
 
 #endif  // __ETERNAL_TCP_SYSTEM_UTILS__
