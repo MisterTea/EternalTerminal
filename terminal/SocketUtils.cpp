@@ -14,3 +14,18 @@ int writeAll(int fd, const char* buf, size_t count) {
   } while (bytesWritten != count);
   return 0;
 }
+
+int readAll(int fd, char* buf, size_t count) {
+  size_t bytesRead = 0;
+  do {
+    int rc = ::read(fd, buf + bytesRead, count - bytesRead);
+    if (rc < 0) {
+      return rc;
+    }
+    if (rc == 0) {
+      LOG(FATAL) << "Could not read bytes, socket closed";
+    }
+    bytesRead += rc;
+  } while (bytesRead != count);
+  return bytesRead;
+}
