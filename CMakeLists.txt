@@ -120,7 +120,6 @@ add_executable (
   terminal/PortForwardServerHandler.cpp
   terminal/UserTerminalHandler.cpp
   terminal/UserTerminalRouter.cpp
-  terminal/UTmpHandler.cpp
   )
 target_link_libraries (
   etserver

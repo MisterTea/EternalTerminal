@@ -28,6 +28,10 @@
 #include <pty.h>
 #endif
 
+#ifdef WITH_UTEMPTER
+#include <utempter.h>
+#endif
+
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UserTerminalRouter.hpp"
@@ -90,6 +94,14 @@ void UserTerminalHandler::run() {
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
+#ifdef WITH_UTEMPTER
+  {
+    char buf[1024];
+    sprintf(buf, "et [%lld]", (long long)getpid());
+    utempter_add_record(masterFd, buf);
+  }
+#endif
+
   bool run = true;
 
 #define BUF_SIZE (16 * 1024)
@@ -143,5 +155,9 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       }
     }
   }
+
+#ifdef WITH_UTEMPTER
+  utempter_remove_record(masterFd);
+#endif
 }
 }  // namespace et

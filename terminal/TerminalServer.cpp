@@ -9,7 +9,6 @@
 #include "UnixSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
-#include "UTmpHandler.hpp"
 
 #include "simpleini/SimpleIni.h"
 
