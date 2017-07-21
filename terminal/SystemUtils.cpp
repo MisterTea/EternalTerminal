@@ -20,16 +20,14 @@ void rootToUser(passwd* pwd) {
   char* level = NULL;
   FATAL_FAIL(getseuserbyname(pwd->pw_name, &sename, &level));
   security_context_t user_ctx = NULL;
-  FATAL_FAIL(
-      get_default_context_with_level(sename, level, NULL, &user_ctx));
+  FATAL_FAIL(get_default_context_with_level(sename, level, NULL, &user_ctx));
   setexeccon(user_ctx);
   free(sename);
   free(level);
 #endif
 
 #ifdef __APPLE__
-  if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) ==
-      -1) {
+  if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) == -1) {
     LOG(FATAL) << "User is part of more than 65536 groups!";
   }
 #else
@@ -58,7 +56,7 @@ void rootToUser(passwd* pwd) {
   if (pwd->pw_shell) {
     terminal = pwd->pw_shell;
   } else {
-    char *env_shell = ::getenv("SHELL");
+    char* env_shell = ::getenv("SHELL");
     if (env_shell) {
       terminal = string(env_shell);
     } else {

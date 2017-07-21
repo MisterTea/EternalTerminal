@@ -35,7 +35,9 @@ class SocketHandler {
   }
 
   virtual int connect(const std::string& hostname, int port) = 0;
-  virtual int listen(int port) = 0;
+  virtual void listen(int port) = 0;
+  virtual set<int> getPortFds(int port) = 0;
+  virtual int accept(int fd) = 0;
   virtual void stopListening(int port) = 0;
   virtual void close(int fd) = 0;
 };

@@ -99,7 +99,8 @@ add_library(
 
   terminal/SystemUtils.cpp
   terminal/SocketUtils.cpp
-  terminal/IdPasskeyHandler.cpp
+  terminal/UserTerminalHandler.cpp
+  terminal/UserTerminalRouter.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )

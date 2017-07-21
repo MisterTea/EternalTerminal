@@ -74,20 +74,6 @@ shared_ptr<ClientConnection> createClient() {
   }
 
   InitialPayload payload;
-  winsize win;
-  ioctl(1, TIOCGWINSZ, &win);
-  TerminalInfo* ti = payload.mutable_terminal();
-  ti->set_row(win.ws_row);
-  ti->set_column(win.ws_col);
-  ti->set_width(win.ws_xpixel);
-  ti->set_height(win.ws_ypixel);
-  char* term = getenv("TERM");
-  if (term) {
-    LOG(INFO) << "Sending command to set terminal to " << term;
-    // Set terminal
-    string s = std::string("TERM=") + std::string(term);
-    payload.add_environmentvar(s);
-  }
 
   shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
@@ -160,7 +146,7 @@ int main(int argc, char** argv) {
   bool run = true;
 
 // TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024 * 1024)
+#define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
   time_t keepaliveTime = time(NULL) + 5;

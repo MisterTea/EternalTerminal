@@ -82,7 +82,9 @@ int FakeSocketHandler::connect(const std::string&, int) {
   }
 }
 
-int FakeSocketHandler::listen(int) {
+void FakeSocketHandler::listen(int) {}
+
+int FakeSocketHandler::accept(int) {
   std::lock_guard<std::mutex> guard(handlerMutex);
   if (futureConnections.empty()) {
     return -1;

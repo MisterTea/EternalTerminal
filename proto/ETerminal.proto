@@ -41,6 +41,4 @@ message PortForwardData {
 }
 
 message InitialPayload {
-  optional TerminalInfo terminal = 1;
-  repeated string environmentvar = 2;
 }

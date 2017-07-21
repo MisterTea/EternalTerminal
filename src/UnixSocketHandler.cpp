@@ -282,31 +282,42 @@ void UnixSocketHandler::createServerSockets(int port) {
   portServerSockets[port] = serverSockets;
 }
 
-int UnixSocketHandler::listen(int port) {
+void UnixSocketHandler::listen(int port) {
+  lock_guard<std::recursive_mutex> guard(mutex);
+  if (portServerSockets.find(port) != portServerSockets.end()) {
+    LOG(FATAL) << "Tried to listen twice on the same port";
+  }
+  createServerSockets(port);
+}
+
+set<int> UnixSocketHandler::getPortFds(int port) {
   lock_guard<std::recursive_mutex> guard(mutex);
   if (portServerSockets.find(port) == portServerSockets.end()) {
-    createServerSockets(port);
+    LOG(FATAL)
+        << "Tried to getPortFds on a port without calling listen() first";
   }
-  auto &serverSockets = portServerSockets.find(port)->second;
-  for (int sockfd : serverSockets) {
-    sockaddr_in client;
-    socklen_t c = sizeof(sockaddr_in);
-    int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
-    if (client_sock >= 0) {
-      initSocket(client_sock);
-      activeSockets.insert(client_sock);
-      // Make sure that socket becomes blocking once it's attached to a client.
-      {
-        int opts;
-        opts = fcntl(client_sock, F_GETFL);
-        FATAL_FAIL(opts);
-        opts &= (~O_NONBLOCK);
-        FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
-      }
-      return client_sock;
-    } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-      FATAL_FAIL(-1);  // LOG(FATAL) with the error
+  return portServerSockets[port];
+}
+
+int UnixSocketHandler::accept(int sockfd) {
+  lock_guard<std::recursive_mutex> guard(mutex);
+  sockaddr_in client;
+  socklen_t c = sizeof(sockaddr_in);
+  int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
+  if (client_sock >= 0) {
+    initSocket(client_sock);
+    activeSockets.insert(client_sock);
+    // Make sure that socket becomes blocking once it's attached to a client.
+    {
+      int opts;
+      opts = fcntl(client_sock, F_GETFL);
+      FATAL_FAIL(opts);
+      opts &= (~O_NONBLOCK);
+      FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
     }
+    return client_sock;
+  } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+    FATAL_FAIL(-1);  // LOG(FATAL) with the error
   }
 
   return -1;

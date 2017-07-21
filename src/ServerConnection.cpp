@@ -5,26 +5,23 @@ ServerConnection::ServerConnection(
     shared_ptr<ServerConnectionHandler> _serverHandler)
     : socketHandler(_socketHandler),
       port(_port),
-      serverHandler(_serverHandler),
-      stop(false) {}
+      serverHandler(_serverHandler) {
+  socketHandler->listen(port);
+}
 
 ServerConnection::~ServerConnection() {}
 
-void ServerConnection::run() {
-  while (!stop) {
-    VLOG_EVERY_N(2, 30) << "Listening for connection" << endl;
-    int clientSocketFd = socketHandler->listen(port);
-    if (clientSocketFd < 0) {
-      sleep(1);
-      continue;
-    }
-    VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd << endl;
-    clientHandler(clientSocketFd);
+void ServerConnection::acceptNewConnection(int fd) {
+  VLOG(1) << "Accepting connection";
+  int clientSocketFd = socketHandler->accept(fd);
+  if (clientSocketFd < 0) {
+    return;
   }
+  VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd << endl;
+  clientHandler(clientSocketFd);
 }
 
 void ServerConnection::close() {
-  stop = true;
   socketHandler->stopListening(port);
   for (const auto& it : clientConnections) {
     it.second->closeSocket();

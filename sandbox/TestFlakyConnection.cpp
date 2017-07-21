@@ -6,7 +6,11 @@
 using namespace et;
 ServerConnection* globalServer;
 
-void runServer(std::shared_ptr<ServerConnection> server) { server->run(); }
+void runServer(std::shared_ptr<ServerConnection> server) {
+  while (true) {
+    server->acceptNewConnection(1);
+  }
+}
 
 void runClient(std::shared_ptr<FlakyFakeSocketHandler> clientSocket,
                std::array<char, 4 * 1024> s) {

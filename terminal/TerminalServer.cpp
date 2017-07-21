@@ -1,13 +1,14 @@
 #include "ClientConnection.hpp"
-#include "SystemUtils.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
-#include "IdPasskeyHandler.hpp"
 #include "PortForwardServerHandler.hpp"
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
+#include "SystemUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "UserTerminalHandler.hpp"
+#include "UserTerminalRouter.hpp"
 
 #include "simpleini/SimpleIni.h"
 
@@ -44,15 +45,7 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-map<string, int64_t> idPidMap;
-shared_ptr<ServerConnection> globalServer;
-
-void halt();
-
-#define FAIL_FATAL(X)                                              \
-  if ((X) == -1) {                                                 \
-    LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno); \
-  }
+#define BUF_SIZE (16 * 1024)
 
 DEFINE_int32(port, 0, "Port to listen on");
 DEFINE_string(idpasskey, "",
@@ -63,51 +56,32 @@ DEFINE_string(idpasskeyfile, "",
 DEFINE_bool(daemon, false, "Daemonize the server");
 DEFINE_string(cfgfile, "", "Location of the config file");
 
-thread* idPasskeyListenerThread = NULL;
-thread* finishClientMonitorThread = NULL;
-
-int nextThreadId = 0;
-map<int, shared_ptr<thread>> terminalThreads;
-vector<int> finishedThreads;
+shared_ptr<ServerConnection> globalServer;
+shared_ptr<UserTerminalRouter> terminalRouter;
+vector<shared_ptr<thread>> terminalThreads;
 mutex terminalThreadMutex;
+bool halt = false;
 
-void finishClientMonitor() {
-  while (true) {
-    {
-      lock_guard<std::mutex> guard(terminalThreadMutex);
-      for (int id : finishedThreads) {
-        terminalThreads[id]->join();
-        terminalThreads.erase(id);
-      }
-      finishedThreads.clear();
-    }
-    sleep(1);
-  }
-}
-
-void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                 int masterfd, pid_t childPid, int threadId) {
-  string disconnectBuffer;
-
+void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // Whether the TE should keep running.
   bool run = true;
 
-// TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (1024 * 1024)
+  // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
   unordered_map<int, shared_ptr<PortForwardServerHandler>> portForwardHandlers;
+  int terminalFd = terminalRouter->getFd(serverClientState->getId());
 
-  while (run) {
+  while (!halt && run) {
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
     timeval tv;
 
     FD_ZERO(&rfd);
-    FD_SET(masterfd, &rfd);
-    int maxfd = masterfd;
+    FD_SET(terminalFd, &rfd);
+    int maxfd = terminalFd;
     int serverClientFd = serverClientState->getSocketFd();
     if (serverClientFd > 0) {
       FD_SET(serverClientFd, &rfd);
@@ -121,10 +95,10 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
-      if (FD_ISSET(masterfd, &rfd)) {
-        // Read from fake terminal and write to client
+      if (FD_ISSET(terminalFd, &rfd)) {
+        // Read from terminal and write to client
         memset(b, 0, BUF_SIZE);
-        int rc = read(masterfd, b, BUF_SIZE);
+        int rc = read(terminalFd, b, BUF_SIZE);
         if (rc > 0) {
           // VLOG(2) << "Sending bytes from terminal: " << rc << " "
           //<< serverClientState->getWriter()->getSequenceNumber();
@@ -136,8 +110,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
           serverClientState->writeProto(tb);
         } else {
           LOG(INFO) << "Terminal session ended";
-          siginfo_t childInfo;
-          FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
           run = false;
           globalServer->removeClient(serverClientState->getId());
           break;
@@ -176,7 +148,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               const string& s = tb.buffer();
               // VLOG(2) << "Got bytes from client: " << s.length() << " " <<
               // serverClientState->getReader()->getSequenceNumber();
-              FATAL_FAIL(writeAll(masterfd, &s[0], s.length()));
+              FATAL_FAIL(writeAll(terminalFd, &s[0], s.length()));
               break;
             }
             case et::PacketType::KEEP_ALIVE: {
@@ -195,7 +167,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
               tmpwin.ws_col = ti.column();
               tmpwin.ws_xpixel = ti.width();
               tmpwin.ws_ypixel = ti.height();
-              ioctl(masterfd, TIOCSWINSZ, &tmpwin);
+              ioctl(terminalFd, TIOCSWINSZ, &tmpwin);
               break;
             }
             case PacketType::PORT_FORWARD_REQUEST: {
@@ -285,95 +257,107 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
     string id = serverClientState->getId();
     serverClientState.reset();
     globalServer->removeClient(id);
-    finishedThreads.push_back(threadId);
-  }
-}
-
-void startTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                   InitialPayload payload) {
-  const TerminalInfo& ti = payload.terminal();
-  winsize win;
-  win.ws_row = ti.row();
-  win.ws_col = ti.column();
-  win.ws_xpixel = ti.width();
-  win.ws_ypixel = ti.height();
-  for (const string& it : payload.environmentvar()) {
-    size_t equalsPos = it.find("=");
-    if (equalsPos == string::npos) {
-      LOG(FATAL) << "Invalid environment variable";
-    }
-    string name = it.substr(0, equalsPos);
-    string value = it.substr(equalsPos + 1);
-    setenv(name.c_str(), value.c_str(), 1);
-  }
-
-  int masterfd;
-
-  pid_t pid = forkpty(&masterfd, NULL, NULL, &win);
-  switch (pid) {
-    case -1:
-      FAIL_FATAL(pid);
-    case 0: {
-      // child
-      string id = serverClientState->getId();
-      if (idPidMap.find(id) == idPidMap.end()) {
-        LOG(FATAL) << "Error: PID for ID not found";
-      }
-      int64_t pid = idPidMap[id];
-      passwd* pwd = getpwuid(pid);
-
-      // Set /proc/self/loginuid if it exists
-      bool loginuidExists = false;
-      {
-        ifstream infile("/proc/self/loginuid");
-        loginuidExists = infile.good();
-      }
-      if (loginuidExists) {
-        ofstream outfile("/proc/self/loginuid");
-        if (!outfile.is_open()) {
-          LOG(ERROR) << "/proc/self/loginuid is not writable.";
-        } else {
-          outfile << pid;
-          outfile.close();
-        }
-      }
-
-      // chmod /dev/stdin and /dev/stdout before dropping out of root
-      uid_t user_id = pwd->pw_uid;
-      gid_t group_id = pwd->pw_gid;
-      chown("/dev/stdin", user_id, group_id);
-      chown("/dev/stdout", user_id, group_id);
-
-      rootToUser(pwd);
-
-      string terminal = string(::getenv("SHELL"));
-      VLOG(1) << "Child process " << pid << " launching terminal " << terminal << endl;
-      execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
-      exit(0);
-      break;
-    }
-    default: {
-      // parent
-      VLOG(1) << "pty opened " << masterfd << endl;
-      lock_guard<std::mutex> guard(terminalThreadMutex);
-      shared_ptr<thread> t = shared_ptr<thread>(new thread(
-          runTerminal, serverClientState, masterfd, pid, nextThreadId));
-      terminalThreads.insert(pair<int, shared_ptr<thread>>(nextThreadId, t));
-      nextThreadId++;
-      break;
-    }
   }
 }
 
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
     InitialPayload payload = serverClientState->readProto<InitialPayload>();
-    startTerminal(serverClientState, payload);
+    lock_guard<std::mutex> guard(terminalThreadMutex);
+    shared_ptr<thread> t =
+        shared_ptr<thread>(new thread(runTerminal, serverClientState));
+    terminalThreads.push_back(t);
     return true;
   }
 };
 
-bool doneListening = false;
+void startServer() {
+  std::shared_ptr<UnixSocketHandler> socketHandler(new UnixSocketHandler());
+
+  LOG(INFO) << "Creating server";
+
+  globalServer = shared_ptr<ServerConnection>(new ServerConnection(
+      socketHandler, FLAGS_port,
+      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
+  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter());
+  fd_set coreFds;
+  int numCoreFds = 0;
+  int maxCoreFd = 0;
+  FD_ZERO(&coreFds);
+  set<int> serverPortFds = socketHandler->getPortFds(FLAGS_port);
+  for (int i : serverPortFds) {
+    FD_SET(i, &coreFds);
+    maxCoreFd = max(maxCoreFd, i);
+    numCoreFds++;
+  }
+  FD_SET(terminalRouter->getServerFd(), &coreFds);
+  maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
+  numCoreFds++;
+
+  while (true) {
+    // Select blocks until there is something useful to do
+    fd_set rfds = coreFds;
+    int numFds = numCoreFds;
+    int maxFd = maxCoreFd;
+    timeval tv;
+
+    if (numFds > FD_SETSIZE) {
+      LOG(FATAL) << "Tried to select() on too many FDs";
+    }
+
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+    FATAL_FAIL(numFdsSet);
+    if (numFdsSet == 0) {
+      continue;
+    }
+
+    // We have something to do!
+    for (int i : serverPortFds) {
+      if (FD_ISSET(i, &rfds)) {
+        globalServer->acceptNewConnection(i);
+      }
+    }
+    if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
+      terminalRouter->acceptNewConnection(globalServer);
+    }
+  }
+
+  globalServer->close();
+  halt = true;
+  for (auto it : terminalThreads) {
+    it->join();
+  }
+}
+
+void startUserTerminal() {
+  string idpasskey = FLAGS_idpasskey;
+  if (FLAGS_idpasskeyfile.length() > 0) {
+    // Check for passkey file
+    std::ifstream t(FLAGS_idpasskeyfile.c_str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    idpasskey = buffer.str();
+    // Trim whitespace
+    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+    // Delete the file with the passkey
+    remove(FLAGS_idpasskeyfile.c_str());
+  }
+  UserTerminalHandler uth;
+  uth.connectToRouter(idpasskey);
+  cout << "IDPASSKEY:" << idpasskey << endl;
+  if (::daemon(0, 0) == -1) {
+    LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+  }
+  string first_idpass_chars = idpasskey.substr(0, 10);
+  string std_file = string("/tmp/etserver_terminal_") + first_idpass_chars;
+  stdout = fopen(std_file.c_str(), "w+");
+  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  stderr = fopen(std_file.c_str(), "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  uth.run();
+}
 
 int main(int argc, char** argv) {
   ParseCommandLineFlags(&argc, &argv, true);
@@ -404,21 +388,7 @@ int main(int argc, char** argv) {
   }
 
   if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
-    string idpasskey = FLAGS_idpasskey;
-    if (FLAGS_idpasskeyfile.length() > 0) {
-      // Check for passkey file
-      std::ifstream t(FLAGS_idpasskeyfile.c_str());
-      std::stringstream buffer;
-      buffer << t.rdbuf();
-      idpasskey = buffer.str();
-      // Trim whitespace
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-      // Delete the file with the passkey
-      remove(FLAGS_idpasskeyfile.c_str());
-    }
-    idpasskey += '\0';
-    IdPasskeyHandler::send(idpasskey);
-
+    startUserTerminal();
     return 0;
   }
 
@@ -432,24 +402,5 @@ int main(int argc, char** argv) {
     setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   }
 
-  std::shared_ptr<UnixSocketHandler> serverSocket(new UnixSocketHandler());
-
-  LOG(INFO) << "Creating server";
-
-  globalServer = shared_ptr<ServerConnection>(new ServerConnection(
-      serverSocket, FLAGS_port,
-      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  idPasskeyListenerThread =
-      new thread(IdPasskeyHandler::runServer, &doneListening);
-  finishClientMonitorThread = new thread(finishClientMonitor);
-  globalServer->run();
-}
-
-void halt() {
-  LOG(INFO) << "Shutting down server" << endl;
-  doneListening = true;
-  globalServer->close();
-  LOG(INFO) << "Waiting for server to finish" << endl;
-  sleep(3);
-  exit(0);
+  startServer();
 }

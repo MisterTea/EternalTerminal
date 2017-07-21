@@ -16,6 +16,7 @@ int main(int argc, char** argv) {
 
   serverSocket->addConnection(0);
   serverSocket->listen(0);
+  serverSocket->accept(0);
 
   std::array<char, 64 * 1024> s;
   for (int a = 0; a < 64 * 1024 - 1; a++) {

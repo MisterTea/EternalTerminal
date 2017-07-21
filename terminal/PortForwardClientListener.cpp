@@ -6,16 +6,22 @@ PortForwardClientListener::PortForwardClientListener(
     int _destinationPort)
     : socketHandler(_socketHandler),
       sourcePort(_sourcePort),
-      destinationPort(_destinationPort) {}
+      destinationPort(_destinationPort) {
+  socketHandler->listen(sourcePort);
+}
 
 int PortForwardClientListener::listen() {
-  int fd = socketHandler->listen(sourcePort);
-  if (fd > -1) {
-    LOG(INFO) << "Tunnel " << sourcePort << " -> " << destinationPort
-              << " socket created with fd " << fd;
-    unassignedFds.insert(fd);
+  // TODO: Replace with select
+  for (int i : socketHandler->getPortFds(sourcePort)) {
+    int fd = socketHandler->accept(i);
+    if (fd > -1) {
+      LOG(INFO) << "Tunnel " << sourcePort << " -> " << destinationPort
+                << " socket created with fd " << fd;
+      unassignedFds.insert(fd);
+      return fd;
+    }
   }
-  return fd;
+  return -1;
 }
 
 void PortForwardClientListener::update(vector<PortForwardData>* data) {
