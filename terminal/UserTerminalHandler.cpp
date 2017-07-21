@@ -14,6 +14,7 @@
 #include <sys/un.h>
 #include <termios.h>
 #include <unistd.h>
+#include <sys/wait.h>
 
 #if __APPLE__
 #include <sys/ucred.h>
