@@ -110,7 +110,6 @@ $SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\"
 true
 "
 SSH_OUTPUT=$(printf "%s\n" "$SSH_SCRIPT" | ssh -T $SSH_COMMAND '/bin/bash')
-echo $SSH_OUTPUT
 
 SSH_EXIT_STATUS=$?
 
