@@ -95,6 +95,7 @@ if [[ -z "$SSH_COMMAND" ]]; then
     SSH_COMMAND=${USER}@${HOSTNAME}
 fi
 
+CLIENT_TERM=$TERM
 PASSKEY_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32"
 ID_GENERATOR="env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 16"
 TMPFILE=$(mktemp "$TMP_DIR"/et-client.XXXXXXXXXXXX)
@@ -104,10 +105,12 @@ TMPFILE=\$(mktemp \"\$SERVER_TMP_DIR\"/et-server.XXXXXXXXXXXX)
 PASSKEY=\$($PASSKEY_GENERATOR)
 ID=\$($ID_GENERATOR)
 printf \"%s/%s\\n\" \"\$ID\" \"\$PASSKEY\" > \"\${TMPFILE}\"
+export TERM=$CLIENT_TERM
 $SERVER_BINARY --idpasskeyfile=\"\${TMPFILE}\"
 true
 "
 SSH_OUTPUT=$(printf "%s\n" "$SSH_SCRIPT" | ssh -T $SSH_COMMAND '/bin/bash')
+echo $SSH_OUTPUT
 
 SSH_EXIT_STATUS=$?
 
