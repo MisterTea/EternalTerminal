@@ -360,6 +360,7 @@ void startUserTerminal() {
 }
 
 int main(int argc, char** argv) {
+  gflags::SetVersionString(ET_VERSION);
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
   GOOGLE_PROTOBUF_VERIFY_VERSION;

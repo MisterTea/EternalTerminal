@@ -74,6 +74,7 @@ void UserTerminalHandler::run() {
       string terminal = string(::getenv("SHELL"));
       VLOG(1) << "Child process " << pid << " launching terminal " << terminal
               << endl;
+      setenv("ET_VERSION", ET_VERSION, 1);
       execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
       exit(0);
       break;

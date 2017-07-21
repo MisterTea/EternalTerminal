@@ -43,6 +43,11 @@ do
             TUNNEL="${i#*=}"
             shift
             ;;
+        --version)
+            etclient --version
+            exit 0
+            shift
+            ;;
         -h|--help)
             printf "et (options) [user@]hostname[:port]
 
