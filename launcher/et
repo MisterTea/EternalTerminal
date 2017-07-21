@@ -60,6 +60,8 @@ Options:
 -l Directory where log files will go
 -v verbose log files
 -c Initial command to execute upon connecting
+-t Map local to remote TCP port (TCP Tunneling)
+   example: et -t=\"18000:8000\" user@hostname maps localhost:18000 to hostname:8000
 "
             exit 0
             ;;
