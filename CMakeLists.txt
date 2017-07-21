@@ -29,12 +29,20 @@ find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
 find_package(SELinux)
+find_package(UTempter)
 
 IF(SELINUX_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
 ELSE()
   SET(SELINUX_INCLUDE_DIR "")
   SET(SELINUX_LIBRARIES "")
+ENDIF()
+
+IF(UTEMPTER_FOUND)
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER")
+ELSE()
+  SET(UTEMPTER_INCLUDE_DIR "")
+  SET(UTEMPTER_LIBRARIES "")
 ENDIF()
 
 PROTOBUF_GENERATE_CPP(
@@ -55,6 +63,7 @@ include_directories(
   ${GFLAGS_INCLUDE_DIRS}
   ${GLOG_INCLUDE_DIRS}
   ${SELINUX_INCLUDE_DIR}
+  ${UTEMPTER_INCLUDE_DIR}
   )
 
 set(${PROJECT_NAME}_SRC
@@ -100,8 +109,6 @@ add_library(
 
   terminal/SystemUtils.cpp
   terminal/SocketUtils.cpp
-  terminal/UserTerminalHandler.cpp
-  terminal/UserTerminalRouter.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -111,6 +118,9 @@ add_executable (
   etserver
   terminal/TerminalServer.cpp
   terminal/PortForwardServerHandler.cpp
+  terminal/UserTerminalHandler.cpp
+  terminal/UserTerminalRouter.cpp
+  terminal/UTmpHandler.cpp
   )
 target_link_libraries (
   etserver
@@ -123,6 +133,7 @@ target_link_libraries (
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
   resolv
   util
   )
@@ -143,6 +154,7 @@ target_link_libraries (
   ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
+  ${UTEMPTER_LIBRARIES}
   resolv
   util
   )
