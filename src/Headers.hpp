@@ -38,7 +38,7 @@
 using namespace std;
 
 // The ET protocol version supported by this binary
-static const int PROTOCOL_VERSION = 3;
+static const int PROTOCOL_VERSION = 4;
 
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
