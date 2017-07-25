@@ -31,7 +31,7 @@ void ClientConnection::connect() {
     if (response.status() != NEW_CLIENT) {
       LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
                  << response.error();
-      cerr << "Error connecting to server: " << response.status() << ": "
+      cout << "Error connecting to server: " << response.status() << ": "
            << response.error() << endl;
       exit(1);
     }
