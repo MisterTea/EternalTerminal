@@ -156,7 +156,7 @@ int main(int argc, char** argv) {
   if (FLAGS_command.length()) {
     LOG(INFO) << "Got command: " << FLAGS_command << endl;
     et::TerminalBuffer tb;
-    tb.set_buffer(FLAGS_command + "\n");
+    tb.set_buffer(FLAGS_command + "; exit\n");
 
     char c = et::PacketType::TERMINAL_BUFFER;
     string headerString(1, c);
