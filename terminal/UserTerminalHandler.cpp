@@ -36,6 +36,8 @@
 #include "SocketUtils.hpp"
 #include "UserTerminalRouter.hpp"
 
+#include "ETerminal.pb.h"
+
 namespace et {
 UserTerminalHandler::UserTerminalHandler() {}
 
@@ -51,7 +53,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     close(routerFd);
     if (errno == ECONNREFUSED) {
       cout << "Error:  The Eternal Terminal daemon is not running.  Please "
-              "(re)start the et daemon on the server."
+          "(re)start the et daemon on the server."
            << endl;
     } else {
       cout << "Error:  Connection error communicating with et deamon: "
@@ -66,7 +68,6 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
 void UserTerminalHandler::run() {
   int masterfd;
 
-  // TODO: Should I set win?
   pid_t pid = forkpty(&masterfd, NULL, NULL, NULL);
   switch (pid) {
     case -1:
@@ -140,19 +141,37 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       }
     }
 
-    if (FD_ISSET(routerFd, &rfd)) {
-      // Read from router and write to terminal
-      memset(b, 0, BUF_SIZE);
-      int rc = read(routerFd, b, BUF_SIZE);
-      FATAL_FAIL(rc);
-      if (rc > 0) {
-        FATAL_FAIL(writeAll(masterFd, b, rc));
-      } else {
-        LOG(INFO) << "Router has ended abruptly.  Killing terminal session.";
-        kill(childPid, SIGKILL);
-        run = false;
-        break;
+    try {
+      if (FD_ISSET(routerFd, &rfd)) {
+        char packetType;
+        int rc = read(routerFd, &packetType, 1);
+        FATAL_FAIL(rc);
+        if (rc == 0) {
+          throw std::runtime_error("Router has ended abruptly.  Killing terminal session.");
+        }
+        switch (packetType) {
+          case TERMINAL_BUFFER: {
+            TerminalBuffer tb = readProto<TerminalBuffer>(routerFd);
+            const string& buffer = tb.buffer();
+            FATAL_FAIL(writeAll(masterFd, &buffer[0], buffer.length()));
+            break;
+          }
+          case TERMINAL_INFO: {
+            TerminalInfo ti = readProto<TerminalInfo>(routerFd);
+            winsize tmpwin;
+            tmpwin.ws_row = ti.row();
+            tmpwin.ws_col = ti.column();
+            tmpwin.ws_xpixel = ti.width();
+            tmpwin.ws_ypixel = ti.height();
+            ioctl(masterFd, TIOCSWINSZ, &tmpwin);
+            break;
+          }
+        }
       }
+    } catch (std::exception ex) {
+      LOG(INFO) << ex.what();
+      run = false;
+      break;
     }
   }
 

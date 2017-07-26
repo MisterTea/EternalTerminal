@@ -145,10 +145,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
                   serverClientState->readProto<et::TerminalBuffer>();
-              const string& s = tb.buffer();
               // VLOG(2) << "Got bytes from client: " << s.length() << " " <<
               // serverClientState->getReader()->getSequenceNumber();
-              FATAL_FAIL(writeAll(terminalFd, &s[0], s.length()));
+              char c = TERMINAL_BUFFER;
+              writeAll(terminalFd, &c, sizeof(char));
+              writeProto(terminalFd, tb);
               break;
             }
             case et::PacketType::KEEP_ALIVE: {
@@ -162,12 +163,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               VLOG(1) << "Got terminal info";
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
-              winsize tmpwin;
-              tmpwin.ws_row = ti.row();
-              tmpwin.ws_col = ti.column();
-              tmpwin.ws_xpixel = ti.width();
-              tmpwin.ws_ypixel = ti.height();
-              ioctl(terminalFd, TIOCSWINSZ, &tmpwin);
+              char c = TERMINAL_INFO;
+              writeAll(terminalFd, &c, sizeof(char));
+              writeProto(terminalFd, ti);
               break;
             }
             case PacketType::PORT_FORWARD_REQUEST: {

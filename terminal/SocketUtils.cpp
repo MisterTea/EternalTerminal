@@ -23,7 +23,7 @@ int readAll(int fd, char* buf, size_t count) {
       return rc;
     }
     if (rc == 0) {
-      LOG(FATAL) << "Could not read bytes, socket closed";
+      throw std::runtime_error("Socket has closed abruptly.");
     }
     bytesRead += rc;
   } while (bytesRead != count);

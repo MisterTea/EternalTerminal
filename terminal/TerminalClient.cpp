@@ -102,12 +102,15 @@ shared_ptr<ClientConnection> createClient() {
   return client;
 };
 
+int firstWindowChangedCall=1;
 void handleWindowChanged(winsize* win) {
   winsize tmpwin;
   ioctl(1, TIOCGWINSZ, &tmpwin);
-  if (win->ws_row != tmpwin.ws_row || win->ws_col != tmpwin.ws_col ||
+  if (firstWindowChangedCall ||
+      win->ws_row != tmpwin.ws_row || win->ws_col != tmpwin.ws_col ||
       win->ws_xpixel != tmpwin.ws_xpixel ||
       win->ws_ypixel != tmpwin.ws_ypixel) {
+    firstWindowChangedCall = 0;
     *win = tmpwin;
     LOG(INFO) << "Window size changed: " << win->ws_row << " " << win->ws_col
               << " " << win->ws_xpixel << " " << win->ws_ypixel << endl;
