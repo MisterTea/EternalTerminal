@@ -259,7 +259,11 @@ void UnixSocketHandler::createServerSockets(int port) {
       cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
            << p->ai_protocol << ": " << errno << " " << strerror(errno)
            << flush;
-      exit(1);
+      stringstream oss;
+      oss << "Error binding port " << port
+          << ": " << errno << " " << strerror(errno);
+      string s = oss.str();
+      throw std::runtime_error(s.c_str());
       // close(sockfd);
       // continue;
     }

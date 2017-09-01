@@ -137,14 +137,6 @@ int main(int argc, char** argv) {
   globalClient = createClient();
   shared_ptr<UnixSocketHandler> socketHandler =
       static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
-  winsize win;
-  ioctl(1, TIOCGWINSZ, &win);
-
-  termios terminal_local;
-  tcgetattr(0, &terminal_local);
-  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
-  cfmakeraw(&terminal_local);
-  tcsetattr(0, TCSANOW, &terminal_local);
 
   // Whether the TE should keep running.
   bool run = true;
@@ -168,19 +160,33 @@ int main(int argc, char** argv) {
   }
 
   PortForwardClientRouter portForwardRouter;
-  if (FLAGS_portforward.length()) {
-    auto j = split(FLAGS_portforward, ',');
-    for (auto& pair : j) {
-      vector<string> sourceDestination = split(pair, ':');
-      // TODO: Handle bad input
-      int sourcePort = stoi(sourceDestination[0]);
-      int destinationPort = stoi(sourceDestination[1]);
+  try {
+    if (FLAGS_portforward.length()) {
+      auto j = split(FLAGS_portforward, ',');
+      for (auto& pair : j) {
+        vector<string> sourceDestination = split(pair, ':');
+        // TODO: Handle bad input
+        int sourcePort = stoi(sourceDestination[0]);
+        int destinationPort = stoi(sourceDestination[1]);
 
-      portForwardRouter.addListener(
-          shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
-              socketHandler, sourcePort, destinationPort)));
+        portForwardRouter.addListener(
+            shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
+                socketHandler, sourcePort, destinationPort)));
+      }
     }
+  } catch (const std::runtime_error& ex) {
+    cout << "Error establishing port forward: " << ex.what() << endl;
+    exit(1);
   }
+
+  winsize win;
+  ioctl(1, TIOCGWINSZ, &win);
+
+  termios terminal_local;
+  tcgetattr(0, &terminal_local);
+  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
+  cfmakeraw(&terminal_local);
+  tcsetattr(0, TCSANOW, &terminal_local);
 
   while (run && !globalClient->isShuttingDown()) {
     // Data structures needed for select() and
