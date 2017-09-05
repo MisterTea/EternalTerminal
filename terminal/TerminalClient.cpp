@@ -165,13 +165,36 @@ int main(int argc, char** argv) {
       auto j = split(FLAGS_portforward, ',');
       for (auto& pair : j) {
         vector<string> sourceDestination = split(pair, ':');
-        // TODO: Handle bad input
-        int sourcePort = stoi(sourceDestination[0]);
-        int destinationPort = stoi(sourceDestination[1]);
+	if (sourceDestination[0].find('-') != string::npos
+	    && sourceDestination[1].find('-') != string::npos) {
+	  vector<string> sourcePortRange = split(sourceDestination[0], '-');
+	  int sourcePortStart = stoi(sourcePortRange[0]);
+	  int sourcePortEnd = stoi(sourcePortRange[1]);
 
-        portForwardRouter.addListener(
-            shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
-                socketHandler, sourcePort, destinationPort)));
+	  vector<string> destinationPortRange = split(sourceDestination[1], '-');
+	  int destinationPortStart = stoi(destinationPortRange[0]);
+	  int destinationPortEnd = stoi(destinationPortRange[1]);
+
+	  if (sourcePortEnd - sourcePortStart != destinationPortEnd - destinationPortStart) {
+	    cout << "source/destination port range don't match" << endl;
+	    exit(1);
+	  } else {
+	    int portRangeLength = sourcePortEnd - sourcePortStart + 1;
+	    for (int i=0; i < portRangeLength; ++i) {
+	      portForwardRouter.addListener(
+		  shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
+		      socketHandler, sourcePortStart+i, destinationPortStart+i)));
+	    }
+	  }
+	} else {
+          // TODO: Handle bad input
+          int sourcePort = stoi(sourceDestination[0]);
+          int destinationPort = stoi(sourceDestination[1]);
+
+          portForwardRouter.addListener(
+              shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
+                  socketHandler, sourcePort, destinationPort)));
+        }
       }
     }
   } catch (const std::runtime_error& ex) {
