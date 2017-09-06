@@ -34,7 +34,7 @@ DEFINE_string(idpasskeyfile, "",
               "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
 DEFINE_string(portforward, "",
-              "Array of source:destination ports (e.g. 10080:80,10443:443)");
+              "Array of source:destination ports or srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. 10080:80,10443:443, 10090-10092:8000-8002)");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -188,7 +188,6 @@ int main(int argc, char** argv) {
 	      }
 	    }
 	  } else {
-            // TODO: Handle bad input
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
