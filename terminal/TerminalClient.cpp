@@ -34,7 +34,7 @@ DEFINE_string(idpasskeyfile, "",
               "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
 DEFINE_string(portforward, "",
-              "Array of source:destination ports or srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. 10080:80,10443:443, 10090-10092:8000-8002)");
+              "Array of source:destination ports (e.g. 10080:80,10443:443)");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -165,35 +165,40 @@ int main(int argc, char** argv) {
       auto j = split(FLAGS_portforward, ',');
       for (auto& pair : j) {
         vector<string> sourceDestination = split(pair, ':');
-	if (sourceDestination[0].find('-') != string::npos
-	    && sourceDestination[1].find('-') != string::npos) {
-	  vector<string> sourcePortRange = split(sourceDestination[0], '-');
-	  int sourcePortStart = stoi(sourcePortRange[0]);
-	  int sourcePortEnd = stoi(sourcePortRange[1]);
+        try {
+	  if (sourceDestination[0].find('-') != string::npos
+	      && sourceDestination[1].find('-') != string::npos) {
+	    vector<string> sourcePortRange = split(sourceDestination[0], '-');
+	    int sourcePortStart = stoi(sourcePortRange[0]);
+	    int sourcePortEnd = stoi(sourcePortRange[1]);
 
-	  vector<string> destinationPortRange = split(sourceDestination[1], '-');
-	  int destinationPortStart = stoi(destinationPortRange[0]);
-	  int destinationPortEnd = stoi(destinationPortRange[1]);
+	    vector<string> destinationPortRange = split(sourceDestination[1], '-');
+	    int destinationPortStart = stoi(destinationPortRange[0]);
+	    int destinationPortEnd = stoi(destinationPortRange[1]);
 
-	  if (sourcePortEnd - sourcePortStart != destinationPortEnd - destinationPortStart) {
-	    cout << "source/destination port range don't match" << endl;
-	    exit(1);
-	  } else {
-	    int portRangeLength = sourcePortEnd - sourcePortStart + 1;
-	    for (int i=0; i < portRangeLength; ++i) {
-	      portForwardRouter.addListener(
+	    if (sourcePortEnd - sourcePortStart != destinationPortEnd - destinationPortStart) {
+	      cout << "source/destination port range don't match" << endl;
+	      exit(1);
+	    } else {
+	      int portRangeLength = sourcePortEnd - sourcePortStart + 1;
+	      for (int i=0; i < portRangeLength; ++i) {
+	        portForwardRouter.addListener(
 		  shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
 		      socketHandler, sourcePortStart+i, destinationPortStart+i)));
+	      }
 	    }
-	  }
-	} else {
-          // TODO: Handle bad input
-          int sourcePort = stoi(sourceDestination[0]);
-          int destinationPort = stoi(sourceDestination[1]);
+	  } else {
+            // TODO: Handle bad input
+            int sourcePort = stoi(sourceDestination[0]);
+            int destinationPort = stoi(sourceDestination[1]);
 
-          portForwardRouter.addListener(
+            portForwardRouter.addListener(
               shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
                   socketHandler, sourcePort, destinationPort)));
+          }
+        } catch (const std::logic_error& lr) {
+          cout << "Logic error: " << lr.what() << endl;
+          exit(1);
         }
       }
     }
