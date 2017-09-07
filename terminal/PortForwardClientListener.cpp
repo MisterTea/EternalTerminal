@@ -104,7 +104,7 @@ void PortForwardClientListener::sendDataOnSocket(int socketId,
 void PortForwardClientListener::closeSocket(int socketId) {
   auto it = socketFdMap.find(socketId);
   if (it == socketFdMap.end()) {
-    LOG(FATAL) << "Tried to remove a socket that no longer exists!";
+    LOG(ERROR) << "Tried to remove a socket that no longer exists!";
   } else {
     socketHandler->close(it->second);
     socketFdMap.erase(it);

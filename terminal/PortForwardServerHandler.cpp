@@ -38,6 +38,7 @@ void PortForwardServerHandler::update(vector<PortForwardData>* retval) {
     }
     retval->push_back(pwd);
     if (bytesRead < 1) {
+      LOG(INFO) << "Socket " << socketId << " closed";
       socketHandler->close(fd);
       fd = -1;
       break;

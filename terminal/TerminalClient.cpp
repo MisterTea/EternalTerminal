@@ -305,7 +305,7 @@ int main(int argc, char** argv) {
                 LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
                 portForwardRouter.closeSocketId(pwd.socketid());
               } else if (pwd.has_error()) {
-                // TODO: Probably need to do something better here
+                LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
                 portForwardRouter.closeSocketId(pwd.socketid());
               } else {
                 portForwardRouter.sendDataOnSocket(pwd.socketid(),

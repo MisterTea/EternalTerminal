@@ -216,7 +216,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               LOG(INFO) << "Got data for socket: " << pwd.socketid();
               auto it = portForwardHandlers.find(pwd.socketid());
               if (it == portForwardHandlers.end()) {
-                LOG(ERROR) << "Got data for a socket id that doesn't exist: "
+                LOG(ERROR) << "Got data for a socket id that has already closed: "
                            << pwd.socketid();
               } else {
                 if (pwd.has_closed()) {
