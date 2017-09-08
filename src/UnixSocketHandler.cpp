@@ -260,8 +260,8 @@ void UnixSocketHandler::createServerSockets(int port) {
            << p->ai_protocol << ": " << errno << " " << strerror(errno)
            << flush;
       stringstream oss;
-      oss << "Error binding port " << port
-          << ": " << errno << " " << strerror(errno);
+      oss << "Error binding port " << port << ": " << errno << " "
+          << strerror(errno);
       string s = oss.str();
       throw std::runtime_error(s.c_str());
       // close(sockfd);

@@ -34,7 +34,9 @@ DEFINE_string(idpasskeyfile, "",
               "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
 DEFINE_string(portforward, "",
-              "Array of source:destination ports or srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. 10080:80,10443:443, 10090-10092:8000-8002)");
+              "Array of source:destination ports or "
+              "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
+              "10080:80,10443:443, 10090-10092:8000-8002)");
 
 shared_ptr<ClientConnection> createClient() {
   string id = FLAGS_id;
@@ -102,13 +104,12 @@ shared_ptr<ClientConnection> createClient() {
   return client;
 };
 
-int firstWindowChangedCall=1;
+int firstWindowChangedCall = 1;
 void handleWindowChanged(winsize* win) {
   winsize tmpwin;
   ioctl(1, TIOCGWINSZ, &tmpwin);
-  if (firstWindowChangedCall ||
-      win->ws_row != tmpwin.ws_row || win->ws_col != tmpwin.ws_col ||
-      win->ws_xpixel != tmpwin.ws_xpixel ||
+  if (firstWindowChangedCall || win->ws_row != tmpwin.ws_row ||
+      win->ws_col != tmpwin.ws_col || win->ws_xpixel != tmpwin.ws_xpixel ||
       win->ws_ypixel != tmpwin.ws_ypixel) {
     firstWindowChangedCall = 0;
     *win = tmpwin;
@@ -166,34 +167,38 @@ int main(int argc, char** argv) {
       for (auto& pair : j) {
         vector<string> sourceDestination = split(pair, ':');
         try {
-	  if (sourceDestination[0].find('-') != string::npos
-	      && sourceDestination[1].find('-') != string::npos) {
-	    vector<string> sourcePortRange = split(sourceDestination[0], '-');
-	    int sourcePortStart = stoi(sourcePortRange[0]);
-	    int sourcePortEnd = stoi(sourcePortRange[1]);
+          if (sourceDestination[0].find('-') != string::npos &&
+              sourceDestination[1].find('-') != string::npos) {
+            vector<string> sourcePortRange = split(sourceDestination[0], '-');
+            int sourcePortStart = stoi(sourcePortRange[0]);
+            int sourcePortEnd = stoi(sourcePortRange[1]);
 
-	    vector<string> destinationPortRange = split(sourceDestination[1], '-');
-	    int destinationPortStart = stoi(destinationPortRange[0]);
-	    int destinationPortEnd = stoi(destinationPortRange[1]);
+            vector<string> destinationPortRange =
+                split(sourceDestination[1], '-');
+            int destinationPortStart = stoi(destinationPortRange[0]);
+            int destinationPortEnd = stoi(destinationPortRange[1]);
 
-	    if (sourcePortEnd - sourcePortStart != destinationPortEnd - destinationPortStart) {
-	      cout << "source/destination port range don't match" << endl;
-	      exit(1);
-	    } else {
-	      int portRangeLength = sourcePortEnd - sourcePortStart + 1;
-	      for (int i=0; i < portRangeLength; ++i) {
-	        portForwardRouter.addListener(
-		  shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
-		      socketHandler, sourcePortStart+i, destinationPortStart+i)));
-	      }
-	    }
-	  } else {
+            if (sourcePortEnd - sourcePortStart !=
+                destinationPortEnd - destinationPortStart) {
+              cout << "source/destination port range don't match" << endl;
+              exit(1);
+            } else {
+              int portRangeLength = sourcePortEnd - sourcePortStart + 1;
+              for (int i = 0; i < portRangeLength; ++i) {
+                portForwardRouter.addListener(
+                    shared_ptr<PortForwardClientListener>(
+                        new PortForwardClientListener(
+                            socketHandler, sourcePortStart + i,
+                            destinationPortStart + i)));
+              }
+            }
+          } else {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardRouter.addListener(
-              shared_ptr<PortForwardClientListener>(new PortForwardClientListener(
-                  socketHandler, sourcePort, destinationPort)));
+            portForwardRouter.addListener(shared_ptr<PortForwardClientListener>(
+                new PortForwardClientListener(socketHandler, sourcePort,
+                                              destinationPort)));
           }
         } catch (const std::logic_error& lr) {
           cout << "Logic error: " << lr.what() << endl;

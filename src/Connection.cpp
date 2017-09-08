@@ -19,7 +19,7 @@ inline bool isSkippableError() {
                           // there's a race condition between ta thread
                           // closing a connection and one
                           // reading/writing.
-          );
+  );
 }
 
 ssize_t Connection::read(string* buf) {

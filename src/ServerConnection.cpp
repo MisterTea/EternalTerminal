@@ -43,9 +43,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         et::ConnectResponse response;
 
         std::ostringstream errorStream;
-        errorStream << "Mismatched protocol versions.  "
-                    << "Your client & server must be on the same version of ET.  "
-                    << "Client: " << request.version() << " != Server: " << PROTOCOL_VERSION;
+        errorStream
+            << "Mismatched protocol versions.  "
+            << "Your client & server must be on the same version of ET.  "
+            << "Client: " << request.version()
+            << " != Server: " << PROTOCOL_VERSION;
         response.set_status(MISMATCHED_PROTOCOL);
         response.set_error(errorStream.str());
         socketHandler->writeProto(clientSocketFd, response, true);

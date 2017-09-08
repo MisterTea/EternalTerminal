@@ -12,9 +12,9 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
-#include <sys/wait.h>
 
 #if __APPLE__
 #include <sys/ucred.h>
@@ -53,7 +53,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     close(routerFd);
     if (errno == ECONNREFUSED) {
       cout << "Error:  The Eternal Terminal daemon is not running.  Please "
-          "(re)start the et daemon on the server."
+              "(re)start the et daemon on the server."
            << endl;
     } else {
       cout << "Error:  Connection error communicating with et deamon: "
@@ -147,12 +147,13 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         int rc = read(routerFd, &packetType, 1);
         FATAL_FAIL(rc);
         if (rc == 0) {
-          throw std::runtime_error("Router has ended abruptly.  Killing terminal session.");
+          throw std::runtime_error(
+              "Router has ended abruptly.  Killing terminal session.");
         }
         switch (packetType) {
           case TERMINAL_BUFFER: {
             TerminalBuffer tb = readProto<TerminalBuffer>(routerFd);
-            const string& buffer = tb.buffer();
+            const string &buffer = tb.buffer();
             FATAL_FAIL(writeAll(masterFd, &buffer[0], buffer.length()));
             break;
           }
