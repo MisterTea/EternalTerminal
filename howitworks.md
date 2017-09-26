@@ -49,7 +49,7 @@ The ways that one can authenticate and begin an secure connection are
 numerous and complicated.  In addition, authentication must be handled
 delicately to avoid security holes.  At the moment, ET does not handle
 authentication, but relies on ssh to make the initial connection
-(similar to [Mosh](www.mosh.org)).  Once an ssh connection is
+(similar to [Mosh](https://www.mosh.org)).  Once an ssh connection is
 established, the server creates a password that is good for the
 duration of the client's session.  The one-time password is sent
 securely back to the client and is also used to start a new ETServer
