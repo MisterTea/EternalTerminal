@@ -7,6 +7,7 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "ParseConfigFile.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -134,6 +135,29 @@ int main(int argc, char** argv) {
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
+
+  Options options = {
+    NULL, //username
+    NULL, //host
+    NULL, //sshdir
+    NULL, //knownhosts
+    NULL, //ProxyCommand
+    0, //timeout
+    0, //port
+    0, //StrictHostKeyChecking
+    0, //ssh2
+    0, //ssh1
+    NULL, //gss_server_identity
+    NULL, //gss_client_identity
+    0 //gss_delegate_creds
+  };
+  char* home_dir = ssh_get_user_home_dir();
+  ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
+  /* First parse user-specific ssh config, then system-wide config. */
+  parse_ssh_config_file(&options, string(home_dir) + "/.ssh/config");
+  parse_ssh_config_file(&options, "/etc/ssh/ssh_config");
+  cout << "connecting to " << options.host << endl;
+  FLAGS_host = string(options.host);
 
   globalClient = createClient();
   shared_ptr<UnixSocketHandler> socketHandler =
