@@ -805,38 +805,6 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
                 options->port = i & 0xffff;
             }
             break;
-	/*
-        case SSH_OPTIONS_FD:
-            if (value == NULL) {
-                options->fd = SSH_INVALID_SOCKET;
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                socket_t *x = (socket_t *) value;
-                if (*x < 0) {
-                    options->fd = SSH_INVALID_SOCKET;
-                    cout<< "invalid error" << endl;
-                    return -1;
-                }
-
-                options->fd = *x & 0xffff;
-            }
-            break;
-        case SSH_OPTIONS_BINDADDR:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            }
-
-            q = strdup(v);
-            if (q == NULL) {
-                return -1;
-            }
-            SAFE_FREE(options->bindaddr);
-            options->bindaddr = q;
-            break;
-	*/
         case SSH_OPTIONS_USER:
             v = static_cast<const char*>(value);
             SAFE_FREE(options->username);
@@ -858,44 +826,6 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
                 }
             }
             break;
-	/*
-        case SSH_OPTIONS_SSH_DIR:
-            v = value;
-            SAFE_FREE(options->sshdir);
-            if (v == NULL) {
-                options->sshdir = ssh_path_expand_tilde("~/.ssh");
-                if (options->sshdir == NULL) {
-                    return -1;
-                }
-            } else if (v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                options->sshdir = ssh_path_expand_tilde(v);
-                if (options->sshdir == NULL) {
-                    cout<< "error" << endl;
-                    return -1;
-                }
-            }
-            break;
-        case SSH_OPTIONS_IDENTITY:
-        case SSH_OPTIONS_ADD_IDENTITY:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            }
-            q = strdup(v);
-            if (q == NULL) {
-                return -1;
-            }
-            rc = ssh_list_prepend(options->identity, q);
-            if (rc < 0) {
-                free(q);
-                return -1;
-            }
-            break;
-	*/
         case SSH_OPTIONS_KNOWNHOSTS:
             v = static_cast<const char*>(value);
             SAFE_FREE(options->knownhosts);
@@ -931,22 +861,6 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
                 options->timeout = *x & 0xffffffff;
             }
             break;
-	/*
-        case SSH_OPTIONS_TIMEOUT_USEC:
-            if (value == NULL) {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                long *x = (long *) value;
-                if (*x < 0) {
-                    cout<< "invalid error" << endl;
-                    return -1;
-                }
-
-                options->timeout_usec = *x & 0xffffffff;
-            }
-            break;
-	*/
         case SSH_OPTIONS_SSH1:
             if (value == NULL) {
                 cout<< "invalid error" << endl;
@@ -975,169 +889,6 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
                 options->ssh2 = *x & 0xffff;
             }
             break;
-	/*
-        case SSH_OPTIONS_LOG_VERBOSITY:
-            if (value == NULL) {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                int *x = (int *) value;
-                if (*x < 0) {
-                    cout<< "invalid error" << endl;
-                    return -1;
-                }
-
-                session->common.log_verbosity = *x & 0xffff;
-                ssh_set_log_level(*x & 0xffff);
-            }
-            break;
-        case SSH_OPTIONS_LOG_VERBOSITY_STR:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                session->common.log_verbosity = 0;
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                q = strdup(v);
-                if (q == NULL) {
-                    cout<< "error" << endl;
-                    return -1;
-                }
-                i = strtol(q, &p, 10);
-                if (q == p) {
-                    SAFE_FREE(q);
-                }
-                SAFE_FREE(q);
-                if (i < 0) {
-                    cout<< "invalid error" << endl;
-                    return -1;
-                }
-
-                session->common.log_verbosity = i & 0xffff;
-                ssh_set_log_level(i & 0xffff);
-            }
-            break;
-        case SSH_OPTIONS_CIPHERS_C_S:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_CRYPT_C_S, v) < 0)
-                    return -1;
-            }
-            break;
-        case SSH_OPTIONS_CIPHERS_S_C:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_CRYPT_S_C, v) < 0)
-                    return -1;
-            }
-            break;
-        case SSH_OPTIONS_KEY_EXCHANGE:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_KEX, v) < 0)
-                    return -1;
-            }
-            break;
-        case SSH_OPTIONS_HOSTKEYS:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_HOSTKEYS, v) < 0)
-                    return -1;
-            }
-            break;
-        case SSH_OPTIONS_HMAC_C_S:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_MAC_C_S, v) < 0)
-                    return -1;
-            }
-            break;
-         case SSH_OPTIONS_HMAC_S_C:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (ssh_options_set_algo(session, SSH_MAC_S_C, v) < 0)
-                    return -1;
-            }
-            break;
-        case SSH_OPTIONS_COMPRESSION_C_S:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (strcasecmp(value,"yes")==0){
-                    if(ssh_options_set_algo(session,SSH_COMP_C_S,"zlib@openssh.com,zlib") < 0)
-                        return -1;
-                } else if (strcasecmp(value,"no")==0){
-                    if(ssh_options_set_algo(session,SSH_COMP_C_S,"none") < 0)
-                        return -1;
-                } else {
-                    if (ssh_options_set_algo(session, SSH_COMP_C_S, v) < 0)
-                        return -1;
-                }
-            }
-            break;
-        case SSH_OPTIONS_COMPRESSION_S_C:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                if (strcasecmp(value,"yes")==0){
-                    if(ssh_options_set_algo(session,SSH_COMP_S_C,"zlib@openssh.com,zlib") < 0)
-                        return -1;
-                } else if (strcasecmp(value,"no")==0){
-                    if(ssh_options_set_algo(session,SSH_COMP_S_C,"none") < 0)
-                        return -1;
-                } else {
-                    if (ssh_options_set_algo(session, SSH_COMP_S_C, v) < 0)
-                        return -1;
-                }
-            }
-            break;
-        case SSH_OPTIONS_COMPRESSION:
-            v = value;
-            if (v == NULL || v[0] == '\0') {
-                cout<< "invalid error" << endl;
-                return -1;
-            }
-            if(ssh_options_set(session,SSH_OPTIONS_COMPRESSION_C_S, v) < 0)
-                return -1;
-            if(ssh_options_set(session,SSH_OPTIONS_COMPRESSION_S_C, v) < 0)
-                return -1;
-            break;
-        case SSH_OPTIONS_COMPRESSION_LEVEL:
-            if (value == NULL) {
-                cout<< "invalid error" << endl;
-                return -1;
-            } else {
-                int *x = (int *)value;
-                if (*x < 1 || *x > 9) {
-                    cout<< "invalid error" << endl;
-                    return -1;
-                }
-                options->compressionlevel = *x & 0xff;
-            }
-            break;
-    	*/
         case SSH_OPTIONS_STRICTHOSTKEYCHECK:
             if (value == NULL) {
                 cout<< "invalid error" << endl;
@@ -1427,31 +1178,6 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
          }
       }
       break;
-    /*
-    case SOC_IDENTITY:
-      p = ssh_config_get_str_tok(&s, NULL);
-      if (p && *parsing) {
-        ssh_options_set(options, SSH_OPTIONS_ADD_IDENTITY, p);
-      }
-      break;
-    case SOC_CIPHERS:
-      p = ssh_config_get_str_tok(&s, NULL);
-      if (p && *parsing) {
-        ssh_options_set(options, SSH_OPTIONS_CIPHERS_C_S, p);
-        ssh_options_set(options, SSH_OPTIONS_CIPHERS_S_C, p);
-      }
-      break;
-    case SOC_COMPRESSION:
-      i = ssh_config_get_yesno(&s, -1);
-      if (i >= 0 && *parsing) {
-        if (i) {
-          ssh_options_set(options, SSH_OPTIONS_COMPRESSION, "yes");
-        } else {
-          ssh_options_set(options, SSH_OPTIONS_COMPRESSION, "no");
-        }
-      }
-      break;
-    */
     case SOC_PROTOCOL:
       p = ssh_config_get_str_tok(&s, NULL);
       if (p && *parsing) {
@@ -1526,10 +1252,10 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
       }
       break;
     case SOC_UNSUPPORTED:
-      cout << "unsupported config opcode: " << keyword << ", ignored" << endl;
+      LOG(INFO) << "unsupported config opcode: " << keyword << ", ignored" << endl;
       break;
     default:
-      cout << "error" << endl;
+      cout << "parse error" << endl;
       SAFE_FREE(x);
       return -1;
       break;

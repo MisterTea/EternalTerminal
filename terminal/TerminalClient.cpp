@@ -23,6 +23,9 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
+const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
+const string USER_SSH_CONFIG_PATH = "/.ssh/config";
+
 shared_ptr<ClientConnection> globalClient;
 
 termios terminal_backup;
@@ -154,9 +157,9 @@ int main(int argc, char** argv) {
   char* home_dir = ssh_get_user_home_dir();
   ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
   /* First parse user-specific ssh config, then system-wide config. */
-  parse_ssh_config_file(&options, string(home_dir) + "/.ssh/config");
-  parse_ssh_config_file(&options, "/etc/ssh/ssh_config");
-  cout << "connecting to " << options.host << endl;
+  parse_ssh_config_file(&options, string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(&options,SYSTEM_SSH_CONFIG_PATH);
+  LOG(INFO) << "Parsed ssh config file, connecting to " << options.host << endl;
   FLAGS_host = string(options.host);
 
   globalClient = createClient();
