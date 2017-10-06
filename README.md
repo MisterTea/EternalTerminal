@@ -24,7 +24,22 @@ For Ubuntu, use our PPA:
 
 Install dependencies:
 
-	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev libgflags-dev unzip wget
+    Debian:
+
+	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev \
+	libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev \
+	libgflags-dev unzip wget
+	
+    Fedora (tested on 25):
+
+        sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+	protobuf-compiler cmake glog-devel gflags-devel wget unzip
+
+    Gentoo:
+
+        sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
+	dev-libs/protobuf dev-util/cmake dev-cpp/glog dev-cpp/gflags \
+	net-misc/wget app-arch/unzip
 
 Download and install from source:
 
