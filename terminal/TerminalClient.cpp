@@ -7,6 +7,7 @@
 #include "ServerConnection.hpp"
 #include "SocketUtils.hpp"
 #include "UnixSocketHandler.hpp"
+#include "ParseConfigFile.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -22,6 +23,9 @@ namespace google {}
 namespace gflags {}
 using namespace google;
 using namespace gflags;
+
+const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
+const string USER_SSH_CONFIG_PATH = "/.ssh/config";
 
 shared_ptr<ClientConnection> globalClient;
 
@@ -273,6 +277,32 @@ int main(int argc, char **argv) {
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
+
+  Options o = {
+    NULL, //username
+    NULL, //host
+    NULL, //sshdir
+    NULL, //knownhosts
+    NULL, //ProxyCommand
+    0, //timeout
+    0, //port
+    0, //StrictHostKeyChecking
+    0, //ssh2
+    0, //ssh1
+    NULL, //gss_server_identity
+    NULL, //gss_client_identity
+    0 //gss_delegate_creds
+  };
+  shared_ptr<Options> options(new Options());
+  memcpy(options.get(),&o,sizeof(Options));
+  char* home_dir = ssh_get_user_home_dir();
+  ssh_options_set(options.get(), SSH_OPTIONS_HOST, FLAGS_host.c_str());
+  // First parse user-specific ssh config, then system-wide config.
+
+  parse_ssh_config_file(options.get(), string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(options.get(),SYSTEM_SSH_CONFIG_PATH);
+  LOG(INFO) << "Parsed ssh config file, connecting to " << options->host << endl;
+  FLAGS_host = string(options->host);
 
   initSetupSSH();
 
