@@ -1,9 +1,22 @@
 #include "Headers.hpp"
 
-// TODO: Merge this with SocketHandler codebase
 int writeAll(int fd, const char* buf, size_t count);
 
 int readAll(int fd, char* buf, size_t count);
+
+inline string readMessage(int fd) {
+  int64_t length;
+  readAll(fd, (char*)&length, sizeof(int64_t));
+  string s(length, 0);
+  readAll(fd, &s[0], length);
+  return s;
+}
+
+inline void writeMessage(int fd, const string& s) {
+  int64_t length = s.length();
+  writeAll(fd, (const char*)&length, sizeof(int64_t));
+  writeAll(fd, &s[0], length);
+}
 
 template <typename T>
 inline T readProto(int fd) {

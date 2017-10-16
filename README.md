@@ -55,7 +55,13 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
-Once you have an open port, the syntax is similar to `ssh`: `et user@hostname[:port]`. You can pass additional arguments to `ssh` using the `-s` parameter. For instance, if you have `sshd` listening on port 5000: `et -s="-p 5000 user@host" user@host`.
+Note that starting from the latest release, et starts from etclient instead of `/launcher/et` script. And you can specify a jumphost and the port et is running on using `--jumphost` and `--jport`.
+```
+etclient --host hostname --port 2022
+etclient --host hostname --port 2022 --jumphost jump_hostname --jport 9999
+```
+You can pass additional arguments to etclient such as port forwarding pairs with option `--portforward="18000:8000, 18001-18003:8001-8003"`, or a command to run immediately after the connection is setup through `--command`. Username is default to the current username starting the et process, use `--user` to specify a different if necessary.
+
 
 ## Building from source
 
