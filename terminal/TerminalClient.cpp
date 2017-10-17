@@ -2,18 +2,18 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "ParseConfigFile.hpp"
 #include "PortForwardClientListener.hpp"
 #include "PortForwardClientRouter.hpp"
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
-#include "SocketUtils.hpp"
+#include "SshSetupHandler.hpp"
 #include "UnixSocketHandler.hpp"
-#include "ParseConfigFile.hpp"
 
 #include <errno.h>
 #include <pwd.h>
 #include <sys/ioctl.h>
 #include <sys/types.h>
-#include <sys/wait.h>
 #include <termios.h>
 
 #include "ETerminal.pb.h"
@@ -34,10 +34,6 @@ termios terminal_backup;
 DEFINE_string(user, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
-DEFINE_string(id, "", "Unique ID assigned to this session");
-DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
-DEFINE_string(idpasskeyfile, "",
-              "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
 DEFINE_string(portforward, "",
               "Array of source:destination ports or "
@@ -46,37 +42,17 @@ DEFINE_string(portforward, "",
 DEFINE_string(jumphost, "", "jumphost between localhost and destination");
 DEFINE_int32(jport, 2022, "port to connect on jumphost");
 
-shared_ptr<ClientConnection> createClient() {
-  string id = FLAGS_id;
-  string passkey = FLAGS_passkey;
-  if (FLAGS_idpasskeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_idpasskeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    string idpasskeypair = buffer.str();
-    // Trim whitespace
-    idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
-    size_t slashIndex = idpasskeypair.find("/");
-    if (slashIndex == string::npos) {
-      LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
-    } else {
-      id = idpasskeypair.substr(0, slashIndex);
-      passkey = idpasskeypair.substr(slashIndex + 1);
-      LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
-    }
-    // Delete the file with the passkey
-    remove(FLAGS_idpasskeyfile.c_str());
-  }
-  if (passkey.length() == 0 || id.length() == 0) {
-    cout << "Unless you are doing development on Eternal Terminal,\nplease do "
-            "not call etclient directly.\n\nThe et launcher (run on the "
-            "client) calls etclient with the correct parameters.\nThis ensures "
-            "a secure connection.\n\nIf you intended to call etclient "
-            "directly, please provide a passkey\n(run \"etclient --help\" for "
-            "details)."
-         << endl;
-    exit(1);
+shared_ptr<ClientConnection> createClient(string idpasskeypair) {
+  string id = "", passkey = "";
+  // Trim whitespace
+  idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
+  size_t slashIndex = idpasskeypair.find("/");
+  if (slashIndex == string::npos) {
+    LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
+  } else {
+    id = idpasskeypair.substr(0, slashIndex);
+    passkey = idpasskeypair.substr(slashIndex + 1);
+    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
   }
   if (passkey.length() != 32) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
@@ -137,139 +113,7 @@ void handleWindowChanged(winsize* win) {
   }
 }
 
-void initSetupSSH() {
-  string CLIENT_TERM(getenv("TERM"));
-  if (FLAGS_passkey.empty()) {
-    FILE *passkey_p = popen(
-        "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32", "r");
-    if (!passkey_p) {
-      cout << "cannot generate passkey!" << endl;
-      exit(1);
-    }
-    char passkey_buffer[1024];
-    fgets(passkey_buffer, sizeof(passkey_buffer), passkey_p);
-    pclose(passkey_p);
-    FLAGS_passkey = string(passkey_buffer);
-  }
-  if (FLAGS_id.empty()) {
-    FILE *id_p = popen(
-        "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 16", "r");
-    if (!id_p) {
-      cout << "cannot generate id!" << endl;
-      exit(1);
-    }
-    char id_buffer[1024];
-    fgets(id_buffer, sizeof(id_buffer), id_p);
-    pclose(id_p);
-    FLAGS_id = string(id_buffer);
-  }
-
-
-  string cmdoptions = "--idpasskey=" + FLAGS_id + "/" + FLAGS_passkey;
-  string SSH_SCRIPT_PREFIX{
-      "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
-      "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
-      "PASSKEY="+FLAGS_passkey+";"
-      "ID="+FLAGS_id+";"
-      "export TERM="+CLIENT_TERM+";"
-      "/usr/bin/etserver "};
-  string SSH_SCRIPT_DST = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
-
-  /* If jumphost is set, we need to pass dst host and port to jumphost
-   * and connect to jumphost here */
-  if (!FLAGS_jumphost.empty()) {
-    cmdoptions += " --jump";
-    if (FLAGS_jport == 0) {
-      cout << "jport need to be set if a jumphost is specified!" << endl;
-      exit(1);
-    }
-    cmdoptions +=
-        " --dsthost=" + FLAGS_host + " --dstport=" + to_string(FLAGS_port);
-  }
-  string SSH_SCRIPT_JUMP = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
-
-  int link[2];
-  char foo[4096];
-  if (pipe(link) == -1) {
-    cout << "pipe" << endl;
-    exit(1);
-  }
-
-  pid_t pid = fork();
-  string SSH_USER_PREFIX = "";
-  if (!FLAGS_user.empty()) {
-    SSH_USER_PREFIX += FLAGS_user + "@";
-  }
-  if (!pid) {
-    // start etserver daemon on dst.
-    dup2(link[1], 1);
-    close(link[0]);
-    close(link[1]);
-    if (!FLAGS_jumphost.empty()) {
-      execl("/usr/bin/ssh", "/usr/bin/ssh",
-            "-J", (SSH_USER_PREFIX + FLAGS_jumphost).c_str(),
-            (SSH_USER_PREFIX + FLAGS_host).c_str(),
-            (SSH_SCRIPT_DST).c_str(), NULL);
-    } else {
-      execl("/usr/bin/ssh", "/usr/bin/ssh",
-            (SSH_USER_PREFIX + FLAGS_host).c_str(),
-            (SSH_SCRIPT_DST).c_str(), NULL);
-    }
-
-    LOG(INFO) << "execl error" << endl;
-    exit(1);
-  } else if (pid < 0) {
-    LOG(INFO) << "Failed to fork" << endl;
-    exit(1);
-  } else {
-    close(link[1]);
-    wait(NULL);
-    int nbytes = read(link[0], foo, sizeof(foo));
-    try {
-      auto idpasskey = split(string(foo), ':')[1];
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-      auto idpasskey_splited = split(idpasskey, '/');
-      string id = idpasskey_splited[0];
-      string passkey = idpasskey_splited[1];
-      if (id == FLAGS_id && passkey == FLAGS_passkey) {
-        LOG(INFO) << "etserver started" << endl;
-      } else {
-        LOG(INFO) << id << endl;
-        LOG(INFO) << FLAGS_id << endl;
-        LOG(INFO) << passkey << endl;
-        LOG(INFO) << FLAGS_passkey << endl;
-        cout << "ID " << FLAGS_id << endl;
-        cout << "Received ID " << id << endl;
-        cout << "PASSKEY " << FLAGS_passkey << endl;
-        cout << "Received PASSKEY " << passkey << endl;
-        cout << "client/server idpasskey doesn't match" << endl;
-        exit(1);
-      }
-    } catch (const runtime_error &err) {
-      cout << "Error initializing connection" << err.what() << endl;
-    }
-    // start jumpclient daemon on jumphost.
-    if (!FLAGS_jumphost.empty()) {
-      pid_t pid_jump = fork();
-      if (pid_jump < 0) {
-        cout << "Failed to fork" << endl;
-        exit(1);
-      } else if (pid_jump == 0) {
-        execl("/usr/bin/ssh", "/usr/bin/ssh",
-              (SSH_USER_PREFIX + FLAGS_jumphost).c_str(),
-              (SSH_SCRIPT_JUMP).c_str(), NULL);
-      } else {
-        wait(NULL);
-        LOG(INFO) << "jump client started." << endl;
-        FLAGS_host = FLAGS_jumphost;
-        FLAGS_port = FLAGS_jport;
-      }
-    }
-  }
-  return;
-}
-
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   gflags::SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -278,35 +122,54 @@ int main(int argc, char **argv) {
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
-  Options o = {
-    NULL, //username
-    NULL, //host
-    NULL, //sshdir
-    NULL, //knownhosts
-    NULL, //ProxyCommand
-    0, //timeout
-    0, //port
-    0, //StrictHostKeyChecking
-    0, //ssh2
-    0, //ssh1
-    NULL, //gss_server_identity
-    NULL, //gss_client_identity
-    0 //gss_delegate_creds
+  Options options = {
+      NULL,  // username
+      NULL,  // host
+      NULL,  // sshdir
+      NULL,  // knownhosts
+      NULL,  // ProxyCommand
+      NULL,  // ProxyJump
+      0,     // timeout
+      0,     // port
+      0,     // StrictHostKeyChecking
+      0,     // ssh2
+      0,     // ssh1
+      NULL,  // gss_server_identity
+      NULL,  // gss_client_identity
+      0      // gss_delegate_creds
   };
-  shared_ptr<Options> options(new Options());
-  memcpy(options.get(),&o,sizeof(Options));
+
   char* home_dir = ssh_get_user_home_dir();
-  ssh_options_set(options.get(), SSH_OPTIONS_HOST, FLAGS_host.c_str());
+  ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
   // First parse user-specific ssh config, then system-wide config.
+  parse_ssh_config_file(&options, string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(&options, SYSTEM_SSH_CONFIG_PATH);
+  LOG(INFO) << "Parsed ssh config file, connecting to " << options.host;
+  FLAGS_host = string(options.host);
 
-  parse_ssh_config_file(options.get(), string(home_dir) + USER_SSH_CONFIG_PATH);
-  parse_ssh_config_file(options.get(),SYSTEM_SSH_CONFIG_PATH);
-  LOG(INFO) << "Parsed ssh config file, connecting to " << options->host << endl;
-  FLAGS_host = string(options->host);
+  if (options.ProxyJump) {
+    string proxyjump = string(options.ProxyJump);
+    size_t colonIndex = proxyjump.find(":");
+    if (colonIndex != string::npos) {
+      string userhostpair = proxyjump.substr(0, colonIndex);
+      size_t atIndex = userhostpair.find("@");
+      if (atIndex != string::npos) {
+        FLAGS_jumphost = userhostpair.substr(atIndex + 1);
+      }
+    } else {
+      FLAGS_jumphost = proxyjump;
+    }
+    LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
+  }
 
-  initSetupSSH();
+  string idpasskeypair = SshSetupHandler::SetupSsh(
+      FLAGS_user, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
 
-  globalClient = createClient();
+  if (!FLAGS_jumphost.empty()) {
+    FLAGS_host = FLAGS_jumphost;
+    FLAGS_port = FLAGS_jport;
+  }
+  globalClient = createClient(idpasskeypair);
   shared_ptr<UnixSocketHandler> socketHandler =
       static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
 
@@ -351,7 +214,7 @@ int main(int argc, char **argv) {
 
             if (sourcePortEnd - sourcePortStart !=
                 destinationPortEnd - destinationPortStart) {
-              cout << "source/destination port range don't match" << endl;
+              LOG(FATAL) << "source/destination port range mismatch" << endl;
               exit(1);
             } else {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
@@ -372,13 +235,13 @@ int main(int argc, char **argv) {
                                               destinationPort)));
           }
         } catch (const std::logic_error& lr) {
-          cout << "Logic error: " << lr.what() << endl;
+          LOG(FATAL) << "Logic error: " << lr.what() << endl;
           exit(1);
         }
       }
     }
   } catch (const std::runtime_error& ex) {
-    cout << "Error establishing port forward: " << ex.what() << endl;
+    LOG(FATAL) << "Error establishing port forward: " << ex.what() << endl;
     exit(1);
   }
 
@@ -454,7 +317,8 @@ int main(int argc, char **argv) {
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + 1;
-              FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+              FATAL_FAIL(
+                  RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length()));
               break;
             }
             case et::PacketType::KEEP_ALIVE:

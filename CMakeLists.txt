@@ -108,7 +108,7 @@ add_library(
   STATIC
 
   terminal/SystemUtils.cpp
-  terminal/SocketUtils.cpp
+  terminal/RawSocketUtils.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -138,13 +138,14 @@ target_link_libraries (
   )
 
 add_executable (
-  etclient
+  et
   terminal/TerminalClient.cpp
   terminal/PortForwardClientRouter.cpp
   terminal/PortForwardClientListener.cpp
+  terminal/SshSetupHandler.cpp
   )
 target_link_libraries (
-  etclient
+  et
   LINK_PUBLIC
   TerminalCommon
   EternalTCP-static
@@ -214,12 +215,7 @@ if(BUILD_PACKAGE)
 
 endif()
 
-install(TARGETS etserver etclient
-  PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
-  DESTINATION "bin"
-  )
-
-install(FILES launcher/et
+install(TARGETS etserver et
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
   DESTINATION "bin"
   )
