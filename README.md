@@ -94,5 +94,5 @@ If you have any problems with installation or usage, please [file an issue on gi
 
 ## Developers
 
-Jason Gauci: https://github.com/MisterTea
-Ailing Zhang: https://github.com/ailzhang
+- Jason Gauci: https://github.com/MisterTea
+- Ailing Zhang: https://github.com/ailzhang
