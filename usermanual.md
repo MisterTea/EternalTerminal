@@ -15,7 +15,7 @@ title: Tutorial
 1. ET uses ssh for handshaking and encryption, so you must be able to ssh into the machine from the client.  Make sure that you can ```ssh user@hostname```.
 2. ET uses TCP, so you need an open port on your server.  By default, it uses 2022.
 3. Once you have an open port, the syntax is similar to ssh: ```et user@hostname[:port]```
-4. If you have SSH listening on a different port you can use, ```et -s="-p [SSHport] user@hostname" user@hostname[:ETport]```
+4. If you have SSH listening on a different port or with special parameters, this must be specified in your ssh_config file.  ET will automatically use your ssh_config file when making connections.
 
 # Reporting issues
 
