@@ -91,3 +91,8 @@ make
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on github](https://github.com/MisterTea/EternalTCP/issues).
+
+## Developers
+
+Jason Gauci: https://github.com/MisterTea
+Ailing Zhang: https://github.com/ailzhang
