@@ -165,6 +165,10 @@ int main(int argc, char** argv) {
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_user, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
 
+  // redirect stderr to file
+  stderr = fopen("/tmp/etclient_err", "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;
     FLAGS_port = FLAGS_jport;
@@ -242,7 +246,6 @@ int main(int argc, char** argv) {
     }
   } catch (const std::runtime_error& ex) {
     LOG(FATAL) << "Error establishing port forward: " << ex.what() << endl;
-    exit(1);
   }
 
   winsize win;
