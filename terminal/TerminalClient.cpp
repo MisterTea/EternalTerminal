@@ -121,12 +121,12 @@ int main(int argc, char** argv) {
       cout << "et (options) [user@]hostname[:port]\n"
 "Options:\n"
 "-h Basic usage\n"
-"-p Port for etserver to run on.  Don't set to the same port as ssh.  Default: 2022\n"
+"-p Port for etserver to run on.  Default: 2022\n"
 "-u Username to connect to ssh & ET\n"
 "-v=9 verbose log files\n"
 "-c Initial command to execute upon connecting\n"
 "-t Map local to remote TCP port (TCP Tunneling)\n"
-"   example: et -t=\"18000:8000\" user@hostname maps localhost:18000 to hostname:8000" << endl;
+"   example: et -t=\"18000:8000\" hostname maps localhost:18000 to hostname:8000" << endl;
       exit(1);
     }
   }
