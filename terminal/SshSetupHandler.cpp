@@ -84,19 +84,17 @@ string SshSetupHandler::SetupSsh(string user, string host, int port,
     }
     try {
       auto idpasskey = split(string(buf_client), ':')[1];
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+      idpasskey = idpasskey.substr(0, 16 + 1 + 32);
       auto idpasskey_splited = split(idpasskey, '/');
       string returned_id = idpasskey_splited[0];
       string returned_passkey = idpasskey_splited[1];
       if (returned_id == id && returned_passkey == passkey) {
         LOG(INFO) << "etserver started" << endl;
       } else {
-        LOG(INFO) << "ID " << id;
-        LOG(INFO) << "Received ID " << returned_id;
-        LOG(INFO) << "PASSKEY " << passkey;
-        LOG(INFO) << "Received PASSKEY " << returned_passkey;
-        cout << "client/server idpasskey doesn't match";
-        exit(1);
+        LOG(FATAL) << "client/server idpasskey doesn't match: "
+                   << id << " != " << returned_id << " or "
+                   << passkey << " != " << returned_passkey
+                   << endl;
       }
     } catch (const runtime_error &err) {
       cout << "Error initializing connection" << err.what() << endl;
