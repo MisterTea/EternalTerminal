@@ -985,7 +985,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
 }
 
 static char *ssh_config_get_cmd(char **str) {
-  register char *c;
+  char *c;
   char *r;
 
   /* Ignore leading spaces */
@@ -1018,7 +1018,7 @@ out:
 }
 
 static char *ssh_config_get_token(char **str) {
-  register char *c;
+  char *c;
   char *r;
 
   c = ssh_config_get_cmd(str);
