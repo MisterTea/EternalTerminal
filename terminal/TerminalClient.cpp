@@ -34,8 +34,8 @@ termios terminal_backup;
 DEFINE_string(user, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
-DEFINE_string(command, "", "Command to run immediately after connecting");
-DEFINE_string(portforward, "",
+DEFINE_string(c, "", "Command to run immediately after connecting");
+DEFINE_string(t, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
               "10080:80,10443:443, 10090-10092:8000-8002)");
@@ -114,6 +114,23 @@ void handleWindowChanged(winsize* win) {
 }
 
 int main(int argc, char** argv) {
+  // Override -h & --help
+  for (int i = 1; i < argc; i++) {
+    string s(argv[i]);
+    if (s == "-h" || s == "--help") {
+      cout << "et (options) [user@]hostname[:port]\n"
+"Options:\n"
+"-h Basic usage\n"
+"-p Port for etserver to run on.  Don't set to the same port as ssh.  Default: 2022\n"
+"-u Username to connect to ssh & ET\n"
+"-v=9 verbose log files\n"
+"-c Initial command to execute upon connecting\n"
+"-t Map local to remote TCP port (TCP Tunneling)\n"
+"   example: et -t=\"18000:8000\" user@hostname maps localhost:18000 to hostname:8000" << endl;
+      exit(1);
+    }
+  }
+
   gflags::SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -121,6 +138,22 @@ int main(int argc, char** argv) {
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
+
+  // Parse command-line argument
+  if (argc>1) {
+    string arg = string(argv[1]);
+    if (arg.find('@') != string::npos) {
+      int i = arg.find('@');
+      FLAGS_user = arg.substr(0, i);
+      arg = arg.substr(i + 1);
+    }
+    if (arg.find(':') != string::npos) {
+      int i = arg.find(':');
+      FLAGS_port = stoi(arg.substr(i + 1));
+      arg = arg.substr(0, i);
+    }
+    FLAGS_host = arg;
+  }
 
   Options options = {
       NULL,  // username
@@ -187,10 +220,10 @@ int main(int argc, char** argv) {
   time_t keepaliveTime = time(NULL) + 5;
   bool waitingOnKeepalive = false;
 
-  if (FLAGS_command.length()) {
-    LOG(INFO) << "Got command: " << FLAGS_command << endl;
+  if (FLAGS_c.length()) {
+    LOG(INFO) << "Got command: " << FLAGS_c << endl;
     et::TerminalBuffer tb;
-    tb.set_buffer(FLAGS_command + "; exit\n");
+    tb.set_buffer(FLAGS_c + "; exit\n");
 
     char c = et::PacketType::TERMINAL_BUFFER;
     string headerString(1, c);
@@ -200,8 +233,8 @@ int main(int argc, char** argv) {
 
   PortForwardClientRouter portForwardRouter;
   try {
-    if (FLAGS_portforward.length()) {
-      auto j = split(FLAGS_portforward, ',');
+    if (FLAGS_t.length()) {
+      auto j = split(FLAGS_t, ',');
       for (auto& pair : j) {
         vector<string> sourceDestination = split(pair, ':');
         try {
