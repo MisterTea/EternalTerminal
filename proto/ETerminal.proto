@@ -41,4 +41,5 @@ message PortForwardData {
 }
 
 message InitialPayload {
+  optional bool jumphost = 1 [default = false];
 }

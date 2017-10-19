@@ -3,8 +3,8 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "PortForwardServerHandler.hpp"
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
-#include "SocketUtils.hpp"
 #include "SystemUtils.hpp"
 #include "UnixSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
@@ -21,6 +21,7 @@
 #include <sys/ioctl.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
@@ -55,12 +56,74 @@ DEFINE_string(idpasskeyfile, "",
               "from a file");
 DEFINE_bool(daemon, false, "Daemonize the server");
 DEFINE_string(cfgfile, "", "Location of the config file");
+DEFINE_bool(jump, false,
+            "If set, forward all packets between client and dst terminal");
+DEFINE_string(dsthost, "", "Must be set if jump is set to true");
+DEFINE_int32(dstport, 2022, "Must be set if jump is set to true");
 
 shared_ptr<ServerConnection> globalServer;
 shared_ptr<UserTerminalRouter> terminalRouter;
 vector<shared_ptr<thread>> terminalThreads;
 mutex terminalThreadMutex;
 bool halt = false;
+
+void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
+  bool run = true;
+
+  bool b[BUF_SIZE];
+  int terminalFd = terminalRouter->getFd(serverClientState->getId());
+
+  while (!halt && run) {
+    fd_set rfd;
+    timeval tv;
+
+    FD_ZERO(&rfd);
+    FD_SET(terminalFd, &rfd);
+    int maxfd = terminalFd;
+    int serverClientFd = serverClientState->getSocketFd();
+    if (serverClientFd > 0) {
+      FD_SET(serverClientFd, &rfd);
+      maxfd = max(maxfd, serverClientFd);
+    }
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+
+    try {
+      if (FD_ISSET(terminalFd, &rfd)) {
+        memset(b, 0, BUF_SIZE);
+        try {
+          string message = RawSocketUtils::readMessage(terminalFd);
+          serverClientState->writeMessage(message);
+        } catch (const std::runtime_error &ex) {
+          LOG(INFO) << "Terminal session ended";
+          run = false;
+          globalServer->removeClient(serverClientState->getId());
+          break;
+        }
+      }
+
+      if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
+        while (serverClientState->hasData()) {
+          string message;
+          if (!serverClientState->readMessage(&message)) {
+            break;
+          }
+          RawSocketUtils::writeMessage(terminalFd, message);
+        }
+      }
+    } catch (const runtime_error &re) {
+      LOG(ERROR) << "Jumphost Error: " << re.what();
+      cerr << "ERROR: " << re.what();
+      serverClientState->closeSocket();
+    }
+  }
+  {
+    string id = serverClientState->getId();
+    serverClientState.reset();
+    globalServer->removeClient(id);
+  }
+}
 
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // Whether the TE should keep running.
@@ -117,7 +180,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       }
 
       vector<PortForwardData> dataToSend;
-      for (auto& it : portForwardHandlers) {
+      for (auto &it : portForwardHandlers) {
         it.second->update(&dataToSend);
         if (it.second->getFd() == -1) {
           // Kill the handler and don't update the rest: we'll pick
@@ -126,7 +189,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           break;
         }
       }
-      for (auto& pwd : dataToSend) {
+      for (auto &pwd : dataToSend) {
         char c = PacketType::PORT_FORWARD_DATA;
         string headerString(1, c);
         serverClientState->writeMessage(headerString);
@@ -148,8 +211,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               // VLOG(2) << "Got bytes from client: " << s.length() << " " <<
               // serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
-              writeAll(terminalFd, &c, sizeof(char));
-              writeProto(terminalFd, tb);
+              RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
+              RawSocketUtils::writeProto(terminalFd, tb);
               break;
             }
             case et::PacketType::KEEP_ALIVE: {
@@ -164,8 +227,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
               char c = TERMINAL_INFO;
-              writeAll(terminalFd, &c, sizeof(char));
-              writeProto(terminalFd, ti);
+              RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
+              RawSocketUtils::writeProto(terminalFd, ti);
               break;
             }
             case PacketType::PORT_FORWARD_REQUEST: {
@@ -241,7 +304,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           }
         }
       }
-    } catch (const runtime_error& re) {
+    } catch (const runtime_error &re) {
       LOG(ERROR) << "Error: " << re.what();
       cerr << "Error: " << re.what();
       serverClientState->closeSocket();
@@ -263,9 +326,15 @@ class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
     InitialPayload payload = serverClientState->readProto<InitialPayload>();
     lock_guard<std::mutex> guard(terminalThreadMutex);
-    shared_ptr<thread> t =
-        shared_ptr<thread>(new thread(runTerminal, serverClientState));
-    terminalThreads.push_back(t);
+    if (payload.jumphost()) {
+      shared_ptr<thread> t =
+          shared_ptr<thread>(new thread(runJumpHost, serverClientState));
+      terminalThreads.push_back(t);
+    } else {
+      shared_ptr<thread> t =
+          shared_ptr<thread>(new thread(runTerminal, serverClientState));
+      terminalThreads.push_back(t);
+    }
     return true;
   }
 };
@@ -358,7 +427,130 @@ void startUserTerminal() {
   uth.run();
 }
 
-int main(int argc, char** argv) {
+void startJumpHostClient() {
+  string idpasskey = FLAGS_idpasskey;
+  if (FLAGS_idpasskeyfile.length() > 0) {
+    // Check for passkey file
+    std::ifstream t(FLAGS_idpasskeyfile.c_str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    idpasskey = buffer.str();
+    // Trim whitespace
+    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+    // Delete the file with the passkey
+    remove(FLAGS_idpasskeyfile.c_str());
+  }
+  cout << "IDPASSKEY:" << idpasskey << endl;
+  auto idpasskey_splited = split(idpasskey, '/');
+  string id = idpasskey_splited[0];
+  string passkey = idpasskey_splited[1];
+
+  string host = FLAGS_dsthost;
+  int port = FLAGS_dstport;
+
+  if (::daemon(0, 0) == -1) {
+    LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+  }
+  string first_idpass_chars = idpasskey.substr(0, 10);
+  string std_file = string("/tmp/etserver_jumphost_") + first_idpass_chars;
+  stdout = fopen(std_file.c_str(), "w+");
+  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  stderr = fopen(std_file.c_str(), "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+
+  sockaddr_un remote;
+
+  int routerFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  FATAL_FAIL(routerFd);
+  remote.sun_family = AF_UNIX;
+  strcpy(remote.sun_path, ROUTER_FIFO_NAME);
+
+  if (connect(routerFd, (struct sockaddr *)&remote, sizeof(sockaddr_un)) < 0) {
+    close(routerFd);
+    if (errno == ECONNREFUSED) {
+      cout << "Error:  The Eternal Terminal daemon is not running.  Please "
+              "(re)start the et daemon on the server."
+           << endl;
+    } else {
+      cout << "Error:  Connection error communicating with et deamon: "
+           << strerror(errno) << "." << endl;
+    }
+    exit(1);
+  }
+
+  FATAL_FAIL(
+      RawSocketUtils::writeAll(routerFd, &(idpasskey[0]), idpasskey.length()));
+  FATAL_FAIL(RawSocketUtils::writeAll(routerFd, "\0", 1));
+
+  InitialPayload payload;
+
+  shared_ptr<SocketHandler> jumpclientSocket(new UnixSocketHandler());
+  shared_ptr<ClientConnection> jumpclient = shared_ptr<ClientConnection>(
+      new ClientConnection(jumpclientSocket, host, port, id, passkey));
+
+  int connectFailCount = 0;
+  while (true) {
+    try {
+      jumpclient->connect();
+      jumpclient->writeProto(payload);
+    } catch (const runtime_error &err) {
+      LOG(ERROR) << "Connecting to dst server failed: " << err.what();
+      connectFailCount++;
+      if (connectFailCount == 3) {
+        LOG(INFO) << "Could not make initial connection to dst server";
+        cout << "Could not make initial connection to " << host << ": "
+             << err.what() << endl;
+        exit(1);
+      }
+      continue;
+    }
+    break;
+  }
+  VLOG(1) << "JumpClient created with id: " << jumpclient->getId() << endl;
+
+  bool run = true;
+
+  while (run && !jumpclient->isShuttingDown()) {
+    // Data structures needed for select() and
+    // non-blocking I/O.
+    fd_set rfd;
+    timeval tv;
+
+    FD_ZERO(&rfd);
+    FD_SET(routerFd, &rfd);
+    int maxfd = routerFd;
+    int jumpClientFd = jumpclient->getSocketFd();
+    if (jumpClientFd > 0) {
+      FD_SET(jumpClientFd, &rfd);
+      maxfd = max(maxfd, jumpClientFd);
+    }
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+
+    try {
+      // forward local router -> DST terminal.
+      if (FD_ISSET(routerFd, &rfd)) {
+        string s = RawSocketUtils::readMessage(routerFd);
+        jumpclient->writeMessage(s);
+      }
+      // forward DST terminal -> local router
+      if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
+        while (jumpclient->hasData()) {
+          string receivedMessage;
+          jumpclient->readMessage(&receivedMessage);
+          RawSocketUtils::writeMessage(routerFd, receivedMessage);
+        }
+      }
+    } catch (const runtime_error &re) {
+      LOG(ERROR) << "Error: " << re.what() << endl;
+      cout << "Connection closing because of error: " << re.what() << endl;
+      run = false;
+    }
+  }
+}
+
+int main(int argc, char **argv) {
   gflags::SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
@@ -373,7 +565,7 @@ int main(int argc, char** argv) {
     SI_Error rc = ini.LoadFile(FLAGS_cfgfile.c_str());
     if (rc == 0) {
       if (FLAGS_port == 0) {
-        const char* portString = ini.GetValue("Networking", "Port", NULL);
+        const char *portString = ini.GetValue("Networking", "Port", NULL);
         if (portString) {
           FLAGS_port = stoi(portString);
         }
@@ -385,6 +577,11 @@ int main(int argc, char** argv) {
 
   if (FLAGS_port == 0) {
     FLAGS_port = 2022;
+  }
+
+  if (FLAGS_jump) {
+    startJumpHostClient();
+    return 0;
   }
 
   if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {

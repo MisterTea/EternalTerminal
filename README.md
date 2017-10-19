@@ -29,7 +29,7 @@ Install dependencies:
 	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev \
 	libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev \
 	libgflags-dev unzip wget
-	
+
     Fedora (tested on 25):
 
         sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
@@ -70,7 +70,37 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
-Once you have an open port, the syntax is similar to `ssh`: `et user@hostname[:port]`. You can pass additional arguments to `ssh` using the `-s` parameter. For instance, if you have `sshd` listening on port 5000: `et -s="-p 5000 user@host" user@host`.
+
+Once you have an open port, the syntax is shown below. You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--port/--jport` is given, et will try to connect to default port 2022.
+```
+et --host hostname (etserver running on port 2022)
+et --host hostname --port 8000
+et --host hostname --jumphost (etserver running on port 2022 on both hostname and jumphost)
+et --host hostname --port 8888 --jumphost jump_hostname --jport 9999
+```
+Additional arguments that et accept are port forwarding pairs with option `--portforward="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `--command`. Username is default to the current username starting the et process, use `--user` to specify a different if necessary.
+
+Starting from the latest release, et supports parsing both user-specific and system-wide ssh config file.
+The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
+Here is an example ssh config file showing how to setup when
+- there is a jumphost in the middle
+- sshd is listening on a port which is not 22
+- connecting to a different username other than current one.
+
+```
+Host dev
+  HostName 192.168.1.1
+  User fred
+  Port 5555
+  ProxyJump user@jumphost.example.org:22
+```
+
+With the ssh config file set as above, you can simply call et with
+
+```
+et --host dev (etserver running on port 2022 on both hostname and jumphost)
+et --host dev --port 8000 --jport 9000 (etserver not running on default port)
+```
 
 ## Building from source
 

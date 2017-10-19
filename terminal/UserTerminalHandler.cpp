@@ -32,8 +32,8 @@
 #include <utempter.h>
 #endif
 
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
-#include "SocketUtils.hpp"
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
@@ -61,8 +61,9 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     }
     exit(1);
   }
-  FATAL_FAIL(writeAll(routerFd, &(idPasskey[0]), idPasskey.length()));
-  FATAL_FAIL(writeAll(routerFd, "\0", 1));
+  FATAL_FAIL(
+      RawSocketUtils::writeAll(routerFd, &(idPasskey[0]), idPasskey.length()));
+  FATAL_FAIL(RawSocketUtils::writeAll(routerFd, "\0", 1));
 }
 
 void UserTerminalHandler::run() {
@@ -131,7 +132,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       int rc = read(masterFd, b, BUF_SIZE);
       FATAL_FAIL(rc);
       if (rc > 0) {
-        writeAll(routerFd, b, rc);
+        RawSocketUtils::writeAll(routerFd, b, rc);
       } else {
         LOG(INFO) << "Terminal session ended";
         siginfo_t childInfo;
@@ -152,13 +153,15 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         }
         switch (packetType) {
           case TERMINAL_BUFFER: {
-            TerminalBuffer tb = readProto<TerminalBuffer>(routerFd);
+            TerminalBuffer tb =
+                RawSocketUtils::readProto<TerminalBuffer>(routerFd);
             const string &buffer = tb.buffer();
-            FATAL_FAIL(writeAll(masterFd, &buffer[0], buffer.length()));
+            FATAL_FAIL(RawSocketUtils::writeAll(masterFd, &buffer[0],
+                                                buffer.length()));
             break;
           }
           case TERMINAL_INFO: {
-            TerminalInfo ti = readProto<TerminalInfo>(routerFd);
+            TerminalInfo ti = RawSocketUtils::readProto<TerminalInfo>(routerFd);
             winsize tmpwin;
             tmpwin.ws_row = ti.row();
             tmpwin.ws_col = ti.column();

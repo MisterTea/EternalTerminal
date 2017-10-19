@@ -2,12 +2,13 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "ParseConfigFile.hpp"
 #include "PortForwardClientListener.hpp"
 #include "PortForwardClientRouter.hpp"
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
-#include "SocketUtils.hpp"
+#include "SshSetupHandler.hpp"
 #include "UnixSocketHandler.hpp"
-#include "ParseConfigFile.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -30,49 +31,28 @@ shared_ptr<ClientConnection> globalClient;
 
 termios terminal_backup;
 
+DEFINE_string(user, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
-DEFINE_string(id, "", "Unique ID assigned to this session");
-DEFINE_string(passkey, "", "Passkey to encrypt/decrypt packets");
-DEFINE_string(idpasskeyfile, "",
-              "File containing client ID and key to encrypt/decrypt packets");
 DEFINE_string(command, "", "Command to run immediately after connecting");
 DEFINE_string(portforward, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
               "10080:80,10443:443, 10090-10092:8000-8002)");
+DEFINE_string(jumphost, "", "jumphost between localhost and destination");
+DEFINE_int32(jport, 2022, "port to connect on jumphost");
 
-shared_ptr<ClientConnection> createClient() {
-  string id = FLAGS_id;
-  string passkey = FLAGS_passkey;
-  if (FLAGS_idpasskeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_idpasskeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    string idpasskeypair = buffer.str();
-    // Trim whitespace
-    idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
-    size_t slashIndex = idpasskeypair.find("/");
-    if (slashIndex == string::npos) {
-      LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
-    } else {
-      id = idpasskeypair.substr(0, slashIndex);
-      passkey = idpasskeypair.substr(slashIndex + 1);
-      LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
-    }
-    // Delete the file with the passkey
-    remove(FLAGS_idpasskeyfile.c_str());
-  }
-  if (passkey.length() == 0 || id.length() == 0) {
-    cout << "Unless you are doing development on Eternal Terminal,\nplease do "
-            "not call etclient directly.\n\nThe et launcher (run on the "
-            "client) calls etclient with the correct parameters.\nThis ensures "
-            "a secure connection.\n\nIf you intended to call etclient "
-            "directly, please provide a passkey\n(run \"etclient --help\" for "
-            "details)."
-         << endl;
-    exit(1);
+shared_ptr<ClientConnection> createClient(string idpasskeypair) {
+  string id = "", passkey = "";
+  // Trim whitespace
+  idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
+  size_t slashIndex = idpasskeypair.find("/");
+  if (slashIndex == string::npos) {
+    LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
+  } else {
+    id = idpasskeypair.substr(0, slashIndex);
+    passkey = idpasskeypair.substr(slashIndex + 1);
+    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
   }
   if (passkey.length() != 32) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
@@ -80,6 +60,9 @@ shared_ptr<ClientConnection> createClient() {
   }
 
   InitialPayload payload;
+  if (FLAGS_jumphost.length()) {
+    payload.set_jumphost(true);
+  }
 
   shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
   shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
@@ -140,29 +123,57 @@ int main(int argc, char** argv) {
   srand(1);
 
   Options options = {
-    NULL, //username
-    NULL, //host
-    NULL, //sshdir
-    NULL, //knownhosts
-    NULL, //ProxyCommand
-    0, //timeout
-    0, //port
-    0, //StrictHostKeyChecking
-    0, //ssh2
-    0, //ssh1
-    NULL, //gss_server_identity
-    NULL, //gss_client_identity
-    0 //gss_delegate_creds
+      NULL,  // username
+      NULL,  // host
+      NULL,  // sshdir
+      NULL,  // knownhosts
+      NULL,  // ProxyCommand
+      NULL,  // ProxyJump
+      0,     // timeout
+      0,     // port
+      0,     // StrictHostKeyChecking
+      0,     // ssh2
+      0,     // ssh1
+      NULL,  // gss_server_identity
+      NULL,  // gss_client_identity
+      0      // gss_delegate_creds
   };
+
   char* home_dir = ssh_get_user_home_dir();
   ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
-  /* First parse user-specific ssh config, then system-wide config. */
+  // First parse user-specific ssh config, then system-wide config.
   parse_ssh_config_file(&options, string(home_dir) + USER_SSH_CONFIG_PATH);
-  parse_ssh_config_file(&options,SYSTEM_SSH_CONFIG_PATH);
-  LOG(INFO) << "Parsed ssh config file, connecting to " << options.host << endl;
+  parse_ssh_config_file(&options, SYSTEM_SSH_CONFIG_PATH);
+  LOG(INFO) << "Parsed ssh config file, connecting to " << options.host;
   FLAGS_host = string(options.host);
 
-  globalClient = createClient();
+  if (options.ProxyJump) {
+    string proxyjump = string(options.ProxyJump);
+    size_t colonIndex = proxyjump.find(":");
+    if (colonIndex != string::npos) {
+      string userhostpair = proxyjump.substr(0, colonIndex);
+      size_t atIndex = userhostpair.find("@");
+      if (atIndex != string::npos) {
+        FLAGS_jumphost = userhostpair.substr(atIndex + 1);
+      }
+    } else {
+      FLAGS_jumphost = proxyjump;
+    }
+    LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
+  }
+
+  string idpasskeypair = SshSetupHandler::SetupSsh(
+      FLAGS_user, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
+
+  // redirect stderr to file
+  stderr = fopen("/tmp/etclient_err", "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+
+  if (!FLAGS_jumphost.empty()) {
+    FLAGS_host = FLAGS_jumphost;
+    FLAGS_port = FLAGS_jport;
+  }
+  globalClient = createClient(idpasskeypair);
   shared_ptr<UnixSocketHandler> socketHandler =
       static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
 
@@ -207,7 +218,7 @@ int main(int argc, char** argv) {
 
             if (sourcePortEnd - sourcePortStart !=
                 destinationPortEnd - destinationPortStart) {
-              cout << "source/destination port range don't match" << endl;
+              LOG(FATAL) << "source/destination port range mismatch" << endl;
               exit(1);
             } else {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
@@ -228,14 +239,13 @@ int main(int argc, char** argv) {
                                               destinationPort)));
           }
         } catch (const std::logic_error& lr) {
-          cout << "Logic error: " << lr.what() << endl;
+          LOG(FATAL) << "Logic error: " << lr.what() << endl;
           exit(1);
         }
       }
     }
   } catch (const std::runtime_error& ex) {
-    cout << "Error establishing port forward: " << ex.what() << endl;
-    exit(1);
+    LOG(FATAL) << "Error establishing port forward: " << ex.what() << endl;
   }
 
   winsize win;
@@ -310,7 +320,8 @@ int main(int argc, char** argv) {
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + 1;
-              FATAL_FAIL(writeAll(STDOUT_FILENO, &s[0], s.length()));
+              FATAL_FAIL(
+                  RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length()));
               break;
             }
             case et::PacketType::KEEP_ALIVE:
@@ -389,7 +400,6 @@ int main(int argc, char** argv) {
       run = false;
     }
   }
-
   globalClient.reset();
   LOG(INFO) << "Client derefernced" << endl;
   tcsetattr(0, TCSANOW, &terminal_backup);

@@ -9,7 +9,9 @@ Connection::~Connection() {
   if (!shuttingDown) {
     LOG(ERROR) << "Call shutdown before destructing a Connection.";
   }
-  closeSocket();
+  if (socketFd != -1) {
+    closeSocket();
+  }
 }
 
 inline bool isSkippableError() {

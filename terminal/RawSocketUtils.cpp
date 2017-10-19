@@ -1,6 +1,7 @@
-#include "SocketUtils.hpp"
+#include "RawSocketUtils.hpp"
 
-int writeAll(int fd, const char* buf, size_t count) {
+namespace et {
+int RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   size_t bytesWritten = 0;
   do {
     int rc = write(fd, buf + bytesWritten, count - bytesWritten);
@@ -15,7 +16,7 @@ int writeAll(int fd, const char* buf, size_t count) {
   return 0;
 }
 
-int readAll(int fd, char* buf, size_t count) {
+int RawSocketUtils::readAll(int fd, char* buf, size_t count) {
   size_t bytesRead = 0;
   do {
     int rc = ::read(fd, buf + bytesRead, count - bytesRead);
@@ -29,3 +30,4 @@ int readAll(int fd, char* buf, size_t count) {
   } while (bytesRead != count);
   return bytesRead;
 }
+}  // namespace et
