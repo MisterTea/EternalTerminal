@@ -44,7 +44,7 @@ git checkout v0.3.5
 cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -DWITH_GFLAGS=ON -DWITH_THREADS=ON -Dgflags_DIR="$PWD"../out/lib/cmake/gflags ./
 make -j8 install
 cd ../protobuf || exit
-git checkout v3.3.0
+git checkout v3.4.1
 cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -Dprotobuf_BUILD_TESTS=OFF ./cmake
 make -j8 install
 cd ../libsodium || exit
