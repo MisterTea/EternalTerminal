@@ -551,7 +551,7 @@ void startJumpHostClient() {
 }
 
 int main(int argc, char **argv) {
-  gflags::SetVersionString(string(ET_VERSION));
+  SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
   GOOGLE_PROTOBUF_VERIFY_VERSION;
