@@ -1,9 +1,36 @@
 set -e
+set -x
 
+rm -rf build deps out
 mkdir -p build
-mkdir -p deps/out
+mkdir -p deps/out/bin
 mkdir -p out
 cd deps || exit
+export PATH="$PWD"/out/bin:/usr/sbin:/usr/bin:/sbin:/bin
+curl -OL https://cmake.org/files/v3.9/cmake-3.9.4.tar.gz
+tar xvzf cmake-3.9.4.tar.gz
+cd cmake-3.9.4 || exit
+./configure --prefix="$PWD"/../out
+make -j8 install
+cd .. || exit
+curl -OL http://ftp.gnu.org/gnu/autoconf/autoconf-2.69.tar.gz
+tar xvzf autoconf-2.69.tar.gz
+cd autoconf-2.69
+./configure --prefix="$PWD"/../out
+make -j8 install
+cd .. || exit
+curl -OL http://ftp.gnu.org/gnu/automake/automake-1.15.1.tar.gz
+tar xvzf automake-1.15.1.tar.gz
+cd automake-1.15.1
+./configure --prefix="$PWD"/../out
+make -j8 install
+cd .. || exit
+curl -OL http://ftpmirror.gnu.org/libtool/libtool-2.4.6.tar.gz
+tar xvzf libtool-2.4.6.tar.gz
+cd libtool-2.4.6
+./configure --prefix="$PWD"/../out --disable-shared --enable-static
+make -j8 install
+cd .. || exit
 git clone https://github.com/gflags/gflags.git
 git clone https://github.com/google/glog.git
 git clone https://github.com/jedisct1/libsodium.git
@@ -46,5 +73,5 @@ cmake \
     -DCMAKE_INSTALL_PREFIX="$PWD"/../out \
     ../
 make -j8 install
-cd ../out | exit
-echo "Done!"
+cd ../out || exit
+echo "Done!  Static binaries of et and etserver are in the out/bin directory"
