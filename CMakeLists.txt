@@ -28,7 +28,9 @@ find_package(Glog REQUIRED)
 find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
+IF(LINUX)
 find_package(SELinux)
+ENDIF()
 find_package(UTempter)
 
 IF(SELINUX_FOUND)
@@ -121,21 +123,38 @@ add_executable (
   terminal/UserTerminalHandler.cpp
   terminal/UserTerminalRouter.cpp
   )
-target_link_libraries (
-  etserver
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  resolv
-  util
+IF(!FREEBSD)
+  target_link_libraries (
+    etserver
+    LINK_PUBLIC
+    TerminalCommon
+    EternalTCP-static
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    resolv
+    util
   )
+ELSE()
+  target_link_libraries (
+    etserver
+    LINK_PUBLIC
+    TerminalCommon
+    EternalTCP-static
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    util
+  )
+ENDIF()
 
 add_executable (
   et
@@ -144,20 +163,36 @@ add_executable (
   terminal/PortForwardClientListener.cpp
   terminal/SshSetupHandler.cpp
   )
-target_link_libraries (
-  et
-  LINK_PUBLIC
-  TerminalCommon
-  EternalTCP-static
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
-  ${sodium_LIBRARY_RELEASE}
-  ${UTEMPTER_LIBRARIES}
-  resolv
-  util
+IF(!FREEBSD)
+  target_link_libraries (
+    et
+    LINK_PUBLIC
+    TerminalCommon
+    EternalTCP-static
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${UTEMPTER_LIBRARIES}
+    resolv
+    util
   )
+ELSE()
+  target_link_libraries (
+    et
+    LINK_PUBLIC
+    TerminalCommon
+    EternalTCP-static
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${UTEMPTER_LIBRARIES}
+    util
+  )
+ENDIF()
 
 
 if(BUILD_TEST) # Build unit tests.

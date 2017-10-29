@@ -31,6 +31,7 @@
 #elif __FreeBSD__
 #include <libutil.h>
 #include <sys/ioctl.h>
+#include <sys/socket.h>
 #include <sys/types.h>
 #include <termios.h>
 #else
