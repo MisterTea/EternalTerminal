@@ -22,7 +22,6 @@ endif()
 #Using FreeBSD?
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
     set(FREEBSD TRUE)
-    set(BSD TRUE)
 endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 
 # Add cmake script directory.
