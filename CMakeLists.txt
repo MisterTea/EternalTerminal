@@ -19,6 +19,12 @@ if(UNIX)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 endif()
 
+#Using FreeBSD?
+if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+    set(FREEBSD TRUE)
+    set(BSD TRUE)
+endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+
 # Add cmake script directory.
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -53,6 +59,12 @@ PROTOBUF_GENERATE_CPP(
 
   proto/ET.proto
   )
+
+IF(FREEBSD)
+  set(CORE_LIBRARIES util)
+ELSE()
+  set(CORE_LIBRARIES util resolv)
+ENDIF()
 
 include_directories(
   ext
@@ -123,38 +135,21 @@ add_executable (
   terminal/UserTerminalHandler.cpp
   terminal/UserTerminalRouter.cpp
   )
-IF(!FREEBSD)
-  target_link_libraries (
-    etserver
-    LINK_PUBLIC
-    TerminalCommon
-    EternalTCP-static
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${GLOG_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    resolv
-    util
-  )
-ELSE()
-  target_link_libraries (
-    etserver
-    LINK_PUBLIC
-    TerminalCommon
-    EternalTCP-static
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${GLOG_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    util
-  )
-ENDIF()
+
+target_link_libraries (
+  etserver
+  LINK_PUBLIC
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
+)
 
 add_executable (
   et
@@ -163,37 +158,20 @@ add_executable (
   terminal/PortForwardClientListener.cpp
   terminal/SshSetupHandler.cpp
   )
-IF(!FREEBSD)
-  target_link_libraries (
-    et
-    LINK_PUBLIC
-    TerminalCommon
-    EternalTCP-static
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${GLOG_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${UTEMPTER_LIBRARIES}
-    resolv
-    util
-  )
-ELSE()
-  target_link_libraries (
-    et
-    LINK_PUBLIC
-    TerminalCommon
-    EternalTCP-static
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${GLOG_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${UTEMPTER_LIBRARIES}
-    util
-  )
-ENDIF()
 
+target_link_libraries (
+    et
+    LINK_PUBLIC
+    TerminalCommon
+    EternalTCP-static
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GLOG_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES}
+)
 
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
