@@ -75,10 +75,10 @@ Once you have an open port, the syntax is shown below. You can specify a jumphos
 ```
 et --host hostname (etserver running on port 2022)
 et --host hostname --port 8000
-et --host hostname --jumphost (etserver running on port 2022 on both hostname and jumphost)
+et --host hostname --jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
 et --host hostname --port 8888 --jumphost jump_hostname --jport 9999
 ```
-Additional arguments that et accept are port forwarding pairs with option `--portforward="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `--command`. Username is default to the current username starting the et process, use `--user` to specify a different if necessary.
+Additional arguments that et accept are port forwarding pairs with option `--t="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `--c`. Username is default to the current username starting the et process, use `--user` to specify a different if necessary.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide ssh config file.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
