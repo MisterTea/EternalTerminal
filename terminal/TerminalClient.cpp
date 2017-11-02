@@ -31,7 +31,7 @@ shared_ptr<ClientConnection> globalClient;
 
 termios terminal_backup;
 
-DEFINE_string(user, "", "username to login");
+DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(c, "", "Command to run immediately after connecting");
@@ -119,14 +119,18 @@ int main(int argc, char** argv) {
     string s(argv[i]);
     if (s == "-h" || s == "--help") {
       cout << "et (options) [user@]hostname[:port]\n"
-"Options:\n"
-"-h Basic usage\n"
-"-p Port for etserver to run on.  Default: 2022\n"
-"-u Username to connect to ssh & ET\n"
-"-v=9 verbose log files\n"
-"-c Initial command to execute upon connecting\n"
-"-t Map local to remote TCP port (TCP Tunneling)\n"
-"   example: et -t=\"18000:8000\" hostname maps localhost:18000 to hostname:8000" << endl;
+              "Options:\n"
+              "-h Basic usage\n"
+              "-p Port for etserver to run on.  Default: 2022\n"
+              "-u Username to connect to ssh & ET\n"
+              "-v=9 verbose log files\n"
+              "-c Initial command to execute upon connecting\n"
+              "-t Map local to remote TCP port (TCP Tunneling)\n"
+              "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
+              "to hostname:8000\n"
+              "-jumphost Jumphost between localhost and destination\n"
+              "-jport Port to connect on jumphost"
+           << endl;
       exit(1);
     }
   }
@@ -140,11 +144,11 @@ int main(int argc, char** argv) {
   srand(1);
 
   // Parse command-line argument
-  if (argc>1) {
+  if (argc > 1) {
     string arg = string(argv[1]);
     if (arg.find('@') != string::npos) {
       int i = arg.find('@');
-      FLAGS_user = arg.substr(0, i);
+      FLAGS_u = arg.substr(0, i);
       arg = arg.substr(i + 1);
     }
     if (arg.find(':') != string::npos) {
@@ -196,7 +200,7 @@ int main(int argc, char** argv) {
   }
 
   string idpasskeypair = SshSetupHandler::SetupSsh(
-      FLAGS_user, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
+      FLAGS_u, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
 
   // redirect stderr to file
   stderr = fopen("/tmp/etclient_err", "w+");

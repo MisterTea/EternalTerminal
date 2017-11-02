@@ -79,11 +79,11 @@ string SshSetupHandler::SetupSsh(string user, string host, int port,
     wait(NULL);
     int nbytes = read(link_client[0], buf_client, sizeof(buf_client));
     try {
-      if (nbytes <= 0 ||
-          split(string(buf_client), ':').size() != 2 ||
+      if (nbytes <= 0 || split(string(buf_client), ':').size() != 2 ||
           split(string(buf_client), ':')[0] != "IDPASSKEY") {
         cout << "Error:  The Eternal Terminal daemon is not running.  "
-            "Please (re)start the et daemon on the server." << endl;
+                "Please (re)start the et daemon on the server."
+             << endl;
         exit(1);
       }
       auto idpasskey = split(string(buf_client), ':')[1];
@@ -94,10 +94,9 @@ string SshSetupHandler::SetupSsh(string user, string host, int port,
       if (returned_id == id && returned_passkey == passkey) {
         LOG(INFO) << "etserver started" << endl;
       } else {
-        LOG(FATAL) << "client/server idpasskey doesn't match: "
-                   << id << " != " << returned_id << " or "
-                   << passkey << " != " << returned_passkey
-                   << endl;
+        LOG(FATAL) << "client/server idpasskey doesn't match: " << id
+                   << " != " << returned_id << " or " << passkey
+                   << " != " << returned_passkey << endl;
       }
     } catch (const runtime_error &err) {
       cout << "Error initializing connection" << err.what() << endl;

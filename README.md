@@ -71,14 +71,17 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
 
-Once you have an open port, the syntax is shown below. You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--port/--jport` is given, et will try to connect to default port 2022.
+Once you have an open port, the syntax is similar to ssh. Username is default to the current username starting the et process, use `-u` or `user@` to specify a different if necessary.
 ```
-et --host hostname (etserver running on port 2022)
-et --host hostname --port 8000
-et --host hostname --jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
-et --host hostname --port 8888 --jumphost jump_hostname --jport 9999
+et hostname (etserver running on default port 2022, username is the same as current)
+et user@hostname:8000 (etserver running on port 8000, different user)
 ```
-Additional arguments that et accept are port forwarding pairs with option `--t="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `--c`. Username is default to the current username starting the et process, use `--user` to specify a different if necessary.
+You can specify a jumphost and the port et is running on jumphost using `-jumphost` and `-jport`. If no `-jport` is given, et will try to connect to default port 2022.
+```
+et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
+et hostname:8888 -jumphost jump_hostname -jport 9999
+```
+Additional arguments that et accept are port forwarding pairs with option `-t="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide ssh config file.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
@@ -98,8 +101,8 @@ Host dev
 With the ssh config file set as above, you can simply call et with
 
 ```
-et --host dev (etserver running on port 2022 on both hostname and jumphost)
-et --host dev --port 8000 --jport 9000 (etserver not running on default port)
+et dev (etserver running on port 2022 on both hostname and jumphost)
+et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 ```
 
 ## Building from source
