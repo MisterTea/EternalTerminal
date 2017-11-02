@@ -1082,24 +1082,27 @@ static int ssh_config_get_yesno(char **str, int notfound) {
 
 static void local_parse_file(struct Options *options, const char *filename,
                              int *parsing, int seen[]) {
-  ifstream local_config_file(filename);
-  string line;
+  char *line = NULL;
+  size_t len = 0;
+  ssize_t read = 0;
+
   unsigned int count = 0;
 
-  if (!local_config_file) {
-    cout << "Can't open file" << endl;
+  FILE *fp;
+  fp = fopen(filename, "r");
+  if (fp == NULL) {
+    LOG(INFO) << filename << "not found";
     return;
   }
 
-  while (getline(local_config_file, line)) {
+  while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(options, line.c_str(), count, parsing, seen) <
-        0) {
-      local_config_file.close();
+    if (ssh_config_parse_line(options, line, count, parsing, seen) < 0) {
+      fclose(fp);
       return;
     }
   }
-  local_config_file.close();
+  fclose(fp);
   return;
 }
 
@@ -1295,21 +1298,29 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
 }
 
 int parse_ssh_config_file(struct Options *options, string filename) {
-  string line;
+  char *line = NULL;
+  size_t len = 0;
+  ssize_t read = 0;
   unsigned int count = 0;
   int parsing;
   int seen[SOC_END - SOC_UNSUPPORTED] = {0};
 
-  ifstream config_file(filename.c_str());
+  FILE *fp;
+  fp = fopen(filename.c_str(), "r");
+  if (fp == NULL) {
+    LOG(INFO) << filename << "not found";
+    return 0;
+  }
+
   parsing = 1;
-  while (getline(config_file, line)) {
+
+  while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(options, line.c_str(), count, &parsing, seen) <
-        0) {
-      config_file.close();
+    if (ssh_config_parse_line(options, line, count, &parsing, seen) < 0) {
+      fclose(fp);
       return -1;
     }
   }
-  config_file.close();
+  fclose(fp);
   return 0;
 }
