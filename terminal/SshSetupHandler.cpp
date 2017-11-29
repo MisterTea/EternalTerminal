@@ -3,8 +3,8 @@
 #include <sys/wait.h>
 
 namespace et {
-string SshSetupHandler::SetupSsh(string user, string host, int port,
-                                 string jumphost, int jport) {
+string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
+                                 int port, string jumphost, int jport) {
   string CLIENT_TERM(getenv("TERM"));
   FILE *passkey_p = popen(
       "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32", "r");
@@ -63,10 +63,12 @@ string SshSetupHandler::SetupSsh(string user, string host, int port,
     if (!jumphost.empty()) {
       execl("/usr/bin/ssh", "/usr/bin/ssh", "-J",
             (SSH_USER_PREFIX + jumphost).c_str(),
-            (SSH_USER_PREFIX + host).c_str(), (SSH_SCRIPT_DST).c_str(), NULL);
+            (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
+            NULL);
     } else {
-      execl("/usr/bin/ssh", "/usr/bin/ssh", (SSH_USER_PREFIX + host).c_str(),
-            (SSH_SCRIPT_DST).c_str(), NULL);
+      execl("/usr/bin/ssh", "/usr/bin/ssh",
+            (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
+            NULL);
     }
 
     LOG(INFO) << "execl error" << endl;

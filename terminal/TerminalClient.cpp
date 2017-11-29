@@ -177,6 +177,7 @@ int main(int argc, char** argv) {
   };
 
   char* home_dir = ssh_get_user_home_dir();
+  string host_alias = FLAGS_host;
   ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
   // First parse user-specific ssh config, then system-wide config.
   parse_ssh_config_file(&options, string(home_dir) + USER_SSH_CONFIG_PATH);
@@ -200,7 +201,7 @@ int main(int argc, char** argv) {
   }
 
   string idpasskeypair = SshSetupHandler::SetupSsh(
-      FLAGS_u, FLAGS_host, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
+      FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
 
   // redirect stderr to file
   stderr = fopen("/tmp/etclient_err", "w+");
