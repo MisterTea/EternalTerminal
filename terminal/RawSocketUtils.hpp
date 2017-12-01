@@ -12,16 +12,16 @@ class RawSocketUtils {
 
   static inline string readMessage(int fd) {
     int64_t length;
-    readAll(fd, (char*)&length, sizeof(int64_t));
+    FATAL_FAIL(readAll(fd, (char*)&length, sizeof(int64_t)));
     string s(length, 0);
-    readAll(fd, &s[0], length);
+    FATAL_FAIL(readAll(fd, &s[0], length));
     return s;
   }
 
   static inline void writeMessage(int fd, const string& s) {
     int64_t length = s.length();
-    writeAll(fd, (const char*)&length, sizeof(int64_t));
-    writeAll(fd, &s[0], length);
+    FATAL_FAIL(writeAll(fd, (const char*)&length, sizeof(int64_t)));
+    FATAL_FAIL(writeAll(fd, &s[0], length));
   }
 
   template <typename T>

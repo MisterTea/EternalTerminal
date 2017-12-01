@@ -41,7 +41,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     return 0;
   }
   ssize_t readBytes = ::read(fd, buf, count);
-  if (readBytes < 0) {
+  if (readBytes < 0 && errno != && errno != EWOULDBLOCK) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno) << endl;
   }
   return readBytes;

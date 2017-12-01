@@ -6,6 +6,11 @@ int RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   do {
     int rc = write(fd, buf + bytesWritten, count - bytesWritten);
     if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // This is fine, just keep retrying at 10hz
+        usleep(1000 * 100);
+        continue;
+      }
       return rc;
     }
     if (rc == 0) {
@@ -21,6 +26,11 @@ int RawSocketUtils::readAll(int fd, char* buf, size_t count) {
   do {
     int rc = ::read(fd, buf + bytesRead, count - bytesRead);
     if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        // This is fine, just keep retrying at 10hz
+        usleep(1000 * 100);
+        continue;
+      }
       return rc;
     }
     if (rc == 0) {
