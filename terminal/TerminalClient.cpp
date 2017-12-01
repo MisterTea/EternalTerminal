@@ -26,6 +26,7 @@ using namespace gflags;
 
 const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
 const string USER_SSH_CONFIG_PATH = "/.ssh/config";
+const int KEEP_ALIVE_DURATION = 5;
 
 shared_ptr<ClientConnection> globalClient;
 
@@ -222,7 +223,7 @@ int main(int argc, char** argv) {
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
-  time_t keepaliveTime = time(NULL) + 5;
+  time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
   bool waitingOnKeepalive = false;
 
   if (FLAGS_c.length()) {
@@ -332,7 +333,7 @@ int main(int argc, char** argv) {
           string headerString(1, c);
           globalClient->writeMessage(headerString);
           globalClient->writeProto(tb);
-          keepaliveTime = time(NULL) + 5;
+          keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         } else {
           LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
@@ -357,7 +358,7 @@ int main(int argc, char** argv) {
               const string& s = tb.buffer();
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
-              keepaliveTime = time(NULL) + 1;
+              keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
               FATAL_FAIL(
                   RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length()));
               break;
@@ -401,7 +402,7 @@ int main(int argc, char** argv) {
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
-        keepaliveTime = time(NULL) + 5;
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (waitingOnKeepalive) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
           globalClient->closeSocket();
