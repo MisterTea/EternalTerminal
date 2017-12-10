@@ -10,7 +10,8 @@ Connection::~Connection() {
     LOG(ERROR) << "Call shutdown before destructing a Connection.";
   }
   if (socketFd != -1) {
-    closeSocket();
+    LOG(INFO) << "Connection destroyed";
+    Connection::closeSocket();
   }
 }
 
@@ -160,6 +161,6 @@ bool Connection::recover(int newSocketFd) {
 void Connection::shutdown() {
   LOG(INFO) << "Shutting down connection";
   shuttingDown = true;
-  closeSocket();
+  Connection::closeSocket();
 }
 }  // namespace et

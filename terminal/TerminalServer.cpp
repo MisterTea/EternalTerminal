@@ -48,6 +48,7 @@ using namespace google;
 using namespace gflags;
 
 #define BUF_SIZE (16 * 1024)
+const int KEEP_ALIVE_DURATION = 7;
 
 DEFINE_int32(port, 0, "Port to listen on");
 DEFINE_string(idpasskey, "",
@@ -510,6 +511,7 @@ void startJumpHostClient() {
   VLOG(1) << "JumpClient created with id: " << jumpclient->getId() << endl;
 
   bool run = true;
+  time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
 
   while (run && !jumpclient->isShuttingDown()) {
     // Data structures needed for select() and
@@ -532,8 +534,16 @@ void startJumpHostClient() {
     try {
       // forward local router -> DST terminal.
       if (FD_ISSET(routerFd, &rfd)) {
-        string s = RawSocketUtils::readMessage(routerFd);
-        jumpclient->writeMessage(s);
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        if (jumpClientFd < 0) {
+          LOG(INFO) << "User comes back, reconnecting";
+          jumpclient->closeSocket();
+          sleep(3);
+          continue;
+        } else {
+          string s = RawSocketUtils::readMessage(routerFd);
+          jumpclient->writeMessage(s);
+        }
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
@@ -543,12 +553,18 @@ void startJumpHostClient() {
           RawSocketUtils::writeMessage(routerFd, receivedMessage);
         }
       }
+      // src disconnects, close jump -> dst
+      if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
+        LOG(INFO) << "Jumpclient idle, killing connection";
+        jumpclient->Connection::closeSocket();
+      }
     } catch (const runtime_error &re) {
       LOG(ERROR) << "Error: " << re.what() << endl;
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
   }
+  LOG(ERROR) << "Jumpclient shutdown";
 }
 
 int main(int argc, char **argv) {
