@@ -426,6 +426,9 @@ void startUserTerminal() {
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   stderr = fopen(std_file.c_str(), "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  google::SetLogDestination(google::INFO, (std_file + ".INFO.").c_str());
+  google::SetLogDestination(google::WARNING, (std_file + ".WARNING.").c_str());
+  google::SetLogDestination(google::ERROR, (std_file + ".ERROR.").c_str());
   uth.run();
 }
 
@@ -459,6 +462,9 @@ void startJumpHostClient() {
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   stderr = fopen(std_file.c_str(), "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  google::SetLogDestination(google::INFO, (std_file + ".INFO.").c_str());
+  google::SetLogDestination(google::WARNING, (std_file + ".WARNING.").c_str());
+  google::SetLogDestination(google::ERROR, (std_file + ".ERROR.").c_str());
 
   sockaddr_un remote;
 
