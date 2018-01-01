@@ -593,6 +593,11 @@ int main(int argc, char **argv) {
           FLAGS_port = stoi(portString);
         }
       }
+      // read verbose level
+      const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
+      if (vlevel) {
+        FLAGS_v = atoi(vlevel);
+      }
     } else {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
