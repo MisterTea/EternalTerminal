@@ -75,39 +75,17 @@ void UserTerminalRouter::acceptNewConnection(
 
   LOG(INFO) << "Connected";
 
-  string buf;
-  while (true) {
-    char c;
-    int numRead = ::read(terminalFd, &c, 1);
-    if (numRead == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-      continue;
-    }
-    FATAL_FAIL(numRead);
-    if (numRead == 0) {
-      LOG(ERROR) << "Invalid idPasskey id/key pair";
-      close(terminalFd);
-      break;
-    } else if (numRead == 1) {
-      if (c == '\0') {
-        VLOG(1) << "Got passkey: " << buf << endl;
-        size_t slashIndex = buf.find("/");
-        if (slashIndex == string::npos) {
-          LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
-          close(terminalFd);
-          break;
-        } else {
-          string id = buf.substr(0, slashIndex);
-          string key = buf.substr(slashIndex + 1);
-          idFdMap[id] = terminalFd;
-          globalServer->addClientKey(id, key);
-          break;
-        }
-      } else {
-        buf += c;
-      }
-    } else {
-      LOG(FATAL) << "Somehow read more than one character";
-    }
+  string buf = RawSocketUtils::readMessage(terminalFd);
+  VLOG(1) << "Got passkey: " << buf << endl;
+  size_t slashIndex = buf.find("/");
+  if (slashIndex == string::npos) {
+    LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
+    close(terminalFd);
+  } else {
+    string id = buf.substr(0, slashIndex);
+    string key = buf.substr(slashIndex + 1);
+    idFdMap[id] = terminalFd;
+    globalServer->addClientKey(id, key);
   }
 }
 

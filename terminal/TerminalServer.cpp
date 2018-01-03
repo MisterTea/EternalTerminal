@@ -68,6 +68,38 @@ shared_ptr<UserTerminalRouter> terminalRouter;
 vector<shared_ptr<thread>> terminalThreads;
 mutex terminalThreadMutex;
 bool halt = false;
+string getIdpasskey() {
+  string idpasskey = FLAGS_idpasskey;
+  if (FLAGS_idpasskeyfile.length() > 0) {
+    // Check for passkey file
+    std::ifstream t(FLAGS_idpasskeyfile.c_str());
+    std::stringstream buffer;
+    buffer << t.rdbuf();
+    idpasskey = buffer.str();
+    // Trim whitespace
+    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+    // Delete the file with the passkey
+    remove(FLAGS_idpasskeyfile.c_str());
+  }
+  return idpasskey;
+}
+
+void setGlogFile(string filename) {
+  google::SetLogDestination(google::INFO, (filename + ".INFO.").c_str());
+  google::SetLogDestination(google::WARNING, (filename + ".WARNING.").c_str());
+  google::SetLogDestination(google::ERROR, (filename + ".ERROR.").c_str());
+}
+
+void setDaemonLogFile(string idpasskey, string daemonType) {
+  string first_idpass_chars = idpasskey.substr(0, 10);
+  string std_file =
+      string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
+  stdout = fopen(std_file.c_str(), "w+");
+  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  stderr = fopen(std_file.c_str(), "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  setGlogFile(std_file);
+}
 
 void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
   bool run = true;
@@ -402,49 +434,19 @@ void startServer() {
 }
 
 void startUserTerminal() {
-  string idpasskey = FLAGS_idpasskey;
-  if (FLAGS_idpasskeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_idpasskeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    idpasskey = buffer.str();
-    // Trim whitespace
-    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-    // Delete the file with the passkey
-    remove(FLAGS_idpasskeyfile.c_str());
-  }
+  string idpasskey = getIdpasskey();
   UserTerminalHandler uth;
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (::daemon(0, 0) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
-  string first_idpass_chars = idpasskey.substr(0, 10);
-  string std_file = string("/tmp/etserver_terminal_") + first_idpass_chars;
-  stdout = fopen(std_file.c_str(), "w+");
-  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  stderr = fopen(std_file.c_str(), "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  google::SetLogDestination(google::INFO, (std_file + ".INFO.").c_str());
-  google::SetLogDestination(google::WARNING, (std_file + ".WARNING.").c_str());
-  google::SetLogDestination(google::ERROR, (std_file + ".ERROR.").c_str());
+  setDaemonLogFile(idpasskey, "terminal");
   uth.run();
 }
 
 void startJumpHostClient() {
-  string idpasskey = FLAGS_idpasskey;
-  if (FLAGS_idpasskeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_idpasskeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    idpasskey = buffer.str();
-    // Trim whitespace
-    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-    // Delete the file with the passkey
-    remove(FLAGS_idpasskeyfile.c_str());
-  }
+  string idpasskey = getIdpasskey();
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
@@ -456,16 +458,7 @@ void startJumpHostClient() {
   if (::daemon(0, 0) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
-  string first_idpass_chars = idpasskey.substr(0, 10);
-  string std_file = string("/tmp/etserver_jumphost_") + first_idpass_chars;
-  stdout = fopen(std_file.c_str(), "w+");
-  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  stderr = fopen(std_file.c_str(), "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  google::SetLogDestination(google::INFO, (std_file + ".INFO.").c_str());
-  google::SetLogDestination(google::WARNING, (std_file + ".WARNING.").c_str());
-  google::SetLogDestination(google::ERROR, (std_file + ".ERROR.").c_str());
-
+  setDaemonLogFile(idpasskey, "jumphost");
   sockaddr_un remote;
 
   int routerFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -486,10 +479,7 @@ void startJumpHostClient() {
     exit(1);
   }
 
-  FATAL_FAIL(
-      RawSocketUtils::writeAll(routerFd, &(idpasskey[0]), idpasskey.length()));
-  FATAL_FAIL(RawSocketUtils::writeAll(routerFd, "\0", 1));
-
+  RawSocketUtils::writeMessage(routerFd, idpasskey);
   InitialPayload payload;
 
   shared_ptr<SocketHandler> jumpclientSocket(new UnixSocketHandler());
