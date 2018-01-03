@@ -61,9 +61,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     }
     exit(1);
   }
-  FATAL_FAIL(
-      RawSocketUtils::writeAll(routerFd, &(idPasskey[0]), idPasskey.length()));
-  FATAL_FAIL(RawSocketUtils::writeAll(routerFd, "\0", 1));
+  RawSocketUtils::writeMessage(routerFd, idPasskey);
 }
 
 void UserTerminalHandler::run() {
