@@ -28,6 +28,8 @@
 #include <pty.h>
 #endif
 
+#include "ETerminal.pb.h"
+
 namespace et {
 UserTerminalRouter::UserTerminalRouter() {
   sockaddr_un local;
@@ -86,6 +88,10 @@ void UserTerminalRouter::acceptNewConnection(
     string key = buf.substr(slashIndex + 1);
     idFdMap[id] = terminalFd;
     globalServer->addClientKey(id, key);
+    // send config params to terminal
+    ConfigParams config;
+    config.set_vlevel(FLAGS_v);
+    RawSocketUtils::writeProto(terminalFd, config);
   }
 }
 
