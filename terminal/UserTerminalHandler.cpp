@@ -64,6 +64,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   RawSocketUtils::writeMessage(routerFd, idPasskey);
   ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
   FLAGS_v = config.vlevel();
+  FLAGS_minloglevel = config.minloglevel();
 }
 
 void UserTerminalHandler::run() {
