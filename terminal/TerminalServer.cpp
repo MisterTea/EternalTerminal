@@ -86,6 +86,8 @@ string getIdpasskey() {
 
 void setGlogVerboseLevel(int vlevel) { FLAGS_v = vlevel; }
 
+void setGlogMinLogLevel(int level) { FLAGS_minloglevel = level; }
+
 void setGlogFile(string filename) {
   google::SetLogDestination(google::INFO, (filename + ".INFO.").c_str());
   google::SetLogDestination(google::WARNING, (filename + ".WARNING.").c_str());
@@ -484,6 +486,7 @@ void startJumpHostClient() {
   RawSocketUtils::writeMessage(routerFd, idpasskey);
   ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
   setGlogVerboseLevel(config.vlevel());
+  setGlogMinLogLevel(config.minloglevel());
 
   InitialPayload payload;
 
@@ -592,6 +595,12 @@ int main(int argc, char **argv) {
       const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
       if (vlevel) {
         setGlogVerboseLevel(atoi(vlevel));
+      }
+      // read silent setting
+      const char *silent = ini.GetValue("Debug", "silent", NULL);
+      if (silent && atoi(silent) != 0) {
+        setGlogVerboseLevel(0);
+        setGlogMinLogLevel(2);
       }
     } else {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;

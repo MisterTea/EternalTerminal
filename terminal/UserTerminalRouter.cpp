@@ -91,6 +91,7 @@ void UserTerminalRouter::acceptNewConnection(
     // send config params to terminal
     ConfigParams config;
     config.set_vlevel(FLAGS_v);
+    config.set_minloglevel(FLAGS_minloglevel);
     RawSocketUtils::writeProto(terminalFd, config);
   }
 }

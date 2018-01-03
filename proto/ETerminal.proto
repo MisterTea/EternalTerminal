@@ -46,4 +46,5 @@ message InitialPayload {
 
 message ConfigParams {
   optional int32 vlevel = 1;
+  optional int32 minloglevel = 2;
 }
