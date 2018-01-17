@@ -13,6 +13,10 @@ class RawSocketUtils {
   static inline string readMessage(int fd) {
     int64_t length;
     FATAL_FAIL(readAll(fd, (char*)&length, sizeof(int64_t)));
+    if (length < 0 || length > 128 * 1024 * 1024) {
+      // If the message is < 0 or too big, assume this is a bad packet and throw
+      throw std::runtime_error("Invalid size (<0 or >128 MB)");
+    }
     string s(length, 0);
     FATAL_FAIL(readAll(fd, &s[0], length));
     return s;
@@ -29,9 +33,15 @@ class RawSocketUtils {
     T t;
     int64_t length;
     FATAL_FAIL(readAll(fd, (char*)&length, sizeof(int64_t)));
+    if (length < 0 || length > 128 * 1024 * 1024) {
+      // If the message is < 0 or too big, assume this is a bad packet and throw
+      throw std::runtime_error("Invalid size (<0 or >128 MB)");
+    }
     string s(length, 0);
     FATAL_FAIL(readAll(fd, &s[0], length));
-    t.ParseFromString(s);
+    if(!t.ParseFromString(s)) {
+      throw std::runtime_error("Invalid proto");
+    }
     return t;
   }
 

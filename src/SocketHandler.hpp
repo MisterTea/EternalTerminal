@@ -19,9 +19,15 @@ class SocketHandler {
     T t;
     int64_t length;
     readAll(fd, &length, sizeof(int64_t), timeout);
+    if (length < 0 || length > 128 * 1024 * 1024) {
+      // If the message is < 0 or too big, assume this is a bad packet and throw
+      throw std::runtime_error("Invalid size (<0 or >128 MB)");
+    }
     string s(length, 0);
     readAll(fd, &s[0], length, timeout);
-    t.ParseFromString(s);
+    if(!t.ParseFromString(s)) {
+      throw std::runtime_error("Invalid proto");
+    }
     return t;
   }
 
