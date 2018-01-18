@@ -175,9 +175,9 @@ int main(int argc, char** argv) {
           "-c Initial command to execute upon connecting\n"
           "-t Map local to remote TCP port (TCP Tunneling)\n"
           "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
-          "-t Map remote to local TCP port (TCP Reverse Tunneling)\n"
-          "   example: et -t=\"18000:8000\" hostname maps hostname:8000 "
-          "to localhost:18000\n"
+          "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
+          "   example: et -rt=\"18000:8000\" hostname maps hostname:18000 "
+          "to localhost:8000\n"
           "-jumphost Jumphost between localhost and destination\n"
           "-jport Port to connect on jumphost"
            << endl;
