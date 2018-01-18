@@ -12,7 +12,7 @@ class PortForwardSourceRouter {
  public:
   PortForwardSourceRouter() {}
 
-  void addListener(shared_ptr<PortForwardSourceHandler> listener);
+  void addSourceHandler(shared_ptr<PortForwardSourceHandler> handler);
 
   void update(vector<PortForwardRequest>* requests,
               vector<PortForwardData>* dataToSend);
@@ -26,8 +26,8 @@ class PortForwardSourceRouter {
   void sendDataOnSocket(int socketId, const string& data);
 
  protected:
-  vector<shared_ptr<PortForwardSourceHandler>> listeners;
-  unordered_map<int, shared_ptr<PortForwardSourceHandler>> socketIdListenerMap;
+  vector<shared_ptr<PortForwardSourceHandler>> handlers;
+  unordered_map<int, shared_ptr<PortForwardSourceHandler>> socketIdSourceHandlerMap;
 };
 }  // namespace et
 

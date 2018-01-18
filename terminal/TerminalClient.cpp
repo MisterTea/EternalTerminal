@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
             } else {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
               for (int i = 0; i < portRangeLength; ++i) {
-                portForwardRouter.addListener(
+                portForwardRouter.addSourceHandler(
                     shared_ptr<PortForwardSourceHandler>(
                         new PortForwardSourceHandler(
                             socketHandler, sourcePortStart + i,
@@ -280,7 +280,7 @@ int main(int argc, char** argv) {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardRouter.addListener(shared_ptr<PortForwardSourceHandler>(
+            portForwardRouter.addSourceHandler(shared_ptr<PortForwardSourceHandler>(
                 new PortForwardSourceHandler(socketHandler, sourcePort,
                                               destinationPort)));
           }

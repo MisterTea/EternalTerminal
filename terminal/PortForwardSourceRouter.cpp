@@ -1,14 +1,14 @@
 #include "PortForwardSourceRouter.hpp"
 
 namespace et {
-void PortForwardSourceRouter::addListener(
-    shared_ptr<PortForwardSourceHandler> listener) {
-  listeners.push_back(listener);
+void PortForwardSourceRouter::addSourceHandler(
+    shared_ptr<PortForwardSourceHandler> handler) {
+  handlers.push_back(handler);
 }
 
 void PortForwardSourceRouter::update(vector<PortForwardRequest>* requests,
                                      vector<PortForwardData>* dataToSend) {
-  for (auto& it : listeners) {
+  for (auto& it : handlers) {
     it->update(dataToSend);
     int fd = it->listen();
     if (fd >= 0) {
@@ -21,7 +21,7 @@ void PortForwardSourceRouter::update(vector<PortForwardRequest>* requests,
 }
 
 void PortForwardSourceRouter::closeSourceFd(int fd) {
-  for (auto& it : listeners) {
+  for (auto& it : handlers) {
     if (it->hasUnassignedFd(fd)) {
       it->closeUnassignedFd(fd);
       return;
@@ -33,10 +33,10 @@ void PortForwardSourceRouter::closeSourceFd(int fd) {
 }
 
 void PortForwardSourceRouter::addSocketId(int socketId, int sourceFd) {
-  for (auto& it : listeners) {
+  for (auto& it : handlers) {
     if (it->hasUnassignedFd(sourceFd)) {
       it->addSocket(socketId, sourceFd);
-      socketIdListenerMap[socketId] = it;
+      socketIdSourceHandlerMap[socketId] = it;
       return;
     }
   }
@@ -46,19 +46,19 @@ void PortForwardSourceRouter::addSocketId(int socketId, int sourceFd) {
 }
 
 void PortForwardSourceRouter::closeSocketId(int socketId) {
-  auto it = socketIdListenerMap.find(socketId);
-  if (it == socketIdListenerMap.end()) {
+  auto it = socketIdSourceHandlerMap.find(socketId);
+  if (it == socketIdSourceHandlerMap.end()) {
     LOG(ERROR) << "Tried to close a socket id that doesn't exist";
     return;
   }
   it->second->closeSocket(socketId);
-  socketIdListenerMap.erase(socketId);
+  socketIdSourceHandlerMap.erase(socketId);
 }
 
 void PortForwardSourceRouter::sendDataOnSocket(int socketId,
                                                const string& data) {
-  auto it = socketIdListenerMap.find(socketId);
-  if (it == socketIdListenerMap.end()) {
+  auto it = socketIdSourceHandlerMap.find(socketId);
+  if (it == socketIdSourceHandlerMap.end()) {
     LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: "
                << socketId;
     return;
