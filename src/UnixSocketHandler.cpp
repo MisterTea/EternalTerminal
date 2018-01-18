@@ -231,7 +231,8 @@ void UnixSocketHandler::createServerSockets(int port) {
       continue;
     }
     if (!initSocket(sockfd)) {
-      LOG(FATAL) << "Init socket failed with errno: (" << errno << "): " << strerror(errno);
+      LOG(FATAL) << "Init socket failed with errno: (" << errno
+                 << "): " << strerror(errno);
     }
     // Also set the accept socket as non-blocking
     {
@@ -382,11 +383,8 @@ void UnixSocketHandler::close(int fd) {
 
 bool UnixSocketHandler::initSocket(int fd) {
   int flag = 1;
-  if (setsockopt(fd,
-                 IPPROTO_TCP,
-                 TCP_NODELAY,
-                 (char *)&flag,
-                 sizeof(int)) == -1) {
+  if (setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)) ==
+      -1) {
     return false;
   }
   timeval tv;

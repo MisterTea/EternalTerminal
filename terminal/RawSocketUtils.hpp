@@ -39,7 +39,7 @@ class RawSocketUtils {
     }
     string s(length, 0);
     FATAL_FAIL(readAll(fd, &s[0], length));
-    if(!t.ParseFromString(s)) {
+    if (!t.ParseFromString(s)) {
       throw std::runtime_error("Invalid proto");
     }
     return t;

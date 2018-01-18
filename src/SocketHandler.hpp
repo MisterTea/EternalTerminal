@@ -25,7 +25,7 @@ class SocketHandler {
     }
     string s(length, 0);
     readAll(fd, &s[0], length, timeout);
-    if(!t.ParseFromString(s)) {
+    if (!t.ParseFromString(s)) {
       throw std::runtime_error("Invalid proto");
     }
     return t;
