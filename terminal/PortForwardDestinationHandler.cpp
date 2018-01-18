@@ -42,7 +42,8 @@ void PortForwardDestinationHandler::update(vector<PortForwardData>* retval) {
     if (bytesRead < 1) {
       LOG(INFO) << "Socket " << socketId << " closed";
       if (bytesRead < 0) {
-        LOG(ERROR) << "Socket " << socketId << " closed with error " << errno << ' ' << strerror(errno);
+        LOG(ERROR) << "Socket " << socketId << " closed with error " << errno
+                   << ' ' << strerror(errno);
       }
       socketHandler->close(fd);
       fd = -1;

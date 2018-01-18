@@ -220,7 +220,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
-      for (auto& pfr : requests) {
+      for (auto &pfr : requests) {
         char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
         string headerString(1, c);
         serverClientState->writeMessage(headerString);
@@ -252,7 +252,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             case et::PacketType::OBSOLETE_PORT_FORWARD_DATA:
             case et::PacketType::OBSOLETE_PORT_FORWARD_REQUEST:
               // Legacy port forwarding requests/data are ignored.
-              LOG(ERROR) << "Received legacy port forwarding request.  Ignoring...";
+              LOG(ERROR)
+                  << "Received legacy port forwarding request.  Ignoring...";
               break;
             case et::PacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal

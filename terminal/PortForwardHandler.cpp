@@ -31,10 +31,9 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr) {
   try {
-    auto handler = shared_ptr<PortForwardSourceHandler>(
-        new PortForwardSourceHandler(
-            socketHandler, pfsr.sourceport(),
-            pfsr.destinationport()));
+    auto handler =
+        shared_ptr<PortForwardSourceHandler>(new PortForwardSourceHandler(
+            socketHandler, pfsr.sourceport(), pfsr.destinationport()));
     sourceHandlers.push_back(handler);
     return PortForwardSourceResponse();
   } catch (const std::runtime_error& ex) {
@@ -118,7 +117,8 @@ void PortForwardHandler::handlePacket(char packetType,
     }
     case PacketType::PORT_FORWARD_SOURCE_REQUEST: {
       LOG(INFO) << "Got new port source request";
-      PortForwardSourceRequest pfsr = connection->readProto<PortForwardSourceRequest>();
+      PortForwardSourceRequest pfsr =
+          connection->readProto<PortForwardSourceRequest>();
       PortForwardSourceResponse pfsresponse = createSource(pfsr);
       char c = PacketType::PORT_FORWARD_SOURCE_RESPONSE;
       connection->writeMessage(string(1, c));
@@ -127,15 +127,19 @@ void PortForwardHandler::handlePacket(char packetType,
     }
     case PacketType::PORT_FORWARD_SOURCE_RESPONSE: {
       LOG(INFO) << "Got port source response";
-      PortForwardSourceResponse pfsresponse = connection->readProto<PortForwardSourceResponse>();
+      PortForwardSourceResponse pfsresponse =
+          connection->readProto<PortForwardSourceResponse>();
       if (pfsresponse.has_error()) {
-        cerr << "FATAL: A reverse tunnel has failed (probably because someone else is already using that port on the destination server" << endl;
+        cerr << "FATAL: A reverse tunnel has failed (probably because someone "
+                "else is already using that port on the destination server"
+             << endl;
         LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse.error();
       }
       break;
     }
     case PacketType::PORT_FORWARD_DESTINATION_REQUEST: {
-      PortForwardDestinationRequest pfdr = connection->readProto<PortForwardDestinationRequest>();
+      PortForwardDestinationRequest pfdr =
+          connection->readProto<PortForwardDestinationRequest>();
       LOG(INFO) << "Got new port destination request for port " << pfdr.port();
       PortForwardDestinationResponse pfdresponse = createDestination(pfdr);
       char c = PacketType::PORT_FORWARD_DESTINATION_RESPONSE;
@@ -144,7 +148,8 @@ void PortForwardHandler::handlePacket(char packetType,
       break;
     }
     case PacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
-      PortForwardDestinationResponse pfdr = connection->readProto<PortForwardDestinationResponse>();
+      PortForwardDestinationResponse pfdr =
+          connection->readProto<PortForwardDestinationResponse>();
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
@@ -170,7 +175,7 @@ void PortForwardHandler::closeSourceFd(int fd) {
     }
   }
   LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe "
-      "it was already removed?): "
+                "it was already removed?): "
              << fd;
 }
 
@@ -183,7 +188,7 @@ void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
     }
   }
   LOG(ERROR) << "Tried to add a socketId but the corresponding sourceFd is "
-      "already dead: "
+                "already dead: "
              << socketId << " " << sourceFd;
 }
 

@@ -118,8 +118,8 @@ void handleWindowChanged(winsize* win) {
   }
 }
 
-vector<pair<int,int>> parseRangesToPairs(const string &input) {
-  vector<pair<int,int>> pairs;
+vector<pair<int, int>> parseRangesToPairs(const string& input) {
+  vector<pair<int, int>> pairs;
   auto j = split(input, ',');
   for (auto& pair : j) {
     vector<string> sourceDestination = split(pair, ':');
@@ -130,8 +130,7 @@ vector<pair<int,int>> parseRangesToPairs(const string &input) {
         int sourcePortStart = stoi(sourcePortRange[0]);
         int sourcePortEnd = stoi(sourcePortRange[1]);
 
-        vector<string> destinationPortRange =
-            split(sourceDestination[1], '-');
+        vector<string> destinationPortRange = split(sourceDestination[1], '-');
         int destinationPortStart = stoi(destinationPortRange[0]);
         int destinationPortEnd = stoi(destinationPortRange[1]);
 
@@ -142,12 +141,14 @@ vector<pair<int,int>> parseRangesToPairs(const string &input) {
         } else {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
           for (int i = 0; i < portRangeLength; ++i) {
-            pairs.push_back(make_pair(sourcePortStart + i, destinationPortStart + i));
+            pairs.push_back(
+                make_pair(sourcePortStart + i, destinationPortStart + i));
           }
         }
       } else if (sourceDestination[0].find('-') != string::npos ||
                  sourceDestination[1].find('-') != string::npos) {
-        LOG(FATAL) << "Invalid port range syntax: if source is range, destination must be range";
+        LOG(FATAL) << "Invalid port range syntax: if source is range, "
+                      "destination must be range";
       } else {
         int sourcePort = stoi(sourceDestination[0]);
         int destinationPort = stoi(sourceDestination[1]);
@@ -167,19 +168,19 @@ int main(int argc, char** argv) {
     string s(argv[i]);
     if (s == "-h" || s == "--help") {
       cout << "et (options) [user@]hostname[:port]\n"
-          "Options:\n"
-          "-h Basic usage\n"
-          "-p Port for etserver to run on.  Default: 2022\n"
-          "-u Username to connect to ssh & ET\n"
-          "-v=9 verbose log files\n"
-          "-c Initial command to execute upon connecting\n"
-          "-t Map local to remote TCP port (TCP Tunneling)\n"
-          "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
-          "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
-          "   example: et -rt=\"18000:8000\" hostname maps hostname:18000 "
-          "to localhost:8000\n"
-          "-jumphost Jumphost between localhost and destination\n"
-          "-jport Port to connect on jumphost"
+              "Options:\n"
+              "-h Basic usage\n"
+              "-p Port for etserver to run on.  Default: 2022\n"
+              "-u Username to connect to ssh & ET\n"
+              "-v=9 verbose log files\n"
+              "-c Initial command to execute upon connecting\n"
+              "-t Map local to remote TCP port (TCP Tunneling)\n"
+              "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
+              "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
+              "   example: et -rt=\"18000:8000\" hostname maps hostname:18000 "
+              "to localhost:8000\n"
+              "-jumphost Jumphost between localhost and destination\n"
+              "-jport Port to connect on jumphost"
            << endl;
       exit(1);
     }
@@ -210,20 +211,20 @@ int main(int argc, char** argv) {
   }
 
   Options options = {
-    NULL,  // username
-    NULL,  // host
-    NULL,  // sshdir
-    NULL,  // knownhosts
-    NULL,  // ProxyCommand
-    NULL,  // ProxyJump
-    0,     // timeout
-    0,     // port
-    0,     // StrictHostKeyChecking
-    0,     // ssh2
-    0,     // ssh1
-    NULL,  // gss_server_identity
-    NULL,  // gss_client_identity
-    0      // gss_delegate_creds
+      NULL,  // username
+      NULL,  // host
+      NULL,  // sshdir
+      NULL,  // knownhosts
+      NULL,  // ProxyCommand
+      NULL,  // ProxyJump
+      0,     // timeout
+      0,     // port
+      0,     // StrictHostKeyChecking
+      0,     // ssh2
+      0,     // ssh1
+      NULL,  // gss_server_identity
+      NULL,  // gss_client_identity
+      0      // gss_delegate_creds
   };
 
   char* home_dir = ssh_get_user_home_dir();
@@ -270,7 +271,7 @@ int main(int argc, char** argv) {
   // Whether the TE should keep running.
   bool run = true;
 
-  // TE sends/receives data to/from the shell one char at a time.
+// TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 

@@ -264,8 +264,7 @@ void UnixSocketHandler::createServerSockets(int port) {
                  << "/" << p->ai_protocol << ": " << errno << " "
                  << strerror(errno);
       cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
-           << p->ai_protocol << ": " << errno << " " << strerror(errno)
-           << endl;
+           << p->ai_protocol << ": " << errno << " " << strerror(errno) << endl;
       stringstream oss;
       oss << "Error binding port " << port << ": " << errno << " "
           << strerror(errno);
