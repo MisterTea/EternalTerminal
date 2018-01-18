@@ -249,6 +249,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             continue;
           }
           switch (packetType) {
+            case et::PacketType::OBSOLETE_PORT_FORWARD_DATA:
+            case et::PacketType::OBSOLETE_PORT_FORWARD_REQUEST:
+              // Legacy port forwarding requests/data are ignored.
+              LOG(ERROR) << "Received legacy port forwarding request.  Ignoring...";
+              break;
             case et::PacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =

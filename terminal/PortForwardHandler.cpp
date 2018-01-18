@@ -83,7 +83,7 @@ void PortForwardHandler::handlePacket(char packetType,
     case PacketType::PORT_FORWARD_DATA: {
       PortForwardData pwd = connection->readProto<PortForwardData>();
       if (pwd.sourcetodestination()) {
-        LOG(INFO) << "Got data for destination socket: " << pwd.socketid();
+        VLOG(1) << "Got data for destination socket: " << pwd.socketid();
         auto it = destinationHandlers.find(pwd.socketid());
         if (it == destinationHandlers.end()) {
           LOG(ERROR) << "Got data for a socket id that has already closed: "
@@ -110,7 +110,7 @@ void PortForwardHandler::handlePacket(char packetType,
           LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
           closeSourceSocketId(pwd.socketid());
         } else {
-          LOG(INFO) << "Got data for source socket: " << pwd.socketid();
+          VLOG(1) << "Got data for source socket: " << pwd.socketid();
           sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
         }
       }

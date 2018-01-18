@@ -8,7 +8,7 @@ PortForwardDestinationHandler::PortForwardDestinationHandler(
 void PortForwardDestinationHandler::close() { socketHandler->close(fd); }
 
 void PortForwardDestinationHandler::write(const string& s) {
-  LOG(INFO) << "Writing " << s.length() << " bytes to port destination";
+  VLOG(1) << "Writing " << s.length() << " bytes to port destination";
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
 }
 
