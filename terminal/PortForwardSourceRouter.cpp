@@ -2,7 +2,7 @@
 
 namespace et {
 void PortForwardSourceRouter::addListener(
-    shared_ptr<PortForwardSourceListener> listener) {
+    shared_ptr<PortForwardSourceHandler> listener) {
   listeners.push_back(listener);
 }
 

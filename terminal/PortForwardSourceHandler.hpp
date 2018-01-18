@@ -7,9 +7,9 @@
 #include "SocketHandler.hpp"
 
 namespace et {
-class PortForwardSourceListener {
+class PortForwardSourceHandler {
  public:
-  PortForwardSourceListener(shared_ptr<SocketHandler> _socketHandler,
+  PortForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
                             int _sourcePort, int _destinationPort);
 
   int listen();

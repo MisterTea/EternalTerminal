@@ -124,7 +124,7 @@ add_library(
   terminal/RawSocketUtils.cpp
   terminal/PortForwardHandler.cpp
   terminal/PortForwardSourceRouter.cpp
-  terminal/PortForwardSourceListener.cpp
+  terminal/PortForwardSourceHandler.cpp
   terminal/PortForwardDestinationHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}

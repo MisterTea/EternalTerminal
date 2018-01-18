@@ -3,7 +3,7 @@
 
 #include "Headers.hpp"
 
-#include "PortForwardSourceListener.hpp"
+#include "PortForwardSourceHandler.hpp"
 
 #include "ETerminal.pb.h"
 
@@ -12,7 +12,7 @@ class PortForwardSourceRouter {
  public:
   PortForwardSourceRouter() {}
 
-  void addListener(shared_ptr<PortForwardSourceListener> listener);
+  void addListener(shared_ptr<PortForwardSourceHandler> listener);
 
   void update(vector<PortForwardRequest>* requests,
               vector<PortForwardData>* dataToSend);
@@ -26,8 +26,8 @@ class PortForwardSourceRouter {
   void sendDataOnSocket(int socketId, const string& data);
 
  protected:
-  vector<shared_ptr<PortForwardSourceListener>> listeners;
-  unordered_map<int, shared_ptr<PortForwardSourceListener>> socketIdListenerMap;
+  vector<shared_ptr<PortForwardSourceHandler>> listeners;
+  unordered_map<int, shared_ptr<PortForwardSourceHandler>> socketIdListenerMap;
 };
 }  // namespace et
 

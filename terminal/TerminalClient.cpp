@@ -3,12 +3,13 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
-#include "PortForwardSourceListener.hpp"
+#include "PortForwardSourceHandler.hpp"
 #include "PortForwardSourceRouter.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
 #include "UnixSocketHandler.hpp"
+#include "PortForwardHandler.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -220,6 +221,8 @@ int main(int argc, char** argv) {
   shared_ptr<UnixSocketHandler> socketHandler =
       static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
 
+  PortForwardHandler portForwardHandler(socketHandler);
+
   // Whether the TE should keep running.
   bool run = true;
 
@@ -267,8 +270,8 @@ int main(int argc, char** argv) {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
               for (int i = 0; i < portRangeLength; ++i) {
                 portForwardRouter.addListener(
-                    shared_ptr<PortForwardSourceListener>(
-                        new PortForwardSourceListener(
+                    shared_ptr<PortForwardSourceHandler>(
+                        new PortForwardSourceHandler(
                             socketHandler, sourcePortStart + i,
                             destinationPortStart + i)));
               }
@@ -277,8 +280,8 @@ int main(int argc, char** argv) {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardRouter.addListener(shared_ptr<PortForwardSourceListener>(
-                new PortForwardSourceListener(socketHandler, sourcePort,
+            portForwardRouter.addListener(shared_ptr<PortForwardSourceHandler>(
+                new PortForwardSourceHandler(socketHandler, sourcePort,
                                               destinationPort)));
           }
         } catch (const std::logic_error& lr) {
