@@ -234,13 +234,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             break;
           }
           char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA
-              || packetType == et::PacketType::PORT_FORWARD_DS_DATA
-              || packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST
-              || packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE
-              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST
-              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE
-              ) {
+          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA ||
+              packetType == et::PacketType::PORT_FORWARD_DS_DATA ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
             portForwardHandler.handlePacket(packetType, serverClientState);
             continue;
           }

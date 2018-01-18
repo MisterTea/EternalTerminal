@@ -3,12 +3,12 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
+#include "PortForwardHandler.hpp"
 #include "PortForwardSourceHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
 #include "UnixSocketHandler.hpp"
-#include "PortForwardHandler.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -278,9 +278,10 @@ int main(int argc, char** argv) {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardHandler.addSourceHandler(shared_ptr<PortForwardSourceHandler>(
-                new PortForwardSourceHandler(socketHandler, sourcePort,
-                                              destinationPort)));
+            portForwardHandler.addSourceHandler(
+                shared_ptr<PortForwardSourceHandler>(
+                    new PortForwardSourceHandler(socketHandler, sourcePort,
+                                                 destinationPort)));
           }
         } catch (const std::logic_error& lr) {
           LOG(FATAL) << "Logic error: " << lr.what() << endl;
@@ -355,13 +356,12 @@ int main(int argc, char** argv) {
                        << packetTypeString.length();
           }
           char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA
-              || packetType == et::PacketType::PORT_FORWARD_DS_DATA
-              || packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST
-              || packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE
-              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST
-              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE
-              ) {
+          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA ||
+              packetType == et::PacketType::PORT_FORWARD_DS_DATA ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
             portForwardHandler.handlePacket(packetType, globalClient);
             continue;
           }

@@ -10,8 +10,8 @@
 namespace et {
 class PortForwardDestinationHandler {
  public:
-  PortForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
-                           int _socketId);
+  PortForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler,
+                                int _fd, int _socketId);
 
   void write(const string& s);
 

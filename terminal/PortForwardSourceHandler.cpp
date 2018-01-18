@@ -89,7 +89,7 @@ void PortForwardSourceHandler::addSocket(int socketId, int sourceFd) {
 }
 
 void PortForwardSourceHandler::sendDataOnSocket(int socketId,
-                                                 const string& data) {
+                                                const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
     LOG(ERROR) << "Tried to write to a socket that no longer exists!";
     return;
