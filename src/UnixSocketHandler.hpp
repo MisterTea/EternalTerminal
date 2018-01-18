@@ -19,7 +19,7 @@ class UnixSocketHandler : public SocketHandler {
 
  protected:
   void createServerSockets(int port);
-  void initSocket(int fd);
+  bool initSocket(int fd);
 
   set<int> activeSockets;
   map<int, set<int>> portServerSockets;

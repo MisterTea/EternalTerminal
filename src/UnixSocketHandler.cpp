@@ -102,7 +102,11 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       LOG(INFO) << "Error creating socket: " << errno << " " << strerror(errno);
       continue;
     }
-    initSocket(sockfd);
+    if (!initSocket(sockfd)) {
+      ::close(sockfd);
+      sockfd = -1;
+      continue;
+    }
 
     // Set nonblocking just for the connect phase
     {
@@ -226,7 +230,9 @@ void UnixSocketHandler::createServerSockets(int port) {
                 << " " << strerror(errno);
       continue;
     }
-    initSocket(sockfd);
+    if (!initSocket(sockfd)) {
+      LOG(FATAL) << "Init socket failed with errno: (" << errno << "): " << strerror(errno);
+    }
     // Also set the accept socket as non-blocking
     {
       int opts;
@@ -309,7 +315,10 @@ int UnixSocketHandler::accept(int sockfd) {
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
   if (client_sock >= 0) {
-    initSocket(client_sock);
+    if (!initSocket(client_sock)) {
+      ::close(client_sock);
+      return -1;
+    }
     activeSockets.insert(client_sock);
     // Make sure that socket becomes blocking once it's attached to a client.
     {
@@ -371,13 +380,15 @@ void UnixSocketHandler::close(int fd) {
   FATAL_FAIL(::close(fd));
 }
 
-void UnixSocketHandler::initSocket(int fd) {
+bool UnixSocketHandler::initSocket(int fd) {
   int flag = 1;
-  FATAL_FAIL(setsockopt(fd,            /* socket affected */
-                        IPPROTO_TCP,   /* set option at TCP level */
-                        TCP_NODELAY,   /* name of option */
-                        (char *)&flag, /* the cast is historical cruft */
-                        sizeof(int))); /* length of option value */
+  if (setsockopt(fd,
+                 IPPROTO_TCP,
+                 TCP_NODELAY,
+                 (char *)&flag,
+                 sizeof(int)) == -1) {
+    return false;
+  }
   timeval tv;
   tv.tv_sec = 5;
   tv.tv_usec = 0;
@@ -389,5 +400,6 @@ void UnixSocketHandler::initSocket(int fd) {
   FATAL_FAIL(
       setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
 #endif
+  return true;
 }
 }  // namespace et
