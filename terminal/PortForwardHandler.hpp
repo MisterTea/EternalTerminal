@@ -5,7 +5,7 @@
 
 #include "PortForwardSourceHandler.hpp"
 #include "PortForwardDestinationHandler.hpp"
-#include "ServerClientConnection.hpp"
+#include "Connection.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -15,7 +15,7 @@ class PortForwardHandler {
   void update(
       vector<PortForwardRequest>* requests,
       vector<PortForwardData>* dataToSend);
-  void handlePacket(char packetType, shared_ptr<ServerClientConnection> serverClientState);
+  void handlePacket(char packetType, shared_ptr<Connection> connection);
   PortForwardResponse createDestination(const PortForwardRequest& pfr);
 
   void addSourceHandler(shared_ptr<PortForwardSourceHandler> handler);

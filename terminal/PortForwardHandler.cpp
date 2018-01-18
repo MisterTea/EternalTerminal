@@ -68,21 +68,21 @@ PortForwardResponse PortForwardHandler::createDestination(const PortForwardReque
 
 void PortForwardHandler::handlePacket(
     char packetType,
-    shared_ptr<ServerClientConnection> serverClientState) {
+    shared_ptr<Connection> connection) {
   switch (packetType) {
     case PacketType::PORT_FORWARD_DESTINATION_REQUEST: {
       LOG(INFO) << "Got new port forward";
       PortForwardRequest pfr =
-          serverClientState->readProto<PortForwardRequest>();
+          connection->readProto<PortForwardRequest>();
       PortForwardResponse pfresponse = createDestination(pfr);
       char c = PacketType::PORT_FORWARD_DESTINATION_RESPONSE;
-      serverClientState->writeMessage(string(1, c));
-      serverClientState->writeProto(pfresponse);
+      connection->writeMessage(string(1, c));
+      connection->writeProto(pfresponse);
       break;
     }
     case PacketType::PORT_FORWARD_SD_DATA: {
       PortForwardData pwd =
-          serverClientState->readProto<PortForwardData>();
+          connection->readProto<PortForwardData>();
       LOG(INFO) << "Got data for socket: " << pwd.socketid();
       auto it = portForwardHandlers.find(pwd.socketid());
       if (it == portForwardHandlers.end()) {
@@ -106,6 +106,35 @@ void PortForwardHandler::handlePacket(
       }
       break;
     }
+    case PacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
+      PortForwardResponse pfr =
+          connection->readProto<PortForwardResponse>();
+      if (pfr.has_error()) {
+        LOG(INFO) << "Could not connect to server through tunnel: "
+                  << pfr.error();
+        closeSourceFd(pfr.clientfd());
+      } else {
+        LOG(INFO) << "Received socket/fd map from server: "
+                  << pfr.socketid() << " " << pfr.clientfd();
+        addSourceSocketId(pfr.socketid(), pfr.clientfd());
+      }
+      break;
+    }
+    case PacketType::PORT_FORWARD_DS_DATA: {
+      PortForwardData pwd = connection->readProto<PortForwardData>();
+      LOG(INFO) << "Got data for socket: " << pwd.socketid();
+      if (pwd.has_closed()) {
+        LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
+        closeSourceSocketId(pwd.socketid());
+      } else if (pwd.has_error()) {
+        LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
+        closeSourceSocketId(pwd.socketid());
+      } else {
+        sendDataToSourceOnSocket(pwd.socketid(),
+                                                    pwd.buffer());
+      }
+      break;
+    }
     default: {
       LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
     }
@@ -125,7 +154,7 @@ void PortForwardHandler::closeSourceFd(int fd) {
     }
   }
   LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe "
-                "it was already removed?): "
+      "it was already removed?): "
              << fd;
 }
 
@@ -138,7 +167,7 @@ void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
     }
   }
   LOG(ERROR) << "Tried to add a socketId but the corresponding sourceFd is "
-                "already dead: "
+      "already dead: "
              << socketId << " " << sourceFd;
 }
 
@@ -153,7 +182,7 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
 }
 
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
-                                               const string& data) {
+                                                  const string& data) {
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
     LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: "

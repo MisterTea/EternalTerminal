@@ -4,7 +4,6 @@
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardSourceHandler.hpp"
-#include "PortForwardSourceRouter.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
@@ -356,6 +355,16 @@ int main(int argc, char** argv) {
                        << packetTypeString.length();
           }
           char packetType = packetTypeString[0];
+          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA
+              || packetType == et::PacketType::PORT_FORWARD_DS_DATA
+              || packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST
+              || packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE
+              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST
+              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE
+              ) {
+            portForwardHandler.handlePacket(packetType, globalClient);
+            continue;
+          }
           switch (packetType) {
             case et::PacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal
@@ -372,35 +381,6 @@ int main(int argc, char** argv) {
             case et::PacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
               break;
-            case PacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
-              PortForwardResponse pfr =
-                  globalClient->readProto<PortForwardResponse>();
-              if (pfr.has_error()) {
-                LOG(INFO) << "Could not connect to server through tunnel: "
-                          << pfr.error();
-                portForwardHandler.closeSourceFd(pfr.clientfd());
-              } else {
-                LOG(INFO) << "Received socket/fd map from server: "
-                          << pfr.socketid() << " " << pfr.clientfd();
-                portForwardHandler.addSourceSocketId(pfr.socketid(), pfr.clientfd());
-              }
-              break;
-            }
-            case PacketType::PORT_FORWARD_DS_DATA: {
-              PortForwardData pwd = globalClient->readProto<PortForwardData>();
-              LOG(INFO) << "Got data for socket: " << pwd.socketid();
-              if (pwd.has_closed()) {
-                LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-                portForwardHandler.closeSourceSocketId(pwd.socketid());
-              } else if (pwd.has_error()) {
-                LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-                portForwardHandler.closeSourceSocketId(pwd.socketid());
-              } else {
-                portForwardHandler.sendDataToSourceOnSocket(pwd.socketid(),
-                                                           pwd.buffer());
-              }
-              break;
-            }
             default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
           }
