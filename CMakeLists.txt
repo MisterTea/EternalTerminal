@@ -123,7 +123,6 @@ add_library(
   terminal/SystemUtils.cpp
   terminal/RawSocketUtils.cpp
   terminal/PortForwardHandler.cpp
-  terminal/PortForwardSourceRouter.cpp
   terminal/PortForwardSourceHandler.cpp
   terminal/PortForwardDestinationHandler.cpp
 

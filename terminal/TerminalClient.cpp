@@ -244,7 +244,6 @@ int main(int argc, char** argv) {
     globalClient->writeProto(tb);
   }
 
-  PortForwardSourceRouter portForwardRouter;
   try {
     if (FLAGS_t.length()) {
       auto j = split(FLAGS_t, ',');
@@ -269,7 +268,7 @@ int main(int argc, char** argv) {
             } else {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
               for (int i = 0; i < portRangeLength; ++i) {
-                portForwardRouter.addSourceHandler(
+                portForwardHandler.addSourceHandler(
                     shared_ptr<PortForwardSourceHandler>(
                         new PortForwardSourceHandler(
                             socketHandler, sourcePortStart + i,
@@ -280,7 +279,7 @@ int main(int argc, char** argv) {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardRouter.addSourceHandler(shared_ptr<PortForwardSourceHandler>(
+            portForwardHandler.addSourceHandler(shared_ptr<PortForwardSourceHandler>(
                 new PortForwardSourceHandler(socketHandler, sourcePort,
                                               destinationPort)));
           }
@@ -379,11 +378,11 @@ int main(int argc, char** argv) {
               if (pfr.has_error()) {
                 LOG(INFO) << "Could not connect to server through tunnel: "
                           << pfr.error();
-                portForwardRouter.closeSourceFd(pfr.clientfd());
+                portForwardHandler.closeSourceFd(pfr.clientfd());
               } else {
                 LOG(INFO) << "Received socket/fd map from server: "
                           << pfr.socketid() << " " << pfr.clientfd();
-                portForwardRouter.addSocketId(pfr.socketid(), pfr.clientfd());
+                portForwardHandler.addSourceSocketId(pfr.socketid(), pfr.clientfd());
               }
               break;
             }
@@ -392,13 +391,13 @@ int main(int argc, char** argv) {
               LOG(INFO) << "Got data for socket: " << pwd.socketid();
               if (pwd.has_closed()) {
                 LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-                portForwardRouter.closeSocketId(pwd.socketid());
+                portForwardHandler.closeSourceSocketId(pwd.socketid());
               } else if (pwd.has_error()) {
                 LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-                portForwardRouter.closeSocketId(pwd.socketid());
+                portForwardHandler.closeSourceSocketId(pwd.socketid());
               } else {
-                portForwardRouter.sendDataOnSocket(pwd.socketid(),
-                                                   pwd.buffer());
+                portForwardHandler.sendDataToSourceOnSocket(pwd.socketid(),
+                                                           pwd.buffer());
               }
               break;
             }
@@ -426,7 +425,7 @@ int main(int argc, char** argv) {
 
       vector<PortForwardRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardRouter.update(&requests, &dataToSend);
+      portForwardHandler.update(&requests, &dataToSend);
       for (auto& pfr : requests) {
         char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
         string headerString(1, c);

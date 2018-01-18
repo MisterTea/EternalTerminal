@@ -217,7 +217,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
-      vector<PortForwardData> dataToSend = portForwardHandler.update();
+      vector<PortForwardRequest> requests;
+      vector<PortForwardData> dataToSend;
+      portForwardHandler.update(&requests, &dataToSend);
       for (auto &pwd : dataToSend) {
         char c = PacketType::PORT_FORWARD_DS_DATA;
         string headerString(1, c);

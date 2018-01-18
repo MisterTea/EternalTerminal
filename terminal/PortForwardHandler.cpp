@@ -5,21 +5,32 @@ PortForwardHandler::PortForwardHandler(shared_ptr<SocketHandler> _socketHandler)
     socketHandler(_socketHandler) {
 }
 
-vector<PortForwardData> PortForwardHandler::update() {
-  vector<PortForwardData> dataToSend;
+void PortForwardHandler::update(
+    vector<PortForwardRequest>* requests,
+    vector<PortForwardData>* dataToSend) {
+  for (auto& it : handlers) {
+    it->update(dataToSend);
+    int fd = it->listen();
+    if (fd >= 0) {
+      PortForwardRequest pfr;
+      pfr.set_port(it->getDestinationPort());
+      pfr.set_fd(fd);
+      requests->push_back(pfr);
+    }
+  }
+
   for (auto &it : portForwardHandlers) {
-    it.second->update(&dataToSend);
+    it.second->update(dataToSend);
     if (it.second->getFd() == -1) {
       // Kill the handler and don't update the rest: we'll pick
       // them up later
       portForwardHandlers.erase(it.first);
-      return dataToSend;
+      break;
     }
   }
-  return dataToSend;
 }
 
-PortForwardResponse PortForwardHandler::createSource(const PortForwardRequest& pfr) {
+PortForwardResponse PortForwardHandler::createDestination(const PortForwardRequest& pfr) {
   // Try ipv6 first
   int fd = socketHandler->connect("::1", pfr.port());
   if (fd == -1) {
@@ -63,7 +74,7 @@ void PortForwardHandler::handlePacket(
       LOG(INFO) << "Got new port forward";
       PortForwardRequest pfr =
           serverClientState->readProto<PortForwardRequest>();
-      PortForwardResponse pfresponse = createSource(pfr);
+      PortForwardResponse pfresponse = createDestination(pfr);
       char c = PacketType::PORT_FORWARD_DESTINATION_RESPONSE;
       serverClientState->writeMessage(string(1, c));
       serverClientState->writeProto(pfresponse);
@@ -99,5 +110,56 @@ void PortForwardHandler::handlePacket(
       LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
     }
   }
+}
+
+void PortForwardHandler::addSourceHandler(
+    shared_ptr<PortForwardSourceHandler> handler) {
+  handlers.push_back(handler);
+}
+
+void PortForwardHandler::closeSourceFd(int fd) {
+  for (auto& it : handlers) {
+    if (it->hasUnassignedFd(fd)) {
+      it->closeUnassignedFd(fd);
+      return;
+    }
+  }
+  LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe "
+                "it was already removed?): "
+             << fd;
+}
+
+void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
+  for (auto& it : handlers) {
+    if (it->hasUnassignedFd(sourceFd)) {
+      it->addSocket(socketId, sourceFd);
+      socketIdSourceHandlerMap[socketId] = it;
+      return;
+    }
+  }
+  LOG(ERROR) << "Tried to add a socketId but the corresponding sourceFd is "
+                "already dead: "
+             << socketId << " " << sourceFd;
+}
+
+void PortForwardHandler::closeSourceSocketId(int socketId) {
+  auto it = socketIdSourceHandlerMap.find(socketId);
+  if (it == socketIdSourceHandlerMap.end()) {
+    LOG(ERROR) << "Tried to close a socket id that doesn't exist";
+    return;
+  }
+  it->second->closeSocket(socketId);
+  socketIdSourceHandlerMap.erase(socketId);
+}
+
+void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
+                                               const string& data) {
+  auto it = socketIdSourceHandlerMap.find(socketId);
+  if (it == socketIdSourceHandlerMap.end()) {
+    LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: "
+               << socketId;
+    return;
+  }
+  it->second->sendDataOnSocket(socketId, data);
 }
 }
