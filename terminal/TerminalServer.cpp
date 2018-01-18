@@ -2,7 +2,7 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
-#include "PortForwardServerHandler.hpp"
+#include "PortForwardDestinationHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
@@ -171,7 +171,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
-  unordered_map<int, shared_ptr<PortForwardServerHandler>> portForwardHandlers;
+  unordered_map<int, shared_ptr<PortForwardDestinationHandler>> portForwardHandlers;
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
 
   while (!halt && run) {
@@ -299,8 +299,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
                   LOG(INFO)
                       << "Created socket/fd pair: " << socketId << ' ' << fd;
                   portForwardHandlers[socketId] =
-                      shared_ptr<PortForwardServerHandler>(
-                          new PortForwardServerHandler(socketHandler, fd,
+                      shared_ptr<PortForwardDestinationHandler>(
+                          new PortForwardDestinationHandler(socketHandler, fd,
                                                        socketId));
                   pfresponse.set_socketid(socketId);
                 }

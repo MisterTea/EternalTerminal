@@ -1,5 +1,5 @@
-#ifndef __PORT_FORWARD_CLIENT_LISTENER_H__
-#define __PORT_FORWARD_CLIENT_LISTENER_H__
+#ifndef __PORT_FORWARD_SOURCE_LISTENER_H__
+#define __PORT_FORWARD_SOURCE_LISTENER_H__
 
 #include "Headers.hpp"
 
@@ -7,9 +7,9 @@
 #include "SocketHandler.hpp"
 
 namespace et {
-class PortForwardClientListener {
+class PortForwardSourceListener {
  public:
-  PortForwardClientListener(shared_ptr<SocketHandler> _socketHandler,
+  PortForwardSourceListener(shared_ptr<SocketHandler> _socketHandler,
                             int _sourcePort, int _destinationPort);
 
   int listen();
@@ -20,7 +20,7 @@ class PortForwardClientListener {
 
   void closeUnassignedFd(int fd);
 
-  void addSocket(int socketId, int clientFd);
+  void addSocket(int socketId, int sourceFd);
 
   void closeSocket(int socketId);
 
@@ -37,4 +37,4 @@ class PortForwardClientListener {
 };
 }  // namespace et
 
-#endif  // __PORT_FORWARD_CLIENT_LISTENER_H__
+#endif  // __PORT_FORWARD_SOURCE_LISTENER_H__

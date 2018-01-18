@@ -122,6 +122,9 @@ add_library(
 
   terminal/SystemUtils.cpp
   terminal/RawSocketUtils.cpp
+  terminal/PortForwardSourceRouter.cpp
+  terminal/PortForwardSourceListener.cpp
+  terminal/PortForwardDestinationHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -130,7 +133,6 @@ add_dependencies(TerminalCommon EternalTCP-static)
 add_executable (
   etserver
   terminal/TerminalServer.cpp
-  terminal/PortForwardServerHandler.cpp
   terminal/UserTerminalHandler.cpp
   terminal/UserTerminalRouter.cpp
   )
@@ -153,8 +155,6 @@ target_link_libraries (
 add_executable (
   et
   terminal/TerminalClient.cpp
-  terminal/PortForwardClientRouter.cpp
-  terminal/PortForwardClientListener.cpp
   terminal/SshSetupHandler.cpp
   )
 

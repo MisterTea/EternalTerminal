@@ -3,8 +3,8 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
-#include "PortForwardClientListener.hpp"
-#include "PortForwardClientRouter.hpp"
+#include "PortForwardSourceListener.hpp"
+#include "PortForwardSourceRouter.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
@@ -37,6 +37,10 @@ DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(c, "", "Command to run immediately after connecting");
 DEFINE_string(t, "",
+              "Array of source:destination ports or "
+              "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
+              "10080:80,10443:443, 10090-10092:8000-8002)");
+DEFINE_string(rt, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
               "10080:80,10443:443, 10090-10092:8000-8002)");
@@ -237,7 +241,7 @@ int main(int argc, char** argv) {
     globalClient->writeProto(tb);
   }
 
-  PortForwardClientRouter portForwardRouter;
+  PortForwardSourceRouter portForwardRouter;
   try {
     if (FLAGS_t.length()) {
       auto j = split(FLAGS_t, ',');
@@ -263,8 +267,8 @@ int main(int argc, char** argv) {
               int portRangeLength = sourcePortEnd - sourcePortStart + 1;
               for (int i = 0; i < portRangeLength; ++i) {
                 portForwardRouter.addListener(
-                    shared_ptr<PortForwardClientListener>(
-                        new PortForwardClientListener(
+                    shared_ptr<PortForwardSourceListener>(
+                        new PortForwardSourceListener(
                             socketHandler, sourcePortStart + i,
                             destinationPortStart + i)));
               }
@@ -273,8 +277,8 @@ int main(int argc, char** argv) {
             int sourcePort = stoi(sourceDestination[0]);
             int destinationPort = stoi(sourceDestination[1]);
 
-            portForwardRouter.addListener(shared_ptr<PortForwardClientListener>(
-                new PortForwardClientListener(socketHandler, sourcePort,
+            portForwardRouter.addListener(shared_ptr<PortForwardSourceListener>(
+                new PortForwardSourceListener(socketHandler, sourcePort,
                                               destinationPort)));
           }
         } catch (const std::logic_error& lr) {
@@ -372,7 +376,7 @@ int main(int argc, char** argv) {
               if (pfr.has_error()) {
                 LOG(INFO) << "Could not connect to server through tunnel: "
                           << pfr.error();
-                portForwardRouter.closeClientFd(pfr.clientfd());
+                portForwardRouter.closeSourceFd(pfr.clientfd());
               } else {
                 LOG(INFO) << "Received socket/fd map from server: "
                           << pfr.socketid() << " " << pfr.clientfd();

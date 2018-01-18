@@ -1,12 +1,12 @@
-#include "PortForwardClientRouter.hpp"
+#include "PortForwardSourceRouter.hpp"
 
 namespace et {
-void PortForwardClientRouter::addListener(
-    shared_ptr<PortForwardClientListener> listener) {
+void PortForwardSourceRouter::addListener(
+    shared_ptr<PortForwardSourceListener> listener) {
   listeners.push_back(listener);
 }
 
-void PortForwardClientRouter::update(vector<PortForwardRequest>* requests,
+void PortForwardSourceRouter::update(vector<PortForwardRequest>* requests,
                                      vector<PortForwardData>* dataToSend) {
   for (auto& it : listeners) {
     it->update(dataToSend);
@@ -20,7 +20,7 @@ void PortForwardClientRouter::update(vector<PortForwardRequest>* requests,
   }
 }
 
-void PortForwardClientRouter::closeClientFd(int fd) {
+void PortForwardSourceRouter::closeSourceFd(int fd) {
   for (auto& it : listeners) {
     if (it->hasUnassignedFd(fd)) {
       it->closeUnassignedFd(fd);
@@ -32,20 +32,20 @@ void PortForwardClientRouter::closeClientFd(int fd) {
              << fd;
 }
 
-void PortForwardClientRouter::addSocketId(int socketId, int clientFd) {
+void PortForwardSourceRouter::addSocketId(int socketId, int sourceFd) {
   for (auto& it : listeners) {
-    if (it->hasUnassignedFd(clientFd)) {
-      it->addSocket(socketId, clientFd);
+    if (it->hasUnassignedFd(sourceFd)) {
+      it->addSocket(socketId, sourceFd);
       socketIdListenerMap[socketId] = it;
       return;
     }
   }
-  LOG(ERROR) << "Tried to add a socketId but the corresponding clientFd is "
+  LOG(ERROR) << "Tried to add a socketId but the corresponding sourceFd is "
                 "already dead: "
-             << socketId << " " << clientFd;
+             << socketId << " " << sourceFd;
 }
 
-void PortForwardClientRouter::closeSocketId(int socketId) {
+void PortForwardSourceRouter::closeSocketId(int socketId) {
   auto it = socketIdListenerMap.find(socketId);
   if (it == socketIdListenerMap.end()) {
     LOG(ERROR) << "Tried to close a socket id that doesn't exist";
@@ -55,7 +55,7 @@ void PortForwardClientRouter::closeSocketId(int socketId) {
   socketIdListenerMap.erase(socketId);
 }
 
-void PortForwardClientRouter::sendDataOnSocket(int socketId,
+void PortForwardSourceRouter::sendDataOnSocket(int socketId,
                                                const string& data) {
   auto it = socketIdListenerMap.find(socketId);
   if (it == socketIdListenerMap.end()) {

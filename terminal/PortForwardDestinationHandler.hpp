@@ -1,5 +1,5 @@
-#ifndef __PORT_FORWARD_SERVER_HANDLER_H__
-#define __PORT_FORWARD_SERVER_HANDLER_H__
+#ifndef __PORT_FORWARD_DESTINATION_HANDLER_H__
+#define __PORT_FORWARD_DESTINATION_HANDLER_H__
 
 #include "Headers.hpp"
 
@@ -8,9 +8,9 @@
 #include "ETerminal.pb.h"
 
 namespace et {
-class PortForwardServerHandler {
+class PortForwardDestinationHandler {
  public:
-  PortForwardServerHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
+  PortForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
                            int _socketId);
 
   void write(const string& s);
@@ -28,4 +28,4 @@ class PortForwardServerHandler {
 };
 }  // namespace et
 
-#endif  // __PORT_FORWARD_SERVER_HANDLER_H__
+#endif  // __PORT_FORWARD_DESTINATION_HANDLER_H__

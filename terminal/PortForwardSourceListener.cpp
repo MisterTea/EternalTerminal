@@ -1,7 +1,7 @@
-#include "PortForwardClientListener.hpp"
+#include "PortForwardSourceListener.hpp"
 
 namespace et {
-PortForwardClientListener::PortForwardClientListener(
+PortForwardSourceListener::PortForwardSourceListener(
     shared_ptr<SocketHandler> _socketHandler, int _sourcePort,
     int _destinationPort)
     : socketHandler(_socketHandler),
@@ -10,7 +10,7 @@ PortForwardClientListener::PortForwardClientListener(
   socketHandler->listen(sourcePort);
 }
 
-int PortForwardClientListener::listen() {
+int PortForwardSourceListener::listen() {
   // TODO: Replace with select
   for (int i : socketHandler->getPortFds(sourcePort)) {
     int fd = socketHandler->accept(i);
@@ -24,7 +24,7 @@ int PortForwardClientListener::listen() {
   return -1;
 }
 
-void PortForwardClientListener::update(vector<PortForwardData>* data) {
+void PortForwardSourceListener::update(vector<PortForwardData>* data) {
   vector<int> socketsToRemove;
 
   for (auto& it : socketFdMap) {
@@ -64,11 +64,11 @@ void PortForwardClientListener::update(vector<PortForwardData>* data) {
   }
 }
 
-bool PortForwardClientListener::hasUnassignedFd(int fd) {
+bool PortForwardSourceListener::hasUnassignedFd(int fd) {
   return unassignedFds.find(fd) != unassignedFds.end();
 }
 
-void PortForwardClientListener::closeUnassignedFd(int fd) {
+void PortForwardSourceListener::closeUnassignedFd(int fd) {
   if (unassignedFds.find(fd) == unassignedFds.end()) {
     LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist";
     return;
@@ -77,18 +77,18 @@ void PortForwardClientListener::closeUnassignedFd(int fd) {
   unassignedFds.erase(fd);
 }
 
-void PortForwardClientListener::addSocket(int socketId, int clientFd) {
-  if (unassignedFds.find(clientFd) == unassignedFds.end()) {
+void PortForwardSourceListener::addSocket(int socketId, int sourceFd) {
+  if (unassignedFds.find(sourceFd) == unassignedFds.end()) {
     LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist "
-               << clientFd;
+               << sourceFd;
     return;
   }
-  LOG(INFO) << "Adding socket: " << socketId << " " << clientFd;
-  unassignedFds.erase(clientFd);
-  socketFdMap[socketId] = clientFd;
+  LOG(INFO) << "Adding socket: " << socketId << " " << sourceFd;
+  unassignedFds.erase(sourceFd);
+  socketFdMap[socketId] = sourceFd;
 }
 
-void PortForwardClientListener::sendDataOnSocket(int socketId,
+void PortForwardSourceListener::sendDataOnSocket(int socketId,
                                                  const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
     LOG(ERROR) << "Tried to write to a socket that no longer exists!";
@@ -101,7 +101,7 @@ void PortForwardClientListener::sendDataOnSocket(int socketId,
   socketHandler->writeAllOrReturn(fd, buf, count);
 }
 
-void PortForwardClientListener::closeSocket(int socketId) {
+void PortForwardSourceListener::closeSocket(int socketId) {
   auto it = socketFdMap.find(socketId);
   if (it == socketFdMap.end()) {
     LOG(ERROR) << "Tried to remove a socket that no longer exists!";

@@ -3,31 +3,31 @@
 
 #include "Headers.hpp"
 
-#include "PortForwardClientListener.hpp"
+#include "PortForwardSourceListener.hpp"
 
 #include "ETerminal.pb.h"
 
 namespace et {
-class PortForwardClientRouter {
+class PortForwardSourceRouter {
  public:
-  PortForwardClientRouter() {}
+  PortForwardSourceRouter() {}
 
-  void addListener(shared_ptr<PortForwardClientListener> listener);
+  void addListener(shared_ptr<PortForwardSourceListener> listener);
 
   void update(vector<PortForwardRequest>* requests,
               vector<PortForwardData>* dataToSend);
 
-  void closeClientFd(int fd);
+  void closeSourceFd(int fd);
 
-  void addSocketId(int socketId, int clientFd);
+  void addSocketId(int socketId, int sourceFd);
 
   void closeSocketId(int socketId);
 
   void sendDataOnSocket(int socketId, const string& data);
 
  protected:
-  vector<shared_ptr<PortForwardClientListener>> listeners;
-  unordered_map<int, shared_ptr<PortForwardClientListener>> socketIdListenerMap;
+  vector<shared_ptr<PortForwardSourceListener>> listeners;
+  unordered_map<int, shared_ptr<PortForwardSourceListener>> socketIdListenerMap;
 };
 }  // namespace et
 
