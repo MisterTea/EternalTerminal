@@ -12,8 +12,7 @@ enum PacketType {
   PORT_FORWARD_SOURCE_RESPONSE = 7;
   PORT_FORWARD_DESTINATION_REQUEST = 8;
   PORT_FORWARD_DESTINATION_RESPONSE = 9;
-  PORT_FORWARD_SD_DATA = 10; // Source -> Destination
-  PORT_FORWARD_DS_DATA = 11; // Destination -> Source
+  PORT_FORWARD_DATA = 10;
 }
 
 message TerminalBuffer {
@@ -28,22 +27,32 @@ message TerminalInfo {
   optional int32 height = 5;
 }
 
-message PortForwardRequest {
+message PortForwardSourceRequest {
+  optional int32 sourceport = 1;
+  optional int32 destinationport = 2;
+}
+
+message PortForwardSourceResponse {
+  optional string error = 1;
+}
+
+message PortForwardDestinationRequest {
   optional int32 port = 1;
   optional int32 fd = 2;
 }
 
-message PortForwardResponse {
+message PortForwardDestinationResponse {
   optional int32 clientfd = 1;
   optional int32 socketid = 2;
   optional string error = 3;
 }
 
 message PortForwardData {
-  optional int32 socketid = 1;
-  optional bytes buffer = 2;
-  optional string error = 3;
-  optional bool closed = 4;
+  optional bool sourcetodestination = 1;
+  optional int32 socketid = 2;
+  optional bytes buffer = 3;
+  optional string error = 4;
+  optional bool closed = 5;
 }
 
 message InitialPayload {

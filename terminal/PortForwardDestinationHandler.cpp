@@ -8,6 +8,7 @@ PortForwardDestinationHandler::PortForwardDestinationHandler(
 void PortForwardDestinationHandler::close() { socketHandler->close(fd); }
 
 void PortForwardDestinationHandler::write(const string& s) {
+  LOG(INFO) << "Writing " << s.length() << " bytes to port destination";
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
 }
 
@@ -25,6 +26,7 @@ void PortForwardDestinationHandler::update(vector<PortForwardData>* retval) {
     }
     PortForwardData pwd;
     pwd.set_socketid(socketId);
+    pwd.set_sourcetodestination(false);
     if (bytesRead == -1) {
       VLOG(1) << "Got error reading socket " << socketId << " "
               << strerror(errno);
@@ -39,6 +41,9 @@ void PortForwardDestinationHandler::update(vector<PortForwardData>* retval) {
     retval->push_back(pwd);
     if (bytesRead < 1) {
       LOG(INFO) << "Socket " << socketId << " closed";
+      if (bytesRead < 0) {
+        LOG(ERROR) << "Socket " << socketId << " closed with error " << errno << ' ' << strerror(errno);
+      }
       socketHandler->close(fd);
       fd = -1;
       break;

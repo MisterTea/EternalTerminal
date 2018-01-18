@@ -118,23 +118,68 @@ void handleWindowChanged(winsize* win) {
   }
 }
 
+vector<pair<int,int>> parseRangesToPairs(const string &input) {
+  vector<pair<int,int>> pairs;
+  auto j = split(input, ',');
+  for (auto& pair : j) {
+    vector<string> sourceDestination = split(pair, ':');
+    try {
+      if (sourceDestination[0].find('-') != string::npos &&
+          sourceDestination[1].find('-') != string::npos) {
+        vector<string> sourcePortRange = split(sourceDestination[0], '-');
+        int sourcePortStart = stoi(sourcePortRange[0]);
+        int sourcePortEnd = stoi(sourcePortRange[1]);
+
+        vector<string> destinationPortRange =
+            split(sourceDestination[1], '-');
+        int destinationPortStart = stoi(destinationPortRange[0]);
+        int destinationPortEnd = stoi(destinationPortRange[1]);
+
+        if (sourcePortEnd - sourcePortStart !=
+            destinationPortEnd - destinationPortStart) {
+          LOG(FATAL) << "source/destination port range mismatch" << endl;
+          exit(1);
+        } else {
+          int portRangeLength = sourcePortEnd - sourcePortStart + 1;
+          for (int i = 0; i < portRangeLength; ++i) {
+            pairs.push_back(make_pair(sourcePortStart + i, destinationPortStart + i));
+          }
+        }
+      } else if (sourceDestination[0].find('-') != string::npos ||
+                 sourceDestination[1].find('-') != string::npos) {
+        LOG(FATAL) << "Invalid port range syntax: if source is range, destination must be range";
+      } else {
+        int sourcePort = stoi(sourceDestination[0]);
+        int destinationPort = stoi(sourceDestination[1]);
+        pairs.push_back(make_pair(sourcePort, destinationPort));
+      }
+    } catch (const std::logic_error& lr) {
+      LOG(FATAL) << "Logic error: " << lr.what() << endl;
+      exit(1);
+    }
+  }
+  return pairs;
+}
+
 int main(int argc, char** argv) {
   // Override -h & --help
   for (int i = 1; i < argc; i++) {
     string s(argv[i]);
     if (s == "-h" || s == "--help") {
       cout << "et (options) [user@]hostname[:port]\n"
-              "Options:\n"
-              "-h Basic usage\n"
-              "-p Port for etserver to run on.  Default: 2022\n"
-              "-u Username to connect to ssh & ET\n"
-              "-v=9 verbose log files\n"
-              "-c Initial command to execute upon connecting\n"
-              "-t Map local to remote TCP port (TCP Tunneling)\n"
-              "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
-              "to hostname:8000\n"
-              "-jumphost Jumphost between localhost and destination\n"
-              "-jport Port to connect on jumphost"
+          "Options:\n"
+          "-h Basic usage\n"
+          "-p Port for etserver to run on.  Default: 2022\n"
+          "-u Username to connect to ssh & ET\n"
+          "-v=9 verbose log files\n"
+          "-c Initial command to execute upon connecting\n"
+          "-t Map local to remote TCP port (TCP Tunneling)\n"
+          "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
+          "-t Map remote to local TCP port (TCP Reverse Tunneling)\n"
+          "   example: et -t=\"18000:8000\" hostname maps hostname:8000 "
+          "to localhost:18000\n"
+          "-jumphost Jumphost between localhost and destination\n"
+          "-jport Port to connect on jumphost"
            << endl;
       exit(1);
     }
@@ -165,20 +210,20 @@ int main(int argc, char** argv) {
   }
 
   Options options = {
-      NULL,  // username
-      NULL,  // host
-      NULL,  // sshdir
-      NULL,  // knownhosts
-      NULL,  // ProxyCommand
-      NULL,  // ProxyJump
-      0,     // timeout
-      0,     // port
-      0,     // StrictHostKeyChecking
-      0,     // ssh2
-      0,     // ssh1
-      NULL,  // gss_server_identity
-      NULL,  // gss_client_identity
-      0      // gss_delegate_creds
+    NULL,  // username
+    NULL,  // host
+    NULL,  // sshdir
+    NULL,  // knownhosts
+    NULL,  // ProxyCommand
+    NULL,  // ProxyJump
+    0,     // timeout
+    0,     // port
+    0,     // StrictHostKeyChecking
+    0,     // ssh2
+    0,     // ssh1
+    NULL,  // gss_server_identity
+    NULL,  // gss_client_identity
+    0      // gss_delegate_creds
   };
 
   char* home_dir = ssh_get_user_home_dir();
@@ -225,7 +270,7 @@ int main(int argc, char** argv) {
   // Whether the TE should keep running.
   bool run = true;
 
-// TE sends/receives data to/from the shell one char at a time.
+  // TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
@@ -245,51 +290,32 @@ int main(int argc, char** argv) {
 
   try {
     if (FLAGS_t.length()) {
-      auto j = split(FLAGS_t, ',');
-      for (auto& pair : j) {
-        vector<string> sourceDestination = split(pair, ':');
-        try {
-          if (sourceDestination[0].find('-') != string::npos &&
-              sourceDestination[1].find('-') != string::npos) {
-            vector<string> sourcePortRange = split(sourceDestination[0], '-');
-            int sourcePortStart = stoi(sourcePortRange[0]);
-            int sourcePortEnd = stoi(sourcePortRange[1]);
-
-            vector<string> destinationPortRange =
-                split(sourceDestination[1], '-');
-            int destinationPortStart = stoi(destinationPortRange[0]);
-            int destinationPortEnd = stoi(destinationPortRange[1]);
-
-            if (sourcePortEnd - sourcePortStart !=
-                destinationPortEnd - destinationPortStart) {
-              LOG(FATAL) << "source/destination port range mismatch" << endl;
-              exit(1);
-            } else {
-              int portRangeLength = sourcePortEnd - sourcePortStart + 1;
-              for (int i = 0; i < portRangeLength; ++i) {
-                portForwardHandler.addSourceHandler(
-                    shared_ptr<PortForwardSourceHandler>(
-                        new PortForwardSourceHandler(
-                            socketHandler, sourcePortStart + i,
-                            destinationPortStart + i)));
-              }
-            }
-          } else {
-            int sourcePort = stoi(sourceDestination[0]);
-            int destinationPort = stoi(sourceDestination[1]);
-
-            portForwardHandler.addSourceHandler(
-                shared_ptr<PortForwardSourceHandler>(
-                    new PortForwardSourceHandler(socketHandler, sourcePort,
-                                                 destinationPort)));
-          }
-        } catch (const std::logic_error& lr) {
-          LOG(FATAL) << "Logic error: " << lr.what() << endl;
-          exit(1);
+      auto pairs = parseRangesToPairs(FLAGS_t);
+      for (auto& pair : pairs) {
+        PortForwardSourceRequest pfsr;
+        pfsr.set_sourceport(pair.first);
+        pfsr.set_destinationport(pair.second);
+        auto pfsresponse = portForwardHandler.createSource(pfsr);
+        if (pfsresponse.has_error()) {
+          throw std::runtime_error(pfsresponse.error());
         }
       }
     }
+    if (FLAGS_rt.length()) {
+      auto pairs = parseRangesToPairs(FLAGS_rt);
+      for (auto& pair : pairs) {
+        char c = et::PacketType::PORT_FORWARD_SOURCE_REQUEST;
+        string headerString(1, c);
+        PortForwardSourceRequest pfsr;
+        pfsr.set_sourceport(pair.first);
+        pfsr.set_destinationport(pair.second);
+
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pfsr);
+      }
+    }
   } catch (const std::runtime_error& ex) {
+    cerr << "Error establishing port forward: " << ex.what() << endl;
     LOG(FATAL) << "Error establishing port forward: " << ex.what() << endl;
   }
 
@@ -356,8 +382,7 @@ int main(int argc, char** argv) {
                        << packetTypeString.length();
           }
           char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_DS_DATA ||
+          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
               packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
               packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
@@ -403,7 +428,7 @@ int main(int argc, char** argv) {
 
       handleWindowChanged(&win);
 
-      vector<PortForwardRequest> requests;
+      vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
       for (auto& pfr : requests) {
@@ -413,7 +438,7 @@ int main(int argc, char** argv) {
         globalClient->writeProto(pfr);
       }
       for (auto& pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_SD_DATA;
+        char c = PacketType::PORT_FORWARD_DATA;
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pwd);

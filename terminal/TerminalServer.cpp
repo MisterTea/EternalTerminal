@@ -217,11 +217,17 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
-      vector<PortForwardRequest> requests;
+      vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
+      for (auto& pfr : requests) {
+        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
+        string headerString(1, c);
+        serverClientState->writeMessage(headerString);
+        serverClientState->writeProto(pfr);
+      }
       for (auto &pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DS_DATA;
+        char c = PacketType::PORT_FORWARD_DATA;
         string headerString(1, c);
         serverClientState->writeMessage(headerString);
         serverClientState->writeProto(pwd);
@@ -234,8 +240,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             break;
           }
           char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_DS_DATA ||
+          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
               packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
               packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||

@@ -12,12 +12,12 @@ namespace et {
 class PortForwardHandler {
  public:
   explicit PortForwardHandler(shared_ptr<SocketHandler> _socketHandler);
-  void update(vector<PortForwardRequest>* requests,
+  void update(vector<PortForwardDestinationRequest>* requests,
               vector<PortForwardData>* dataToSend);
   void handlePacket(char packetType, shared_ptr<Connection> connection);
-  PortForwardResponse createDestination(const PortForwardRequest& pfr);
+  PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr);
+  PortForwardDestinationResponse createDestination(const PortForwardDestinationRequest& pfdr);
 
-  void addSourceHandler(shared_ptr<PortForwardSourceHandler> handler);
   void closeSourceFd(int fd);
   void addSourceSocketId(int socketId, int sourceFd);
   void closeSourceSocketId(int socketId);
@@ -26,9 +26,9 @@ class PortForwardHandler {
  protected:
   shared_ptr<SocketHandler> socketHandler;
   unordered_map<int, shared_ptr<PortForwardDestinationHandler>>
-      portForwardHandlers;
+      destinationHandlers;
 
-  vector<shared_ptr<PortForwardSourceHandler>> handlers;
+  vector<shared_ptr<PortForwardSourceHandler>> sourceHandlers;
   unordered_map<int, shared_ptr<PortForwardSourceHandler>>
       socketIdSourceHandlerMap;
 };

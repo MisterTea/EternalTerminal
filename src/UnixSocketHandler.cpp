@@ -265,14 +265,13 @@ void UnixSocketHandler::createServerSockets(int port) {
                  << strerror(errno);
       cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
            << p->ai_protocol << ": " << errno << " " << strerror(errno)
-           << flush;
+           << endl;
       stringstream oss;
       oss << "Error binding port " << port << ": " << errno << " "
           << strerror(errno);
       string s = oss.str();
+      close(sockfd);
       throw std::runtime_error(s.c_str());
-      // close(sockfd);
-      // continue;
     }
 
     // Listen

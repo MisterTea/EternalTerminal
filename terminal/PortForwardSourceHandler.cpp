@@ -40,6 +40,7 @@ void PortForwardSourceHandler::update(vector<PortForwardData>* data) {
       }
       PortForwardData pwd;
       pwd.set_socketid(socketId);
+      pwd.set_sourcetodestination(true);
       if (bytesRead == -1) {
         VLOG(1) << "Got error reading socket " << socketId << " "
                 << strerror(errno);
