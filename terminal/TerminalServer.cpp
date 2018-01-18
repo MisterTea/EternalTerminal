@@ -2,7 +2,7 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
-#include "PortForwardDestinationHandler.hpp"
+#include "PortForwardHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
@@ -171,7 +171,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
-  unordered_map<int, shared_ptr<PortForwardDestinationHandler>> portForwardHandlers;
+  PortForwardHandler portForwardHandler(socketHandler);
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
 
   while (!halt && run) {
@@ -217,18 +217,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
-      vector<PortForwardData> dataToSend;
-      for (auto &it : portForwardHandlers) {
-        it.second->update(&dataToSend);
-        if (it.second->getFd() == -1) {
-          // Kill the handler and don't update the rest: we'll pick
-          // them up later
-          portForwardHandlers.erase(it.first);
-          break;
-        }
-      }
+      vector<PortForwardData> dataToSend = portForwardHandler.update();
       for (auto &pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DATA;
+        char c = PacketType::PORT_FORWARD_DS_DATA;
         string headerString(1, c);
         serverClientState->writeMessage(headerString);
         serverClientState->writeProto(pwd);
@@ -241,6 +232,16 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             break;
           }
           char packetType = packetTypeString[0];
+          if (packetType == et::PacketType::PORT_FORWARD_SD_DATA
+              || packetType == et::PacketType::PORT_FORWARD_DS_DATA
+              || packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST
+              || packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE
+              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST
+              || packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE
+              ) {
+            portForwardHandler.handlePacket(packetType, serverClientState);
+            continue;
+          }
           switch (packetType) {
             case et::PacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal
@@ -267,74 +268,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               char c = TERMINAL_INFO;
               RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
               RawSocketUtils::writeProto(terminalFd, ti);
-              break;
-            }
-            case PacketType::PORT_FORWARD_REQUEST: {
-              LOG(INFO) << "Got new port forward";
-              PortForwardRequest pfr =
-                  serverClientState->readProto<PortForwardRequest>();
-              // Try ipv6 first
-              int fd = socketHandler->connect("::1", pfr.port());
-              if (fd == -1) {
-                // Try ipv4 next
-                fd = socketHandler->connect("127.0.0.1", pfr.port());
-              }
-              PortForwardResponse pfresponse;
-              pfresponse.set_clientfd(pfr.fd());
-              if (fd == -1) {
-                pfresponse.set_error(strerror(errno));
-              } else {
-                int socketId = rand();
-                int attempts = 0;
-                while (portForwardHandlers.find(socketId) !=
-                       portForwardHandlers.end()) {
-                  socketId = rand();
-                  attempts++;
-                  if (attempts >= 100000) {
-                    pfresponse.set_error("Could not find empty socket id");
-                    break;
-                  }
-                }
-                if (!pfresponse.has_error()) {
-                  LOG(INFO)
-                      << "Created socket/fd pair: " << socketId << ' ' << fd;
-                  portForwardHandlers[socketId] =
-                      shared_ptr<PortForwardDestinationHandler>(
-                          new PortForwardDestinationHandler(socketHandler, fd,
-                                                       socketId));
-                  pfresponse.set_socketid(socketId);
-                }
-              }
-
-              char c = PacketType::PORT_FORWARD_RESPONSE;
-              serverClientState->writeMessage(string(1, c));
-              serverClientState->writeProto(pfresponse);
-              break;
-            }
-            case PacketType::PORT_FORWARD_DATA: {
-              PortForwardData pwd =
-                  serverClientState->readProto<PortForwardData>();
-              LOG(INFO) << "Got data for socket: " << pwd.socketid();
-              auto it = portForwardHandlers.find(pwd.socketid());
-              if (it == portForwardHandlers.end()) {
-                LOG(ERROR)
-                    << "Got data for a socket id that has already closed: "
-                    << pwd.socketid();
-              } else {
-                if (pwd.has_closed()) {
-                  LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-                  it->second->close();
-                  portForwardHandlers.erase(it);
-                } else if (pwd.has_error()) {
-                  // TODO: Probably need to do something better here
-                  LOG(INFO)
-                      << "Port forward socket errored: " << pwd.socketid();
-                  it->second->close();
-                  portForwardHandlers.erase(it);
-                } else {
-                  it->second->write(pwd.buffer());
-                }
-              }
               break;
             }
             default:

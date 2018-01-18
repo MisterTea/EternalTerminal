@@ -370,7 +370,7 @@ int main(int argc, char** argv) {
             case et::PacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
               break;
-            case PacketType::PORT_FORWARD_RESPONSE: {
+            case PacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
               PortForwardResponse pfr =
                   globalClient->readProto<PortForwardResponse>();
               if (pfr.has_error()) {
@@ -384,7 +384,7 @@ int main(int argc, char** argv) {
               }
               break;
             }
-            case PacketType::PORT_FORWARD_DATA: {
+            case PacketType::PORT_FORWARD_DS_DATA: {
               PortForwardData pwd = globalClient->readProto<PortForwardData>();
               LOG(INFO) << "Got data for socket: " << pwd.socketid();
               if (pwd.has_closed()) {
@@ -425,13 +425,13 @@ int main(int argc, char** argv) {
       vector<PortForwardData> dataToSend;
       portForwardRouter.update(&requests, &dataToSend);
       for (auto& pfr : requests) {
-        char c = et::PacketType::PORT_FORWARD_REQUEST;
+        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pfr);
       }
       for (auto& pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DATA;
+        char c = PacketType::PORT_FORWARD_SD_DATA;
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pwd);

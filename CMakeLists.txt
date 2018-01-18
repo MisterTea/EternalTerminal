@@ -122,6 +122,7 @@ add_library(
 
   terminal/SystemUtils.cpp
   terminal/RawSocketUtils.cpp
+  terminal/PortForwardHandler.cpp
   terminal/PortForwardSourceRouter.cpp
   terminal/PortForwardSourceListener.cpp
   terminal/PortForwardDestinationHandler.cpp
