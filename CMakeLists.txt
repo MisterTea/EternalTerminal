@@ -125,6 +125,7 @@ add_library(
   terminal/PortForwardHandler.cpp
   terminal/PortForwardSourceHandler.cpp
   terminal/PortForwardDestinationHandler.cpp
+  terminal/GoogleLogFatalHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
