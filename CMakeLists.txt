@@ -122,6 +122,7 @@ add_library(
 
   terminal/SystemUtils.cpp
   terminal/RawSocketUtils.cpp
+  terminal/GoogleLogFatalHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
