@@ -18,6 +18,9 @@
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
+#if __FreeBSD__
+#define _WITH_GETLINE
+#endif
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
