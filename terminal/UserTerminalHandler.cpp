@@ -21,9 +21,7 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
+#elif __NetBSD__ // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #endif
@@ -136,8 +134,13 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         RawSocketUtils::writeAll(routerFd, b, rc);
       } else {
         LOG(INFO) << "Terminal session ended";
+#if __NetBSD__ // this unfortunateness seems to be fixed in NetBSD-8 (or at least -CURRENT) sadness for now :/
+        int throwaway;
+        FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
+#else
         siginfo_t childInfo;
         FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
+#endif
         run = false;
         break;
       }

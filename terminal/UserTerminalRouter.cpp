@@ -21,9 +21,7 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
+#elif __NetBSD__ // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #endif

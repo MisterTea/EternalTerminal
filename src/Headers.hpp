@@ -15,6 +15,10 @@
 #include <time.h>
 #include <unistd.h>
 
+#if __NetBSD__
+#include <util.h>
+#endif
+
 #include <algorithm>
 #include <array>
 #include <deque>
