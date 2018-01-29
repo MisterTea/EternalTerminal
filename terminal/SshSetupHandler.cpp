@@ -4,7 +4,8 @@
 
 namespace et {
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
-                                 int port, string jumphost, int jport) {
+                                 int port, string jumphost, int jport,
+                                 bool kill) {
   string CLIENT_TERM(getenv("TERM"));
   FILE *passkey_p = popen(
       "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32", "r");
@@ -41,6 +42,11 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
       CLIENT_TERM +
       ";"
       "etserver --idpasskeyfile=\"${TMPFILE}\""};
+
+  // Kill old ET sessions of the user
+  if (kill && user != "root") {
+    SSH_SCRIPT_PREFIX = "pkill etserver -u " + user + ";" + SSH_SCRIPT_PREFIX;
+  }
   string SSH_SCRIPT_DST = SSH_SCRIPT_PREFIX + ";true";
 
   int link_client[2];
@@ -138,6 +144,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         try {
           auto idpasskey = split(string(buf_jump), ':')[1];
           idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+          idpasskey = idpasskey.substr(0, 16 + 1 + 32);
           auto idpasskey_splited = split(idpasskey, '/');
           string returned_id = idpasskey_splited[0];
           string returned_passkey = idpasskey_splited[1];

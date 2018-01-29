@@ -43,6 +43,7 @@ DEFINE_string(t, "",
               "10080:80,10443:443, 10090-10092:8000-8002)");
 DEFINE_string(jumphost, "", "jumphost between localhost and destination");
 DEFINE_int32(jport, 2022, "port to connect on jumphost");
+DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -131,7 +132,8 @@ int main(int argc, char** argv) {
               "   example: et -t=\"18000:8000\" hostname maps localhost:18000 "
               "to hostname:8000\n"
               "-jumphost Jumphost between localhost and destination\n"
-              "-jport Port to connect on jumphost"
+              "-jport Port to connect on jumphost\n"
+              "-x Flag to kill all sessions belongs to the user"
            << endl;
       exit(1);
     }
@@ -188,7 +190,17 @@ int main(int argc, char** argv) {
   LOG(INFO) << "Parsed ssh config file, connecting to " << options.host;
   FLAGS_host = string(options.host);
 
-  if (options.ProxyJump) {
+  // Parse username: cmdline > sshconfig > localuser
+  if (FLAGS_u.empty()) {
+    if (options.username) {
+      FLAGS_u = string(options.username);
+    } else {
+      FLAGS_u = string(ssh_get_local_username());
+    }
+  }
+
+  // Parse jumphost: cmd > sshconfig
+  if (options.ProxyJump && FLAGS_jumphost.length() == 0) {
     string proxyjump = string(options.ProxyJump);
     size_t colonIndex = proxyjump.find(":");
     if (colonIndex != string::npos) {
@@ -203,8 +215,9 @@ int main(int argc, char** argv) {
     LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
   }
 
-  string idpasskeypair = SshSetupHandler::SetupSsh(
-      FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport);
+  string idpasskeypair =
+      SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
+                                FLAGS_jumphost, FLAGS_jport, FLAGS_x);
 
   // redirect stderr to file
   stderr = fopen("/tmp/etclient_err", "w+");
