@@ -43,7 +43,7 @@ DEFINE_string(t, "",
               "10080:80,10443:443, 10090-10092:8000-8002)");
 DEFINE_string(jumphost, "", "jumphost between localhost and destination");
 DEFINE_int32(jport, 2022, "port to connect on jumphost");
-DEFINE_bool(x, false, "flag to kill all old sessions belongs to the user");
+DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
