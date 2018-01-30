@@ -31,10 +31,8 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
-#include <sys/types.h>
-#include <termios.h>
+#elif __NetBSD__ // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #include <signal.h>
@@ -99,10 +97,17 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
   string std_file =
       string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
+#if __NetBSD__
+    FILE* stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+    setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+    FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#else
   stdout = fopen(std_file.c_str(), "w+");
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   stderr = fopen(std_file.c_str(), "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#endif
   setGlogFile(std_file);
 }
 
@@ -572,10 +577,17 @@ int main(int argc, char **argv) {
     if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
+#if __NetBSD__
+    FILE* stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+    setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+    FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#else
     stdout = fopen("/tmp/etserver_err", "w+");
     setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
     stderr = fopen("/tmp/etserver_err", "w+");
     setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#endif
   }
 
   startServer();
