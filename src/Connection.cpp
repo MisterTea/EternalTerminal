@@ -16,8 +16,8 @@ Connection::~Connection() {
 }
 
 inline bool isSkippableError() {
-  return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EAGAIN ||
-          errno == EWOULDBLOCK || errno == EHOSTUNREACH || errno == EPIPE ||
+  return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EWOULDBLOCK ||
+          errno == EHOSTUNREACH || errno == EPIPE ||
           errno == EBADF  // Bad file descriptor can happen when
                           // there's a race condition between ta thread
                           // closing a connection and one
@@ -27,16 +27,31 @@ inline bool isSkippableError() {
 
 ssize_t Connection::read(string* buf) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  ssize_t messagesRead = reader->read(buf);
-  if (messagesRead == -1) {
-    if (isSkippableError()) {
-      // Close the socket and invalidate, then return 0 messages
-      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
-      closeSocket();
-      messagesRead = 0;
+  for (int trials = 0; trials < 20; trials++) {
+    ssize_t messagesRead = reader->read(buf);
+    if (messagesRead == -1) {
+      if (trials < (20 - 1) && errno == EAGAIN) {
+        // If we get EAGAIN, assume the kernel needs to finish
+        // flushing some buffer and retry after a delay.
+        usleep(100000);
+      } else if (isSkippableError()) {
+        // Close the socket and invalidate, then return 0 messages
+        LOG(INFO) << "Closing socket because " << errno << " "
+                  << strerror(errno);
+        closeSocket();
+        return 0;
+      } else {
+        // Pass the error up the stack.
+        return -1;
+      }
+    } else {
+      // Success
+      return messagesRead;
     }
   }
-  return messagesRead;
+
+  // Should never get here
+  LOG(FATAL) << "Invalid trials iteration";
 }
 
 bool Connection::readMessage(string* buf) {

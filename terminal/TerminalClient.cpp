@@ -1,6 +1,7 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
+#include "GoogleLogFatalHandler.hpp"
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
@@ -189,6 +190,7 @@ int main(int argc, char** argv) {
   SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
   google::InitGoogleLogging(argv[0]);
+  GoogleLogFatalHandler::handle();
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   FLAGS_logbufsecs = 0;
   FLAGS_logbuflevel = google::GLOG_INFO;
