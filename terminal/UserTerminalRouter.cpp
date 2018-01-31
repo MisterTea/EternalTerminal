@@ -21,7 +21,7 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
-#elif __NetBSD__ // do not need pty.h on NetBSD
+#elif __NetBSD__  // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #endif
@@ -75,22 +75,26 @@ void UserTerminalRouter::acceptNewConnection(
 
   LOG(INFO) << "Connected";
 
-  string buf = RawSocketUtils::readMessage(terminalFd);
-  VLOG(1) << "Got passkey: " << buf << endl;
-  size_t slashIndex = buf.find("/");
-  if (slashIndex == string::npos) {
-    LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
-    close(terminalFd);
-  } else {
-    string id = buf.substr(0, slashIndex);
-    string key = buf.substr(slashIndex + 1);
-    idFdMap[id] = terminalFd;
-    globalServer->addClientKey(id, key);
-    // send config params to terminal
-    ConfigParams config;
-    config.set_vlevel(FLAGS_v);
-    config.set_minloglevel(FLAGS_minloglevel);
-    RawSocketUtils::writeProto(terminalFd, config);
+  try {
+    string buf = RawSocketUtils::readMessage(terminalFd);
+    VLOG(1) << "Got passkey: " << buf << endl;
+    size_t slashIndex = buf.find("/");
+    if (slashIndex == string::npos) {
+      LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;
+      close(terminalFd);
+    } else {
+      string id = buf.substr(0, slashIndex);
+      string key = buf.substr(slashIndex + 1);
+      idFdMap[id] = terminalFd;
+      globalServer->addClientKey(id, key);
+      // send config params to terminal
+      ConfigParams config;
+      config.set_vlevel(FLAGS_v);
+      config.set_minloglevel(FLAGS_minloglevel);
+      RawSocketUtils::writeProto(terminalFd, config);
+    }
+  } catch (const std::runtime_error &re) {
+    LOG(FATAL) << "Router can't talk to terminal: " << re.what();
   }
 }
 

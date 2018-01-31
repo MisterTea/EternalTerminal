@@ -11,7 +11,8 @@ int RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
         usleep(1000 * 100);
         continue;
       }
-      return rc;
+      // return rc;
+      throw std::runtime_error("Cannot write to raw socket");
     }
     if (rc == 0) {
       LOG(ERROR) << "Could not write byte, trying again...";
@@ -31,7 +32,8 @@ int RawSocketUtils::readAll(int fd, char* buf, size_t count) {
         usleep(1000 * 100);
         continue;
       }
-      return rc;
+      // return rc;
+      throw std::runtime_error("Cannot read from raw socket");
     }
     if (rc == 0) {
       throw std::runtime_error("Socket has closed abruptly.");
