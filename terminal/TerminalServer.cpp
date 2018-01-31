@@ -530,6 +530,7 @@ void startJumpHostClient() {
     }
   }
   LOG(ERROR) << "Jumpclient shutdown";
+  close(routerFd);
 }
 
 int main(int argc, char **argv) {
