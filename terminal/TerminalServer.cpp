@@ -140,9 +140,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           string message = RawSocketUtils::readMessage(terminalFd);
           serverClientState->writeMessage(message);
         } catch (const std::runtime_error &ex) {
-          LOG(INFO) << "Terminal session ended";
+          LOG(INFO) << "Terminal session ended" << ex.what();
           run = false;
-          globalServer->removeClient(serverClientState->getId());
           break;
         }
       }
@@ -156,9 +155,10 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           try {
             RawSocketUtils::writeMessage(terminalFd, message);
           } catch (const std::runtime_error &ex) {
-            LOG(INFO) << "Terminal session ended";
+            LOG(INFO) << "Unix socket died between global daemon and terminal router: "
+		      << ex.what();
             run = false;
-            globalServer->removeClient(serverClientState->getId());
+	    break;
           }
         }
       }
