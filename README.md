@@ -20,6 +20,10 @@ For Ubuntu, use our PPA:
 	sudo apt-get update
 	sudo apt-get install et
 
+### FreeBSD
+On FreeBSD, use:
+        pkg install eternaltcp
+
 ### Other Linux
 
 Install dependencies:
