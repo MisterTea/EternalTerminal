@@ -121,6 +121,20 @@ cmake ../
 make
 ```
 
+### Debian/Ubuntu
+
+Grab the deps and then follow the same process as for OS/X:
+
+```
+sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgoogle-glog-dev, libgflags-dev, libutempter-dev
+git clone https://github.com/MisterTea/EternalTCP.git
+cd EternalTCP
+mkdir build
+cd build
+cmake ../
+make
+```
+
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on github](https://github.com/MisterTea/EternalTCP/issues).
