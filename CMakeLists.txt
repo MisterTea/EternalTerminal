@@ -14,9 +14,9 @@ IF(BUILD_TEST)
   add_subdirectory(${CMAKE_SOURCE_DIR}/cmake/external/googletest)
 ENDIF(BUILD_TEST)
 
-# Enable C++-11
+# Enable C++-11, add stack trace support for easylogging
 if(UNIX)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11 -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE")
 endif()
 
 #Using FreeBSD?
@@ -29,7 +29,6 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Find packages
 find_package(Threads REQUIRED)
-find_package(Glog REQUIRED)
 find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
@@ -74,7 +73,6 @@ include_directories(
   ${CURSES_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
   ${GFLAGS_INCLUDE_DIRS}
-  ${GLOG_INCLUDE_DIRS}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
   )
@@ -92,6 +90,7 @@ set(${PROJECT_NAME}_SRC
   src/ServerConnection.cpp
   src/SocketHandler.cpp
   src/UnixSocketHandler.cpp
+  src/easylogging++.cc
 
   ${ET_SRCS} ${ET_HDRS}
   )
@@ -125,7 +124,6 @@ add_library(
   terminal/PortForwardHandler.cpp
   terminal/PortForwardSourceHandler.cpp
   terminal/PortForwardDestinationHandler.cpp
-  terminal/GoogleLogFatalHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -145,7 +143,6 @@ target_link_libraries (
   EternalTCP-static
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
@@ -166,7 +163,6 @@ target_link_libraries (
     EternalTCP-static
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
-    ${GLOG_LIBRARIES}
     ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}

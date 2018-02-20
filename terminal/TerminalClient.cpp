@@ -1,7 +1,6 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
-#include "GoogleLogFatalHandler.hpp"
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
@@ -25,6 +24,7 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
+INITIALIZE_EASYLOGGINGPP
 const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
 const string USER_SSH_CONFIG_PATH = "/.ssh/config";
 const int KEEP_ALIVE_DURATION = 5;
@@ -48,6 +48,8 @@ DEFINE_string(rt, "",
 DEFINE_string(jumphost, "", "jumphost between localhost and destination");
 DEFINE_int32(jport, 2022, "port to connect on jumphost");
 DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
+DEFINE_int32(v, 0, "verbose level");
+DEFINE_bool(logtostderr, false, "log to stderr");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -165,6 +167,16 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 }
 
 int main(int argc, char** argv) {
+  // TODO: best place for this conf file? permission set up
+  el::Configurations conf("/Users/ailzhang/dev/EternalTCP/etc/etlogger.conf");
+  // el::Loggers::reconfigureLogger("default", conf);
+  conf.setGlobally(el::ConfigurationType::Filename,
+                   "/tmp/etclient-%datetime.log");
+  // conf.setGlobally(el::ConfigurationType::Enabled, "true");
+  // conf.setGlobally(el::ConfigurationType::ToFile, "true");
+  el::Loggers::reconfigureLogger("default", conf);
+  // el::Loggers::reconfigureAllLoggers(conf);
+  START_EASYLOGGINGPP(argc, argv);
   // Override -h & --help
   for (int i = 1; i < argc; i++) {
     string s(argv[i]);
@@ -191,11 +203,7 @@ int main(int argc, char** argv) {
 
   SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
-  google::InitGoogleLogging(argv[0]);
-  GoogleLogFatalHandler::handle();
   GOOGLE_PROTOBUF_VERIFY_VERSION;
-  FLAGS_logbufsecs = 0;
-  FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
   // Parse command-line argument

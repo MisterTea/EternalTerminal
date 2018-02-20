@@ -37,10 +37,10 @@
 #include <vector>
 
 #include <gflags/gflags.h>
-#include <glog/logging.h>
 
 #include <google/protobuf/message.h>
 #include "ET.pb.h"
+#include "easylogging++.h"
 
 using namespace std;
 

@@ -1,7 +1,6 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
-#include "GoogleLogFatalHandler.hpp"
 #include "Headers.hpp"
 #include "PortForwardHandler.hpp"
 #include "RawSocketUtils.hpp"
@@ -46,6 +45,7 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
+INITIALIZE_EASYLOGGINGPP
 #define BUF_SIZE (16 * 1024)
 const int KEEP_ALIVE_DURATION = 7;
 
@@ -61,6 +61,8 @@ DEFINE_bool(jump, false,
             "If set, forward all packets between client and dst terminal");
 DEFINE_string(dsthost, "", "Must be set if jump is set to true");
 DEFINE_int32(dstport, 2022, "Must be set if jump is set to true");
+DEFINE_int32(v, 0, "verbose level");
+DEFINE_bool(logtostderr, false, "log to stderr");
 
 shared_ptr<ServerConnection> globalServer;
 shared_ptr<UserTerminalRouter> terminalRouter;
@@ -83,15 +85,7 @@ string getIdpasskey() {
   return idpasskey;
 }
 
-void setGlogVerboseLevel(int vlevel) { FLAGS_v = vlevel; }
-
-void setGlogMinLogLevel(int level) { FLAGS_minloglevel = level; }
-
-void setGlogFile(string filename) {
-  google::SetLogDestination(google::INFO, (filename + ".INFO.").c_str());
-  google::SetLogDestination(google::WARNING, (filename + ".WARNING.").c_str());
-  google::SetLogDestination(google::ERROR, (filename + ".ERROR.").c_str());
-}
+void setVerboseLevel(int vlevel) { el::Loggers::setVerboseLevel(vlevel); }
 
 void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
@@ -108,7 +102,6 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   stderr = fopen(std_file.c_str(), "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #endif
-  setGlogFile(std_file);
 }
 
 void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
@@ -155,10 +148,11 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           try {
             RawSocketUtils::writeMessage(terminalFd, message);
           } catch (const std::runtime_error &ex) {
-            LOG(INFO) << "Unix socket died between global daemon and terminal router: "
-		      << ex.what();
+            LOG(INFO) << "Unix socket died between global daemon and terminal "
+                         "router: "
+                      << ex.what();
             run = false;
-	    break;
+            break;
           }
         }
       }
@@ -394,8 +388,7 @@ void startServer() {
   }
 }
 
-void startUserTerminal() {
-  string idpasskey = getIdpasskey();
+void startUserTerminal(string idpasskey) {
   UserTerminalHandler uth;
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
@@ -406,8 +399,7 @@ void startUserTerminal() {
   uth.run();
 }
 
-void startJumpHostClient() {
-  string idpasskey = getIdpasskey();
+void startJumpHostClient(string idpasskey) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
@@ -442,9 +434,6 @@ void startJumpHostClient() {
 
   try {
     RawSocketUtils::writeMessage(routerFd, idpasskey);
-    ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
-    setGlogVerboseLevel(config.vlevel());
-    setGlogMinLogLevel(config.minloglevel());
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
   }
@@ -534,13 +523,14 @@ void startJumpHostClient() {
 }
 
 int main(int argc, char **argv) {
+  // TODO: best place for this conf file? permission set up
+  el::Configurations conf("/Users/ailzhang/dev/EternalTCP/etc/etlogger.conf");
+  el::Loggers::reconfigureLogger("default", conf);
+  START_EASYLOGGINGPP(argc, argv);
+
   SetVersionString(string(ET_VERSION));
   ParseCommandLineFlags(&argc, &argv, true);
-  google::InitGoogleLogging(argv[0]);
-  GoogleLogFatalHandler::handle();
   GOOGLE_PROTOBUF_VERIFY_VERSION;
-  FLAGS_logbufsecs = 0;
-  FLAGS_logbuflevel = google::GLOG_INFO;
   srand(1);
 
   if (FLAGS_cfgfile.length()) {
@@ -554,17 +544,6 @@ int main(int argc, char **argv) {
           FLAGS_port = stoi(portString);
         }
       }
-      // read verbose level
-      const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
-      if (vlevel) {
-        setGlogVerboseLevel(atoi(vlevel));
-      }
-      // read silent setting
-      const char *silent = ini.GetValue("Debug", "silent", NULL);
-      if (silent && atoi(silent) != 0) {
-        setGlogVerboseLevel(0);
-        setGlogMinLogLevel(2);
-      }
     } else {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
@@ -575,12 +554,24 @@ int main(int argc, char **argv) {
   }
 
   if (FLAGS_jump) {
-    startJumpHostClient();
+    string idpasskey = getIdpasskey();
+    string id = split(idpasskey, '/')[0];
+    // etserver with --jump cannot write to the default log file(root)
+    conf.setGlobally(el::ConfigurationType::Filename,
+                     "/tmp/etjump-" + id + ".log");
+    el::Loggers::reconfigureAllLoggers(conf);
+    startJumpHostClient(idpasskey);
     return 0;
   }
 
   if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
-    startUserTerminal();
+    string idpasskey = getIdpasskey();
+    string id = split(idpasskey, '/')[0];
+    // etserver with --idpasskey cannot write to the default log file(root)
+    conf.setGlobally(el::ConfigurationType::Filename,
+                     "/tmp/etterminal-" + id + ".log");
+    el::Loggers::reconfigureAllLoggers(conf);
+    startUserTerminal(idpasskey);
     return 0;
   }
 
@@ -600,6 +591,10 @@ int main(int argc, char **argv) {
     setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #endif
   }
-
+  // Set log file for etserver process here.
+  // To modify log related setting, please change /etc/etlogger.conf
+  conf.setGlobally(el::ConfigurationType::Filename,
+                   "/tmp/etserver-%datetime.log");
+  el::Loggers::reconfigureAllLoggers(conf);
   startServer();
 }
