@@ -21,7 +21,7 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
-#elif __NetBSD__ // do not need pty.h on NetBSD
+#elif __NetBSD__  // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #endif
@@ -59,10 +59,14 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     }
     exit(1);
   }
-  RawSocketUtils::writeMessage(routerFd, idPasskey);
-  ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
-  FLAGS_v = config.vlevel();
-  FLAGS_minloglevel = config.minloglevel();
+  try {
+    RawSocketUtils::writeMessage(routerFd, idPasskey);
+    ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
+    FLAGS_v = config.vlevel();
+    FLAGS_minloglevel = config.minloglevel();
+  } catch (const std::runtime_error &re) {
+    LOG(FATAL) << "Error connecting to router: " << re.what();
+  }
 }
 
 void UserTerminalHandler::run() {
@@ -122,31 +126,32 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
     tv.tv_usec = 10000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
-    // Check for data to receive; the received
-    // data includes also the data previously sent
-    // on the same master descriptor (line 90).
-    if (FD_ISSET(masterFd, &rfd)) {
-      // Read from terminal and write to client
-      memset(b, 0, BUF_SIZE);
-      int rc = read(masterFd, b, BUF_SIZE);
-      FATAL_FAIL(rc);
-      if (rc > 0) {
-        RawSocketUtils::writeAll(routerFd, b, rc);
-      } else {
-        LOG(INFO) << "Terminal session ended";
-#if __NetBSD__ // this unfortunateness seems to be fixed in NetBSD-8 (or at least -CURRENT) sadness for now :/
-        int throwaway;
-        FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
-#else
-        siginfo_t childInfo;
-        FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
-#endif
-        run = false;
-        break;
-      }
-    }
-
     try {
+      // Check for data to receive; the received
+      // data includes also the data previously sent
+      // on the same master descriptor (line 90).
+      if (FD_ISSET(masterFd, &rfd)) {
+        // Read from terminal and write to client
+        memset(b, 0, BUF_SIZE);
+        int rc = read(masterFd, b, BUF_SIZE);
+        FATAL_FAIL(rc);
+        if (rc > 0) {
+          RawSocketUtils::writeAll(routerFd, b, rc);
+        } else {
+          LOG(INFO) << "Terminal session ended";
+#if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
+                // least -CURRENT) sadness for now :/
+          int throwaway;
+          FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
+#else
+          siginfo_t childInfo;
+          FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
+#endif
+          run = false;
+          break;
+        }
+      }
+
       if (FD_ISSET(routerFd, &rfd)) {
         char packetType;
         int rc = read(routerFd, &packetType, 1);
@@ -160,8 +165,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
             TerminalBuffer tb =
                 RawSocketUtils::readProto<TerminalBuffer>(routerFd);
             const string &buffer = tb.buffer();
-            FATAL_FAIL(RawSocketUtils::writeAll(masterFd, &buffer[0],
-                                                buffer.length()));
+            RawSocketUtils::writeAll(masterFd, &buffer[0], buffer.length());
             break;
           }
           case TERMINAL_INFO: {

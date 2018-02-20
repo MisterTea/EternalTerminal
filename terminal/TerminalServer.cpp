@@ -32,7 +32,7 @@
 #elif __FreeBSD__
 #include <libutil.h>
 #include <sys/socket.h>
-#elif __NetBSD__ // do not need pty.h on NetBSD
+#elif __NetBSD__  // do not need pty.h on NetBSD
 #else
 #include <pty.h>
 #include <signal.h>
@@ -98,10 +98,10 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   string std_file =
       string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
 #if __NetBSD__
-    FILE* stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
-    setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
-    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+  setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #else
   stdout = fopen(std_file.c_str(), "w+");
   setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
@@ -140,9 +140,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           string message = RawSocketUtils::readMessage(terminalFd);
           serverClientState->writeMessage(message);
         } catch (const std::runtime_error &ex) {
-          LOG(INFO) << "Terminal session ended";
+          LOG(INFO) << "Terminal session ended" << ex.what();
           run = false;
-          globalServer->removeClient(serverClientState->getId());
           break;
         }
       }
@@ -153,7 +152,14 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           if (!serverClientState->readMessage(&message)) {
             break;
           }
-          RawSocketUtils::writeMessage(terminalFd, message);
+          try {
+            RawSocketUtils::writeMessage(terminalFd, message);
+          } catch (const std::runtime_error &ex) {
+            LOG(INFO) << "Unix socket died between global daemon and terminal router: "
+		      << ex.what();
+            run = false;
+	    break;
+          }
         }
       }
     } catch (const runtime_error &re) {
@@ -297,7 +303,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       LOG(ERROR) << "Error: " << re.what();
       cerr << "Error: " << re.what();
       serverClientState->closeSocket();
-      // If the client disconnects the session, it shuoldn't end
+      // If the client disconnects the session, it shouldn't end
       // because the client may be starting a new one.  TODO: Start a
       // timer which eventually kills the server.
 
@@ -434,10 +440,14 @@ void startJumpHostClient() {
     exit(1);
   }
 
-  RawSocketUtils::writeMessage(routerFd, idpasskey);
-  ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
-  setGlogVerboseLevel(config.vlevel());
-  setGlogMinLogLevel(config.minloglevel());
+  try {
+    RawSocketUtils::writeMessage(routerFd, idpasskey);
+    ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
+    setGlogVerboseLevel(config.vlevel());
+    setGlogMinLogLevel(config.minloglevel());
+  } catch (const std::runtime_error &re) {
+    LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
+  }
 
   InitialPayload payload;
 
@@ -520,6 +530,7 @@ void startJumpHostClient() {
     }
   }
   LOG(ERROR) << "Jumpclient shutdown";
+  close(routerFd);
 }
 
 int main(int argc, char **argv) {
@@ -578,9 +589,9 @@ int main(int argc, char **argv) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
 #if __NetBSD__
-    FILE* stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+    FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+    FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
     setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #else
     stdout = fopen("/tmp/etserver_err", "w+");
