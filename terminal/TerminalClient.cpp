@@ -165,6 +165,16 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 }
 
 int main(int argc, char** argv) {
+  // Redirect stderr
+#if __NetBSD__
+  FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#else
+  // redirect stderr to file
+  stderr = fopen("/tmp/etclient_err", "w+");
+  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+#endif
+
   // Override -h & --help
   for (int i = 1; i < argc; i++) {
     string s(argv[i]);
@@ -268,15 +278,6 @@ int main(int argc, char** argv) {
   string idpasskeypair =
       SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
                                 FLAGS_jumphost, FLAGS_jport, FLAGS_x);
-
-#if __NetBSD__
-  FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
-  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#else
-  // redirect stderr to file
-  stderr = fopen("/tmp/etclient_err", "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#endif
 
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;
