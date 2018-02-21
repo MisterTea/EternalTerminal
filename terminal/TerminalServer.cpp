@@ -2,6 +2,7 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
@@ -62,7 +63,7 @@ DEFINE_bool(jump, false,
 DEFINE_string(dsthost, "", "Must be set if jump is set to true");
 DEFINE_int32(dstport, 2022, "Must be set if jump is set to true");
 DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostderr, false, "log to stderr");
+DEFINE_bool(logtostdout, false, "log to stdout");
 
 shared_ptr<ServerConnection> globalServer;
 shared_ptr<UserTerminalRouter> terminalRouter;
@@ -523,13 +524,34 @@ void startJumpHostClient(string idpasskey) {
 }
 
 int main(int argc, char **argv) {
-  // TODO: best place for this conf file? permission set up
-  el::Configurations conf("/Users/ailzhang/dev/EternalTCP/etc/etlogger.conf");
-  el::Loggers::reconfigureLogger("default", conf);
+  // easylogging parse verbose arguments, see [Application Arguments]
+  // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
   START_EASYLOGGINGPP(argc, argv);
+  // GFLAGS parse command line arguments
+  ParseCommandLineFlags(&argc, &argv, false);
+
+  // Easylogging configurations
+  el::Configurations defaultConf;
+  defaultConf.setToDefault();
+  defaultConf.setGlobally(el::ConfigurationType::Format,
+                          "[%level %datetime %thread %fbase:%line] %msg");
+  defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
+  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+  defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "2097152");
+  defaultConf.setGlobally(el::ConfigurationType::SubsecondPrecision, "3");
+  defaultConf.setGlobally(el::ConfigurationType::PerformanceTracking, "false");
+  defaultConf.setGlobally(el::ConfigurationType::LogFlushThreshold, "1");
+  if (FLAGS_logtostdout) {
+    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
+  } else {
+    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  }
+  defaultConf.set(el::Level::Verbose, el::ConfigurationType::Format,
+                  "[%levshort%vlevel %datetime %thread %fbase:%line] %msg");
+  el::Loggers::reconfigureLogger("default", defaultConf);
 
   SetVersionString(string(ET_VERSION));
-  ParseCommandLineFlags(&argc, &argv, true);
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
@@ -556,10 +578,11 @@ int main(int argc, char **argv) {
   if (FLAGS_jump) {
     string idpasskey = getIdpasskey();
     string id = split(idpasskey, '/')[0];
+    string username = string(ssh_get_local_username());
     // etserver with --jump cannot write to the default log file(root)
-    conf.setGlobally(el::ConfigurationType::Filename,
-                     "/tmp/etjump-" + id + ".log");
-    el::Loggers::reconfigureAllLoggers(conf);
+    defaultConf.setGlobally(el::ConfigurationType::Filename,
+                            "/tmp/etjump-" + username + "-" + id + ".log");
+    el::Loggers::reconfigureAllLoggers(defaultConf);
     startJumpHostClient(idpasskey);
     return 0;
   }
@@ -567,10 +590,11 @@ int main(int argc, char **argv) {
   if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
     string idpasskey = getIdpasskey();
     string id = split(idpasskey, '/')[0];
+    string username = string(ssh_get_local_username());
     // etserver with --idpasskey cannot write to the default log file(root)
-    conf.setGlobally(el::ConfigurationType::Filename,
-                     "/tmp/etterminal-" + id + ".log");
-    el::Loggers::reconfigureAllLoggers(conf);
+    defaultConf.setGlobally(el::ConfigurationType::Filename,
+                            "/tmp/etterminal-" + username + "-" + id + ".log");
+    el::Loggers::reconfigureAllLoggers(defaultConf);
     startUserTerminal(idpasskey);
     return 0;
   }
@@ -592,9 +616,8 @@ int main(int argc, char **argv) {
 #endif
   }
   // Set log file for etserver process here.
-  // To modify log related setting, please change /etc/etlogger.conf
-  conf.setGlobally(el::ConfigurationType::Filename,
-                   "/tmp/etserver-%datetime.log");
-  el::Loggers::reconfigureAllLoggers(conf);
+  defaultConf.setGlobally(el::ConfigurationType::Filename,
+                          "/tmp/etserver-%datetime.log");
+  el::Loggers::reconfigureAllLoggers(defaultConf);
   startServer();
 }

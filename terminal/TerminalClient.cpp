@@ -49,7 +49,7 @@ DEFINE_string(jumphost, "", "jumphost between localhost and destination");
 DEFINE_int32(jport, 2022, "port to connect on jumphost");
 DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostderr, false, "log to stderr");
+DEFINE_bool(logtostdout, false, "log to stdout");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -167,16 +167,34 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 }
 
 int main(int argc, char** argv) {
-  // TODO: best place for this conf file? permission set up
-  el::Configurations conf("/Users/ailzhang/dev/EternalTCP/etc/etlogger.conf");
-  // el::Loggers::reconfigureLogger("default", conf);
-  conf.setGlobally(el::ConfigurationType::Filename,
-                   "/tmp/etclient-%datetime.log");
-  // conf.setGlobally(el::ConfigurationType::Enabled, "true");
-  // conf.setGlobally(el::ConfigurationType::ToFile, "true");
-  el::Loggers::reconfigureLogger("default", conf);
-  // el::Loggers::reconfigureAllLoggers(conf);
+  // easylogging parse verbose arguments, see [Application Arguments]
+  // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
   START_EASYLOGGINGPP(argc, argv);
+  // GFLAGS parse command line arguments
+  ParseCommandLineFlags(&argc, &argv, true);
+
+  // Easylogging configurations
+  el::Configurations defaultConf;
+  defaultConf.setToDefault();
+  defaultConf.setGlobally(el::ConfigurationType::Format,
+                          "[%level %datetime %thread %fbase:%line] %msg");
+  defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
+  defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "2097152");
+  defaultConf.setGlobally(el::ConfigurationType::SubsecondPrecision, "3");
+  defaultConf.setGlobally(el::ConfigurationType::PerformanceTracking, "false");
+  defaultConf.setGlobally(el::ConfigurationType::LogFlushThreshold, "1");
+  defaultConf.setGlobally(el::ConfigurationType::Filename,
+                          "/tmp/etclient-%datetime.log");
+  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+  defaultConf.set(el::Level::Verbose, el::ConfigurationType::Format,
+                  "[%levshort%vlevel %datetime %thread %fbase:%line] %msg");
+  if (FLAGS_logtostdout) {
+    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
+  } else {
+    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  }
+  el::Loggers::reconfigureLogger("default", defaultConf);
+
   // Override -h & --help
   for (int i = 1; i < argc; i++) {
     string s(argv[i]);
@@ -195,14 +213,14 @@ int main(int argc, char** argv) {
               "to localhost:8000\n"
               "-jumphost Jumphost between localhost and destination\n"
               "-jport Port to connect on jumphost\n"
-              "-x Flag to kill all sessions belongs to the user"
+              "-x Flag to kill all sessions belongs to the user\n"
+              "-logtostdout Sent log message to stdout"
            << endl;
       exit(1);
     }
   }
 
   SetVersionString(string(ET_VERSION));
-  ParseCommandLineFlags(&argc, &argv, true);
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
