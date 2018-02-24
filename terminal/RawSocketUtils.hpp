@@ -15,7 +15,9 @@ class RawSocketUtils {
     readAll(fd, (char*)&length, sizeof(int64_t));
     if (length < 0 || length > 128 * 1024 * 1024) {
       // If the message is < 0 or too big, assume this is a bad packet and throw
-      throw std::runtime_error("Invalid size (<0 or >128 MB)");
+      string s("Invalid size (<0 or >128 MB):");
+      s += std::to_string(length);
+      throw std::runtime_error(s.c_str());
     }
     string s(length, 0);
     readAll(fd, &s[0], length);
@@ -35,7 +37,9 @@ class RawSocketUtils {
     readAll(fd, (char*)&length, sizeof(int64_t));
     if (length < 0 || length > 128 * 1024 * 1024) {
       // If the message is < 0 or too big, assume this is a bad packet and throw
-      throw std::runtime_error("Invalid size (<0 or >128 MB)");
+      string s("Invalid size (<0 or >128 MB):");
+      s += std::to_string(length);
+      throw std::runtime_error(s.c_str());
     }
     string s(length, 0);
     readAll(fd, &s[0], length);
