@@ -50,6 +50,7 @@ DEFINE_int32(jport, 2022, "port to connect on jumphost");
 DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
+DEFINE_bool(silent, false, "If enabled, disable logging");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -192,6 +193,11 @@ int main(int argc, char** argv) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  }
+
+  // silent Flag, since etclient doesn't read /etc/et.cfg file
+  if (FLAGS_silent) {
+    defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
   el::Loggers::reconfigureLogger("default", defaultConf);
 

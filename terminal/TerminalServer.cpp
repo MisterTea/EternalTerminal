@@ -86,8 +86,6 @@ string getIdpasskey() {
   return idpasskey;
 }
 
-void setVerboseLevel(int vlevel) { el::Loggers::setVerboseLevel(vlevel); }
-
 void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
   string std_file =
@@ -532,7 +530,6 @@ int main(int argc, char **argv) {
 
   // Easylogging configurations
   el::Configurations defaultConf;
-  defaultConf.setToDefault();
   defaultConf.setGlobally(el::ConfigurationType::Format,
                           "[%level %datetime %thread %fbase:%line] %msg");
   defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
@@ -549,12 +546,6 @@ int main(int argc, char **argv) {
   }
   defaultConf.set(el::Level::Verbose, el::ConfigurationType::Format,
                   "[%levshort%vlevel %datetime %thread %fbase:%line] %msg");
-  el::Loggers::reconfigureLogger("default", defaultConf);
-
-  SetVersionString(string(ET_VERSION));
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-  srand(1);
-
   if (FLAGS_cfgfile.length()) {
     // Load the config file
     CSimpleIniA ini(true, true, true);
@@ -566,10 +557,28 @@ int main(int argc, char **argv) {
           FLAGS_port = stoi(portString);
         }
       }
+      // read verbose level
+      const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
+      if (vlevel) {
+	      std::cout << vlevel << std::endl;
+        el::Loggers::setVerboseLevel(atoi(vlevel));
+      }
+      // read silent setting
+      const char *silent = ini.GetValue("Debug", "silent", NULL);
+      if (silent && atoi(silent) != 0) {
+        defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
+      }
     } else {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
   }
+
+  // Reconfigure default logger to apply settings above
+  el::Loggers::reconfigureLogger("default", defaultConf);
+
+  SetVersionString(string(ET_VERSION));
+  GOOGLE_PROTOBUF_VERIFY_VERSION;
+  srand(1);
 
   if (FLAGS_port == 0) {
     FLAGS_port = 2022;
