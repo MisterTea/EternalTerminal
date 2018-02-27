@@ -39,7 +39,7 @@ sudo apt install et
 Download and install from source (you may need some dependencies):
 
 ```
-wget https://github.com/MisterTea/EternalTCP/archive/master.zip
+wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
 unzip master.zip
 cd master
 mkdir build
@@ -59,4 +59,4 @@ As long as you are running Xenial, you can follow the ubuntu instructions for in
 
 # Source Code
 
-The source can be found on our [github page](https://github.com/MisterTea/EternalTCP)
+The source can be found on our [github page](https://github.com/MisterTea/EternalTerminal)

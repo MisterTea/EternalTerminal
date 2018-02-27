@@ -5,7 +5,7 @@ title: Tutorial
 
 # Installing
 
-1. Follow the instructions on the [download page](https://mistertea.github.io/EternalTCP/download) for both your client and server.
+1. Follow the instructions on the [download page](https://mistertea.github.io/EternalTerminal/download) for both your client and server.
 2. Verify that the client is installed correctly by looking for the et executable: ```which et```
 3. Verify that the server is installed correctly by looking for the etserver executable: ```which etserver```
 4. You are ready to start using ET!
@@ -19,4 +19,4 @@ title: Tutorial
 
 # Reporting issues
 
-If you have any problems with installation or usage, please file an issue on [github](https://github.com/MisterTea/EternalTCP/issues/new).
+If you have any problems with installation or usage, please file an issue on [github](https://github.com/MisterTea/EternalTerminal/issues/new).
