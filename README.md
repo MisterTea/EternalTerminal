@@ -2,7 +2,7 @@
 
 Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.
 
-Website: <https://mistertea.github.io/EternalTCP/>.
+Website: <https://mistertea.github.io/EternalTerminal/>.
 
 ## Installing
 
@@ -47,9 +47,9 @@ Install dependencies:
 
 Download and install from source:
 
-	wget https://github.com/MisterTea/EternalTCP/archive/master.zip
+	wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
 	unzip master.zip
-	cd EternalTCP-master
+	cd EternalTerminal-master
 	mkdir build
 	cd build
 	cmake ../
@@ -117,8 +117,8 @@ To build eternal terminal on mac, the easiest way is to grab dependencies with h
 
 ```
 brew install --only-dependencies MisterTea/et/et
-git clone https://github.com/MisterTea/EternalTCP.git
-cd EternalTCP
+git clone https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
 mkdir build
 cd build
 cmake ../
@@ -131,8 +131,8 @@ Grab the deps and then follow the same process as for OS/X:
 
 ```
 sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgoogle-glog-dev, libgflags-dev, libutempter-dev
-git clone https://github.com/MisterTea/EternalTCP.git
-cd EternalTCP
+git clone https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
 mkdir build
 cd build
 cmake ../
@@ -141,7 +141,7 @@ make
 
 ## Reporting issues
 
-If you have any problems with installation or usage, please [file an issue on github](https://github.com/MisterTea/EternalTCP/issues).
+If you have any problems with installation or usage, please [file an issue on github](https://github.com/MisterTea/EternalTerminal/issues).
 
 ## Developers
 

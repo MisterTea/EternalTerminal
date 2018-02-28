@@ -12,6 +12,7 @@ static void DumpStackTraceToFileAndExit() {
   string s;
   google::glog_internal_namespace_::DumpStackTraceToString(&s);
   LOG(ERROR) << "STACK TRACE:\n" << s;
+  google::FlushLogFiles(google::GLOG_ERROR);
   abort();
 }
 
