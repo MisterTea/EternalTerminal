@@ -22,7 +22,7 @@ For Ubuntu, use our PPA:
 
 ### FreeBSD
 On FreeBSD, use:
-        pkg install eternaltcp
+        pkg install eternalterminal
 
 ### Other Linux
 
