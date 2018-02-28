@@ -2521,7 +2521,8 @@ void Writer::triggerDispatch(void) {
   if (m_proceed && m_level == Level::Fatal
       && !ELPP->hasFlag(LoggingFlag::DisableApplicationAbortOnFatalLog)) {
     base::Writer(Level::Warning, m_file, m_line, m_func).construct(1, base::consts::kDefaultLoggerId)
-        << "Aborting application. Reason: Fatal log at [" << m_file << ":" << m_line << "]";
+        << "Aborting application. Reason: Fatal log at [" << m_file << ":" << m_line << "]"
+        << std::endl << "    ======= Backtrace: =========" << std::endl << base::debug::StackTrace();
     std::stringstream reasonStream;
     reasonStream << "Fatal log at [" << m_file << ":" << m_line << "]"
                  << " If you wish to disable 'abort on fatal log' please use "
