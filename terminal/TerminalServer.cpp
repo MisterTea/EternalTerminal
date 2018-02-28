@@ -533,8 +533,6 @@ int main(int argc, char **argv) {
   defaultConf.setGlobally(el::ConfigurationType::Format,
                           "[%level %datetime %thread %fbase:%line] %msg");
   defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
-  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
-  defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "2097152");
   defaultConf.setGlobally(el::ConfigurationType::SubsecondPrecision, "3");
   defaultConf.setGlobally(el::ConfigurationType::PerformanceTracking, "false");
@@ -546,6 +544,7 @@ int main(int argc, char **argv) {
   }
   defaultConf.set(el::Level::Verbose, el::ConfigurationType::Format,
                   "[%levshort%vlevel %datetime %thread %fbase:%line] %msg");
+
   if (FLAGS_cfgfile.length()) {
     // Load the config file
     CSimpleIniA ini(true, true, true);
@@ -560,7 +559,6 @@ int main(int argc, char **argv) {
       // read verbose level
       const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
       if (vlevel) {
-	      std::cout << vlevel << std::endl;
         el::Loggers::setVerboseLevel(atoi(vlevel));
       }
       // read silent setting
@@ -572,9 +570,6 @@ int main(int argc, char **argv) {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
   }
-
-  // Reconfigure default logger to apply settings above
-  el::Loggers::reconfigureLogger("default", defaultConf);
 
   SetVersionString(string(ET_VERSION));
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -591,7 +586,9 @@ int main(int argc, char **argv) {
     // etserver with --jump cannot write to the default log file(root)
     defaultConf.setGlobally(el::ConfigurationType::Filename,
                             "/tmp/etjump-" + username + "-" + id + ".log");
-    el::Loggers::reconfigureAllLoggers(defaultConf);
+    defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+    // Reconfigure default logger to apply settings above
+    el::Loggers::reconfigureLogger("default", defaultConf);
     startJumpHostClient(idpasskey);
     return 0;
   }
@@ -603,7 +600,9 @@ int main(int argc, char **argv) {
     // etserver with --idpasskey cannot write to the default log file(root)
     defaultConf.setGlobally(el::ConfigurationType::Filename,
                             "/tmp/etterminal-" + username + "-" + id + ".log");
-    el::Loggers::reconfigureAllLoggers(defaultConf);
+    defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+    // Reconfigure default logger to apply settings above
+    el::Loggers::reconfigureLogger("default", defaultConf);
     startUserTerminal(idpasskey);
     return 0;
   }
@@ -627,6 +626,8 @@ int main(int argc, char **argv) {
   // Set log file for etserver process here.
   defaultConf.setGlobally(el::ConfigurationType::Filename,
                           "/tmp/etserver-%datetime.log");
-  el::Loggers::reconfigureAllLoggers(defaultConf);
+  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+  // Reconfigure default logger to apply settings above
+  el::Loggers::reconfigureLogger("default", defaultConf);
   startServer();
 }
