@@ -220,7 +220,8 @@ int main(int argc, char** argv) {
               "-jumphost Jumphost between localhost and destination\n"
               "-jport Port to connect on jumphost\n"
               "-x Flag to kill all sessions belongs to the user\n"
-              "-logtostdout Sent log message to stdout"
+              "-logtostdout Sent log message to stdout\n"
+              "-silent Disable all logs"
            << endl;
       exit(1);
     }
