@@ -2,6 +2,7 @@
 #include "CryptoHandler.hpp"
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
+#include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
 #include "PortForwardSourceHandler.hpp"
@@ -168,27 +169,9 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 }
 
 int main(int argc, char** argv) {
-  // easylogging parse verbose arguments, see [Application Arguments]
-  // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
-  START_EASYLOGGINGPP(argc, argv);
-  // GFLAGS parse command line arguments
-  ParseCommandLineFlags(&argc, &argv, true);
+  // Setup easylogging configurations
+  el::Configurations defaultConf = LogHandler::SetupLogHandler(argc, argv);
 
-  // Easylogging configurations
-  el::Configurations defaultConf;
-  defaultConf.setToDefault();
-  defaultConf.setGlobally(el::ConfigurationType::Format,
-                          "[%level %datetime %thread %fbase:%line] %msg");
-  defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
-  defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "20971520");
-  defaultConf.setGlobally(el::ConfigurationType::SubsecondPrecision, "3");
-  defaultConf.setGlobally(el::ConfigurationType::PerformanceTracking, "false");
-  defaultConf.setGlobally(el::ConfigurationType::LogFlushThreshold, "1");
-  defaultConf.setGlobally(el::ConfigurationType::Filename,
-                          "/tmp/etclient-%datetime.log");
-  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
-  defaultConf.set(el::Level::Verbose, el::ConfigurationType::Format,
-                  "[%levshort%vlevel %datetime %thread %fbase:%line] %msg");
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
@@ -199,6 +182,11 @@ int main(int argc, char** argv) {
   if (FLAGS_silent) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
+
+  defaultConf.setGlobally(el::ConfigurationType::Filename,
+                          "/tmp/etclient-%datetime.log");
+  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   // Override -h & --help
