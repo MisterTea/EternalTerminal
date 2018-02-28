@@ -180,7 +180,7 @@ int main(int argc, char** argv) {
   defaultConf.setGlobally(el::ConfigurationType::Format,
                           "[%level %datetime %thread %fbase:%line] %msg");
   defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");
-  defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "2097152");
+  defaultConf.setGlobally(el::ConfigurationType::MaxLogFileSize, "20971520");
   defaultConf.setGlobally(el::ConfigurationType::SubsecondPrecision, "3");
   defaultConf.setGlobally(el::ConfigurationType::PerformanceTracking, "false");
   defaultConf.setGlobally(el::ConfigurationType::LogFlushThreshold, "1");
