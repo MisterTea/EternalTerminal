@@ -1,5 +1,7 @@
 #include "LogHandler.hpp"
 
+INITIALIZE_EASYLOGGINGPP
+
 namespace et {
 el::Configurations LogHandler::SetupLogHandler(int argc, char **argv) {
   // easylogging parse verbose arguments, see [Application Arguments]

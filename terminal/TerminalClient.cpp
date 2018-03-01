@@ -25,7 +25,6 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-INITIALIZE_EASYLOGGINGPP
 const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
 const string USER_SSH_CONFIG_PATH = "/.ssh/config";
 const int KEEP_ALIVE_DURATION = 5;

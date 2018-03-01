@@ -47,7 +47,6 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-INITIALIZE_EASYLOGGINGPP
 #define BUF_SIZE (16 * 1024)
 const int KEEP_ALIVE_DURATION = 7;
 
