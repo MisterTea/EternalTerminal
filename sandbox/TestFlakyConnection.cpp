@@ -2,6 +2,7 @@
 #include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "ServerConnection.hpp"
+INITIALIZE_EASYLOGGINGPP
 
 using namespace et;
 ServerConnection* globalServer;
@@ -60,7 +61,6 @@ void runClient(std::shared_ptr<FlakyFakeSocketHandler> clientSocket,
 
 int main(int argc, char** argv) {
   srand(1);
-  google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());

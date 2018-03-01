@@ -1,12 +1,12 @@
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "FakeSocketHandler.hpp"
+INITIALIZE_EASYLOGGINGPP
 
 using namespace et;
 
 int main(int argc, char** argv) {
   srand(1);
-  google::InitGoogleLogging(argv[0]);
   gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler());
