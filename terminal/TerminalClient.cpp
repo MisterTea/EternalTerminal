@@ -169,7 +169,7 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
 int main(int argc, char** argv) {
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(argc, argv);
+  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");

@@ -3,12 +3,13 @@
 INITIALIZE_EASYLOGGINGPP
 
 namespace et {
-el::Configurations LogHandler::SetupLogHandler(int argc, char **argv) {
+el::Configurations LogHandler::SetupLogHandler(int *argc, char ***argv) {
   // easylogging parse verbose arguments, see [Application Arguments]
   // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
-  START_EASYLOGGINGPP(argc, argv);
+  START_EASYLOGGINGPP(*argc, *argv);
   // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, false);
+  gflags::ParseCommandLineFlags(argc, argv, true);
+
 
   // Easylogging configurations
   el::Configurations defaultConf;
