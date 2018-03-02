@@ -1,0 +1,5 @@
+2524c2524,2525
+<         << "Aborting application. Reason: Fatal log at [" << m_file << ":" << m_line << "]";
+---
+>         << "Aborting application. Reason: Fatal log at [" << m_file << ":" << m_line << "]"
+>         << std::endl << "    ======= Backtrace: =========" << std::endl << base::debug::StackTrace();

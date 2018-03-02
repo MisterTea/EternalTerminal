@@ -61,9 +61,6 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   }
   try {
     RawSocketUtils::writeMessage(routerFd, idPasskey);
-    ConfigParams config = RawSocketUtils::readProto<ConfigParams>(routerFd);
-    FLAGS_v = config.vlevel();
-    FLAGS_minloglevel = config.minloglevel();
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Error connecting to router: " << re.what();
   }

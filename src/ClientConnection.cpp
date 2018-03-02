@@ -82,7 +82,7 @@ void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
-      LOG_EVERY_N(INFO, 10)
+      LOG_EVERY_N(10, INFO)
           << "Trying to reconnect to " << hostname << ":" << port << endl;
       int newSocketFd = socketHandler->connect(hostname, port);
       if (newSocketFd != -1) {
@@ -118,7 +118,7 @@ void ClientConnection::pollReconnect() {
     }
 
     if (socketFd == -1) {
-      VLOG_EVERY_N(1, 10) << "Waiting to retry...";
+      VLOG_EVERY_N(10, 1) << "Waiting to retry...";
       usleep(1000 * 1000);
     }
   }

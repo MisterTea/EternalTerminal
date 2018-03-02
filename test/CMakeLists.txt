@@ -23,7 +23,7 @@ foreach(SRC_LINE ${GTEST_SRC})
     gtest_main
     gmock
     gmock_main
-    ${GLOG_LIBRARIES}
+    TerminalCommon
     ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     resolv
