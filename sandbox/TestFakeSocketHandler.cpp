@@ -1,14 +1,19 @@
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "FakeSocketHandler.hpp"
-INITIALIZE_EASYLOGGINGPP
+#include "LogHandler.hpp"
 
 using namespace et;
 
 int main(int argc, char** argv) {
   srand(1);
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
 
+  defaultConf.setGlobally(el::ConfigurationType::Filename,
+                          "testFakeSocketHandler-%datetime.log");
+  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+
+  el::Loggers::reconfigureLogger("default", defaultConf);
   std::shared_ptr<FakeSocketHandler> clientSocket(new FakeSocketHandler());
   std::shared_ptr<FakeSocketHandler> serverSocket(
       new FakeSocketHandler(clientSocket));
