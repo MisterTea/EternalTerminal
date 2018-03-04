@@ -570,9 +570,8 @@ int main(int argc, char **argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     // etserver with --jump cannot write to the default log file(root)
-    defaultConf.setGlobally(el::ConfigurationType::Filename,
-                            "/tmp/etjump-" + username + "-" + id + ".log");
-    defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+    LogHandler::SetupLogFile(&defaultConf,
+                             "/tmp/etjump-" + username + "-" + id + ".log");
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     startJumpHostClient(idpasskey);
@@ -584,9 +583,8 @@ int main(int argc, char **argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     // etserver with --idpasskey cannot write to the default log file(root)
-    defaultConf.setGlobally(el::ConfigurationType::Filename,
-                            "/tmp/etterminal-" + username + "-" + id + ".log");
-    defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+    LogHandler::SetupLogFile(&defaultConf,
+                             "/tmp/etterminal-" + username + "-" + id + ".log");
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     startUserTerminal(idpasskey);
@@ -610,9 +608,7 @@ int main(int argc, char **argv) {
 #endif
   }
   // Set log file for etserver process here.
-  defaultConf.setGlobally(el::ConfigurationType::Filename,
-                          "/tmp/etserver-%datetime.log");
-  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+  LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log");
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
   startServer();
