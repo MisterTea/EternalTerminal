@@ -7,6 +7,7 @@ namespace et {
 class LogHandler {
  public:
   static el::Configurations SetupLogHandler(int *argc, char ***argv);
+  static void SetupLogFile(el::Configurations *defaultConf, string filename);
 };
 }  // namespace et
 #endif  // __ETERNAL_TCP_LOG_HANDLER__

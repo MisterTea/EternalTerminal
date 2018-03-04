@@ -182,9 +182,7 @@ int main(int argc, char** argv) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
 
-  defaultConf.setGlobally(el::ConfigurationType::Filename,
-                          "/tmp/etclient-%datetime.log");
-  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
+  LogHandler::SetupLogFile(&defaultConf, "/tmp/etclient-%datetime.log");
 
   el::Loggers::reconfigureLogger("default", defaultConf);
 

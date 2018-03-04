@@ -62,11 +62,7 @@ void runClient(std::shared_ptr<FlakyFakeSocketHandler> clientSocket,
 int main(int argc, char** argv) {
   srand(1);
   el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
-
-  defaultConf.setGlobally(el::ConfigurationType::Filename,
-                          "testFlakyConnection-%datetime.log");
-  defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
-
+  defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   std::shared_ptr<FakeSocketHandler> serverSocket(new FakeSocketHandler());
