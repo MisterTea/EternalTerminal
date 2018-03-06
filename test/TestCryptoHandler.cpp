@@ -4,6 +4,8 @@
 
 #include "CryptoHandler.hpp"
 
+INITIALIZE_EASYLOGGINGPP
+
 using namespace et;
 
 TEST(CryptoHandler, DoesEncryptDecrypt) {

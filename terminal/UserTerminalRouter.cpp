@@ -87,11 +87,6 @@ void UserTerminalRouter::acceptNewConnection(
       string key = buf.substr(slashIndex + 1);
       idFdMap[id] = terminalFd;
       globalServer->addClientKey(id, key);
-      // send config params to terminal
-      ConfigParams config;
-      config.set_vlevel(FLAGS_v);
-      config.set_minloglevel(FLAGS_minloglevel);
-      RawSocketUtils::writeProto(terminalFd, config);
     }
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Router can't talk to terminal: " << re.what();

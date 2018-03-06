@@ -25,7 +25,6 @@ target_link_libraries(
   gtest_main
   gmock
   gmock_main
-  ${GLOG_LIBRARIES}
   ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   resolv
