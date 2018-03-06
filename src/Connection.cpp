@@ -52,6 +52,7 @@ ssize_t Connection::read(string* buf) {
 
   // Should never get here
   LOG(FATAL) << "Invalid trials iteration";
+  exit(1);
 }
 
 bool Connection::readMessage(string* buf) {
