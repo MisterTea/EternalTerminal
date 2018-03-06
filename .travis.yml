@@ -5,9 +5,9 @@ language: cpp
 compiler: gcc
 
 before_install:
+  - sudo apt-get update -qq
   - uname -a
   - git submodule update --init --recursive
-  - sudo apt-get update -qq
   - sudo apt-get install -y cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev
 
 branches:
