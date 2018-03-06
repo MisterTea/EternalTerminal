@@ -1,5 +1,5 @@
 os: linux
-dist: artful
+dist: trusty
 sudo: required
 language: cpp
 compiler: gcc
