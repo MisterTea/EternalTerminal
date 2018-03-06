@@ -162,7 +162,7 @@ void PortForwardHandler::handlePacket(char packetType,
       break;
     }
     default: {
-      LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+      LOG(FATAL) << "Unknown packet type: " << int(packetType);
     }
   }
 }
