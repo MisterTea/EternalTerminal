@@ -77,7 +77,7 @@ void UserTerminalRouter::acceptNewConnection(
 
   try {
     string buf = RawSocketUtils::readMessage(terminalFd);
-    VLOG(1) << "Got passkey: " << buf << endl;
+    VLOG(1) << "Got passkey: " << buf;
     size_t slashIndex = buf.find("/");
     if (slashIndex == string::npos) {
       LOG(ERROR) << "Invalid idPasskey id/key pair: " << buf;

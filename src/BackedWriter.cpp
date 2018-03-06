@@ -72,7 +72,7 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   if (socketFd >= 0) {
     throw std::runtime_error("Can't recover when the fd is still alive");
   }
-  VLOG(1) << int64_t(this) << ": Manually locking recover mutex!" << endl;
+  VLOG(1) << int64_t(this) << ": Manually locking recover mutex!";
   recoverMutex.lock();  // Mutex is locked until we call revive
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
@@ -100,7 +100,7 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 void BackedWriter::revive(int newSocketFd) { socketFd = newSocketFd; }
 
 void BackedWriter::unlock() {
-  VLOG(1) << int64_t(this) << ": Manually unlocking recover mutex!" << endl;
+  VLOG(1) << int64_t(this) << ": Manually unlocking recover mutex!";
   recoverMutex.unlock();
 }
 }  // namespace et
