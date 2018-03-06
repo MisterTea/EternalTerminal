@@ -117,7 +117,7 @@ To build eternal terminal on mac, the easiest way is to grab dependencies with h
 
 ```
 brew install --only-dependencies MisterTea/et/et
-git clone https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
@@ -131,7 +131,7 @@ Grab the deps and then follow the same process as for OS/X:
 
 ```
 sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgflags-dev, libutempter-dev
-git clone https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
