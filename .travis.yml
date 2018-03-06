@@ -1,12 +1,12 @@
 os: linux
-dist: xenial
+dist: artful
 sudo: required
 language: cpp
 compiler: gcc
 
 before_install:
-  - sudo apt-get update -qq
   - uname -a
+  - sudo apt-get -qq update
   - git submodule update --init --recursive
   - sudo apt-get install -y cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev
 
