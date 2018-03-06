@@ -31,18 +31,18 @@ Install dependencies:
     Debian:
 
 	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler cmake libgoogle-glog-dev \
+	libprotobuf-dev protobuf-compiler cmake \
 	libgflags-dev unzip wget
 
     Fedora (tested on 25):
 
         sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-	protobuf-compiler cmake glog-devel gflags-devel wget unzip
+	protobuf-compiler cmake gflags-devel wget unzip
 
     Gentoo:
 
         sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
-	dev-libs/protobuf dev-util/cmake dev-cpp/glog dev-cpp/gflags \
+	dev-libs/protobuf dev-util/cmake dev-cpp/gflags \
 	net-misc/wget app-arch/unzip
 
 Download and install from source:
@@ -130,7 +130,7 @@ make
 Grab the deps and then follow the same process as for OS/X:
 
 ```
-sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgoogle-glog-dev, libgflags-dev, libutempter-dev
+sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgflags-dev, libutempter-dev
 git clone https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build

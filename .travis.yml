@@ -8,7 +8,7 @@ before_install:
   - uname -a
   - git submodule update --init --recursive
   - sudo apt-get update -qq
-  - sudo apt-get install -y cmake protobuf-compiler libsodium-dev libgoogle-glog-dev libgflags-dev libprotobuf-dev libutempter-dev
+  - sudo apt-get install -y cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev
 
 branches:
   only:
