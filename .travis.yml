@@ -1,50 +1,20 @@
 os: linux
-dist: trusty
+dist: xenial
 sudo: required
 language: cpp
 compiler: gcc
 
 before_install:
+  - sudo apt-get update -qq
   - uname -a
   - git submodule update --init --recursive
-
-  - sudo add-apt-repository ppa:chris-lea/libsodium -y;
-  - sudo echo "deb http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list;
-  - sudo echo "deb-src http://ppa.launchpad.net/chris-lea/libsodium/ubuntu trusty main" | sudo tee -a /etc/apt/sources.list;
-  - sudo apt-get update -qq 
-  - sudo apt-get install libsodium-dev -y;
-
-  - apt list libgflags-dev
-  - apt list libgoogle-glog-dev
-
-    # glog
-  - wget http://archive.ubuntu.com/ubuntu/pool/universe/g/google-glog/google-glog_0.3.4.orig.tar.gz
-  - tar -xzvf google-glog_0.3.4.orig.tar.gz  
-  - (cd glog-0.3.4 && ./configure && make && sudo make install )
-    # gflags
-  - wget http://archive.ubuntu.com/ubuntu/pool/universe/g/gflags/gflags_2.1.2.orig.tar.gz
-  - tar -xzvf gflags_2.1.2.orig.tar.gz
-  - (cd gflags-2.1.2 && mkdir build && cd build && export CXXFLAGS="-fPIC" && cmake .. && make VERBOSE=1 && sudo make install )
-  
-addons:
-  apt:
-    sources:
-    - ubuntu-toolchain-r-test
-    packages:
-    - cmake
-    - protobuf-compiler 
-    - libboost-dev 
-      #- libgoogle-glog-dev 
-      #- libgflags-dev
-    - libprotobuf-dev 
-    - libncurses5-dev 
+  - sudo apt-get install -y cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev
 
 branches:
   only:
     - master
-      
+
 script:
   - mkdir build
   - cd build
-  - cmake ../ -DBUILD_TEST=1 && make
-
+  - cmake ../ -DBUILD_TEST=1 && make && ./test/EternalTCP-test

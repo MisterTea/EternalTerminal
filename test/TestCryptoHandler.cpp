@@ -8,8 +8,6 @@ INITIALIZE_EASYLOGGINGPP
 
 using namespace et;
 
-TEST(A, B) { SUCCEED(); }
-
 TEST(CryptoHandler, DoesEncryptDecrypt) {
   string key = "12345678901234567890123456789012";
   shared_ptr<CryptoHandler> encryptHandler(new CryptoHandler(key, 0));
@@ -19,11 +17,4 @@ TEST(CryptoHandler, DoesEncryptDecrypt) {
   EXPECT_NE(message, encryptedMessage);
   string decryptedMessage = decryptHandler->decrypt(encryptedMessage);
   EXPECT_EQ(message, decryptedMessage);
-}
-
-int main(int argc, char **argv) {
-  srand(1);
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-  testing::InitGoogleTest(&argc, argv);
-  return RUN_ALL_TESTS();
 }

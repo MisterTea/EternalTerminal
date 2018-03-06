@@ -1,33 +1,36 @@
-
-# set the path for all test files
 set(GTEST_PATH ${PROJECT_SOURCE_DIR}/test)
-#
-# Add your unit tests here
-#
-set(GTEST_SRC
-  test_template.cpp
- )
-# Add test executable target
-set(TESTPREFIX gtest_)
-foreach(SRC_LINE ${GTEST_SRC})
-  string(REPLACE ".cpp" "" FILE_LINE ${SRC_LINE})
 
-  add_executable(${FILE_LINE} ${SRC_LINE})
-  add_dependencies(${FILE_LINE} ${PROJECT_NAME}-static gtest gtest_main gmock gmock_main)
+file(GLOB TEST_SRCS Test*.cpp )
+add_executable(
+  ${PROJECT_NAME}-test
 
-  target_link_libraries(
-    ${FILE_LINE}
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROJECT_NAME}-static
-    gtest
-    gtest_main
-    gmock
-    gmock_main
-    TerminalCommon
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    resolv
-    util
-    )
-    add_test(${FILE_LINE} ${FILE_LINE})
-endforeach()
+  ${TEST_SRCS}
+  )
+
+add_dependencies(
+  ${PROJECT_NAME}-test
+  TerminalCommon
+  ${PROJECT_NAME}-static
+  gtest
+  gtest_main
+  gmock
+  gmock_main)
+
+target_link_libraries(
+  ${PROJECT_NAME}-test
+  TerminalCommon
+  ${PROJECT_NAME}-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  gtest
+  gtest_main
+  gmock
+  gmock_main
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  resolv
+  util
+  )
+add_test(
+  ${PROJECT_NAME}-test
+  ${PROJECT_NAME}-test
+  )

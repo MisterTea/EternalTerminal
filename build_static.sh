@@ -32,16 +32,11 @@ cd libtool-2.4.6
 make -j8 install
 cd .. || exit
 git clone https://github.com/gflags/gflags.git
-git clone https://github.com/google/glog.git
 git clone https://github.com/jedisct1/libsodium.git
 git clone https://github.com/google/protobuf.git
 cd gflags || exit
 git checkout v2.2.0
 cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -DBUILD_SHARED_LIBS=OFF ./
-make -j8 install
-cd ../glog || exit
-git checkout v0.3.5
-cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -DWITH_GFLAGS=ON -DWITH_THREADS=ON -Dgflags_DIR="$PWD"../out/lib/cmake/gflags ./
 make -j8 install
 cd ../protobuf || exit
 git checkout v3.4.1
@@ -56,8 +51,6 @@ cd ../../build || exit
 cmake \
     -DGFLAGS_INCLUDE_DIR="$PWD"/../deps/out/include \
     -DGFLAGS_LIBRARY="$PWD"/../deps/out/lib/libgflags.a \
-    -DGLOG_INCLUDE_DIR="$PWD"/../deps/out/include \
-    -DGLOG_LIBRARY="$PWD"/../deps/out/lib/libglog.a \
     -DProtobuf_INCLUDE_DIR="$PWD"/../deps/out/include \
     -DProtobuf_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libprotobuf.a \
     -DProtobuf_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libprotobuf.a \
