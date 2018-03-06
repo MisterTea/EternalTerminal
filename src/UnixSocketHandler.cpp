@@ -42,7 +42,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   }
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-    LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno) << endl;
+    LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno);
   }
   return readBytes;
 }
@@ -366,7 +366,7 @@ void UnixSocketHandler::close(int fd) {
 #if 0
   // Shutting down connection before closing to prevent the server
   // from closing it.
-  VLOG(1) << "Shutting down connection: " << fd << endl;
+  VLOG(1) << "Shutting down connection: " << fd;
   int rc = ::shutdown(fd, SHUT_RDWR);
   if (rc == -1) {
     if (errno == ENOTCONN || errno == EADDRNOTAVAIL) {
@@ -379,7 +379,7 @@ void UnixSocketHandler::close(int fd) {
     }
   }
 #endif
-  VLOG(1) << "Closing connection: " << fd << endl;
+  VLOG(1) << "Closing connection: " << fd;
   FATAL_FAIL(::close(fd));
 }
 

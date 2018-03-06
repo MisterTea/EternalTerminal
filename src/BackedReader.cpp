@@ -65,7 +65,7 @@ int BackedReader::read(string* buf) {
     return 0;
   }
   int messageLength = getPartialMessageLength();
-  VLOG(2) << "Reading message of length: " << messageLength << endl;
+  VLOG(2) << "Reading message of length: " << messageLength;
   int messageRemainder = messageLength - (partialMessage.length() - 4);
   if (messageRemainder) {
     VLOG(2) << "bytes remaining: " << messageRemainder;

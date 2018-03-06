@@ -17,7 +17,7 @@ void ServerConnection::acceptNewConnection(int fd) {
   if (clientSocketFd < 0) {
     return;
   }
-  VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd << endl;
+  VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   clientHandler(clientSocketFd);
 }
 
@@ -56,7 +56,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       }
     }
     clientId = request.clientid();
-    LOG(INFO) << "Got client with id: " << clientId << endl;
+    LOG(INFO) << "Got client with id: " << clientId;
     if (!clientKeyExists(clientId)) {
       LOG(ERROR) << "Got a client that we have no key for";
 
@@ -100,7 +100,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
 void ServerConnection::newClientConnection(const string& clientId,
                                            int socketFd) {
-  VLOG(1) << "Created client with id " << clientId << endl;
+  VLOG(1) << "Created client with id " << clientId;
 
   shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
       socketHandler, clientId, socketFd, clientKeys[clientId]));

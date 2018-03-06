@@ -126,7 +126,7 @@ void Connection::closeSocket() {
   writer->invalidateSocket();
   socketHandler->close(socketFd);
   socketFd = -1;
-  VLOG(1) << "Closed socket\n";
+  VLOG(1) << "Closed socket";
 }
 
 bool Connection::recover(int newSocketFd) {

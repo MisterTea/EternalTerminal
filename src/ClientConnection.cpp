@@ -15,17 +15,17 @@ ClientConnection::~ClientConnection() {
 
 void ClientConnection::connect() {
   try {
-    VLOG(1) << "Connecting" << endl;
+    VLOG(1) << "Connecting";
     socketFd = socketHandler->connect(hostname, port);
     if (socketFd == -1) {
       throw std::runtime_error("Could not connect to host");
     }
-    VLOG(1) << "Sending null id" << endl;
+    VLOG(1) << "Sending null id";
     et::ConnectRequest request;
     request.set_clientid(id);
     request.set_version(PROTOCOL_VERSION);
     socketHandler->writeProto(socketFd, request, true);
-    VLOG(1) << "Receiving client id" << endl;
+    VLOG(1) << "Receiving client id";
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
     if (response.status() != NEW_CLIENT) {
@@ -35,19 +35,19 @@ void ClientConnection::connect() {
            << response.error() << endl;
       exit(1);
     }
-    VLOG(1) << "Creating backed reader" << endl;
+    VLOG(1) << "Creating backed reader";
     reader = std::shared_ptr<BackedReader>(
         new BackedReader(socketHandler,
                          shared_ptr<CryptoHandler>(
                              new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
                          socketFd));
-    VLOG(1) << "Creating backed writer" << endl;
+    VLOG(1) << "Creating backed writer";
     writer = std::shared_ptr<BackedWriter>(
         new BackedWriter(socketHandler,
                          shared_ptr<CryptoHandler>(
                              new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
                          socketFd));
-    VLOG(1) << "Client Connection established" << endl;
+    VLOG(1) << "Client Connection established";
   } catch (const runtime_error& err) {
     if (socketFd != -1) {
       socketHandler->close(socketFd);

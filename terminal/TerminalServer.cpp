@@ -288,7 +288,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               break;
             }
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+              LOG(FATAL) << "Unknown packet type: " << int(packetType);
           }
         }
       }
@@ -461,7 +461,7 @@ void startJumpHostClient(string idpasskey) {
     }
     break;
   }
-  VLOG(1) << "JumpClient created with id: " << jumpclient->getId() << endl;
+  VLOG(1) << "JumpClient created with id: " << jumpclient->getId();
 
   bool run = true;
   time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
@@ -512,7 +512,7 @@ void startJumpHostClient(string idpasskey) {
         jumpclient->Connection::closeSocket();
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Error: " << re.what() << endl;
+      LOG(ERROR) << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }

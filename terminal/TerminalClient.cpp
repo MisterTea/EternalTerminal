@@ -62,7 +62,7 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   } else {
     id = idpasskeypair.substr(0, slashIndex);
     passkey = idpasskeypair.substr(slashIndex + 1);
-    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey << endl;
+    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey;
   }
   if (passkey.length() != 32) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
@@ -96,7 +96,7 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
     }
     break;
   }
-  VLOG(1) << "Client created with id: " << client->getId() << endl;
+  VLOG(1) << "Client created with id: " << client->getId();
 
   return client;
 };
@@ -111,7 +111,7 @@ void handleWindowChanged(winsize* win) {
     firstWindowChangedCall = 0;
     *win = tmpwin;
     LOG(INFO) << "Window size changed: " << win->ws_row << " " << win->ws_col
-              << " " << win->ws_xpixel << " " << win->ws_ypixel << endl;
+              << " " << win->ws_xpixel << " " << win->ws_ypixel;
     TerminalInfo ti;
     ti.set_row(win->ws_row);
     ti.set_column(win->ws_col);
@@ -141,7 +141,7 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
         if (sourcePortEnd - sourcePortStart !=
             destinationPortEnd - destinationPortStart) {
-          LOG(FATAL) << "source/destination port range mismatch" << endl;
+          LOG(FATAL) << "source/destination port range mismatch";
           exit(1);
         } else {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
@@ -160,7 +160,7 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
         pairs.push_back(make_pair(sourcePort, destinationPort));
       }
     } catch (const std::logic_error& lr) {
-      LOG(FATAL) << "Logic error: " << lr.what() << endl;
+      LOG(FATAL) << "Logic error: " << lr.what();
       exit(1);
     }
   }
@@ -317,7 +317,7 @@ int main(int argc, char** argv) {
   bool waitingOnKeepalive = false;
 
   if (FLAGS_c.length()) {
-    LOG(INFO) << "Got command: " << FLAGS_c << endl;
+    LOG(INFO) << "Got command: " << FLAGS_c;
     et::TerminalBuffer tb;
     tb.set_buffer(FLAGS_c + "; exit\n");
 
@@ -355,7 +355,7 @@ int main(int argc, char** argv) {
     }
   } catch (const std::runtime_error& ex) {
     cerr << "Error establishing port forward: " << ex.what() << endl;
-    LOG(FATAL) << "Error establishing port forward: " << ex.what() << endl;
+    LOG(FATAL) << "Error establishing port forward: " << ex.what();
   }
 
   winsize win;
@@ -445,7 +445,7 @@ int main(int argc, char** argv) {
               waitingOnKeepalive = false;
               break;
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType) << endl;
+              LOG(FATAL) << "Unknown packet type: " << int(packetType);
           }
         }
       }
@@ -482,14 +482,14 @@ int main(int argc, char** argv) {
         globalClient->writeProto(pwd);
       }
     } catch (const runtime_error& re) {
-      LOG(ERROR) << "Error: " << re.what() << endl;
+      LOG(ERROR) << "Error: " << re.what();
       tcsetattr(0, TCSANOW, &terminal_backup);
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
   }
   globalClient.reset();
-  LOG(INFO) << "Client derefernced" << endl;
+  LOG(INFO) << "Client derefernced";
   tcsetattr(0, TCSANOW, &terminal_backup);
   cout << "Session terminated" << endl;
   return 0;
