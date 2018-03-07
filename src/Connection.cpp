@@ -34,6 +34,7 @@ ssize_t Connection::read(string* buf) {
         // If we get EAGAIN, assume the kernel needs to finish
         // flushing some buffer and retry after a delay.
         usleep(100000);
+        LOG(INFO) << "Got EAGAIN, waiting 100ms...";
       } else if (isSkippableError()) {
         // Close the socket and invalidate, then return 0 messages
         LOG(INFO) << "Closing socket because " << errno << " "
@@ -70,6 +71,7 @@ bool Connection::readMessage(string* buf) {
     }
     // Yield the processor
     usleep(1000);
+    LOG_EVERY_N(100, INFO) << "Read " << messagesRead << " of message.  Waiting to read remainder...";
   }
   return false;
 }
@@ -111,6 +113,7 @@ void Connection::writeMessage(const string& buf) {
       return;
     }
     usleep(1000);
+    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten << " of message.  Waiting to write remainder...";
   }
 }
 
