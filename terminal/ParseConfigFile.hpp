@@ -1286,8 +1286,7 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
       }
       break;
     case SOC_UNSUPPORTED:
-      LOG(INFO) << "unsupported config line: " << string(line) << ", ignored"
-                << endl;
+      LOG(INFO) << "unsupported config line: " << string(line) << ", ignored";
       break;
     default:
       cout << "parse error" << endl;

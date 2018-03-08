@@ -407,8 +407,6 @@ int main(int argc, char** argv) {
           globalClient->writeMessage(headerString);
           globalClient->writeProto(tb);
           keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-        } else {
-          LOG(FATAL) << "Got an error reading from stdin: " << rc;
         }
       }
 
