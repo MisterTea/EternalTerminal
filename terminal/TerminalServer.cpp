@@ -576,7 +576,13 @@ int main(int argc, char **argv) {
                              "/tmp/etjump-" + username + "-" + id + ".log");
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // Install log rotation callback
+    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
     startJumpHostClient(idpasskey);
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
     return 0;
   }
 
@@ -589,7 +595,13 @@ int main(int argc, char **argv) {
                              "/tmp/etterminal-" + username + "-" + id + ".log");
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // Install log rotation callback
+    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
     startUserTerminal(idpasskey);
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
     return 0;
   }
 
@@ -613,5 +625,11 @@ int main(int argc, char **argv) {
   LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log");
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // Install log rotation callback
+  el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
   startServer();
+
+  // Uninstall log rotation callback
+  el::Helpers::uninstallPreRollOutCallback();
 }
