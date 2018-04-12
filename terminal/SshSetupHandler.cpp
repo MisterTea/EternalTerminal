@@ -67,14 +67,12 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     close(link_client[0]);
     close(link_client[1]);
     if (!jumphost.empty()) {
-      execl("/usr/bin/ssh", "/usr/bin/ssh", "-J",
-            (SSH_USER_PREFIX + jumphost).c_str(),
-            (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
-            NULL);
+      execlp("ssh", "ssh", "-J", (SSH_USER_PREFIX + jumphost).c_str(),
+             (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
+             NULL);
     } else {
-      execl("/usr/bin/ssh", "/usr/bin/ssh",
-            (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
-            NULL);
+      execlp("ssh", "ssh", (SSH_USER_PREFIX + host_alias).c_str(),
+             (SSH_SCRIPT_DST).c_str(), NULL);
     }
 
     LOG(INFO) << "execl error";
@@ -131,8 +129,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         cmdoptions +=
             " --jump --dsthost=" + host + " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
-        execl("/usr/bin/ssh", "/usr/bin/ssh", jumphost.c_str(),
-              (SSH_SCRIPT_JUMP).c_str(), NULL);
+        execlp("ssh", "ssh", jumphost.c_str(), (SSH_SCRIPT_JUMP).c_str(), NULL);
       } else {
         close(link_jump[1]);
         wait(NULL);
