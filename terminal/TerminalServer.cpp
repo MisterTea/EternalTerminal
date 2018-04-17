@@ -496,6 +496,7 @@ void startJumpHostClient(string idpasskey) {
         } else {
           string s = RawSocketUtils::readMessage(routerFd);
           jumpclient->writeMessage(s);
+          VLOG(3) << "Sent message from router to dst terminal: " << s.length();
         }
       }
       // forward DST terminal -> local router
@@ -504,7 +505,10 @@ void startJumpHostClient(string idpasskey) {
           string receivedMessage;
           jumpclient->readMessage(&receivedMessage);
           RawSocketUtils::writeMessage(routerFd, receivedMessage);
+          VLOG(3) << "Send message from dst terminal to router: "
+                  << receivedMessage.length();
         }
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       // src disconnects, close jump -> dst
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
