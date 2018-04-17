@@ -534,6 +534,9 @@ int main(int argc, char **argv) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   }
 
+  // default max log file size is 20MB for etserver
+  string maxlogsize = "20971520";
+
   if (FLAGS_cfgfile.length()) {
     // Load the config file
     CSimpleIniA ini(true, true, true);
@@ -555,6 +558,13 @@ int main(int argc, char **argv) {
       if (silent && atoi(silent) != 0) {
         defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
       }
+      // read log file size limit
+      const char *logsize = ini.GetValue("Debug", "logsize", NULL);
+      if (logsize && atoi(logsize) != 0) {
+        // make sure maxlogsize is a string of int value
+        maxlogsize = string(logsize);
+      }
+
     } else {
       LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
     }
@@ -573,10 +583,17 @@ int main(int argc, char **argv) {
     string username = string(ssh_get_local_username());
     // etserver with --jump cannot write to the default log file(root)
     LogHandler::SetupLogFile(&defaultConf,
-                             "/tmp/etjump-" + username + "-" + id + ".log");
+                             "/tmp/etjump-" + username + "-" + id + ".log",
+                             maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // Install log rotation callback
+    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
     startJumpHostClient(idpasskey);
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
     return 0;
   }
 
@@ -586,10 +603,17 @@ int main(int argc, char **argv) {
     string username = string(ssh_get_local_username());
     // etserver with --idpasskey cannot write to the default log file(root)
     LogHandler::SetupLogFile(&defaultConf,
-                             "/tmp/etterminal-" + username + "-" + id + ".log");
+                             "/tmp/etterminal-" + username + "-" + id + ".log",
+                             maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // Install log rotation callback
+    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
     startUserTerminal(idpasskey);
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
     return 0;
   }
 
@@ -610,8 +634,15 @@ int main(int argc, char **argv) {
 #endif
   }
   // Set log file for etserver process here.
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log");
+  LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
+                           maxlogsize);
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // Install log rotation callback
+  el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
   startServer();
+
+  // Uninstall log rotation callback
+  el::Helpers::uninstallPreRollOutCallback();
 }

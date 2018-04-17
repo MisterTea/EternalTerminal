@@ -189,6 +189,9 @@ int main(int argc, char** argv) {
 
   el::Loggers::reconfigureLogger("default", defaultConf);
 
+  // Install log rotation callback
+  el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
   // Override -h & --help
   for (int i = 1; i < argc; i++) {
     string s(argv[i]);
@@ -492,5 +495,7 @@ int main(int argc, char** argv) {
   LOG(INFO) << "Client derefernced";
   tcsetattr(0, TCSANOW, &terminal_backup);
   cout << "Session terminated" << endl;
+  // Uninstall log rotation callback
+  el::Helpers::uninstallPreRollOutCallback();
   return 0;
 }

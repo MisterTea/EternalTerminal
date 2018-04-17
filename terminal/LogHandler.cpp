@@ -24,10 +24,20 @@ el::Configurations LogHandler::SetupLogHandler(int *argc, char ***argv) {
   return defaultConf;
 }
 
-void LogHandler::SetupLogFile(el::Configurations *defaultConf,
-                              string filename) {
+void LogHandler::SetupLogFile(el::Configurations *defaultConf, string filename,
+                              string maxlogsize) {
+  // Enable strict log file size check
+  el::Loggers::addFlag(el::LoggingFlag::StrictLogFileSizeCheck);
   defaultConf->setGlobally(el::ConfigurationType::Filename, filename);
   defaultConf->setGlobally(el::ConfigurationType::ToFile, "true");
-  defaultConf->setGlobally(el::ConfigurationType::MaxLogFileSize, "20971520");
+  defaultConf->setGlobally(el::ConfigurationType::MaxLogFileSize, maxlogsize);
+}
+
+void LogHandler::rolloutHandler(const char *filename, std::size_t size) {
+  // SHOULD NOT LOG ANYTHING HERE BECAUSE LOG FILE IS CLOSED!
+  std::stringstream ss;
+  // REMOVE OLD LOG
+  ss << "rm " << filename;
+  system(ss.str().c_str());
 }
 }  // namespace et
