@@ -95,4 +95,4 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
     }
   }
 }
-}
+}  // namespace et

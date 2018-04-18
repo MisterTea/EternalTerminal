@@ -1,8 +1,8 @@
 #include "ClientConnection.hpp"
 #include "FakeSocketHandler.hpp"
 #include "Headers.hpp"
-#include "ServerConnection.hpp"
 #include "LogHandler.hpp"
+#include "ServerConnection.hpp"
 
 using namespace et;
 ServerConnection* globalServer;

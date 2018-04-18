@@ -71,7 +71,8 @@ bool Connection::readMessage(string* buf) {
     }
     // Yield the processor
     usleep(1000);
-    LOG_EVERY_N(100, INFO) << "Read " << messagesRead << " of message.  Waiting to read remainder...";
+    LOG_EVERY_N(100, INFO) << "Read " << messagesRead
+                           << " of message.  Waiting to read remainder...";
   }
   return false;
 }
@@ -113,7 +114,8 @@ void Connection::writeMessage(const string& buf) {
       return;
     }
     usleep(1000);
-    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten << " of message.  Waiting to write remainder...";
+    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
+                           << " of message.  Waiting to write remainder...";
   }
 }
 

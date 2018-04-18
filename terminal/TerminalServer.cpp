@@ -310,19 +310,21 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   }
 }
 
+void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
+  InitialPayload payload = serverClientState->readProto<InitialPayload>();
+  if (payload.jumphost()) {
+    runJumpHost(serverClientState);
+  } else {
+    runTerminal(serverClientState);
+  }
+}
+
 class TerminalServerHandler : public ServerConnectionHandler {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
-    InitialPayload payload = serverClientState->readProto<InitialPayload>();
     lock_guard<std::mutex> guard(terminalThreadMutex);
-    if (payload.jumphost()) {
-      shared_ptr<thread> t =
-          shared_ptr<thread>(new thread(runJumpHost, serverClientState));
-      terminalThreads.push_back(t);
-    } else {
-      shared_ptr<thread> t =
-          shared_ptr<thread>(new thread(runTerminal, serverClientState));
-      terminalThreads.push_back(t);
-    }
+    shared_ptr<thread> t =
+        shared_ptr<thread>(new thread(handleConnection, serverClientState));
+    terminalThreads.push_back(t);
     return true;
   }
 };
