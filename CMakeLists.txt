@@ -77,7 +77,7 @@ add_custom_target(
   )
 
 IF(FREEBSD)
-  set(CORE_LIBRARIES util)
+  set(CORE_LIBRARIES util execinfo)
 ELSE()
   set(CORE_LIBRARIES util resolv)
 ENDIF()
