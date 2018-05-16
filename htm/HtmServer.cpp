@@ -62,6 +62,12 @@ void HtmServer::run() {
               // Escape key pressed, exit
               running = false;
             }
+            if (data[0] == 'd') {
+              string jsonString;
+              google::protobuf::util::MessageToJsonString(state.getStateProto(),
+                                                          &jsonString);
+              LOG(INFO) << "Current State: " << jsonString;
+            }
             break;
           }
           case NEW_TAB: {
@@ -158,7 +164,9 @@ void HtmServer::recover() {
 
   state.sendTerminalBuffers(endpointFd);
 
-  sendDebug("HTM initialized.\n\rPress escape in this terminal to exit HTM mode.\n\r");
+  sendDebug(
+      "HTM initialized.\n\rPress escape in this terminal to exit HTM "
+      "mode.\n\r");
 }
 
 string HtmServer::getPipeName() {

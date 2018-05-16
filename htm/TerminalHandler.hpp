@@ -20,6 +20,7 @@ class TerminalHandler {
   int childPid;
   bool run;
   deque<string> buffer;
+  int64_t bufferLength;
 };
 }  // namespace et
 

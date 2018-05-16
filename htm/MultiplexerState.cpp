@@ -107,7 +107,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     LOG(INFO) << "Splitting in a new direction";
     // Parent is a split, but of the wrong orientation.  The sourceId will be
     // split in the other orientation.
-    auto split = splitIt->second;
+    auto parentSplit = splitIt->second;
 
     // Create a new split with the sourceId & paneId in the correct direction
     auto newSplit = shared_ptr<InternalSplit>(new InternalSplit());
@@ -118,13 +118,20 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     newSplit->panes_or_splits.push_back(paneId);
     newSplit->sizes.push_back(0.5);
     newSplit->sizes.push_back(0.5);
-    newSplit->parentId = split->id;
+    newSplit->parentId = parentSplit->id;
     newPane->parentId = newSplit->id;
     sourcePane->parentId = newSplit->id;
 
     // Replace the sourceId with the new split
-    split->panes_or_splits.pop_back();
-    split->panes_or_splits.push_back(newSplit->id);
+    for (int a=0;a<parentSplit->panes_or_splits.size();a++) {
+      if (parentSplit->panes_or_splits[a] == sourceId) {
+        parentSplit->panes_or_splits[a] = newSplit->id;
+        break;
+      }
+      if (a+1 == parentSplit->panes_or_splits.size()) {
+        LOG(FATAL) << "SourcePane missing from parent split";
+      }
+    }
     return;
   }
 
