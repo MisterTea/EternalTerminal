@@ -64,6 +64,7 @@ class MultiplexerState {
   void update(int endpointFd);
   void sendTerminalBuffers(int endpointFd);
   void resizePane(const string& paneId, int cols, int rows);
+  inline int numPanes() { return int(panes.size()); }
 
  protected:
   map<string, shared_ptr<InternalTab>> tabs;

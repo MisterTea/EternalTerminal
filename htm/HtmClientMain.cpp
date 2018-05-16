@@ -10,6 +10,18 @@
 
 DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 
+termios terminal_backup;
+
+void term(int signum) {
+  char buf[] = {
+      0x1b, 0x5b, '$', '$', '$', 'q',
+  };
+  et::RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  fflush(stdout);
+  tcsetattr(0, TCSANOW, &terminal_backup);
+  exit(1);
+}
+
 int main(int argc, char** argv) {
   // Version string need to be set before GFLAGS parse arguments
   SetVersionString(string(ET_VERSION));
@@ -20,12 +32,17 @@ int main(int argc, char** argv) {
   setvbuf(stdout, NULL, _IONBF, 0);  // turn off buffering
 
   // Turn on raw terminal mode
-  termios terminal_backup;
   termios terminal_local;
   tcgetattr(0, &terminal_local);
   memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
   cfmakeraw(&terminal_local);
   tcsetattr(0, TCSANOW, &terminal_local);
+
+  // Catch sigterm and send exit control code
+  struct sigaction action;
+  memset(&action, 0, sizeof(struct sigaction));
+  action.sa_handler = term;
+  sigaction(SIGTERM, &action, NULL);
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
@@ -64,8 +81,17 @@ int main(int argc, char** argv) {
   // This means we are the client to the daemon
   usleep(10 * 1000);  // Sleep for 10ms to let the daemon come alive
   et::HtmClient htmClient;
-  htmClient.run();
+  try {
+    htmClient.run();
+  } catch (const std::runtime_error& ex) {
+    LOG(ERROR) << ex.what();
+  }
 
+  char buf[] = {
+      0x1b, 0x5b, '$', '$', '$', 'q',
+  };
+  et::RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  fflush(stdout);
   tcsetattr(0, TCSANOW, &terminal_backup);
 
   return 0;

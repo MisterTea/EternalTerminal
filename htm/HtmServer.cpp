@@ -8,10 +8,11 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
-HtmServer::HtmServer() : IpcPairServer(HtmServer::getPipeName()) {}
+HtmServer::HtmServer()
+    : IpcPairServer(HtmServer::getPipeName()), running(true) {}
 
 void HtmServer::run() {
-  while (true) {
+  while (running) {
     if (endpointFd < 0) {
       sleep(1);
       pollAccept();
@@ -53,6 +54,16 @@ void HtmServer::run() {
             state.appendData(uid, data);
             break;
           }
+          case INSERT_DEBUG_KEYS: {
+            LOG(ERROR) << "READING DEBUG: " << length;
+            string data(length, '\0');
+            RawSocketUtils::readAll(endpointFd, &data[0], length);
+            if (data[0] == 27) {
+              // Escape key pressed, exit
+              running = false;
+            }
+            break;
+          }
           case NEW_TAB: {
             string tabId = string(UUID_LENGTH, '0');
             RawSocketUtils::readAll(endpointFd, &tabId[0], tabId.length());
@@ -87,6 +98,10 @@ void HtmServer::run() {
             RawSocketUtils::readAll(endpointFd, &paneId[0], paneId.length());
             LOG(INFO) << "CLOSING PANE: " << paneId;
             state.closePane(paneId);
+            if (state.numPanes() == 0) {
+              // No panes left
+              running = false;
+            }
             break;
           }
           default: {
@@ -98,9 +113,19 @@ void HtmServer::run() {
       state.update(endpointFd);
     } catch (std::runtime_error &re) {
       LOG(ERROR) << re.what();
-      closeEndpoint();
+      running = false;
     }
   }
+  closeEndpoint();
+}
+
+void HtmServer::sendDebug(const string &msg) {
+  LOG(INFO) << "SENDING DEBUG LOG: " << msg;
+  unsigned char header = DEBUG_LOG;
+  int32_t length = base64::Base64::EncodedLength(msg);
+  RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
+  RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
+  RawSocketUtils::writeB64(endpointFd, &msg[0], msg.length());
 }
 
 void HtmServer::recover() {
@@ -114,8 +139,9 @@ void HtmServer::recover() {
   usleep(10 * 1000);
 
   // Send the state
-
   LOG(ERROR) << "Starting terminal";
+
+  sendDebug("Initializing HTM, please wait...\n\r");
 
   {
     unsigned char header = INIT_STATE;
@@ -131,6 +157,8 @@ void HtmServer::recover() {
   }
 
   state.sendTerminalBuffers(endpointFd);
+
+  sendDebug("HTM initialized.\n\rPress escape in this terminal to exit HTM mode.\n\r");
 }
 
 string HtmServer::getPipeName() {

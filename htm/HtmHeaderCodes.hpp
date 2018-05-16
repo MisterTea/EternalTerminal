@@ -9,5 +9,7 @@ const char NEW_TAB = '5';
 const char SERVER_CLOSE_PANE = '8';
 const char NEW_SPLIT = '9';
 const char RESIZE_PANE = 'A';
+const char DEBUG_LOG = 'B';
+const char INSERT_DEBUG_KEYS = 'C';
 
 #endif
