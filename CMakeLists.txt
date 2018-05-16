@@ -30,11 +30,13 @@ endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 # Add cmake script directory.
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
-# Find packages
+# Required packages
 find_package(Threads REQUIRED)
 find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
+
+# Optional packages
 IF(LINUX)
 find_package(SELinux)
 ENDIF()
@@ -122,6 +124,7 @@ add_library(
   TerminalCommon
   STATIC
 
+  terminal/DaemonCreator.cpp
   terminal/SystemUtils.cpp
   terminal/RawSocketUtils.cpp
   terminal/PortForwardHandler.cpp
@@ -171,6 +174,73 @@ target_link_libraries (
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
+)
+
+PROTOBUF_GENERATE_CPP(
+  HTM_SRCS
+  HTM_HDRS
+
+  proto/HTM.proto
+  )
+
+add_library (
+  HtmCommon
+  STATIC
+
+  ${HTM_SRCS}
+  htm/TerminalHandler.cpp
+  htm/MultiplexerState.cpp
+  htm/IpcPairClient.cpp
+  htm/IpcPairEndpoint.cpp
+  htm/IpcPairServer.cpp
+  htm/HtmClient.cpp
+  htm/HtmServer.cpp
+)
+
+add_executable (
+  htm
+
+  htm/HtmClientMain.cpp
+  )
+
+target_link_libraries (
+  htm
+  LINK_PUBLIC
+
+  HtmCommon
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
+)
+
+add_executable (
+  htmd
+
+  htm/HtmServerMain.cpp
+  )
+
+target_link_libraries (
+  htmd
+  LINK_PUBLIC
+
+  HtmCommon
+  TerminalCommon
+  EternalTCP-static
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GLOG_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
 )
 
 if(BUILD_TEST) # Build unit tests.
