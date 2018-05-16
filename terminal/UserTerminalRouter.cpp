@@ -2,30 +2,6 @@
 
 #include "RawSocketUtils.hpp"
 
-#include <errno.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/un.h>
-#include <termios.h>
-#include <unistd.h>
-
-#if __APPLE__
-#include <sys/ucred.h>
-#include <util.h>
-#elif __FreeBSD__
-#include <libutil.h>
-#elif __NetBSD__  // do not need pty.h on NetBSD
-#else
-#include <pty.h>
-#endif
-
 #include "ETerminal.pb.h"
 
 namespace et {
@@ -61,7 +37,6 @@ UserTerminalRouter::UserTerminalRouter() {
 void UserTerminalRouter::acceptNewConnection(
     shared_ptr<ServerConnection> globalServer) {
   LOG(INFO) << "Listening to id/key FIFO";
-  printf("Waiting for a connection...\n");
   sockaddr_un remote;
   socklen_t t = sizeof(remote);
   int terminalFd = ::accept(serverFd, (struct sockaddr *)&remote, &t);

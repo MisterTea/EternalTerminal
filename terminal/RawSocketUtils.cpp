@@ -1,7 +1,7 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
-int RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
+void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   size_t bytesWritten = 0;
   do {
     int rc = write(fd, buf + bytesWritten, count - bytesWritten);
@@ -14,14 +14,13 @@ int RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
       throw std::runtime_error("Cannot write to raw socket");
     }
     if (rc == 0) {
-      LOG(ERROR) << "Could not write byte, trying again...";
+      throw std::runtime_error("Cannot write to raw socket: socket closed");
     }
     bytesWritten += rc;
   } while (bytesWritten != count);
-  return 0;
 }
 
-int RawSocketUtils::readAll(int fd, char* buf, size_t count) {
+void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
   size_t bytesRead = 0;
   do {
     int rc = ::read(fd, buf + bytesRead, count - bytesRead);
@@ -38,6 +37,5 @@ int RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     }
     bytesRead += rc;
   } while (bytesRead != count);
-  return bytesRead;
 }
 }  // namespace et

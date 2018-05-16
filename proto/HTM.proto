@@ -1,0 +1,26 @@
+syntax = "proto3";
+package et;
+
+message Pane {
+  string id = 1;
+}
+
+message Split {
+  string id = 1;
+  bool vertical = 2;
+  repeated string panes_or_splits = 3;
+  repeated float sizes = 4;
+}
+
+message Tab {
+  string id = 1;
+  int32 order = 2;
+  string pane_or_split = 3;
+}
+
+message State {
+  map<string,Tab> tabs = 1;
+  map<string,Split> splits = 2;
+  map<string,Pane> panes = 3;
+  string shell = 4;
+}
