@@ -13,9 +13,11 @@ class HtmServer : public IpcPairServer {
   void run();
   static string getPipeName();
   virtual void recover();
+  void sendDebug(const string &msg);
 
  protected:
   MultiplexerState state;
+  bool running;
 };
 }  // namespace et
 
