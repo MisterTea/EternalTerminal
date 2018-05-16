@@ -37,7 +37,7 @@
 #include "ETerminal.pb.h"
 
 namespace et {
-TerminalHandler::TerminalHandler() : run(true) {}
+TerminalHandler::TerminalHandler() : run(true), bufferLength(0) {}
 
 void TerminalHandler::start() {
   pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
@@ -69,7 +69,8 @@ void TerminalHandler::start() {
   }
 }
 
-#define MAX_BUFFER (1024)
+#define MAX_BUFFER_LINES (1024)
+#define MAX_BUFFER_CHARS (128 * MAX_BUFFER_LINES)
 
 string TerminalHandler::pollUserTerminal() {
   if (!run) {
@@ -105,15 +106,27 @@ string TerminalHandler::pollUserTerminal() {
       if (rc > 0) {
         string newChars(b, rc);
         vector<string> tokens = split(newChars, '\n');
+        for (auto& it : tokens) {
+          bufferLength += it.length();
+        }
         if (buffer.empty()) {
           buffer.insert(buffer.end(), tokens.begin(), tokens.end());
         } else {
           buffer.back().append(tokens.front());
           buffer.insert(buffer.end(), tokens.begin() + 1, tokens.end());
         }
-        if (buffer.size() > MAX_BUFFER) {
-          int amountToErase = buffer.size() - MAX_BUFFER;
+        if (buffer.size() > MAX_BUFFER_LINES) {
+          int amountToErase = buffer.size() - MAX_BUFFER_LINES;
+          for (auto it = buffer.begin();
+               it != buffer.end() && it != (buffer.begin() + amountToErase);
+               it++) {
+            bufferLength -= it->length();
+          }
           buffer.erase(buffer.begin(), buffer.begin() + amountToErase);
+        }
+        while (bufferLength > MAX_BUFFER_CHARS) {
+          bufferLength -= buffer.begin()->length();
+          buffer.pop_front();
         }
         LOG(INFO) << "BUFFER LINES: " << buffer.size() << " " << tokens.size()
                   << endl;
