@@ -119,7 +119,6 @@ void HtmServer::run() {
       state.update(endpointFd);
     } catch (std::runtime_error &re) {
       LOG(ERROR) << re.what();
-      running = false;
     }
   }
   closeEndpoint();
