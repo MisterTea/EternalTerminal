@@ -113,7 +113,9 @@ string TerminalHandler::pollUserTerminal() {
           buffer.insert(buffer.end(), tokens.begin(), tokens.end());
         } else {
           buffer.back().append(tokens.front());
-          buffer.insert(buffer.end(), tokens.begin() + 1, tokens.end());
+          if (tokens.size() > 1) {
+            buffer.insert(buffer.end(), tokens.begin() + 1, tokens.end());
+          }
         }
         if (buffer.size() > MAX_BUFFER_LINES) {
           int amountToErase = buffer.size() - MAX_BUFFER_LINES;

@@ -15,7 +15,9 @@ class RawSocketUtils {
   static inline void writeB64(int fd, const char* buf, size_t count) {
     int encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
-    base64::Base64::Encode(buf, count, &s[0], s.length());
+    if (!base64::Base64::Encode(buf, count, &s[0], s.length())) {
+      throw runtime_error("b64 decode failed");
+    }
     writeAll(fd, &s[0], s.length());
   }
 
@@ -23,7 +25,17 @@ class RawSocketUtils {
     int encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length());
-    base64::Base64::Decode((const char*)&s[0], s.length(), buf, count);
+    if(!base64::Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
+      throw runtime_error("b64 decode failed");
+    }
+  }
+
+  static inline void readB64EncodedLength(int fd, string* out, size_t encodedLength) {
+    string s(encodedLength, '\0');
+    readAll(fd, &s[0], s.length());
+    if(!base64::Base64::Decode(s, out)) {
+      throw runtime_error("b64 decode failed");
+    }
   }
 
   static inline string readMessage(int fd) {

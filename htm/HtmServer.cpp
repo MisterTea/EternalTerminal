@@ -48,8 +48,8 @@ void HtmServer::run() {
             RawSocketUtils::readAll(endpointFd, &uid[0], uid.length());
             length -= uid.length();
             LOG(ERROR) << "READING FROM " << uid << ":" << length;
-            string data(length, '\0');
-            RawSocketUtils::readAll(endpointFd, &data[0], length);
+            string data;
+            RawSocketUtils::readB64EncodedLength(endpointFd, &data, length);
             LOG(ERROR) << "READ FROM " << uid << ":" << data << " " << length;
             state.appendData(uid, data);
             break;
