@@ -58,9 +58,13 @@ void HtmServer::run() {
             LOG(ERROR) << "READING DEBUG: " << length;
             string data(length, '\0');
             RawSocketUtils::readAll(endpointFd, &data[0], length);
-            if (data[0] == 27) {
-              // Escape key pressed, exit
+            if (data[0] == 'x') {
+              // x key pressed, exit
               running = false;
+            }
+            if (data[0] == 27) {
+              // escape key pressed, disconnect
+              closeEndpoint();
             }
             if (data[0] == 'd') {
               string jsonString;
@@ -165,8 +169,8 @@ void HtmServer::recover() {
   state.sendTerminalBuffers(endpointFd);
 
   sendDebug(
-      "HTM initialized.\n\rPress escape in this terminal to exit HTM "
-      "mode.\n\r");
+      "HTM initialized.\n\rPress escape in this terminal to "
+      "disconnect.\n\rPress x in this terminal to shut down HTM\n\r");
 }
 
 string HtmServer::getPipeName() {
