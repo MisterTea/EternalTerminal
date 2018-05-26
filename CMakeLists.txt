@@ -90,9 +90,9 @@ ELSE()
 ENDIF()
 
 include_directories(
-  ext
-  src
-  terminal
+  src/base
+  src/terminal
+  src/htm
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
   ${CMAKE_CURRENT_SOURCE_DIR}
@@ -107,18 +107,18 @@ add_library(
   et-lib
   STATIC
 
-  src/BackedReader.cpp
-  src/BackedWriter.cpp
-  src/ClientConnection.cpp
-  src/Connection.cpp
-  src/CryptoHandler.cpp
-  src/FakeSocketHandler.cpp
-  src/FlakyFakeSocketHandler.cpp
-  src/ServerClientConnection.cpp
-  src/ServerConnection.cpp
-  src/SocketHandler.cpp
-  src/UnixSocketHandler.cpp
-  src/easylogging++.cc
+  src/base/BackedReader.cpp
+  src/base/BackedWriter.cpp
+  src/base/ClientConnection.cpp
+  src/base/Connection.cpp
+  src/base/CryptoHandler.cpp
+  src/base/FakeSocketHandler.cpp
+  src/base/FlakyFakeSocketHandler.cpp
+  src/base/ServerClientConnection.cpp
+  src/base/ServerConnection.cpp
+  src/base/SocketHandler.cpp
+  src/base/UnixSocketHandler.cpp
+  src/base/easylogging++.cc
 
   ${ET_SRCS}
   )
@@ -131,13 +131,13 @@ add_library(
   TerminalCommon
   STATIC
 
-  terminal/DaemonCreator.cpp
-  terminal/SystemUtils.cpp
-  terminal/RawSocketUtils.cpp
-  terminal/PortForwardHandler.cpp
-  terminal/PortForwardSourceHandler.cpp
-  terminal/PortForwardDestinationHandler.cpp
-  terminal/LogHandler.cpp
+  src/terminal/DaemonCreator.cpp
+  src/terminal/SystemUtils.cpp
+  src/terminal/RawSocketUtils.cpp
+  src/terminal/PortForwardHandler.cpp
+  src/terminal/PortForwardSourceHandler.cpp
+  src/terminal/PortForwardDestinationHandler.cpp
+  src/terminal/LogHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -149,9 +149,9 @@ add_dependencies(
 
 add_executable (
   etserver
-  terminal/TerminalServer.cpp
-  terminal/UserTerminalHandler.cpp
-  terminal/UserTerminalRouter.cpp
+  src/terminal/TerminalServer.cpp
+  src/terminal/UserTerminalHandler.cpp
+  src/terminal/UserTerminalRouter.cpp
   )
 
 target_link_libraries (
@@ -170,8 +170,8 @@ target_link_libraries (
 
 add_executable (
   et
-  terminal/TerminalClient.cpp
-  terminal/SshSetupHandler.cpp
+  src/terminal/TerminalClient.cpp
+  src/terminal/SshSetupHandler.cpp
   )
 
 target_link_libraries (
@@ -192,19 +192,19 @@ add_library (
   STATIC
 
   ${HTM_SRCS}
-  htm/TerminalHandler.cpp
-  htm/MultiplexerState.cpp
-  htm/IpcPairClient.cpp
-  htm/IpcPairEndpoint.cpp
-  htm/IpcPairServer.cpp
-  htm/HtmClient.cpp
-  htm/HtmServer.cpp
+  src/htm/TerminalHandler.cpp
+  src/htm/MultiplexerState.cpp
+  src/htm/IpcPairClient.cpp
+  src/htm/IpcPairEndpoint.cpp
+  src/htm/IpcPairServer.cpp
+  src/htm/HtmClient.cpp
+  src/htm/HtmServer.cpp
 )
 
 add_executable (
   htm
 
-  htm/HtmClientMain.cpp
+  src/htm/HtmClientMain.cpp
   )
 
 target_link_libraries (
@@ -227,7 +227,7 @@ target_link_libraries (
 add_executable (
   htmd
 
-  htm/HtmServerMain.cpp
+  src/htm/HtmServerMain.cpp
   )
 
 target_link_libraries (
