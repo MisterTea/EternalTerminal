@@ -143,7 +143,6 @@ add_library(
   )
 add_dependencies(
   TerminalCommon
-  et-lib
   generated-code
   )
 
@@ -200,6 +199,10 @@ add_library (
   src/htm/HtmClient.cpp
   src/htm/HtmServer.cpp
 )
+add_dependencies(
+  HtmCommon
+  generated-code
+  )
 
 add_executable (
   htm
