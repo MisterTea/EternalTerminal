@@ -2,24 +2,24 @@ set(GTEST_PATH ${PROJECT_SOURCE_DIR}/test)
 
 file(GLOB TEST_SRCS Test*.cpp )
 add_executable(
-  ${PROJECT_NAME}-test
+  et-test
 
   ${TEST_SRCS}
   )
 
 add_dependencies(
-  ${PROJECT_NAME}-test
+  et-test
   TerminalCommon
-  ${PROJECT_NAME}-static
+  et-lib
   gtest
   gtest_main
   gmock
   gmock_main)
 
 target_link_libraries(
-  ${PROJECT_NAME}-test
+  et-test
   TerminalCommon
-  ${PROJECT_NAME}-static
+  et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   gtest
   gtest_main
@@ -31,6 +31,6 @@ target_link_libraries(
   util
   )
 add_test(
-  ${PROJECT_NAME}-test
-  ${PROJECT_NAME}-test
+  et-test
+  et-test
   )

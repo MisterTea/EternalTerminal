@@ -19,7 +19,7 @@ foreach(SRC_LINE ${SANDBOX_SRC})
     ${FILE_LINE}
     LINK_PUBLIC
     TerminalCommon
-    ${PROJECT_NAME}-static
+    et-lib
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
     ${GFLAGS_LIBRARIES}

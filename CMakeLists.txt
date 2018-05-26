@@ -62,6 +62,26 @@ PROTOBUF_GENERATE_CPP(
 
   proto/ET.proto
   )
+PROTOBUF_GENERATE_CPP(
+  ETERMINAL_SRCS
+  ETERMINAL_HDRS
+
+  proto/ETerminal.proto
+  )
+PROTOBUF_GENERATE_CPP(
+  HTM_SRCS
+  HTM_HDRS
+
+  proto/HTM.proto
+  )
+add_custom_target(
+  generated-code
+  DEPENDS
+
+  ${ET_SRCS} ${ET_HDRS}
+  ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
+  ${HTM_SRCS} ${HTM_HDRS}
+  )
 
 IF(FREEBSD)
   set(CORE_LIBRARIES util)
@@ -75,6 +95,7 @@ include_directories(
   terminal
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
   ${CURSES_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
   ${GFLAGS_INCLUDE_DIRS}
@@ -82,7 +103,9 @@ include_directories(
   ${UTEMPTER_INCLUDE_DIR}
   )
 
-set(${PROJECT_NAME}_SRC
+add_library(
+  et-lib
+  STATIC
 
   src/BackedReader.cpp
   src/BackedWriter.cpp
@@ -97,27 +120,11 @@ set(${PROJECT_NAME}_SRC
   src/UnixSocketHandler.cpp
   src/easylogging++.cc
 
-  ${ET_SRCS} ${ET_HDRS}
+  ${ET_SRCS}
   )
-
-# Build the static library.
-add_library(${PROJECT_NAME}-static STATIC ${${PROJECT_NAME}_SRC})
-# Build the shared library.
-#add_library(${PROJECT_NAME} SHARED ${${PROJECT_NAME}_SRC})
-
-target_link_libraries(
-  ${PROJECT_NAME}-static
-  )
-
-# Make sure the compiler can find include files for our Hello library
-# when other libraries or executables link to Hello
-target_include_directories (${PROJECT_NAME}-static PUBLIC ${CMAKE_CURRENT_SOURCE_DIR})
-
-PROTOBUF_GENERATE_CPP(
-  ETERMINAL_SRCS
-  ETERMINAL_HDRS
-
-  proto/ETerminal.proto
+add_dependencies(
+  et-lib
+  generated-code
   )
 
 add_library(
@@ -134,7 +141,11 @@ add_library(
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
-add_dependencies(TerminalCommon EternalTCP-static)
+add_dependencies(
+  TerminalCommon
+  et-lib
+  generated-code
+  )
 
 add_executable (
   etserver
@@ -147,7 +158,7 @@ target_link_libraries (
   etserver
   LINK_PUBLIC
   TerminalCommon
-  EternalTCP-static
+  et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
   ${GFLAGS_LIBRARIES}
@@ -167,7 +178,7 @@ target_link_libraries (
     et
     LINK_PUBLIC
     TerminalCommon
-    EternalTCP-static
+    et-lib
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
     ${GFLAGS_LIBRARIES}
@@ -175,13 +186,6 @@ target_link_libraries (
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
 )
-
-PROTOBUF_GENERATE_CPP(
-  HTM_SRCS
-  HTM_HDRS
-
-  proto/HTM.proto
-  )
 
 add_library (
   HtmCommon
@@ -209,7 +213,7 @@ target_link_libraries (
 
   HtmCommon
   TerminalCommon
-  EternalTCP-static
+  et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARIES}
@@ -232,7 +236,7 @@ target_link_libraries (
 
   HtmCommon
   TerminalCommon
-  EternalTCP-static
+  et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
   ${GLOG_LIBRARIES}
