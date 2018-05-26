@@ -254,7 +254,7 @@ if(BUILD_TEST) # Build unit tests.
   add_subdirectory(test)
 endif()
 
-install(TARGETS etserver et
+install(TARGETS etserver et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
   DESTINATION "bin"
   )
