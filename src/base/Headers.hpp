@@ -61,9 +61,12 @@
 #include <gflags/gflags.h>
 
 #include <google/protobuf/message.h>
-#include <google/protobuf/util/json_util.h>
 #include "ET.pb.h"
 #include "easylogging++.h"
+
+#include "base64.hpp"
+#include "sole.hpp"
+#include "json.hpp"
 
 using namespace std;
 
@@ -71,6 +74,8 @@ namespace google {}
 namespace gflags {}
 using namespace google;
 using namespace gflags;
+
+using json = nlohmann::json;
 
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 4;

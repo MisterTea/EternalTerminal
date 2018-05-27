@@ -9,8 +9,9 @@ class IpcPairEndpoint {
   IpcPairEndpoint(int _endpointFd);
   virtual ~IpcPairEndpoint();
   inline int getEndpointFd() { return endpointFd; }
-  inline void closeEndpoint() {
-    close(endpointFd);
+  virtual void closeEndpoint() {
+    ::shutdown(endpointFd, SHUT_RDWR);
+    ::close(endpointFd);
     endpointFd = -1;
   }
 

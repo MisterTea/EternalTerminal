@@ -28,7 +28,7 @@ void HtmClient::run() {
     select(max(STDIN_FILENO, endpointFd) + 1, &rfd, NULL, NULL, &tv);
 
     if (FD_ISSET(STDIN_FILENO, &rfd)) {
-      VLOG(1) << "READING FROM STDIN";
+      VLOG(1) << "STDIN -> " << endpointFd;
       int rc = ::read(STDIN_FILENO, buf, BUF_SIZE);
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
@@ -40,7 +40,7 @@ void HtmClient::run() {
     }
 
     if (FD_ISSET(endpointFd, &rfd)) {
-      VLOG(1) << "READING FROM ENDPOINT";
+      VLOG(1) << endpointFd << " -> STDOUT";
       int rc = ::read(endpointFd, buf, BUF_SIZE);
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");

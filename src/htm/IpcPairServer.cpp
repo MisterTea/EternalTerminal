@@ -1,7 +1,44 @@
 #include "IpcPairServer.hpp"
 
 namespace et {
-IpcPairServer::IpcPairServer(const string &pipeName) : IpcPairEndpoint(-1) {
+IpcPairServer::IpcPairServer(const string &_pipeName)
+    : IpcPairEndpoint(-1), pipeName(_pipeName) {
+  listen();
+}
+
+IpcPairServer::~IpcPairServer() { ::close(serverFd); }
+
+void IpcPairServer::pollAccept() {
+  LOG(INFO) << "Listening to id/key FIFO";
+  sockaddr_un remote;
+  socklen_t t = sizeof(remote);
+  int fd = ::accept(serverFd, (struct sockaddr *)&remote, &t);
+  if (fd < 0) {
+    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+      FATAL_FAIL(-1);  // LOG(FATAL) with the error
+    } else {
+      return;  // Nothing to accept this time
+    }
+  }
+
+  if (endpointFd >= 0) {
+    // Need to disconnect the current client
+    closeEndpoint();
+  }
+
+  endpointFd = fd;
+  // Make sure that socket becomes blocking once it's attached to a client.
+  {
+    int opts;
+    opts = fcntl(endpointFd, F_GETFL);
+    FATAL_FAIL(opts);
+    opts &= (~O_NONBLOCK);
+    FATAL_FAIL(fcntl(endpointFd, F_SETFL, opts));
+  }
+  recover();
+}
+
+void IpcPairServer::listen() {
   sockaddr_un local;
 
   serverFd = socket(AF_UNIX, SOCK_STREAM, 0);
@@ -29,29 +66,4 @@ IpcPairServer::IpcPairServer(const string &pipeName) : IpcPairEndpoint(-1) {
   ::listen(serverFd, 5);
   chmod(local.sun_path, 0777);
 }
-
-IpcPairServer::~IpcPairServer() { ::close(serverFd); }
-
-void IpcPairServer::pollAccept() {
-  LOG(INFO) << "Listening to id/key FIFO";
-  sockaddr_un remote;
-  socklen_t t = sizeof(remote);
-  int fd = ::accept(serverFd, (struct sockaddr *)&remote, &t);
-  if (fd < 0) {
-    if (errno != EAGAIN && errno != EWOULDBLOCK) {
-      FATAL_FAIL(-1);  // LOG(FATAL) with the error
-    } else {
-      return;  // Nothing to accept this time
-    }
-  }
-
-  if (endpointFd >= 0) {
-    // Need to disconnect the current client
-    closeEndpoint();
-  }
-
-  endpointFd = fd;
-  recover();
-}
-
 }  // namespace et

@@ -67,9 +67,7 @@ void HtmServer::run() {
               closeEndpoint();
             }
             if (data[0] == 'd') {
-              string jsonString;
-              google::protobuf::util::MessageToJsonString(state.getStateProto(),
-                                                          &jsonString);
+              string jsonString = state.toJson().dump();
               LOG(INFO) << "Current State: " << jsonString;
             }
             break;
@@ -155,10 +153,7 @@ void HtmServer::recover() {
 
   {
     unsigned char header = INIT_STATE;
-    string jsonString;
-    auto status = google::protobuf::util::MessageToJsonString(
-        state.getStateProto(), &jsonString);
-    VLOG(1) << "STATUS: " << status;
+    string jsonString = state.toJson().dump();
     int32_t length = jsonString.length();
     VLOG(1) << "SENDING INIT: " << jsonString;
     RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);

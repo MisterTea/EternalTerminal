@@ -2,18 +2,57 @@
 
 #include "HtmHeaderCodes.hpp"
 #include "RawSocketUtils.hpp"
-#include "base64.hpp"
-#include "sole.hpp"
 
 namespace et {
+struct MultiplexerState::Pane {
+  string id;
+  string parentId;
+  shared_ptr<TerminalHandler> terminal;
+
+  json toJson() {
+    json pane;
+    pane["id"] = id;
+    return pane;
+  }
+};
+struct MultiplexerState::Split {
+  string id;
+  string parentId;
+  bool vertical;
+  vector<string> panes_or_splits;
+  vector<float> sizes;
+
+  json toJson() {
+    json split;
+    split["id"] = id;
+    split["vertical"] = vertical;
+    split["panesOrSplits"] = panes_or_splits;
+    split["sizes"] = sizes;
+
+    return split;
+  }
+};
+struct MultiplexerState::Tab {
+  string id;
+  string pane_or_split_id;
+  int order;
+
+  json toJson() {
+    json tab;
+    tab["id"] = id;
+    tab["order"] = order;
+    tab["paneOrSplit"] = pane_or_split_id;
+    return tab;
+  }
+};
 MultiplexerState::MultiplexerState() {
-  shared_ptr<InternalTab> t(new InternalTab());
+  shared_ptr<Tab> t(new Tab());
   t->id = sole::uuid4().str();
   tabs.insert(make_pair(t->id, t));
   t->order = 0;
 
   {
-    shared_ptr<InternalPane> p(new InternalPane());
+    shared_ptr<Pane> p(new Pane());
     p->id = sole::uuid4().str();
     panes.insert(make_pair(p->id, p));
     p->parentId = t->id;
@@ -25,27 +64,21 @@ MultiplexerState::MultiplexerState() {
   }
 }
 
-State MultiplexerState::getStateProto() {
-  State state;
-  state.set_shell(string(::getenv("SHELL")));
+json MultiplexerState::toJson() {
+  json state;
+  state["shell"] = string(::getenv("SHELL"));
 
-  map<string, Tab> tabProtos;
   for (auto &it : tabs) {
-    tabProtos.insert(make_pair(it.first, it.second->toProto()));
+    state["tabs"][it.first] = it.second->toJson();
   }
-  state.mutable_tabs()->insert(tabProtos.begin(), tabProtos.end());
 
-  map<string, Pane> paneProtos;
   for (auto &it : panes) {
-    paneProtos.insert(make_pair(it.first, it.second->toProto()));
+    state["panes"][it.first] = it.second->toJson();
   }
-  state.mutable_panes()->insert(paneProtos.begin(), paneProtos.end());
 
-  map<string, Split> splitProtos;
   for (auto &it : splits) {
-    splitProtos.insert(make_pair(it.first, it.second->toProto()));
+    state["splits"][it.first] = it.second->toJson();
   }
-  state.mutable_splits()->insert(splitProtos.begin(), splitProtos.end());
 
   return state;
 }
@@ -60,13 +93,13 @@ void MultiplexerState::appendData(const string &uid, const string &data) {
 void MultiplexerState::newTab(const string &tabId, const string &paneId) {
   fatalIfFound(tabId);
   fatalIfFound(paneId);
-  auto tab = shared_ptr<InternalTab>(new InternalTab());
+  auto tab = shared_ptr<Tab>(new Tab());
   tab->id = tabId;
   tab->order = tabs.size();
   tabs.insert(make_pair(tab->id, tab));
   tab->pane_or_split_id = paneId;
 
-  auto pane = shared_ptr<InternalPane>(new InternalPane());
+  auto pane = shared_ptr<Pane>(new Pane());
   pane->id = paneId;
   pane->parentId = tab->id;
   auto terminal = shared_ptr<TerminalHandler>(new TerminalHandler());
@@ -79,7 +112,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
                                 bool vertical) {
   fatalIfFound(paneId);
 
-  auto newPane = shared_ptr<InternalPane>(new InternalPane());
+  auto newPane = shared_ptr<Pane>(new Pane());
   newPane->id = paneId;
   panes.insert(make_pair(paneId, newPane));
   auto terminal = shared_ptr<TerminalHandler>(new TerminalHandler());
@@ -110,7 +143,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     auto parentSplit = splitIt->second;
 
     // Create a new split with the sourceId & paneId in the correct direction
-    auto newSplit = shared_ptr<InternalSplit>(new InternalSplit());
+    auto newSplit = shared_ptr<Split>(new Split());
     newSplit->id = sole::uuid4().str();
     splits.insert(make_pair(newSplit->id, newSplit));
     newSplit->vertical = vertical;
@@ -123,12 +156,12 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     sourcePane->parentId = newSplit->id;
 
     // Replace the sourceId with the new split
-    for (int a=0;a<parentSplit->panes_or_splits.size();a++) {
+    for (int a = 0; a < parentSplit->panes_or_splits.size(); a++) {
       if (parentSplit->panes_or_splits[a] == sourceId) {
         parentSplit->panes_or_splits[a] = newSplit->id;
         break;
       }
-      if (a+1 == parentSplit->panes_or_splits.size()) {
+      if (a + 1 == parentSplit->panes_or_splits.size()) {
         LOG(FATAL) << "SourcePane missing from parent split";
       }
     }
@@ -140,7 +173,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
   auto tab = getTab(sourcePane->parentId);
 
   // Create a new split with the sourceId & paneId in the correct direction
-  auto newSplit = shared_ptr<InternalSplit>(new InternalSplit());
+  auto newSplit = shared_ptr<Split>(new Split());
   newSplit->id = sole::uuid4().str();
   splits.insert(make_pair(newSplit->id, newSplit));
   newSplit->vertical = vertical;

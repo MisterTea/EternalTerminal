@@ -3,8 +3,6 @@
 
 #include "Headers.hpp"
 
-#include "base64.hpp"
-
 namespace et {
 class RawSocketUtils {
  public:
@@ -78,37 +76,9 @@ class RawSocketUtils {
   }
 
   template <typename T>
-  static inline T readProtoJson(int fd) {
-    T t;
-    int64_t length;
-    readAll(fd, (char*)&length, sizeof(int64_t));
-    if (length < 0 || length > 128 * 1024 * 1024) {
-      // If the message is < 0 or too big, assume this is a bad packet and throw
-      string s("Invalid size (<0 or >128 MB):");
-      s += std::to_string(length);
-      throw std::runtime_error(s.c_str());
-    }
-    string s(length, 0);
-    readAll(fd, &s[0], length);
-    auto status = google::protobuf::util::JsonStringToMessage(s, &t);
-    VLOG(1) << "STATUS: " << status;
-    return t;
-  }
-
-  template <typename T>
   static inline void writeProto(int fd, const T& t) {
     string s;
     t.SerializeToString(&s);
-    int64_t length = s.length();
-    writeAll(fd, (const char*)&length, sizeof(int64_t));
-    writeAll(fd, &s[0], length);
-  }
-
-  template <typename T>
-  static inline void writeProtoJson(int fd, const T& t) {
-    string s;
-    auto status = google::protobuf::util::MessageToJsonString(t, &s);
-    VLOG(1) << "STATUS: " << status;
     int64_t length = s.length();
     writeAll(fd, (const char*)&length, sizeof(int64_t));
     writeAll(fd, &s[0], length);

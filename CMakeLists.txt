@@ -68,19 +68,12 @@ PROTOBUF_GENERATE_CPP(
 
   proto/ETerminal.proto
   )
-PROTOBUF_GENERATE_CPP(
-  HTM_SRCS
-  HTM_HDRS
-
-  proto/HTM.proto
-  )
 add_custom_target(
   generated-code
   DEPENDS
 
   ${ET_SRCS} ${ET_HDRS}
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
-  ${HTM_SRCS} ${HTM_HDRS}
   )
 
 IF(FREEBSD)
@@ -190,7 +183,6 @@ add_library (
   HtmCommon
   STATIC
 
-  ${HTM_SRCS}
   src/htm/TerminalHandler.cpp
   src/htm/MultiplexerState.cpp
   src/htm/IpcPairClient.cpp
