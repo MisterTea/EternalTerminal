@@ -4,11 +4,7 @@ namespace et {
 void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   size_t bytesWritten = 0;
   do {
-#ifdef MSG_NOSIGNAL
-    int rc = ::send(fd, buf + bytesWritten, count - bytesWritten, MSG_NOSIGNAL);
-#else
     int rc = ::write(fd, buf + bytesWritten, count - bytesWritten);
-#endif
     if (rc < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
