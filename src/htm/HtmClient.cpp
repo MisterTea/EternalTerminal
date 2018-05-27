@@ -1,7 +1,5 @@
 #include "HtmClient.hpp"
 
-#include "HTM.pb.h"
-
 #include "HtmServer.hpp"
 #include "IpcPairClient.hpp"
 #include "LogHandler.hpp"

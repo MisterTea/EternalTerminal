@@ -1,7 +1,5 @@
 #include "HtmServer.hpp"
 
-#include "HTM.pb.h"
-
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "RawSocketUtils.hpp"

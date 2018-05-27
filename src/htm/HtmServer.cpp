@@ -1,7 +1,5 @@
 #include "HtmServer.hpp"
 
-#include "HTM.pb.h"
-
 #include "HtmHeaderCodes.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"

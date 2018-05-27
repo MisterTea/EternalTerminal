@@ -1,5 +1,3 @@
-#include "HTM.pb.h"
-
 #include "DaemonCreator.hpp"
 #include "HtmClient.hpp"
 #include "HtmServer.hpp"
