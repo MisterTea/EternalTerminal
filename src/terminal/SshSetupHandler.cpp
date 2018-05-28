@@ -67,7 +67,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     close(link_client[0]);
     close(link_client[1]);
     // run the command in interactive mode
-    SSH_SCRIPT_DST = "$SHELL -lic \'" + SSH_SCRIPT_DST + "\'";
+    SSH_SCRIPT_DST = "$SHELL -lc \'" + SSH_SCRIPT_DST + "\'";
     if (!jumphost.empty()) {
       execlp("ssh", "ssh", "-J", (SSH_USER_PREFIX + jumphost).c_str(),
              (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
@@ -132,7 +132,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
             " --jump --dsthost=" + host + " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
 	// start command in interactive mode
-        SSH_SCRIPT_JUMP = "$SHELL -lic \'" + SSH_SCRIPT_JUMP+ "\'";
+        SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP+ "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
       } else {
         close(link_jump[1]);
