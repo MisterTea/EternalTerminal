@@ -112,6 +112,10 @@ add_library(
   src/base/SocketHandler.cpp
   src/base/UnixSocketHandler.cpp
   src/base/easylogging++.cc
+  src/base/LogHandler.cpp
+  src/base/DaemonCreator.cpp
+  src/base/SystemUtils.cpp
+  src/base/RawSocketUtils.cpp
 
   ${ET_SRCS}
   )
@@ -124,13 +128,9 @@ add_library(
   TerminalCommon
   STATIC
 
-  src/terminal/DaemonCreator.cpp
-  src/terminal/SystemUtils.cpp
-  src/terminal/RawSocketUtils.cpp
   src/terminal/PortForwardHandler.cpp
   src/terminal/PortForwardSourceHandler.cpp
   src/terminal/PortForwardDestinationHandler.cpp
-  src/terminal/LogHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -207,7 +207,6 @@ target_link_libraries (
   LINK_PUBLIC
 
   HtmCommon
-  TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
@@ -230,7 +229,6 @@ target_link_libraries (
   LINK_PUBLIC
 
   HtmCommon
-  TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}

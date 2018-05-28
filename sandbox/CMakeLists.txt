@@ -6,7 +6,6 @@ set(SANDBOX_PATH ${PROJECT_SOURCE_DIR}/sandbox)
 #
 set (SANDBOX_SRC
   TestTransfer.cpp
-  TestFakeSocketHandler.cpp
   TestConnection.cpp
   TestFlakyConnection.cpp
   )

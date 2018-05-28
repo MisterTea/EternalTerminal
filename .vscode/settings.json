@@ -47,7 +47,8 @@
         "cstdlib": "cpp",
         "random": "cpp",
         "functional": "cpp",
-        "ostream": "cpp"
+        "ostream": "cpp",
+        "istream": "cpp"
     },
     "C_Cpp.clang_format_style": "Google"
 }

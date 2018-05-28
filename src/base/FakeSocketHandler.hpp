@@ -32,6 +32,8 @@ class FakeSocketHandler : public SocketHandler {
   void addConnection(int fd);
   bool hasPendingConnection();
 
+  int fakeConnection();
+
  protected:
   std::shared_ptr<FakeSocketHandler> remoteHandler;
   unordered_map<int, std::string> inBuffers;
