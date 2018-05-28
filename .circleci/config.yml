@@ -1,6 +1,6 @@
 version: 2
 jobs:
-  build:
+  build_linux:
     docker:
       - image: ubuntu:bionic
     steps:
@@ -17,3 +17,26 @@ jobs:
       - run:
           name: Run tests
           command: cd build/test/; ./et-test
+  build_mac:
+    macos:
+      xcode: "9.2"
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: brew install git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j16
+      - run:
+          name: Run tests
+          command: cd build/test/; ./et-test
+workflows:
+  version: 2
+  build_and_test:
+    jobs:
+      - build_linux
+      - build_mac
