@@ -3,31 +3,26 @@
 #include <sys/wait.h>
 
 namespace et {
+string genRandom(int len) {
+  static const char alphanum[] =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+  string s(len, '\0');
+
+  for (int i = 0; i < len; ++i) {
+    s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+  }
+
+  return s;
+}
+
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
                                  bool kill) {
   string CLIENT_TERM(getenv("TERM"));
-  FILE *passkey_p = popen(
-      "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 32", "r");
-  if (!passkey_p) {
-    LOG(FATAL) << "cannot generate passkey!";
-    exit(1);
-  }
-  char passkey_buffer[1024];
-  fgets(passkey_buffer, sizeof(passkey_buffer), passkey_p);
-  pclose(passkey_p);
-  string passkey = string(passkey_buffer);
-
-  FILE *id_p = popen(
-      "env LC_ALL=C tr -dc \"a-zA-Z0-9\" < /dev/urandom | head -c 16", "r");
-  if (!id_p) {
-    LOG(FATAL) << "cannot generate id!";
-    exit(1);
-  }
-  char id_buffer[1024];
-  fgets(id_buffer, sizeof(id_buffer), id_p);
-  pclose(id_p);
-  string id = string(id_buffer);
+  string passkey = genRandom(32);
+  string id = genRandom(16);
   string SSH_SCRIPT_PREFIX{
       "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
       "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
@@ -131,8 +126,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         cmdoptions +=
             " --jump --dsthost=" + host + " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
-	// start command in interactive mode
-        SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP+ "\'";
+        // start command in interactive mode
+        SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
       } else {
         close(link_jump[1]);
