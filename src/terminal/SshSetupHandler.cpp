@@ -21,6 +21,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
                                  bool kill) {
   string CLIENT_TERM(getenv("TERM"));
+  srand(time(NULL));
   string passkey = genRandom(32);
   string id = genRandom(16);
   string SSH_SCRIPT_PREFIX{
