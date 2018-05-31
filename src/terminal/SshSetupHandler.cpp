@@ -16,7 +16,7 @@ string genRandom(int len) {
     uint32_t randNum;
     ssize_t rc = ::read(randomFd, &randNum, sizeof(uint32_t));
     FATAL_FAIL(rc);
-    s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
+    s[i] = alphanum[randNum % (sizeof(alphanum) - 1)];
   }
   close(randomFd);
 
