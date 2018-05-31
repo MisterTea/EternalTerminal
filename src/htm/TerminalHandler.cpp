@@ -135,8 +135,9 @@ string TerminalHandler::pollUserTerminal() {
         return newChars;
       } else {
         LOG(INFO) << "Terminal session ended";
-#if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at \
-               // least -CURRENT) sadness for now :/
+#if __NetBSD__
+        // this unfortunateness seems to be fixed in NetBSD-8 (or at
+        // least -CURRENT) sadness for now :/
         int throwaway;
         FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
 #else

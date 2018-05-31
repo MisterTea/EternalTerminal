@@ -156,7 +156,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     sourcePane->parentId = newSplit->id;
 
     // Replace the sourceId with the new split
-    for (int a = 0; a < parentSplit->panes_or_splits.size(); a++) {
+    for (size_t a = 0; a < parentSplit->panes_or_splits.size(); a++) {
       if (parentSplit->panes_or_splits[a] == sourceId) {
         parentSplit->panes_or_splits[a] = newSplit->id;
         break;
@@ -227,7 +227,7 @@ void MultiplexerState::closePane(const string &paneId) {
 
   // Not a top-level pane
   auto split = getSplit(pane->parentId);
-  for (int a = 0; a < split->panes_or_splits.size(); a++) {
+  for (size_t a = 0; a < split->panes_or_splits.size(); a++) {
     if (split->panes_or_splits[a] == pane->id) {
       split->panes_or_splits.erase(split->panes_or_splits.begin() + a);
       split->sizes.erase(split->sizes.begin() + a);
@@ -254,7 +254,7 @@ void MultiplexerState::closePane(const string &paneId) {
       tabs.find(pane->parentId)->second->pane_or_split_id = pane->id;
     } else {
       auto parentSplit = getSplit(pane->parentId);
-      for (int a = 0; a < parentSplit->panes_or_splits.size(); a++) {
+      for (size_t a = 0; a < parentSplit->panes_or_splits.size(); a++) {
         if (parentSplit->panes_or_splits[a] == split->id) {
           parentSplit->panes_or_splits[a] = pane->id;
           break;
