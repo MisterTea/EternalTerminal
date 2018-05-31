@@ -10,9 +10,15 @@ string genRandom(int len) {
       "abcdefghijklmnopqrstuvwxyz";
   string s(len, '\0');
 
+  int randomFd = ::open("/dev/urandom", O_RDONLY);
+  FATAL_FAIL(randomFd);
   for (int i = 0; i < len; ++i) {
+    uint32_t randNum;
+    ssize_t rc = ::read(randomFd, &randNum, sizeof(uint32_t));
+    FATAL_FAIL(rc);
     s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
   }
+  close(randomFd);
 
   return s;
 }
@@ -21,7 +27,6 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
                                  bool kill) {
   string CLIENT_TERM(getenv("TERM"));
-  srand(time(NULL));
   string passkey = genRandom(32);
   string id = genRandom(16);
   string SSH_SCRIPT_PREFIX{
