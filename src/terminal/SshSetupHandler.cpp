@@ -10,9 +10,15 @@ string genRandom(int len) {
       "abcdefghijklmnopqrstuvwxyz";
   string s(len, '\0');
 
+  int randomFd = ::open("/dev/urandom", O_RDONLY);
+  FATAL_FAIL(randomFd);
   for (int i = 0; i < len; ++i) {
+    uint32_t randNum;
+    ssize_t rc = ::read(randomFd, &randNum, sizeof(uint32_t));
+    FATAL_FAIL(rc);
     s[i] = alphanum[rand() % (sizeof(alphanum) - 1)];
   }
+  close(randomFd);
 
   return s;
 }

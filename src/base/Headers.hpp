@@ -65,8 +65,8 @@
 #include "easylogging++.h"
 
 #include "base64.hpp"
-#include "sole.hpp"
 #include "json.hpp"
+#include "sole.hpp"
 
 using namespace std;
 
