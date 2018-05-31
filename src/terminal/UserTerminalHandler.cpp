@@ -134,13 +134,14 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
-      if (FD_ISSET(masterFd, &rfd) && outputPerSecond < 1024*1024) {
-        // Read from terminal and write to client, with a limit of 1MB/sec
+      if (FD_ISSET(masterFd, &rfd) && outputPerSecond < 1024) {
+        // Read from terminal and write to client, with a limit of 1K rows/sec
         memset(b, 0, BUF_SIZE);
         int rc = read(masterFd, b, BUF_SIZE);
         FATAL_FAIL(rc);
         if (rc > 0) {
-          outputPerSecond += rc;
+          string s(b, rc);
+          outputPerSecond += std::count(s.begin(), s.end(), '\n');
           RawSocketUtils::writeAll(routerFd, b, rc);
         } else {
           LOG(INFO) << "Terminal session ended";
