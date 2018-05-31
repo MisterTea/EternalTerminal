@@ -128,6 +128,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
     time_t currentSecond = time(NULL);
     if (lastSecond != currentSecond) {
       outputPerSecond = 0;
+      lastSecond = currentSecond;
     }
 
     try {
@@ -135,7 +136,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (FD_ISSET(masterFd, &rfd) && outputPerSecond < 1024) {
-        // Read from terminal and write to client, with a limit of 1K rows/sec
+        // Read from terminal and write to client, with a limit in rows/sec
         memset(b, 0, BUF_SIZE);
         int rc = read(masterFd, b, BUF_SIZE);
         FATAL_FAIL(rc);
