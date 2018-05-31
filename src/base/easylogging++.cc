@@ -123,6 +123,10 @@ static void abort(int status, const std::string& reason) {
   // Both status and reason params are there for debugging with tools like gdb etc
   ELPP_UNUSED(status);
   ELPP_UNUSED(reason);
+#if defined(ELPP_HANDLE_SIGABRT)
+  // Disable the handler when easylogging causes the abort to avoid an infinite loop
+  signal(base::consts::kCrashSignals[0].numb, SIG_DFL);
+#endif
 #if defined(ELPP_COMPILER_MSVC) && defined(_M_IX86) && defined(_DEBUG)
   // Ignore msvc critical error dialog - break instead (on debug mode)
   _asm int 3
