@@ -2,6 +2,7 @@ cmake_minimum_required (VERSION 2.8.12)
 project (EternalTCP)
 
 option(BUILD_TEST "Build all unit test" OFF)
+option(CODE_COVERAGE "Enable code coverage" OFF)
 
 
 set (${PROJECT_NAME}_VERSION_MAJOR 5)
@@ -12,10 +13,12 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${EternalTCP_VERSION_MAJ
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_HANDLE_SIGABRT")
 IF(BUILD_TEST)
   add_subdirectory(${CMAKE_SOURCE_DIR}/external/googletest)
+ENDIF(BUILD_TEST)
+IF(CODE_COVERAGE)
   if(UNIX)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
   endif()
-ENDIF(BUILD_TEST)
+ENDIF(CODE_COVERAGE)
 
 # Enable C++-11
 if(UNIX)
