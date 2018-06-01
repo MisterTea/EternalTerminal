@@ -1,5 +1,5 @@
 pushd ./build
-cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON
+cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=ON
 make -j8
 find . -name "*.gcda" -print0 | xargs -0 rm
 popd
