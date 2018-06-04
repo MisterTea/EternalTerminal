@@ -30,6 +30,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
     set(FREEBSD TRUE)
 endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 
+#Using NetBSD?
+if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+  set(NETBSD TRUE)
+endif (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+
 # Add cmake script directory.
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -80,7 +85,9 @@ add_custom_target(
   )
 
 IF(FREEBSD)
-  set(CORE_LIBRARIES util)
+  set(CORE_LIBRARIES util execinfo)
+ELSEIF(NETBSD)
+  set(CORE_LIBRARIES util resolv execinfo)
 ELSE()
   set(CORE_LIBRARIES util resolv)
 ENDIF()
