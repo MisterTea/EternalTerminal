@@ -448,7 +448,7 @@ int main(int argc, char** argv) {
               waitingOnKeepalive = false;
 	      // This will fill up log file quickly but is helpful for debugging
 	      // latency issues.
-	      VLOG(2) << "Sent a keepalive";
+	      VLOG(2) << "Got a keepalive";
               break;
             default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType);
