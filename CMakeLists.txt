@@ -152,12 +152,31 @@ add_dependencies(
 add_executable (
   etserver
   src/terminal/TerminalServer.cpp
-  src/terminal/UserTerminalHandler.cpp
   src/terminal/UserTerminalRouter.cpp
   )
 
 target_link_libraries (
   etserver
+  LINK_PUBLIC
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
+)
+
+add_executable (
+  etterminal
+  src/terminal/Terminal.cpp
+  src/terminal/UserTerminalHandler.cpp
+  )
+
+target_link_libraries (
+  etterminal
   LINK_PUBLIC
   TerminalCommon
   et-lib
@@ -257,7 +276,7 @@ if(BUILD_TEST) # Build unit tests.
   add_subdirectory(test)
 endif()
 
-install(TARGETS etserver et htm htmd
+install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
   DESTINATION "bin"
   )
