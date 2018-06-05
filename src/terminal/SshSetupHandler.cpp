@@ -42,7 +42,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
       "export TERM=" +
       CLIENT_TERM +
       ";"
-      "etserver --idpasskeyfile=\"${TMPFILE}\""};
+      "if [ -x \"$(command -v etterminal)\" ]; then etterminal --idpasskeyfile=\"${TMPFILE}\"; else etserver --idpasskeyfile=\"${TMPFILE}\"; fi"};
 
   // Kill old ET sessions of the user
   if (kill && user != "root") {
