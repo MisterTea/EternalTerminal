@@ -42,11 +42,15 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
       "export TERM=" +
       CLIENT_TERM +
       ";"
-      "if [ -x \"$(command -v etterminal)\" ]; then etterminal --idpasskeyfile=\"${TMPFILE}\"; else etserver --idpasskeyfile=\"${TMPFILE}\"; fi"};
+      "if [ -x \"$(command -v etterminal)\" ]; then etterminal "
+      "--idpasskeyfile=\"${TMPFILE}\"; else etserver "
+      "--idpasskeyfile=\"${TMPFILE}\"; fi"};
 
   // Kill old ET sessions of the user
   if (kill && user != "root") {
-    SSH_SCRIPT_PREFIX = "pkill etserver -u " + user + ";" + SSH_SCRIPT_PREFIX;
+    SSH_SCRIPT_PREFIX =
+        "if [ -x \"$(command -v etterminal)\" ]; then pkill etterminal -u " +
+        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_PREFIX;
   }
   string SSH_SCRIPT_DST = SSH_SCRIPT_PREFIX + ";true";
 
