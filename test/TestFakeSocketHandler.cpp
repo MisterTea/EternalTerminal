@@ -15,8 +15,7 @@ class FakeSocketHandlerTest : public testing::Test {
     srand(1);
 
     serverSocketHandler.reset(new FakeSocketHandler());
-    clientSocketHandler.reset(
-        new FakeSocketHandler(serverSocketHandler));
+    clientSocketHandler.reset(new FakeSocketHandler(serverSocketHandler));
     serverSocketHandler->setRemoteHandler(clientSocketHandler);
 
     fd = serverSocketHandler->fakeConnection();
