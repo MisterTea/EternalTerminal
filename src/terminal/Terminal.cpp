@@ -203,6 +203,7 @@ void startJumpHostClient(string idpasskey) {
             is_reconnecting = true;
             jumpclient->startReconnecting();
           }
+	  LOG(INFO) << "Reconnecting, sleep for 3s...";
           sleep(3);
           continue;
         } else {
