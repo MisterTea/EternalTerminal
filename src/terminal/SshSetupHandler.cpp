@@ -23,12 +23,7 @@ string genRandom(int len) {
   return s;
 }
 
-string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
-                                 int port, string jumphost, int jport,
-                                 bool kill) {
-  string CLIENT_TERM(getenv("TERM"));
-  string passkey = genRandom(32);
-  string id = genRandom(16);
+string genCommand(string passkey, string id, string CLIENT_TERM, string options) {
   string SSH_SCRIPT_PREFIX{
       "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
       "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
@@ -41,18 +36,32 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
       "printf \"%s/%s\\n\" \"$ID\" \"$PASSKEY\" > \"${TMPFILE}\";"
       "export TERM=" +
       CLIENT_TERM +
-      ";"
-      "if [ -x \"$(command -v etterminal)\" ]; then etterminal "
-      "--idpasskeyfile=\"${TMPFILE}\"; else etserver "
-      "--idpasskeyfile=\"${TMPFILE}\"; fi"};
+      ";"};
 
+  string command{
+	  "if [ -x \"$(command -v etterminal)\" ]; then etterminal " +
+		options + "; else etserver " + 
+		options + ";fi;true"};
+
+  return SSH_SCRIPT_PREFIX + command;
+}
+
+string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
+                                 int port, string jumphost, int jport,
+                                 bool kill) {
+  string CLIENT_TERM(getenv("TERM"));
+  string passkey = genRandom(32);
+  string id = genRandom(16);
+  string cmdoptions{
+	  "--idpasskeyfile=\"${TMPFILE}\""};
+
+  string SSH_SCRIPT_DST = genCommand(passkey, id, CLIENT_TERM, cmdoptions);
   // Kill old ET sessions of the user
   if (kill && user != "root") {
-    SSH_SCRIPT_PREFIX =
+    SSH_SCRIPT_DST =
         "if [ -x \"$(command -v etterminal)\" ]; then pkill etterminal -u " +
-        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_PREFIX;
+        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_DST;
   }
-  string SSH_SCRIPT_DST = SSH_SCRIPT_PREFIX + ";true";
 
   int link_client[2];
   char buf_client[4096];
@@ -132,10 +141,9 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         dup2(link_jump[1], 1);
         close(link_jump[0]);
         close(link_jump[1]);
-        string cmdoptions = "";
-        cmdoptions +=
+        string jump_cmdoptions = cmdoptions + 
             " --jump --dsthost=" + host + " --dstport=" + to_string(port);
-        string SSH_SCRIPT_JUMP = SSH_SCRIPT_PREFIX + cmdoptions + ";true";
+        string SSH_SCRIPT_JUMP = genCommand(passkey, id, CLIENT_TERM, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
