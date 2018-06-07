@@ -172,6 +172,7 @@ void startJumpHostClient(string idpasskey) {
   VLOG(1) << "JumpClient created with id: " << jumpclient->getId();
 
   bool run = true;
+  bool is_reconnecting = false;
   time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
 
   while (run && !jumpclient->isShuttingDown()) {
@@ -197,8 +198,11 @@ void startJumpHostClient(string idpasskey) {
       if (FD_ISSET(routerFd, &rfd)) {
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (jumpClientFd < 0) {
-          LOG(INFO) << "User comes back, reconnecting";
-          jumpclient->closeSocket();
+          if (!is_reconnecting) {
+            LOG(INFO) << "User comes back, reconnecting";
+            is_reconnecting = true;
+            jumpclient->startReconnecting();
+          }
           sleep(3);
           continue;
         } else {
@@ -222,6 +226,7 @@ void startJumpHostClient(string idpasskey) {
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
         LOG(INFO) << "Jumpclient idle, killing connection";
         jumpclient->Connection::closeSocket();
+        is_reconnecting = false;
       }
     } catch (const runtime_error &re) {
       LOG(ERROR) << "Error: " << re.what();

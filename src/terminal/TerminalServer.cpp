@@ -165,7 +165,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         int rc = read(terminalFd, b, BUF_SIZE);
         if (rc > 0) {
           VLOG(2) << "Sending bytes from terminal: " << rc << " "
-          << serverClientState->getWriter()->getSequenceNumber();
+                  << serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
           serverClientState->writeMessage(string(1, c));
           string s(b, rc);
@@ -222,8 +222,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
                   serverClientState->readProto<et::TerminalBuffer>();
-              VLOG(2) << "Got bytes from client: " << tb.buffer().length() << " " <<
-              serverClientState->getReader()->getSequenceNumber();
+              VLOG(2) << "Got bytes from client: " << tb.buffer().length()
+                      << " "
+                      << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
               RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
               RawSocketUtils::writeProto(terminalFd, tb);
