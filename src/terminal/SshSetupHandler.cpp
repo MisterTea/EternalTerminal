@@ -23,8 +23,8 @@ string genRandom(int len) {
   return s;
 }
 
-string genCommand(string passkey, string id, string CLIENT_TERM,
-                  string options) {
+string genCommand(string passkey, string id, string CLIENT_TERM, string user,
+                  bool kill, string options) {
   string SSH_SCRIPT_PREFIX{
       "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
       "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
@@ -38,10 +38,17 @@ string genCommand(string passkey, string id, string CLIENT_TERM,
       "export TERM=" +
       CLIENT_TERM + ";"};
 
-  string command{"if [ -x \"$(command -v etterminal)\" ]; then etterminal " +
+  // Kill old ET sessions of the user
+  if (kill && user != "root") {
+    SSH_SCRIPT_PREFIX =
+        "if [ -x \"$(command -v etterminal)\" ]; then pkill etterminal -u " +
+        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_PREFIX;
+  }
+
+  string COMMAND{"if [ -x \"$(command -v etterminal)\" ]; then etterminal " +
                  options + "; else etserver " + options + ";fi;true"};
 
-  return SSH_SCRIPT_PREFIX + command;
+  return SSH_SCRIPT_PREFIX + COMMAND;
 }
 
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
@@ -52,13 +59,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
   string id = genRandom(16);
   string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\""};
 
-  string SSH_SCRIPT_DST = genCommand(passkey, id, CLIENT_TERM, cmdoptions);
-  // Kill old ET sessions of the user
-  if (kill && user != "root") {
-    SSH_SCRIPT_DST =
-        "if [ -x \"$(command -v etterminal)\" ]; then pkill etterminal -u " +
-        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_DST;
-  }
+  string SSH_SCRIPT_DST =
+      genCommand(passkey, id, CLIENT_TERM, user, kill, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -141,7 +143,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP =
-            genCommand(passkey, id, CLIENT_TERM, jump_cmdoptions);
+            genCommand(passkey, id, CLIENT_TERM, user, kill, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
