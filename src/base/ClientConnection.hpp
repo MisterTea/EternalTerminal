@@ -21,7 +21,7 @@ class ClientConnection : public Connection {
 
   virtual void closeSocket();
 
-  void startReconnecting();
+  void waitReconnect();
 
  protected:
   virtual ssize_t read(string* buf);

@@ -198,10 +198,14 @@ void startJumpHostClient(string idpasskey) {
       if (FD_ISSET(routerFd, &rfd)) {
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (jumpClientFd < 0) {
-          if (!is_reconnecting) {
+	  if (is_reconnecting) {
+	    // there is a reconnect thread running, joining...
+	    jumpclient->waitReconnect();
+	    is_reconnecting = false;
+	  } else {
             LOG(INFO) << "User comes back, reconnecting";
             is_reconnecting = true;
-            jumpclient->startReconnecting();
+            jumpclient->closeSocket();
           }
 	  LOG(INFO) << "Reconnecting, sleep for 3s...";
           sleep(3);
