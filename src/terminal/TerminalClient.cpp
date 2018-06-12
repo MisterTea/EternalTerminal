@@ -446,6 +446,9 @@ int main(int argc, char** argv) {
             }
             case et::PacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
+	      // This will fill up log file quickly but is helpful for debugging
+	      // latency issues.
+	      VLOG(2) << "Got a keepalive";
               break;
             default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType);

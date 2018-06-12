@@ -30,6 +30,11 @@ if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
     set(FREEBSD TRUE)
 endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 
+#Using NetBSD?
+if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+  set(NETBSD TRUE)
+endif (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+
 # Add cmake script directory.
 LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
@@ -80,7 +85,9 @@ add_custom_target(
   )
 
 IF(FREEBSD)
-  set(CORE_LIBRARIES util)
+  set(CORE_LIBRARIES util execinfo)
+ELSEIF(NETBSD)
+  set(CORE_LIBRARIES util resolv execinfo)
 ELSE()
   set(CORE_LIBRARIES util resolv)
 ENDIF()
@@ -145,12 +152,31 @@ add_dependencies(
 add_executable (
   etserver
   src/terminal/TerminalServer.cpp
-  src/terminal/UserTerminalHandler.cpp
   src/terminal/UserTerminalRouter.cpp
   )
 
 target_link_libraries (
   etserver
+  LINK_PUBLIC
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
+)
+
+add_executable (
+  etterminal
+  src/terminal/Terminal.cpp
+  src/terminal/UserTerminalHandler.cpp
+  )
+
+target_link_libraries (
+  etterminal
   LINK_PUBLIC
   TerminalCommon
   et-lib
@@ -250,7 +276,7 @@ if(BUILD_TEST) # Build unit tests.
   add_subdirectory(test)
 endif()
 
-install(TARGETS etserver et htm htmd
+install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
   DESTINATION "bin"
   )
