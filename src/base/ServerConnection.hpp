@@ -15,6 +15,15 @@ class ServerConnectionHandler {
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 };
 
+class TerminationRecordingThread {
+ public:
+  TerminationRecordingThread() : done(false) {}
+  TerminationRecordingThread(const TerminationRecordingThread&) = delete;
+
+  shared_ptr<thread> t;
+  std::atomic<bool> done;
+};
+
 class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
@@ -24,6 +33,7 @@ class ServerConnection {
   ~ServerConnection();
 
   inline bool clientKeyExists(const string& clientId) {
+    lock_guard<std::recursive_mutex> guard(classMutex);
     return clientKeys.find(clientId) != clientKeys.end();
   }
 
@@ -41,14 +51,13 @@ class ServerConnection {
     clientKeys[id] = passkey;
   }
 
-  void clientHandler(int clientSocketFd);
-
-  void newClientConnection(const string& clientId, int socketFd);
+  void clientHandler(int clientSocketFd, atomic<bool>* done);
 
   bool removeClient(const string& id);
 
   shared_ptr<ServerClientConnection> getClientConnection(
       const string& clientId) {
+    lock_guard<std::recursive_mutex> guard(mutex);
     auto it = clientConnections.find(clientId);
     if (it == clientConnections.end()) {
       LOG(FATAL)
@@ -63,8 +72,11 @@ class ServerConnection {
   shared_ptr<ServerConnectionHandler> serverHandler;
   bool stop;
   std::unordered_map<string, string> clientKeys;
-  std::unordered_map<string, shared_ptr<ServerClientConnection> >
+  std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;
+  vector<shared_ptr<TerminationRecordingThread>> clientHandlerThreads;
+  recursive_mutex classMutex;
+  mutex connectMutex;
 };
 }  // namespace et
 
