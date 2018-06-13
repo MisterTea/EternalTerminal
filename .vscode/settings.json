@@ -48,7 +48,8 @@
         "random": "cpp",
         "functional": "cpp",
         "ostream": "cpp",
-        "istream": "cpp"
+        "istream": "cpp",
+        "coroutine": "cpp"
     },
     "C_Cpp.clang_format_style": "Google"
 }
