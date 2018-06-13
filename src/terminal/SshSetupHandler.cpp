@@ -53,11 +53,11 @@ string genCommand(string passkey, string id, string CLIENT_TERM, string user,
 
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
-                                 bool kill) {
+                                 bool kill, int vlevel) {
   string CLIENT_TERM(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
-  string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\""};
+  string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" + std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
       genCommand(passkey, id, CLIENT_TERM, user, kill, cmdoptions);

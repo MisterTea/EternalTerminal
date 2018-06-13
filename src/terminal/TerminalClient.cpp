@@ -290,7 +290,7 @@ int main(int argc, char** argv) {
 
   string idpasskeypair =
       SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
-                                FLAGS_jumphost, FLAGS_jport, FLAGS_x);
+                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v);
 
 #if __NetBSD__
   FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
