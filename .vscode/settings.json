@@ -49,7 +49,8 @@
         "functional": "cpp",
         "ostream": "cpp",
         "istream": "cpp",
-        "coroutine": "cpp"
+        "coroutine": "cpp",
+        "thread": "cpp"
     },
     "C_Cpp.clang_format_style": "Google"
 }

@@ -18,7 +18,7 @@ void ServerConnection::acceptNewConnection(int fd) {
     int numReaped = 0;
     for (int a = int(clientHandlerThreads.size()) - 1; a >= 0; a--) {
       if (clientHandlerThreads[a]->done) {
-        clientHandlerThreads[a]->thread->join();
+        clientHandlerThreads[a]->t->join();
         clientHandlerThreads.erase(clientHandlerThreads.begin() + a);
         numReaped++;
       }
@@ -36,7 +36,7 @@ void ServerConnection::acceptNewConnection(int fd) {
       shared_ptr<TerminationRecordingThread>(new TerminationRecordingThread());
   auto clientHandlerThread = std::shared_ptr<std::thread>(new thread(
       &ServerConnection::clientHandler, this, clientSocketFd, &(threadWrapper->done)));
-  threadWrapper->thread = clientHandlerThread;
+  threadWrapper->t = clientHandlerThread;
   clientHandlerThreads.push_back(threadWrapper);
 }
 

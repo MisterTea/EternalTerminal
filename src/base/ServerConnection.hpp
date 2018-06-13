@@ -20,7 +20,7 @@ class TerminationRecordingThread {
   TerminationRecordingThread() : done(false) {}
   TerminationRecordingThread(const TerminationRecordingThread&) = delete;
 
-  shared_ptr<thread> thread;
+  shared_ptr<thread> t;
   std::atomic<bool> done;
 };
 
