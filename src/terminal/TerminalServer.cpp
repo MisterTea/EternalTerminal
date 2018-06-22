@@ -196,8 +196,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         serverClientState->writeProto(pwd);
       }
 
+      VLOG(3) << "serverClientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
+        VLOG(3) << "in rfd";
         while (serverClientState->hasData()) {
+          VLOG(3) << "serverClientState has data";
           string packetTypeString;
           if (!serverClientState->readMessage(&packetTypeString)) {
             break;
