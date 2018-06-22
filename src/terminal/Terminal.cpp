@@ -185,6 +185,7 @@ void startJumpHostClient(string idpasskey) {
     FD_SET(routerFd, &rfd);
     int maxfd = routerFd;
     int jumpClientFd = jumpclient->getSocketFd();
+    VLOG(4) << "jump cliend Fd: " << jumpClientFd;
     if (jumpClientFd > 0) {
       FD_SET(jumpClientFd, &rfd);
       maxfd = max(maxfd, jumpClientFd);
@@ -196,6 +197,7 @@ void startJumpHostClient(string idpasskey) {
     try {
       // forward local router -> DST terminal.
       if (FD_ISSET(routerFd, &rfd)) {
+        VLOG(4) << "routerfd in rfd";
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (jumpClientFd < 0) {
 	  if (is_reconnecting) {

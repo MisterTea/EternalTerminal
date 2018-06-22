@@ -96,14 +96,18 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
+      VLOG(4) << "jumphost serverclientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
+        VLOG(4) << "jumphost in rfd";
         while (serverClientState->hasData()) {
+          VLOG(4) << "jumphost serverClientState has data";
           string message;
           if (!serverClientState->readMessage(&message)) {
             break;
           }
           try {
             RawSocketUtils::writeMessage(terminalFd, message);
+            VLOG(4) << "jumphost wrote to router " << terminalFd;
           } catch (const std::runtime_error &ex) {
             LOG(INFO) << "Unix socket died between global daemon and terminal "
                          "router: "
