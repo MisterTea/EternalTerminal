@@ -107,6 +107,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
     if (!initSocket(sockfd)) {
+      VLOG(4) << "!initSocket";
       ::close(sockfd);
       sockfd = -1;
       continue;
@@ -120,6 +121,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       opts |= O_NONBLOCK;
       FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
     }
+    VLOG(4) << "set nonblocking";
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
@@ -132,7 +134,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       sockfd = -1;
       continue;
     }
-
+    VLOG(4) << "errno " << errno << " " << EINPROGRESS; 
     fd_set fdset;
     FD_ZERO(&fdset);
     FD_SET(sockfd, &fdset);
@@ -141,6 +143,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     tv.tv_usec = 0;
 
     if (::select(sockfd + 1, NULL, &fdset, NULL, &tv) == 1) {
+      VLOG(4) << "select";
       int so_error;
       socklen_t len = sizeof so_error;
 
@@ -179,7 +182,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
   }
-
+  VLOG(4) << "sockfd " << sockfd;
   if (sockfd == -1) {
     LOG(ERROR) << "ERROR, no host found";
   } else {
