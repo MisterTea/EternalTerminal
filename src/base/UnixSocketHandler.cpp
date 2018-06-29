@@ -120,6 +120,14 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       FATAL_FAIL(opts);
       opts |= O_NONBLOCK;
       FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
+      // Set linger
+      struct linger so_linger;
+      so_linger.l_onoff = 1;
+      so_linger.l_linger = 5;
+      int z = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+      if (z) {
+       LOG(FATAL) << "set socket linger failed";
+      } 
     }
     VLOG(4) << "set nonblocking";
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
@@ -141,9 +149,11 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
     timeval tv;
     tv.tv_sec = 3; /* 3 second timeout */
     tv.tv_usec = 0;
+    VLOG(4) << "before select sockfd";
+    select(sockfd + 1, NULL, &fdset, NULL, &tv);
 
-    if (::select(sockfd + 1, NULL, &fdset, NULL, &tv) == 1) {
-      VLOG(4) << "select";
+    if (FD_ISSET(sockfd, &fdset)) {
+      VLOG(4) << "select sockfd " << sockfd;
       int so_error;
       socklen_t len = sizeof so_error;
 
@@ -308,15 +318,18 @@ set<int> UnixSocketHandler::getPortFds(int port) {
 
 int UnixSocketHandler::accept(int sockfd) {
   lock_guard<std::recursive_mutex> guard(mutex);
+  VLOG(3) << "Got mutext when sockethandler accept " << sockfd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
+  VLOG(3) << "socket accpeted";
   if (client_sock >= 0) {
     if (!initSocket(client_sock)) {
       ::close(client_sock);
       return -1;
     }
     activeSockets.insert(client_sock);
+    VLOG(3) << "client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
     FATAL_FAIL(-1);  // LOG(FATAL) with the error
