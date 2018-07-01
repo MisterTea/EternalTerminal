@@ -51,7 +51,7 @@ void ServerConnection::close() {
 void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
   // Only one thread can be connecting at a time, the rest have to wait.
   // TODO: Relax this constraint once we are confident that it works as-is.
-  lock_guard<std::mutex> guard(connectMutex);
+  // lock_guard<std::mutex> guard(connectMutex);
 
   string clientId;
   try {
