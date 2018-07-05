@@ -39,7 +39,7 @@ ssize_t Connection::read(string* buf) {
         // Close the socket and invalidate, then return 0 messages
         LOG(INFO) << "Closing socket because " << errno << " "
                   << strerror(errno);
-        closeSocket();
+        Connection::closeSocket();
         return 0;
       } else {
         // Pass the error up the stack.

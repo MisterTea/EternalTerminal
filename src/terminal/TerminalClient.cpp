@@ -414,7 +414,9 @@ int main(int argc, char** argv) {
       }
 
       if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
+        VLOG(3) << "cliend fd in rfd";
         while (globalClient->hasData()) {
+          VLOG(3) << "globalClient has data";
           string packetTypeString;
           if (!globalClient->readMessage(&packetTypeString)) {
             break;
@@ -434,6 +436,7 @@ int main(int argc, char** argv) {
           }
           switch (packetType) {
             case et::PacketType::TERMINAL_BUFFER: {
+              VLOG(3) << "got terminal buffer";
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
                   globalClient->readProto<et::TerminalBuffer>();
