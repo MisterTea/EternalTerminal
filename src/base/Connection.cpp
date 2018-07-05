@@ -86,10 +86,12 @@ ssize_t Connection::write(const string& buf) {
   BackedWriterWriteState bwws = writer->write(buf);
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
+    VLOG(4) << "skipped";
     return 0;
   }
 
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
+    VLOG(4) << "wrote with failure";
     // Error writing.
     if (!errno) {
       // The socket was already closed
@@ -114,7 +116,7 @@ void Connection::writeMessage(const string& buf) {
       return;
     }
     usleep(1000);
-    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
+    LOG_EVERY_N(1, INFO) << "Wrote " << bytesWritten
                            << " of message.  Waiting to write remainder...";
   }
 }

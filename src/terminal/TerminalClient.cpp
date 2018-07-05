@@ -396,6 +396,7 @@ int main(int argc, char** argv) {
       if (FD_ISSET(STDIN_FILENO, &rfd)) {
         // Read from stdin and write to our client that will then send it to the
         // server.
+        VLOG(4) << "got data from stdin";
         int rc = read(STDIN_FILENO, b, BUF_SIZE);
         FATAL_FAIL(rc);
         if (rc > 0) {
