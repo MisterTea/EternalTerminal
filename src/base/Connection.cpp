@@ -27,10 +27,14 @@ inline bool isSkippableError() {
 
 ssize_t Connection::read(string* buf) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  for (int trials = 0; trials < 20; trials++) {
+  // 7s should be longer that the Keepalive timeout set in TerminalClient
+  int CLIENT_timeout = 7;
+  // Try at 10Hz
+  int num_trails = CLIENT_timeout * 10;
+  for (int trials = 0; trials < num_trails; trials++) {
     ssize_t messagesRead = reader->read(buf);
     if (messagesRead == -1) {
-      if (trials < (20 - 1) && errno == EAGAIN) {
+      if (trials < (num_trails - 1) && errno == EAGAIN) {
         // If we get EAGAIN, assume the kernel needs to finish
         // flushing some buffer and retry after a delay.
         usleep(100000);
@@ -39,7 +43,7 @@ ssize_t Connection::read(string* buf) {
         // Close the socket and invalidate, then return 0 messages
         LOG(INFO) << "Closing socket because " << errno << " "
                   << strerror(errno);
-        Connection::closeSocket();
+        closeSocket();
         return 0;
       } else {
         // Pass the error up the stack.
