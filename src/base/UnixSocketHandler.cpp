@@ -113,7 +113,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
 
-    // Set nonblocking
+    // Set nonblocking just for the connect phase
     {
       int opts;
       opts = fcntl(sockfd, F_GETFL);
@@ -124,10 +124,11 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       struct linger so_linger;
       so_linger.l_onoff = 1;
       so_linger.l_linger = 5;
-      int z = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+      int z = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &so_linger,
+                         sizeof so_linger);
       if (z) {
-       LOG(FATAL) << "set socket linger failed";
-      } 
+        LOG(FATAL) << "set socket linger failed";
+      }
     }
     VLOG(4) << "set nonblocking";
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
@@ -142,7 +143,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       sockfd = -1;
       continue;
     }
-    VLOG(4) << "errno " << errno << " " << EINPROGRESS; 
+    VLOG(4) << "errno " << errno << " " << EINPROGRESS;
     fd_set fdset;
     FD_ZERO(&fdset);
     FD_SET(sockfd, &fdset);
@@ -165,6 +166,15 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
                     << " using fd " << sockfd;
         } else {
           LOG(ERROR) << "Connected to server but canonname is null somehow";
+        }
+        // Make sure that socket becomes blocking once it's attached to a
+        // server.
+        {
+          int opts;
+          opts = fcntl(sockfd, F_GETFL);
+          FATAL_FAIL(opts);
+          opts &= (~O_NONBLOCK);
+          FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
         }
         break;  // if we get here, we must have connected successfully
       } else {
@@ -329,6 +339,14 @@ int UnixSocketHandler::accept(int sockfd) {
       return -1;
     }
     activeSockets.insert(client_sock);
+    // Make sure that socket becomes blocking once it's attached to a client.
+    {
+      int opts;
+      opts = fcntl(client_sock, F_GETFL);
+      FATAL_FAIL(opts);
+      opts &= (~O_NONBLOCK);
+      FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
+    }
     VLOG(3) << "client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {

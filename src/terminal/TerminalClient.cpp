@@ -432,6 +432,7 @@ int main(int argc, char** argv) {
               packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+            keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
             portForwardHandler.handlePacket(packetType, globalClient);
             continue;
           }
@@ -472,6 +473,10 @@ int main(int argc, char** argv) {
           globalClient->writeMessage(s);
           waitingOnKeepalive = true;
         }
+      }
+      if (clientFd < 0) {
+        // We are disconnected, so stop waiting for keepalive.
+        waitingOnKeepalive = false;
       }
 
       handleWindowChanged(&win);
