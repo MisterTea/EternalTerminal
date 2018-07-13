@@ -27,8 +27,8 @@ inline bool isSkippableError() {
 
 ssize_t Connection::read(string* buf) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  // 7s should be longer that the Keepalive timeout set in TerminalClient
-  int CLIENT_timeout = 7;
+  // 2s should be enough since EAGAIN is rare in blocking socket.
+  int CLIENT_timeout = 2;
   // Try at 10Hz
   int num_trails = CLIENT_timeout * 10;
   for (int trials = 0; trials < num_trails; trials++) {
