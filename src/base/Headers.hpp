@@ -20,6 +20,7 @@
 #endif
 
 #include <arpa/inet.h>
+#include <ctime>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>

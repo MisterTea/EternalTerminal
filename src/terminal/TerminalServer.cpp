@@ -415,15 +415,17 @@ int main(int argc, char **argv) {
     if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
+
+    const char* err_filename = "/tmp/etserver_err";
 #if __NetBSD__
-    FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+    FILE *stdout_stream = freopen(err_filename, "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+    FILE *stderr_stream = freopen(err_filename, "w+", stderr);
     setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #else
-    stdout = fopen("/tmp/etserver_err", "w+");
+    stdout = fopen(err_filename, "w+");
     setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    stderr = fopen("/tmp/etserver_err", "w+");
+    stderr = fopen(err_filename, "w+");
     setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #endif
   }
