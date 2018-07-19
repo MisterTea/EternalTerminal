@@ -12,6 +12,7 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
 
 BackedWriterWriteState BackedWriter::write(const string& buf) {
   // If recover started, Wait until finished
+  string s = buf;
   {
     lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
@@ -21,7 +22,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
 
     // Once we encrypt and the encryption state is updated, there's no
     // going back.
-    string s = buf;
     s = cryptoHandler->encrypt(s);
 
     // Backup the buffer
@@ -33,18 +33,18 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       backupSize -= backupBuffer.back().length();
       backupBuffer.pop_back();
     }
-
-    // Size before we add the header
-    int messageSize = s.length();
-
-    messageSize = htonl(messageSize);
-    s = string("0000") + s;
-    memcpy(&s[0], &messageSize, sizeof(int));
-
-    size_t bytesWritten = 0;
-    size_t count = s.length();
-    VLOG(2) << "Message length with header: " << count;
   }
+
+  // Size before we add the header
+  int messageSize = s.length();
+
+  messageSize = htonl(messageSize);
+  s = string("0000") + s;
+  memcpy(&s[0], &messageSize, sizeof(int));
+
+  size_t bytesWritten = 0;
+  size_t count = s.length();
+  VLOG(2) << "Message length with header: " << count;
 
   while (true) {
     // We have a socket, let's try to use it.
