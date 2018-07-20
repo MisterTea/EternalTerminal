@@ -13,6 +13,7 @@ el::Configurations LogHandler::SetupLogHandler(int *argc, char ***argv) {
   // Easylogging configurations
   el::Configurations defaultConf;
   defaultConf.setToDefault();
+  // doc says %thread_name, but %thread is the right one
   defaultConf.setGlobally(el::ConfigurationType::Format,
                           "[%level %datetime %thread %fbase:%line] %msg");
   defaultConf.setGlobally(el::ConfigurationType::Enabled, "true");

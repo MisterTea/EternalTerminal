@@ -188,6 +188,8 @@ int main(int argc, char** argv) {
   LogHandler::SetupLogFile(&defaultConf, "/tmp/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log");
 
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // set thread name
+  el::Helpers::setThreadName("client-main");
 
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);

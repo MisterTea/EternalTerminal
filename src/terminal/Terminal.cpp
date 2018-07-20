@@ -301,6 +301,8 @@ int main(int argc, char **argv) {
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // set thread name
+    el::Helpers::setThreadName("jump-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
@@ -321,6 +323,8 @@ int main(int argc, char **argv) {
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // set thread name
+    el::Helpers::setThreadName("terminal-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 

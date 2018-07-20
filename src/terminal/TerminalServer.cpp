@@ -62,6 +62,8 @@ mutex terminalThreadMutex;
 bool halt = false;
 
 void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
+  // set thread name
+  el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
   bool b[BUF_SIZE];
@@ -131,6 +133,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
 }
 
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
+  // Set thread name
+  el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
   bool run = true;
 
@@ -434,6 +438,8 @@ int main(int argc, char **argv) {
                            maxlogsize);
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // set thread name
+  el::Helpers::setThreadName("etserver-main");
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
