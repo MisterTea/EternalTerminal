@@ -12,7 +12,8 @@ namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  // this mutex is not necessary
+  // lock_guard<std::recursive_mutex> guard(mutex);
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
@@ -20,6 +21,7 @@ bool UnixSocketHandler::hasData(int fd) {
   timeout.tv_sec = 0;
   timeout.tv_usec = 0;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
+  VLOG(4) << "socket has data";
   if (n == -1) {
     // Select timed out or failed.
     return false;

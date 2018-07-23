@@ -47,7 +47,9 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-const int KEEP_ALIVE_DURATION = 7;
+// This should be at least double the value of KEEP_ALIVE_DURATION in client to
+// allow enough time.
+const int KEEP_ALIVE_DURATION = 11;
 
 DEFINE_string(idpasskey, "",
               "If set, uses IPC to send a client id/key to the server daemon");
@@ -198,7 +200,6 @@ void startJumpHostClient(string idpasskey) {
       // forward local router -> DST terminal.
       if (FD_ISSET(routerFd, &rfd)) {
         VLOG(4) << "routerfd in rfd";
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (jumpClientFd < 0) {
 	  if (is_reconnecting) {
 	    // there is a reconnect thread running, joining...
@@ -217,6 +218,7 @@ void startJumpHostClient(string idpasskey) {
           jumpclient->writeMessage(s);
           VLOG(3) << "Sent message from router to dst terminal: " << s.length();
         }
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
