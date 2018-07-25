@@ -222,7 +222,7 @@ void startJumpHostClient(string idpasskey) {
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
-        while (jumpclient->hasData()) {
+        if (jumpclient->hasData()) {
           string receivedMessage;
           jumpclient->readMessage(&receivedMessage);
           RawSocketUtils::writeMessage(routerFd, receivedMessage);

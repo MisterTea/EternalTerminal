@@ -101,7 +101,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
       VLOG(4) << "jumphost serverclientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         VLOG(4) << "jumphost in rfd";
-        while (serverClientState->hasData()) {
+        if (serverClientState->hasData()) {
           VLOG(4) << "jumphost serverClientState has data";
           string message;
           if (!serverClientState->readMessage(&message)) {
