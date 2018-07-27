@@ -124,6 +124,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
+    VLOG(4) << "select done";
 
     time_t currentSecond = time(NULL);
     if (lastSecond != currentSecond) {
@@ -139,11 +140,13 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         // Read from terminal and write to client, with a limit in rows/sec
         memset(b, 0, BUF_SIZE);
         int rc = read(masterFd, b, BUF_SIZE);
+        VLOG(4) << "read from terminal";
         FATAL_FAIL(rc);
         if (rc > 0) {
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
           RawSocketUtils::writeAll(routerFd, b, rc);
+          VLOG(4) << "write to client: " << std::count(s.begin(), s.end(), '\n');
         } else {
           LOG(INFO) << "Terminal session ended";
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
@@ -171,8 +174,10 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
           case TERMINAL_BUFFER: {
             TerminalBuffer tb =
                 RawSocketUtils::readProto<TerminalBuffer>(routerFd);
+            VLOG(4) << "read from router";
             const string &buffer = tb.buffer();
             RawSocketUtils::writeAll(masterFd, &buffer[0], buffer.length());
+            VLOG(4) << "write to terminal";
             break;
           }
           case TERMINAL_INFO: {
