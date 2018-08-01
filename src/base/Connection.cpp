@@ -26,7 +26,9 @@ inline bool isSkippableError() {
 }
 
 ssize_t Connection::read(string* buf) {
+  VLOG(4) << "before connectionMutex read";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
+  VLOG(4) << "get connectionMutex read";
   // 2s should be enough since EAGAIN is rare in blocking socket.
   int CLIENT_timeout = 2;
   // Try at 10Hz
@@ -82,7 +84,9 @@ bool Connection::readMessage(string* buf) {
 }
 
 ssize_t Connection::write(const string& buf) {
+  VLOG(4) << "before connectionMutex write";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
+  VLOG(4) << "get connectionMutex write";
   if (socketFd == -1) {
     return 0;
   }

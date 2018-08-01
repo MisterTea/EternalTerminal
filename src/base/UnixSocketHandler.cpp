@@ -34,7 +34,8 @@ bool UnixSocketHandler::hasData(int fd) {
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  //lock_guard<std::recursive_mutex> guard(mutex);
+  // different threads reading different fd
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
@@ -42,6 +43,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
     return 0;
   }
+  VLOG(4) << "unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno);
@@ -50,7 +52,9 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  //lock_guard<std::recursive_mutex> guard(mutex);
+  // different threads writing to different fd
+  VLOG(4) << "unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
@@ -330,7 +334,7 @@ set<int> UnixSocketHandler::getPortFds(int port) {
 
 int UnixSocketHandler::accept(int sockfd) {
   lock_guard<std::recursive_mutex> guard(mutex);
-  VLOG(3) << "Got mutext when sockethandler accept " << sockfd;
+  VLOG(3) << "Got mutex when sockethandler accept " << sockfd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
