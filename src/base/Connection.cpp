@@ -15,10 +15,10 @@ Connection::~Connection() {
   }
 }
 
-inline bool isSkippableError() {
-  return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EWOULDBLOCK ||
-          errno == EHOSTUNREACH || errno == EPIPE ||
-          errno == EBADF  // Bad file descriptor can happen when
+inline bool isSkippableError(int err_no) {
+  return (err_no == ECONNRESET || err_no == ETIMEDOUT || err_no == EWOULDBLOCK ||
+          err_no == EHOSTUNREACH || err_no == EPIPE ||
+          err_no == EBADF  // Bad file descriptor can happen when
                           // there's a race condition between ta thread
                           // closing a connection and one
                           // reading/writing.
@@ -41,7 +41,14 @@ ssize_t Connection::read(string* buf) {
         // flushing some buffer and retry after a delay.
         usleep(100000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
-      } else if (isSkippableError()) {
+      } else if (trials == (num_trails - 1) && errno == EAGAIN) {
+        // EAGAIN could possibly because a false alarm from hasData
+        // before reconnect.
+        // To give it a second chance, use a special signal to break out
+        // of the loop.
+        LOG(INFO) << "Got too much EAGAIN, assume there's nothing to read";
+        return 2;
+      } else if (isSkippableError(errno)) {
         // Close the socket and invalidate, then return 0 messages
         LOG(INFO) << "Closing socket because " << errno << " "
                   << strerror(errno);
@@ -65,8 +72,12 @@ ssize_t Connection::read(string* buf) {
 bool Connection::readMessage(string* buf) {
   while (!shuttingDown) {
     ssize_t messagesRead = read(buf);
-    if (messagesRead > 1 || messagesRead < -1) {
+    if (messagesRead > 2 || messagesRead < -1) {
       LOG(FATAL) << "Invalid value for read(...) " << messagesRead;
+    }
+    if (messagesRead == 2) {
+      LOG(INFO) << "Get EAGAIN signal, breaking out of read loop";
+      break;
     }
     if (messagesRead == 1) {
       return true;
@@ -104,7 +115,7 @@ ssize_t Connection::write(const string& buf) {
     if (!errno) {
       // The socket was already closed
       VLOG(1) << "Socket closed";
-    } else if (isSkippableError()) {
+    } else if (isSkippableError(errno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
       closeSocket();

@@ -446,6 +446,7 @@ int main(int argc, char** argv) {
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
             keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+            VLOG(4) << "Got PF packet type " << packetType;
             portForwardHandler.handlePacket(packetType, globalClient);
             continue;
           }
@@ -456,6 +457,7 @@ int main(int argc, char** argv) {
               et::TerminalBuffer tb =
                   globalClient->readProto<et::TerminalBuffer>();
               const string& s = tb.buffer();
+              //VLOG(5) << "Got message: " << s;
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
@@ -502,12 +504,16 @@ int main(int argc, char** argv) {
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pfr);
+        VLOG(4) << "send PF request";
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       for (auto& pwd : dataToSend) {
         char c = PacketType::PORT_FORWARD_DATA;
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pwd);
+        VLOG(4) << "send PF data";
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what();
