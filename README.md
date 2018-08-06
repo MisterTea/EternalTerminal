@@ -20,6 +20,15 @@ For Ubuntu, use our PPA:
 	sudo apt-get update
 	sudo apt-get install et
 
+### Debian
+
+For debian, use our deb repo. For stretch:
+
+	echo "deb https://mistertea.github.io/debian-et/debian-source/ stretch main" | sudo tee -a /etc/apt/sources.list
+	curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
+	sudo apt update
+	sudo apt install et
+
 ### FreeBSD
 On FreeBSD, use:
         pkg install eternalterminal
@@ -27,12 +36,6 @@ On FreeBSD, use:
 ### Other Linux
 
 Install dependencies:
-
-    Debian:
-
-	sudo apt-get install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler cmake \
-	libgflags-dev unzip wget
 
     Fedora (tested on 25):
 
@@ -130,7 +133,7 @@ make
 Grab the deps and then follow the same process as for OS/X:
 
 ```
-sudo apt install libsodium-dev, libncurses5-dev, libprotobuf-dev, protobuf-compiler, cmake, libgflags-dev, libutempter-dev
+sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
