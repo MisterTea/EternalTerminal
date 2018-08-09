@@ -185,9 +185,12 @@ int main(int argc, char** argv) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
 
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/etclient-%datetime.log");
+  LogHandler::SetupLogFile(&defaultConf,
+                           "/tmp/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log");
 
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // set thread name
+  el::Helpers::setThreadName("client-main");
 
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
@@ -290,14 +293,25 @@ int main(int argc, char** argv) {
 
   string idpasskeypair =
       SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
-                                FLAGS_jumphost, FLAGS_jport, FLAGS_x);
+                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v);
+
+  time_t rawtime;
+  struct tm* timeinfo;
+  char buffer[80];
+
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
+  string current_time(buffer);
+  const char* err_filename = ("/tmp/etclient_err_" + current_time).c_str();
 
 #if __NetBSD__
-  FILE* stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+  FILE* stderr_stream = freopen(err_filename, "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #else
   // redirect stderr to file
-  stderr = fopen("/tmp/etclient_err", "w+");
+  stderr = fopen(err_filename, "w+");
   setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #endif
 
@@ -396,6 +410,7 @@ int main(int argc, char** argv) {
       if (FD_ISSET(STDIN_FILENO, &rfd)) {
         // Read from stdin and write to our client that will then send it to the
         // server.
+        VLOG(4) << "Got data from stdin";
         int rc = read(STDIN_FILENO, b, BUF_SIZE);
         FATAL_FAIL(rc);
         if (rc > 0) {
@@ -414,7 +429,9 @@ int main(int argc, char** argv) {
       }
 
       if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
+        VLOG(4) << "Cliendfd is selected";
         while (globalClient->hasData()) {
+          VLOG(4) << "GlobalClient has data";
           string packetTypeString;
           if (!globalClient->readMessage(&packetTypeString)) {
             break;
@@ -429,15 +446,19 @@ int main(int argc, char** argv) {
               packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+            keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+            VLOG(4) << "Got PF packet type " << packetType;
             portForwardHandler.handlePacket(packetType, globalClient);
             continue;
           }
           switch (packetType) {
             case et::PacketType::TERMINAL_BUFFER: {
+              VLOG(3) << "Got terminal buffer";
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
                   globalClient->readProto<et::TerminalBuffer>();
               const string& s = tb.buffer();
+              // VLOG(5) << "Got message: " << s;
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
@@ -446,9 +467,9 @@ int main(int argc, char** argv) {
             }
             case et::PacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
-	      // This will fill up log file quickly but is helpful for debugging
-	      // latency issues.
-	      VLOG(2) << "Got a keepalive";
+              // This will fill up log file quickly but is helpful for debugging
+              // latency issues.
+              LOG(INFO) << "Got a keepalive";
               break;
             default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType);
@@ -463,11 +484,15 @@ int main(int argc, char** argv) {
           globalClient->closeSocket();
           waitingOnKeepalive = false;
         } else {
-          VLOG(1) << "Writing keepalive packet";
+          LOG(INFO) << "Writing keepalive packet";
           string s(1, (char)et::PacketType::KEEP_ALIVE);
           globalClient->writeMessage(s);
           waitingOnKeepalive = true;
         }
+      }
+      if (clientFd < 0) {
+        // We are disconnected, so stop waiting for keepalive.
+        waitingOnKeepalive = false;
       }
 
       handleWindowChanged(&win);
@@ -480,12 +505,16 @@ int main(int argc, char** argv) {
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pfr);
+        VLOG(4) << "send PF request";
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       for (auto& pwd : dataToSend) {
         char c = PacketType::PORT_FORWARD_DATA;
         string headerString(1, c);
         globalClient->writeMessage(headerString);
         globalClient->writeProto(pwd);
+        VLOG(4) << "send PF data";
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what();

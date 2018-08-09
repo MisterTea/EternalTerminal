@@ -1,27 +1,9 @@
 #ifndef __ETERNAL_TCP_HEADERS__
 #define __ETERNAL_TCP_HEADERS__
 
-#include <arpa/inet.h>
-#include <errno.h>
-#include <pthread.h> /* POSIX Threads */
-#include <stdint.h>
 #if __FreeBSD__
 #define _WITH_GETLINE
 #endif
-#include <errno.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/un.h>
-#include <termios.h>
-#include <time.h>
-#include <unistd.h>
 
 #if __APPLE__
 #include <sys/ucred.h>
@@ -37,12 +19,27 @@
 #include <util.h>
 #endif
 
+#include <arpa/inet.h>
+#include <errno.h>
+#include <fcntl.h>
+#include <pthread.h>
 #include <pwd.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/stat.h>
 #include <sys/types.h>
+#include <sys/un.h>
 #include <termios.h>
+#include <time.h>
 #include <unistd.h>
 #include <algorithm>
 #include <array>
+#include <atomic>
+#include <ctime>
 #include <deque>
 #include <exception>
 #include <fstream>

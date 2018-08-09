@@ -48,7 +48,17 @@
         "random": "cpp",
         "functional": "cpp",
         "ostream": "cpp",
-        "istream": "cpp"
+        "istream": "cpp",
+        "coroutine": "cpp",
+        "thread": "cpp",
+        "__functional_base": "cpp",
+        "atomic": "cpp",
+        "optional": "cpp",
+        "limits": "cpp",
+        "ratio": "cpp",
+        "system_error": "cpp",
+        "tuple": "cpp",
+        "__mutex_base": "cpp"
     },
     "C_Cpp.clang_format_style": "Google"
 }

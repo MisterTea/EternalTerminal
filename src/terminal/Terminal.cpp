@@ -47,7 +47,9 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-const int KEEP_ALIVE_DURATION = 7;
+// This should be at least double the value of KEEP_ALIVE_DURATION in client to
+// allow enough time.
+const int KEEP_ALIVE_DURATION = 11;
 
 DEFINE_string(idpasskey, "",
               "If set, uses IPC to send a client id/key to the server daemon");
@@ -172,6 +174,7 @@ void startJumpHostClient(string idpasskey) {
   VLOG(1) << "JumpClient created with id: " << jumpclient->getId();
 
   bool run = true;
+  bool is_reconnecting = false;
   time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
 
   while (run && !jumpclient->isShuttingDown()) {
@@ -184,6 +187,7 @@ void startJumpHostClient(string idpasskey) {
     FD_SET(routerFd, &rfd);
     int maxfd = routerFd;
     int jumpClientFd = jumpclient->getSocketFd();
+    VLOG(4) << "Jump cliend fd: " << jumpClientFd;
     if (jumpClientFd > 0) {
       FD_SET(jumpClientFd, &rfd);
       maxfd = max(maxfd, jumpClientFd);
@@ -195,10 +199,18 @@ void startJumpHostClient(string idpasskey) {
     try {
       // forward local router -> DST terminal.
       if (FD_ISSET(routerFd, &rfd)) {
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        VLOG(4) << "Routerfd is selected";
         if (jumpClientFd < 0) {
-          LOG(INFO) << "User comes back, reconnecting";
-          jumpclient->closeSocket();
+          if (is_reconnecting) {
+            // there is a reconnect thread running, joining...
+            jumpclient->waitReconnect();
+            is_reconnecting = false;
+          } else {
+            LOG(INFO) << "User comes back, reconnecting";
+            is_reconnecting = true;
+            jumpclient->closeSocket();
+          }
+          LOG(INFO) << "Reconnecting, sleep for 3s...";
           sleep(3);
           continue;
         } else {
@@ -206,10 +218,11 @@ void startJumpHostClient(string idpasskey) {
           jumpclient->writeMessage(s);
           VLOG(3) << "Sent message from router to dst terminal: " << s.length();
         }
+        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
-        while (jumpclient->hasData()) {
+        if (jumpclient->hasData()) {
           string receivedMessage;
           jumpclient->readMessage(&receivedMessage);
           RawSocketUtils::writeMessage(routerFd, receivedMessage);
@@ -222,6 +235,7 @@ void startJumpHostClient(string idpasskey) {
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
         LOG(INFO) << "Jumpclient idle, killing connection";
         jumpclient->Connection::closeSocket();
+        is_reconnecting = false;
       }
     } catch (const runtime_error &re) {
       LOG(ERROR) << "Error: " << re.what();
@@ -289,6 +303,8 @@ int main(int argc, char **argv) {
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // set thread name
+    el::Helpers::setThreadName("jump-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
@@ -309,6 +325,8 @@ int main(int argc, char **argv) {
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
+    // set thread name
+    el::Helpers::setThreadName("terminal-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 

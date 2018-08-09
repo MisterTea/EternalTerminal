@@ -62,6 +62,8 @@ mutex terminalThreadMutex;
 bool halt = false;
 
 void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
+  // set thread name
+  el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
   bool b[BUF_SIZE];
@@ -96,14 +98,18 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
+      VLOG(4) << "Jumphost serverclientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
-        while (serverClientState->hasData()) {
+        VLOG(4) << "Jumphost is selected";
+        if (serverClientState->hasData()) {
+          VLOG(4) << "Jumphost serverClientState has data";
           string message;
           if (!serverClientState->readMessage(&message)) {
             break;
           }
           try {
             RawSocketUtils::writeMessage(terminalFd, message);
+            VLOG(4) << "Jumphost wrote to router " << terminalFd;
           } catch (const std::runtime_error &ex) {
             LOG(INFO) << "Unix socket died between global daemon and terminal "
                          "router: "
@@ -127,6 +133,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
 }
 
 void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
+  // Set thread name
+  el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
   bool run = true;
 
@@ -165,7 +173,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         int rc = read(terminalFd, b, BUF_SIZE);
         if (rc > 0) {
           VLOG(2) << "Sending bytes from terminal: " << rc << " "
-          << serverClientState->getWriter()->getSequenceNumber();
+                  << serverClientState->getWriter()->getSequenceNumber();
           char c = et::PacketType::TERMINAL_BUFFER;
           serverClientState->writeMessage(string(1, c));
           string s(b, rc);
@@ -196,8 +204,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         serverClientState->writeProto(pwd);
       }
 
+      VLOG(3) << "ServerClientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
+        VLOG(3) << "ServerClientFd is selected";
         while (serverClientState->hasData()) {
+          VLOG(3) << "ServerClientState has data";
           string packetTypeString;
           if (!serverClientState->readMessage(&packetTypeString)) {
             break;
@@ -222,8 +233,9 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
                   serverClientState->readProto<et::TerminalBuffer>();
-              VLOG(2) << "Got bytes from client: " << tb.buffer().length() << " " <<
-              serverClientState->getReader()->getSequenceNumber();
+              VLOG(2) << "Got bytes from client: " << tb.buffer().length()
+                      << " "
+                      << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
               RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
               RawSocketUtils::writeProto(terminalFd, tb);
@@ -231,13 +243,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             }
             case et::PacketType::KEEP_ALIVE: {
               // Echo keepalive back to client
-              VLOG(1) << "Got keep alive";
+              LOG(INFO) << "Got keep alive";
               char c = et::PacketType::KEEP_ALIVE;
               serverClientState->writeMessage(string(1, c));
               break;
             }
             case et::PacketType::TERMINAL_INFO: {
-              VLOG(1) << "Got terminal info";
+              LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
               char c = TERMINAL_INFO;
@@ -407,15 +419,17 @@ int main(int argc, char **argv) {
     if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
+
+    const char *err_filename = "/tmp/etserver_err";
 #if __NetBSD__
-    FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+    FILE *stdout_stream = freopen(err_filename, "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+    FILE *stderr_stream = freopen(err_filename, "w+", stderr);
     setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #else
-    stdout = fopen("/tmp/etserver_err", "w+");
+    stdout = fopen(err_filename, "w+");
     setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    stderr = fopen("/tmp/etserver_err", "w+");
+    stderr = fopen(err_filename, "w+");
     setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 #endif
   }
@@ -424,6 +438,8 @@ int main(int argc, char **argv) {
                            maxlogsize);
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+  // set thread name
+  el::Helpers::setThreadName("etserver-main");
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 

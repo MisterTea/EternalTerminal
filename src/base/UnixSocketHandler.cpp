@@ -12,7 +12,8 @@ namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  // this mutex is not necessary
+  // lock_guard<std::recursive_mutex> guard(mutex);
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
@@ -22,17 +23,20 @@ bool UnixSocketHandler::hasData(int fd) {
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
     // Select timed out or failed.
+    VLOG(4) << "socket select timeout";
     return false;
   } else if (n == 0)
     return false;
   if (!FD_ISSET(fd, &input)) {
     LOG(FATAL) << "FD_ISSET is false but we should have data by now.";
   }
+  VLOG(4) << "socket " << fd << " has data";
   return true;
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  // lock_guard<std::recursive_mutex> guard(mutex);
+  // different threads reading different fd
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
@@ -40,6 +44,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
     return 0;
   }
+  VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno);
@@ -48,7 +53,9 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  // lock_guard<std::recursive_mutex> guard(mutex);
+  // different threads writing to different fd
+  VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
@@ -107,6 +114,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
     if (!initSocket(sockfd)) {
+      VLOG(4) << "initSocket failed";
       ::close(sockfd);
       sockfd = -1;
       continue;
@@ -119,7 +127,17 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       FATAL_FAIL(opts);
       opts |= O_NONBLOCK;
       FATAL_FAIL(fcntl(sockfd, F_SETFL, opts));
+      // Set linger
+      struct linger so_linger;
+      so_linger.l_onoff = 1;
+      so_linger.l_linger = 5;
+      int z = setsockopt(sockfd, SOL_SOCKET, SO_LINGER, &so_linger,
+                         sizeof so_linger);
+      if (z) {
+        LOG(FATAL) << "set socket linger failed";
+      }
     }
+    VLOG(4) << "Set nonblocking";
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
@@ -132,15 +150,17 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       sockfd = -1;
       continue;
     }
-
     fd_set fdset;
     FD_ZERO(&fdset);
     FD_SET(sockfd, &fdset);
     timeval tv;
     tv.tv_sec = 3; /* 3 second timeout */
     tv.tv_usec = 0;
+    VLOG(4) << "Before selecting sockfd";
+    select(sockfd + 1, NULL, &fdset, NULL, &tv);
 
-    if (::select(sockfd + 1, NULL, &fdset, NULL, &tv) == 1) {
+    if (FD_ISSET(sockfd, &fdset)) {
+      VLOG(4) << "sockfd " << sockfd << "is selected" << sockfd;
       int so_error;
       socklen_t len = sizeof so_error;
 
@@ -188,7 +208,6 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
   }
-
   if (sockfd == -1) {
     LOG(ERROR) << "ERROR, no host found";
   } else {
@@ -314,9 +333,12 @@ set<int> UnixSocketHandler::getPortFds(int port) {
 
 int UnixSocketHandler::accept(int sockfd) {
   lock_guard<std::recursive_mutex> guard(mutex);
+  VLOG(3) << "Got mutex when sockethandler accept " << sockfd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
+  VLOG(3) << "Socket " << sockfd << " accepted, returned client_sock"
+          << client_sock;
   if (client_sock >= 0) {
     if (!initSocket(client_sock)) {
       ::close(client_sock);
@@ -331,6 +353,7 @@ int UnixSocketHandler::accept(int sockfd) {
       opts &= (~O_NONBLOCK);
       FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
     }
+    VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
     FATAL_FAIL(-1);  // LOG(FATAL) with the error
@@ -363,22 +386,20 @@ void UnixSocketHandler::close(int fd) {
     return;
   }
   activeSockets.erase(activeSockets.find(fd));
-#if 0
   // Shutting down connection before closing to prevent the server
   // from closing it.
   VLOG(1) << "Shutting down connection: " << fd;
   int rc = ::shutdown(fd, SHUT_RDWR);
   if (rc == -1) {
     if (errno == ENOTCONN || errno == EADDRNOTAVAIL) {
-      // Shutdown is failing on OS/X with errno (49): Can't assign requested address
-      // Possibly an OS bug but I don't think it's necessary anyways.
+      // Shutdown is failing on OS/X with errno (49): Can't assign requested
+      // address Possibly an OS bug but I don't think it's necessary anyways.
 
       // ENOTCONN is harmless
     } else {
       FATAL_FAIL(rc);
     }
   }
-#endif
   VLOG(1) << "Closing connection: " << fd;
   FATAL_FAIL(::close(fd));
 }

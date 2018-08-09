@@ -15,27 +15,40 @@ Connection::~Connection() {
   }
 }
 
-inline bool isSkippableError() {
-  return (errno == ECONNRESET || errno == ETIMEDOUT || errno == EWOULDBLOCK ||
-          errno == EHOSTUNREACH || errno == EPIPE ||
-          errno == EBADF  // Bad file descriptor can happen when
-                          // there's a race condition between ta thread
-                          // closing a connection and one
-                          // reading/writing.
+inline bool isSkippableError(int err_no) {
+  return (err_no == ECONNRESET || err_no == ETIMEDOUT ||
+          err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
+          err_no == EBADF  // Bad file descriptor can happen when
+                           // there's a race condition between ta thread
+                           // closing a connection and one
+                           // reading/writing.
   );
 }
 
 ssize_t Connection::read(string* buf) {
+  VLOG(4) << "Before read get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  for (int trials = 0; trials < 20; trials++) {
+  VLOG(4) << "After read get connectionMutex";
+  // 2s should be enough since EAGAIN is rare in blocking socket.
+  int CLIENT_timeout = 2;
+  // Try at 10Hz
+  int num_trails = CLIENT_timeout * 10;
+  for (int trials = 0; trials < num_trails; trials++) {
     ssize_t messagesRead = reader->read(buf);
     if (messagesRead == -1) {
-      if (trials < (20 - 1) && errno == EAGAIN) {
+      if (trials < (num_trails - 1) && errno == EAGAIN) {
         // If we get EAGAIN, assume the kernel needs to finish
         // flushing some buffer and retry after a delay.
         usleep(100000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
-      } else if (isSkippableError()) {
+      } else if (trials == (num_trails - 1) && errno == EAGAIN) {
+        // EAGAIN could possibly because a false alarm from hasData
+        // before reconnect.
+        // To give it a second chance, use a special signal to break out
+        // of the loop.
+        LOG(INFO) << "Got too much EAGAIN, assume there's nothing to read";
+        return 2;
+      } else if (isSkippableError(errno)) {
         // Close the socket and invalidate, then return 0 messages
         LOG(INFO) << "Closing socket because " << errno << " "
                   << strerror(errno);
@@ -59,8 +72,12 @@ ssize_t Connection::read(string* buf) {
 bool Connection::readMessage(string* buf) {
   while (!shuttingDown) {
     ssize_t messagesRead = read(buf);
-    if (messagesRead > 1 || messagesRead < -1) {
+    if (messagesRead > 2 || messagesRead < -1) {
       LOG(FATAL) << "Invalid value for read(...) " << messagesRead;
+    }
+    if (messagesRead == 2) {
+      LOG(INFO) << "Get EAGAIN signal, breaking out of read loop";
+      break;
     }
     if (messagesRead == 1) {
       return true;
@@ -78,7 +95,9 @@ bool Connection::readMessage(string* buf) {
 }
 
 ssize_t Connection::write(const string& buf) {
+  VLOG(4) << "Before write get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
+  VLOG(4) << "After write get connectionMutex";
   if (socketFd == -1) {
     return 0;
   }
@@ -86,15 +105,17 @@ ssize_t Connection::write(const string& buf) {
   BackedWriterWriteState bwws = writer->write(buf);
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
+    VLOG(4) << "Write skipped";
     return 0;
   }
 
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
+    VLOG(4) << "Wrote with failure";
     // Error writing.
     if (!errno) {
       // The socket was already closed
       VLOG(1) << "Socket closed";
-    } else if (isSkippableError()) {
+    } else if (isSkippableError(errno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
       closeSocket();

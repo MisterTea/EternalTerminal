@@ -23,15 +23,16 @@ class RawSocketUtils {
     int encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length());
-    if(!base64::Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
+    if (!base64::Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
       throw runtime_error("b64 decode failed");
     }
   }
 
-  static inline void readB64EncodedLength(int fd, string* out, size_t encodedLength) {
+  static inline void readB64EncodedLength(int fd, string* out,
+                                          size_t encodedLength) {
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length());
-    if(!base64::Base64::Decode(s, out)) {
+    if (!base64::Base64::Decode(s, out)) {
       throw runtime_error("b64 decode failed");
     }
   }

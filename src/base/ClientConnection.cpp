@@ -57,20 +57,23 @@ void ClientConnection::connect() {
 }
 
 void ClientConnection::closeSocket() {
+  waitReconnect();
   LOG(INFO) << "Closing socket";
+  {
+    // Close the socket
+    Connection::closeSocket();
+  }
+  LOG(INFO) << "Socket closed, starting new reconnect thread";
+  reconnectThread = std::shared_ptr<std::thread>(
+      new std::thread(&ClientConnection::pollReconnect, this));
+}
+
+void ClientConnection::waitReconnect() {
   if (reconnectThread.get()) {
     LOG(INFO) << "Waiting for reconnect thread to finish";
     reconnectThread->join();
     reconnectThread.reset();
   }
-  {
-    // Close the socket
-    Connection::closeSocket();
-  }
-  LOG(INFO) << "Socket closed.  Starting new reconnect thread";
-  // Spin up a thread to poll for reconnects
-  reconnectThread = std::shared_ptr<std::thread>(
-      new std::thread(&ClientConnection::pollReconnect, this));
 }
 
 ssize_t ClientConnection::read(string* buf) { return Connection::read(buf); }

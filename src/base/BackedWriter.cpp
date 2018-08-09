@@ -12,27 +12,27 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
 
 BackedWriterWriteState BackedWriter::write(const string& buf) {
   // If recover started, Wait until finished
+  string s = buf;
   {
     lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
       // We have no socket to write to, don't bother trying to write
       return BackedWriterWriteState::SKIPPED;
     }
-  }
 
-  // Once we encrypt and the encryption state is updated, there's no
-  // going back.
-  string s = buf;
-  s = cryptoHandler->encrypt(s);
+    // Once we encrypt and the encryption state is updated, there's no
+    // going back.
+    s = cryptoHandler->encrypt(s);
 
-  // Backup the buffer
-  backupBuffer.push_front(s);
-  backupSize += s.length();
-  sequenceNumber++;
-  // Cleanup old values
-  while (backupSize > MAX_BACKUP_BYTES) {
-    backupSize -= backupBuffer.back().length();
-    backupBuffer.pop_back();
+    // Backup the buffer
+    backupBuffer.push_front(s);
+    backupSize += s.length();
+    sequenceNumber++;
+    // Cleanup old values
+    while (backupSize > MAX_BACKUP_BYTES) {
+      backupSize -= backupBuffer.back().length();
+      backupBuffer.pop_back();
+    }
   }
 
   // Size before we add the header
@@ -45,6 +45,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
   size_t bytesWritten = 0;
   size_t count = s.length();
   VLOG(2) << "Message length with header: " << count;
+
   while (true) {
     // We have a socket, let's try to use it.
     lock_guard<std::mutex> guard(recoverMutex);
