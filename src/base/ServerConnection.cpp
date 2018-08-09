@@ -34,8 +34,9 @@ void ServerConnection::acceptNewConnection(int fd) {
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   auto threadWrapper =
       shared_ptr<TerminationRecordingThread>(new TerminationRecordingThread());
-  auto clientHandlerThread = std::shared_ptr<std::thread>(new thread(
-      &ServerConnection::clientHandler, this, clientSocketFd, &(threadWrapper->done)));
+  auto clientHandlerThread = std::shared_ptr<std::thread>(
+      new thread(&ServerConnection::clientHandler, this, clientSocketFd,
+                 &(threadWrapper->done)));
   threadWrapper->t = clientHandlerThread;
   clientHandlerThreads.push_back(threadWrapper);
 }

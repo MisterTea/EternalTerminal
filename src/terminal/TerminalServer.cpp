@@ -98,18 +98,18 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         }
       }
 
-      VLOG(4) << "jumphost serverclientFd: " << serverClientFd;
+      VLOG(4) << "Jumphost serverclientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
-        VLOG(4) << "jumphost in rfd";
+        VLOG(4) << "Jumphost is selected";
         if (serverClientState->hasData()) {
-          VLOG(4) << "jumphost serverClientState has data";
+          VLOG(4) << "Jumphost serverClientState has data";
           string message;
           if (!serverClientState->readMessage(&message)) {
             break;
           }
           try {
             RawSocketUtils::writeMessage(terminalFd, message);
-            VLOG(4) << "jumphost wrote to router " << terminalFd;
+            VLOG(4) << "Jumphost wrote to router " << terminalFd;
           } catch (const std::runtime_error &ex) {
             LOG(INFO) << "Unix socket died between global daemon and terminal "
                          "router: "
@@ -204,11 +204,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         serverClientState->writeProto(pwd);
       }
 
-      VLOG(3) << "serverClientFd: " << serverClientFd;
+      VLOG(3) << "ServerClientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
-        VLOG(3) << "in rfd";
+        VLOG(3) << "ServerClientFd is selected";
         while (serverClientState->hasData()) {
-          VLOG(3) << "serverClientState has data";
+          VLOG(3) << "ServerClientState has data";
           string packetTypeString;
           if (!serverClientState->readMessage(&packetTypeString)) {
             break;
@@ -243,13 +243,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             }
             case et::PacketType::KEEP_ALIVE: {
               // Echo keepalive back to client
-              VLOG(1) << "Got keep alive";
+              LOG(INFO) << "Got keep alive";
               char c = et::PacketType::KEEP_ALIVE;
               serverClientState->writeMessage(string(1, c));
               break;
             }
             case et::PacketType::TERMINAL_INFO: {
-              VLOG(1) << "Got terminal info";
+              LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
               char c = TERMINAL_INFO;
@@ -420,7 +420,7 @@ int main(int argc, char **argv) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
 
-    const char* err_filename = "/tmp/etserver_err";
+    const char *err_filename = "/tmp/etserver_err";
 #if __NetBSD__
     FILE *stdout_stream = freopen(err_filename, "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering

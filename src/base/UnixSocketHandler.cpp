@@ -21,20 +21,21 @@ bool UnixSocketHandler::hasData(int fd) {
   timeout.tv_sec = 0;
   timeout.tv_usec = 0;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
-  VLOG(4) << "socket has data";
   if (n == -1) {
     // Select timed out or failed.
+    VLOG(4) << "socket select timeout";
     return false;
   } else if (n == 0)
     return false;
   if (!FD_ISSET(fd, &input)) {
     LOG(FATAL) << "FD_ISSET is false but we should have data by now.";
   }
+  VLOG(4) << "socket " << fd << " has data";
   return true;
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
-  //lock_guard<std::recursive_mutex> guard(mutex);
+  // lock_guard<std::recursive_mutex> guard(mutex);
   // different threads reading different fd
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
@@ -43,7 +44,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
     return 0;
   }
-  VLOG(4) << "unixsocket handler read from fd: " << fd;
+  VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
     LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno);
@@ -52,9 +53,9 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
-  //lock_guard<std::recursive_mutex> guard(mutex);
+  // lock_guard<std::recursive_mutex> guard(mutex);
   // different threads writing to different fd
-  VLOG(4) << "unixsocket handler write to fd: " << fd;
+  VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
@@ -113,7 +114,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
     if (!initSocket(sockfd)) {
-      VLOG(4) << "!initSocket";
+      VLOG(4) << "initSocket failed";
       ::close(sockfd);
       sockfd = -1;
       continue;
@@ -136,7 +137,7 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
         LOG(FATAL) << "set socket linger failed";
       }
     }
-    VLOG(4) << "set nonblocking";
+    VLOG(4) << "Set nonblocking";
     if (::connect(sockfd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
@@ -149,18 +150,17 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       sockfd = -1;
       continue;
     }
-    VLOG(4) << "errno " << errno << " " << EINPROGRESS;
     fd_set fdset;
     FD_ZERO(&fdset);
     FD_SET(sockfd, &fdset);
     timeval tv;
     tv.tv_sec = 3; /* 3 second timeout */
     tv.tv_usec = 0;
-    VLOG(4) << "before select sockfd";
+    VLOG(4) << "Before selecting sockfd";
     select(sockfd + 1, NULL, &fdset, NULL, &tv);
 
     if (FD_ISSET(sockfd, &fdset)) {
-      VLOG(4) << "select sockfd " << sockfd;
+      VLOG(4) << "sockfd " << sockfd << "is selected" << sockfd;
       int so_error;
       socklen_t len = sizeof so_error;
 
@@ -208,7 +208,6 @@ int UnixSocketHandler::connect(const std::string &hostname, int port) {
       continue;
     }
   }
-  VLOG(4) << "sockfd " << sockfd;
   if (sockfd == -1) {
     LOG(ERROR) << "ERROR, no host found";
   } else {
@@ -338,7 +337,8 @@ int UnixSocketHandler::accept(int sockfd) {
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
-  VLOG(3) << "socket accpeted";
+  VLOG(3) << "Socket " << sockfd << " accepted, returned client_sock"
+          << client_sock;
   if (client_sock >= 0) {
     if (!initSocket(client_sock)) {
       ::close(client_sock);
@@ -353,7 +353,7 @@ int UnixSocketHandler::accept(int sockfd) {
       opts &= (~O_NONBLOCK);
       FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
     }
-    VLOG(3) << "client_socket inserted to activeSockets";
+    VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
     FATAL_FAIL(-1);  // LOG(FATAL) with the error

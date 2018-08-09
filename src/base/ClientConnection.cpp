@@ -63,8 +63,7 @@ void ClientConnection::closeSocket() {
     // Close the socket
     Connection::closeSocket();
   }
-  LOG(INFO) << "Socket closed";
-  LOG(INFO) << "Starting new reconnect thread";
+  LOG(INFO) << "Socket closed, starting new reconnect thread";
   reconnectThread = std::shared_ptr<std::thread>(
       new std::thread(&ClientConnection::pollReconnect, this));
 }

@@ -57,7 +57,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
   string CLIENT_TERM(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
-  string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" + std::to_string(vlevel)};
+  string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" +
+                    std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
       genCommand(passkey, id, CLIENT_TERM, user, kill, cmdoptions);

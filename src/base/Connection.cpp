@@ -16,19 +16,19 @@ Connection::~Connection() {
 }
 
 inline bool isSkippableError(int err_no) {
-  return (err_no == ECONNRESET || err_no == ETIMEDOUT || err_no == EWOULDBLOCK ||
-          err_no == EHOSTUNREACH || err_no == EPIPE ||
+  return (err_no == ECONNRESET || err_no == ETIMEDOUT ||
+          err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
           err_no == EBADF  // Bad file descriptor can happen when
-                          // there's a race condition between ta thread
-                          // closing a connection and one
-                          // reading/writing.
+                           // there's a race condition between ta thread
+                           // closing a connection and one
+                           // reading/writing.
   );
 }
 
 ssize_t Connection::read(string* buf) {
-  VLOG(4) << "before connectionMutex read";
+  VLOG(4) << "Before read get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  VLOG(4) << "get connectionMutex read";
+  VLOG(4) << "After read get connectionMutex";
   // 2s should be enough since EAGAIN is rare in blocking socket.
   int CLIENT_timeout = 2;
   // Try at 10Hz
@@ -95,9 +95,9 @@ bool Connection::readMessage(string* buf) {
 }
 
 ssize_t Connection::write(const string& buf) {
-  VLOG(4) << "before connectionMutex write";
+  VLOG(4) << "Before write get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  VLOG(4) << "get connectionMutex write";
+  VLOG(4) << "After write get connectionMutex";
   if (socketFd == -1) {
     return 0;
   }
@@ -105,12 +105,12 @@ ssize_t Connection::write(const string& buf) {
   BackedWriterWriteState bwws = writer->write(buf);
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
-    VLOG(4) << "skipped";
+    VLOG(4) << "Write skipped";
     return 0;
   }
 
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
-    VLOG(4) << "wrote with failure";
+    VLOG(4) << "Wrote with failure";
     // Error writing.
     if (!errno) {
       // The socket was already closed
@@ -135,7 +135,7 @@ void Connection::writeMessage(const string& buf) {
       return;
     }
     usleep(1000);
-    LOG_EVERY_N(1, INFO) << "Wrote " << bytesWritten
+    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
                            << " of message.  Waiting to write remainder...";
   }
 }

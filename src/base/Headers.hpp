@@ -20,7 +20,6 @@
 #endif
 
 #include <arpa/inet.h>
-#include <ctime>
 #include <errno.h>
 #include <fcntl.h>
 #include <pthread.h>
@@ -40,6 +39,7 @@
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <ctime>
 #include <deque>
 #include <exception>
 #include <fstream>
