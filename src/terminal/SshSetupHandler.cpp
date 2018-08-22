@@ -101,11 +101,15 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     wait(NULL);
     int nbytes = read(link_client[0], buf_client, sizeof(buf_client));
     try {
-      if (nbytes <= 0 || split(string(buf_client), ':').size() != 2 ||
+      if (nbytes <= 0) {
+        // Ssh failed
+        cout << "Error starting ET process through ssh, please make sure your ssh works first" << endl;
+        exit(1);
+      }
+      if (split(string(buf_client), ':').size() != 2 ||
           split(string(buf_client), ':')[0] != "IDPASSKEY") {
-        cout << "Error:  The Eternal Terminal daemon is not running.  "
-                "Please (re)start the et daemon on the server."
-             << endl;
+        // Returned value not start with "IDPASSKEY:"
+        cout << "Error in authentication with etserver: " << buf_client << ", please make sure you don't print anything in server's .bashrc/.zshrc" << endl;
         exit(1);
       }
       auto idpasskey = split(string(buf_client), ':')[1];
@@ -153,7 +157,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         wait(NULL);
         int nbytes = read(link_jump[0], buf_jump, sizeof(buf_jump));
         if (nbytes <= 0) {
-          LOG(FATAL) << "etserver jumpclient failed to start";
+          // At this point "ssh -J jumphost dst" already works.
+          cout << "etserver jumpclient failed to start" << endl;
           exit(1);
         }
         try {
@@ -166,12 +171,9 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
           if (returned_id == id && returned_passkey == passkey) {
             LOG(INFO) << "jump client started.";
           } else {
-            LOG(INFO) << "ID " << id;
-            LOG(INFO) << "Received ID " << returned_id;
-            LOG(INFO) << "PASSKEY " << passkey;
-            LOG(INFO) << "Received PASSKEY " << returned_passkey;
-            LOG(INFO) << "client/server idpasskey doesn't match";
-            exit(1);
+            LOG(FATAL) << "client/server idpasskey doesn't match: " << id
+                   << " != " << returned_id << " or " << passkey
+                   << " != " << returned_passkey;
           }
         } catch (const runtime_error &err) {
           cout << "Error initializing connection" << err.what() << endl;
