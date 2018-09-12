@@ -24,7 +24,7 @@ string genRandom(int len) {
 }
 
 string genCommand(string passkey, string id, string CLIENT_TERM, string user,
-                  bool kill, string options) {
+                  bool kill, string command_prefix, string options) {
   string SSH_SCRIPT_PREFIX{
       "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
       "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
@@ -45,15 +45,15 @@ string genCommand(string passkey, string id, string CLIENT_TERM, string user,
         user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_PREFIX;
   }
 
-  string COMMAND{"if [ -x \"$(command -v etterminal)\" ]; then etterminal " +
-                 options + "; else etserver " + options + ";fi;true"};
+  string COMMAND{"if [ -x \"$(command -v etterminal)\" ]; then " + command_prefix + " etterminal " +
+                 options + "; else " + command_prefix + " etserver " + options + ";fi;true"};
 
   return SSH_SCRIPT_PREFIX + COMMAND;
 }
 
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
-                                 bool kill, int vlevel) {
+                                 bool kill, int vlevel, string cmd_prefix) {
   string CLIENT_TERM(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
@@ -61,7 +61,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                     std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
-      genCommand(passkey, id, CLIENT_TERM, user, kill, cmdoptions);
+      genCommand(passkey, id, CLIENT_TERM, user, kill, cmd_prefix, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -148,7 +148,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP =
-            genCommand(passkey, id, CLIENT_TERM, user, kill, jump_cmdoptions);
+            genCommand(passkey, id, CLIENT_TERM, user, kill, cmd_prefix, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);

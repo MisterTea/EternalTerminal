@@ -37,6 +37,7 @@ DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(c, "", "Command to run immediately after connecting");
+DEFINE_string(prefix, "", "Command prefix to launch etserver/etterminal on the server side");
 DEFINE_string(t, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
@@ -206,6 +207,7 @@ int main(int argc, char** argv) {
               "-u Username to connect to ssh & ET\n"
               "-v=9 verbose log files\n"
               "-c Initial command to execute upon connecting\n"
+              "-prefix Command prefix to launch etserver/etterminal on the server side\n"
               "-t Map local to remote TCP port (TCP Tunneling)\n"
               "   example: et -t=\"18000:8000\" hostname maps localhost:18000\n"
               "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
@@ -293,7 +295,7 @@ int main(int argc, char** argv) {
 
   string idpasskeypair =
       SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
-                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v);
+                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v, FLAGS_prefix);
 
   time_t rawtime;
   struct tm* timeinfo;
