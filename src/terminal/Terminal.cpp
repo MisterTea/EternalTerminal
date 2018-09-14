@@ -84,17 +84,10 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
   string std_file =
       string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
-#if __NetBSD__
   FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
   setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#else
-  stdout = fopen(std_file.c_str(), "w+");
-  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  stderr = fopen(std_file.c_str(), "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#endif
 }
 
 void startUserTerminal(string idpasskey) {

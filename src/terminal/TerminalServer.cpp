@@ -421,17 +421,10 @@ int main(int argc, char **argv) {
     }
 
     const char *err_filename = "/tmp/etserver_err";
-#if __NetBSD__
     FILE *stdout_stream = freopen(err_filename, "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
     FILE *stderr_stream = freopen(err_filename, "w+", stderr);
     setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#else
-    stdout = fopen(err_filename, "w+");
-    setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    stderr = fopen(err_filename, "w+");
-    setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#endif
   }
   // Set log file for etserver process here.
   LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
