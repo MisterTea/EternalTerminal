@@ -1,6 +1,5 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
-#include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
@@ -8,7 +7,7 @@
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
-#include "UnixSocketHandler.hpp"
+#include "TcpSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
@@ -142,9 +141,10 @@ void startJumpHostClient(string idpasskey) {
 
   InitialPayload payload;
 
-  shared_ptr<SocketHandler> jumpclientSocket(new UnixSocketHandler());
-  shared_ptr<ClientConnection> jumpclient = shared_ptr<ClientConnection>(
-      new ClientConnection(jumpclientSocket, host, port, id, passkey));
+  shared_ptr<SocketHandler> jumpclientSocket(new TcpSocketHandler());
+  shared_ptr<ClientConnection> jumpclient =
+      shared_ptr<ClientConnection>(new ClientConnection(
+          jumpclientSocket, SocketEndpoint(host, port), id, passkey));
 
   int connectFailCount = 0;
   while (true) {

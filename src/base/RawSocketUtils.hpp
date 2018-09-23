@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_RAW_SOCKET_UTILS__
-#define __ETERNAL_TCP_RAW_SOCKET_UTILS__
+#ifndef __ET_RAW_SOCKET_UTILS__
+#define __ET_RAW_SOCKET_UTILS__
 
 #include "Headers.hpp"
 
@@ -86,4 +86,4 @@ class RawSocketUtils {
   }
 };
 }  // namespace et
-#endif  // __ETERNAL_TCP_RAW_SOCKET_UTILS__
+#endif  // __ET_RAW_SOCKET_UTILS__

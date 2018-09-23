@@ -2,9 +2,8 @@
 
 namespace et {
 ClientConnection::ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler, const std::string& _hostname,
-    int _port, const string& _id, const string& _key)
-    : Connection(_socketHandler, _id, _key), hostname(_hostname), port(_port) {}
+    std::shared_ptr<SocketHandler> _socketHandler, const SocketEndpoint& _remoteEndpoint, const string& _id, const string& _key)
+    : Connection(_socketHandler, _id, _key), remoteEndpoint(_remoteEndpoint) {}
 
 ClientConnection::~ClientConnection() {
   if (reconnectThread) {
@@ -16,7 +15,7 @@ ClientConnection::~ClientConnection() {
 void ClientConnection::connect() {
   try {
     VLOG(1) << "Connecting";
-    socketFd = socketHandler->connect(hostname, port);
+    socketFd = socketHandler->connect(remoteEndpoint);
     if (socketFd == -1) {
       throw std::runtime_error("Could not connect to host");
     }
@@ -86,8 +85,8 @@ void ClientConnection::pollReconnect() {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
       LOG_EVERY_N(10, INFO)
-          << "Trying to reconnect to " << hostname << ":" << port << endl;
-      int newSocketFd = socketHandler->connect(hostname, port);
+          << "Trying to reconnect to " << remoteEndpoint << endl;
+      int newSocketFd = socketHandler->connect(remoteEndpoint);
       if (newSocketFd != -1) {
         try {
           et::ConnectRequest request;

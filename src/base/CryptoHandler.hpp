@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_CRYPTO_HANDLER__
-#define __ETERNAL_TCP_CRYPTO_HANDLER__
+#ifndef __ET_CRYPTO_HANDLER__
+#define __ET_CRYPTO_HANDLER__
 
 #include "Headers.hpp"
 
@@ -25,4 +25,4 @@ class CryptoHandler {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_CRYPTO_HANDLER__
+#endif  // __ET_CRYPTO_HANDLER__

@@ -40,15 +40,9 @@ namespace et {
 UserTerminalHandler::UserTerminalHandler() {}
 
 void UserTerminalHandler::connectToRouter(const string &idPasskey) {
-  sockaddr_un remote;
+  routerFd = socketHandler.connect(SocketEndpoint(ROUTER_FIFO_NAME));
 
-  routerFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-  FATAL_FAIL(routerFd);
-  remote.sun_family = AF_UNIX;
-  strcpy(remote.sun_path, ROUTER_FIFO_NAME);
-
-  if (connect(routerFd, (struct sockaddr *)&remote, sizeof(sockaddr_un)) < 0) {
-    close(routerFd);
+  if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
       cout << "Error:  The Eternal Terminal daemon is not running.  Please "
               "(re)start the et daemon on the server."
@@ -59,6 +53,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
     }
     exit(1);
   }
+
   try {
     RawSocketUtils::writeMessage(routerFd, idPasskey);
   } catch (const std::runtime_error &re) {

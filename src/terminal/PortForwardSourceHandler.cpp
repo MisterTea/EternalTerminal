@@ -7,12 +7,12 @@ PortForwardSourceHandler::PortForwardSourceHandler(
     : socketHandler(_socketHandler),
       sourcePort(_sourcePort),
       destinationPort(_destinationPort) {
-  socketHandler->listen(sourcePort);
+  socketHandler->listen(SocketEndpoint(sourcePort));
 }
 
 int PortForwardSourceHandler::listen() {
   // TODO: Replace with select
-  for (int i : socketHandler->getPortFds(sourcePort)) {
+  for (int i : socketHandler->getEndpointFds(SocketEndpoint(sourcePort))) {
     int fd = socketHandler->accept(i);
     if (fd > -1) {
       LOG(INFO) << "Tunnel " << sourcePort << " -> " << destinationPort

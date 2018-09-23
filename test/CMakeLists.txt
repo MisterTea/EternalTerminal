@@ -1,10 +1,11 @@
 set(GTEST_PATH ${PROJECT_SOURCE_DIR}/test)
 
-file(GLOB TEST_SRCS Test*.cpp )
+file(GLOB TEST_SRCS *Test.cpp )
 add_executable(
   et-test
 
   ${TEST_SRCS}
+  Main.cpp
   )
 
 add_dependencies(

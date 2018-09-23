@@ -6,7 +6,7 @@
 
 using namespace et;
 
-TEST(CryptoHandler, DoesEncryptDecrypt) {
+TEST(CryptoHandlerTest, DoesEncryptDecrypt) {
   string key = "12345678901234567890123456789012";
   shared_ptr<CryptoHandler> encryptHandler(new CryptoHandler(key, 0));
   shared_ptr<CryptoHandler> decryptHandler(new CryptoHandler(key, 0));

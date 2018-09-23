@@ -1,6 +1,5 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
-#include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
@@ -8,7 +7,7 @@
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
-#include "UnixSocketHandler.hpp"
+#include "TcpSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
@@ -300,19 +299,19 @@ class TerminalServerHandler : public ServerConnectionHandler {
 };
 
 void startServer() {
-  std::shared_ptr<UnixSocketHandler> socketHandler(new UnixSocketHandler());
+  std::shared_ptr<TcpSocketHandler> socketHandler(new TcpSocketHandler());
 
   LOG(INFO) << "Creating server";
 
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
-      socketHandler, FLAGS_port,
+      socketHandler, SocketEndpoint(FLAGS_port),
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter());
+  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter(ROUTER_FIFO_NAME));
   fd_set coreFds;
   int numCoreFds = 0;
   int maxCoreFd = 0;
   FD_ZERO(&coreFds);
-  set<int> serverPortFds = socketHandler->getPortFds(FLAGS_port);
+  set<int> serverPortFds = socketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
   for (int i : serverPortFds) {
     FD_SET(i, &coreFds);
     maxCoreFd = max(maxCoreFd, i);

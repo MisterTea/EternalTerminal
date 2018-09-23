@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_SERVER_CLIENT_CONNECTION__
-#define __ETERNAL_TCP_SERVER_CLIENT_CONNECTION__
+#ifndef __ET_SERVER_CLIENT_CONNECTION__
+#define __ET_SERVER_CLIENT_CONNECTION__
 
 #include "Headers.hpp"
 
@@ -20,4 +20,4 @@ class ServerClientConnection : public Connection {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_SERVER_CLIENT_CONNECTION__
+#endif  // __ET_SERVER_CLIENT_CONNECTION__

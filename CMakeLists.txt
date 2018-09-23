@@ -115,11 +115,11 @@ add_library(
   src/base/ClientConnection.cpp
   src/base/Connection.cpp
   src/base/CryptoHandler.cpp
-  src/base/FakeSocketHandler.cpp
-  src/base/FlakyFakeSocketHandler.cpp
   src/base/ServerClientConnection.cpp
   src/base/ServerConnection.cpp
   src/base/SocketHandler.cpp
+  src/base/PipeSocketHandler.cpp
+  src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.cpp
   src/base/easylogging++.cc
   src/base/LogHandler.cpp
@@ -272,7 +272,6 @@ target_link_libraries (
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
   enable_testing()
-  add_subdirectory(sandbox)
   add_subdirectory(test)
 endif()
 

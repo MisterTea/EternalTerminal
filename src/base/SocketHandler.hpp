@@ -1,11 +1,15 @@
-#ifndef __ETERNAL_TCP_SOCKET_HANDLER__
-#define __ETERNAL_TCP_SOCKET_HANDLER__
+#ifndef __ET_SOCKET_HANDLER__
+#define __ET_SOCKET_HANDLER__
 
 #include "Headers.hpp"
+
+#include "SocketEndpoint.hpp"
 
 namespace et {
 class SocketHandler {
  public:
+  virtual ~SocketHandler() {}
+
   virtual bool hasData(int fd) = 0;
   virtual ssize_t read(int fd, void* buf, size_t count) = 0;
   virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
@@ -40,13 +44,13 @@ class SocketHandler {
     writeAllOrThrow(fd, &s[0], length, timeout);
   }
 
-  virtual int connect(const std::string& hostname, int port) = 0;
-  virtual void listen(int port) = 0;
-  virtual set<int> getPortFds(int port) = 0;
+  virtual int connect(const SocketEndpoint& endpoint) = 0;
+  virtual set<int> listen(const SocketEndpoint& endpoint) = 0;
+  virtual set<int> getEndpointFds(const SocketEndpoint& endpoint) = 0;
   virtual int accept(int fd) = 0;
-  virtual void stopListening(int port) = 0;
+  virtual void stopListening(const SocketEndpoint& endpoint) = 0;
   virtual void close(int fd) = 0;
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_SOCKET_HANDLER__
+#endif  // __ET_SOCKET_HANDLER__

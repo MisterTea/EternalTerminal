@@ -1,19 +1,19 @@
-#ifndef __ETERNAL_TCP_CLIENT_CONNECTION__
-#define __ETERNAL_TCP_CLIENT_CONNECTION__
+#ifndef __ET_CLIENT_CONNECTION__
+#define __ET_CLIENT_CONNECTION__
 
 #include "Headers.hpp"
 
 #include "Connection.hpp"
+#include "SocketEndpoint.hpp"
 
 namespace et {
 extern const int NULL_CLIENT_ID;
 
 class ClientConnection : public Connection {
  public:
-  ClientConnection(std::shared_ptr<SocketHandler> _socketHandler,  //
-                   const std::string& hostname,                    //
-                   int _port,                                      //
-                   const string& _id, const string& _key);
+  ClientConnection(std::shared_ptr<SocketHandler> _socketHandler,
+                   const SocketEndpoint& _endpoint, const string& _id,
+                   const string& _key);
 
   virtual ~ClientConnection();
 
@@ -28,10 +28,9 @@ class ClientConnection : public Connection {
   virtual ssize_t write(const string& buf);
   void pollReconnect();
 
-  std::string hostname;
-  int port;
+  SocketEndpoint remoteEndpoint;
   std::shared_ptr<std::thread> reconnectThread;
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_SERVER_CONNECTION__
+#endif  // __ET_SERVER_CONNECTION__

@@ -56,7 +56,8 @@ int BackedReader::read(string* buf) {
     if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
     }
-    if (bytesRead < 0) {
+    if (bytesRead < 0 && errno != EAGAIN) {
+      // Read error
       return bytesRead;
     }
   }
@@ -78,7 +79,7 @@ int BackedReader::read(string* buf) {
       errno = EPIPE;
       bytesRead = -1;
     }
-    if (bytesRead < 0) {
+    if (bytesRead < 0 && errno != EAGAIN) {
       VLOG(2) << "Error while reading";
       return bytesRead;
     } else if (bytesRead > 0) {
