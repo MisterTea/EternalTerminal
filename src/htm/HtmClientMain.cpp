@@ -5,6 +5,10 @@
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "RawSocketUtils.hpp"
+#include "PipeSocketHandler.hpp"
+#include "SocketEndpoint.hpp"
+
+using namespace et;
 
 DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 
@@ -14,7 +18,7 @@ void term(int signum) {
   char buf[] = {
       0x1b, 0x5b, '$', '$', '$', 'q',
   };
-  et::RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
   fflush(stdout);
   tcsetattr(0, TCSANOW, &terminal_backup);
   exit(1);
@@ -44,12 +48,12 @@ int main(int argc, char** argv) {
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
-      et::LogHandler::SetupLogHandler(&argc, &argv);
+      LogHandler::SetupLogHandler(&argc, &argv);
   defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  et::LogHandler::SetupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
+  LogHandler::SetupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
@@ -69,8 +73,8 @@ int main(int argc, char** argv) {
 
   if (pgrepOutput.length() == 0) {
     // Fork to create the daemon
-    int result = et::DaemonCreator::create();
-    if (result == et::DaemonCreator::CHILD) {
+    int result = DaemonCreator::create();
+    if (result == DaemonCreator::CHILD) {
       // This means we are the daemon
       exit(system("htmd"));
     }
@@ -78,17 +82,14 @@ int main(int argc, char** argv) {
 
   // This means we are the client to the daemon
   usleep(10 * 1000);  // Sleep for 10ms to let the daemon come alive
-  et::HtmClient htmClient;
-  try {
+  shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
+  HtmClient htmClient(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
     htmClient.run();
-  } catch (const std::runtime_error& ex) {
-    LOG(ERROR) << ex.what();
-  }
 
   char buf[] = {
       0x1b, 0x5b, '$', '$', '$', 'q',
   };
-  et::RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
   fflush(stdout);
   tcsetattr(0, TCSANOW, &terminal_backup);
 

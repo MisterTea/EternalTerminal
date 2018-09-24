@@ -1,19 +1,12 @@
 #include "IpcPairClient.hpp"
 
 namespace et {
-IpcPairClient::IpcPairClient(const string &pipeName) : IpcPairEndpoint(-1) {
-  sockaddr_un remote;
-
+IpcPairClient::IpcPairClient(shared_ptr<SocketHandler> _socketHandler,
+                             const SocketEndpoint& endpoint)
+    : IpcPairEndpoint(_socketHandler, -1) {
   for (int retry = 0; retry < 5; retry++) {
-    endpointFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-    FATAL_FAIL(endpointFd);
-    remote.sun_family = AF_UNIX;
-    strcpy(remote.sun_path, pipeName.c_str());
-    LOG(INFO) << "Connecting to IPC server " << pipeName << " (attempt "
-              << (retry + 1) << ")";
-    if (::connect(endpointFd, (struct sockaddr *)&remote, sizeof(sockaddr_un)) <
-        0) {
-      ::close(endpointFd);
+    endpointFd = socketHandler->connect(endpoint);
+    if (endpointFd < 0) {
       sleep(1);
     } else {
       return;
