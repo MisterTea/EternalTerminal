@@ -1,18 +1,18 @@
 #include "UserTerminalRouter.hpp"
 
-#include "RawSocketUtils.hpp"
-
 #include "ETerminal.pb.h"
 
 namespace et {
-UserTerminalRouter::UserTerminalRouter(const string& routerFifoName) {
-  serverFd = *(socketHandler.listen(SocketEndpoint(routerFifoName)).begin());
+UserTerminalRouter::UserTerminalRouter(
+    shared_ptr<PipeSocketHandler> _socketHandler, const string &routerFifoName)
+    : socketHandler(_socketHandler) {
+  serverFd = *(socketHandler->listen(SocketEndpoint(routerFifoName)).begin());
 }
 
 void UserTerminalRouter::acceptNewConnection(
     shared_ptr<ServerConnection> globalServer) {
   LOG(INFO) << "Listening to id/key FIFO";
-  int terminalFd = socketHandler.accept(serverFd);
+  int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
     if (errno != EAGAIN && errno != EWOULDBLOCK) {
       FATAL_FAIL(-1);  // LOG(FATAL) with the error
@@ -24,7 +24,7 @@ void UserTerminalRouter::acceptNewConnection(
   LOG(INFO) << "Connected";
 
   try {
-    string buf = RawSocketUtils::readMessage(terminalFd);
+    string buf = socketHandler->readMessage(terminalFd);
     VLOG(1) << "Got passkey: " << buf;
     size_t slashIndex = buf.find("/");
     if (slashIndex == string::npos) {

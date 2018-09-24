@@ -30,17 +30,18 @@
 #include <utempter.h>
 #endif
 
-#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
 
 namespace et {
-UserTerminalHandler::UserTerminalHandler() {}
+UserTerminalHandler::UserTerminalHandler(
+    shared_ptr<SocketHandler> _socketHandler)
+    : socketHandler(_socketHandler) {}
 
 void UserTerminalHandler::connectToRouter(const string &idPasskey) {
-  routerFd = socketHandler.connect(SocketEndpoint(ROUTER_FIFO_NAME));
+  routerFd = socketHandler->connect(SocketEndpoint(ROUTER_FIFO_NAME));
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
@@ -55,7 +56,7 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   }
 
   try {
-    RawSocketUtils::writeMessage(routerFd, idPasskey);
+    socketHandler->writeMessage(routerFd, idPasskey);
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Error connecting to router: " << re.what();
   }
@@ -140,7 +141,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         if (rc > 0) {
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
-          RawSocketUtils::writeAll(routerFd, b, rc);
+          socketHandler->writeAllOrThrow(routerFd, b, rc, false);
           VLOG(4) << "Write to client: "
                   << std::count(s.begin(), s.end(), '\n');
         } else {
@@ -169,15 +170,15 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
         switch (packetType) {
           case TERMINAL_BUFFER: {
             TerminalBuffer tb =
-                RawSocketUtils::readProto<TerminalBuffer>(routerFd);
+                socketHandler->readProto<TerminalBuffer>(routerFd, false);
             VLOG(4) << "Read from router";
             const string &buffer = tb.buffer();
-            RawSocketUtils::writeAll(masterFd, &buffer[0], buffer.length());
+            socketHandler->writeAllOrThrow(masterFd, &buffer[0], buffer.length(), false);
             VLOG(4) << "Write to terminal";
             break;
           }
           case TERMINAL_INFO: {
-            TerminalInfo ti = RawSocketUtils::readProto<TerminalInfo>(routerFd);
+            TerminalInfo ti = socketHandler->readProto<TerminalInfo>(routerFd, false);
             winsize tmpwin;
             tmpwin.ws_row = ti.row();
             tmpwin.ws_col = ti.column();

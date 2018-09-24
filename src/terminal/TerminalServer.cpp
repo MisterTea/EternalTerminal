@@ -4,7 +4,6 @@
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
-#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
 #include "TcpSocketHandler.hpp"
@@ -67,6 +66,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
 
   bool b[BUF_SIZE];
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     fd_set rfd;
@@ -88,7 +88,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
       if (FD_ISSET(terminalFd, &rfd)) {
         memset(b, 0, BUF_SIZE);
         try {
-          string message = RawSocketUtils::readMessage(terminalFd);
+          string message = terminalSocketHandler->readMessage(terminalFd);
           serverClientState->writeMessage(message);
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();
@@ -107,7 +107,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
             break;
           }
           try {
-            RawSocketUtils::writeMessage(terminalFd, message);
+            terminalSocketHandler->writeMessage(terminalFd, message);
             VLOG(4) << "Jumphost wrote to router " << terminalFd;
           } catch (const std::runtime_error &ex) {
             LOG(INFO) << "Unix socket died between global daemon and terminal "
@@ -140,9 +140,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> socketHandler = globalServer->getSocketHandler();
-  PortForwardHandler portForwardHandler(socketHandler);
+  shared_ptr<SocketHandler> serverSocketHandler = globalServer->getSocketHandler();
+  PortForwardHandler portForwardHandler(serverSocketHandler);
+
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     // Data structures needed for select() and
@@ -236,8 +238,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
-              RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
-              RawSocketUtils::writeProto(terminalFd, tb);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeProto(terminalFd, tb, false);
               break;
             }
             case et::PacketType::KEEP_ALIVE: {
@@ -252,8 +254,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
               char c = TERMINAL_INFO;
-              RawSocketUtils::writeAll(terminalFd, &c, sizeof(char));
-              RawSocketUtils::writeProto(terminalFd, ti);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeProto(terminalFd, ti, false);
               break;
             }
             default:
@@ -299,19 +301,20 @@ class TerminalServerHandler : public ServerConnectionHandler {
 };
 
 void startServer() {
-  std::shared_ptr<TcpSocketHandler> socketHandler(new TcpSocketHandler());
+  std::shared_ptr<TcpSocketHandler> tcpSocketHandler(new TcpSocketHandler());
+  std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
   LOG(INFO) << "Creating server";
 
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
-      socketHandler, SocketEndpoint(FLAGS_port),
+      tcpSocketHandler, SocketEndpoint(FLAGS_port),
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter(ROUTER_FIFO_NAME));
+  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
   fd_set coreFds;
   int numCoreFds = 0;
   int maxCoreFd = 0;
   FD_ZERO(&coreFds);
-  set<int> serverPortFds = socketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
+  set<int> serverPortFds = tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
   for (int i : serverPortFds) {
     FD_SET(i, &coreFds);
     maxCoreFd = max(maxCoreFd, i);

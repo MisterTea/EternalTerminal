@@ -29,8 +29,9 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   if (result < 0) {
     ::close(fd);
     fd = -1;
+  } else {
+    addToActiveSockets(fd);
   }
-  addToActiveSockets(fd);
   return fd;
 }
 

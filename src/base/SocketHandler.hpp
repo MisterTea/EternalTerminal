@@ -44,6 +44,26 @@ class SocketHandler {
     writeAllOrThrow(fd, &s[0], length, timeout);
   }
 
+  inline string readMessage(int fd) {
+    int64_t length;
+    readAll(fd, (char*)&length, sizeof(int64_t), false);
+    if (length < 0 || length > 128 * 1024 * 1024) {
+      // If the message is < 0 or too big, assume this is a bad packet and throw
+      string s("Invalid size (<0 or >128 MB):");
+      s += std::to_string(length);
+      throw std::runtime_error(s.c_str());
+    }
+    string s(length, 0);
+    readAll(fd, &s[0], length, false);
+    return s;
+  }
+
+  inline void writeMessage(int fd, const string& s) {
+    int64_t length = s.length();
+    writeAllOrThrow(fd, (const char*)&length, sizeof(int64_t), false);
+    writeAllOrThrow(fd, &s[0], length, false);
+  }
+
   virtual int connect(const SocketEndpoint& endpoint) = 0;
   virtual set<int> listen(const SocketEndpoint& endpoint) = 0;
   virtual set<int> getEndpointFds(const SocketEndpoint& endpoint) = 0;

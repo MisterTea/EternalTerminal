@@ -3,18 +3,18 @@
 
 #include "Headers.hpp"
 
-#include "PipeSocketHandler.hpp"
+#include "SocketHandler.hpp"
 
 namespace et {
 class UserTerminalHandler {
  public:
-  UserTerminalHandler();
+  UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler);
   void connectToRouter(const string& idPasskey);
   void run();
 
  protected:
   int routerFd;
-  PipeSocketHandler socketHandler;
+  shared_ptr<SocketHandler> socketHandler;
 
   void runUserTerminal(int masterFd, pid_t childPid);
 };
