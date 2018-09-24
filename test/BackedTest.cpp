@@ -95,15 +95,15 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
 
 class BackedTest : public testing::Test {
  protected:
-  virtual void SetUp() {
+  void SetUp() override {
     srand(1);
 
     serverSocketHandler.reset(new PipeSocketHandler());
     clientSocketHandler.reset(new PipeSocketHandler());
 
     string tmpPath = string("/tmp/et_test_XXXXXXXX");
-    char* tempDirectory = mkdtemp(&tmpPath[0]);
-    string pipePath = string(tempDirectory) + "/pipe";
+    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint(pipePath);
     int serverClientFd = -1;
     std::thread serverListenThread(listenFn, serverSocketHandler, endpoint,
@@ -141,10 +141,17 @@ class BackedTest : public testing::Test {
             clientServerFd))));
   }
 
+  void TearDown() override {
+    FATAL_FAIL(::remove(pipePath.c_str()));
+    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  }
+
   shared_ptr<PipeSocketHandler> serverSocketHandler;
   shared_ptr<PipeSocketHandler> clientSocketHandler;
   shared_ptr<BackedCollector> serverCollector;
   shared_ptr<BackedCollector> clientCollector;
+  string pipeDirectory;
+  string pipePath;
 };
 
 TEST_F(BackedTest, ReadWrite) {
