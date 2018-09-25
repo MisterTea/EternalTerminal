@@ -5,6 +5,7 @@
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "CryptoHandler.hpp"
+#include "FlakySocketHandler.hpp"
 #include "LogHandler.hpp"
 #include "PipeSocketHandler.hpp"
 
@@ -94,11 +95,6 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
 class BackedTest : public testing::Test {
  protected:
   void SetUp() override {
-    srand(1);
-
-    serverSocketHandler.reset(new PipeSocketHandler());
-    clientSocketHandler.reset(new PipeSocketHandler());
-
     string tmpPath = string("/tmp/et_test_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
@@ -144,15 +140,27 @@ class BackedTest : public testing::Test {
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
 
-  shared_ptr<PipeSocketHandler> serverSocketHandler;
-  shared_ptr<PipeSocketHandler> clientSocketHandler;
+  shared_ptr<SocketHandler> serverSocketHandler;
+  shared_ptr<SocketHandler> clientSocketHandler;
   shared_ptr<BackedCollector> serverCollector;
   shared_ptr<BackedCollector> clientCollector;
   string pipeDirectory;
   string pipePath;
 };
 
-TEST_F(BackedTest, ReadWrite) {
+class ReliableBackedTest : public BackedTest {
+ protected:
+  void SetUp() override {
+    srand(1);
+
+    serverSocketHandler.reset(new PipeSocketHandler());
+    clientSocketHandler.reset(new PipeSocketHandler());
+
+    BackedTest::SetUp();
+  }
+};
+
+TEST_F(ReliableBackedTest, ReadWrite) {
   string s(64 * 1024, '\0');
   for (int a = 0; a < 64 * 1024 - 1; a++) {
     s[a] = rand() % 26 + 'A';

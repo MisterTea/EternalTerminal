@@ -4,6 +4,7 @@
 
 #include "ClientConnection.hpp"
 #include "Connection.hpp"
+#include "FlakySocketHandler.hpp"
 #include "LogHandler.hpp"
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
@@ -12,18 +13,19 @@ using namespace et;
 
 class Collector {
  public:
-  Collector(shared_ptr<Connection> _connection) : connection(_connection), done(false) {
+  Collector(shared_ptr<Connection> _connection)
+      : connection(_connection), done(false) {
     collectorThread = std::thread(&Collector::run, this);
   }
 
   ~Collector() {
-    done=true;
+    done = true;
     collectorThread.join();
   }
 
   void run() {
     while (!done) {
-      {
+      if (connection->hasData()) {
         lock_guard<std::mutex> guard(collectorMutex);
         string s;
         int status = connection->readMessage(&s);
@@ -77,14 +79,13 @@ class Collector {
   bool done;
 };
 
-void listenFn(int serverFd, shared_ptr<ServerConnection> serverConnection) {
+void listenFn(bool* stopListening, int serverFd,
+              shared_ptr<ServerConnection> serverConnection) {
   // Only works when there is 1:1 mapping between endpoint and fds.  Will fix in
   // future api
-  while (true) {
-    if (serverConnection->acceptNewConnection(serverFd)) {
-      return;
-    }
-    ::usleep(10 * 1000);  // Sleep 10ms for client to connect
+  while (*stopListening == false) {
+    serverConnection->acceptNewConnection(serverFd);
+    ::usleep(1000 * 1000);
   }
 }
 
@@ -101,11 +102,6 @@ class NewConnectionHandler : public ServerConnectionHandler {
 class ConnectionTest : public testing::Test {
  protected:
   void SetUp() override {
-    srand(1);
-
-    serverSocketHandler.reset(new PipeSocketHandler());
-    clientSocketHandler.reset(new PipeSocketHandler());
-
     const string CRYPTO_KEY = "12345678901234567890123456789012";
     const string CLIENT_ID = "1234567890123456";
 
@@ -120,60 +116,107 @@ class ConnectionTest : public testing::Test {
     serverConnection->addClientKey(CLIENT_ID, CRYPTO_KEY);
 
     int serverFd = *(serverSocketHandler->getEndpointFds(endpoint).begin());
-    std::thread serverListenThread(listenFn, serverFd, serverConnection);
+    stopListening = false;
+    serverListenThread.reset(
+        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
 
     // Wait for server to spin up
     ::usleep(100 * 1000);
     clientConnection.reset(new ClientConnection(clientSocketHandler, endpoint,
                                                 CLIENT_ID, CRYPTO_KEY));
-    clientConnection->connect();
-    serverListenThread.join();
+    while (true) {
+      try {
+        clientConnection->connect();
+        break;
+      } catch (const std::runtime_error& ex) {
+        LOG(INFO) << "Connection failed, retrying...";
+        ::usleep(1 * 1000);
+      }
+    }
 
-    serverCollector.reset(
-        new Collector(std::static_pointer_cast<Connection>(serverClientConnection)));
+    serverCollector.reset(new Collector(
+        std::static_pointer_cast<Connection>(serverClientConnection)));
     clientCollector.reset(
         new Collector(std::static_pointer_cast<Connection>(clientConnection)));
   }
 
   void TearDown() override {
+    stopListening = true;
+    serverListenThread->join();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
 
-  shared_ptr<PipeSocketHandler> serverSocketHandler;
-  shared_ptr<PipeSocketHandler> clientSocketHandler;
+  void readWriteTest() {
+    string s(64 * 1024, '\0');
+    for (int a = 0; a < 64 * 1024 - 1; a++) {
+      s[a] = rand() % 26 + 'A';
+    }
+    s[64 * 1024 - 1] = 0;
+
+    for (int a = 0; a < 64; a++) {
+      VLOG(1) << "Writing packet " << a;
+      serverCollector->write(string((&s[0] + a * 1024), 1024));
+    }
+    serverCollector->write("DONE");
+
+    string resultConcat;
+    string result;
+    for (int a = 0; a < 64; a++) {
+      result = clientCollector->read();
+      resultConcat = resultConcat.append(result);
+    }
+    result = clientCollector->read();
+    EXPECT_EQ(result, "DONE");
+
+    serverCollector->finish();
+    serverConnection->close();
+
+    EXPECT_EQ(resultConcat, s);
+  }
+
+  shared_ptr<SocketHandler> serverSocketHandler;
+  shared_ptr<SocketHandler> clientSocketHandler;
   shared_ptr<ServerConnection> serverConnection;
   shared_ptr<ClientConnection> clientConnection;
   shared_ptr<Collector> serverCollector;
   shared_ptr<Collector> clientCollector;
+  shared_ptr<std::thread> serverListenThread;
   string pipeDirectory;
   string pipePath;
+  bool stopListening;
 };
 
-TEST_F(ConnectionTest, ReadWrite) {
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
-    s[a] = rand() % 26 + 'A';
+class ReliableConnectionTest : public ConnectionTest {
+ protected:
+  void SetUp() override {
+    srand(1);
+
+    serverSocketHandler.reset(new PipeSocketHandler());
+    clientSocketHandler.reset(new PipeSocketHandler());
+
+    ConnectionTest::SetUp();
   }
-  s[64 * 1024 - 1] = 0;
+};
 
-  for (int a = 0; a < 64; a++) {
-    VLOG(1) << "Writing packet " << a;
-    serverCollector->write(string((&s[0] + a * 1024), 1024));
+TEST_F(ReliableConnectionTest, ReadWrite) { readWriteTest(); }
+
+class FlakyConnectionTest : public ConnectionTest {
+ protected:
+  void SetUp() override {
+    srand(1);
+
+    shared_ptr<SocketHandler> serverReliableSocketHandler(
+        new PipeSocketHandler());
+    shared_ptr<SocketHandler> clientReliableSocketHandler(
+        new PipeSocketHandler());
+    serverSocketHandler.reset(
+        new FlakySocketHandler(serverReliableSocketHandler));
+    clientSocketHandler.reset(
+        new FlakySocketHandler(clientReliableSocketHandler));
+
+    ConnectionTest::SetUp();
   }
-  serverCollector->write("DONE");
+};
 
-  string resultConcat;
-  string result;
-  for (int a = 0; a < 64; a++) {
-    result = clientCollector->read();
-    resultConcat = resultConcat.append(result);
-  }
-  result = clientCollector->read();
-  EXPECT_EQ(result, "DONE");
-
-  serverCollector->finish();
-  serverConnection->close();
-
-  EXPECT_EQ(resultConcat, s);
-}
+TEST_F(FlakyConnectionTest, ReadWrite) { readWriteTest(); }

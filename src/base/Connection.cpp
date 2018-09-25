@@ -95,9 +95,7 @@ bool Connection::readMessage(string* buf) {
 }
 
 ssize_t Connection::write(const string& buf) {
-  VLOG(4) << "Before write get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  VLOG(4) << "After write get connectionMutex";
   if (socketFd == -1) {
     return 0;
   }
