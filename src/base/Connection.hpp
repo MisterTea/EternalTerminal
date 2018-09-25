@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_CONNECTION__
-#define __ETERNAL_TCP_CONNECTION__
+#ifndef __ET_CONNECTION__
+#define __ET_CONNECTION__
 
 #include "Headers.hpp"
 
@@ -71,4 +71,4 @@ class Connection {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_CONNECTION__
+#endif  // __ET_CONNECTION__

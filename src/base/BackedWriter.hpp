@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_BACKED_WRITER__
-#define __ETERNAL_TCP_BACKED_WRITER__
+#ifndef __ET_BACKED_WRITER__
+#define __ET_BACKED_WRITER__
 
 #include "Headers.hpp"
 
@@ -47,4 +47,4 @@ class BackedWriter {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_BACKED_WRITER__
+#endif  // __ET_BACKED_WRITER__

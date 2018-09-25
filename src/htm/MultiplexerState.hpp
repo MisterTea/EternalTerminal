@@ -4,6 +4,7 @@
 #include "Headers.hpp"
 
 #include "TerminalHandler.hpp"
+#include "SocketHandler.hpp"
 
 namespace et {
 const int UUID_LENGTH = 36;
@@ -15,7 +16,7 @@ class MultiplexerState {
   struct Tab;
 
  public:
-  MultiplexerState();
+  MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
   json toJson();
   void appendData(const string& uid, const string& data);
   void newTab(const string& tabId, const string& paneId);
@@ -27,6 +28,7 @@ class MultiplexerState {
   inline int numPanes() { return int(panes.size()); }
 
  protected:
+  shared_ptr<SocketHandler> socketHandler;
   map<string, shared_ptr<Tab>> tabs;
   map<string, shared_ptr<Pane>> panes;
   map<string, shared_ptr<Split>> splits;

@@ -1,12 +1,13 @@
 #include "ServerConnection.hpp"
 namespace et {
 ServerConnection::ServerConnection(
-    std::shared_ptr<SocketHandler> _socketHandler, int _port,
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint& _serverEndpoint,
     shared_ptr<ServerConnectionHandler> _serverHandler)
     : socketHandler(_socketHandler),
-      port(_port),
+      serverEndpoint(_serverEndpoint),
       serverHandler(_serverHandler) {
-  socketHandler->listen(port);
+  socketHandler->listen(serverEndpoint);
 }
 
 ServerConnection::~ServerConnection() {}
@@ -42,7 +43,7 @@ void ServerConnection::acceptNewConnection(int fd) {
 }
 
 void ServerConnection::close() {
-  socketHandler->stopListening(port);
+  socketHandler->stopListening(serverEndpoint);
   for (const auto& it : clientConnections) {
     it.second->closeSocket();
   }

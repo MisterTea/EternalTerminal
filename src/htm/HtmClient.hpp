@@ -8,7 +8,8 @@
 namespace et {
 class HtmClient : public IpcPairClient {
  public:
-  HtmClient();
+  HtmClient(shared_ptr<SocketHandler> _socketHandler,
+            const SocketEndpoint& endpoint);
   void run();
 };
 }  // namespace et

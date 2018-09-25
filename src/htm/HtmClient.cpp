@@ -7,7 +7,9 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
-HtmClient::HtmClient() : IpcPairClient(HtmServer::getPipeName()) {}
+HtmClient::HtmClient(shared_ptr<SocketHandler> _socketHandler,
+                     const SocketEndpoint& endpoint)
+    : IpcPairClient(_socketHandler, endpoint) {}
 
 void HtmClient::run() {
   const int BUF_SIZE = 1024;
@@ -34,12 +36,12 @@ void HtmClient::run() {
       if (rc == 0) {
         throw std::runtime_error("stdin has closed abruptly.");
       }
-      RawSocketUtils::writeAll(endpointFd, buf, rc);
+      socketHandler->writeAllOrThrow(endpointFd, buf, rc, false);
     }
 
     if (FD_ISSET(endpointFd, &rfd)) {
       VLOG(1) << endpointFd << " -> STDOUT";
-      int rc = ::read(endpointFd, buf, BUF_SIZE);
+      int rc = socketHandler->read(endpointFd, buf, BUF_SIZE);
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
       }

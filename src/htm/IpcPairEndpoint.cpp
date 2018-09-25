@@ -1,7 +1,9 @@
 #include "IpcPairEndpoint.hpp"
 
 namespace et {
-IpcPairEndpoint::IpcPairEndpoint(int _endpointFd) : endpointFd(_endpointFd) {}
+IpcPairEndpoint::IpcPairEndpoint(shared_ptr<SocketHandler> _socketHandler,
+                                 int _endpointFd)
+    : socketHandler(_socketHandler), endpointFd(_endpointFd) {}
 
 IpcPairEndpoint::~IpcPairEndpoint() {
   if (endpointFd >= 0) {

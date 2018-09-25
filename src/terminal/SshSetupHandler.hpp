@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_SSH_SETUP_HANDLER__
-#define __ETERNAL_TCP_SSH_SETUP_HANDLER__
+#ifndef __ET_SSH_SETUP_HANDLER__
+#define __ET_SSH_SETUP_HANDLER__
 
 #include "Headers.hpp"
 
@@ -10,4 +10,4 @@ class SshSetupHandler {
                          string jumphost, int jport, bool kill, int vlevel);
 };
 }  // namespace et
-#endif  // __ETERNAL_TCP_SSH_SETUP_HANDLER__
+#endif  // __ET_SSH_SETUP_HANDLER__
