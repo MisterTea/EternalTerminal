@@ -14,17 +14,22 @@ using namespace et;
 class Collector {
  public:
   Collector(shared_ptr<Connection> _connection)
-      : connection(_connection), done(false) {
-    collectorThread = std::thread(&Collector::run, this);
-  }
+      : connection(_connection), done(false) {}
 
   ~Collector() {
     done = true;
-    collectorThread.join();
+    collectorThread->join();
+  }
+
+  void start() {
+    collectorThread.reset(new std::thread(&Collector::run, this));
   }
 
   void run() {
     while (!done) {
+      if (connection.get() == NULL) {
+        LOG(FATAL) << "CONNECTION IS NULL";
+      }
       if (connection->hasData()) {
         lock_guard<std::mutex> guard(collectorMutex);
         string s;
@@ -74,7 +79,7 @@ class Collector {
  protected:
   shared_ptr<Connection> connection;
   deque<string> fifo;
-  std::thread collectorThread;
+  shared_ptr<std::thread> collectorThread;
   std::mutex collectorMutex;
   bool done;
 };
@@ -134,10 +139,16 @@ class ConnectionTest : public testing::Test {
       }
     }
 
+    while(serverClientConnection.get() == NULL) {
+      LOG(INFO) << "Waiting for server connection...";
+      ::usleep(1000 * 1000);
+    }
     serverCollector.reset(new Collector(
         std::static_pointer_cast<Connection>(serverClientConnection)));
+    serverCollector->start();
     clientCollector.reset(
         new Collector(std::static_pointer_cast<Connection>(clientConnection)));
+    clientCollector->start();
   }
 
   void TearDown() override {
@@ -204,7 +215,9 @@ TEST_F(ReliableConnectionTest, ReadWrite) { readWriteTest(); }
 class FlakyConnectionTest : public ConnectionTest {
  protected:
   void SetUp() override {
-    srand(1);
+    int seed = int(time(NULL));
+    srand(seed);
+    LOG(INFO) << "Running flaky test with seed: " << seed;
 
     shared_ptr<SocketHandler> serverReliableSocketHandler(
         new PipeSocketHandler());
