@@ -19,7 +19,7 @@ void ClientConnection::connect() {
     if (socketFd == -1) {
       throw std::runtime_error("Could not connect to host");
     }
-    VLOG(1) << "Sending null id";
+    VLOG(1) << "Sending id";
     et::ConnectRequest request;
     request.set_clientid(id);
     request.set_version(PROTOCOL_VERSION);

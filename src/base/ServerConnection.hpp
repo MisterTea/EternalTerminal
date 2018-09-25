@@ -44,7 +44,7 @@ class ServerConnection {
 
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
-  void acceptNewConnection(int fd);
+  bool acceptNewConnection(int fd);
 
   void close();
 
