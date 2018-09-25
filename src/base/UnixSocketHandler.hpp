@@ -17,7 +17,8 @@ class UnixSocketHandler : public SocketHandler {
 
  protected:
   void addToActiveSockets(int fd);
-  virtual void initSocket(int fd) = 0;
+  virtual void initSocket(int fd);
+  virtual void initServerSocket(int fd);
 
   set<int> activeSockets;
   recursive_mutex mutex;

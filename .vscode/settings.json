@@ -63,7 +63,8 @@
         "hashtable": "cpp",
         "queue": "cpp",
         "stack": "cpp",
-        "future": "cpp"
+        "future": "cpp",
+        "cfenv": "cpp"
     },
     "C_Cpp.clang_format_style": "Google",
     "C_Cpp.configurationWarnings": "Disabled"

@@ -2,7 +2,9 @@
 
 namespace et {
 ClientConnection::ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler, const SocketEndpoint& _remoteEndpoint, const string& _id, const string& _key)
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint& _remoteEndpoint, const string& _id,
+    const string& _key)
     : Connection(_socketHandler, _id, _key), remoteEndpoint(_remoteEndpoint) {}
 
 ClientConnection::~ClientConnection() {
@@ -27,7 +29,11 @@ void ClientConnection::connect() {
     VLOG(1) << "Receiving client id";
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
-    if (response.status() != NEW_CLIENT) {
+    if (response.status() != NEW_CLIENT &&
+        response.status() != RETURNING_CLIENT) {
+      // Note: the response can be returning client if the client died while
+      // performing the initial connection but the server thought the client
+      // survived.
       LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
                  << response.error();
       cout << "Error connecting to server: " << response.status() << ": "

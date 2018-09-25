@@ -8,6 +8,7 @@ DEFINE_int32(v, 0, "verbose level");
 
 int main(int argc, char **argv) {
   srand(1);
+  testing::InitGoogleTest(&argc, argv);
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
@@ -18,6 +19,5 @@ int main(int argc, char **argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
-  testing::InitGoogleTest(&argc, argv);
   return RUN_ALL_TESTS();
 }
