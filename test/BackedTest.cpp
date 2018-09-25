@@ -18,9 +18,7 @@ class BackedCollector {
     collectorThread = std::thread(&BackedCollector::run, this);
   }
 
-  ~BackedCollector() {
-      finish();
-  }
+  ~BackedCollector() { finish(); }
 
   void run() {
     while (!done) {
@@ -29,7 +27,7 @@ class BackedCollector {
         lock_guard<std::mutex> guard(collectorMutex);
         fifo.push_back(s);
       } else {
-          ::usleep(1000);
+        ::usleep(1000);
       }
     }
   }
