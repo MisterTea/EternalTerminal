@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_PROCESS_HELPER__
-#define __ETERNAL_TCP_PROCESS_HELPER__
+#ifndef __ET_PROCESS_HELPER__
+#define __ET_PROCESS_HELPER__
 
 #include "Headers.hpp"
 
@@ -8,4 +8,4 @@ class ProcessHelper {
   static void daemonize();
 };
 
-#endif  // __ETERNAL_TCP_PROCESS_HELPER__
+#endif  // __ET_PROCESS_HELPER__

@@ -2,7 +2,9 @@
 
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
-#include "RawSocketUtils.hpp"
+#include "PipeSocketHandler.hpp"
+
+using namespace et;
 
 int main(int argc, char **argv) {
   // Version string need to be set before GFLAGS parse arguments
@@ -17,12 +19,13 @@ int main(int argc, char **argv) {
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  et::LogHandler::SetupLogFile(&defaultConf, "/tmp/htmd.log", maxlogsize);
+  LogHandler::SetupLogFile(&defaultConf, "/tmp/htmd.log", maxlogsize);
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
-  et::HtmServer htm;
+  shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
+  HtmServer htm(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
   htm.run();
   LOG(INFO) << "Server is shutting down";
 

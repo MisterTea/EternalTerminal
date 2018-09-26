@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_LOG_HANDLER__
-#define __ETERNAL_TCP_LOG_HANDLER__
+#ifndef __ET_LOG_HANDLER__
+#define __ET_LOG_HANDLER__
 
 #include "Headers.hpp"
 
@@ -12,4 +12,4 @@ class LogHandler {
   static void rolloutHandler(const char *filename, std::size_t size);
 };
 }  // namespace et
-#endif  // __ETERNAL_TCP_LOG_HANDLER__
+#endif  // __ET_LOG_HANDLER__

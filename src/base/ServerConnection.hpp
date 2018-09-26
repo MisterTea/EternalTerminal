@@ -1,10 +1,11 @@
-#ifndef __ETERNAL_TCP_SERVER_CONNECTION__
-#define __ETERNAL_TCP_SERVER_CONNECTION__
+#ifndef __ET_SERVER_CONNECTION__
+#define __ET_SERVER_CONNECTION__
 
 #include "Headers.hpp"
 
 #include "ServerClientConnection.hpp"
 #include "SocketHandler.hpp"
+#include "SocketEndpoint.hpp"
 
 namespace et {
 class ServerConnectionHandler {
@@ -27,7 +28,7 @@ class TerminationRecordingThread {
 class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
-                            int port,
+                            const SocketEndpoint& _serverEndpoint,
                             shared_ptr<ServerConnectionHandler> serverHandler);
 
   ~ServerConnection();
@@ -68,7 +69,7 @@ class ServerConnection {
 
  protected:
   shared_ptr<SocketHandler> socketHandler;
-  int port;
+  SocketEndpoint serverEndpoint;
   shared_ptr<ServerConnectionHandler> serverHandler;
   bool stop;
   std::unordered_map<string, string> clientKeys;
@@ -80,4 +81,4 @@ class ServerConnection {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_SERVER_CONNECTION__
+#endif  // __ET_SERVER_CONNECTION__

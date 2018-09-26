@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_SYSTEM_UTILS__
-#define __ETERNAL_TCP_SYSTEM_UTILS__
+#ifndef __ET_SYSTEM_UTILS__
+#define __ET_SYSTEM_UTILS__
 
 #include "Headers.hpp"
 
@@ -9,4 +9,4 @@ namespace et {
 void rootToUser(passwd* pwd);
 }
 
-#endif  // __ETERNAL_TCP_SYSTEM_UTILS__
+#endif  // __ET_SYSTEM_UTILS__

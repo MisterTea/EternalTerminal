@@ -3,11 +3,13 @@
 #include "HtmHeaderCodes.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
-#include "RawSocketUtils.hpp"
 
 namespace et {
-HtmServer::HtmServer()
-    : IpcPairServer(HtmServer::getPipeName()), running(true) {}
+HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
+                     const SocketEndpoint &endpoint)
+    : IpcPairServer(_socketHandler, endpoint),
+      state(_socketHandler),
+      running(true) {}
 
 void HtmServer::run() {
   while (running) {
@@ -35,19 +37,19 @@ void HtmServer::run() {
       // on the same master descriptor (line 90).
       if (FD_ISSET(endpointFd, &rfd)) {
         LOG(ERROR) << "READING FROM STDIN";
-        RawSocketUtils::readAll(endpointFd, (char *)&header, 1);
+        socketHandler->readAll(endpointFd, (char *)&header, 1, false);
         LOG(ERROR) << "Got message header: " << int(header);
         int32_t length;
-        RawSocketUtils::readB64(endpointFd, (char *)&length, 4);
+        socketHandler->readB64(endpointFd, (char *)&length, 4);
         LOG(ERROR) << "READ LENGTH: " << length;
         switch (header) {
           case INSERT_KEYS: {
             string uid = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &uid[0], uid.length());
+            socketHandler->readAll(endpointFd, &uid[0], uid.length(), false);
             length -= uid.length();
             LOG(ERROR) << "READING FROM " << uid << ":" << length;
             string data;
-            RawSocketUtils::readB64EncodedLength(endpointFd, &data, length);
+            socketHandler->readB64EncodedLength(endpointFd, &data, length);
             LOG(ERROR) << "READ FROM " << uid << ":" << data << " " << length;
             state.appendData(uid, data);
             break;
@@ -55,7 +57,7 @@ void HtmServer::run() {
           case INSERT_DEBUG_KEYS: {
             LOG(ERROR) << "READING DEBUG: " << length;
             string data(length, '\0');
-            RawSocketUtils::readAll(endpointFd, &data[0], length);
+            socketHandler->readAll(endpointFd, &data[0], length, false);
             if (data[0] == 'x') {
               // x key pressed, exit
               running = false;
@@ -72,36 +74,41 @@ void HtmServer::run() {
           }
           case NEW_TAB: {
             string tabId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &tabId[0], tabId.length());
+            socketHandler->readAll(endpointFd, &tabId[0], tabId.length(),
+                                   false);
             string paneId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &paneId[0], paneId.length());
+            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
+                                   false);
             state.newTab(tabId, paneId);
             break;
           }
           case NEW_SPLIT: {
             string sourceId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &sourceId[0],
-                                    sourceId.length());
+            socketHandler->readAll(endpointFd, &sourceId[0], sourceId.length(),
+                                   false);
             string paneId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &paneId[0], paneId.length());
+            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
+                                   false);
             char vertical;
-            RawSocketUtils::readAll(endpointFd, &vertical, 1);
+            socketHandler->readAll(endpointFd, &vertical, 1, false);
             state.newSplit(sourceId, paneId, vertical == '1');
             break;
           }
           case RESIZE_PANE: {
             int32_t cols;
-            RawSocketUtils::readB64(endpointFd, (char *)&cols, 4);
+            socketHandler->readB64(endpointFd, (char *)&cols, 4);
             int32_t rows;
-            RawSocketUtils::readB64(endpointFd, (char *)&rows, 4);
+            socketHandler->readB64(endpointFd, (char *)&rows, 4);
             string paneId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &paneId[0], paneId.length());
+            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
+                                   false);
             state.resizePane(paneId, cols, rows);
             break;
           }
           case CLIENT_CLOSE_PANE: {
             string paneId = string(UUID_LENGTH, '0');
-            RawSocketUtils::readAll(endpointFd, &paneId[0], paneId.length());
+            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
+                                   false);
             LOG(INFO) << "CLOSING PANE: " << paneId;
             state.closePane(paneId);
             if (state.numPanes() == 0) {
@@ -129,9 +136,9 @@ void HtmServer::sendDebug(const string &msg) {
   LOG(INFO) << "SENDING DEBUG LOG: " << msg;
   unsigned char header = DEBUG_LOG;
   int32_t length = base64::Base64::EncodedLength(msg);
-  RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
-  RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
-  RawSocketUtils::writeB64(endpointFd, &msg[0], msg.length());
+  socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
+  socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+  socketHandler->writeB64(endpointFd, &msg[0], msg.length());
 }
 
 void HtmServer::recover() {
@@ -139,7 +146,7 @@ void HtmServer::recover() {
   char buf[] = {
       0x1b, 0x5b, '#', '#', '#', 'q',
   };
-  RawSocketUtils::writeAll(endpointFd, buf, sizeof(buf));
+  socketHandler->writeAllOrThrow(endpointFd, buf, sizeof(buf), false);
   fflush(stdout);
   // Sleep to make sure the client can process the escape code
   usleep(10 * 1000);
@@ -154,9 +161,10 @@ void HtmServer::recover() {
     string jsonString = state.toJson().dump();
     int32_t length = jsonString.length();
     VLOG(1) << "SENDING INIT: " << jsonString;
-    RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
-    RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
-    RawSocketUtils::writeAll(endpointFd, &jsonString[0], jsonString.length());
+    socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
+    socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
+                                   jsonString.length(), false);
   }
 
   state.sendTerminalBuffers(endpointFd);

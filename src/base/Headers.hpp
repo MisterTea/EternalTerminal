@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_HEADERS__
-#define __ETERNAL_TCP_HEADERS__
+#ifndef __ET_HEADERS__
+#define __ET_HEADERS__
 
 #if __FreeBSD__
 #define _WITH_GETLINE

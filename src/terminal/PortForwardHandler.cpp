@@ -46,10 +46,10 @@ PortForwardSourceResponse PortForwardHandler::createSource(
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   // Try ipv6 first
-  int fd = socketHandler->connect("::1", pfdr.port());
+  int fd = socketHandler->connect(SocketEndpoint("::1", pfdr.port()));
   if (fd == -1) {
     // Try ipv4 next
-    fd = socketHandler->connect("127.0.0.1", pfdr.port());
+    fd = socketHandler->connect(SocketEndpoint("127.0.0.1", pfdr.port()));
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());

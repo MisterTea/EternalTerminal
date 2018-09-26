@@ -3,19 +3,21 @@
 
 #include "Headers.hpp"
 
+#include "SocketHandler.hpp"
+
 namespace et {
 class IpcPairEndpoint {
  public:
-  IpcPairEndpoint(int _endpointFd);
+  IpcPairEndpoint(shared_ptr<SocketHandler> _socketHandler, int _endpointFd);
   virtual ~IpcPairEndpoint();
   inline int getEndpointFd() { return endpointFd; }
   virtual void closeEndpoint() {
-    ::shutdown(endpointFd, SHUT_RDWR);
-    ::close(endpointFd);
+    socketHandler->close(endpointFd);
     endpointFd = -1;
   }
 
  protected:
+  shared_ptr<SocketHandler> socketHandler;
   int endpointFd;
 };
 }  // namespace et

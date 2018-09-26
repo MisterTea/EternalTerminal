@@ -1,3 +1,7 @@
+# Build artifacts
+deps
+out
+
 # Code Coverage
 code-coverage.info
 code_coverage_report

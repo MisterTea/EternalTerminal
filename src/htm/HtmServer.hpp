@@ -9,11 +9,12 @@
 namespace et {
 class HtmServer : public IpcPairServer {
  public:
-  HtmServer();
+  HtmServer(shared_ptr<SocketHandler> _socketHandler,
+            const SocketEndpoint& endpoint);
   void run();
   static string getPipeName();
   virtual void recover();
-  void sendDebug(const string &msg);
+  void sendDebug(const string& msg);
 
  protected:
   MultiplexerState state;

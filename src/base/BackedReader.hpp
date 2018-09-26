@@ -1,5 +1,5 @@
-#ifndef __ETERNAL_TCP_BACKED_READER__
-#define __ETERNAL_TCP_BACKED_READER__
+#ifndef __ET_BACKED_READER__
+#define __ET_BACKED_READER__
 
 #include "Headers.hpp"
 
@@ -40,4 +40,4 @@ class BackedReader {
 };
 }  // namespace et
 
-#endif  // __ETERNAL_TCP_BACKED_READER__
+#endif  // __ET_BACKED_READER__

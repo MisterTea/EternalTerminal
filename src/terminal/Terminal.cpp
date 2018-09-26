@@ -1,14 +1,12 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
-#include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
-#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
-#include "UnixSocketHandler.hpp"
+#include "TcpSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
@@ -87,21 +85,14 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
   string std_file =
       string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
-#if __NetBSD__
   FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
   setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#else
-  stdout = fopen(std_file.c_str(), "w+");
-  setvbuf(stdout, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  stderr = fopen(std_file.c_str(), "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#endif
 }
 
-void startUserTerminal(string idpasskey) {
-  UserTerminalHandler uth;
+void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler, string idpasskey) {
+  UserTerminalHandler uth(ipcSocketHandler);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (::daemon(0, 0) == -1) {
@@ -111,7 +102,7 @@ void startUserTerminal(string idpasskey) {
   uth.run();
 }
 
-void startJumpHostClient(string idpasskey) {
+void startJumpHostClient(shared_ptr<SocketHandler> socketHandler, string idpasskey) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
@@ -124,15 +115,11 @@ void startJumpHostClient(string idpasskey) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
   setDaemonLogFile(idpasskey, "jumphost");
-  sockaddr_un remote;
 
-  int routerFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-  FATAL_FAIL(routerFd);
-  remote.sun_family = AF_UNIX;
-  strcpy(remote.sun_path, ROUTER_FIFO_NAME);
+  SocketEndpoint endpoint(ROUTER_FIFO_NAME);
+  int routerFd = socketHandler->connect(endpoint);
 
-  if (connect(routerFd, (struct sockaddr *)&remote, sizeof(sockaddr_un)) < 0) {
-    close(routerFd);
+  if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
       cout << "Error:  The Eternal Terminal daemon is not running.  Please "
               "(re)start the et daemon on the server."
@@ -145,16 +132,17 @@ void startJumpHostClient(string idpasskey) {
   }
 
   try {
-    RawSocketUtils::writeMessage(routerFd, idpasskey);
+    socketHandler->writeMessage(routerFd, idpasskey);
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
   }
 
   InitialPayload payload;
 
-  shared_ptr<SocketHandler> jumpclientSocket(new UnixSocketHandler());
-  shared_ptr<ClientConnection> jumpclient = shared_ptr<ClientConnection>(
-      new ClientConnection(jumpclientSocket, host, port, id, passkey));
+  shared_ptr<SocketHandler> jumpclientSocket(new TcpSocketHandler());
+  shared_ptr<ClientConnection> jumpclient =
+      shared_ptr<ClientConnection>(new ClientConnection(
+          jumpclientSocket, SocketEndpoint(host, port), id, passkey));
 
   int connectFailCount = 0;
   while (true) {
@@ -217,7 +205,7 @@ void startJumpHostClient(string idpasskey) {
           sleep(3);
           continue;
         } else {
-          string s = RawSocketUtils::readMessage(routerFd);
+          string s = socketHandler->readMessage(routerFd);
           jumpclient->writeMessage(s);
           VLOG(3) << "Sent message from router to dst terminal: " << s.length();
         }
@@ -228,7 +216,7 @@ void startJumpHostClient(string idpasskey) {
         if (jumpclient->hasData()) {
           string receivedMessage;
           jumpclient->readMessage(&receivedMessage);
-          RawSocketUtils::writeMessage(routerFd, receivedMessage);
+          socketHandler->writeMessage(routerFd, receivedMessage);
           VLOG(3) << "Send message from dst terminal to router: "
                   << receivedMessage.length();
         }
@@ -304,6 +292,8 @@ int main(int argc, char **argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
+  shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
+
   if (FLAGS_jump) {
     string idpasskey = getIdpasskey();
     string id = split(idpasskey, '/')[0];
@@ -319,7 +309,7 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startJumpHostClient(idpasskey);
+    startJumpHostClient(ipcSocketHandler, idpasskey);
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();
@@ -341,7 +331,7 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startUserTerminal(idpasskey);
+    startUserTerminal(ipcSocketHandler, idpasskey);
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();

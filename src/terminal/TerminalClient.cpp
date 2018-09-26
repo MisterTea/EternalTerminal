@@ -1,6 +1,5 @@
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
-#include "FlakyFakeSocketHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
@@ -9,7 +8,7 @@
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
-#include "UnixSocketHandler.hpp"
+#include "TcpSocketHandler.hpp"
 
 #include <errno.h>
 #include <pwd.h>
@@ -74,9 +73,10 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
     payload.set_jumphost(true);
   }
 
-  shared_ptr<SocketHandler> clientSocket(new UnixSocketHandler());
-  shared_ptr<ClientConnection> client = shared_ptr<ClientConnection>(
-      new ClientConnection(clientSocket, FLAGS_host, FLAGS_port, id, passkey));
+  shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
+  shared_ptr<ClientConnection> client =
+      shared_ptr<ClientConnection>(new ClientConnection(
+          clientSocket, SocketEndpoint(FLAGS_host, FLAGS_port), id, passkey));
 
   int connectFailCount = 0;
   while (true) {
@@ -306,22 +306,16 @@ int main(int argc, char** argv) {
   string current_time(buffer);
   const char* err_filename = ("/tmp/etclient_err_" + current_time).c_str();
 
-#if __NetBSD__
   FILE* stderr_stream = freopen(err_filename, "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#else
-  // redirect stderr to file
-  stderr = fopen(err_filename, "w+");
-  setvbuf(stderr, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-#endif
 
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;
     FLAGS_port = FLAGS_jport;
   }
   globalClient = createClient(idpasskeypair);
-  shared_ptr<UnixSocketHandler> socketHandler =
-      static_pointer_cast<UnixSocketHandler>(globalClient->getSocketHandler());
+  shared_ptr<TcpSocketHandler> socketHandler =
+      static_pointer_cast<TcpSocketHandler>(globalClient->getSocketHandler());
 
   PortForwardHandler portForwardHandler(socketHandler);
 

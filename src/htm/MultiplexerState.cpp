@@ -1,7 +1,6 @@
 #include "MultiplexerState.hpp"
 
 #include "HtmHeaderCodes.hpp"
-#include "RawSocketUtils.hpp"
 
 namespace et {
 struct MultiplexerState::Pane {
@@ -45,7 +44,8 @@ struct MultiplexerState::Tab {
     return tab;
   }
 };
-MultiplexerState::MultiplexerState() {
+MultiplexerState::MultiplexerState(shared_ptr<SocketHandler> _socketHandler)
+    : socketHandler(_socketHandler) {
   shared_ptr<Tab> t(new Tab());
   t->id = sole::uuid4().str();
   tabs.insert(make_pair(t->id, t));
@@ -279,11 +279,13 @@ void MultiplexerState::update(int endpointFd) {
       int32_t length =
           base64::Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
-      RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
-      RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
-      RawSocketUtils::writeAll(endpointFd, &(paneId[0]), paneId.length());
-      RawSocketUtils::writeB64(endpointFd, &terminalData[0],
-                               terminalData.length());
+      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+                                     false);
+      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
+                                     false);
+      socketHandler->writeB64(endpointFd, &terminalData[0],
+                              terminalData.length());
       VLOG(1) << "WROTE TO " << paneId << ":" << length;
       fflush(stdout);
     }
@@ -293,9 +295,11 @@ void MultiplexerState::update(int endpointFd) {
       header = SERVER_CLOSE_PANE;
       int32_t length = paneId.length();
       VLOG(1) << "CLOSING " << paneId << ":" << length;
-      RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
-      RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
-      RawSocketUtils::writeAll(endpointFd, &(paneId[0]), paneId.length());
+      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+                                     false);
+      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
+                                     false);
       // Break to avoid erase + iterate of panes
       break;
     }
@@ -325,11 +329,13 @@ void MultiplexerState::sendTerminalBuffers(int endpointFd) {
       int32_t length =
           base64::Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
-      RawSocketUtils::writeAll(endpointFd, (const char *)&header, 1);
-      RawSocketUtils::writeB64(endpointFd, (const char *)&length, 4);
-      RawSocketUtils::writeAll(endpointFd, &(paneId[0]), paneId.length());
-      RawSocketUtils::writeB64(endpointFd, &terminalData[0],
-                               terminalData.length());
+      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+                                     false);
+      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
+                                     false);
+      socketHandler->writeB64(endpointFd, &terminalData[0],
+                              terminalData.length());
       VLOG(1) << "WROTE TO " << paneId << ":" << terminalData.length();
     }
   }

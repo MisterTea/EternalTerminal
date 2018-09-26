@@ -8,7 +8,8 @@
 namespace et {
 class IpcPairServer : public IpcPairEndpoint {
  public:
-  IpcPairServer(const string& _pipeName);
+  IpcPairServer(shared_ptr<SocketHandler> _socketHandler,
+                const SocketEndpoint &_endpoint);
   virtual ~IpcPairServer();
   virtual void pollAccept();
   inline int getServerFd() { return serverFd; }
@@ -16,9 +17,8 @@ class IpcPairServer : public IpcPairEndpoint {
   virtual void recover() = 0;
 
  protected:
-  void listen();
   int serverFd;
-  string pipeName;
+  SocketEndpoint endpoint;
 };
 }  // namespace et
 
