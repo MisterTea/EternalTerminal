@@ -54,6 +54,7 @@ void ClientConnection::connect() {
                          socketFd));
     VLOG(1) << "Client Connection established";
   } catch (const runtime_error& err) {
+    LOG(INFO) << "Got failure during connect";
     if (socketFd != -1) {
       socketHandler->close(socketFd);
     }
@@ -81,17 +82,12 @@ void ClientConnection::waitReconnect() {
   }
 }
 
-ssize_t ClientConnection::read(string* buf) { return Connection::read(buf); }
-ssize_t ClientConnection::write(const string& buf) {
-  return Connection::write(buf);
-}
-
 void ClientConnection::pollReconnect() {
+  LOG(INFO) << "Trying to reconnect to " << remoteEndpoint << endl;
   while (socketFd == -1) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
-      LOG_EVERY_N(10, INFO)
-          << "Trying to reconnect to " << remoteEndpoint << endl;
+      LOG_EVERY_N(10, INFO) << "In reconnect loop " << remoteEndpoint << endl;
       int newSocketFd = socketHandler->connect(remoteEndpoint);
       if (newSocketFd != -1) {
         try {
@@ -120,6 +116,7 @@ void ClientConnection::pollReconnect() {
             recover(newSocketFd);
           }
         } catch (const std::runtime_error& re) {
+          LOG(INFO) << "Got failure during reconnect";
           socketHandler->close(newSocketFd);
         }
       }

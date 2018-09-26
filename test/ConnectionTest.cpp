@@ -26,6 +26,7 @@ class Collector {
   }
 
   void run() {
+    auto lastSecond = time(NULL);
     while (!done) {
       if (connection.get() == NULL) {
         LOG(FATAL) << "CONNECTION IS NULL";
@@ -35,15 +36,21 @@ class Collector {
         string s;
         int status = connection->readMessage(&s);
         if (status == 1) {
-          fifo.push_back(s);
           if (s == string("DONE")) {
             break;
+          }
+          if (s != string("HEARTBEAT")) {
+            fifo.push_back(s);
           }
         } else if (status < 0) {
           FATAL_FAIL(status);
         }
       }
       ::usleep(1000);
+      if (lastSecond <= time(NULL) - 5) {
+        lastSecond = time(NULL);
+        connection->writeMessage("HEARTBEAT");
+      }
     }
   }
 
@@ -89,7 +96,9 @@ void listenFn(bool* stopListening, int serverFd,
   // Only works when there is 1:1 mapping between endpoint and fds.  Will fix in
   // future api
   while (*stopListening == false) {
-    serverConnection->acceptNewConnection(serverFd);
+    if (serverConnection->getSocketHandler()->hasData(serverFd)) {
+      serverConnection->acceptNewConnection(serverFd);
+    }
     ::usleep(1000 * 1000);
   }
 }
@@ -139,7 +148,7 @@ class ConnectionTest : public testing::Test {
       }
     }
 
-    while(serverClientConnection.get() == NULL) {
+    while (serverClientConnection.get() == NULL) {
       LOG(INFO) << "Waiting for server connection...";
       ::usleep(1000 * 1000);
     }

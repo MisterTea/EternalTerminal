@@ -149,13 +149,14 @@ void Connection::closeSocket() {
   // error but it would be better to avoid it.
   reader->invalidateSocket();
   writer->invalidateSocket();
-  socketHandler->close(socketFd);
+  int fd = socketFd;
   socketFd = -1;
+  socketHandler->close(fd);
   VLOG(1) << "Closed socket";
 }
 
 bool Connection::recover(int newSocketFd) {
-  LOG(INFO) << "Recovering...";
+  LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
   try {
     {
       // Write the current sequence number
@@ -188,7 +189,7 @@ bool Connection::recover(int newSocketFd) {
     reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);
     writer->unlock();
-    LOG(INFO) << "Finished recovering";
+    LOG(INFO) << "Finished recovering with socket fd: " << socketFd;
     return true;
   } catch (const runtime_error& err) {
     LOG(ERROR) << "Error recovering: " << err.what();
