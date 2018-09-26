@@ -28,7 +28,7 @@ string genCommand(string passkey, string id, string clientTerm, string user,
   string SSH_SCRIPT_PREFIX;
 
   // Kill old ET sessions of the user
-  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm + "\n\" | etterminal -idpasskeystdin";
+  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm + "\n\" | etterminal";
   if (kill && user != "root") {
     SSH_SCRIPT_PREFIX =
         "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;

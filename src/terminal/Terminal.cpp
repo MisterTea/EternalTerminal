@@ -54,9 +54,6 @@ DEFINE_string(idpasskey, "",
 DEFINE_string(idpasskeyfile, "",
               "If set, uses IPC to send a client id/key to the server daemon "
               "from a file");
-DEFINE_bool(idpasskeystdin, false,
-              "If set, uses IPC to send a client id/key to the server daemon "
-              "from stdin");
 DEFINE_bool(jump, false,
             "If set, forward all packets between client and dst terminal");
 DEFINE_string(dsthost, "", "Must be set if jump is set to true");
@@ -91,7 +88,8 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 }
 
-void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler, string idpasskey) {
+void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
+                       string idpasskey) {
   UserTerminalHandler uth(ipcSocketHandler);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
@@ -102,7 +100,8 @@ void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler, string idpass
   uth.run();
 }
 
-void startJumpHostClient(shared_ptr<SocketHandler> socketHandler, string idpasskey) {
+void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
+                         string idpasskey) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
@@ -251,14 +250,6 @@ int main(int argc, char **argv) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   }
 
-  if (FLAGS_idpasskeystdin) {
-    string stdinData;
-    getline(cin, stdinData);
-    auto tokens = split(stdinData, '_');
-    FLAGS_idpasskey = tokens[0];
-    FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
-  }
-
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
 
@@ -294,10 +285,40 @@ int main(int argc, char **argv) {
 
   shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
 
+  if (FLAGS_idpasskey.length() == 0 && FLAGS_idpasskeyfile.length() == 0) {
+    // Try to read from stdin
+    struct timeval timeout;
+    timeout.tv_sec = 1;
+    timeout.tv_usec = 0;
+    fd_set readfds;
+    FD_ZERO(&readfds);
+
+    FD_SET(STDIN_FILENO, &readfds);
+
+    int res = select(1, &readfds, NULL, NULL, &timeout);
+    if (res < 0) {
+      FATAL_FAIL(res);
+    }
+    if (res == 0) {
+      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed this information on stdin\n";
+      exit(1);
+    }
+
+    string stdinData;
+    if(!getline(cin, stdinData)) {
+      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed this information on stdin\n";
+      exit(1);
+    }
+    auto tokens = split(stdinData, '_');
+    FLAGS_idpasskey = tokens[0];
+    FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
+
+  }
+
+  string idpasskey = getIdpasskey();
+  string id = split(idpasskey, '/')[0];
+  string username = string(ssh_get_local_username());
   if (FLAGS_jump) {
-    string idpasskey = getIdpasskey();
-    string id = split(idpasskey, '/')[0];
-    string username = string(ssh_get_local_username());
     // etserver with --jump cannot write to the default log file(root)
     LogHandler::SetupLogFile(&defaultConf,
                              "/tmp/etjump-" + username + "-" + id + ".log",
@@ -316,28 +337,20 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-  if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
-    string idpasskey = getIdpasskey();
-    string id = split(idpasskey, '/')[0];
-    string username = string(ssh_get_local_username());
-    // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::SetupLogFile(&defaultConf,
-                             "/tmp/etterminal-" + username + "-" + id + ".log",
-                             maxlogsize);
-    // Reconfigure default logger to apply settings above
-    el::Loggers::reconfigureLogger("default", defaultConf);
-    // set thread name
-    el::Helpers::setThreadName("terminal-main");
-    // Install log rotation callback
-    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+  // etserver with --idpasskey cannot write to the default log file(root)
+  LogHandler::SetupLogFile(&defaultConf,
+                           "/tmp/etterminal-" + username + "-" + id + ".log",
+                           maxlogsize);
+  // Reconfigure default logger to apply settings above
+  el::Loggers::reconfigureLogger("default", defaultConf);
+  // set thread name
+  el::Helpers::setThreadName("terminal-main");
+  // Install log rotation callback
+  el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startUserTerminal(ipcSocketHandler, idpasskey);
+  startUserTerminal(ipcSocketHandler, idpasskey);
 
-    // Uninstall log rotation callback
-    el::Helpers::uninstallPreRollOutCallback();
-    return 0;
-  }
-
-  cout << "Call etterminal with --idpasskey, --idpasskeyfile, or --jump\n";
-  exit(1);
+  // Uninstall log rotation callback
+  el::Helpers::uninstallPreRollOutCallback();
+  return 0;
 }
