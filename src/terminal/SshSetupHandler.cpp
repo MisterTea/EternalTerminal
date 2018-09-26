@@ -23,30 +23,16 @@ string genRandom(int len) {
   return s;
 }
 
-string genCommand(string passkey, string id, string CLIENT_TERM, string user,
+string genCommand(string passkey, string id, string clientTerm, string user,
                   bool kill, string options) {
-  string SSH_SCRIPT_PREFIX{
-      "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
-      "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
-      "PASSKEY=" +
-      passkey +
-      ";"
-      "ID=" +
-      id +
-      ";"
-      "printf \"%s/%s\\n\" \"$ID\" \"$PASSKEY\" > \"${TMPFILE}\";"
-      "export TERM=" +
-      CLIENT_TERM + ";"};
+  string SSH_SCRIPT_PREFIX;
 
   // Kill old ET sessions of the user
+  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm + "\n\" | etterminal -idpasskeystdin";
   if (kill && user != "root") {
     SSH_SCRIPT_PREFIX =
-        "if [ -x \"$(command -v etterminal)\" ]; then pkill etterminal -u " +
-        user + "; else pkill etserver -u " + user + "; fi;" + SSH_SCRIPT_PREFIX;
+        "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;
   }
-
-  string COMMAND{"if [ -x \"$(command -v etterminal)\" ]; then etterminal " +
-                 options + "; else etserver " + options + ";fi;true"};
 
   return SSH_SCRIPT_PREFIX + COMMAND;
 }
@@ -54,14 +40,14 @@ string genCommand(string passkey, string id, string CLIENT_TERM, string user,
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
                                  bool kill, int vlevel) {
-  string CLIENT_TERM(getenv("TERM"));
+  string clientTerm(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
   string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" +
                     std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
-      genCommand(passkey, id, CLIENT_TERM, user, kill, cmdoptions);
+      genCommand(passkey, id, clientTerm, user, kill, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -103,13 +89,18 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     try {
       if (nbytes <= 0) {
         // Ssh failed
-        cout << "Error starting ET process through ssh, please make sure your ssh works first" << endl;
+        cout << "Error starting ET process through ssh, please make sure your "
+                "ssh works first"
+             << endl;
         exit(1);
       }
       if (split(string(buf_client), ':').size() != 2 ||
           split(string(buf_client), ':')[0] != "IDPASSKEY") {
         // Returned value not start with "IDPASSKEY:"
-        cout << "Error in authentication with etserver: " << buf_client << ", please make sure you don't print anything in server's .bashrc/.zshrc" << endl;
+        cout << "Error in authentication with etserver: " << buf_client
+             << ", please make sure you don't print anything in server's "
+                ".bashrc/.zshrc"
+             << endl;
         exit(1);
       }
       auto idpasskey = split(string(buf_client), ':')[1];
@@ -148,7 +139,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
         string SSH_SCRIPT_JUMP =
-            genCommand(passkey, id, CLIENT_TERM, user, kill, jump_cmdoptions);
+            genCommand(passkey, id, clientTerm, user, kill, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
@@ -172,8 +163,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
             LOG(INFO) << "jump client started.";
           } else {
             LOG(FATAL) << "client/server idpasskey doesn't match: " << id
-                   << " != " << returned_id << " or " << passkey
-                   << " != " << returned_passkey;
+                       << " != " << returned_id << " or " << passkey
+                       << " != " << returned_passkey;
           }
         } catch (const runtime_error &err) {
           cout << "Error initializing connection" << err.what() << endl;

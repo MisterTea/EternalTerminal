@@ -56,6 +56,9 @@ DEFINE_string(idpasskey, "",
 DEFINE_string(idpasskeyfile, "",
               "If set, uses IPC to send a client id/key to the server daemon "
               "from a file");
+DEFINE_bool(idpasskeystdin, false,
+              "If set, uses IPC to send a client id/key to the server daemon "
+              "from stdin");
 DEFINE_bool(jump, false,
             "If set, forward all packets between client and dst terminal");
 DEFINE_string(dsthost, "", "Must be set if jump is set to true");
@@ -258,6 +261,14 @@ int main(int argc, char **argv) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  }
+
+  if (FLAGS_idpasskeystdin) {
+    string stdinData;
+    getline(cin, stdinData);
+    auto tokens = split(stdinData, '_');
+    FLAGS_idpasskey = tokens[0];
+    FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
   }
 
   // default max log file size is 20MB for etserver
