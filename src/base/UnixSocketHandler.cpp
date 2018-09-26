@@ -77,15 +77,23 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
   activeSockets.insert(fd);
 }
 
-int UnixSocketHandler::accept(int sockfd) {
+int UnixSocketHandler::accept(int sockFd) {
   lock_guard<std::recursive_mutex> guard(mutex);
-  VLOG(3) << "Got mutex when sockethandler accept " << sockfd;
+  VLOG(3) << "Got mutex when sockethandler accept " << sockFd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
-  int client_sock = ::accept(sockfd, (sockaddr *)&client, &c);
-  VLOG(3) << "Socket " << sockfd << " accepted, returned client_sock: "
-          << client_sock;
+  int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
+  VLOG(3) << "Socket " << sockFd
+          << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
+    // Make sure that socket becomes blocking once it's attached to a client.
+    {
+      int opts;
+      opts = fcntl(client_sock, F_GETFL, 0);
+      FATAL_FAIL(opts);
+      opts &= (~O_NONBLOCK);
+      FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
+    }
     initSocket(client_sock);
     addToActiveSockets(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
@@ -126,4 +134,35 @@ void UnixSocketHandler::close(int fd) {
   FATAL_FAIL(::close(fd));
 }
 
+void UnixSocketHandler::initSocket(int fd) {
+  struct timeval tv;
+  tv.tv_sec = 5;
+  tv.tv_usec = 0;
+  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval)));
+  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(struct timeval)));
+#ifndef MSG_NOSIGNAL
+  // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
+  int val = 1;
+  FATAL_FAIL_UNLESS_EINVAL(
+      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+#endif
+}
+
+void UnixSocketHandler::initServerSocket(int fd) {
+  initSocket(fd);
+  // Also set the accept socket as non-blocking
+  {
+    int opts;
+    opts = fcntl(fd, F_GETFL);
+    FATAL_FAIL_UNLESS_EINVAL(opts);
+    opts |= O_NONBLOCK;
+    FATAL_FAIL_UNLESS_EINVAL(fcntl(fd, F_SETFL, opts));
+  }
+  // Also set the accept socket as reusable
+  {
+    int flag = 1;
+    FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
+                          sizeof(int)));
+  }
+}
 }  // namespace et

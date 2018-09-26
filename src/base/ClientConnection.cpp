@@ -2,7 +2,9 @@
 
 namespace et {
 ClientConnection::ClientConnection(
-    std::shared_ptr<SocketHandler> _socketHandler, const SocketEndpoint& _remoteEndpoint, const string& _id, const string& _key)
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint& _remoteEndpoint, const string& _id,
+    const string& _key)
     : Connection(_socketHandler, _id, _key), remoteEndpoint(_remoteEndpoint) {}
 
 ClientConnection::~ClientConnection() {
@@ -19,7 +21,7 @@ void ClientConnection::connect() {
     if (socketFd == -1) {
       throw std::runtime_error("Could not connect to host");
     }
-    VLOG(1) << "Sending null id";
+    VLOG(1) << "Sending id";
     et::ConnectRequest request;
     request.set_clientid(id);
     request.set_version(PROTOCOL_VERSION);
@@ -27,7 +29,11 @@ void ClientConnection::connect() {
     VLOG(1) << "Receiving client id";
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
-    if (response.status() != NEW_CLIENT) {
+    if (response.status() != NEW_CLIENT &&
+        response.status() != RETURNING_CLIENT) {
+      // Note: the response can be returning client if the client died while
+      // performing the initial connection but the server thought the client
+      // survived.
       LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
                  << response.error();
       cout << "Error connecting to server: " << response.status() << ": "
@@ -48,6 +54,7 @@ void ClientConnection::connect() {
                          socketFd));
     VLOG(1) << "Client Connection established";
   } catch (const runtime_error& err) {
+    LOG(INFO) << "Got failure during connect";
     if (socketFd != -1) {
       socketHandler->close(socketFd);
     }
@@ -75,17 +82,12 @@ void ClientConnection::waitReconnect() {
   }
 }
 
-ssize_t ClientConnection::read(string* buf) { return Connection::read(buf); }
-ssize_t ClientConnection::write(const string& buf) {
-  return Connection::write(buf);
-}
-
 void ClientConnection::pollReconnect() {
+  LOG(INFO) << "Trying to reconnect to " << remoteEndpoint << endl;
   while (socketFd == -1) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
-      LOG_EVERY_N(10, INFO)
-          << "Trying to reconnect to " << remoteEndpoint << endl;
+      LOG_EVERY_N(10, INFO) << "In reconnect loop " << remoteEndpoint << endl;
       int newSocketFd = socketHandler->connect(remoteEndpoint);
       if (newSocketFd != -1) {
         try {
@@ -114,6 +116,7 @@ void ClientConnection::pollReconnect() {
             recover(newSocketFd);
           }
         } catch (const std::runtime_error& re) {
+          LOG(INFO) << "Got failure during reconnect";
           socketHandler->close(newSocketFd);
         }
       }

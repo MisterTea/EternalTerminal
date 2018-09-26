@@ -22,12 +22,16 @@ target_link_libraries(
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
   gtest
   gtest_main
   gmock
   gmock_main
-  ${GFLAGS_LIBRARIES}
-  ${sodium_LIBRARY_RELEASE}
   resolv
   util
   )

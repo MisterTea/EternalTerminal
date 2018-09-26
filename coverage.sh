@@ -8,3 +8,6 @@ lcov --directory ./build --capture --output-file ./code-coverage.info -rc lcov_b
 genhtml code-coverage.info --branch-coverage --output-directory ./code_coverage_report/
 echo "Report generated in code_coverage_report"
 open code_coverage_report/index.html
+pushd ./build
+cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=OFF
+popd

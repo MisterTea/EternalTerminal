@@ -24,8 +24,6 @@ class ClientConnection : public Connection {
   void waitReconnect();
 
  protected:
-  virtual ssize_t read(string* buf);
-  virtual ssize_t write(const string& buf);
   void pollReconnect();
 
   SocketEndpoint remoteEndpoint;
