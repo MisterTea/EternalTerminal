@@ -17,22 +17,88 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   string pipePath = endpoint.getName();
   sockaddr_un remote;
 
-  int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
-  FATAL_FAIL(fd);
-  initSocket(fd);
+  int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  FATAL_FAIL(sockFd);
+  initSocket(sockFd);
   remote.sun_family = AF_UNIX;
   strcpy(remote.sun_path, pipePath.c_str());
 
-  VLOG(3) << "Connecting to " << endpoint << " with fd " << fd;
-  int result = ::connect(fd, (struct sockaddr *)&remote, sizeof(sockaddr_un));
-  VLOG(3) << "Connection result: " << result;
-  if (result < 0) {
-    ::close(fd);
-    fd = -1;
-  } else {
-    addToActiveSockets(fd);
+  // Set nonblocking just for the connect phase
+  {
+    int opts;
+    opts = fcntl(sockFd, F_GETFL);
+    FATAL_FAIL(opts);
+    opts |= O_NONBLOCK;
+    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
+    // Set linger
+    struct linger so_linger;
+    so_linger.l_onoff = 1;
+    so_linger.l_linger = 5;
+    int z =
+        setsockopt(sockFd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+    if (z) {
+      LOG(FATAL) << "set socket linger failed";
+    }
   }
-  return fd;
+
+  VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
+  int result =
+      ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
+  if (result < 0 && errno != EINPROGRESS) {
+    VLOG(3) << "Connection result: " << result << " (" << strerror(errno)
+            << ")";
+    ::shutdown(sockFd, SHUT_RDWR);
+    ::close(sockFd);
+    sockFd = -1;
+    return sockFd;
+  }
+
+  fd_set fdset;
+  FD_ZERO(&fdset);
+  FD_SET(sockFd, &fdset);
+  timeval tv;
+  tv.tv_sec = 3; /* 3 second timeout */
+  tv.tv_usec = 0;
+  VLOG(4) << "Before selecting sockFd";
+  select(sockFd + 1, NULL, &fdset, NULL, &tv);
+
+  if (FD_ISSET(sockFd, &fdset)) {
+    VLOG(4) << "sockFd " << sockFd << " is selected";
+    int so_error;
+    socklen_t len = sizeof so_error;
+
+    FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, &so_error, &len));
+
+    if (so_error == 0) {
+      LOG(INFO) << "Connected to endpoint " << endpoint;
+      // Make sure that socket becomes blocking once it's attached to a
+      // server.
+      {
+        int opts;
+        opts = fcntl(sockFd, F_GETFL);
+        FATAL_FAIL(opts);
+        opts &= (~O_NONBLOCK);
+        FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
+      }
+      // if we get here, we must have connected successfully
+    } else {
+      LOG(INFO) << "Error connecting to " << endpoint << ": " << so_error << " "
+                << strerror(so_error);
+      ::close(sockFd);
+      sockFd = -1;
+    }
+  } else {
+    LOG(INFO) << "Error connecting to " << endpoint << ": " << errno << " "
+              << strerror(errno);
+    ::close(sockFd);
+    sockFd = -1;
+  }
+
+  LOG(INFO) << sockFd << " is a good socket";
+  if (sockFd >= 0) {
+    addToActiveSockets(sockFd);
+  }
+  return sockFd;
 }
 
 set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
@@ -47,19 +113,12 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   FATAL_FAIL(fd);
-  initSocket(fd);
+  initServerSocket(fd);
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
   strcpy(local.sun_path, pipePath.c_str());
   unlink(local.sun_path);
 
-  // Also set the accept socket as reusable
-  {
-    int flag = 1;
-    FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-                          sizeof(int)));
-  }
-
-  FATAL_FAIL(::bind(fd, (struct sockaddr *)&local, sizeof(sockaddr_un)));
+  FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
   ::listen(fd, 5);
   chmod(local.sun_path, 0777);
 
@@ -73,7 +132,8 @@ set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
   string pipePath = endpoint.getName();
   if (pipeServerSockets.find(pipePath) == pipeServerSockets.end()) {
     LOG(FATAL)
-        << "Tried to getPipeFd on a pipe without calling listen() first: " << pipePath;
+        << "Tried to getPipeFd on a pipe without calling listen() first: "
+        << pipePath;
   }
   return pipeServerSockets[pipePath];
 }
@@ -85,17 +145,10 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   auto it = pipeServerSockets.find(pipePath);
   if (it == pipeServerSockets.end()) {
     LOG(FATAL)
-        << "Tried to stop listening to a pipe that we weren't listening on:" << pipePath;
+        << "Tried to stop listening to a pipe that we weren't listening on:"
+        << pipePath;
   }
   int sockFd = *(it->second.begin());
   ::close(sockFd);
-}
-
-void PipeSocketHandler::initSocket(int fd) {
-  int opts;
-  opts = fcntl(fd, F_GETFL);
-  FATAL_FAIL(opts);
-  opts |= O_NONBLOCK;
-  FATAL_FAIL(fcntl(fd, F_SETFL, opts));
 }
 }  // namespace et

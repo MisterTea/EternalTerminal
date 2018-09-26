@@ -55,10 +55,15 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       LOG(INFO) << "Error creating socket: " << errno << " " << strerror(errno);
       continue;
     }
-    initSocket(sockFd);
 
-    // Set linger
+    // Set nonblocking just for the connect phase
     {
+      int opts;
+      opts = fcntl(sockFd, F_GETFL);
+      FATAL_FAIL(opts);
+      opts |= O_NONBLOCK;
+      FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
+      // Set linger
       struct linger so_linger;
       so_linger.l_onoff = 1;
       so_linger.l_linger = 5;
@@ -68,6 +73,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         LOG(FATAL) << "set socket linger failed";
       }
     }
+    VLOG(4) << "Set nonblocking";
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
@@ -102,6 +108,15 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
                     << " using fd " << sockFd;
         } else {
           LOG(ERROR) << "Connected to server but canonname is null somehow";
+        }
+        // Make sure that socket becomes blocking once it's attached to a
+        // server.
+        {
+          int opts;
+          opts = fcntl(sockFd, F_GETFL);
+          FATAL_FAIL(opts);
+          opts &= (~O_NONBLOCK);
+          FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
         }
         break;  // if we get here, we must have connected successfully
       } else {
@@ -173,14 +188,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
                 << " " << strerror(errno);
       continue;
     }
-    initSocket(sockFd);
-
-    // Also set the accept socket as reusable
-    {
-      int flag = 1;
-      FATAL_FAIL(setsockopt(sockFd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-                            sizeof(int)));
-    }
+    initServerSocket(sockFd);
 
     if (p->ai_family == AF_INET6) {
       // Also ensure that IPV6 sockets only listen on IPV6
@@ -252,23 +260,9 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
 }
 
 void TcpSocketHandler::initSocket(int fd) {
+  UnixSocketHandler::initSocket(fd);
   int flag = 1;
-  FATAL_FAIL(setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
-  timeval tv;
-  tv.tv_sec = 5;
-  tv.tv_usec = 0;
-  FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(tv)));
-  FATAL_FAIL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(tv)));
-#ifndef MSG_NOSIGNAL
-  // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
-  int val = 1;
-  FATAL_FAIL(
-      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
-#endif
-  int opts;
-  opts = fcntl(fd, F_GETFL);
-  FATAL_FAIL(opts);
-  opts |= O_NONBLOCK;
-  FATAL_FAIL(fcntl(fd, F_SETFL, opts));
+  FATAL_FAIL_UNLESS_EINVAL(
+      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
 }
 }  // namespace et

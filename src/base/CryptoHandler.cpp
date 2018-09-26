@@ -10,7 +10,7 @@ namespace et {
 CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (-1 == sodium_init()) {
-    throw std::runtime_error("libsodium init failed");
+    LOG(FATAL) << "libsodium init failed";
   }
   if (_key.length() != crypto_secretbox_KEYBYTES) {
     LOG(FATAL) << "Invalid key length";
@@ -39,7 +39,7 @@ string CryptoHandler::decrypt(const string& buffer) {
   if (crypto_secretbox_open_easy((unsigned char*)&retval[0],
                                  (const unsigned char*)buffer.c_str(),
                                  buffer.length(), nonce, key) == -1) {
-    throw std::runtime_error("Decrypt failed.  Possible key mismatch?");
+    LOG(FATAL) << "Decrypt failed.  Possible key mismatch?";
   }
   return retval;
 }

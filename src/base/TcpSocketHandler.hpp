@@ -17,7 +17,7 @@ class TcpSocketHandler : public UnixSocketHandler {
  protected:
   map<int, set<int>> portServerSockets;
 
-  void initSocket(int fd);
+  virtual void initSocket(int fd);
 };
 }  // namespace et
 

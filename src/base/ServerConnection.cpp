@@ -12,7 +12,7 @@ ServerConnection::ServerConnection(
 
 ServerConnection::~ServerConnection() {}
 
-void ServerConnection::acceptNewConnection(int fd) {
+bool ServerConnection::acceptNewConnection(int fd) {
   // Loop through existing threads, killing the ones that are done
   if (clientHandlerThreads.size()) {
     VLOG(1) << "Reaping connect threads...";
@@ -30,7 +30,7 @@ void ServerConnection::acceptNewConnection(int fd) {
   VLOG(1) << "Accepting connection";
   int clientSocketFd = socketHandler->accept(fd);
   if (clientSocketFd < 0) {
-    return;
+    return false;
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   auto threadWrapper =
@@ -40,6 +40,7 @@ void ServerConnection::acceptNewConnection(int fd) {
                  &(threadWrapper->done)));
   threadWrapper->t = clientHandlerThread;
   clientHandlerThreads.push_back(threadWrapper);
+  return true;
 }
 
 void ServerConnection::close() {
@@ -48,6 +49,10 @@ void ServerConnection::close() {
     it.second->closeSocket();
   }
   clientConnections.clear();
+  for (auto it : clientHandlerThreads) {
+    it->done = true;
+    it->t->join();
+  }
 }
 
 void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {

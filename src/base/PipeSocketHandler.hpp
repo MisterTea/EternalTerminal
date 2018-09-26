@@ -16,8 +16,6 @@ class PipeSocketHandler : public UnixSocketHandler {
 
  protected:
   map<string, set<int>> pipeServerSockets;
-
-  void initSocket(int fd);
 };
 }  // namespace et
 
