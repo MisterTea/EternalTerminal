@@ -32,6 +32,7 @@
 
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
+#include "RawSocketUtils.hpp"
 
 #include "ETerminal.pb.h"
 
@@ -173,7 +174,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
                 socketHandler->readProto<TerminalBuffer>(routerFd, false);
             VLOG(4) << "Read from router";
             const string &buffer = tb.buffer();
-            socketHandler->writeAllOrThrow(masterFd, &buffer[0], buffer.length(), false);
+            RawSocketUtils::writeAll(masterFd, &buffer[0], buffer.length());
             VLOG(4) << "Write to terminal";
             break;
           }
