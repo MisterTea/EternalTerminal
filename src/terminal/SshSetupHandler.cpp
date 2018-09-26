@@ -28,8 +28,9 @@ string genCommand(string passkey, string id, string clientTerm, string user,
   string SSH_SCRIPT_PREFIX;
 
   // Kill old ET sessions of the user
-  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm + "\n\" | etterminal";
-  if (kill && user != "root") {
+  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
+                   "\n\" | etterminal " + options;
+  if (kill) {
     SSH_SCRIPT_PREFIX =
         "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;
   }
@@ -43,8 +44,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
   string clientTerm(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
-  string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" +
-                    std::to_string(vlevel)};
+  string cmdoptions{"--v=" + std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
       genCommand(passkey, id, clientTerm, user, kill, cmdoptions);
@@ -67,7 +67,6 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     close(link_client[0]);
     close(link_client[1]);
     // run the command in interactive mode
-    //SSH_SCRIPT_DST = "$SHELL -lc \'" + SSH_SCRIPT_DST + "\'";
     if (!jumphost.empty()) {
       execlp("ssh", "ssh", "-J", (SSH_USER_PREFIX + jumphost).c_str(),
              (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
