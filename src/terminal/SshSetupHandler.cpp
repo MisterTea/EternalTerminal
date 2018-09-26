@@ -67,7 +67,7 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
     close(link_client[0]);
     close(link_client[1]);
     // run the command in interactive mode
-    SSH_SCRIPT_DST = "$SHELL -lc \'" + SSH_SCRIPT_DST + "\'";
+    //SSH_SCRIPT_DST = "$SHELL -lc \'" + SSH_SCRIPT_DST + "\'";
     if (!jumphost.empty()) {
       execlp("ssh", "ssh", "-J", (SSH_USER_PREFIX + jumphost).c_str(),
              (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str(),
