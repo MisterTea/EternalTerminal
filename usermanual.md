@@ -7,7 +7,7 @@ title: Tutorial
 
 1. Follow the instructions on the [download page](https://mistertea.github.io/EternalTerminal/download) for both your client and server.
 2. Verify that the client is installed correctly by looking for the et executable: ```which et```
-3. Verify that the server is installed correctly by looking for the etserver executable: ```which etserver```
+3. Verify that the server is installed correctly by checking the et service status: ```systemctl status et```
 4. You are ready to start using ET!
 
 # Using
