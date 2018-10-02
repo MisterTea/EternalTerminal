@@ -83,6 +83,7 @@ void ClientConnection::waitReconnect() {
 }
 
 void ClientConnection::pollReconnect() {
+  el::Helpers::setThreadName("Reconnect");
   LOG(INFO) << "Trying to reconnect to " << remoteEndpoint << endl;
   while (socketFd == -1) {
     {

@@ -133,7 +133,7 @@ void Connection::writeMessage(const string& buf) {
       return;
     }
     usleep(1000);
-    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
+    LOG_EVERY_N(1000, INFO) << "Wrote " << bytesWritten
                            << " of message.  Waiting to write remainder...";
   }
 }

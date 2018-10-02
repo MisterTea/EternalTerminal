@@ -13,8 +13,8 @@ using namespace et;
 
 class Collector {
  public:
-  Collector(shared_ptr<Connection> _connection)
-      : connection(_connection), done(false) {}
+  Collector(shared_ptr<Connection> _connection, const string& _threadName)
+      : connection(_connection), threadName(_threadName), done(false) {}
 
   ~Collector() {
     done = true;
@@ -26,6 +26,7 @@ class Collector {
   }
 
   void run() {
+    el::Helpers::setThreadName(threadName);
     auto lastSecond = time(NULL);
     while (!done) {
       if (connection.get() == NULL) {
@@ -37,6 +38,7 @@ class Collector {
         int status = connection->readMessage(&s);
         if (status == 1) {
           if (s == string("DONE")) {
+            fifo.push_back(s);
             break;
           }
           if (s != string("HEARTBEAT")) {
@@ -88,6 +90,7 @@ class Collector {
   deque<string> fifo;
   shared_ptr<std::thread> collectorThread;
   std::mutex collectorMutex;
+  string threadName;
   bool done;
 };
 
@@ -116,6 +119,7 @@ class NewConnectionHandler : public ServerConnectionHandler {
 class ConnectionTest : public testing::Test {
  protected:
   void SetUp() override {
+    el::Helpers::setThreadName("Main");
     const string CRYPTO_KEY = "12345678901234567890123456789012";
     const string CLIENT_ID = "1234567890123456";
 
@@ -153,10 +157,10 @@ class ConnectionTest : public testing::Test {
       ::usleep(1000 * 1000);
     }
     serverCollector.reset(new Collector(
-        std::static_pointer_cast<Connection>(serverClientConnection)));
+        std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
     serverCollector->start();
     clientCollector.reset(
-        new Collector(std::static_pointer_cast<Connection>(clientConnection)));
+        new Collector(std::static_pointer_cast<Connection>(clientConnection), "Client"));
     clientCollector->start();
   }
 
@@ -168,13 +172,14 @@ class ConnectionTest : public testing::Test {
   }
 
   void readWriteTest() {
-    string s(64 * 1024, '\0');
-    for (int a = 0; a < 64 * 1024 - 1; a++) {
+    const int NUM_MESSAGES = 32;
+    string s(NUM_MESSAGES * 1024, '\0');
+    for (int a = 0; a < NUM_MESSAGES * 1024 - 1; a++) {
       s[a] = rand() % 26 + 'A';
     }
-    s[64 * 1024 - 1] = 0;
+    s[NUM_MESSAGES * 1024 - 1] = 0;
 
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       VLOG(1) << "Writing packet " << a;
       serverCollector->write(string((&s[0] + a * 1024), 1024));
     }
@@ -182,7 +187,7 @@ class ConnectionTest : public testing::Test {
 
     string resultConcat;
     string result;
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       result = clientCollector->read();
       resultConcat = resultConcat.append(result);
     }
