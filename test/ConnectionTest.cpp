@@ -165,8 +165,6 @@ class ConnectionTest : public testing::Test {
   }
 
   void TearDown() override {
-    stopListening = true;
-    serverListenThread->join();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
@@ -194,6 +192,9 @@ class ConnectionTest : public testing::Test {
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
 
+    clientConnection->shutdown();
+    stopListening = true;
+    serverListenThread->join();
     serverCollector->finish();
     serverConnection->close();
 
