@@ -25,9 +25,6 @@ int BackedReader::read(string* buf) {
   if (socketFd < 0) {
     // The socket is dead, return 0 bytes until it returns
     VLOG(1) << "Tried to read from a dead socket";
-
-    // Sleep for a second
-    sleep(1);
     return 0;
   }
 

@@ -16,80 +16,46 @@ Connection::~Connection() {
 }
 
 inline bool isSkippableError(int err_no) {
-  return (err_no == ECONNRESET || err_no == ETIMEDOUT ||
+  return (err_no == EAGAIN || err_no == ECONNRESET || err_no == ETIMEDOUT ||
           err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
           err_no == EBADF  // Bad file descriptor can happen when
-                           // there's a race condition between ta thread
+                           // there's a race condition between a thread
                            // closing a connection and one
                            // reading/writing.
   );
 }
 
-ssize_t Connection::read(string* buf) {
+bool Connection::read(string* buf) {
   VLOG(4) << "Before read get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   VLOG(4) << "After read get connectionMutex";
-  // 2s should be enough since EAGAIN is rare in blocking socket.
-  int CLIENT_timeout = 2;
-  // Try at 10Hz
-  int num_trails = CLIENT_timeout * 10;
-  for (int trials = 0; trials < num_trails; trials++) {
-    ssize_t messagesRead = reader->read(buf);
-    if (messagesRead == -1) {
-      if (trials < (num_trails - 1) && errno == EAGAIN) {
-        // If we get EAGAIN, assume the kernel needs to finish
-        // flushing some buffer and retry after a delay.
-        usleep(100000);
-        LOG(INFO) << "Got EAGAIN, waiting 100ms...";
-      } else if (trials == (num_trails - 1) && errno == EAGAIN) {
-        // EAGAIN could possibly because a false alarm from hasData
-        // before reconnect.
-        // To give it a second chance, use a special signal to break out
-        // of the loop.
-        LOG(INFO) << "Got too much EAGAIN, assume there's nothing to read";
-        return 2;
-      } else if (isSkippableError(errno)) {
-        // Close the socket and invalidate, then return 0 messages
-        LOG(INFO) << "Closing socket because " << errno << " "
-                  << strerror(errno);
-        closeSocket();
-        return 0;
-      } else {
-        // Pass the error up the stack.
-        return -1;
-      }
+  ssize_t messagesRead = reader->read(buf);
+  if (messagesRead == -1) {
+    if (isSkippableError(errno)) {
+      // Close the socket and invalidate, then return 0 messages
+      LOG(INFO) << "Closing socket because " << errno << " "
+                << strerror(errno);
+      closeSocket();
+      return 0;
     } else {
-      // Success
-      return messagesRead;
+      // Throw the error
+      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / " << strerror(errno);
+      throw std::runtime_error("Failed a call to read");
     }
+  } else {
+    return messagesRead>0;
   }
-
-  // Should never get here
-  LOG(FATAL) << "Invalid trials iteration";
-  exit(1);
 }
 
 bool Connection::readMessage(string* buf) {
   while (!shuttingDown) {
-    ssize_t messagesRead = read(buf);
-    if (messagesRead > 2 || messagesRead < -1) {
-      LOG(FATAL) << "Invalid value for read(...) " << messagesRead;
-    }
-    if (messagesRead == 2) {
-      LOG(INFO) << "Get EAGAIN signal, breaking out of read loop";
-      break;
-    }
-    if (messagesRead == 1) {
+    bool result = read(buf);
+    if (result) {
       return true;
     }
-    if (messagesRead == -1) {
-      VLOG(1) << "Failed a call to readAll: %s\n" << strerror(errno);
-      throw std::runtime_error("Failed a call to readAll");
-    }
     // Yield the processor
-    usleep(1000);
-    LOG_EVERY_N(100, INFO) << "Read " << messagesRead
-                           << " of message.  Waiting to read remainder...";
+    usleep(100 * 1000);
+    LOG_EVERY_N(10, INFO) << "Waiting to read...";
   }
   return false;
 }
@@ -132,8 +98,8 @@ void Connection::writeMessage(const string& buf) {
     if (bytesWritten) {
       return;
     }
-    usleep(1000);
-    LOG_EVERY_N(1000, INFO) << "Wrote " << bytesWritten
+    usleep(10 * 1000);
+    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
                            << " of message.  Waiting to write remainder...";
   }
 }

@@ -26,7 +26,7 @@ class FlakySocketHandler : public SocketHandler {
     return actualSocketHandler->stopListening(endpoint);
   }
   virtual bool hasData(int fd) {
-    if (rand() % 2 == 0) {
+    if (rand() % 10 == 0) {
       return false;
     }
     return actualSocketHandler->hasData(fd);

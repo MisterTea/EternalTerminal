@@ -139,7 +139,7 @@ class ConnectionTest : public testing::Test {
         new std::thread(listenFn, &stopListening, serverFd, serverConnection));
 
     // Wait for server to spin up
-    ::usleep(100 * 1000);
+    ::usleep(1000 * 1000);
     clientConnection.reset(new ClientConnection(clientSocketHandler, endpoint,
                                                 CLIENT_ID, CRYPTO_KEY));
     while (true) {

@@ -128,5 +128,6 @@ void ClientConnection::pollReconnect() {
       usleep(1000 * 1000);
     }
   }
+  LOG(INFO) << "Reconnect complete";
 }
 }  // namespace et

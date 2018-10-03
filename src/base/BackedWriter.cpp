@@ -60,8 +60,8 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
         return BackedWriterWriteState::SUCCESS;
       }
     } else if(errno == EAGAIN) {
-      // Keep trying after 1ms
-      ::usleep(1 * 1000);
+      // Keep trying after 10ms
+      ::usleep(10 * 1000);
     } else {
       // Error, we don't know how many bytes were written but it
       // doesn't matter because the reader is going to have to
