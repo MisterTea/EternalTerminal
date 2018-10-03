@@ -61,6 +61,7 @@ DEFINE_int32(dstport, 2022, "Must be set if jump is set to true");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
 DEFINE_string(cfgfile, "", "Location of the config file");
+DEFINE_bool(noratelimit, false, "Disable rate limit");
 
 string getIdpasskey() {
   string idpasskey = FLAGS_idpasskey;
@@ -88,8 +89,9 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 }
 
-void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler, string idpasskey) {
-  UserTerminalHandler uth(ipcSocketHandler);
+void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
+                       string idpasskey, bool noratelimit) {
+  UserTerminalHandler uth(ipcSocketHandler, noratelimit);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (::daemon(0, 0) == -1) {
@@ -99,7 +101,8 @@ void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler, string idpass
   uth.run();
 }
 
-void startJumpHostClient(shared_ptr<SocketHandler> socketHandler, string idpasskey) {
+void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
+                         string idpasskey) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
@@ -320,7 +323,7 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startUserTerminal(ipcSocketHandler, idpasskey);
+    startUserTerminal(ipcSocketHandler, idpasskey, FLAGS_noratelimit);
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();

@@ -4,8 +4,8 @@
 #include "Headers.hpp"
 
 #include "IpcPairEndpoint.hpp"
-#include "SocketHandler.hpp"
 #include "SocketEndpoint.hpp"
+#include "SocketHandler.hpp"
 
 namespace et {
 class IpcPairClient : public IpcPairEndpoint {

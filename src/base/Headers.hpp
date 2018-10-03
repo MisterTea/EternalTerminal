@@ -88,8 +88,8 @@ static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
-#define FATAL_FAIL_UNLESS_EINVAL(X) \
-  if (((X) == -1) && errno != EINVAL)    \
+#define FATAL_FAIL_UNLESS_EINVAL(X)   \
+  if (((X) == -1) && errno != EINVAL) \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
 #ifndef ET_VERSION

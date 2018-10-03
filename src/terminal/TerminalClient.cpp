@@ -36,7 +36,9 @@ DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(c, "", "Command to run immediately after connecting");
-DEFINE_string(prefix, "", "Command prefix to launch etserver/etterminal on the server side");
+DEFINE_string(
+    prefix, "",
+    "Command prefix to launch etserver/etterminal on the server side");
 DEFINE_string(t, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
@@ -51,6 +53,9 @@ DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
 DEFINE_bool(silent, false, "If enabled, disable logging");
+DEFINE_bool(noratelimit, false,
+            "There's 1024 lines/second limit, which can be "
+            "disabled based on different use case.");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -207,7 +212,8 @@ int main(int argc, char** argv) {
               "-u Username to connect to ssh & ET\n"
               "-v=9 verbose log files\n"
               "-c Initial command to execute upon connecting\n"
-              "-prefix Command prefix to launch etserver/etterminal on the server side\n"
+              "-prefix Command prefix to launch etserver/etterminal on the "
+              "server side\n"
               "-t Map local to remote TCP port (TCP Tunneling)\n"
               "   example: et -t=\"18000:8000\" hostname maps localhost:18000\n"
               "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
@@ -217,7 +223,8 @@ int main(int argc, char** argv) {
               "-jport Port to connect on jumphost\n"
               "-x Flag to kill all sessions belongs to the user\n"
               "-logtostdout Sent log message to stdout\n"
-              "-silent Disable all logs"
+              "-silent Disable all logs\n"
+              "-noratelimit Disable rate limit"
            << endl;
       exit(1);
     }
@@ -293,9 +300,9 @@ int main(int argc, char** argv) {
     LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
   }
 
-  string idpasskeypair =
-      SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
-                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v, FLAGS_prefix);
+  string idpasskeypair = SshSetupHandler::SetupSsh(
+      FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
+      FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
 
   time_t rawtime;
   struct tm* timeinfo;

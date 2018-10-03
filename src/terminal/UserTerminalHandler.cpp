@@ -30,16 +30,16 @@
 #include <utempter.h>
 #endif
 
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
-#include "RawSocketUtils.hpp"
 
 #include "ETerminal.pb.h"
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
-    shared_ptr<SocketHandler> _socketHandler)
-    : socketHandler(_socketHandler) {}
+    shared_ptr<SocketHandler> _socketHandler, bool _noratelimit)
+    : socketHandler(_socketHandler), noratelimit(_noratelimit) {}
 
 void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   routerFd = socketHandler->connect(SocketEndpoint(ROUTER_FIFO_NAME));
@@ -133,7 +133,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
-      if (FD_ISSET(masterFd, &rfd) && outputPerSecond < 1024) {
+      if (FD_ISSET(masterFd, &rfd) && (noratelimit || outputPerSecond < 1024)) {
         // Read from terminal and write to client, with a limit in rows/sec
         memset(b, 0, BUF_SIZE);
         int rc = read(masterFd, b, BUF_SIZE);
@@ -179,7 +179,8 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
             break;
           }
           case TERMINAL_INFO: {
-            TerminalInfo ti = socketHandler->readProto<TerminalInfo>(routerFd, false);
+            TerminalInfo ti =
+                socketHandler->readProto<TerminalInfo>(routerFd, false);
             winsize tmpwin;
             tmpwin.ws_row = ti.row();
             tmpwin.ws_col = ti.column();

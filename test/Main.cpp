@@ -21,7 +21,7 @@ int main(int argc, char **argv) {
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   if (FLAGS_stress) {
-    for (int a=0;a<99;a++) {
+    for (int a = 0; a < 99; a++) {
       if (RUN_ALL_TESTS()) {
         LOG(FATAL) << "Tests failed";
       }
