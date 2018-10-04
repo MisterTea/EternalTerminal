@@ -152,13 +152,13 @@ class ConnectionTest : public testing::Test {
         break;
       } catch (const std::runtime_error& ex) {
         LOG(INFO) << "Connection failed, retrying...";
-        ::usleep(1 * 1000);
+        ::usleep(10 * 1000);
       }
     }
 
-    while (serverClientConnection.get() == NULL) {
-      LOG(INFO) << "Waiting for server connection...";
-      ::usleep(1000 * 1000);
+    ::usleep(1000 * 1000);
+    if(serverClientConnection.get() == NULL) {
+      LOG(FATAL) << "Missing server connection...";
     }
     serverCollector.reset(new Collector(
         std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
@@ -176,10 +176,9 @@ class ConnectionTest : public testing::Test {
   void readWriteTest() {
     const int NUM_MESSAGES = 32;
     string s(NUM_MESSAGES * 1024, '\0');
-    for (int a = 0; a < NUM_MESSAGES * 1024 - 1; a++) {
+    for (int a = 0; a < NUM_MESSAGES * 1024; a++) {
       s[a] = rand() % 26 + 'A';
     }
-    s[NUM_MESSAGES * 1024 - 1] = 0;
 
     for (int a = 0; a < NUM_MESSAGES; a++) {
       VLOG(1) << "Writing packet " << a;

@@ -17,7 +17,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
   {
     if (socketFd < 0) {
       // We have no socket to write to, don't bother trying to write
-      LOG(INFO) << "SKIPPING WRITE";
       return BackedWriterWriteState::SKIPPED;
     }
 
@@ -50,7 +49,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
   while (true) {
     // We have a socket, let's try to use it.
     if (socketFd < 0) {
-      LOG(INFO) << "WROTE WITH FAILURE";
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
     ssize_t result = socketHandler->write(
@@ -58,7 +56,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
     if (result >= 0) {
       bytesWritten += result;
       if (bytesWritten == count) {
-        LOG(INFO) << "WROTE SUCCESS";
         return BackedWriterWriteState::SUCCESS;
       }
     } else if(errno == EAGAIN) {
@@ -69,7 +66,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       // doesn't matter because the reader is going to have to
       // reconnect anyways.  The important thing is for the caller to
       // think that the bytes were written and not call again.
-      LOG(INFO) << "WROTE WITH FAILURE";
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
   }

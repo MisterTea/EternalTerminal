@@ -76,7 +76,7 @@ bool Connection::write(const string& buf) {
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
     VLOG(4) << "Wrote with failure";
     // Error writing.
-    if (!errno) {
+    if (socketFd == -1) {
       // The socket was already closed
       VLOG(1) << "Socket closed";
     } else if (isSkippableError(errno)) {

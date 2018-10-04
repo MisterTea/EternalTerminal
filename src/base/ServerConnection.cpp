@@ -108,25 +108,26 @@ void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
       LOG(INFO) << "New client.  Setting up connection";
       VLOG(1) << "Created client with id " << clientId;
 
-      shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
-          socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
       {
         lock_guard<std::recursive_mutex> guard(classMutex);
+        shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
+            socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
         clientConnections.insert(std::make_pair(clientId, scc));
-      }
 
-      shared_ptr<ServerClientConnection> serverClientState =
-          getClientConnection(clientId);
-      if (serverHandler && !serverHandler->newClient(serverClientState)) {
-        // Client creation failed, Destroy the new client
-        removeClient(clientId);
-        socketHandler->close(clientSocketFd);
+        shared_ptr<ServerClientConnection> serverClientState =
+            getClientConnection(clientId);
+        if (serverHandler && !serverHandler->newClient(serverClientState)) {
+          // Client creation failed, Destroy the new client
+          removeClient(clientId);
+          socketHandler->close(clientSocketFd);
+        }
       }
     } else {
       et::ConnectResponse response;
       response.set_status(RETURNING_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
 
+      lock_guard<std::recursive_mutex> guard(classMutex);
       shared_ptr<ServerClientConnection> serverClientState =
           getClientConnection(clientId);
       serverClientState->recoverClient(clientSocketFd);
