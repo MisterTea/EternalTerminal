@@ -23,7 +23,7 @@ class BackedWriter {
   vector<std::string> recover(int64_t lastValidSequenceNumber);
 
   void revive(int newSocketFd);
-  void unlock();
+  mutex& getRecoverMutex() { return recoverMutex; }
 
   inline int getSocketFd() { return socketFd; }
 

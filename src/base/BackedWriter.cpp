@@ -12,9 +12,9 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
 
 BackedWriterWriteState BackedWriter::write(const string& buf) {
   // If recover started, Wait until finished
+  lock_guard<std::mutex> guard(recoverMutex);
   string s = buf;
   {
-    lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
       // We have no socket to write to, don't bother trying to write
       return BackedWriterWriteState::SKIPPED;
@@ -48,7 +48,6 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
 
   while (true) {
     // We have a socket, let's try to use it.
-    lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
@@ -60,8 +59,8 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
         return BackedWriterWriteState::SUCCESS;
       }
     } else if(errno == EAGAIN) {
-      // Keep trying after 1ms
-      ::usleep(1 * 1000);
+      // Keep trying after 10ms
+      ::usleep(10 * 1000);
     } else {
       // Error, we don't know how many bytes were written but it
       // doesn't matter because the reader is going to have to
@@ -77,7 +76,6 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
     throw std::runtime_error("Can't recover when the fd is still alive");
   }
   VLOG(1) << int64_t(this) << ": Manually locking recover mutex!";
-  recoverMutex.lock();  // Mutex is locked until we call revive
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (messagesToRecover < 0) {
@@ -102,9 +100,4 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 }
 
 void BackedWriter::revive(int newSocketFd) { socketFd = newSocketFd; }
-
-void BackedWriter::unlock() {
-  VLOG(1) << int64_t(this) << ": Manually unlocking recover mutex!";
-  recoverMutex.unlock();
-}
 }  // namespace et

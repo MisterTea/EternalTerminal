@@ -22,7 +22,7 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
     if (bytesRead < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
-        usleep(1000 * 100);
+        usleep(100 * 1000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
       } else {
         VLOG(1) << "Failed a call to readAll: " << strerror(errno);
@@ -50,7 +50,7 @@ int SocketHandler::writeAllOrReturn(int fd, const void* buf, size_t count) {
     if (bytesWritten < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
-        usleep(1000 * 100);
+        usleep(100 * 1000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
       } else {
         VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
@@ -80,7 +80,7 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
     if (bytesWritten < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying at 10hz
-        usleep(1000 * 100);
+        usleep(100 * 1000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
       } else {
         VLOG(1) << "Failed a call to writeAll: " << strerror(errno);

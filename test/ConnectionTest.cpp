@@ -13,12 +13,13 @@ using namespace et;
 
 class Collector {
  public:
-  Collector(shared_ptr<Connection> _connection)
-      : connection(_connection), done(false) {}
+  Collector(shared_ptr<Connection> _connection, const string& _threadName)
+      : connection(_connection), threadName(_threadName), done(false) {}
 
   ~Collector() {
-    done = true;
-    collectorThread->join();
+    if (done == false) {
+      LOG(FATAL) << "Did not shut down properly";
+    }
   }
 
   void start() {
@@ -26,6 +27,7 @@ class Collector {
   }
 
   void run() {
+    el::Helpers::setThreadName(threadName);
     auto lastSecond = time(NULL);
     while (!done) {
       if (connection.get() == NULL) {
@@ -37,6 +39,7 @@ class Collector {
         int status = connection->readMessage(&s);
         if (status == 1) {
           if (s == string("DONE")) {
+            fifo.push_back(s);
             break;
           }
           if (s != string("HEARTBEAT")) {
@@ -48,6 +51,7 @@ class Collector {
       }
       ::usleep(1000);
       if (lastSecond <= time(NULL) - 5) {
+        lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
         connection->writeMessage("HEARTBEAT");
       }
@@ -55,7 +59,9 @@ class Collector {
   }
 
   void finish() {
+    lock_guard<std::mutex> guard(collectorMutex);
     done = true;
+    collectorThread->join();
     connection->shutdown();
   }
 
@@ -88,6 +94,7 @@ class Collector {
   deque<string> fifo;
   shared_ptr<std::thread> collectorThread;
   std::mutex collectorMutex;
+  string threadName;
   bool done;
 };
 
@@ -116,6 +123,7 @@ class NewConnectionHandler : public ServerConnectionHandler {
 class ConnectionTest : public testing::Test {
  protected:
   void SetUp() override {
+    el::Helpers::setThreadName("Main");
     const string CRYPTO_KEY = "12345678901234567890123456789012";
     const string CLIENT_ID = "1234567890123456";
 
@@ -135,7 +143,7 @@ class ConnectionTest : public testing::Test {
         new std::thread(listenFn, &stopListening, serverFd, serverConnection));
 
     // Wait for server to spin up
-    ::usleep(100 * 1000);
+    ::usleep(1000 * 1000);
     clientConnection.reset(new ClientConnection(clientSocketHandler, endpoint,
                                                 CLIENT_ID, CRYPTO_KEY));
     while (true) {
@@ -144,37 +152,35 @@ class ConnectionTest : public testing::Test {
         break;
       } catch (const std::runtime_error& ex) {
         LOG(INFO) << "Connection failed, retrying...";
-        ::usleep(1 * 1000);
+        ::usleep(10 * 1000);
       }
     }
 
-    while (serverClientConnection.get() == NULL) {
-      LOG(INFO) << "Waiting for server connection...";
-      ::usleep(1000 * 1000);
+    ::usleep(1000 * 1000);
+    if(serverClientConnection.get() == NULL) {
+      LOG(FATAL) << "Missing server connection...";
     }
     serverCollector.reset(new Collector(
-        std::static_pointer_cast<Connection>(serverClientConnection)));
+        std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
     serverCollector->start();
     clientCollector.reset(
-        new Collector(std::static_pointer_cast<Connection>(clientConnection)));
+        new Collector(std::static_pointer_cast<Connection>(clientConnection), "Client"));
     clientCollector->start();
   }
 
   void TearDown() override {
-    stopListening = true;
-    serverListenThread->join();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
 
   void readWriteTest() {
-    string s(64 * 1024, '\0');
-    for (int a = 0; a < 64 * 1024 - 1; a++) {
+    const int NUM_MESSAGES = 32;
+    string s(NUM_MESSAGES * 1024, '\0');
+    for (int a = 0; a < NUM_MESSAGES * 1024; a++) {
       s[a] = rand() % 26 + 'A';
     }
-    s[64 * 1024 - 1] = 0;
 
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       VLOG(1) << "Writing packet " << a;
       serverCollector->write(string((&s[0] + a * 1024), 1024));
     }
@@ -182,15 +188,20 @@ class ConnectionTest : public testing::Test {
 
     string resultConcat;
     string result;
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       result = clientCollector->read();
       resultConcat = resultConcat.append(result);
+      LOG(INFO) << "ON MESSAGE " << a;
     }
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
 
+    clientConnection->shutdown();
+    serverConnection->shutdown();
+    stopListening = true;
+    serverListenThread->join();
     serverCollector->finish();
-    serverConnection->close();
+    clientCollector->finish();
 
     EXPECT_EQ(resultConcat, s);
   }
