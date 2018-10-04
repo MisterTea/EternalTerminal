@@ -65,6 +65,8 @@
 #include "json.hpp"
 #include "sole.hpp"
 
+#include "ctpl_stl.h"
+
 using namespace std;
 
 namespace google {}
@@ -73,6 +75,7 @@ using namespace google;
 using namespace gflags;
 
 using json = nlohmann::json;
+using namespace ctpl;
 
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 4;
