@@ -26,28 +26,29 @@ class FlakySocketHandler : public SocketHandler {
     return actualSocketHandler->stopListening(endpoint);
   }
   virtual bool hasData(int fd) {
-    if (rand() % 10 == 0) {
+    if (rand() % 2 == 0) {
       return false;
     }
     return actualSocketHandler->hasData(fd);
   }
   virtual ssize_t read(int fd, void* buf, size_t count) {
-    if (rand() % 20 == 0) {
-      errno=EPIPE;
-      return -1;
-    }
     return actualSocketHandler->read(fd, buf, count);
   }
   virtual ssize_t write(int fd, const void* buf, size_t count) {
-    if (rand() % 20 == 0) {
-      errno=EPIPE;
-      return -1;
-    }
     return actualSocketHandler->write(fd, buf, count);
   }
+
+  int writeAllOrReturn(int fd, const void* buf, size_t count) {
+    if (rand() % 20 == 0) {
+      errno = EPIPE;
+      return -1;
+    }
+    return actualSocketHandler->writeAllOrReturn(fd, buf, count);
+  }
+
   virtual int accept(int fd) {
     if (rand() % 2 == 0) {
-      errno=EAGAIN;
+      errno = EAGAIN;
       return -1;
     }
     return actualSocketHandler->accept(fd);

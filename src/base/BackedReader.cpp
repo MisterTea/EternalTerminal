@@ -92,11 +92,11 @@ int BackedReader::read(string* buf) {
   return 0;
 }
 
-void BackedReader::revive(int newSocketFd, vector<string> localBuffer_) {
+void BackedReader::revive(int newSocketFd, vector<string> newLocalEntries) {
   partialMessage = "";
-  localBuffer.insert(localBuffer.end(), localBuffer_.begin(),
-                     localBuffer_.end());
-  sequenceNumber += localBuffer_.size();
+  localBuffer.insert(localBuffer.end(), newLocalEntries.begin(),
+                     newLocalEntries.end());
+  sequenceNumber += newLocalEntries.size();
   socketFd = newSocketFd;
 }
 
