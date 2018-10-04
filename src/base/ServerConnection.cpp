@@ -46,7 +46,7 @@ bool ServerConnection::acceptNewConnection(int fd) {
 void ServerConnection::close() {
   socketHandler->stopListening(serverEndpoint);
   for (const auto& it : clientConnections) {
-    it.second->closeSocket();
+    it.second->shutdown();
   }
   clientConnections.clear();
   for (auto it : clientHandlerThreads) {

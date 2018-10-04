@@ -12,8 +12,7 @@ namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
-  // this mutex is not necessary
-  // lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(mutex);
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
@@ -35,8 +34,7 @@ bool UnixSocketHandler::hasData(int fd) {
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
-  // lock_guard<std::recursive_mutex> guard(mutex);
-  // different threads reading different fd
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
@@ -53,8 +51,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
-  // lock_guard<std::recursive_mutex> guard(mutex);
-  // different threads writing to different fd
+  lock_guard<std::recursive_mutex> guard(mutex);
   VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;

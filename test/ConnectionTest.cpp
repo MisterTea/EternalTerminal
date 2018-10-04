@@ -17,8 +17,9 @@ class Collector {
       : connection(_connection), threadName(_threadName), done(false) {}
 
   ~Collector() {
-    done = true;
-    collectorThread->join();
+    if (done == false) {
+      LOG(FATAL) << "Did not shut down properly";
+    }
   }
 
   void start() {
@@ -58,6 +59,7 @@ class Collector {
 
   void finish() {
     done = true;
+    collectorThread->join();
     connection->shutdown();
   }
 
@@ -193,10 +195,11 @@ class ConnectionTest : public testing::Test {
     EXPECT_EQ(result, "DONE");
 
     clientConnection->shutdown();
+    serverConnection->close();
     stopListening = true;
     serverListenThread->join();
     serverCollector->finish();
-    serverConnection->close();
+    clientCollector->finish();
 
     EXPECT_EQ(resultConcat, s);
   }
