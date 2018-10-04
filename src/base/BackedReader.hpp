@@ -15,6 +15,7 @@ class BackedReader {
   bool hasData();
   int read(string* buf);
 
+  mutex& getRecoverMutex() { return recoverMutex; }
   void revive(int newSocketFd, vector<string> newLocalEntries);
 
   inline void invalidateSocket() {

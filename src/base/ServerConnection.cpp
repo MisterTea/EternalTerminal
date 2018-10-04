@@ -43,7 +43,7 @@ bool ServerConnection::acceptNewConnection(int fd) {
   return true;
 }
 
-void ServerConnection::close() {
+void ServerConnection::shutdown() {
   socketHandler->stopListening(serverEndpoint);
   for (const auto& it : clientConnections) {
     it.second->shutdown();

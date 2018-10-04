@@ -12,11 +12,12 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
 
 BackedWriterWriteState BackedWriter::write(const string& buf) {
   // If recover started, Wait until finished
+  lock_guard<std::mutex> guard(recoverMutex);
   string s = buf;
   {
-    lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
       // We have no socket to write to, don't bother trying to write
+      LOG(INFO) << "SKIPPING WRITE";
       return BackedWriterWriteState::SKIPPED;
     }
 
@@ -48,8 +49,8 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
 
   while (true) {
     // We have a socket, let's try to use it.
-    lock_guard<std::mutex> guard(recoverMutex);
     if (socketFd < 0) {
+      LOG(INFO) << "WROTE WITH FAILURE";
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
     ssize_t result = socketHandler->write(
@@ -57,6 +58,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
     if (result >= 0) {
       bytesWritten += result;
       if (bytesWritten == count) {
+        LOG(INFO) << "WROTE SUCCESS";
         return BackedWriterWriteState::SUCCESS;
       }
     } else if(errno == EAGAIN) {
@@ -67,6 +69,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       // doesn't matter because the reader is going to have to
       // reconnect anyways.  The important thing is for the caller to
       // think that the bytes were written and not call again.
+      LOG(INFO) << "WROTE WITH FAILURE";
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
   }
@@ -77,7 +80,6 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
     throw std::runtime_error("Can't recover when the fd is still alive");
   }
   VLOG(1) << int64_t(this) << ": Manually locking recover mutex!";
-  recoverMutex.lock();  // Mutex is locked until we call revive
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (messagesToRecover < 0) {
@@ -102,9 +104,4 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 }
 
 void BackedWriter::revive(int newSocketFd) { socketFd = newSocketFd; }
-
-void BackedWriter::unlock() {
-  VLOG(1) << int64_t(this) << ": Manually unlocking recover mutex!";
-  recoverMutex.unlock();
-}
 }  // namespace et

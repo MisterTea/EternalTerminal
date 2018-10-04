@@ -89,6 +89,10 @@ static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
   if (((X) == -1) && errno != EINVAL)    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
+#ifndef ET_VERSION
+#define ET_VERSION "unknown"
+#endif
+
 template <typename Out>
 inline void split(const std::string& s, char delim, Out result) {
   std::stringstream ss;

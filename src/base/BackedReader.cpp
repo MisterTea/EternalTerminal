@@ -10,6 +10,7 @@ BackedReader::BackedReader(std::shared_ptr<SocketHandler> socketHandler_,  //
       sequenceNumber(0) {}
 
 bool BackedReader::hasData() {
+  lock_guard<std::mutex> guard(recoverMutex);
   if (socketFd < 0) {
     return false;
   }
@@ -22,6 +23,7 @@ bool BackedReader::hasData() {
 }
 
 int BackedReader::read(string* buf) {
+  lock_guard<std::mutex> guard(recoverMutex);
   if (socketFd < 0) {
     // The socket is dead, return 0 bytes until it returns
     VLOG(1) << "Tried to read from a dead socket";
@@ -49,13 +51,16 @@ int BackedReader::read(string* buf) {
       // the session is over.
       errno = EPIPE;
       bytesRead = -1;
-    }
-    if (bytesRead > 0) {
+    } else if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
-    }
-    if (bytesRead < 0 && errno != EAGAIN) {
+    } else if (bytesRead == -1 && errno == EAGAIN) {
+      // We didn't get the full header yet.
+      return 0;
+    } else if (bytesRead == -1) {
       // Read error
-      return bytesRead;
+      return -1;
+    } else {
+      LOG(FATAL) << "Read returned value outside of [-1,inf): " << bytesRead;
     }
   }
   if (partialMessage.length() < 4) {
@@ -74,14 +79,15 @@ int BackedReader::read(string* buf) {
       // In EternalTCP, the server needs to explictly tell the client that
       // the session is over.
       errno = EPIPE;
-      bytesRead = -1;
-    }
-    if (bytesRead < 0 && errno != EAGAIN) {
+      return -1;
+    } else if (bytesRead == -1) {
       VLOG(2) << "Error while reading";
       return bytesRead;
     } else if (bytesRead > 0) {
       partialMessage.append(&s[0], bytesRead);
       messageRemainder -= bytesRead;
+    } else {
+      LOG(FATAL) << "Invalid value from read: " << bytesRead;
     }
   }
   if (!messageRemainder) {

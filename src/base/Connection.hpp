@@ -57,7 +57,7 @@ class Connection {
 
  protected:
   virtual bool read(string* buf);
-  virtual ssize_t write(const string& buf);
+  virtual bool write(const string& buf);
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;

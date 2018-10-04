@@ -60,17 +60,17 @@ bool Connection::readMessage(string* buf) {
   return false;
 }
 
-ssize_t Connection::write(const string& buf) {
+bool Connection::write(const string& buf) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
-    return 0;
+    return false;
   }
 
   BackedWriterWriteState bwws = writer->write(buf);
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     VLOG(4) << "Write skipped";
-    return 0;
+    return false;
   }
 
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
@@ -94,13 +94,12 @@ ssize_t Connection::write(const string& buf) {
 
 void Connection::writeMessage(const string& buf) {
   while (!shuttingDown) {
-    ssize_t bytesWritten = write(buf);
-    if (bytesWritten) {
+    bool success = write(buf);
+    if (success) {
       return;
     }
     usleep(10 * 1000);
-    LOG_EVERY_N(100, INFO) << "Wrote " << bytesWritten
-                           << " of message.  Waiting to write remainder...";
+    LOG_EVERY_N(100, INFO) << "Waiting to write...";
   }
 }
 
@@ -122,6 +121,9 @@ void Connection::closeSocket() {
 }
 
 bool Connection::recover(int newSocketFd) {
+  LOG(INFO) << "Locking reader/writer to recover...";
+  lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
+  lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
   LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
   try {
     {
@@ -154,13 +156,11 @@ bool Connection::recover(int newSocketFd) {
                                      catchupBuffer.buffer().end());
     reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);
-    writer->unlock();
     LOG(INFO) << "Finished recovering with socket fd: " << socketFd;
     return true;
   } catch (const runtime_error& err) {
     LOG(ERROR) << "Error recovering: " << err.what();
     socketHandler->close(newSocketFd);
-    writer->unlock();
     return false;
   }
 }

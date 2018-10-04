@@ -46,7 +46,7 @@ class ServerConnection {
 
   bool acceptNewConnection(int fd);
 
-  void close();
+  void shutdown();
 
   inline void addClientKey(const string& id, const string& passkey) {
     clientKeys[id] = passkey;

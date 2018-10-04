@@ -51,6 +51,7 @@ class Collector {
       }
       ::usleep(1000);
       if (lastSecond <= time(NULL) - 5) {
+        lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
         connection->writeMessage("HEARTBEAT");
       }
@@ -58,6 +59,7 @@ class Collector {
   }
 
   void finish() {
+    lock_guard<std::mutex> guard(collectorMutex);
     done = true;
     collectorThread->join();
     connection->shutdown();
@@ -190,12 +192,13 @@ class ConnectionTest : public testing::Test {
     for (int a = 0; a < NUM_MESSAGES; a++) {
       result = clientCollector->read();
       resultConcat = resultConcat.append(result);
+      LOG(INFO) << "ON MESSAGE " << a;
     }
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
 
     clientConnection->shutdown();
-    serverConnection->close();
+    serverConnection->shutdown();
     stopListening = true;
     serverListenThread->join();
     serverCollector->finish();
