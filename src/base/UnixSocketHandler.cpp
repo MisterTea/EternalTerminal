@@ -12,7 +12,6 @@ namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::hasData(int fd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
@@ -34,13 +33,15 @@ bool UnixSocketHandler::hasData(int fd) {
 }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
-  if (activeSockets.find(fd) == activeSockets.end()) {
-    LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
-    return 0;
+  {
+    lock_guard<std::recursive_mutex> guard(mutex);
+    if (activeSockets.find(fd) == activeSockets.end()) {
+      LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
+      return 0;
+    }
   }
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
@@ -51,14 +52,16 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 }
 
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
-  lock_guard<std::recursive_mutex> guard(mutex);
   VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
-  if (activeSockets.find(fd) == activeSockets.end()) {
-    LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
-    return 0;
+  {
+    lock_guard<std::recursive_mutex> guard(mutex);
+    if (activeSockets.find(fd) == activeSockets.end()) {
+      LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
+      return 0;
+    }
   }
 #ifdef MSG_NOSIGNAL
   return ::send(fd, buf, count, MSG_NOSIGNAL);
@@ -68,6 +71,7 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
+  lock_guard<std::recursive_mutex> guard(mutex);
   if (activeSockets.find(fd) != activeSockets.end()) {
     LOG(FATAL) << "Tried to insert an fd that already exists: " << fd;
   }
@@ -75,7 +79,6 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
 }
 
 int UnixSocketHandler::accept(int sockFd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
   VLOG(3) << "Got mutex when sockethandler accept " << sockFd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
@@ -135,8 +138,10 @@ void UnixSocketHandler::initSocket(int fd) {
   struct timeval tv;
   tv.tv_sec = 5;
   tv.tv_usec = 0;
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv, sizeof(struct timeval)));
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv, sizeof(struct timeval)));
+  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,
+                                      sizeof(struct timeval)));
+  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
+                                      sizeof(struct timeval)));
 #ifndef MSG_NOSIGNAL
   // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
   int val = 1;
@@ -158,8 +163,8 @@ void UnixSocketHandler::initServerSocket(int fd) {
   // Also set the accept socket as reusable
   {
     int flag = 1;
-    FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag,
-                          sizeof(int)));
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)));
   }
 }
 }  // namespace et

@@ -156,12 +156,12 @@ class ConnectionTest : public testing::Test {
       }
     }
 
-    ::usleep(1000 * 1000);
-    if(serverClientConnection.get() == NULL) {
-      LOG(FATAL) << "Missing server connection...";
+    while(serverClientConnection.get() == NULL) {
+      ::usleep(1000 * 1000);
     }
     serverCollector.reset(new Collector(
         std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
+    serverClientConnection.reset();
     serverCollector->start();
     clientCollector.reset(
         new Collector(std::static_pointer_cast<Connection>(clientConnection), "Client"));

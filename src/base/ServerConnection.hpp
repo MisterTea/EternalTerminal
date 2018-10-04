@@ -16,15 +16,6 @@ class ServerConnectionHandler {
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 };
 
-class TerminationRecordingThread {
- public:
-  TerminationRecordingThread() : done(false) {}
-  TerminationRecordingThread(const TerminationRecordingThread&) = delete;
-
-  shared_ptr<thread> t;
-  std::atomic<bool> done;
-};
-
 class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
@@ -52,7 +43,7 @@ class ServerConnection {
     clientKeys[id] = passkey;
   }
 
-  void clientHandler(int clientSocketFd, atomic<bool>* done);
+  void clientHandler(int clientSocketFd);
 
   bool removeClient(const string& id);
 
@@ -75,7 +66,7 @@ class ServerConnection {
   std::unordered_map<string, string> clientKeys;
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;
-  vector<shared_ptr<TerminationRecordingThread>> clientHandlerThreads;
+  ctpl::thread_pool clientHandlerThreadPool;
   recursive_mutex classMutex;
   mutex connectMutex;
 };
