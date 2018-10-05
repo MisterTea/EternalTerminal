@@ -21,7 +21,8 @@ bool ServerConnection::acceptNewConnection(int fd) {
     return false;
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
-  clientHandlerThreadPool.push([&, this](int id) { clientHandler(clientSocketFd); });
+  clientHandlerThreadPool.push(
+      [&, this](int id) { clientHandler(clientSocketFd); });
   return true;
 }
 
