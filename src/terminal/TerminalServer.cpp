@@ -66,7 +66,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
 
   bool b[BUF_SIZE];
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
-  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
+  shared_ptr<SocketHandler> terminalSocketHandler =
+      terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     fd_set rfd;
@@ -140,11 +141,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler = globalServer->getSocketHandler();
+  shared_ptr<SocketHandler> serverSocketHandler =
+      globalServer->getSocketHandler();
   PortForwardHandler portForwardHandler(serverSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
-  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
+  shared_ptr<SocketHandler> terminalSocketHandler =
+      terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     // Data structures needed for select() and
@@ -238,7 +241,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
               terminalSocketHandler->writeProto(terminalFd, tb, false);
               break;
             }
@@ -254,7 +258,8 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
               et::TerminalInfo ti =
                   serverClientState->readProto<et::TerminalInfo>();
               char c = TERMINAL_INFO;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
               terminalSocketHandler->writeProto(terminalFd, ti, false);
               break;
             }
@@ -309,12 +314,14 @@ void startServer() {
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       tcpSocketHandler, SocketEndpoint(FLAGS_port),
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
+  terminalRouter = shared_ptr<UserTerminalRouter>(
+      new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
   fd_set coreFds;
   int numCoreFds = 0;
   int maxCoreFd = 0;
   FD_ZERO(&coreFds);
-  set<int> serverPortFds = tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
+  set<int> serverPortFds =
+      tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
   for (int i : serverPortFds) {
     FD_SET(i, &coreFds);
     maxCoreFd = max(maxCoreFd, i);

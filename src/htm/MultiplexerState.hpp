@@ -3,8 +3,8 @@
 
 #include "Headers.hpp"
 
-#include "TerminalHandler.hpp"
 #include "SocketHandler.hpp"
+#include "TerminalHandler.hpp"
 
 namespace et {
 const int UUID_LENGTH = 36;

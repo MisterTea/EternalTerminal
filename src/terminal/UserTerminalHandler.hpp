@@ -8,13 +8,15 @@
 namespace et {
 class UserTerminalHandler {
  public:
-  UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler);
+  UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
+                      bool noratelimit);
   void connectToRouter(const string& idPasskey);
   void run();
 
  protected:
   int routerFd;
   shared_ptr<SocketHandler> socketHandler;
+  bool noratelimit;
 
   void runUserTerminal(int masterFd, pid_t childPid);
 };
