@@ -7,7 +7,7 @@ option(CODE_COVERAGE "Enable code coverage" OFF)
 
 set (${PROJECT_NAME}_VERSION_MAJOR 5)
 set (${PROJECT_NAME}_VERSION_MINOR 1)
-set (${PROJECT_NAME}_VERSION_PATCH 0)
+set (${PROJECT_NAME}_VERSION_PATCH 1)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${EternalTCP_VERSION_MAJOR}.${EternalTCP_VERSION_MINOR}.${EternalTCP_VERSION_PATCH}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_HANDLE_SIGABRT")
