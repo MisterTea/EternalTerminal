@@ -6,7 +6,8 @@ ServerConnection::ServerConnection(
     shared_ptr<ServerConnectionHandler> _serverHandler)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
-      serverHandler(_serverHandler) {
+      serverHandler(_serverHandler),
+      clientHandlerThreadPool(8) {
   socketHandler->listen(serverEndpoint);
 }
 
@@ -14,48 +15,27 @@ ServerConnection::~ServerConnection() {}
 
 bool ServerConnection::acceptNewConnection(int fd) {
   // Loop through existing threads, killing the ones that are done
-  if (clientHandlerThreads.size()) {
-    VLOG(1) << "Reaping connect threads...";
-    int numReaped = 0;
-    for (int a = int(clientHandlerThreads.size()) - 1; a >= 0; a--) {
-      if (clientHandlerThreads[a]->done) {
-        clientHandlerThreads[a]->t->join();
-        clientHandlerThreads.erase(clientHandlerThreads.begin() + a);
-        numReaped++;
-      }
-    }
-    VLOG(1) << "Reaped " << numReaped << " connect threads";
-  }
-
   VLOG(1) << "Accepting connection";
   int clientSocketFd = socketHandler->accept(fd);
   if (clientSocketFd < 0) {
     return false;
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
-  auto threadWrapper =
-      shared_ptr<TerminationRecordingThread>(new TerminationRecordingThread());
-  auto clientHandlerThread = std::shared_ptr<std::thread>(
-      new thread(&ServerConnection::clientHandler, this, clientSocketFd,
-                 &(threadWrapper->done)));
-  threadWrapper->t = clientHandlerThread;
-  clientHandlerThreads.push_back(threadWrapper);
+  clientHandlerThreadPool.push(
+      [&, this](int id) { clientHandler(clientSocketFd); });
   return true;
 }
 
-void ServerConnection::close() {
+void ServerConnection::shutdown() {
   socketHandler->stopListening(serverEndpoint);
+  clientHandlerThreadPool.stop();
   for (const auto& it : clientConnections) {
-    it.second->closeSocket();
+    it.second->shutdown();
   }
   clientConnections.clear();
-  for (auto it : clientHandlerThreads) {
-    it->done = true;
-    it->t->join();
-  }
 }
 
-void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
+void ServerConnection::clientHandler(int clientSocketFd) {
   // Only one thread can be connecting at a time, the rest have to wait.
   // TODO: Relax this constraint once we are confident that it works as-is.
   // lock_guard<std::mutex> guard(connectMutex);
@@ -83,7 +63,6 @@ void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
         response.set_error(errorStream.str());
         socketHandler->writeProto(clientSocketFd, response, true);
         socketHandler->close(clientSocketFd);
-        *done = true;
         return;
       }
     }
@@ -108,25 +87,26 @@ void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
       LOG(INFO) << "New client.  Setting up connection";
       VLOG(1) << "Created client with id " << clientId;
 
-      shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
-          socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
       {
         lock_guard<std::recursive_mutex> guard(classMutex);
+        shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
+            socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
         clientConnections.insert(std::make_pair(clientId, scc));
-      }
 
-      shared_ptr<ServerClientConnection> serverClientState =
-          getClientConnection(clientId);
-      if (serverHandler && !serverHandler->newClient(serverClientState)) {
-        // Client creation failed, Destroy the new client
-        removeClient(clientId);
-        socketHandler->close(clientSocketFd);
+        shared_ptr<ServerClientConnection> serverClientState =
+            getClientConnection(clientId);
+        if (serverHandler && !serverHandler->newClient(serverClientState)) {
+          // Client creation failed, Destroy the new client
+          removeClient(clientId);
+          socketHandler->close(clientSocketFd);
+        }
       }
     } else {
       et::ConnectResponse response;
       response.set_status(RETURNING_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
 
+      lock_guard<std::recursive_mutex> guard(classMutex);
       shared_ptr<ServerClientConnection> serverClientState =
           getClientConnection(clientId);
       serverClientState->recoverClient(clientSocketFd);
@@ -136,7 +116,6 @@ void ServerConnection::clientHandler(int clientSocketFd, atomic<bool>* done) {
     LOG(ERROR) << "Error handling new client: " << err.what();
     socketHandler->close(clientSocketFd);
   }
-  *done = true;
 }
 
 bool ServerConnection::removeClient(const string& id) {

@@ -354,7 +354,7 @@ void startServer() {
     }
   }
 
-  globalServer->close();
+  globalServer->shutdown();
   halt = true;
   for (auto it : terminalThreads) {
     it->join();

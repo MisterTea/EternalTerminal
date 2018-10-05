@@ -83,7 +83,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
       if (errno != EAGAIN) {
         FATAL_FAIL(fd);
       } else {
-        ::usleep(10 * 1000);  // Sleep 10ms for client to connect
+        ::usleep(100 * 1000);  // Sleep for client to connect
       }
     } else {
       break;
@@ -104,7 +104,7 @@ class BackedTest : public testing::Test {
                                    &serverClientFd);
 
     // Wait for server to spin up
-    ::usleep(100 * 1000);
+    ::usleep(1000 * 1000);
     int clientServerFd = clientSocketHandler->connect(endpoint);
     FATAL_FAIL(clientServerFd);
     serverListenThread.join();

@@ -7,8 +7,8 @@ void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
     int rc = ::write(fd, buf + bytesWritten, count - bytesWritten);
     if (rc < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // This is fine, just keep retrying at 10hz
-        usleep(1000 * 100);
+        // This is fine, just keep retrying
+        usleep(100 * 1000);
         continue;
       }
       throw std::runtime_error("Cannot write to raw socket");
@@ -26,8 +26,8 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     int rc = ::read(fd, buf + bytesRead, count - bytesRead);
     if (rc < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
-        // This is fine, just keep retrying at 10hz
-        usleep(1000 * 100);
+        // This is fine, just keep retrying
+        usleep(100 * 1000);
         continue;
       }
       throw std::runtime_error("Cannot read from raw socket");

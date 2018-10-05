@@ -13,12 +13,13 @@ using namespace et;
 
 class Collector {
  public:
-  Collector(shared_ptr<Connection> _connection)
-      : connection(_connection), done(false) {}
+  Collector(shared_ptr<Connection> _connection, const string& _threadName)
+      : connection(_connection), threadName(_threadName), done(false) {}
 
   ~Collector() {
-    done = true;
-    collectorThread->join();
+    if (done == false) {
+      LOG(FATAL) << "Did not shut down properly";
+    }
   }
 
   void start() {
@@ -26,6 +27,7 @@ class Collector {
   }
 
   void run() {
+    el::Helpers::setThreadName(threadName);
     auto lastSecond = time(NULL);
     while (!done) {
       if (connection.get() == NULL) {
@@ -37,6 +39,7 @@ class Collector {
         int status = connection->readMessage(&s);
         if (status == 1) {
           if (s == string("DONE")) {
+            fifo.push_back(s);
             break;
           }
           if (s != string("HEARTBEAT")) {
@@ -48,6 +51,7 @@ class Collector {
       }
       ::usleep(1000);
       if (lastSecond <= time(NULL) - 5) {
+        lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
         connection->writeMessage("HEARTBEAT");
       }
@@ -55,8 +59,10 @@ class Collector {
   }
 
   void finish() {
-    done = true;
     connection->shutdown();
+    lock_guard<std::mutex> guard(collectorMutex);
+    done = true;
+    collectorThread->join();
   }
 
   bool hasData() {
@@ -88,6 +94,7 @@ class Collector {
   deque<string> fifo;
   shared_ptr<std::thread> collectorThread;
   std::mutex collectorMutex;
+  string threadName;
   bool done;
 };
 
@@ -103,12 +110,17 @@ void listenFn(bool* stopListening, int serverFd,
   }
 }
 
-shared_ptr<ServerClientConnection> serverClientConnection;
+map<string, shared_ptr<ServerClientConnection>> serverClientConnections;
 class NewConnectionHandler : public ServerConnectionHandler {
  public:
   virtual bool newClient(
       shared_ptr<ServerClientConnection> _serverClientState) {
-    serverClientConnection = _serverClientState;
+    string clientId = _serverClientState->getId();
+    if (serverClientConnections.find(clientId) !=
+        serverClientConnections.end()) {
+      LOG(FATAL) << "TRIED TO CREATE DUPLICATE CLIENT ID";
+    }
+    serverClientConnections[clientId] = _serverClientState;
     return true;
   }
 };
@@ -116,65 +128,68 @@ class NewConnectionHandler : public ServerConnectionHandler {
 class ConnectionTest : public testing::Test {
  protected:
   void SetUp() override {
-    const string CRYPTO_KEY = "12345678901234567890123456789012";
-    const string CLIENT_ID = "1234567890123456";
+    el::Helpers::setThreadName("Main");
 
     string tmpPath = string("/tmp/et_test_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
-    SocketEndpoint endpoint(pipePath);
+    endpoint = SocketEndpoint(pipePath);
 
     serverConnection.reset(new ServerConnection(
         serverSocketHandler, endpoint,
         shared_ptr<ServerConnectionHandler>(new NewConnectionHandler())));
-    serverConnection->addClientKey(CLIENT_ID, CRYPTO_KEY);
 
     int serverFd = *(serverSocketHandler->getEndpointFds(endpoint).begin());
     stopListening = false;
     serverListenThread.reset(
         new std::thread(listenFn, &stopListening, serverFd, serverConnection));
+  }
 
+  void TearDown() override {
+    stopListening = true;
+    serverListenThread->join();
+    serverClientConnections.clear();
+    FATAL_FAIL(::remove(pipePath.c_str()));
+    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  }
+
+  void readWriteTest(const string& clientId) {
+    serverConnection->addClientKey(clientId, CRYPTO_KEY);
     // Wait for server to spin up
-    ::usleep(100 * 1000);
-    clientConnection.reset(new ClientConnection(clientSocketHandler, endpoint,
-                                                CLIENT_ID, CRYPTO_KEY));
+    ::usleep(1000 * 1000);
+
+    shared_ptr<ClientConnection> clientConnection(new ClientConnection(
+        clientSocketHandler, endpoint, clientId, CRYPTO_KEY));
     while (true) {
       try {
         clientConnection->connect();
         break;
       } catch (const std::runtime_error& ex) {
         LOG(INFO) << "Connection failed, retrying...";
-        ::usleep(1 * 1000);
+        ::usleep(1000 * 1000);
       }
     }
 
-    while (serverClientConnection.get() == NULL) {
-      LOG(INFO) << "Waiting for server connection...";
+    while (serverClientConnections.find(clientId) ==
+           serverClientConnections.end()) {
       ::usleep(1000 * 1000);
     }
-    serverCollector.reset(new Collector(
-        std::static_pointer_cast<Connection>(serverClientConnection)));
+    shared_ptr<Collector> serverCollector(
+        new Collector(std::static_pointer_cast<Connection>(
+                          serverClientConnections.find(clientId)->second),
+                      "Server"));
     serverCollector->start();
-    clientCollector.reset(
-        new Collector(std::static_pointer_cast<Connection>(clientConnection)));
+    shared_ptr<Collector> clientCollector(new Collector(
+        std::static_pointer_cast<Connection>(clientConnection), "Client"));
     clientCollector->start();
-  }
 
-  void TearDown() override {
-    stopListening = true;
-    serverListenThread->join();
-    FATAL_FAIL(::remove(pipePath.c_str()));
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
-  }
-
-  void readWriteTest() {
-    string s(64 * 1024, '\0');
-    for (int a = 0; a < 64 * 1024 - 1; a++) {
+    const int NUM_MESSAGES = 32;
+    string s(NUM_MESSAGES * 1024, '\0');
+    for (int a = 0; a < NUM_MESSAGES * 1024; a++) {
       s[a] = rand() % 26 + 'A';
     }
-    s[64 * 1024 - 1] = 0;
 
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       VLOG(1) << "Writing packet " << a;
       serverCollector->write(string((&s[0] + a * 1024), 1024));
     }
@@ -182,15 +197,16 @@ class ConnectionTest : public testing::Test {
 
     string resultConcat;
     string result;
-    for (int a = 0; a < 64; a++) {
+    for (int a = 0; a < NUM_MESSAGES; a++) {
       result = clientCollector->read();
       resultConcat = resultConcat.append(result);
+      LOG(INFO) << "ON MESSAGE " << a;
     }
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
 
     serverCollector->finish();
-    serverConnection->close();
+    clientCollector->finish();
 
     EXPECT_EQ(resultConcat, s);
   }
@@ -198,13 +214,12 @@ class ConnectionTest : public testing::Test {
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
   shared_ptr<ServerConnection> serverConnection;
-  shared_ptr<ClientConnection> clientConnection;
-  shared_ptr<Collector> serverCollector;
-  shared_ptr<Collector> clientCollector;
   shared_ptr<std::thread> serverListenThread;
   string pipeDirectory;
   string pipePath;
+  SocketEndpoint endpoint;
   bool stopListening;
+  const string CRYPTO_KEY = "12345678901234567890123456789012";
 };
 
 class ReliableConnectionTest : public ConnectionTest {
@@ -219,7 +234,20 @@ class ReliableConnectionTest : public ConnectionTest {
   }
 };
 
-TEST_F(ReliableConnectionTest, ReadWrite) { readWriteTest(); }
+TEST_F(ReliableConnectionTest, ReadWrite) { readWriteTest("1234567890123456"); }
+
+TEST_F(ReliableConnectionTest, MultiReadWrite) {
+  thread_pool pool(16);
+  string base_id = "1234567890123456";
+  for (int a = 0; a < 16; a++) {
+    string new_id = base_id;
+    new_id[0] = 'A' + a;
+    pool.push([&, this](int id, string clientId) { readWriteTest(clientId); },
+              new_id);
+    ::usleep((500 + rand() % 1000) * 1000);
+  }
+  pool.stop(true);
+}
 
 class FlakyConnectionTest : public ConnectionTest {
  protected:
@@ -241,4 +269,20 @@ class FlakyConnectionTest : public ConnectionTest {
   }
 };
 
-TEST_F(FlakyConnectionTest, ReadWrite) { readWriteTest(); }
+TEST_F(FlakyConnectionTest, ReadWrite) {
+  const string clientId = "1234567890123456";
+  readWriteTest(clientId);
+}
+
+TEST_F(FlakyConnectionTest, MultiReadWrite) {
+  thread_pool pool(16);
+  string base_id = "1234567890123456";
+  for (int a = 0; a < 16; a++) {
+    string new_id = base_id;
+    new_id[0] = 'A' + a;
+    pool.push([&, this](int id, string clientId) { readWriteTest(clientId); },
+              new_id);
+    ::usleep((500 + rand() % 1000) * 1000);
+  }
+  pool.stop(true);
+}

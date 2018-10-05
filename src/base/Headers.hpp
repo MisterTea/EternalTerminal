@@ -65,6 +65,8 @@
 #include "json.hpp"
 #include "sole.hpp"
 
+#include "ctpl_stl.h"
+
 using namespace std;
 
 namespace google {}
@@ -73,6 +75,7 @@ using namespace google;
 using namespace gflags;
 
 using json = nlohmann::json;
+using namespace ctpl;
 
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 4;
@@ -88,6 +91,10 @@ static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
 #define FATAL_FAIL_UNLESS_EINVAL(X) \
   if (((X) == -1) && errno != EINVAL)    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
+
+#ifndef ET_VERSION
+#define ET_VERSION "unknown"
+#endif
 
 template <typename Out>
 inline void split(const std::string& s, char delim, Out result) {

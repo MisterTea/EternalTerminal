@@ -83,6 +83,7 @@ void ClientConnection::waitReconnect() {
 }
 
 void ClientConnection::pollReconnect() {
+  el::Helpers::setThreadName("Reconnect");
   LOG(INFO) << "Trying to reconnect to " << remoteEndpoint << endl;
   while (socketFd == -1) {
     {
@@ -127,5 +128,6 @@ void ClientConnection::pollReconnect() {
       usleep(1000 * 1000);
     }
   }
+  LOG(INFO) << "Reconnect complete";
 }
 }  // namespace et

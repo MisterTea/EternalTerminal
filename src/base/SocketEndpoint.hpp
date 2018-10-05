@@ -6,6 +6,8 @@
 namespace et {
 class SocketEndpoint {
  public:
+  SocketEndpoint() : name(""), port(-1) {}
+
   explicit SocketEndpoint(const string &_name) : name(_name), port(-1) {}
 
   explicit SocketEndpoint(int _port) : name(""), port(_port) {}

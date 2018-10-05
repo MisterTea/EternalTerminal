@@ -24,12 +24,12 @@ string genRandom(int len) {
 }
 
 string genCommand(string passkey, string id, string clientTerm, string user,
-                  bool kill, string options) {
+                  bool kill, string command_prefix, string options) {
   string SSH_SCRIPT_PREFIX;
 
   // Kill old ET sessions of the user
   string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
-                   "\n\" | etterminal " + options;
+                   "\n\" | " + command_prefix + " etterminal " + options;
   if (kill) {
     SSH_SCRIPT_PREFIX =
         "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;
@@ -40,14 +40,14 @@ string genCommand(string passkey, string id, string clientTerm, string user,
 
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
-                                 bool kill, int vlevel) {
-  string clientTerm(getenv("TERM"));
+                                 bool kill, int vlevel, string cmd_prefix) {
+  string CLIENT_TERM(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
   string cmdoptions{"--v=" + std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
-      genCommand(passkey, id, clientTerm, user, kill, cmdoptions);
+      genCommand(passkey, id, CLIENT_TERM, user, kill, cmd_prefix, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -137,8 +137,8 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
         close(link_jump[1]);
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
-        string SSH_SCRIPT_JUMP =
-            genCommand(passkey, id, clientTerm, user, kill, jump_cmdoptions);
+        string SSH_SCRIPT_JUMP = genCommand(passkey, id, CLIENT_TERM, user,
+                                            kill, cmd_prefix, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
