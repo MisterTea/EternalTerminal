@@ -24,7 +24,11 @@ void UserTerminalRouter::acceptNewConnection(
   LOG(INFO) << "Connected";
 
   try {
-    string buf = socketHandler->readMessage(terminalFd);
+    Packet packet = socketHandler->readPacket(terminalFd);
+    if (packet.getHeader() != TerminalPacketType::IDPASSKEY) {
+      LOG(FATAL) << "Got an invalid packet header: " << packet.getHeader();
+    }
+    string buf = packet.getPayload();
     VLOG(1) << "Got passkey: " << buf;
     size_t slashIndex = buf.find("/");
     if (slashIndex == string::npos) {

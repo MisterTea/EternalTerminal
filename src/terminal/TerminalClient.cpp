@@ -36,7 +36,9 @@ DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
 DEFINE_string(c, "", "Command to run immediately after connecting");
-DEFINE_string(prefix, "", "Command prefix to launch etserver/etterminal on the server side");
+DEFINE_string(
+    prefix, "",
+    "Command prefix to launch etserver/etterminal on the server side");
 DEFINE_string(t, "",
               "Array of source:destination ports or "
               "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
@@ -83,7 +85,8 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   while (true) {
     try {
       client->connect();
-      client->writeProto(payload);
+      client->writeMessage(
+          Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
     } catch (const runtime_error& err) {
       LOG(ERROR) << "Connecting to server failed: " << err.what();
       connectFailCount++;
@@ -118,9 +121,8 @@ void handleWindowChanged(winsize* win) {
     ti.set_column(win->ws_col);
     ti.set_width(win->ws_xpixel);
     ti.set_height(win->ws_ypixel);
-    string s(1, (char)et::PacketType::TERMINAL_INFO);
-    globalClient->writeMessage(s);
-    globalClient->writeProto(ti);
+    globalClient->writeMessage(
+        Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
   }
 }
 
@@ -207,7 +209,8 @@ int main(int argc, char** argv) {
               "-u Username to connect to ssh & ET\n"
               "-v=9 verbose log files\n"
               "-c Initial command to execute upon connecting\n"
-              "-prefix Command prefix to launch etserver/etterminal on the server side\n"
+              "-prefix Command prefix to launch etserver/etterminal on the "
+              "server side\n"
               "-t Map local to remote TCP port (TCP Tunneling)\n"
               "   example: et -t=\"18000:8000\" hostname maps localhost:18000\n"
               "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
@@ -293,9 +296,9 @@ int main(int argc, char** argv) {
     LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
   }
 
-  string idpasskeypair =
-      SshSetupHandler::SetupSsh(FLAGS_u, FLAGS_host, host_alias, FLAGS_port,
-                                FLAGS_jumphost, FLAGS_jport, FLAGS_x, FLAGS_v, FLAGS_prefix);
+  string idpasskeypair = SshSetupHandler::SetupSsh(
+      FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
+      FLAGS_x, FLAGS_v, FLAGS_prefix);
 
   time_t rawtime;
   struct tm* timeinfo;
@@ -336,10 +339,8 @@ int main(int argc, char** argv) {
     et::TerminalBuffer tb;
     tb.set_buffer(FLAGS_c + "; exit\n");
 
-    char c = et::PacketType::TERMINAL_BUFFER;
-    string headerString(1, c);
-    globalClient->writeMessage(headerString);
-    globalClient->writeProto(tb);
+    globalClient->writeMessage(
+        Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
   }
 
   try {
@@ -358,14 +359,13 @@ int main(int argc, char** argv) {
     if (FLAGS_rt.length()) {
       auto pairs = parseRangesToPairs(FLAGS_rt);
       for (auto& pair : pairs) {
-        char c = et::PacketType::PORT_FORWARD_SOURCE_REQUEST;
-        string headerString(1, c);
         PortForwardSourceRequest pfsr;
         pfsr.set_sourceport(pair.first);
         pfsr.set_destinationport(pair.second);
 
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pfsr);
+        globalClient->writeMessage(
+            Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
+                   protoToString(pfsr)));
       }
     }
   } catch (const std::runtime_error& ex) {
@@ -416,10 +416,8 @@ int main(int argc, char** argv) {
           et::TerminalBuffer tb;
           tb.set_buffer(s);
 
-          char c = et::PacketType::TERMINAL_BUFFER;
-          string headerString(1, c);
-          globalClient->writeMessage(headerString);
-          globalClient->writeProto(tb);
+          globalClient->writeMessage(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
           keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         }
       }
@@ -428,31 +426,31 @@ int main(int argc, char** argv) {
         VLOG(4) << "Cliendfd is selected";
         while (globalClient->hasData()) {
           VLOG(4) << "GlobalClient has data";
-          string packetTypeString;
-          if (!globalClient->readMessage(&packetTypeString)) {
+          Packet packet;
+          if (!globalClient->readMessage(&packet)) {
             break;
           }
-          if (packetTypeString.length() != 1) {
-            LOG(FATAL) << "Invalid packet header size: "
-                       << packetTypeString.length();
-          }
-          char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+          char packetType = packet.getHeader();
+          if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
             keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
             VLOG(4) << "Got PF packet type " << packetType;
-            portForwardHandler.handlePacket(packetType, globalClient);
+            portForwardHandler.handlePacket(packet, globalClient);
             continue;
           }
           switch (packetType) {
-            case et::PacketType::TERMINAL_BUFFER: {
+            case et::TerminalPacketType::TERMINAL_BUFFER: {
               VLOG(3) << "Got terminal buffer";
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
-                  globalClient->readProto<et::TerminalBuffer>();
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
               const string& s = tb.buffer();
               // VLOG(5) << "Got message: " << s;
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
@@ -461,7 +459,7 @@ int main(int argc, char** argv) {
               RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length());
               break;
             }
-            case et::PacketType::KEEP_ALIVE:
+            case et::TerminalPacketType::KEEP_ALIVE:
               waitingOnKeepalive = false;
               // This will fill up log file quickly but is helpful for debugging
               // latency issues.
@@ -481,8 +479,8 @@ int main(int argc, char** argv) {
           waitingOnKeepalive = false;
         } else {
           LOG(INFO) << "Writing keepalive packet";
-          string s(1, (char)et::PacketType::KEEP_ALIVE);
-          globalClient->writeMessage(s);
+          globalClient->writeMessage(
+              Packet(TerminalPacketType::KEEP_ALIVE, ""));
           waitingOnKeepalive = true;
         }
       }
@@ -497,18 +495,15 @@ int main(int argc, char** argv) {
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
       for (auto& pfr : requests) {
-        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
-        string headerString(1, c);
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pfr);
+        globalClient->writeMessage(
+            Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
+                   protoToString(pfr)));
         VLOG(4) << "send PF request";
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       for (auto& pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DATA;
-        string headerString(1, c);
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pwd);
+        globalClient->writeMessage(
+            Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
         VLOG(4) << "send PF data";
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }

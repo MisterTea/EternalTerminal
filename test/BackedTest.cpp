@@ -23,10 +23,10 @@ class BackedCollector {
 
   void run() {
     while (!done) {
-      string s;
-      if (reader->read(&s) > 0) {
+      Packet packet;
+      if (reader->read(&packet) > 0) {
         lock_guard<std::mutex> guard(collectorMutex);
-        fifo.push_back(s);
+        fifo.push_back(packet.getPayload());
       } else {
         ::usleep(1000);
       }
@@ -60,7 +60,7 @@ class BackedCollector {
     collectorThread.join();
   }
 
-  BackedWriterWriteState write(string s) { return writer->write(s); }
+  BackedWriterWriteState write(string s) { return writer->write(Packet(0, s)); }
 
  protected:
   shared_ptr<BackedReader> reader;

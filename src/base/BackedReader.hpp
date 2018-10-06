@@ -4,6 +4,7 @@
 #include "Headers.hpp"
 
 #include "CryptoHandler.hpp"
+#include "Packet.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -13,10 +14,10 @@ class BackedReader {
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
   bool hasData();
-  int read(string* buf);
+  int read(Packet* packet);
 
   mutex& getRecoverMutex() { return recoverMutex; }
-  void revive(int newSocketFd, vector<string> newLocalEntries);
+  void revive(int newSocketFd, const vector<string>& newLocalEntries);
 
   inline void invalidateSocket() {
     lock_guard<std::mutex> guard(recoverMutex);
@@ -37,7 +38,7 @@ class BackedReader {
 
   void init(int64_t firstSequenceNumber);
   int getPartialMessageLength();
-  void constructPartialMessage(string* buf);
+  void constructPartialMessage(Packet* packet);
 };
 }  // namespace et
 

@@ -1,6 +1,12 @@
 syntax = "proto2";
 package et;
 
+enum EtPacketType {
+  // Count down from 254 to avoid collisions
+  HEARTBEAT = 254;
+  INITIAL_PAYLOAD = 253;
+}
+
 message ConnectRequest {
   optional string clientId = 1;
   optional int32 version = 2;

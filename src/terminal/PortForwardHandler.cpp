@@ -76,11 +76,11 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
   return pfdresponse;
 }
 
-void PortForwardHandler::handlePacket(char packetType,
+void PortForwardHandler::handlePacket(const Packet& packet,
                                       shared_ptr<Connection> connection) {
-  switch (packetType) {
-    case PacketType::PORT_FORWARD_DATA: {
-      PortForwardData pwd = connection->readProto<PortForwardData>();
+  switch (TerminalPacketType(packet.getHeader())) {
+    case TerminalPacketType::PORT_FORWARD_DATA: {
+      PortForwardData pwd = stringToProto<PortForwardData>(packet.getPayload());
       if (pwd.sourcetodestination()) {
         VLOG(1) << "Got data for destination socket: " << pwd.socketid();
         auto it = destinationHandlers.find(pwd.socketid());
@@ -115,20 +115,21 @@ void PortForwardHandler::handlePacket(char packetType,
       }
       break;
     }
-    case PacketType::PORT_FORWARD_SOURCE_REQUEST: {
+    case TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST: {
       LOG(INFO) << "Got new port source request";
       PortForwardSourceRequest pfsr =
-          connection->readProto<PortForwardSourceRequest>();
+          stringToProto<PortForwardSourceRequest>(packet.getPayload());
       PortForwardSourceResponse pfsresponse = createSource(pfsr);
-      char c = PacketType::PORT_FORWARD_SOURCE_RESPONSE;
-      connection->writeMessage(string(1, c));
-      connection->writeProto(pfsresponse);
+      Packet sendPacket(
+          uint8_t(TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE),
+          protoToString(pfsresponse));
+      connection->writeMessage(sendPacket);
       break;
     }
-    case PacketType::PORT_FORWARD_SOURCE_RESPONSE: {
+    case TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE: {
       LOG(INFO) << "Got port source response";
       PortForwardSourceResponse pfsresponse =
-          connection->readProto<PortForwardSourceResponse>();
+          stringToProto<PortForwardSourceResponse>(packet.getPayload());
       if (pfsresponse.has_error()) {
         cerr << "FATAL: A reverse tunnel has failed (probably because someone "
                 "else is already using that port on the destination server"
@@ -137,19 +138,20 @@ void PortForwardHandler::handlePacket(char packetType,
       }
       break;
     }
-    case PacketType::PORT_FORWARD_DESTINATION_REQUEST: {
+    case TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST: {
       PortForwardDestinationRequest pfdr =
-          connection->readProto<PortForwardDestinationRequest>();
+          stringToProto<PortForwardDestinationRequest>(packet.getPayload());
       LOG(INFO) << "Got new port destination request for port " << pfdr.port();
       PortForwardDestinationResponse pfdresponse = createDestination(pfdr);
-      char c = PacketType::PORT_FORWARD_DESTINATION_RESPONSE;
-      connection->writeMessage(string(1, c));
-      connection->writeProto(pfdresponse);
+      Packet sendPacket(
+          uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
+          protoToString(pfdresponse));
+      connection->writeMessage(sendPacket);
       break;
     }
-    case PacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
+    case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
       PortForwardDestinationResponse pfdr =
-          connection->readProto<PortForwardDestinationResponse>();
+          stringToProto<PortForwardDestinationResponse>(packet.getPayload());
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
@@ -161,7 +163,9 @@ void PortForwardHandler::handlePacket(char packetType,
       }
       break;
     }
-    default: { LOG(FATAL) << "Unknown packet type: " << int(packetType); }
+    default: {
+      LOG(FATAL) << "Unknown packet type: " << int(packet.getHeader());
+    }
   }
 }
 

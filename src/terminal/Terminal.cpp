@@ -131,7 +131,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   }
 
   try {
-    socketHandler->writeMessage(routerFd, idpasskey);
+    socketHandler->writePacket(
+        routerFd, Packet(TerminalPacketType::IDPASSKEY, idpasskey));
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
   }
@@ -147,7 +148,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   while (true) {
     try {
       jumpclient->connect();
-      jumpclient->writeProto(payload);
+      jumpclient->writeMessage(
+          Packet(et::EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
     } catch (const runtime_error &err) {
       LOG(ERROR) << "Connecting to dst server failed: " << err.what();
       connectFailCount++;
@@ -204,18 +206,18 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           sleep(3);
           continue;
         } else {
-          string s = socketHandler->readMessage(routerFd);
-          jumpclient->writeMessage(s);
-          VLOG(3) << "Sent message from router to dst terminal: " << s.length();
+          Packet p = socketHandler->readPacket(routerFd);
+          jumpclient->writeMessage(p);
+          VLOG(3) << "Sent message from router to dst terminal: " << p.length();
         }
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
         if (jumpclient->hasData()) {
-          string receivedMessage;
+          Packet receivedMessage;
           jumpclient->readMessage(&receivedMessage);
-          socketHandler->writeMessage(routerFd, receivedMessage);
+          socketHandler->writePacket(routerFd, receivedMessage);
           VLOG(3) << "Send message from dst terminal to router: "
                   << receivedMessage.length();
         }
@@ -300,19 +302,20 @@ int main(int argc, char **argv) {
       FATAL_FAIL(res);
     }
     if (res == 0) {
-      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed this information on stdin\n";
+      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
+              "this information on stdin\n";
       exit(1);
     }
 
     string stdinData;
-    if(!getline(cin, stdinData)) {
-      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed this information on stdin\n";
+    if (!getline(cin, stdinData)) {
+      cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
+              "this information on stdin\n";
       exit(1);
     }
     auto tokens = split(stdinData, '_');
     FLAGS_idpasskey = tokens[0];
     FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
-
   }
 
   string idpasskey = getIdpasskey();

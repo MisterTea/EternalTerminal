@@ -30,9 +30,9 @@
 #include <utempter.h>
 #endif
 
+#include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
-#include "RawSocketUtils.hpp"
 
 #include "ETerminal.pb.h"
 
@@ -57,7 +57,8 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   }
 
   try {
-    socketHandler->writeMessage(routerFd, idPasskey);
+    socketHandler->writePacket(
+        routerFd, Packet(TerminalPacketType::IDPASSKEY, idPasskey));
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Error connecting to router: " << re.what();
   }
@@ -179,7 +180,8 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
             break;
           }
           case TERMINAL_INFO: {
-            TerminalInfo ti = socketHandler->readProto<TerminalInfo>(routerFd, false);
+            TerminalInfo ti =
+                socketHandler->readProto<TerminalInfo>(routerFd, false);
             winsize tmpwin;
             tmpwin.ws_row = ti.row();
             tmpwin.ws_col = ti.column();

@@ -4,6 +4,7 @@
 #include "Headers.hpp"
 
 #include "CryptoHandler.hpp"
+#include "Packet.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -18,7 +19,7 @@ class BackedWriter {
   BackedWriter(shared_ptr<SocketHandler> socketHandler,
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
-  BackedWriterWriteState write(const string& buf);
+  BackedWriterWriteState write(Packet packet);
 
   vector<std::string> recover(int64_t lastValidSequenceNumber);
 
@@ -41,7 +42,7 @@ class BackedWriter {
   int socketFd;
 
   static const int MAX_BACKUP_BYTES = 64 * 1024 * 1024;
-  std::deque<string> backupBuffer;
+  std::deque<Packet> backupBuffer;
   int64_t backupSize;
   int64_t sequenceNumber;
 };

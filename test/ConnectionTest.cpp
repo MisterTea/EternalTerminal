@@ -11,6 +11,9 @@
 
 using namespace et;
 
+const int HEADER_DONE = 0;
+const int HEADER_DATA = 1;
+
 class Collector {
  public:
   Collector(shared_ptr<Connection> _connection, const string& _threadName)
@@ -35,25 +38,26 @@ class Collector {
       }
       if (connection->hasData()) {
         lock_guard<std::mutex> guard(collectorMutex);
-        string s;
-        int status = connection->readMessage(&s);
-        if (status == 1) {
-          if (s == string("DONE")) {
-            fifo.push_back(s);
+        Packet packet;
+        bool status = connection->readMessage(&packet);
+        if (status) {
+          if (packet.getHeader() == HEADER_DONE) {
+            fifo.push_back("DONE");
             break;
+          } else if (packet.getHeader() == HEADER_DATA) {
+            fifo.push_back(packet.getPayload());
+          } else if (packet.getHeader() == HEARTBEAT) {
+            // Do nothing
+          } else {
+            LOG(FATAL) << "INVALID PACKET HEADER: " << packet.getHeader();
           }
-          if (s != string("HEARTBEAT")) {
-            fifo.push_back(s);
-          }
-        } else if (status < 0) {
-          FATAL_FAIL(status);
         }
       }
       ::usleep(1000);
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
-        connection->writeMessage("HEARTBEAT");
+        connection->writeMessage(Packet(EtPacketType::HEARTBEAT, ""));
       }
     }
   }
@@ -87,7 +91,9 @@ class Collector {
     return pop();
   }
 
-  void write(const string& s) { return connection->writeMessage(s); }
+  void write(const string& s) {
+    return connection->writeMessage(Packet(HEADER_DATA, s));
+  }
 
  protected:
   shared_ptr<Connection> connection;

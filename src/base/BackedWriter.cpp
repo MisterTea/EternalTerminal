@@ -10,10 +10,9 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
       backupSize(0),
       sequenceNumber(0) {}
 
-BackedWriterWriteState BackedWriter::write(const string& buf) {
+BackedWriterWriteState BackedWriter::write(Packet packet) {
   // If recover started, Wait until finished
   lock_guard<std::mutex> guard(recoverMutex);
-  string s = buf;
   {
     if (socketFd < 0) {
       // We have no socket to write to, don't bother trying to write
@@ -22,11 +21,11 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
 
     // Once we encrypt and the encryption state is updated, there's no
     // going back.
-    s = cryptoHandler->encrypt(s);
+    packet.encrypt(cryptoHandler);
 
     // Backup the buffer
-    backupBuffer.push_front(s);
-    backupSize += s.length();
+    backupBuffer.push_front(packet);
+    backupSize += packet.length();
     sequenceNumber++;
     // Cleanup old values
     while (backupSize > MAX_BACKUP_BYTES) {
@@ -36,10 +35,14 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
   }
 
   // Size before we add the header
-  int messageSize = s.length();
+  int messageSize = packet.length();
 
   messageSize = htonl(messageSize);
-  s = string("0000") + s;
+  string s = string("0000") + packet.serialize();
+  if (packet.length() != s.length() - 4) {
+    LOG(FATAL) << "Packet header size is invalid: " << packet.length()
+               << " != " << (s.length() - 4);
+  }
   memcpy(&s[0], &messageSize, sizeof(int));
 
   size_t bytesWritten = 0;
@@ -58,7 +61,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       if (bytesWritten == count) {
         return BackedWriterWriteState::SUCCESS;
       }
-    } else if(errno == EAGAIN) {
+    } else if (errno == EAGAIN) {
       // Keep trying after 10ms
       ::usleep(10 * 1000);
     } else {
@@ -89,7 +92,7 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   int64_t messagesSeen = 0;
   vector<string> retval;
   for (auto it = backupBuffer.begin(); it != backupBuffer.end(); ++it) {
-    retval.push_back(*it);
+    retval.push_back(it->serialize());
     messagesSeen++;
     if (messagesSeen == messagesToRecover) {
       reverse(retval.begin(), retval.end());

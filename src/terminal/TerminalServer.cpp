@@ -66,7 +66,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
 
   bool b[BUF_SIZE];
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
-  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
+  shared_ptr<SocketHandler> terminalSocketHandler =
+      terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     fd_set rfd;
@@ -88,8 +89,8 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
       if (FD_ISSET(terminalFd, &rfd)) {
         memset(b, 0, BUF_SIZE);
         try {
-          string message = terminalSocketHandler->readMessage(terminalFd);
-          serverClientState->writeMessage(message);
+          Packet packet = terminalSocketHandler->readPacket(terminalFd);
+          serverClientState->writeMessage(packet);
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();
           run = false;
@@ -102,12 +103,12 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         VLOG(4) << "Jumphost is selected";
         if (serverClientState->hasData()) {
           VLOG(4) << "Jumphost serverClientState has data";
-          string message;
-          if (!serverClientState->readMessage(&message)) {
+          Packet packet;
+          if (!serverClientState->readMessage(&packet)) {
             break;
           }
           try {
-            terminalSocketHandler->writeMessage(terminalFd, message);
+            terminalSocketHandler->writePacket(terminalFd, packet);
             VLOG(4) << "Jumphost wrote to router " << terminalFd;
           } catch (const std::runtime_error &ex) {
             LOG(INFO) << "Unix socket died between global daemon and terminal "
@@ -140,11 +141,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler = globalServer->getSocketHandler();
+  shared_ptr<SocketHandler> serverSocketHandler =
+      globalServer->getSocketHandler();
   PortForwardHandler portForwardHandler(serverSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
-  shared_ptr<SocketHandler> terminalSocketHandler = terminalRouter->getSocketHandler();
+  shared_ptr<SocketHandler> terminalSocketHandler =
+      terminalRouter->getSocketHandler();
 
   while (!halt && run) {
     // Data structures needed for select() and
@@ -175,12 +178,11 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         if (rc > 0) {
           VLOG(2) << "Sending bytes from terminal: " << rc << " "
                   << serverClientState->getWriter()->getSequenceNumber();
-          char c = et::PacketType::TERMINAL_BUFFER;
-          serverClientState->writeMessage(string(1, c));
           string s(b, rc);
           et::TerminalBuffer tb;
           tb.set_buffer(s);
-          serverClientState->writeProto(tb);
+          serverClientState->writeMessage(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
@@ -193,16 +195,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
       for (auto &pfr : requests) {
-        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
-        string headerString(1, c);
-        serverClientState->writeMessage(headerString);
-        serverClientState->writeProto(pfr);
+        serverClientState->writeMessage(
+            Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
+                   protoToString(pfr)));
       }
       for (auto &pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DATA;
-        string headerString(1, c);
-        serverClientState->writeMessage(headerString);
-        serverClientState->writeProto(pwd);
+        serverClientState->writeMessage(
+            Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
       }
 
       VLOG(3) << "ServerClientFd: " << serverClientFd;
@@ -210,51 +209,51 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         VLOG(3) << "ServerClientFd is selected";
         while (serverClientState->hasData()) {
           VLOG(3) << "ServerClientState has data";
-          string packetTypeString;
-          if (!serverClientState->readMessage(&packetTypeString)) {
+          Packet packet;
+          if (!serverClientState->readMessage(&packet)) {
             break;
           }
-          char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            portForwardHandler.handlePacket(packetType, serverClientState);
+          char packetType = packet.getHeader();
+          if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+              packetType ==
+                  et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+            portForwardHandler.handlePacket(packet, serverClientState);
             continue;
           }
           switch (packetType) {
-            case et::PacketType::OBSOLETE_PORT_FORWARD_DATA:
-            case et::PacketType::OBSOLETE_PORT_FORWARD_REQUEST:
-              // Legacy port forwarding requests/data are ignored.
-              LOG(ERROR)
-                  << "Received legacy port forwarding request.  Ignoring...";
-              break;
-            case et::PacketType::TERMINAL_BUFFER: {
+            case et::TerminalPacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal
               et::TerminalBuffer tb =
-                  serverClientState->readProto<et::TerminalBuffer>();
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
               VLOG(2) << "Got bytes from client: " << tb.buffer().length()
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
               terminalSocketHandler->writeProto(terminalFd, tb, false);
               break;
             }
-            case et::PacketType::KEEP_ALIVE: {
+            case et::TerminalPacketType::KEEP_ALIVE: {
               // Echo keepalive back to client
               LOG(INFO) << "Got keep alive";
-              char c = et::PacketType::KEEP_ALIVE;
-              serverClientState->writeMessage(string(1, c));
+              serverClientState->writeMessage(
+                  Packet(TerminalPacketType::KEEP_ALIVE, ""));
               break;
             }
-            case et::PacketType::TERMINAL_INFO: {
+            case et::TerminalPacketType::TERMINAL_INFO: {
               LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
-                  serverClientState->readProto<et::TerminalInfo>();
+                  stringToProto<et::TerminalInfo>(packet.getPayload());
               char c = TERMINAL_INFO;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
               terminalSocketHandler->writeProto(terminalFd, ti, false);
               break;
             }
@@ -282,7 +281,13 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 }
 
 void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
-  InitialPayload payload = serverClientState->readProto<InitialPayload>();
+  Packet packet;
+  serverClientState->readMessage(&packet);
+  if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
+    LOG(FATAL) << "Invalid header: expecting INITIAL_PAYLOAD but got "
+               << packet.getHeader();
+  }
+  InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
   if (payload.jumphost()) {
     runJumpHost(serverClientState);
   } else {
@@ -309,12 +314,14 @@ void startServer() {
   globalServer = shared_ptr<ServerConnection>(new ServerConnection(
       tcpSocketHandler, SocketEndpoint(FLAGS_port),
       shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
+  terminalRouter = shared_ptr<UserTerminalRouter>(
+      new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
   fd_set coreFds;
   int numCoreFds = 0;
   int maxCoreFd = 0;
   FD_ZERO(&coreFds);
-  set<int> serverPortFds = tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
+  set<int> serverPortFds =
+      tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
   for (int i : serverPortFds) {
     FD_SET(i, &coreFds);
     maxCoreFd = max(maxCoreFd, i);
