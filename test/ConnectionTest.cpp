@@ -39,7 +39,7 @@ class Collector {
       if (connection->hasData()) {
         lock_guard<std::mutex> guard(collectorMutex);
         Packet packet;
-        bool status = connection->readMessage(&packet);
+        bool status = connection->readPacket(&packet);
         if (status) {
           if (packet.getHeader() == HEADER_DONE) {
             fifo.push_back("DONE");
@@ -57,7 +57,7 @@ class Collector {
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
-        connection->writeMessage(Packet(EtPacketType::HEARTBEAT, ""));
+        connection->writePacket(Packet(EtPacketType::HEARTBEAT, ""));
       }
     }
   }
@@ -92,7 +92,7 @@ class Collector {
   }
 
   void write(const string& s) {
-    return connection->writeMessage(Packet(HEADER_DATA, s));
+    return connection->writePacket(Packet(HEADER_DATA, s));
   }
 
  protected:

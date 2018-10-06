@@ -15,8 +15,8 @@ class Connection {
 
   virtual ~Connection();
 
-  virtual bool readMessage(Packet* packet);
-  virtual void writeMessage(const Packet& packet);
+  virtual bool readPacket(Packet* packet);
+  virtual void writePacket(const Packet& packet);
 
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }

@@ -90,7 +90,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         memset(b, 0, BUF_SIZE);
         try {
           Packet packet = terminalSocketHandler->readPacket(terminalFd);
-          serverClientState->writeMessage(packet);
+          serverClientState->writePacket(packet);
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();
           run = false;
@@ -104,7 +104,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         if (serverClientState->hasData()) {
           VLOG(4) << "Jumphost serverClientState has data";
           Packet packet;
-          if (!serverClientState->readMessage(&packet)) {
+          if (!serverClientState->readPacket(&packet)) {
             break;
           }
           try {
@@ -181,7 +181,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
           string s(b, rc);
           et::TerminalBuffer tb;
           tb.set_buffer(s);
-          serverClientState->writeMessage(
+          serverClientState->writePacket(
               Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
         } else {
           LOG(INFO) << "Terminal session ended";
@@ -195,12 +195,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
       for (auto &pfr : requests) {
-        serverClientState->writeMessage(
+        serverClientState->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
                    protoToString(pfr)));
       }
       for (auto &pwd : dataToSend) {
-        serverClientState->writeMessage(
+        serverClientState->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
       }
 
@@ -210,7 +210,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         while (serverClientState->hasData()) {
           VLOG(3) << "ServerClientState has data";
           Packet packet;
-          if (!serverClientState->readMessage(&packet)) {
+          if (!serverClientState->readPacket(&packet)) {
             break;
           }
           char packetType = packet.getHeader();
@@ -243,7 +243,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             case et::TerminalPacketType::KEEP_ALIVE: {
               // Echo keepalive back to client
               LOG(INFO) << "Got keep alive";
-              serverClientState->writeMessage(
+              serverClientState->writePacket(
                   Packet(TerminalPacketType::KEEP_ALIVE, ""));
               break;
             }
@@ -282,7 +282,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 
 void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
   Packet packet;
-  serverClientState->readMessage(&packet);
+  serverClientState->readPacket(&packet);
   if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
     LOG(FATAL) << "Invalid header: expecting INITIAL_PAYLOAD but got "
                << packet.getHeader();

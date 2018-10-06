@@ -123,7 +123,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       Packet sendPacket(
           uint8_t(TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE),
           protoToString(pfsresponse));
-      connection->writeMessage(sendPacket);
+      connection->writePacket(sendPacket);
       break;
     }
     case TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE: {
@@ -146,7 +146,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       Packet sendPacket(
           uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
           protoToString(pfdresponse));
-      connection->writeMessage(sendPacket);
+      connection->writePacket(sendPacket);
       break;
     }
     case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE: {

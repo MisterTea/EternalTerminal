@@ -148,7 +148,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   while (true) {
     try {
       jumpclient->connect();
-      jumpclient->writeMessage(
+      jumpclient->writePacket(
           Packet(et::EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
     } catch (const runtime_error &err) {
       LOG(ERROR) << "Connecting to dst server failed: " << err.what();
@@ -207,7 +207,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           continue;
         } else {
           Packet p = socketHandler->readPacket(routerFd);
-          jumpclient->writeMessage(p);
+          jumpclient->writePacket(p);
           VLOG(3) << "Sent message from router to dst terminal: " << p.length();
         }
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
@@ -216,7 +216,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
         if (jumpclient->hasData()) {
           Packet receivedMessage;
-          jumpclient->readMessage(&receivedMessage);
+          jumpclient->readPacket(&receivedMessage);
           socketHandler->writePacket(routerFd, receivedMessage);
           VLOG(3) << "Send message from dst terminal to router: "
                   << receivedMessage.length();

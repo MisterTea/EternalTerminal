@@ -25,7 +25,7 @@ inline bool isSkippableError(int err_no) {
   );
 }
 
-bool Connection::readMessage(Packet* packet) {
+bool Connection::readPacket(Packet* packet) {
   while (!shuttingDown) {
     bool result = read(packet);
     if (result) {
@@ -38,7 +38,7 @@ bool Connection::readMessage(Packet* packet) {
   return false;
 }
 
-void Connection::writeMessage(const Packet& packet) {
+void Connection::writePacket(const Packet& packet) {
   while (!shuttingDown) {
     bool success = write(packet);
     if (success) {

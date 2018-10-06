@@ -85,7 +85,7 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   while (true) {
     try {
       client->connect();
-      client->writeMessage(
+      client->writePacket(
           Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
     } catch (const runtime_error& err) {
       LOG(ERROR) << "Connecting to server failed: " << err.what();
@@ -121,7 +121,7 @@ void handleWindowChanged(winsize* win) {
     ti.set_column(win->ws_col);
     ti.set_width(win->ws_xpixel);
     ti.set_height(win->ws_ypixel);
-    globalClient->writeMessage(
+    globalClient->writePacket(
         Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
   }
 }
@@ -339,7 +339,7 @@ int main(int argc, char** argv) {
     et::TerminalBuffer tb;
     tb.set_buffer(FLAGS_c + "; exit\n");
 
-    globalClient->writeMessage(
+    globalClient->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
   }
 
@@ -363,7 +363,7 @@ int main(int argc, char** argv) {
         pfsr.set_sourceport(pair.first);
         pfsr.set_destinationport(pair.second);
 
-        globalClient->writeMessage(
+        globalClient->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
                    protoToString(pfsr)));
       }
@@ -416,7 +416,7 @@ int main(int argc, char** argv) {
           et::TerminalBuffer tb;
           tb.set_buffer(s);
 
-          globalClient->writeMessage(
+          globalClient->writePacket(
               Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
           keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         }
@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
         while (globalClient->hasData()) {
           VLOG(4) << "GlobalClient has data";
           Packet packet;
-          if (!globalClient->readMessage(&packet)) {
+          if (!globalClient->readPacket(&packet)) {
             break;
           }
           char packetType = packet.getHeader();
@@ -479,8 +479,7 @@ int main(int argc, char** argv) {
           waitingOnKeepalive = false;
         } else {
           LOG(INFO) << "Writing keepalive packet";
-          globalClient->writeMessage(
-              Packet(TerminalPacketType::KEEP_ALIVE, ""));
+          globalClient->writePacket(Packet(TerminalPacketType::KEEP_ALIVE, ""));
           waitingOnKeepalive = true;
         }
       }
@@ -495,14 +494,14 @@ int main(int argc, char** argv) {
       vector<PortForwardData> dataToSend;
       portForwardHandler.update(&requests, &dataToSend);
       for (auto& pfr : requests) {
-        globalClient->writeMessage(
+        globalClient->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
                    protoToString(pfr)));
         VLOG(4) << "send PF request";
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }
       for (auto& pwd : dataToSend) {
-        globalClient->writeMessage(
+        globalClient->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
         VLOG(4) << "send PF data";
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
