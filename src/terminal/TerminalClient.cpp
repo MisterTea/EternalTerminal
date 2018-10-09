@@ -313,9 +313,9 @@ int main(int argc, char** argv) {
 
   strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
   string current_time(buffer);
-  const char* err_filename = ("/tmp/etclient_err_" + current_time).c_str();
+  string errFilename = "/tmp/etclient_err_" + current_time;
 
-  FILE* stderr_stream = freopen(err_filename, "w+", stderr);
+  FILE* stderr_stream = freopen(errFilename.c_str(), "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 
   if (!FLAGS_jumphost.empty()) {

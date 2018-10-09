@@ -429,10 +429,18 @@ int main(int argc, char **argv) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
 
-    const char *err_filename = "/tmp/etserver_err";
-    FILE *stdout_stream = freopen(err_filename, "w+", stdout);
+    time_t rawtime;
+    struct tm *timeinfo;
+    char buffer[80];
+
+    time(&rawtime);
+    timeinfo = localtime(&rawtime);
+    strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
+    string current_time(buffer);
+    string errFilename = "/tmp/etclient_err_" + current_time;
+    FILE *stdout_stream = freopen(errFilename.c_str(), "w+", stdout);
     setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE *stderr_stream = freopen(err_filename, "w+", stderr);
+    FILE *stderr_stream = freopen(errFilename.c_str(), "w+", stderr);
     setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   }
   // Set log file for etserver process here.

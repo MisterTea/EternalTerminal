@@ -81,11 +81,11 @@ string getIdpasskey() {
 
 void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
-  string std_file =
+  string logFile =
       string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
-  FILE *stdout_stream = freopen("/tmp/etclient_err", "w+", stdout);
+  FILE *stdout_stream = freopen(logFile.c_str(), "w+", stdout);
   setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  FILE *stderr_stream = freopen("/tmp/etclient_err", "w+", stderr);
+  FILE *stderr_stream = freopen(logFile.c_str(), "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 }
 
