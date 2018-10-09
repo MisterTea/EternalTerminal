@@ -154,7 +154,7 @@ string TerminalHandler::pollUserTerminal() {
         return string();
       }
     }
-  } catch (std::exception ex) {
+  } catch (const std::exception& ex) {
     LOG(INFO) << ex.what();
     run = false;
 #ifdef WITH_UTEMPTER

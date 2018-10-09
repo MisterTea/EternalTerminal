@@ -33,17 +33,17 @@ bool Connection::read(string* buf) {
   if (messagesRead == -1) {
     if (isSkippableError(errno)) {
       // Close the socket and invalidate, then return 0 messages
-      LOG(INFO) << "Closing socket because " << errno << " "
-                << strerror(errno);
+      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
       closeSocket();
       return 0;
     } else {
       // Throw the error
-      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / " << strerror(errno);
+      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / "
+                 << strerror(errno);
       throw std::runtime_error("Failed a call to read");
     }
   } else {
-    return messagesRead>0;
+    return messagesRead > 0;
   }
 }
 

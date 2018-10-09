@@ -80,7 +80,8 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
         opts &= (~O_NONBLOCK);
         FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
       }
-      // Initialize the socket again once it's blocking to make sure timeouts are set
+      // Initialize the socket again once it's blocking to make sure timeouts
+      // are set
       initSocket(sockFd);
 
       // if we get here, we must have connected successfully

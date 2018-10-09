@@ -191,7 +191,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
           }
         }
       }
-    } catch (std::exception ex) {
+    } catch (const std::exception &ex) {
       LOG(INFO) << ex.what();
       run = false;
       break;

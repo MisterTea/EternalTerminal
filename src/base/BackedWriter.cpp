@@ -58,7 +58,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       if (bytesWritten == count) {
         return BackedWriterWriteState::SUCCESS;
       }
-    } else if(errno == EAGAIN) {
+    } else if (errno == EAGAIN) {
       // Keep trying after 10ms
       ::usleep(10 * 1000);
     } else {
