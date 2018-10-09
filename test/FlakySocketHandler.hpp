@@ -39,7 +39,7 @@ class FlakySocketHandler : public SocketHandler {
   }
 
   int writeAllOrReturn(int fd, const void* buf, size_t count) {
-    if (rand() % 20 == 0) {
+    if (rand() % 30 == 0) {
       errno = EPIPE;
       return -1;
     }

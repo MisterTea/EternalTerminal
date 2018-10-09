@@ -40,7 +40,6 @@ class Collector {
         if (status == 1) {
           if (s == string("DONE")) {
             fifo.push_back(s);
-            break;
           }
           if (s != string("HEARTBEAT")) {
             fifo.push_back(s);
@@ -49,7 +48,10 @@ class Collector {
           FATAL_FAIL(status);
         }
       }
-      ::usleep(1000);
+      if (connection->isShuttingDown()) {
+        done = true;
+      }
+      ::usleep(10 * 1000);
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
@@ -57,6 +59,8 @@ class Collector {
       }
     }
   }
+
+  void join() { collectorThread->join(); }
 
   void finish() {
     connection->shutdown();
@@ -82,12 +86,14 @@ class Collector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(1000);
+      ::usleep(10 * 1000);
     }
     return pop();
   }
 
   void write(const string& s) { return connection->writeMessage(s); }
+
+  shared_ptr<Connection> getConnection() { return connection; }
 
  protected:
   shared_ptr<Connection> connection;
@@ -100,13 +106,11 @@ class Collector {
 
 void listenFn(bool* stopListening, int serverFd,
               shared_ptr<ServerConnection> serverConnection) {
-  // Only works when there is 1:1 mapping between endpoint and fds.  Will fix in
-  // future api
   while (*stopListening == false) {
     if (serverConnection->getSocketHandler()->hasData(serverFd)) {
       serverConnection->acceptNewConnection(serverFd);
     }
-    ::usleep(1000 * 1000);
+    ::usleep(10 * 1000);
   }
 }
 
@@ -205,8 +209,9 @@ class ConnectionTest : public testing::Test {
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
 
-    serverCollector->finish();
-    clientCollector->finish();
+    serverConnection->removeClient(serverCollector->getConnection()->getId());
+    serverCollector->join();
+    clientCollector->join();
 
     EXPECT_EQ(resultConcat, s);
   }
@@ -282,7 +287,6 @@ TEST_F(FlakyConnectionTest, MultiReadWrite) {
     new_id[0] = 'A' + a;
     pool.push([&, this](int id, string clientId) { readWriteTest(clientId); },
               new_id);
-    ::usleep((500 + rand() % 1000) * 1000);
   }
   pool.stop(true);
 }
