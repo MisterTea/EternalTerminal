@@ -87,18 +87,21 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   int connectFailCount = 0;
   while (true) {
     try {
-      client->connect();
-      client->writeProto(payload);
-    } catch (const runtime_error& err) {
-      LOG(ERROR) << "Connecting to server failed: " << err.what();
-      connectFailCount++;
-      if (connectFailCount == 3) {
-        LOG(INFO) << "Could not make initial connection to server";
-        cout << "Could not make initial connection to " << FLAGS_host << ": "
-             << err.what() << endl;
-        exit(1);
+      if (client->connect()) {
+        client->writeProto(payload);
+        break;
+      } else {
+        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        connectFailCount++;
+        if (connectFailCount == 3) {
+          throw std::runtime_error("Connect Timeout");
+        }
       }
-      continue;
+    } catch (const runtime_error& err) {
+      LOG(INFO) << "Could not make initial connection to server";
+      cout << "Could not make initial connection to " << FLAGS_host << ": "
+           << err.what() << endl;
+      exit(1);
     }
     break;
   }

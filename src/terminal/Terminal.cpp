@@ -147,18 +147,21 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   int connectFailCount = 0;
   while (true) {
     try {
-      jumpclient->connect();
-      jumpclient->writeProto(payload);
-    } catch (const runtime_error &err) {
-      LOG(ERROR) << "Connecting to dst server failed: " << err.what();
-      connectFailCount++;
-      if (connectFailCount == 3) {
-        LOG(INFO) << "Could not make initial connection to dst server";
-        cout << "Could not make initial connection to " << host << ": "
-             << err.what() << endl;
-        exit(1);
+      if (jumpclient->connect()) {
+        jumpclient->writeProto(payload);
+        break;
+      } else {
+        LOG(ERROR) << "Connecting to dst server failed: Connect timeout";
+        connectFailCount++;
+        if (connectFailCount == 3) {
+          throw std::runtime_error("Connect timeout");
+        }
       }
-      continue;
+    } catch (const runtime_error &err) {
+      LOG(INFO) << "Could not make initial connection to dst server";
+      cout << "Could not make initial connection to " << host << ": "
+           << err.what() << endl;
+      exit(1);
     }
     break;
   }

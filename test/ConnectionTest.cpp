@@ -166,11 +166,13 @@ class ConnectionTest : public testing::Test {
         clientSocketHandler, endpoint, clientId, CRYPTO_KEY));
     while (true) {
       try {
-        clientConnection->connect();
-        break;
-      } catch (const std::runtime_error& ex) {
+        if (clientConnection->connect()) {
+          break;
+        }
         LOG(INFO) << "Connection failed, retrying...";
         ::usleep(1000 * 1000);
+      } catch (const std::runtime_error& ex) {
+        LOG(FATAL) << "Error connecting to server: " << ex.what();
       }
     }
 
