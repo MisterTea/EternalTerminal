@@ -208,7 +208,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         serverClientState->writeProto(pwd);
       }
 
-      VLOG(3) << "ServerClientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         VLOG(3) << "ServerClientFd is selected";
         while (serverClientState->hasData()) {
@@ -380,7 +379,7 @@ int main(int argc, char **argv) {
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
     // Redirect std streams to a file
-    LogHandler::setupStdStreams("/tmp/etserver");
+    LogHandler::stderrToFile("/tmp/etserver");
   }
 
   // default max log file size is 20MB for etserver

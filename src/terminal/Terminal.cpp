@@ -83,8 +83,9 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
   if (!FLAGS_logtostdout) {
     string first_idpass_chars = idpasskey.substr(0, 10);
     string logFile =
-        string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
-    LogHandler::setupStdStreams(logFile);
+        string("/tmp/etterminal_") + daemonType + "_" + first_idpass_chars;
+    // Redirect std streams to a file
+    LogHandler::stderrToFile(logFile);
   }
 }
 

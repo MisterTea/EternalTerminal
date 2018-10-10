@@ -13,7 +13,7 @@ int main(int argc, char **argv) {
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
-      et::LogHandler::SetupLogHandler(&argc, &argv);
+      et::LogHandler::setupLogHandler(&argc, &argv);
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "false");
   el::Loggers::setVerboseLevel(FLAGS_v);
 

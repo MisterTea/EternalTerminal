@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
     // Redirect std streams to a file
-    LogHandler::setupStdStreams("/tmp/etclient");
+    LogHandler::stderrToFile("/tmp/etclient");
   }
 
   // silent Flag, since etclient doesn't read /etc/et.cfg file
