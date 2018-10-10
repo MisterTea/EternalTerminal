@@ -47,12 +47,12 @@ int main(int argc, char** argv) {
   sigaction(SIGTERM, &action, NULL);
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
+  LogHandler::setupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);

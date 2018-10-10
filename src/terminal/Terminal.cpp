@@ -80,13 +80,12 @@ string getIdpasskey() {
 }
 
 void setDaemonLogFile(string idpasskey, string daemonType) {
-  string first_idpass_chars = idpasskey.substr(0, 10);
-  string logFile =
-      string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
-  FILE *stdout_stream = freopen(logFile.c_str(), "w+", stdout);
-  setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  FILE *stderr_stream = freopen(logFile.c_str(), "w+", stderr);
-  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  if (!FLAGS_logtostdout) {
+    string first_idpass_chars = idpasskey.substr(0, 10);
+    string logFile =
+        string("/tmp/etserver_") + daemonType + "_" + first_idpass_chars;
+    LogHandler::setupStdStreams(logFile);
+  }
 }
 
 void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
@@ -243,7 +242,7 @@ int main(int argc, char **argv) {
   SetVersionString(string(ET_VERSION));
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
@@ -291,7 +290,7 @@ int main(int argc, char **argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     // etserver with --jump cannot write to the default log file(root)
-    LogHandler::SetupLogFile(&defaultConf,
+    LogHandler::setupLogFile(&defaultConf,
                              "/tmp/etjump-" + username + "-" + id + ".log",
                              maxlogsize);
     // Reconfigure default logger to apply settings above
@@ -313,7 +312,7 @@ int main(int argc, char **argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::SetupLogFile(&defaultConf,
+    LogHandler::setupLogFile(&defaultConf,
                              "/tmp/etterminal-" + username + "-" + id + ".log",
                              maxlogsize);
     // Reconfigure default logger to apply settings above

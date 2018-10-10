@@ -178,12 +178,14 @@ int main(int argc, char** argv) {
   SetVersionString(string(ET_VERSION));
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+    // Redirect std streams to a file
+    LogHandler::setupStdStreams("/tmp/etclient");
   }
 
   // silent Flag, since etclient doesn't read /etc/et.cfg file
@@ -191,7 +193,7 @@ int main(int argc, char** argv) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
 
-  LogHandler::SetupLogFile(&defaultConf,
+  LogHandler::setupLogFile(&defaultConf,
                            "/tmp/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log");
 
   el::Loggers::reconfigureLogger("default", defaultConf);
@@ -303,20 +305,6 @@ int main(int argc, char** argv) {
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
       FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
-
-  time_t rawtime;
-  struct tm* timeinfo;
-  char buffer[80];
-
-  time(&rawtime);
-  timeinfo = localtime(&rawtime);
-
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
-  string current_time(buffer);
-  string errFilename = "/tmp/etclient_err_" + current_time;
-
-  FILE* stderr_stream = freopen(errFilename.c_str(), "w+", stderr);
-  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
 
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;

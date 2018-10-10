@@ -373,12 +373,14 @@ int main(int argc, char **argv) {
   SetVersionString(string(ET_VERSION));
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+    // Redirect std streams to a file
+    LogHandler::setupStdStreams("/tmp/etserver");
   }
 
   // default max log file size is 20MB for etserver
@@ -428,23 +430,10 @@ int main(int argc, char **argv) {
     if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
-
-    time_t rawtime;
-    struct tm *timeinfo;
-    char buffer[80];
-
-    time(&rawtime);
-    timeinfo = localtime(&rawtime);
-    strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
-    string current_time(buffer);
-    string errFilename = "/tmp/etclient_err_" + current_time;
-    FILE *stdout_stream = freopen(errFilename.c_str(), "w+", stdout);
-    setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE *stderr_stream = freopen(errFilename.c_str(), "w+", stderr);
-    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   }
+
   // Set log file for etserver process here.
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
+  LogHandler::setupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
                            maxlogsize);
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
