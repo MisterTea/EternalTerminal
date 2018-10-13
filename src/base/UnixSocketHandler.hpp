@@ -20,8 +20,8 @@ class UnixSocketHandler : public SocketHandler {
   virtual void initSocket(int fd);
   virtual void initServerSocket(int fd);
 
-  set<int> activeSockets;
-  recursive_mutex mutex;
+  map<int, shared_ptr<recursive_mutex>> activeSocketMutexes;
+  recursive_mutex globalMutex;
 };
 }  // namespace et
 

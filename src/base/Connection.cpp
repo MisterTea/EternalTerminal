@@ -54,8 +54,14 @@ bool Connection::readMessage(string* buf) {
       return true;
     }
     // Yield the processor
-    usleep(100 * 1000);
-    LOG_EVERY_N(10, INFO) << "Waiting to read...";
+    if (socketFd == -1) {
+      // No connection, sleep for 100ms
+      usleep(100 * 1000);
+    } else {
+      // Have a connection, sleep for 1ms
+      usleep(1 * 1000);
+    }
+    LOG_EVERY_N(1000, INFO) << "Waiting to read...";
   }
   return false;
 }
@@ -98,8 +104,15 @@ void Connection::writeMessage(const string& buf) {
     if (success) {
       return;
     }
-    usleep(10 * 1000);
-    LOG_EVERY_N(100, INFO) << "Waiting to write...";
+    // Yield the processor
+    if (socketFd == -1) {
+      // No connection, sleep for 100ms
+      usleep(100 * 1000);
+    } else {
+      // Have a connection, sleep for 1ms
+      usleep(1 * 1000);
+    }
+    LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }
 }
 
