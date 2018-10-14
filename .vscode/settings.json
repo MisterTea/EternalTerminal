@@ -65,7 +65,8 @@
         "stack": "cpp",
         "future": "cpp",
         "cfenv": "cpp",
-        "variant": "cpp"
+        "variant": "cpp",
+        "mutex": "cpp"
     },
     "C_Cpp.clang_format_style": "Google",
     "C_Cpp.configurationWarnings": "Disabled"

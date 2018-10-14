@@ -22,7 +22,7 @@ bool BackedReader::hasData() {
   return socketHandler->hasData(socketFd);
 }
 
-int BackedReader::read(string* buf) {
+int BackedReader::read(Packet* packet) {
   lock_guard<std::mutex> guard(recoverMutex);
   if (socketFd < 0) {
     // The socket is dead, return 0 bytes until it returns
@@ -32,10 +32,10 @@ int BackedReader::read(string* buf) {
 
   if (localBuffer.size() > 0) {
     VLOG(1) << "Reading from local buffer";
-    string s = cryptoHandler->decrypt(localBuffer.front());
+    *packet = Packet(localBuffer.front());
     localBuffer.pop_front();
     VLOG(1) << "New local buffer size: " << localBuffer.size();
-    *buf = s;
+    packet->decrypt(cryptoHandler);
     return 1;
   }
 
@@ -91,14 +91,15 @@ int BackedReader::read(string* buf) {
     }
   }
   if (!messageRemainder) {
-    constructPartialMessage(buf);
+    constructPartialMessage(packet);
     return 1;
   }
 
   return 0;
 }
 
-void BackedReader::revive(int newSocketFd, vector<string> newLocalEntries) {
+void BackedReader::revive(int newSocketFd,
+                          const vector<string>& newLocalEntries) {
   partialMessage = "";
   localBuffer.insert(localBuffer.end(), newLocalEntries.begin(),
                      newLocalEntries.end());
@@ -116,13 +117,17 @@ int BackedReader::getPartialMessageLength() {
   return messageSize;
 }
 
-void BackedReader::constructPartialMessage(string* buf) {
+void BackedReader::constructPartialMessage(Packet* packet) {
   int messageSize = getPartialMessageLength();
-  if (int(partialMessage.length()) - 4 < messageSize) {
-    LOG(FATAL) << "Tried to construct a message that wasn't complete";
+  if (int(partialMessage.length()) - 4 != messageSize) {
+    LOG(FATAL)
+        << "Tried to construct a message that wasn't complete or over-filled: "
+        << (int(partialMessage.length()) - 4) << " != " << messageSize;
   }
-  *buf = cryptoHandler->decrypt(partialMessage.substr(4, messageSize));
-  partialMessage = partialMessage.substr(4 + messageSize);
+  string serializedPacket = partialMessage.substr(4, messageSize);
+  *packet = Packet(serializedPacket);
+  packet->decrypt(cryptoHandler);
+  partialMessage.clear();
   sequenceNumber++;
 }
 }  // namespace et

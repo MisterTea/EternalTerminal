@@ -3,6 +3,7 @@
 
 #include "Headers.hpp"
 
+#include "Packet.hpp"
 #include "SocketEndpoint.hpp"
 
 namespace et {
@@ -44,7 +45,7 @@ class SocketHandler {
     writeAllOrThrow(fd, &s[0], length, timeout);
   }
 
-  inline string readMessage(int fd) {
+  inline Packet readPacket(int fd) {
     int64_t length;
     readAll(fd, (char*)&length, sizeof(int64_t), false);
     if (length < 0 || length > 128 * 1024 * 1024) {
@@ -55,10 +56,11 @@ class SocketHandler {
     }
     string s(length, 0);
     readAll(fd, &s[0], length, false);
-    return s;
+    return Packet(s);
   }
 
-  inline void writeMessage(int fd, const string& s) {
+  inline void writePacket(int fd, const Packet& packet) {
+    string s = packet.serialize();
     int64_t length = s.length();
     writeAllOrThrow(fd, (const char*)&length, sizeof(int64_t), false);
     writeAllOrThrow(fd, &s[0], length, false);
@@ -82,15 +84,13 @@ class SocketHandler {
     }
   }
 
-  inline void readB64EncodedLength(int fd, string* out,
-                                          size_t encodedLength) {
+  inline void readB64EncodedLength(int fd, string* out, size_t encodedLength) {
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length(), false);
     if (!base64::Base64::Decode(s, out)) {
       throw runtime_error("b64 decode failed");
     }
   }
-
 
   virtual int connect(const SocketEndpoint& endpoint) = 0;
   virtual set<int> listen(const SocketEndpoint& endpoint) = 0;

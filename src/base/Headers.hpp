@@ -88,14 +88,15 @@ static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
-#define FATAL_FAIL_UNLESS_EINVAL(X) \
-  if (((X) == -1) && errno != EINVAL)    \
+#define FATAL_FAIL_UNLESS_EINVAL(X)   \
+  if (((X) == -1) && errno != EINVAL) \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
 #ifndef ET_VERSION
 #define ET_VERSION "unknown"
 #endif
 
+namespace et {
 template <typename Out>
 inline void split(const std::string& s, char delim, Out result) {
   std::stringstream ss;
@@ -145,5 +146,24 @@ inline int replaceAll(std::string& str, const std::string& from,
   }
   return retval;
 }
+
+template <typename T>
+inline T stringToProto(const string& s) {
+  T t;
+  if (!t.ParseFromString(s)) {
+    LOG(FATAL) << "Error parsing string to proto: " << s.length() << " " << s;
+  }
+  return t;
+}
+
+template <typename T>
+inline string protoToString(const T& t) {
+  string s;
+  if (!t.SerializeToString(&s)) {
+    LOG(FATAL) << "Error serializing proto to string";
+  }
+  return s;
+}
+}  // namespace et
 
 #endif

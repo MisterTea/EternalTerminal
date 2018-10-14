@@ -15,26 +15,8 @@ class Connection {
 
   virtual ~Connection();
 
-  virtual bool readMessage(string* buf);
-  virtual void writeMessage(const string& message);
-
-  template <typename T>
-  inline T readProto() {
-    T t;
-    string s;
-    ssize_t readMessages = readMessage(&s);
-    if (readMessages) {
-      t.ParseFromString(s);
-    }
-    return t;
-  }
-
-  template <typename T>
-  inline void writeProto(const T& t) {
-    string s;
-    t.SerializeToString(&s);
-    writeMessage(s);
-  }
+  virtual bool readPacket(Packet* packet);
+  virtual void writePacket(const Packet& packet);
 
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
@@ -56,8 +38,8 @@ class Connection {
   inline bool isShuttingDown() { return shuttingDown; }
 
  protected:
-  virtual bool read(string* buf);
-  virtual bool write(const string& buf);
+  virtual bool read(Packet* packet);
+  virtual bool write(const Packet& packet);
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;
