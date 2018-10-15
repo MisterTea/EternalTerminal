@@ -147,6 +147,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   if (sockFd == -1) {
     LOG(ERROR) << "ERROR, no host found";
   } else {
+    initSocket(sockFd);
     addToActiveSockets(sockFd);
   }
 
