@@ -155,6 +155,14 @@ void UnixSocketHandler::close(int fd) {
   activeSocketMutexes.erase(it);
 }
 
+vector<int> UnixSocketHandler::getActiveSockets() {
+  vector<int> fds;
+  for (auto it : activeSocketMutexes) {
+    fds.push_back(it.first);
+  }
+  return fds;
+}
+
 void UnixSocketHandler::initSocket(int fd) {
   struct timeval tv;
   tv.tv_sec = 5;

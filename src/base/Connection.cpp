@@ -11,7 +11,7 @@ Connection::~Connection() {
   }
   if (socketFd != -1) {
     LOG(INFO) << "Connection destroyed";
-    Connection::closeSocket();
+    closeSocket();
   }
 }
 
@@ -34,7 +34,7 @@ bool Connection::read(string* buf) {
     if (isSkippableError(errno)) {
       // Close the socket and invalidate, then return 0 messages
       LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
-      closeSocket();
+      closeSocketAndMaybeReconnect();
       return 0;
     } else {
       // Throw the error
@@ -88,7 +88,7 @@ bool Connection::write(const string& buf) {
     } else if (isSkippableError(errno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
-      closeSocket();
+      closeSocketAndMaybeReconnect();
     } else {
       LOG(FATAL) << "Unexpected socket error: " << errno << " "
                  << strerror(errno);
@@ -181,6 +181,6 @@ bool Connection::recover(int newSocketFd) {
 void Connection::shutdown() {
   LOG(INFO) << "Shutting down connection";
   shuttingDown = true;
-  Connection::closeSocket();
+  closeSocket();
 }
 }  // namespace et

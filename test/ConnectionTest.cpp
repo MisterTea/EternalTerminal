@@ -155,6 +155,16 @@ class ConnectionTest : public testing::Test {
     serverClientConnections.clear();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    serverConnection.reset();
+
+    auto v = serverSocketHandler->getActiveSockets();
+    if (!v.empty()) {
+      LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    }
+    v = clientSocketHandler->getActiveSockets();
+    if (!v.empty()) {
+      LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    }
   }
 
   void readWriteTest(const string& clientId) {
@@ -210,12 +220,14 @@ class ConnectionTest : public testing::Test {
     }
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
+    EXPECT_EQ(resultConcat, s);
 
     serverConnection->removeClient(serverCollector->getConnection()->getId());
     serverCollector->join();
+    serverCollector.reset();
     clientCollector->join();
-
-    EXPECT_EQ(resultConcat, s);
+    clientCollector.reset();
+    clientConnection.reset();
   }
 
   shared_ptr<SocketHandler> serverSocketHandler;

@@ -305,7 +305,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
 };
 
 void startServer() {
-  std::shared_ptr<TcpSocketHandler> tcpSocketHandler(new TcpSocketHandler());
+  std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
   LOG(INFO) << "Creating server";

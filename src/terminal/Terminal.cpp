@@ -202,7 +202,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           } else {
             LOG(INFO) << "User comes back, reconnecting";
             is_reconnecting = true;
-            jumpclient->closeSocket();
+            jumpclient->closeSocketAndMaybeReconnect();
           }
           LOG(INFO) << "Reconnecting, sleep for 3s...";
           sleep(3);
@@ -228,7 +228,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       // src disconnects, close jump -> dst
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
         LOG(INFO) << "Jumpclient idle, killing connection";
-        jumpclient->Connection::closeSocket();
+        jumpclient->closeSocket();
         is_reconnecting = false;
       }
     } catch (const runtime_error &re) {
