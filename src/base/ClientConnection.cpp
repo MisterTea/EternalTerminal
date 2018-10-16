@@ -12,6 +12,8 @@ ClientConnection::~ClientConnection() {
     reconnectThread->join();
     reconnectThread.reset();
   }
+  // Close the socket without spawning a reconnect thread
+  closeSocket();
 }
 
 bool ClientConnection::connect() {
@@ -66,13 +68,10 @@ bool ClientConnection::connect() {
   return false;
 }
 
-void ClientConnection::closeSocket() {
+void ClientConnection::closeSocketAndMaybeReconnect() {
   waitReconnect();
   LOG(INFO) << "Closing socket";
-  {
-    // Close the socket
-    Connection::closeSocket();
-  }
+  closeSocket();
   LOG(INFO) << "Socket closed, starting new reconnect thread";
   reconnectThread = std::shared_ptr<std::thread>(
       new std::thread(&ClientConnection::pollReconnect, this));
@@ -109,6 +108,7 @@ void ClientConnection::pollReconnect() {
                          "terminated the session.";
             // This means that the server has terminated the connection.
             shuttingDown = true;
+            socketHandler->close(newSocketFd);
             return;
           }
           if (response.status() != RETURNING_CLIENT) {

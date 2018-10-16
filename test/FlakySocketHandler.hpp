@@ -37,6 +37,9 @@ class FlakySocketHandler : public SocketHandler {
   virtual ssize_t write(int fd, const void* buf, size_t count) {
     return actualSocketHandler->write(fd, buf, count);
   }
+  virtual vector<int> getActiveSockets() {
+    return actualSocketHandler->getActiveSockets();
+  }
 
   int writeAllOrReturn(int fd, const void* buf, size_t count) {
     if (rand() % 30 == 0) {

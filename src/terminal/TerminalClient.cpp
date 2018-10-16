@@ -475,7 +475,7 @@ int main(int argc, char** argv) {
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (waitingOnKeepalive) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
-          globalClient->closeSocket();
+          globalClient->closeSocketAndMaybeReconnect();
           waitingOnKeepalive = false;
         } else {
           LOG(INFO) << "Writing keepalive packet";

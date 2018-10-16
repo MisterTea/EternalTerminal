@@ -96,6 +96,7 @@ class SocketHandler {
   virtual int accept(int fd) = 0;
   virtual void stopListening(const SocketEndpoint& endpoint) = 0;
   virtual void close(int fd) = 0;
+  virtual vector<int> getActiveSockets() = 0;
 };
 }  // namespace et
 
