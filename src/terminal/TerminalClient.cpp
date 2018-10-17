@@ -87,21 +87,9 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   int connectFailCount = 0;
   while (true) {
     try {
-<<<<<<< HEAD
-      client->connect();
-      client->writePacket(
-          Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
-    } catch (const runtime_error& err) {
-      LOG(ERROR) << "Connecting to server failed: " << err.what();
-      connectFailCount++;
-      if (connectFailCount == 3) {
-        LOG(INFO) << "Could not make initial connection to server";
-        cout << "Could not make initial connection to " << FLAGS_host << ": "
-             << err.what() << endl;
-        exit(1);
-=======
       if (client->connect()) {
-        client->writeProto(payload);
+        client->writePacket(
+            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
         break;
       } else {
         LOG(ERROR) << "Connecting to server failed: Connect timeout";
@@ -109,7 +97,6 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
         }
->>>>>>> master
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
@@ -320,25 +307,7 @@ int main(int argc, char** argv) {
 
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
-<<<<<<< HEAD
-      FLAGS_x, FLAGS_v, FLAGS_prefix);
-
-  time_t rawtime;
-  struct tm* timeinfo;
-  char buffer[80];
-
-  time(&rawtime);
-  timeinfo = localtime(&rawtime);
-
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
-  string current_time(buffer);
-  const char* err_filename = ("/tmp/etclient_err_" + current_time).c_str();
-
-  FILE* stderr_stream = freopen(err_filename, "w+", stderr);
-  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-=======
       FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
->>>>>>> master
 
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;

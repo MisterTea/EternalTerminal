@@ -25,33 +25,7 @@ inline bool isSkippableError(int err_no) {
   );
 }
 
-<<<<<<< HEAD
 bool Connection::readPacket(Packet* packet) {
-=======
-bool Connection::read(string* buf) {
-  VLOG(4) << "Before read get connectionMutex";
-  lock_guard<std::recursive_mutex> guard(connectionMutex);
-  VLOG(4) << "After read get connectionMutex";
-  ssize_t messagesRead = reader->read(buf);
-  if (messagesRead == -1) {
-    if (isSkippableError(errno)) {
-      // Close the socket and invalidate, then return 0 messages
-      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
-      closeSocketAndMaybeReconnect();
-      return 0;
-    } else {
-      // Throw the error
-      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / "
-                 << strerror(errno);
-      throw std::runtime_error("Failed a call to read");
-    }
-  } else {
-    return messagesRead > 0;
-  }
-}
-
-bool Connection::readMessage(string* buf) {
->>>>>>> master
   while (!shuttingDown) {
     bool result = read(packet);
     if (result) {
@@ -70,43 +44,7 @@ bool Connection::readMessage(string* buf) {
   return false;
 }
 
-<<<<<<< HEAD
 void Connection::writePacket(const Packet& packet) {
-=======
-bool Connection::write(const string& buf) {
-  lock_guard<std::recursive_mutex> guard(connectionMutex);
-  if (socketFd == -1) {
-    return false;
-  }
-
-  BackedWriterWriteState bwws = writer->write(buf);
-
-  if (bwws == BackedWriterWriteState::SKIPPED) {
-    VLOG(4) << "Write skipped";
-    return false;
-  }
-
-  if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
-    VLOG(4) << "Wrote with failure";
-    // Error writing.
-    if (socketFd == -1) {
-      // The socket was already closed
-      VLOG(1) << "Socket closed";
-    } else if (isSkippableError(errno)) {
-      VLOG(1) << " Connection is severed";
-      // The connection has been severed, handle and hide from the caller
-      closeSocketAndMaybeReconnect();
-    } else {
-      LOG(FATAL) << "Unexpected socket error: " << errno << " "
-                 << strerror(errno);
-    }
-  }
-
-  return 1;
-}
-
-void Connection::writeMessage(const string& buf) {
->>>>>>> master
   while (!shuttingDown) {
     bool success = write(packet);
     if (success) {

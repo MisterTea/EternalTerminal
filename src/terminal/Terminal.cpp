@@ -90,13 +90,8 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
 }
 
 void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
-<<<<<<< HEAD
-                       string idpasskey) {
-  UserTerminalHandler uth(ipcSocketHandler);
-=======
                        string idpasskey, bool noratelimit) {
   UserTerminalHandler uth(ipcSocketHandler, noratelimit);
->>>>>>> master
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (::daemon(0, 0) == -1) {
@@ -153,21 +148,9 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   int connectFailCount = 0;
   while (true) {
     try {
-<<<<<<< HEAD
-      jumpclient->connect();
-      jumpclient->writePacket(
-          Packet(et::EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
-    } catch (const runtime_error &err) {
-      LOG(ERROR) << "Connecting to dst server failed: " << err.what();
-      connectFailCount++;
-      if (connectFailCount == 3) {
-        LOG(INFO) << "Could not make initial connection to dst server";
-        cout << "Could not make initial connection to " << host << ": "
-             << err.what() << endl;
-        exit(1);
-=======
       if (jumpclient->connect()) {
-        jumpclient->writeProto(payload);
+        jumpclient->writePacket(
+            Packet(et::EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
         break;
       } else {
         LOG(ERROR) << "Connecting to dst server failed: Connect timeout";
@@ -175,7 +158,6 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect timeout");
         }
->>>>>>> master
       }
     } catch (const runtime_error &err) {
       LOG(INFO) << "Could not make initial connection to dst server";
@@ -362,9 +344,8 @@ int main(int argc, char **argv) {
     return 0;
   }
 
-<<<<<<< HEAD
   // etserver with --idpasskey cannot write to the default log file(root)
-  LogHandler::SetupLogFile(&defaultConf,
+  LogHandler::setupLogFile(&defaultConf,
                            "/tmp/etterminal-" + username + "-" + id + ".log",
                            maxlogsize);
   // Reconfigure default logger to apply settings above
@@ -374,35 +355,9 @@ int main(int argc, char **argv) {
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-  startUserTerminal(ipcSocketHandler, idpasskey);
+  startUserTerminal(ipcSocketHandler, idpasskey, FLAGS_noratelimit);
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
   return 0;
-=======
-  if (FLAGS_idpasskey.length() > 0 || FLAGS_idpasskeyfile.length() > 0) {
-    string idpasskey = getIdpasskey();
-    string id = split(idpasskey, '/')[0];
-    string username = string(ssh_get_local_username());
-    // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::setupLogFile(&defaultConf,
-                             "/tmp/etterminal-" + username + "-" + id + ".log",
-                             maxlogsize);
-    // Reconfigure default logger to apply settings above
-    el::Loggers::reconfigureLogger("default", defaultConf);
-    // set thread name
-    el::Helpers::setThreadName("terminal-main");
-    // Install log rotation callback
-    el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
-
-    startUserTerminal(ipcSocketHandler, idpasskey, FLAGS_noratelimit);
-
-    // Uninstall log rotation callback
-    el::Helpers::uninstallPreRollOutCallback();
-    return 0;
-  }
-
-  cout << "Call etterminal with --idpasskey, --idpasskeyfile, or --jump\n";
-  exit(1);
->>>>>>> master
 }
