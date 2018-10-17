@@ -139,7 +139,7 @@ bool Connection::read(Packet* packet) {
     if (isSkippableError(errno)) {
       // Close the socket and invalidate, then return 0 messages
       LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
-      closeSocket();
+      closeSocketAndMaybeReconnect();
       return 0;
     } else {
       // Throw the error
@@ -174,7 +174,7 @@ bool Connection::write(const Packet& packet) {
     } else if (isSkippableError(errno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
-      closeSocket();
+      closeSocketAndMaybeReconnect();
     } else {
       LOG(FATAL) << "Unexpected socket error: " << errno << " "
                  << strerror(errno);
