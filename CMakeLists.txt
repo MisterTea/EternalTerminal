@@ -1,14 +1,10 @@
-cmake_minimum_required (VERSION 2.8.12)
-project (EternalTCP)
+cmake_minimum_required (VERSION 3.0.2)
+project (EternalTCP VERSION 5.1.6)
 
 option(BUILD_TEST "Build all unit test" OFF)
 option(CODE_COVERAGE "Enable code coverage" OFF)
 
-
-set (${PROJECT_NAME}_VERSION_MAJOR 5)
-set (${PROJECT_NAME}_VERSION_MINOR 1)
-set (${PROJECT_NAME}_VERSION_PATCH 1)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${EternalTCP_VERSION_MAJOR}.${EternalTCP_VERSION_MINOR}.${EternalTCP_VERSION_PATCH}\"'")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_HANDLE_SIGABRT")
 IF(BUILD_TEST)

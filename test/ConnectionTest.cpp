@@ -43,7 +43,6 @@ class Collector {
         if (status) {
           if (packet.getHeader() == HEADER_DONE) {
             fifo.push_back("DONE");
-            break;
           } else if (packet.getHeader() == HEADER_DATA) {
             fifo.push_back(packet.getPayload());
           } else if (packet.getHeader() == HEARTBEAT) {
@@ -53,7 +52,10 @@ class Collector {
           }
         }
       }
-      ::usleep(1000);
+      if (connection->isShuttingDown()) {
+        done = true;
+      }
+      ::usleep(10 * 1000);
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::mutex> guard(collectorMutex);
         lastSecond = time(NULL);
@@ -61,6 +63,8 @@ class Collector {
       }
     }
   }
+
+  void join() { collectorThread->join(); }
 
   void finish() {
     connection->shutdown();
@@ -86,7 +90,7 @@ class Collector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(1000);
+      ::usleep(10 * 1000);
     }
     return pop();
   }
@@ -94,6 +98,8 @@ class Collector {
   void write(const string& s) {
     return connection->writePacket(Packet(HEADER_DATA, s));
   }
+
+  shared_ptr<Connection> getConnection() { return connection; }
 
  protected:
   shared_ptr<Connection> connection;
@@ -106,13 +112,11 @@ class Collector {
 
 void listenFn(bool* stopListening, int serverFd,
               shared_ptr<ServerConnection> serverConnection) {
-  // Only works when there is 1:1 mapping between endpoint and fds.  Will fix in
-  // future api
   while (*stopListening == false) {
     if (serverConnection->getSocketHandler()->hasData(serverFd)) {
       serverConnection->acceptNewConnection(serverFd);
     }
-    ::usleep(1000 * 1000);
+    ::usleep(10 * 1000);
   }
 }
 
@@ -157,6 +161,16 @@ class ConnectionTest : public testing::Test {
     serverClientConnections.clear();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    serverConnection.reset();
+
+    auto v = serverSocketHandler->getActiveSockets();
+    if (!v.empty()) {
+      LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    }
+    v = clientSocketHandler->getActiveSockets();
+    if (!v.empty()) {
+      LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    }
   }
 
   void readWriteTest(const string& clientId) {
@@ -168,11 +182,13 @@ class ConnectionTest : public testing::Test {
         clientSocketHandler, endpoint, clientId, CRYPTO_KEY));
     while (true) {
       try {
-        clientConnection->connect();
-        break;
-      } catch (const std::runtime_error& ex) {
+        if (clientConnection->connect()) {
+          break;
+        }
         LOG(INFO) << "Connection failed, retrying...";
         ::usleep(1000 * 1000);
+      } catch (const std::runtime_error& ex) {
+        LOG(FATAL) << "Error connecting to server: " << ex.what();
       }
     }
 
@@ -210,11 +226,14 @@ class ConnectionTest : public testing::Test {
     }
     result = clientCollector->read();
     EXPECT_EQ(result, "DONE");
-
-    serverCollector->finish();
-    clientCollector->finish();
-
     EXPECT_EQ(resultConcat, s);
+
+    serverConnection->removeClient(serverCollector->getConnection()->getId());
+    serverCollector->join();
+    serverCollector.reset();
+    clientCollector->join();
+    clientCollector.reset();
+    clientConnection.reset();
   }
 
   shared_ptr<SocketHandler> serverSocketHandler;
@@ -288,7 +307,6 @@ TEST_F(FlakyConnectionTest, MultiReadWrite) {
     new_id[0] = 'A' + a;
     pool.push([&, this](int id, string clientId) { readWriteTest(clientId); },
               new_id);
-    ::usleep((500 + rand() % 1000) * 1000);
   }
   pool.stop(true);
 }

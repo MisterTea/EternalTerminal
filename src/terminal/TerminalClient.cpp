@@ -53,6 +53,9 @@ DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
 DEFINE_bool(silent, false, "If enabled, disable logging");
+DEFINE_bool(noratelimit, false,
+            "There's 1024 lines/second limit, which can be "
+            "disabled based on different use case.");
 
 shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   string id = "", passkey = "";
@@ -84,6 +87,7 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
   int connectFailCount = 0;
   while (true) {
     try {
+<<<<<<< HEAD
       client->connect();
       client->writePacket(
           Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
@@ -95,8 +99,23 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
         cout << "Could not make initial connection to " << FLAGS_host << ": "
              << err.what() << endl;
         exit(1);
+=======
+      if (client->connect()) {
+        client->writeProto(payload);
+        break;
+      } else {
+        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        connectFailCount++;
+        if (connectFailCount == 3) {
+          throw std::runtime_error("Connect Timeout");
+        }
+>>>>>>> master
       }
-      continue;
+    } catch (const runtime_error& err) {
+      LOG(INFO) << "Could not make initial connection to server";
+      cout << "Could not make initial connection to " << FLAGS_host << ": "
+           << err.what() << endl;
+      exit(1);
     }
     break;
   }
@@ -175,12 +194,14 @@ int main(int argc, char** argv) {
   SetVersionString(string(ET_VERSION));
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+    // Redirect std streams to a file
+    LogHandler::stderrToFile("/tmp/etclient");
   }
 
   // silent Flag, since etclient doesn't read /etc/et.cfg file
@@ -188,7 +209,7 @@ int main(int argc, char** argv) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
 
-  LogHandler::SetupLogFile(&defaultConf,
+  LogHandler::setupLogFile(&defaultConf,
                            "/tmp/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log");
 
   el::Loggers::reconfigureLogger("default", defaultConf);
@@ -220,7 +241,8 @@ int main(int argc, char** argv) {
               "-jport Port to connect on jumphost\n"
               "-x Flag to kill all sessions belongs to the user\n"
               "-logtostdout Sent log message to stdout\n"
-              "-silent Disable all logs"
+              "-silent Disable all logs\n"
+              "-noratelimit Disable rate limit"
            << endl;
       exit(1);
     }
@@ -298,6 +320,7 @@ int main(int argc, char** argv) {
 
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
+<<<<<<< HEAD
       FLAGS_x, FLAGS_v, FLAGS_prefix);
 
   time_t rawtime;
@@ -313,6 +336,9 @@ int main(int argc, char** argv) {
 
   FILE* stderr_stream = freopen(err_filename, "w+", stderr);
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+=======
+      FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
+>>>>>>> master
 
   if (!FLAGS_jumphost.empty()) {
     FLAGS_host = FLAGS_jumphost;
@@ -475,7 +501,7 @@ int main(int argc, char** argv) {
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
         if (waitingOnKeepalive) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
-          globalClient->closeSocket();
+          globalClient->closeSocketAndMaybeReconnect();
           waitingOnKeepalive = false;
         } else {
           LOG(INFO) << "Writing keepalive packet";

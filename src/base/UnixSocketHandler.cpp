@@ -36,13 +36,16 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   if (fd <= 0) {
     LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
   }
+  map<int, shared_ptr<recursive_mutex>>::iterator it;
   {
-    lock_guard<std::recursive_mutex> guard(mutex);
-    if (activeSockets.find(fd) == activeSockets.end()) {
+    lock_guard<std::recursive_mutex> guard(globalMutex);
+    it = activeSocketMutexes.find(fd);
+    if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
       return 0;
     }
   }
+  lock_guard<recursive_mutex> guard(*(it->second));
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -56,13 +59,16 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
   if (fd <= 0) {
     LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
   }
+  map<int, shared_ptr<recursive_mutex>>::iterator it;
   {
-    lock_guard<std::recursive_mutex> guard(mutex);
-    if (activeSockets.find(fd) == activeSockets.end()) {
+    lock_guard<std::recursive_mutex> guard(globalMutex);
+    it = activeSocketMutexes.find(fd);
+    if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
       return 0;
     }
   }
+  lock_guard<recursive_mutex> guard(*(it->second));
 #ifdef MSG_NOSIGNAL
   return ::send(fd, buf, count, MSG_NOSIGNAL);
 #else
@@ -71,11 +77,12 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
-  if (activeSockets.find(fd) != activeSockets.end()) {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
+  if (activeSocketMutexes.find(fd) != activeSocketMutexes.end()) {
     LOG(FATAL) << "Tried to insert an fd that already exists: " << fd;
   }
-  activeSockets.insert(fd);
+  activeSocketMutexes.insert(
+      make_pair(fd, shared_ptr<recursive_mutex>(new recursive_mutex())));
 }
 
 int UnixSocketHandler::accept(int sockFd) {
@@ -83,6 +90,17 @@ int UnixSocketHandler::accept(int sockFd) {
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
+  while (true) {
+    {
+      lock_guard<std::recursive_mutex> guard(globalMutex);
+      if (activeSocketMutexes.find(client_sock) == activeSocketMutexes.end()) {
+        break;
+      }
+    }
+    // Wait until this socket is no longer active
+    LOG_EVERY_N(100, INFO) << "Waiting for read/write to time out...";
+    usleep(1 * 1000);
+  }
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
@@ -106,16 +124,18 @@ int UnixSocketHandler::accept(int sockFd) {
 }
 
 void UnixSocketHandler::close(int fd) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> globalGuard(globalMutex);
   if (fd == -1) {
     return;
   }
-  if (activeSockets.find(fd) == activeSockets.end()) {
+  auto it = activeSocketMutexes.find(fd);
+  if (it == activeSocketMutexes.end()) {
     // Connection was already killed.
     LOG(ERROR) << "Tried to close a connection that doesn't exist: " << fd;
     return;
   }
-  activeSockets.erase(activeSockets.find(fd));
+  auto m = it->second;
+  lock_guard<std::recursive_mutex> guard(*m);
   // Shutting down connection before closing to prevent the server
   // from closing it.
   VLOG(1) << "Shutting down connection: " << fd;
@@ -132,6 +152,15 @@ void UnixSocketHandler::close(int fd) {
   }
   VLOG(1) << "Closing connection: " << fd;
   FATAL_FAIL(::close(fd));
+  activeSocketMutexes.erase(it);
+}
+
+vector<int> UnixSocketHandler::getActiveSockets() {
+  vector<int> fds;
+  for (auto it : activeSocketMutexes) {
+    fds.push_back(it.first);
+  }
+  return fds;
 }
 
 void UnixSocketHandler::initSocket(int fd) {

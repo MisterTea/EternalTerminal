@@ -32,6 +32,10 @@ class Connection {
   inline bool hasData() { return reader->hasData(); }
 
   virtual void closeSocket();
+  virtual void closeSocketAndMaybeReconnect() {
+    // By default, don't try to reconnect.  Subclasses can override.
+    closeSocket();
+  }
 
   void shutdown();
 

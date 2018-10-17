@@ -4,8 +4,8 @@
 #include "IpcPairClient.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
-#include "RawSocketUtils.hpp"
 #include "PipeSocketHandler.hpp"
+#include "RawSocketUtils.hpp"
 #include "SocketEndpoint.hpp"
 
 using namespace et;
@@ -47,13 +47,14 @@ int main(int argc, char** argv) {
   sigaction(SIGTERM, &action, NULL);
 
   // Setup easylogging configurations
-  el::Configurations defaultConf =
-      LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
+  LogHandler::setupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
+  // Redirect std streams to a file
+  LogHandler::stderrToFile("/tmp/htm");
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
@@ -84,7 +85,7 @@ int main(int argc, char** argv) {
   usleep(10 * 1000);  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   HtmClient htmClient(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
-    htmClient.run();
+  htmClient.run();
 
   char buf[] = {
       0x1b, 0x5b, '$', '$', '$', 'q',

@@ -27,9 +27,10 @@ string genCommand(string passkey, string id, string clientTerm, string user,
                   bool kill, string command_prefix, string options) {
   string SSH_SCRIPT_PREFIX;
 
-  // Kill old ET sessions of the user
   string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
                    "\n\" | " + command_prefix + " etterminal " + options;
+
+  // Kill old ET sessions of the user
   if (kill) {
     SSH_SCRIPT_PREFIX =
         "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;
@@ -40,11 +41,16 @@ string genCommand(string passkey, string id, string clientTerm, string user,
 
 string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
-                                 bool kill, int vlevel, string cmd_prefix) {
+                                 bool kill, int vlevel, string cmd_prefix,
+                                 bool noratelimit) {
   string CLIENT_TERM(getenv("TERM"));
   string passkey = genRandom(32);
   string id = genRandom(16);
   string cmdoptions{"--v=" + std::to_string(vlevel)};
+
+  if (noratelimit) {
+    cmdoptions += " --noratelimit";
+  }
 
   string SSH_SCRIPT_DST =
       genCommand(passkey, id, CLIENT_TERM, user, kill, cmd_prefix, cmdoptions);

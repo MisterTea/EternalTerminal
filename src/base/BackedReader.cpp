@@ -50,7 +50,7 @@ int BackedReader::read(Packet* packet) {
       // In EternalTCP, the server needs to explictly tell the client that
       // the session is over.
       errno = EPIPE;
-      bytesRead = -1;
+      return -1;
     } else if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
     } else if (bytesRead == -1 && errno == EAGAIN) {

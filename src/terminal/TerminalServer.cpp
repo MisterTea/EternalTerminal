@@ -204,7 +204,6 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
       }
 
-      VLOG(3) << "ServerClientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         VLOG(3) << "ServerClientFd is selected";
         while (serverClientState->hasData()) {
@@ -306,7 +305,7 @@ class TerminalServerHandler : public ServerConnectionHandler {
 };
 
 void startServer() {
-  std::shared_ptr<TcpSocketHandler> tcpSocketHandler(new TcpSocketHandler());
+  std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
   LOG(INFO) << "Creating server";
@@ -373,12 +372,14 @@ int main(int argc, char **argv) {
   SetVersionString(string(ET_VERSION));
 
   // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::SetupLogHandler(&argc, &argv);
+  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+    // Redirect std streams to a file
+    LogHandler::stderrToFile("/tmp/etserver");
   }
 
   // default max log file size is 20MB for etserver
@@ -428,15 +429,10 @@ int main(int argc, char **argv) {
     if (::daemon(0, 0) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
-
-    const char *err_filename = "/tmp/etserver_err";
-    FILE *stdout_stream = freopen(err_filename, "w+", stdout);
-    setvbuf(stdout_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-    FILE *stderr_stream = freopen(err_filename, "w+", stderr);
-    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   }
+
   // Set log file for etserver process here.
-  LogHandler::SetupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
+  LogHandler::setupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
                            maxlogsize);
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);

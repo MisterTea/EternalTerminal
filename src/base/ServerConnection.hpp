@@ -4,8 +4,8 @@
 #include "Headers.hpp"
 
 #include "ServerClientConnection.hpp"
-#include "SocketHandler.hpp"
 #include "SocketEndpoint.hpp"
+#include "SocketHandler.hpp"
 
 namespace et {
 class ServerConnectionHandler {
@@ -40,6 +40,7 @@ class ServerConnection {
   void shutdown();
 
   inline void addClientKey(const string& id, const string& passkey) {
+    lock_guard<std::recursive_mutex> guard(classMutex);
     clientKeys[id] = passkey;
   }
 

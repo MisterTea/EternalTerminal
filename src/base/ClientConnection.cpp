@@ -12,14 +12,17 @@ ClientConnection::~ClientConnection() {
     reconnectThread->join();
     reconnectThread.reset();
   }
+  // Close the socket without spawning a reconnect thread
+  closeSocket();
 }
 
-void ClientConnection::connect() {
+bool ClientConnection::connect() {
   try {
     VLOG(1) << "Connecting";
     socketFd = socketHandler->connect(remoteEndpoint);
     if (socketFd == -1) {
-      throw std::runtime_error("Could not connect to host");
+      VLOG(1) << "Could not connect to host";
+      return false;
     }
     VLOG(1) << "Sending id";
     et::ConnectRequest request;
@@ -38,7 +41,9 @@ void ClientConnection::connect() {
                  << response.error();
       cout << "Error connecting to server: " << response.status() << ": "
            << response.error() << endl;
-      exit(1);
+      string s = string("Error connecting to server: ") +
+                 to_string(response.status()) + string(": ") + response.error();
+      throw std::runtime_error(s.c_str());
     }
     VLOG(1) << "Creating backed reader";
     reader = std::shared_ptr<BackedReader>(
@@ -53,22 +58,20 @@ void ClientConnection::connect() {
                              new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
                          socketFd));
     VLOG(1) << "Client Connection established";
+    return true;
   } catch (const runtime_error& err) {
     LOG(INFO) << "Got failure during connect";
     if (socketFd != -1) {
       socketHandler->close(socketFd);
     }
-    throw err;
   }
+  return false;
 }
 
-void ClientConnection::closeSocket() {
+void ClientConnection::closeSocketAndMaybeReconnect() {
   waitReconnect();
   LOG(INFO) << "Closing socket";
-  {
-    // Close the socket
-    Connection::closeSocket();
-  }
+  closeSocket();
   LOG(INFO) << "Socket closed, starting new reconnect thread";
   reconnectThread = std::shared_ptr<std::thread>(
       new std::thread(&ClientConnection::pollReconnect, this));
@@ -105,6 +108,7 @@ void ClientConnection::pollReconnect() {
                          "terminated the session.";
             // This means that the server has terminated the connection.
             shuttingDown = true;
+            socketHandler->close(newSocketFd);
             return;
           }
           if (response.status() != RETURNING_CLIENT) {

@@ -17,9 +17,9 @@ class ClientConnection : public Connection {
 
   virtual ~ClientConnection();
 
-  void connect();
+  bool connect();
 
-  virtual void closeSocket();
+  virtual void closeSocketAndMaybeReconnect();
 
   void waitReconnect();
 
