@@ -304,3 +304,14 @@ TEST_F(FlakyConnectionTest, MultiReadWrite) {
   }
   pool.stop(true);
 }
+
+TEST_F(ReliableConnectionTest, InvalidClient) {
+  string junk(16 * 1024 * 1024, 't');
+  for (int a = 0; a < 128; a++) {
+    int fd = clientSocketHandler->connect(endpoint);
+    int retval =
+        clientSocketHandler->writeAllOrReturn(fd, &junk[0], junk.length());
+    EXPECT_EQ(retval, -1);
+    clientSocketHandler->close(fd);
+  }
+}
