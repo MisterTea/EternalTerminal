@@ -39,10 +39,12 @@ class SocketHandler {
   template <typename T>
   inline void writeProto(int fd, const T& t, bool timeout) {
     string s;
-    t.SerializeToString(&s);
+    if(!t.SerializeToString(&s)) {
+      LOG(FATAL) << "Serialization of " << t.DebugString() << " failed!";
+    }
     int64_t length = s.length();
     if (length <= 0 || length > 128*1024*1024) {
-      LOG(FATAL) << "Invalid proto length: " << length;
+      LOG(FATAL) << "Invalid proto length: " << length << " For proto " << t.DebugString();
     }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     writeAllOrThrow(fd, &s[0], length, timeout);
