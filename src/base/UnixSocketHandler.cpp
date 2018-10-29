@@ -136,20 +136,6 @@ void UnixSocketHandler::close(int fd) {
   }
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
-  // Shutting down connection before closing to prevent the server
-  // from closing it.
-  VLOG(1) << "Shutting down connection: " << fd;
-  int rc = ::shutdown(fd, SHUT_RDWR);
-  if (rc == -1) {
-    if (errno == ENOTCONN || errno == EADDRNOTAVAIL) {
-      // Shutdown is failing on OS/X with errno (49): Can't assign requested
-      // address Possibly an OS bug but I don't think it's necessary anyways.
-
-      // ENOTCONN is harmless
-    } else {
-      FATAL_FAIL(rc);
-    }
-  }
   VLOG(1) << "Closing connection: " << fd;
   FATAL_FAIL(::close(fd));
   activeSocketMutexes.erase(it);
