@@ -162,7 +162,7 @@ void UnixSocketHandler::initSocket(int fd) {
   // Set linger
   struct linger so_linger;
   so_linger.l_onoff = 1;
-  so_linger.l_linger = 10;
+  so_linger.l_linger = 5;
   int z =
       setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
   if (z) {
