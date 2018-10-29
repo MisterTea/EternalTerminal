@@ -115,10 +115,13 @@ void listenFn(bool* stopListening, int serverFd,
 }
 
 map<string, shared_ptr<ServerClientConnection>> serverClientConnections;
-class NewConnectionHandler : public ServerConnectionHandler {
- public:
-  virtual bool newClient(
-      shared_ptr<ServerClientConnection> _serverClientState) {
+class TestServerConnection : public ServerConnection {
+public:
+  TestServerConnection(shared_ptr<SocketHandler> _socketHandler, SocketEndpoint socketEndpoint):
+  ServerConnection(_socketHandler, socketEndpoint) {};
+  virtual ~TestServerConnection(){};
+  virtual bool newClient(shared_ptr<ServerClientConnection> _serverClientState) {
+
     string clientId = _serverClientState->getId();
     if (serverClientConnections.find(clientId) !=
         serverClientConnections.end()) {
@@ -139,9 +142,8 @@ class ConnectionTest : public testing::Test {
     pipePath = string(pipeDirectory) + "/pipe";
     endpoint = SocketEndpoint(pipePath);
 
-    serverConnection.reset(new ServerConnection(
-        serverSocketHandler, endpoint,
-        shared_ptr<ServerConnectionHandler>(new NewConnectionHandler())));
+    serverConnection.reset(new TestServerConnection(
+        serverSocketHandler, endpoint));
 
     int serverFd = *(serverSocketHandler->getEndpointFds(endpoint).begin());
     stopListening = false;

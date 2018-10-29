@@ -1,43 +1,4 @@
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
-#include "TcpSocketHandler.hpp"
-#include "UserTerminalHandler.hpp"
-#include "UserTerminalRouter.hpp"
-
-#include "simpleini/SimpleIni.h"
-
-#include <errno.h>
-#include <fcntl.h>
-#include <pwd.h>
-#include <stdio.h>
-#include <stdlib.h>
-#include <string.h>
-#include <sys/ioctl.h>
-#include <sys/stat.h>
-#include <sys/types.h>
-#include <sys/un.h>
-#include <sys/wait.h>
-#include <termios.h>
-#include <unistd.h>
-
-#if __APPLE__
-#include <util.h>
-#elif __FreeBSD__
-#include <libutil.h>
-#include <sys/socket.h>
-#elif __NetBSD__  // do not need pty.h on NetBSD
-#else
-#include <pty.h>
-#include <signal.h>
-#endif
-
-#include "ETerminal.pb.h"
+#include "TerminalServer.hpp"
 
 using namespace et;
 namespace google {}
@@ -53,13 +14,19 @@ DEFINE_string(cfgfile, "", "Location of the config file");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
 
-shared_ptr<ServerConnection> globalServer;
-shared_ptr<UserTerminalRouter> terminalRouter;
-vector<shared_ptr<thread>> terminalThreads;
-mutex terminalThreadMutex;
-bool halt = false;
+TerminalServer::TerminalServer(
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint &_serverEndpoint,
+    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler)
+    : ServerConnection(_socketHandler, _serverEndpoint) {
+  terminalRouter = shared_ptr<UserTerminalRouter>(
+      new UserTerminalRouter(_pipeSocketHandler, ROUTER_FIFO_NAME));
+}
 
-void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
+TerminalServer::~TerminalServer() {}
+
+void TerminalServer::runJumpHost(
+    shared_ptr<ServerClientConnection> serverClientState) {
   // set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
@@ -128,11 +95,12 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
   {
     string id = serverClientState->getId();
     serverClientState.reset();
-    globalServer->removeClient(id);
+    removeClient(id);
   }
 }
 
-void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
+void TerminalServer::runTerminal(
+    shared_ptr<ServerClientConnection> serverClientState) {
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -141,8 +109,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler =
-      globalServer->getSocketHandler();
+  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   PortForwardHandler portForwardHandler(serverSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
@@ -187,7 +154,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
-          globalServer->removeClient(serverClientState->getId());
+          removeClient(serverClientState->getId());
           break;
         }
       }
@@ -281,11 +248,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   {
     string id = serverClientState->getId();
     serverClientState.reset();
-    globalServer->removeClient(id);
+  removeClient(id);
   }
 }
 
-void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
+void TerminalServer::handleConnection(
+    shared_ptr<ServerClientConnection> serverClientState) {
   InitialPayload payload = serverClientState->readProto<InitialPayload>();
   if (payload.jumphost()) {
     runJumpHost(serverClientState);
@@ -294,40 +262,34 @@ void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
   }
 }
 
-class TerminalServerHandler : public ServerConnectionHandler {
-  virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
-    lock_guard<std::mutex> guard(terminalThreadMutex);
-    shared_ptr<thread> t =
-        shared_ptr<thread>(new thread(handleConnection, serverClientState));
-    terminalThreads.push_back(t);
-    return true;
-  }
-};
+bool TerminalServer::newClient(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  lock_guard<std::mutex> guard(terminalThreadMutex);
+  shared_ptr<thread> t =
+      shared_ptr<thread>(new thread(&TerminalServer::handleConnection, this, serverClientState));
+  terminalThreads.push_back(t);
+  return true;
+}
 
-void startServer() {
-  std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
-  std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
-
+void startServer(shared_ptr<SocketHandler> tcpSocketHandler,
+                 SocketEndpoint socketEndpoint,
+                 shared_ptr<PipeSocketHandler> pipeSocketHandler) {
   LOG(INFO) << "Creating server";
+  shared_ptr<TerminalServer> globalServer = shared_ptr<TerminalServer>(
+      new TerminalServer(tcpSocketHandler, socketEndpoint, pipeSocketHandler));
 
-  globalServer = shared_ptr<ServerConnection>(new ServerConnection(
-      tcpSocketHandler, SocketEndpoint(FLAGS_port),
-      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(
-      new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
   fd_set coreFds;
   int numCoreFds = 0;
   int maxCoreFd = 0;
   FD_ZERO(&coreFds);
-  set<int> serverPortFds =
-      tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
+  set<int> serverPortFds = tcpSocketHandler->getEndpointFds(socketEndpoint);
   for (int i : serverPortFds) {
     FD_SET(i, &coreFds);
     maxCoreFd = max(maxCoreFd, i);
     numCoreFds++;
   }
-  FD_SET(terminalRouter->getServerFd(), &coreFds);
-  maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
+  FD_SET(globalServer->terminalRouter->getServerFd(), &coreFds);
+  maxCoreFd = max(maxCoreFd, globalServer->terminalRouter->getServerFd());
   numCoreFds++;
 
   while (true) {
@@ -355,14 +317,15 @@ void startServer() {
         globalServer->acceptNewConnection(i);
       }
     }
-    if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
-      terminalRouter->acceptNewConnection(globalServer);
+    if (FD_ISSET(globalServer->terminalRouter->getServerFd(), &rfds)) {
+      globalServer->terminalRouter->acceptNewConnection(
+          globalServer);
     }
   }
 
   globalServer->shutdown();
-  halt = true;
-  for (auto it : terminalThreads) {
+  globalServer->halt = true;
+  for (auto it : globalServer->terminalThreads) {
     it->join();
   }
 }
@@ -440,8 +403,10 @@ int main(int argc, char **argv) {
   el::Helpers::setThreadName("etserver-main");
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+  std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
+  std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
-  startServer();
+  startServer(tcpSocketHandler, SocketEndpoint(FLAGS_port), pipeSocketHandler);
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
