@@ -167,6 +167,7 @@ bool Connection::recover(int newSocketFd) {
     socketFd = newSocketFd;
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
                                      catchupBuffer.buffer().end());
+
     reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);
     LOG(INFO) << "Finished recovering with socket fd: " << socketFd;

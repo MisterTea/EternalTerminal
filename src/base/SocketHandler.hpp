@@ -25,7 +25,8 @@ class SocketHandler {
     readAll(fd, &length, sizeof(int64_t), timeout);
     if (length <= 0 || length > 128 * 1024 * 1024) {
       // If the message is <= 0 or too big, assume this is a bad packet and throw
-      throw std::runtime_error("Invalid size (<=0 or >128 MB)");
+      string s = string("Invalid size (<=0 or >128 MB): ") + to_string(length);
+      throw std::runtime_error(s.c_str());
     }
     string s(length, 0);
     readAll(fd, &s[0], length, timeout);
@@ -40,6 +41,9 @@ class SocketHandler {
     string s;
     t.SerializeToString(&s);
     int64_t length = s.length();
+    if (length <= 0 || length > 128*1024*1024) {
+      LOG(FATAL) << "Invalid proto length: " << length;
+    }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     writeAllOrThrow(fd, &s[0], length, timeout);
   }
@@ -49,7 +53,7 @@ class SocketHandler {
     readAll(fd, (char*)&length, sizeof(int64_t), false);
     if (length <= 0 || length > 128 * 1024 * 1024) {
       // If the message is <= 0 or too big, assume this is a bad packet and throw
-      string s("Invalid size (<=0 or >128 MB):");
+      string s("Invalid size (<=0 or >128 MB): ");
       s += std::to_string(length);
       throw std::runtime_error(s.c_str());
     }
@@ -60,6 +64,9 @@ class SocketHandler {
 
   inline void writeMessage(int fd, const string& s) {
     int64_t length = s.length();
+    if (length <= 0 || length > 128*1024*1024) {
+      LOG(FATAL) << "Invalid message length: " << length;
+    }
     writeAllOrThrow(fd, (const char*)&length, sizeof(int64_t), false);
     writeAllOrThrow(fd, &s[0], length, false);
   }
