@@ -42,7 +42,8 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
-      return 0;
+      errno = EPIPE;
+      return -1;
     }
   }
   lock_guard<recursive_mutex> guard(*(it->second));
@@ -65,7 +66,8 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
     it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
-      return 0;
+      errno = EPIPE;
+      return -1;
     }
   }
   lock_guard<recursive_mutex> guard(*(it->second));
