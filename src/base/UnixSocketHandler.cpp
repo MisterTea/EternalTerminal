@@ -171,6 +171,15 @@ void UnixSocketHandler::initSocket(int fd) {
                                       sizeof(struct timeval)));
   FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
                                       sizeof(struct timeval)));
+  // Set linger
+  struct linger so_linger;
+  so_linger.l_onoff = 1;
+  so_linger.l_linger = 10;
+  int z =
+      setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+  if (z) {
+    LOG(FATAL) << "set socket linger failed";
+  }
 #ifndef MSG_NOSIGNAL
   // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
   int val = 1;
