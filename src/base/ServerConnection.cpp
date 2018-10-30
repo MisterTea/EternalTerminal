@@ -23,7 +23,7 @@ bool ServerConnection::acceptNewConnection(int fd) {
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   lock_guard<std::recursive_mutex> guard(classMutex);
   clientHandlerThreadPool.push(
-      [&, this](int id) { clientHandler(clientSocketFd); });
+      [this, clientSocketFd](int id) { this->clientHandler(clientSocketFd); });
   return true;
 }
 
