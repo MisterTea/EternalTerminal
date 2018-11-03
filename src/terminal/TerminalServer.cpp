@@ -248,7 +248,7 @@ void TerminalServer::runTerminal(
   {
     string id = serverClientState->getId();
     serverClientState.reset();
-  removeClient(id);
+    removeClient(id);
   }
 }
 
@@ -265,8 +265,8 @@ void TerminalServer::handleConnection(
 bool TerminalServer::newClient(
     shared_ptr<ServerClientConnection> serverClientState) {
   lock_guard<std::mutex> guard(terminalThreadMutex);
-  shared_ptr<thread> t =
-      shared_ptr<thread>(new thread(&TerminalServer::handleConnection, this, serverClientState));
+  shared_ptr<thread> t = shared_ptr<thread>(
+      new thread(&TerminalServer::handleConnection, this, serverClientState));
   terminalThreads.push_back(t);
   return true;
 }
@@ -318,8 +318,7 @@ void startServer(shared_ptr<SocketHandler> tcpSocketHandler,
       }
     }
     if (FD_ISSET(globalServer->terminalRouter->getServerFd(), &rfds)) {
-      globalServer->terminalRouter->acceptNewConnection(
-          globalServer);
+      globalServer->terminalRouter->acceptNewConnection(globalServer);
     }
   }
 
