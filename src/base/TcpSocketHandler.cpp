@@ -63,15 +63,6 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       FATAL_FAIL(opts);
       opts |= O_NONBLOCK;
       FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-      // Set linger
-      struct linger so_linger;
-      so_linger.l_onoff = 1;
-      so_linger.l_linger = 5;
-      int z = setsockopt(sockFd, SOL_SOCKET, SO_LINGER, &so_linger,
-                         sizeof so_linger);
-      if (z) {
-        LOG(FATAL) << "set socket linger failed";
-      }
     }
     VLOG(4) << "Set nonblocking";
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
