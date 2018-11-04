@@ -84,6 +84,16 @@ static const int PROTOCOL_VERSION = 4;
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
 static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
 
+// system ssh config files
+const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
+const string USER_SSH_CONFIG_PATH = "/.ssh/config";
+
+// Keepalive configs
+const int CLIENT_KEEP_ALIVE_DURATION = 5;
+// This should be at least double the value of CLIENT_KEEP_ALIVE_DURATION to
+// allow enough time.
+const int SERVER_KEEP_ALIVE_DURATION = 11;
+
 #define FATAL_FAIL(X) \
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);

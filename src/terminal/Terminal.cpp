@@ -45,10 +45,6 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-// This should be at least double the value of KEEP_ALIVE_DURATION in client to
-// allow enough time.
-const int KEEP_ALIVE_DURATION = 11;
-
 DEFINE_string(idpasskey, "",
               "If set, uses IPC to send a client id/key to the server daemon");
 DEFINE_string(idpasskeyfile, "",
@@ -169,7 +165,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
 
   bool run = true;
   bool is_reconnecting = false;
-  time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+  time_t keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
 
   while (run && !jumpclient->isShuttingDown()) {
     // Data structures needed for select() and
@@ -212,7 +208,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           jumpclient->writeMessage(s);
           VLOG(3) << "Sent message from router to dst terminal: " << s.length();
         }
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
@@ -223,7 +219,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           VLOG(3) << "Send message from dst terminal to router: "
                   << receivedMessage.length();
         }
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
       }
       // src disconnects, close jump -> dst
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {

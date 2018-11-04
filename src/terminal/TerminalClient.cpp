@@ -1,36 +1,4 @@
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "PortForwardSourceHandler.hpp"
-#include "RawSocketUtils.hpp"
-#include "ServerConnection.hpp"
-#include "SshSetupHandler.hpp"
-#include "TcpSocketHandler.hpp"
-
-#include <errno.h>
-#include <pwd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
-
-#include "ETerminal.pb.h"
-
-using namespace et;
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
-
-const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
-const string USER_SSH_CONFIG_PATH = "/.ssh/config";
-const int KEEP_ALIVE_DURATION = 5;
-
-shared_ptr<ClientConnection> globalClient;
-
-termios terminal_backup;
+#include "TerminalClient.hpp"
 
 DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
@@ -57,38 +25,24 @@ DEFINE_bool(noratelimit, false,
             "There's 1024 lines/second limit, which can be "
             "disabled based on different use case.");
 
-shared_ptr<ClientConnection> createClient(string idpasskeypair) {
-  string id = "", passkey = "";
-  // Trim whitespace
-  idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
-  size_t slashIndex = idpasskeypair.find("/");
-  if (slashIndex == string::npos) {
-    LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
-  } else {
-    id = idpasskeypair.substr(0, slashIndex);
-    passkey = idpasskeypair.substr(slashIndex + 1);
-    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey;
-  }
-  if (passkey.length() != 32) {
-    LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
-               << passkey.length();
-  }
-
+TerminalClient::TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
+                               const SocketEndpoint& _socketEndpoint,
+                               const string& id, const string& passkey) {
+  portForwardHandler =
+      shared_ptr<PortForwardHandler>(new PortForwardHandler(_socketHandler));
   InitialPayload payload;
-  if (FLAGS_jumphost.length()) {
+  if (_socketEndpoint.isJumphost()) {
     payload.set_jumphost(true);
   }
 
-  shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
-  shared_ptr<ClientConnection> client =
-      shared_ptr<ClientConnection>(new ClientConnection(
-          clientSocket, SocketEndpoint(FLAGS_host, FLAGS_port), id, passkey));
+  globalClient = shared_ptr<ClientConnection>(
+      new ClientConnection(_socketHandler, _socketEndpoint, id, passkey));
 
   int connectFailCount = 0;
   while (true) {
     try {
-      if (client->connect()) {
-        client->writeProto(payload);
+      if (globalClient->connect()) {
+        globalClient->writeProto(payload);
         break;
       } else {
         LOG(ERROR) << "Connecting to server failed: Connect timeout";
@@ -99,19 +53,17 @@ shared_ptr<ClientConnection> createClient(string idpasskeypair) {
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
-      cout << "Could not make initial connection to " << FLAGS_host << ": "
+      cout << "Could not make initial connection to " << _socketEndpoint << ": "
            << err.what() << endl;
       exit(1);
     }
     break;
   }
-  VLOG(1) << "Client created with id: " << client->getId();
-
-  return client;
+  VLOG(1) << "Client created with id: " << globalClient->getId();
 };
 
-int firstWindowChangedCall = 1;
-void handleWindowChanged(winsize* win) {
+void TerminalClient::handleWindowChanged(winsize* win) {
+  int firstWindowChangedCall = 1;
   winsize tmpwin;
   ioctl(1, TIOCGWINSZ, &tmpwin);
   if (firstWindowChangedCall || win->ws_row != tmpwin.ws_row ||
@@ -174,6 +126,215 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
     }
   }
   return pairs;
+}
+
+void TerminalClient::run(const string& command, const string& tunnels,
+                         const string& reverseTunnels) {
+  shared_ptr<TcpSocketHandler> socketHandler =
+      static_pointer_cast<TcpSocketHandler>(globalClient->getSocketHandler());
+
+  // Whether the TE should keep running.
+  bool run = true;
+
+// TE sends/receives data to/from the shell one char at a time.
+#define BUF_SIZE (16 * 1024)
+  char b[BUF_SIZE];
+
+  time_t keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+  bool waitingOnKeepalive = false;
+
+  if (command.length()) {
+    LOG(INFO) << "Got command: " << command;
+    et::TerminalBuffer tb;
+    tb.set_buffer(command + "; exit\n");
+
+    char c = et::PacketType::TERMINAL_BUFFER;
+    string headerString(1, c);
+    globalClient->writeMessage(headerString);
+    globalClient->writeProto(tb);
+  }
+
+  try {
+    if (tunnels.length()) {
+      auto pairs = parseRangesToPairs(tunnels);
+      for (auto& pair : pairs) {
+        PortForwardSourceRequest pfsr;
+        pfsr.set_sourceport(pair.first);
+        pfsr.set_destinationport(pair.second);
+        auto pfsresponse = portForwardHandler->createSource(pfsr);
+        if (pfsresponse.has_error()) {
+          throw std::runtime_error(pfsresponse.error());
+        }
+      }
+    }
+    if (reverseTunnels.length()) {
+      auto pairs = parseRangesToPairs(reverseTunnels);
+      for (auto& pair : pairs) {
+        char c = et::PacketType::PORT_FORWARD_SOURCE_REQUEST;
+        string headerString(1, c);
+        PortForwardSourceRequest pfsr;
+        pfsr.set_sourceport(pair.first);
+        pfsr.set_destinationport(pair.second);
+
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pfsr);
+      }
+    }
+  } catch (const std::runtime_error& ex) {
+    cerr << "Error establishing port forward: " << ex.what() << endl;
+    LOG(FATAL) << "Error establishing port forward: " << ex.what();
+  }
+
+  winsize win;
+  ioctl(1, TIOCGWINSZ, &win);
+
+  termios terminal_local;
+  tcgetattr(0, &terminal_local);
+  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
+  cfmakeraw(&terminal_local);
+  tcsetattr(0, TCSANOW, &terminal_local);
+
+  while (run && !globalClient->isShuttingDown()) {
+    // Data structures needed for select() and
+    // non-blocking I/O.
+    fd_set rfd;
+    timeval tv;
+
+    FD_ZERO(&rfd);
+    int maxfd = STDIN_FILENO;
+    FD_SET(STDIN_FILENO, &rfd);
+    int clientFd = globalClient->getSocketFd();
+    if (clientFd > 0) {
+      FD_SET(clientFd, &rfd);
+      maxfd = max(maxfd, clientFd);
+    }
+    // TODO: set port forward sockets as well for performance reasons.
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+
+    try {
+      // Check for data to send.
+      if (FD_ISSET(STDIN_FILENO, &rfd)) {
+        // Read from stdin and write to our client that will then send it to the
+        // server.
+        VLOG(4) << "Got data from stdin";
+        int rc = read(STDIN_FILENO, b, BUF_SIZE);
+        FATAL_FAIL(rc);
+        if (rc > 0) {
+          // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
+          // globalClient->getWriter()->getSequenceNumber();
+          string s(b, rc);
+          et::TerminalBuffer tb;
+          tb.set_buffer(s);
+
+          char c = et::PacketType::TERMINAL_BUFFER;
+          string headerString(1, c);
+          globalClient->writeMessage(headerString);
+          globalClient->writeProto(tb);
+          keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+        }
+      }
+
+      if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
+        VLOG(4) << "Cliendfd is selected";
+        while (globalClient->hasData()) {
+          VLOG(4) << "GlobalClient has data";
+          string packetTypeString;
+          if (!globalClient->readMessage(&packetTypeString)) {
+            break;
+          }
+          if (packetTypeString.length() != 1) {
+            LOG(FATAL) << "Invalid packet header size: "
+                       << packetTypeString.length();
+          }
+          char packetType = packetTypeString[0];
+          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+            keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            VLOG(4) << "Got PF packet type " << packetType;
+            portForwardHandler->handlePacket(packetType, globalClient);
+            continue;
+          }
+          switch (packetType) {
+            case et::PacketType::TERMINAL_BUFFER: {
+              VLOG(3) << "Got terminal buffer";
+              // Read from the server and write to our fake terminal
+              et::TerminalBuffer tb =
+                  globalClient->readProto<et::TerminalBuffer>();
+              const string& s = tb.buffer();
+              // VLOG(5) << "Got message: " << s;
+              // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
+              // globalClient->getReader()->getSequenceNumber();
+              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+              RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length());
+              break;
+            }
+            case et::PacketType::KEEP_ALIVE:
+              waitingOnKeepalive = false;
+              // This will fill up log file quickly but is helpful for debugging
+              // latency issues.
+              LOG(INFO) << "Got a keepalive";
+              break;
+            default:
+              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+          }
+        }
+      }
+
+      if (clientFd > 0 && keepaliveTime < time(NULL)) {
+        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+        if (waitingOnKeepalive) {
+          LOG(INFO) << "Missed a keepalive, killing connection.";
+          globalClient->closeSocketAndMaybeReconnect();
+          waitingOnKeepalive = false;
+        } else {
+          LOG(INFO) << "Writing keepalive packet";
+          string s(1, (char)et::PacketType::KEEP_ALIVE);
+          globalClient->writeMessage(s);
+          waitingOnKeepalive = true;
+        }
+      }
+      if (clientFd < 0) {
+        // We are disconnected, so stop waiting for keepalive.
+        waitingOnKeepalive = false;
+      }
+
+      handleWindowChanged(&win);
+
+      vector<PortForwardDestinationRequest> requests;
+      vector<PortForwardData> dataToSend;
+      portForwardHandler->update(&requests, &dataToSend);
+      for (auto& pfr : requests) {
+        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
+        string headerString(1, c);
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pfr);
+        VLOG(4) << "send PF request";
+        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+      }
+      for (auto& pwd : dataToSend) {
+        char c = PacketType::PORT_FORWARD_DATA;
+        string headerString(1, c);
+        globalClient->writeMessage(headerString);
+        globalClient->writeProto(pwd);
+        VLOG(4) << "send PF data";
+        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+      }
+    } catch (const runtime_error& re) {
+      LOG(ERROR) << "Error: " << re.what();
+      tcsetattr(0, TCSANOW, &terminal_backup);
+      cout << "Connection closing because of error: " << re.what() << endl;
+      run = false;
+    }
+  }
+  globalClient.reset();
+  LOG(INFO) << "Client derefernced";
+  tcsetattr(0, TCSANOW, &terminal_backup);
+  cout << "Session terminated" << endl;
 }
 
 int main(int argc, char** argv) {
@@ -302,225 +463,40 @@ int main(int argc, char** argv) {
     } else {
       FLAGS_jumphost = proxyjump;
     }
-    LOG(INFO) << "ProxyJump found for dst in ssh config" << proxyjump;
+    LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
   }
 
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
       FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
 
+  string id = "", passkey = "";
+  // Trim whitespace
+  idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
+  size_t slashIndex = idpasskeypair.find("/");
+  if (slashIndex == string::npos) {
+    LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
+  } else {
+    id = idpasskeypair.substr(0, slashIndex);
+    passkey = idpasskeypair.substr(slashIndex + 1);
+    LOG(INFO) << "ID PASSKEY: " << id << " " << passkey;
+  }
+  if (passkey.length() != 32) {
+    LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
+               << passkey.length();
+  }
+  bool is_jumphost = false;
   if (!FLAGS_jumphost.empty()) {
+    is_jumphost = true;
     FLAGS_host = FLAGS_jumphost;
     FLAGS_port = FLAGS_jport;
   }
-  globalClient = createClient(idpasskeypair);
-  shared_ptr<TcpSocketHandler> socketHandler =
-      static_pointer_cast<TcpSocketHandler>(globalClient->getSocketHandler());
+  SocketEndpoint socketEndpoint = SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
+  shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
 
-  PortForwardHandler portForwardHandler(socketHandler);
+  TerminalClient terminalClient = TerminalClient(clientSocket, socketEndpoint, id, passkey);
+  terminalClient.run(FLAGS_c, FLAGS_t, FLAGS_rt);
 
-  // Whether the TE should keep running.
-  bool run = true;
-
-// TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (16 * 1024)
-  char b[BUF_SIZE];
-
-  time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-  bool waitingOnKeepalive = false;
-
-  if (FLAGS_c.length()) {
-    LOG(INFO) << "Got command: " << FLAGS_c;
-    et::TerminalBuffer tb;
-    tb.set_buffer(FLAGS_c + "; exit\n");
-
-    char c = et::PacketType::TERMINAL_BUFFER;
-    string headerString(1, c);
-    globalClient->writeMessage(headerString);
-    globalClient->writeProto(tb);
-  }
-
-  try {
-    if (FLAGS_t.length()) {
-      auto pairs = parseRangesToPairs(FLAGS_t);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
-        auto pfsresponse = portForwardHandler.createSource(pfsr);
-        if (pfsresponse.has_error()) {
-          throw std::runtime_error(pfsresponse.error());
-        }
-      }
-    }
-    if (FLAGS_rt.length()) {
-      auto pairs = parseRangesToPairs(FLAGS_rt);
-      for (auto& pair : pairs) {
-        char c = et::PacketType::PORT_FORWARD_SOURCE_REQUEST;
-        string headerString(1, c);
-        PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
-
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pfsr);
-      }
-    }
-  } catch (const std::runtime_error& ex) {
-    cerr << "Error establishing port forward: " << ex.what() << endl;
-    LOG(FATAL) << "Error establishing port forward: " << ex.what();
-  }
-
-  winsize win;
-  ioctl(1, TIOCGWINSZ, &win);
-
-  termios terminal_local;
-  tcgetattr(0, &terminal_local);
-  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
-  cfmakeraw(&terminal_local);
-  tcsetattr(0, TCSANOW, &terminal_local);
-
-  while (run && !globalClient->isShuttingDown()) {
-    // Data structures needed for select() and
-    // non-blocking I/O.
-    fd_set rfd;
-    timeval tv;
-
-    FD_ZERO(&rfd);
-    int maxfd = STDIN_FILENO;
-    FD_SET(STDIN_FILENO, &rfd);
-    int clientFd = globalClient->getSocketFd();
-    if (clientFd > 0) {
-      FD_SET(clientFd, &rfd);
-      maxfd = max(maxfd, clientFd);
-    }
-    // TODO: set port forward sockets as well for performance reasons.
-    tv.tv_sec = 0;
-    tv.tv_usec = 10000;
-    select(maxfd + 1, &rfd, NULL, NULL, &tv);
-
-    try {
-      // Check for data to send.
-      if (FD_ISSET(STDIN_FILENO, &rfd)) {
-        // Read from stdin and write to our client that will then send it to the
-        // server.
-        VLOG(4) << "Got data from stdin";
-        int rc = read(STDIN_FILENO, b, BUF_SIZE);
-        FATAL_FAIL(rc);
-        if (rc > 0) {
-          // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
-          // globalClient->getWriter()->getSequenceNumber();
-          string s(b, rc);
-          et::TerminalBuffer tb;
-          tb.set_buffer(s);
-
-          char c = et::PacketType::TERMINAL_BUFFER;
-          string headerString(1, c);
-          globalClient->writeMessage(headerString);
-          globalClient->writeProto(tb);
-          keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-        }
-      }
-
-      if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
-        VLOG(4) << "Cliendfd is selected";
-        while (globalClient->hasData()) {
-          VLOG(4) << "GlobalClient has data";
-          string packetTypeString;
-          if (!globalClient->readMessage(&packetTypeString)) {
-            break;
-          }
-          if (packetTypeString.length() != 1) {
-            LOG(FATAL) << "Invalid packet header size: "
-                       << packetTypeString.length();
-          }
-          char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-            VLOG(4) << "Got PF packet type " << packetType;
-            portForwardHandler.handlePacket(packetType, globalClient);
-            continue;
-          }
-          switch (packetType) {
-            case et::PacketType::TERMINAL_BUFFER: {
-              VLOG(3) << "Got terminal buffer";
-              // Read from the server and write to our fake terminal
-              et::TerminalBuffer tb =
-                  globalClient->readProto<et::TerminalBuffer>();
-              const string& s = tb.buffer();
-              // VLOG(5) << "Got message: " << s;
-              // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
-              // globalClient->getReader()->getSequenceNumber();
-              keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-              RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length());
-              break;
-            }
-            case et::PacketType::KEEP_ALIVE:
-              waitingOnKeepalive = false;
-              // This will fill up log file quickly but is helpful for debugging
-              // latency issues.
-              LOG(INFO) << "Got a keepalive";
-              break;
-            default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
-          }
-        }
-      }
-
-      if (clientFd > 0 && keepaliveTime < time(NULL)) {
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-        if (waitingOnKeepalive) {
-          LOG(INFO) << "Missed a keepalive, killing connection.";
-          globalClient->closeSocketAndMaybeReconnect();
-          waitingOnKeepalive = false;
-        } else {
-          LOG(INFO) << "Writing keepalive packet";
-          string s(1, (char)et::PacketType::KEEP_ALIVE);
-          globalClient->writeMessage(s);
-          waitingOnKeepalive = true;
-        }
-      }
-      if (clientFd < 0) {
-        // We are disconnected, so stop waiting for keepalive.
-        waitingOnKeepalive = false;
-      }
-
-      handleWindowChanged(&win);
-
-      vector<PortForwardDestinationRequest> requests;
-      vector<PortForwardData> dataToSend;
-      portForwardHandler.update(&requests, &dataToSend);
-      for (auto& pfr : requests) {
-        char c = et::PacketType::PORT_FORWARD_DESTINATION_REQUEST;
-        string headerString(1, c);
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pfr);
-        VLOG(4) << "send PF request";
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-      }
-      for (auto& pwd : dataToSend) {
-        char c = PacketType::PORT_FORWARD_DATA;
-        string headerString(1, c);
-        globalClient->writeMessage(headerString);
-        globalClient->writeProto(pwd);
-        VLOG(4) << "send PF data";
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
-      }
-    } catch (const runtime_error& re) {
-      LOG(ERROR) << "Error: " << re.what();
-      tcsetattr(0, TCSANOW, &terminal_backup);
-      cout << "Connection closing because of error: " << re.what() << endl;
-      run = false;
-    }
-  }
-  globalClient.reset();
-  LOG(INFO) << "Client derefernced";
-  tcsetattr(0, TCSANOW, &terminal_backup);
-  cout << "Session terminated" << endl;
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
   return 0;
