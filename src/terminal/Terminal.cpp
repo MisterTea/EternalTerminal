@@ -98,14 +98,11 @@ void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
 }
 
 void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
-                         string idpasskey) {
+                         string idpasskey, SocketEndpoint dstSocketEndpoint) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
-
-  string host = FLAGS_dsthost;
-  int port = FLAGS_dstport;
 
   if (::daemon(0, 0) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
@@ -138,7 +135,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   shared_ptr<SocketHandler> jumpclientSocket(new TcpSocketHandler());
   shared_ptr<ClientConnection> jumpclient =
       shared_ptr<ClientConnection>(new ClientConnection(
-          jumpclientSocket, SocketEndpoint(host, port), id, passkey));
+          jumpclientSocket, dstSocketEndpoint, id, passkey));
 
   int connectFailCount = 0;
   while (true) {
@@ -155,7 +152,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       }
     } catch (const runtime_error &err) {
       LOG(INFO) << "Could not make initial connection to dst server";
-      cout << "Could not make initial connection to " << host << ": "
+      cout << "Could not make initial connection to " << dstSocketEndpoint << ": "
            << err.what() << endl;
       exit(1);
     }
@@ -300,7 +297,7 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startJumpHostClient(ipcSocketHandler, idpasskey);
+    startJumpHostClient(ipcSocketHandler, idpasskey, SocketEndpoint(FLAGS_dsthost, FLAGS_dstport));
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();
