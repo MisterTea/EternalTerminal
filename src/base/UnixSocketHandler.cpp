@@ -106,14 +106,6 @@ int UnixSocketHandler::accept(int sockFd) {
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
-    // Make sure that socket becomes blocking once it's attached to a client.
-    {
-      int opts;
-      opts = fcntl(client_sock, F_GETFL, 0);
-      FATAL_FAIL(opts);
-      opts &= (~O_NONBLOCK);
-      FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
-    }
     initSocket(client_sock);
     addToActiveSockets(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
@@ -152,32 +144,24 @@ vector<int> UnixSocketHandler::getActiveSockets() {
 }
 
 void UnixSocketHandler::initSocket(int fd) {
-  struct timeval tv;
-  tv.tv_sec = 5;
-  tv.tv_usec = 0;
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,
-                                      sizeof(struct timeval)));
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
-                                      sizeof(struct timeval)));
-  // Set linger
-  struct linger so_linger;
-  so_linger.l_onoff = 1;
-  so_linger.l_linger = 5;
-  int z =
-      setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
-  if (z) {
-    LOG(FATAL) << "set socket linger failed";
+  {
+    // Set linger
+    struct linger so_linger;
+    so_linger.l_onoff = 1;
+    so_linger.l_linger = 5;
+    int z = setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+    if (z) {
+      LOG(FATAL) << "set socket linger failed";
+    }
   }
 #ifndef MSG_NOSIGNAL
-  // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
-  int val = 1;
-  FATAL_FAIL_UNLESS_EINVAL(
-      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+  {
+    // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
+    int val = 1;
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+  }
 #endif
-}
-
-void UnixSocketHandler::initServerSocket(int fd) {
-  initSocket(fd);
   // Also set the accept socket as non-blocking
   {
     int opts;
@@ -186,6 +170,10 @@ void UnixSocketHandler::initServerSocket(int fd) {
     opts |= O_NONBLOCK;
     FATAL_FAIL_UNLESS_EINVAL(fcntl(fd, F_SETFL, opts));
   }
+}
+
+void UnixSocketHandler::initServerSocket(int fd) {
+  initSocket(fd);
   // Also set the accept socket as reusable
   {
     int flag = 1;
