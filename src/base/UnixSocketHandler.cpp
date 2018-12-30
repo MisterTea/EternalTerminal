@@ -42,7 +42,8 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
     it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
-      return 0;
+      errno = EPIPE;
+      return -1;
     }
   }
   lock_guard<recursive_mutex> guard(*(it->second));
@@ -65,7 +66,8 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
     it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
-      return 0;
+      errno = EPIPE;
+      return -1;
     }
   }
   lock_guard<recursive_mutex> guard(*(it->second));
@@ -136,20 +138,6 @@ void UnixSocketHandler::close(int fd) {
   }
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
-  // Shutting down connection before closing to prevent the server
-  // from closing it.
-  VLOG(1) << "Shutting down connection: " << fd;
-  int rc = ::shutdown(fd, SHUT_RDWR);
-  if (rc == -1) {
-    if (errno == ENOTCONN || errno == EADDRNOTAVAIL) {
-      // Shutdown is failing on OS/X with errno (49): Can't assign requested
-      // address Possibly an OS bug but I don't think it's necessary anyways.
-
-      // ENOTCONN is harmless
-    } else {
-      FATAL_FAIL(rc);
-    }
-  }
   VLOG(1) << "Closing connection: " << fd;
   FATAL_FAIL(::close(fd));
   activeSocketMutexes.erase(it);
@@ -171,6 +159,15 @@ void UnixSocketHandler::initSocket(int fd) {
                                       sizeof(struct timeval)));
   FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
                                       sizeof(struct timeval)));
+  // Set linger
+  struct linger so_linger;
+  so_linger.l_onoff = 1;
+  so_linger.l_linger = 5;
+  int z =
+      setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
+  if (z) {
+    LOG(FATAL) << "set socket linger failed";
+  }
 #ifndef MSG_NOSIGNAL
   // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
   int val = 1;

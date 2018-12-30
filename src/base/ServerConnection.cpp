@@ -21,8 +21,9 @@ bool ServerConnection::acceptNewConnection(int fd) {
     return false;
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
+  lock_guard<std::recursive_mutex> guard(classMutex);
   clientHandlerThreadPool.push(
-      [&, this](int id) { clientHandler(clientSocketFd); });
+      [this, clientSocketFd](int id) { this->clientHandler(clientSocketFd); });
   return true;
 }
 
@@ -65,7 +66,16 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     }
     clientId = request.clientid();
     LOG(INFO) << "Got client with id: " << clientId;
-    if (!clientKeyExists(clientId)) {
+    shared_ptr<ServerClientConnection> serverClientState = NULL;
+    bool clientKeyExistsNow;
+    {
+      lock_guard<std::recursive_mutex> guard(classMutex);
+      clientKeyExistsNow = clientKeyExists(clientId);
+      if (clientConnectionExists(clientId)) {
+        serverClientState = getClientConnection(clientId);
+      }
+    }
+    if (!clientKeyExistsNow) {
       LOG(ERROR) << "Got a client that we have no key for";
 
       et::ConnectResponse response;
@@ -76,7 +86,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->writeProto(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
-    } else if (!clientConnectionExists(clientId)) {
+    } else if (serverClientState.get() == NULL) {
       et::ConnectResponse response;
       response.set_status(NEW_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
@@ -86,12 +96,10 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
       {
         lock_guard<std::recursive_mutex> guard(classMutex);
-        shared_ptr<ServerClientConnection> scc(new ServerClientConnection(
+        serverClientState.reset(new ServerClientConnection(
             socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
-        clientConnections.insert(std::make_pair(clientId, scc));
+        clientConnections.insert(std::make_pair(clientId, serverClientState));
 
-        shared_ptr<ServerClientConnection> serverClientState =
-            getClientConnection(clientId);
         if (serverHandler && !serverHandler->newClient(serverClientState)) {
           // Client creation failed, Destroy the new client
           removeClient(clientId);
@@ -104,8 +112,6 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->writeProto(clientSocketFd, response, true);
 
       lock_guard<std::recursive_mutex> guard(classMutex);
-      shared_ptr<ServerClientConnection> serverClientState =
-          getClientConnection(clientId);
       serverClientState->recoverClient(clientSocketFd);
     }
   } catch (const runtime_error& err) {

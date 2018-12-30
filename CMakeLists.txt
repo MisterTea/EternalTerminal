@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.0.2)
-project (EternalTCP VERSION 5.1.6)
+project (EternalTCP VERSION 5.1.8)
 
 option(BUILD_TEST "Build all unit test" OFF)
 option(CODE_COVERAGE "Enable code coverage" OFF)

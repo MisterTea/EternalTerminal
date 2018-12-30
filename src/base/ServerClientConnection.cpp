@@ -25,7 +25,9 @@ ServerClientConnection::~ServerClientConnection() {
 }
 
 bool ServerClientConnection::recoverClient(int newSocketFd) {
-  closeSocket();
+  if (socketFd != -1) {
+    closeSocket();
+  }
   return recover(newSocketFd);
 }
 }  // namespace et
