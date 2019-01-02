@@ -24,7 +24,7 @@ jobs:
       - checkout
       - run:
           name: Install system dependencies
-          command: brew unlink python; brew install git cmake; brew install protobuf libsodium gflags
+          command: brew install git cmake; brew install protobuf libsodium gflags
       - run:
           name: Init submodules
           command: git submodule update --init
