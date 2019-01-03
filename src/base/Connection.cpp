@@ -48,17 +48,10 @@ bool Connection::read(string* buf) {
 }
 
 bool Connection::readMessage(string* buf) {
-  auto timeSinceSocketClose = time(NULL);
   while (!shuttingDown) {
     bool result = read(buf);
     if (result) {
       return true;
-    }
-    if (socketFd == -1) {
-      timeSinceSocketClose = time(NULL);
-    }
-    if (timeSinceSocketClose + 5 < time(NULL)) {
-      closeSocketAndMaybeReconnect();
     }
     // Yield the processor
     if (socketFd == -1) {
@@ -106,17 +99,10 @@ bool Connection::write(const string& buf) {
 }
 
 void Connection::writeMessage(const string& buf) {
-  auto timeSinceSocketClose = time(NULL);
   while (!shuttingDown) {
     bool success = write(buf);
     if (success) {
       return;
-    }
-    if (socketFd == -1) {
-      timeSinceSocketClose = time(NULL);
-    }
-    if (timeSinceSocketClose + 5 < time(NULL)) {
-      closeSocketAndMaybeReconnect();
     }
     // Yield the processor
     if (socketFd == -1) {

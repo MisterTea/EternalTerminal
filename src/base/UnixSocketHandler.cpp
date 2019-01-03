@@ -11,13 +11,13 @@
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
-bool UnixSocketHandler::hasData(int fd) {
+bool UnixSocketHandler::waitForData(int fd, int64_t sec, int64_t usec) {
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
   struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 0;
+  timeout.tv_sec = sec;
+  timeout.tv_usec = usec;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
     // Select timed out or failed.
@@ -31,6 +31,8 @@ bool UnixSocketHandler::hasData(int fd) {
   VLOG(4) << "socket " << fd << " has data";
   return true;
 }
+
+bool UnixSocketHandler::hasData(int fd) { return waitForData(fd, 0, 0); }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   if (fd <= 0) {
@@ -46,6 +48,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
       return -1;
     }
   }
+  waitForData(fd, 5, 0);
   lock_guard<recursive_mutex> guard(*(it->second));
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
@@ -70,12 +73,33 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
       return -1;
     }
   }
-  lock_guard<recursive_mutex> guard(*(it->second));
+  // Try to write for around 5 seconds before giving up
+  time_t startTime = time(NULL);
+  int bytesWritten = 0;
+  while (bytesWritten < count) {
+    lock_guard<recursive_mutex> guard(*(it->second));
+    int w;
 #ifdef MSG_NOSIGNAL
-  return ::send(fd, buf, count, MSG_NOSIGNAL);
+    w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten,
+               MSG_NOSIGNAL);
 #else
-  return ::write(fd, buf, count);
+    w = ::write(fd, ((const char *)buf) + bytesWritten, count - bytesWritten);
 #endif
+    if (w < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        usleep(1000);
+        if (time(NULL) > startTime + 5) {
+          // Give up
+          return -1;
+        }
+      } else {
+        return -1;
+      }
+    } else {
+      bytesWritten += w;
+    }
+  }
+  return count;
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
