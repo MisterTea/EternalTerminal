@@ -16,7 +16,7 @@ jobs:
           command: mkdir build; cd build; cmake ../; make -j16
       - run:
           name: Build the root version of the project
-          command: mkdir root_version; cd root_verison; git submodule update --init; mkdir build; cd build; cmake ../; make -j16
+          command: mkdir root_version; cd root_version; git submodule update --init; mkdir build; cd build; cmake ../; make -j16
       - run:
           name: Make connection
           command: cd root_version/build; sudo ./etserver --daemon; cd ../../build; ./et -c "ls" localhost
