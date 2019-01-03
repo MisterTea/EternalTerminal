@@ -58,6 +58,7 @@ BackedWriterWriteState BackedWriter::write(const string& buf) {
       if (bytesWritten == count) {
         return BackedWriterWriteState::SUCCESS;
       }
+      usleep(1000);
     } else {
       // Error, we don't know how many bytes were written but it
       // doesn't matter because the reader is going to have to

@@ -23,15 +23,6 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   remote.sun_family = AF_UNIX;
   strcpy(remote.sun_path, pipePath.c_str());
 
-  // Set nonblocking just for the connect phase
-  {
-    int opts;
-    opts = fcntl(sockFd, F_GETFL);
-    FATAL_FAIL(opts);
-    opts |= O_NONBLOCK;
-    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-  }
-
   VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
   int result =
       ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
@@ -62,15 +53,6 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 
     if (so_error == 0) {
       LOG(INFO) << "Connected to endpoint " << endpoint;
-      // Make sure that socket becomes blocking once it's attached to a
-      // server.
-      {
-        int opts;
-        opts = fcntl(sockFd, F_GETFL);
-        FATAL_FAIL(opts);
-        opts &= (~O_NONBLOCK);
-        FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-      }
       // Initialize the socket again once it's blocking to make sure timeouts
       // are set
       initSocket(sockFd);

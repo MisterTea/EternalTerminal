@@ -9,6 +9,7 @@ class UnixSocketHandler : public SocketHandler {
   UnixSocketHandler();
   virtual ~UnixSocketHandler() {}
 
+  virtual bool waitForData(int fd, int64_t sec, int64_t usec);
   virtual bool hasData(int fd);
   virtual ssize_t read(int fd, void* buf, size_t count);
   virtual ssize_t write(int fd, const void* buf, size_t count);
