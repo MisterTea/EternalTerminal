@@ -152,10 +152,11 @@ class ConnectionTest : public testing::Test {
   void TearDown() override {
     stopListening = true;
     serverListenThread->join();
+    serverListenThread.reset();
     serverClientConnections.clear();
+    serverConnection.reset();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
-    serverConnection.reset();
 
     auto v = serverSocketHandler->getActiveSockets();
     if (!v.empty()) {
@@ -299,7 +300,7 @@ TEST_F(FlakyConnectionTest, MultiReadWrite) {
   for (int a = 0; a < 16; a++) {
     string new_id = base_id;
     new_id[0] = 'A' + a;
-    pool.push([&, this](int id, string clientId) { readWriteTest(clientId); },
+    pool.push([this](int id, string clientId) { readWriteTest(clientId); },
               new_id);
   }
   pool.stop(true);
