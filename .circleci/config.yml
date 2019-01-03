@@ -1,5 +1,25 @@
 version: 2
 jobs:
+  connect_to_initial_version:
+    docker:
+      - image: ubuntu:bionic
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - run:
+          name: Init submodules
+          command: git submodule update --init
+      - run:
+          name: Build the project
+          command: mkdir build; cd build; cmake ../; make -j16
+      - run:
+          name: Build the root version of the project
+          command: mkdir root_version; cd root_verison; git submodule update --init; mkdir build; cd build; cmake ../; make -j16
+      - run:
+          name: Make connection
+          command: cd root_version/build; sudo ./etserver --daemon; cd ../../build; ./et -c "ls" localhost
   build_linux:
     docker:
       - image: ubuntu:bionic
@@ -40,3 +60,4 @@ workflows:
     jobs:
       - build_linux
       - build_mac
+      - connect_to_initial_version
