@@ -12,14 +12,23 @@ jobs:
           name: Init submodules
           command: git submodule update --init
       - run:
+          name: Build the root version of the project
+          command: mkdir ../root_version; cp -Rf * ../root_version/; cd ../root_version; mkdir build; cd build; cmake ../; make -j16
+      - run:
           name: Build the project
           command: mkdir build; cd build; cmake ../; make -j16
       - run:
-          name: Build the root version of the project
-          command: mkdir root_version; cd root_version; git submodule update --init; mkdir build; cd build; cmake ../; make -j16
+          name: Connect new -> old
+          command: ../root_version/build/etserver --daemon; build/et -c "ls" localhost
       - run:
-          name: Make connection
-          command: cd root_version/build; sudo ./etserver --daemon; cd ../../build; ./et -c "ls" localhost
+          name: Kill server
+          command: pkill etserver
+      - run:
+          name: Connect old -> new
+          command: build/etserver --daemon; ../root_version/build/et -c "ls" localhost
+      - run:
+          name: Kill server
+          command: pkill etserver
   build_linux:
     docker:
       - image: ubuntu:bionic
