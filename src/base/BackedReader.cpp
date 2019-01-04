@@ -53,9 +53,6 @@ int BackedReader::read(string* buf) {
       return -1;
     } else if (bytesRead > 0) {
       partialMessage.append(tmpBuf, bytesRead);
-    } else if (bytesRead == -1 && errno == EAGAIN) {
-      // We didn't get the full header yet.
-      return 0;
     } else if (bytesRead == -1) {
       // Read error
       return -1;

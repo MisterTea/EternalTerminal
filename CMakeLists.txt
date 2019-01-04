@@ -21,6 +21,10 @@ if(UNIX)
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 endif()
 
+# Enable debug info
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+
+
 #Using FreeBSD?
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
     set(FREEBSD TRUE)
@@ -89,6 +93,7 @@ ELSE()
 ENDIF()
 
 include_directories(
+  external
   src/base
   src/terminal
   src/htm
@@ -106,6 +111,8 @@ add_library(
   et-lib
   STATIC
 
+  external/easylogging++.cc
+
   src/base/BackedReader.cpp
   src/base/BackedWriter.cpp
   src/base/ClientConnection.cpp
@@ -117,7 +124,6 @@ add_library(
   src/base/PipeSocketHandler.cpp
   src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.cpp
-  src/base/easylogging++.cc
   src/base/LogHandler.cpp
   src/base/DaemonCreator.cpp
   src/base/SystemUtils.cpp

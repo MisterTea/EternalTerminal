@@ -11,13 +11,13 @@
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
-bool UnixSocketHandler::hasData(int fd) {
+bool UnixSocketHandler::waitForData(int fd, int64_t sec, int64_t usec) {
   fd_set input;
   FD_ZERO(&input);
   FD_SET(fd, &input);
   struct timeval timeout;
-  timeout.tv_sec = 0;
-  timeout.tv_usec = 0;
+  timeout.tv_sec = sec;
+  timeout.tv_usec = usec;
   int n = select(fd + 1, &input, NULL, NULL, &timeout);
   if (n == -1) {
     // Select timed out or failed.
@@ -31,6 +31,8 @@ bool UnixSocketHandler::hasData(int fd) {
   VLOG(4) << "socket " << fd << " has data";
   return true;
 }
+
+bool UnixSocketHandler::hasData(int fd) { return waitForData(fd, 0, 0); }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   if (fd <= 0) {
@@ -46,6 +48,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
       return -1;
     }
   }
+  waitForData(fd, 5, 0);
   lock_guard<recursive_mutex> guard(*(it->second));
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
@@ -70,12 +73,33 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
       return -1;
     }
   }
-  lock_guard<recursive_mutex> guard(*(it->second));
+  // Try to write for around 5 seconds before giving up
+  time_t startTime = time(NULL);
+  int bytesWritten = 0;
+  while (bytesWritten < int(count)) {
+    lock_guard<recursive_mutex> guard(*(it->second));
+    int w;
 #ifdef MSG_NOSIGNAL
-  return ::send(fd, buf, count, MSG_NOSIGNAL);
+    w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten,
+               MSG_NOSIGNAL);
 #else
-  return ::write(fd, buf, count);
+    w = ::write(fd, ((const char *)buf) + bytesWritten, count - bytesWritten);
 #endif
+    if (w < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+        usleep(1000);
+        if (time(NULL) > startTime + 5) {
+          // Give up
+          return -1;
+        }
+      } else {
+        return -1;
+      }
+    } else {
+      bytesWritten += w;
+    }
+  }
+  return count;
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
@@ -106,16 +130,10 @@ int UnixSocketHandler::accept(int sockFd) {
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
-    // Make sure that socket becomes blocking once it's attached to a client.
-    {
-      int opts;
-      opts = fcntl(client_sock, F_GETFL, 0);
-      FATAL_FAIL(opts);
-      opts &= (~O_NONBLOCK);
-      FATAL_FAIL(fcntl(client_sock, F_SETFL, opts));
-    }
-    initSocket(client_sock);
     addToActiveSockets(client_sock);
+    lock_guard<recursive_mutex> guard(
+        *(activeSocketMutexes.find(client_sock)->second));
+    initSocket(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -152,31 +170,22 @@ vector<int> UnixSocketHandler::getActiveSockets() {
 }
 
 void UnixSocketHandler::initSocket(int fd) {
-  struct timeval tv;
-  tv.tv_sec = 5;
-  tv.tv_usec = 0;
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, (char *)&tv,
-                                      sizeof(struct timeval)));
-  FATAL_FAIL_UNLESS_EINVAL(setsockopt(fd, SOL_SOCKET, SO_SNDTIMEO, (char *)&tv,
-                                      sizeof(struct timeval)));
-  // Set linger
-  struct linger so_linger;
-  so_linger.l_onoff = 1;
-  so_linger.l_linger = 5;
-  int z = setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
-  if (z) {
-    LOG(FATAL) << "set socket linger failed";
+  {
+    // Set linger
+    struct linger so_linger;
+    so_linger.l_onoff = 1;
+    so_linger.l_linger = 5;
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger));
   }
 #ifndef MSG_NOSIGNAL
-  // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
-  int val = 1;
-  FATAL_FAIL_UNLESS_EINVAL(
-      setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+  {
+    // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
+    int val = 1;
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+  }
 #endif
-}
-
-void UnixSocketHandler::initServerSocket(int fd) {
-  initSocket(fd);
   // Also set the accept socket as non-blocking
   {
     int opts;
@@ -185,10 +194,14 @@ void UnixSocketHandler::initServerSocket(int fd) {
     opts |= O_NONBLOCK;
     FATAL_FAIL_UNLESS_EINVAL(fcntl(fd, F_SETFL, opts));
   }
+}
+
+void UnixSocketHandler::initServerSocket(int fd) {
+  initSocket(fd);
   // Also set the accept socket as reusable
   {
     int flag = 1;
-    FATAL_FAIL_UNLESS_EINVAL(
+    FATAL_FAIL(
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)));
   }
 }
