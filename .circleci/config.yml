@@ -28,7 +28,7 @@ jobs:
           command: pkill etserver
       - run:
           name: Connect old -> new
-          command: build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost
+          command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost
       - run:
           name: Kill server
           command: pkill etserver
