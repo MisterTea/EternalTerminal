@@ -16,7 +16,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the root version of the project
-          command: mkdir ../root_version; cp -Rf * ../root_version/; cd ../root_version; git checkout et-v5.1.0; mkdir build; cd build; cmake ../; make -j4
+          command: mkdir ../root_version; cp -Rf .* * ../root_version/; cd ../root_version; git checkout et-v5.1.0; mkdir build; cd build; cmake ../; make -j4
       - run:
           name: Build the project
           command: mkdir build; cd build; cmake ../; make -j4
