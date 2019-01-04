@@ -10,7 +10,7 @@ jobs:
           command: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
       - run:
           name: Set up ssh & known_hosts
-          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
           name: Init submodules
           command: git submodule update --init
