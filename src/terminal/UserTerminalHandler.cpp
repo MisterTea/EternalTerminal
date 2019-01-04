@@ -5,7 +5,7 @@
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
+
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -15,16 +15,6 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
-
-#if __APPLE__
-#include <sys/ucred.h>
-#include <util.h>
-#elif __FreeBSD__
-#include <libutil.h>
-#elif __NetBSD__  // do not need pty.h on NetBSD
-#else
-#include <pty.h>
-#endif
 
 #ifdef WITH_UTEMPTER
 #include <utempter.h>
@@ -38,8 +28,8 @@
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
-    shared_ptr<SocketHandler> _socketHandler, bool _noratelimit)
-    : socketHandler(_socketHandler), noratelimit(_noratelimit) {}
+    shared_ptr<SocketHandler> _socketHandler, shared_ptr<PsuedoUserTerminal> _term, bool _noratelimit)
+    : socketHandler(_socketHandler), term(_term), noratelimit(_noratelimit) {}
 
 void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   routerFd = socketHandler->connect(SocketEndpoint(ROUTER_FIFO_NAME));
@@ -65,20 +55,14 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
 
 void UserTerminalHandler::run() {
   int masterfd;
-
-  pid_t pid = forkpty(&masterfd, NULL, NULL, NULL);
+  pid_t pid = term->setup(&masterfd);
+  // pid_t pid = forkpty(&masterfd, NULL, NULL, NULL);
   switch (pid) {
     case -1:
       FATAL_FAIL(pid);
     case 0: {
       close(routerFd);
-      passwd *pwd = getpwuid(getuid());
-      chdir(pwd->pw_dir);
-      string terminal = string(::getenv("SHELL"));
-      VLOG(1) << "Child process " << pid << " launching terminal " << terminal;
-      setenv("ET_VERSION", ET_VERSION, 1);
-      execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
-      exit(0);
+      term->runTerminal();
       break;
     }
     default: {

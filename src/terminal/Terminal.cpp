@@ -4,6 +4,7 @@
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
 #include "PortForwardHandler.hpp"
+#include "PsuedoUserTerminal.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
 #include "TcpSocketHandler.hpp"
@@ -86,8 +87,9 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
 }
 
 void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
-                       string idpasskey, bool noratelimit) {
-  UserTerminalHandler uth(ipcSocketHandler, noratelimit);
+                       shared_ptr<PsuedoUserTerminal> term, string idpasskey,
+                       bool noratelimit) {
+  UserTerminalHandler uth(ipcSocketHandler, term, noratelimit);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (::daemon(0, 0) == -1) {
@@ -133,9 +135,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   InitialPayload payload;
 
   shared_ptr<SocketHandler> jumpclientSocket(new TcpSocketHandler());
-  shared_ptr<ClientConnection> jumpclient =
-      shared_ptr<ClientConnection>(new ClientConnection(
-          jumpclientSocket, dstSocketEndpoint, id, passkey));
+  shared_ptr<ClientConnection> jumpclient = shared_ptr<ClientConnection>(
+      new ClientConnection(jumpclientSocket, dstSocketEndpoint, id, passkey));
 
   int connectFailCount = 0;
   while (true) {
@@ -152,8 +153,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       }
     } catch (const runtime_error &err) {
       LOG(INFO) << "Could not make initial connection to dst server";
-      cout << "Could not make initial connection to " << dstSocketEndpoint << ": "
-           << err.what() << endl;
+      cout << "Could not make initial connection to " << dstSocketEndpoint
+           << ": " << err.what() << endl;
       exit(1);
     }
     break;
@@ -281,6 +282,7 @@ int main(int argc, char **argv) {
   srand(1);
 
   shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
+  shared_ptr<PsuedoUserTerminal> term(new PsuedoUserTerminal());
 
   if (FLAGS_jump) {
     string idpasskey = getIdpasskey();
@@ -297,7 +299,8 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startJumpHostClient(ipcSocketHandler, idpasskey, SocketEndpoint(FLAGS_dsthost, FLAGS_dstport));
+    startJumpHostClient(ipcSocketHandler, idpasskey,
+                        SocketEndpoint(FLAGS_dsthost, FLAGS_dstport));
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();
@@ -319,7 +322,7 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startUserTerminal(ipcSocketHandler, idpasskey, FLAGS_noratelimit);
+    startUserTerminal(ipcSocketHandler, term, idpasskey, FLAGS_noratelimit);
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();
