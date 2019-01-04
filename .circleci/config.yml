@@ -4,10 +4,10 @@ jobs:
     docker:
       - image: ubuntu:bionic
     steps:
+      - checkout
       - run:
           name: Install system dependencies
           command: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
-      - checkout
       - run:
           name: Set up ssh & known_hosts
           command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
@@ -36,10 +36,10 @@ jobs:
     docker:
       - image: ubuntu:bionic
     steps:
+      - checkout
       - run:
           name: Install system dependencies
           command: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-      - checkout
       - run:
           name: Init submodules
           command: git submodule update --init
@@ -53,10 +53,10 @@ jobs:
     macos:
       xcode: "9.0"
     steps:
+      - checkout
       - run:
           name: Install system dependencies
           command: brew upgrade python@2 python; brew install git cmake; brew install protobuf libsodium gflags
-      - checkout
       - run:
           name: Init submodules
           command: git submodule update --init
