@@ -23,8 +23,9 @@ string genRandom(int len) {
   return s;
 }
 
-string genCommand(string passkey, string id, string clientTerm, string user,
-                  bool kill, string command_prefix, string options) {
+string genCommand(const string &passkey, const string &id,
+                  const string &clientTerm, const string &user, bool kill,
+                  const string &command_prefix, const string &options) {
   string SSH_SCRIPT_PREFIX{
       "SERVER_TMP_DIR=${TMPDIR:-${TMP:-${TEMP:-/tmp}}};"
       "TMPFILE=$(mktemp $SERVER_TMP_DIR/et-server.XXXXXXXXXXXX);"
@@ -56,12 +57,12 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
                                  int port, string jumphost, int jport,
                                  bool kill, int vlevel, string cmd_prefix,
                                  bool noratelimit) {
+  string clientTerm("xterm-256color");
   auto envString = getenv("TERM");
-  if (envString == NULL) {
+  if (envString != NULL) {
     // Default to xterm-256color
-    envString = "xterm-256color";
+    clientTerm = envString;
   }
-  string clientTerm();
   string passkey = genRandom(32);
   string id = genRandom(16);
   string cmdoptions{"--idpasskeyfile=\"${TMPFILE}\" --v=" +
