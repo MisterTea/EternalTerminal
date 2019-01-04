@@ -156,4 +156,16 @@ inline int replaceAll(std::string& str, const std::string& from,
   return retval;
 }
 
+inline bool operator==(const google::protobuf::MessageLite& msg_a,
+                       const google::protobuf::MessageLite& msg_b) {
+  return (msg_a.GetTypeName() == msg_b.GetTypeName()) &&
+         (msg_a.SerializeAsString() == msg_b.SerializeAsString());
+}
+
+inline bool operator!=(const google::protobuf::MessageLite& msg_a,
+                       const google::protobuf::MessageLite& msg_b) {
+  return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
+         (msg_a.SerializeAsString() != msg_b.SerializeAsString());
+}
+
 #endif

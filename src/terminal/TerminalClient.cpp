@@ -1,5 +1,7 @@
 #include "TerminalClient.hpp"
 
+#include "PsuedoTerminalConsole.hpp"
+
 DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
@@ -27,7 +29,9 @@ DEFINE_bool(noratelimit, false,
 
 TerminalClient::TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
                                const SocketEndpoint& _socketEndpoint,
-                               const string& id, const string& passkey) {
+                               const string& id, const string& passkey,
+                               shared_ptr<Console> _console)
+    : console(_console) {
   portForwardHandler =
       shared_ptr<PortForwardHandler>(new PortForwardHandler(_socketHandler));
   InitialPayload payload;
@@ -61,28 +65,6 @@ TerminalClient::TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
   }
   VLOG(1) << "Client created with id: " << globalClient->getId();
 };
-
-void TerminalClient::handleWindowChanged(winsize* win) {
-  int firstWindowChangedCall = 1;
-  winsize tmpwin;
-  ioctl(1, TIOCGWINSZ, &tmpwin);
-  if (firstWindowChangedCall || win->ws_row != tmpwin.ws_row ||
-      win->ws_col != tmpwin.ws_col || win->ws_xpixel != tmpwin.ws_xpixel ||
-      win->ws_ypixel != tmpwin.ws_ypixel) {
-    firstWindowChangedCall = 0;
-    *win = tmpwin;
-    LOG(INFO) << "Window size changed: " << win->ws_row << " " << win->ws_col
-              << " " << win->ws_xpixel << " " << win->ws_ypixel;
-    TerminalInfo ti;
-    ti.set_row(win->ws_row);
-    ti.set_column(win->ws_col);
-    ti.set_width(win->ws_xpixel);
-    ti.set_height(win->ws_ypixel);
-    string s(1, (char)et::PacketType::TERMINAL_INFO);
-    globalClient->writeMessage(s);
-    globalClient->writeProto(ti);
-  }
-}
 
 vector<pair<int, int>> parseRangesToPairs(const string& input) {
   vector<pair<int, int>> pairs;
@@ -130,6 +112,8 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
 void TerminalClient::run(const string& command, const string& tunnels,
                          const string& reverseTunnels) {
+  console->setup();
+
   shared_ptr<TcpSocketHandler> socketHandler =
       static_pointer_cast<TcpSocketHandler>(globalClient->getSocketHandler());
 
@@ -185,14 +169,7 @@ void TerminalClient::run(const string& command, const string& tunnels,
     LOG(FATAL) << "Error establishing port forward: " << ex.what();
   }
 
-  winsize win;
-  ioctl(1, TIOCGWINSZ, &win);
-
-  termios terminal_local;
-  tcgetattr(0, &terminal_local);
-  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
-  cfmakeraw(&terminal_local);
-  tcsetattr(0, TCSANOW, &terminal_local);
+  TerminalInfo lastTerminalInfo;
 
   while (run && !globalClient->isShuttingDown()) {
     // Data structures needed for select() and
@@ -201,8 +178,9 @@ void TerminalClient::run(const string& command, const string& tunnels,
     timeval tv;
 
     FD_ZERO(&rfd);
-    int maxfd = STDIN_FILENO;
-    FD_SET(STDIN_FILENO, &rfd);
+    int consoleFd = console->getFd();
+    int maxfd = consoleFd;
+    FD_SET(consoleFd, &rfd);
     int clientFd = globalClient->getSocketFd();
     if (clientFd > 0) {
       FD_SET(clientFd, &rfd);
@@ -215,11 +193,11 @@ void TerminalClient::run(const string& command, const string& tunnels,
 
     try {
       // Check for data to send.
-      if (FD_ISSET(STDIN_FILENO, &rfd)) {
+      if (FD_ISSET(consoleFd, &rfd)) {
         // Read from stdin and write to our client that will then send it to the
         // server.
         VLOG(4) << "Got data from stdin";
-        int rc = read(STDIN_FILENO, b, BUF_SIZE);
+        int rc = read(consoleFd, b, BUF_SIZE);
         FATAL_FAIL(rc);
         if (rc > 0) {
           // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
@@ -270,7 +248,7 @@ void TerminalClient::run(const string& command, const string& tunnels,
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();
               keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
-              RawSocketUtils::writeAll(STDOUT_FILENO, &s[0], s.length());
+              console->write(s);
               break;
             }
             case et::PacketType::KEEP_ALIVE:
@@ -303,7 +281,15 @@ void TerminalClient::run(const string& command, const string& tunnels,
         waitingOnKeepalive = false;
       }
 
-      handleWindowChanged(&win);
+      TerminalInfo ti = console->getTerminalInfo();
+
+      if (ti != lastTerminalInfo) {
+        LOG(INFO) << "Window size changed: " << ti.DebugString();
+        lastTerminalInfo = ti;
+        string s(1, (char)et::PacketType::TERMINAL_INFO);
+        globalClient->writeMessage(s);
+        globalClient->writeProto(ti);
+      }
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
@@ -326,14 +312,13 @@ void TerminalClient::run(const string& command, const string& tunnels,
       }
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what();
-      tcsetattr(0, TCSANOW, &terminal_backup);
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
   }
   globalClient.reset();
   LOG(INFO) << "Client derefernced";
-  tcsetattr(0, TCSANOW, &terminal_backup);
+  console->teardown();
   cout << "Session terminated" << endl;
 }
 
@@ -491,10 +476,13 @@ int main(int argc, char** argv) {
     FLAGS_host = FLAGS_jumphost;
     FLAGS_port = FLAGS_jport;
   }
-  SocketEndpoint socketEndpoint = SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
+  SocketEndpoint socketEndpoint =
+      SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
   shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
+  shared_ptr<Console> console(new PsuedoTerminalConsole());
 
-  TerminalClient terminalClient = TerminalClient(clientSocket, socketEndpoint, id, passkey);
+  TerminalClient terminalClient =
+      TerminalClient(clientSocket, socketEndpoint, id, passkey, console);
   terminalClient.run(FLAGS_c, FLAGS_t, FLAGS_rt);
 
   // Uninstall log rotation callback

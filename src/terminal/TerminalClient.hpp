@@ -2,6 +2,7 @@
 #define __ET_TERMINAL_CLIENT__
 
 #include "ClientConnection.hpp"
+#include "Console.hpp"
 #include "CryptoHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
@@ -33,7 +34,7 @@ class TerminalClient {
   // socketEndpoint, string idpasskeypair)
   TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
                  const SocketEndpoint& _socketEndpoint, const string& id,
-                 const string& passkey);
+                 const string& passkey, shared_ptr<Console> _console);
   void setUpTunnel(const string& tunnels);
   void setUpReverseTunnels(const string& reverseTunnels);
   void handleWindowChanged(winsize* win);
@@ -42,8 +43,8 @@ class TerminalClient {
            const string& reverseTunnels);
 
  protected:
+  shared_ptr<Console> console;
   shared_ptr<ClientConnection> globalClient;
   shared_ptr<PortForwardHandler> portForwardHandler;
-  termios terminal_backup;
 };
 #endif  // __ET_TERMINAL_CLIENT__
