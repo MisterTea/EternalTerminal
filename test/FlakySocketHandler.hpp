@@ -32,9 +32,31 @@ class FlakySocketHandler : public SocketHandler {
     return actualSocketHandler->hasData(fd);
   }
   virtual ssize_t read(int fd, void* buf, size_t count) {
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+    if (millis % 10 == 0) {
+      errno = EPIPE;
+      return -1;
+    }
+    if (millis % 10 == 5) {
+      errno = EAGAIN;
+      return -1;
+    }
     return actualSocketHandler->read(fd, buf, count);
   }
   virtual ssize_t write(int fd, const void* buf, size_t count) {
+    auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
+                      std::chrono::system_clock::now().time_since_epoch())
+                      .count();
+    if (millis % 10 == 0) {
+      errno = EPIPE;
+      return -1;
+    }
+    if (millis % 10 == 5) {
+      errno = EAGAIN;
+      return -1;
+    }
     return actualSocketHandler->write(fd, buf, count);
   }
   virtual vector<int> getActiveSockets() {

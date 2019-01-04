@@ -154,6 +154,7 @@ class ConnectionTest : public testing::Test {
     serverListenThread->join();
     serverListenThread.reset();
     serverClientConnections.clear();
+    serverConnection->shutdown();
     serverConnection.reset();
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));

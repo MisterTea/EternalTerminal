@@ -42,7 +42,7 @@ void LogHandler::rolloutHandler(const char *filename, std::size_t size) {
   system(ss.str().c_str());
 }
 
-void LogHandler::stderrToFile(const string &pathPrefix) {
+string LogHandler::stderrToFile(const string &pathPrefix) {
   time_t rawtime;
   struct tm *timeinfo;
   char buffer[80];
@@ -50,10 +50,9 @@ void LogHandler::stderrToFile(const string &pathPrefix) {
   timeinfo = localtime(&rawtime);
   strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
   string current_time(buffer);
-  {
-    string stderrFilename = pathPrefix + "_stderr_" + current_time;
-    FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
-    setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  }
+  string stderrFilename = pathPrefix + "_stderr_" + current_time;
+  FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
+  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+  return stderrFilename;
 }
 }  // namespace et
