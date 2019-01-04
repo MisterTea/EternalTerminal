@@ -130,8 +130,10 @@ int UnixSocketHandler::accept(int sockFd) {
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
-    initSocket(client_sock);
     addToActiveSockets(client_sock);
+    lock_guard<recursive_mutex> guard(
+        *(activeSocketMutexes.find(client_sock)->second));
+    initSocket(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
@@ -173,10 +175,8 @@ void UnixSocketHandler::initSocket(int fd) {
     struct linger so_linger;
     so_linger.l_onoff = 1;
     so_linger.l_linger = 5;
-    int z = setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger);
-    if (z) {
-      LOG(FATAL) << "set socket linger failed";
-    }
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger));
   }
 #ifndef MSG_NOSIGNAL
   {
@@ -201,7 +201,7 @@ void UnixSocketHandler::initServerSocket(int fd) {
   // Also set the accept socket as reusable
   {
     int flag = 1;
-    FATAL_FAIL_UNLESS_EINVAL(
+    FATAL_FAIL(
         setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)));
   }
 }
