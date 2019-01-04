@@ -76,7 +76,7 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
   // Try to write for around 5 seconds before giving up
   time_t startTime = time(NULL);
   int bytesWritten = 0;
-  while (bytesWritten < count) {
+  while (bytesWritten < int(count)) {
     lock_guard<recursive_mutex> guard(*(it->second));
     int w;
 #ifdef MSG_NOSIGNAL

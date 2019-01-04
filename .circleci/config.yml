@@ -1,5 +1,37 @@
 version: 2
 jobs:
+  connect_to_initial_version:
+    docker:
+      - image: ubuntu:bionic
+    steps:
+      - checkout
+      - run:
+          name: Install system dependencies
+          command: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+      - run:
+          name: Set up ssh & known_hosts
+          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+      - run:
+          name: Init submodules
+          command: git submodule update --init
+      - run:
+          name: Build the root version of the project
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout et-v5.1.5; mkdir build; cd build; cmake ../; make -j4
+      - run:
+          name: Build the project
+          command: mkdir build; cd build; cmake ../; make -j4
+      - run:
+          name: Connect new -> old
+          command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost
+      - run:
+          name: Kill server
+          command: pkill etserver
+      - run:
+          name: Connect old -> new
+          command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost
+      - run:
+          name: Kill server
+          command: pkill etserver
   build_linux:
     docker:
       - image: ubuntu:bionic
@@ -13,7 +45,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j16
+          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
       - run:
           name: Run tests
           command: cd build/test/; ./et-test
@@ -30,7 +62,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j16
+          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
       - run:
           name: Run tests
           command: cd build/test/; ./et-test
@@ -40,3 +72,4 @@ workflows:
     jobs:
       - build_linux
       - build_mac
+      - connect_to_initial_version
