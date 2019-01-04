@@ -10,7 +10,7 @@ jobs:
       - checkout
       - run:
           name: Set up ssh & known_hosts
-          command: /etc/init.d/ssh start; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; ssh -o "StrictHostKeyChecking no" localhost ls
+          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
           name: Init submodules
           command: git submodule update --init
