@@ -1,22 +1,24 @@
 #ifndef __FAKE_USER_TERMINAL_HPP__
 #define __FAKE_USER_TERMINAL_HPP__
 
-#include "Terminal.hpp"
+#include "UserTerminal.hpp"
 
 namespace et {
-class FakeUserTerminal : public Terminal {
+class FakeUserTerminal : public UserTerminal {
  public:
-  virtual pid_t setup(int* fd) {
-    // TODO: do we need to create another process?
-    // or move the switch case inside PsuedoUserTerminal::runTerminal?
+  virtual ~FakeUserTerminal() : didCleanUp(false), didHandleSessionEnd(false) {
+    memset(&lastWinInfo, 0, sizeof(winsize));
   }
 
-  virtual void runTerminal() {
-    // TODO: check masterFd for read and write.
-  }
+  virtual int setup(int routerFd) = 0;
+  virtual void runTerminal() = 0;
+  virtual void handleSessionEnd() { didHandleSessionEnd = true; }
+  virtual void cleanup() { didCleanUp = true; }
+  virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
 
- protected:
-  int masterFd;
+  bool didCleanUp;
+  bool didHandleSessionEnd;
+  winsize lastWinInfo;
 };
 }  // namespace et
 

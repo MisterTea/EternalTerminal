@@ -274,7 +274,51 @@ target_link_libraries (
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
   enable_testing()
-  add_subdirectory(test)
+
+  set(GTEST_PATH ${PROJECT_SOURCE_DIR}/test)
+
+  add_executable(
+    et-test
+  
+    test/BackedTest.cpp
+    test/ConnectionTest.cpp
+    test/CryptoHandlerTest.cpp
+    test/FakeConsoleTest.cpp
+    test/Main.cpp
+    )
+  
+  add_dependencies(
+    et-test
+    TerminalCommon
+    et-lib
+    gtest
+    gtest_main
+    gmock
+    gmock_main)
+  
+  target_link_libraries(
+    et-test
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES}
+    gtest
+    gtest_main
+    gmock
+    gmock_main
+    resolv
+    util
+    )
+  add_test(
+    et-test
+    et-test
+    )
+  
 endif()
 
 install(TARGETS etserver etterminal et htm htmd

@@ -3,24 +3,24 @@
 
 #include "Headers.hpp"
 
-#include "PsuedoUserTerminal.hpp"
 #include "SocketHandler.hpp"
+#include "UserTerminal.hpp"
 
 namespace et {
 class UserTerminalHandler {
  public:
   UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
-                      shared_ptr<PsuedoUserTerminal> _term, bool noratelimit);
+                      shared_ptr<UserTerminal> _term, bool noratelimit);
   void connectToRouter(const string& idPasskey);
   void run();
 
  protected:
   int routerFd;
   shared_ptr<SocketHandler> socketHandler;
-  shared_ptr<PsuedoUserTerminal> term;
+  shared_ptr<UserTerminal> term;
   bool noratelimit;
 
-  void runUserTerminal(int masterFd, pid_t childPid);
+  void runUserTerminal(int masterFd);
 };
 }  // namespace et
 
