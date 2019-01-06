@@ -76,6 +76,8 @@ class PsuedoUserTerminal : public UserTerminal {
 
   pid_t getPid() { return pid; }
 
+  virtual int getFd() { return masterFd; }
+
  protected:
   pid_t pid;
   int masterFd;

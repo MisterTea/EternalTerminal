@@ -283,7 +283,7 @@ if(BUILD_TEST) # Build unit tests.
     test/BackedTest.cpp
     test/ConnectionTest.cpp
     test/CryptoHandlerTest.cpp
-    test/FakeConsoleTest.cpp
+    test/TerminalTest.cpp
     test/Main.cpp
     )
   

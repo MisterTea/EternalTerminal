@@ -2,6 +2,7 @@
 #define __FAKE_CONSOLE_HPP__
 
 #include "Console.hpp"
+#include "UserTerminal.hpp"
 
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
@@ -93,8 +94,66 @@ class FakeConsole : public Console {
   int clientServerFd;
   string pipeDirectory;
   string pipePath;
+};
 
-};  // namespace et
+class FakeUserTerminal : public UserTerminal {
+ public:
+  FakeUserTerminal(shared_ptr<PipeSocketHandler> _socketHandler)
+      : socketHandler(_socketHandler),
+        didCleanUp(false),
+        didHandleSessionEnd(false) {
+    memset(&lastWinInfo, 0, sizeof(winsize));
+  }
+
+  virtual ~FakeUserTerminal() {}
+
+  virtual int setup(int routerFd) {
+    string tmpPath = string("/tmp/et_test_userterminal_XXXXXXXX");
+    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipePath = string(pipeDirectory) + "/pipe";
+    SocketEndpoint endpoint(pipePath);
+    serverClientFd = -1;
+    std::thread serverListenThread(consoleListenFn, socketHandler, endpoint,
+                                   &serverClientFd);
+    // Wait for server to spin up
+    ::usleep(1000 * 1000);
+    clientServerFd = socketHandler->connect(endpoint);
+    FATAL_FAIL(clientServerFd);
+    serverListenThread.join();
+    FATAL_FAIL(serverClientFd);
+    return getFd();
+  };
+
+  virtual void runTerminal(){
+
+  };
+
+  virtual int getFd() { return clientServerFd; }
+
+  string getKeystrokes(int count) {
+    string s(count, '\0');
+    socketHandler->readAll(serverClientFd, &s[0], count, false);
+    return s;
+  }
+
+  void simulateTerminalResponse(const string& s) {
+    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
+                                   false);
+  }
+  virtual void handleSessionEnd() { didHandleSessionEnd = true; }
+  virtual void cleanup() { didCleanUp = true; }
+  virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
+
+ protected:
+  shared_ptr<PipeSocketHandler> socketHandler;
+  int serverClientFd;
+  int clientServerFd;
+  string pipeDirectory;
+  string pipePath;
+  bool didCleanUp;
+  bool didHandleSessionEnd;
+  winsize lastWinInfo;
+};
 }  // namespace et
 
 #endif

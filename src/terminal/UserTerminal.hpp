@@ -14,6 +14,7 @@ class UserTerminal {
   virtual void runTerminal() = 0;
   virtual void handleSessionEnd() = 0;
   virtual void cleanup() = 0;
+  virtual int getFd() = 0;
   virtual void setInfo(const winsize& tmpwin) = 0;
 };
 }  // namespace et
