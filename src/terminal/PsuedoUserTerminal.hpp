@@ -2,7 +2,9 @@
 #define __PSUEDO_USER_TERMINAL_HPP__
 
 #include <stdlib.h>
-#include "UserTerminal.hpp"
+#include <sys/types.h>
+#include <sys/wait.h>
+
 #if __APPLE__
 #include <sys/ucred.h>
 #include <util.h>
@@ -12,6 +14,12 @@
 #else
 #include <pty.h>
 #endif
+
+#ifdef WITH_UTEMPTER
+#include <utempter.h>
+#endif
+
+#include "UserTerminal.hpp"
 
 namespace et {
 class PsuedoUserTerminal : public UserTerminal {
