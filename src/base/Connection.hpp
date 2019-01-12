@@ -47,7 +47,10 @@ class Connection {
 
   string getId() { return id; }
 
-  inline bool hasData() { return reader->hasData(); }
+  inline bool hasData() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return reader->hasData();
+  }
 
   virtual void closeSocket();
   virtual void closeSocketAndMaybeReconnect() {
