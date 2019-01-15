@@ -60,7 +60,6 @@ class Connection {
   inline bool isShuttingDown() { return shuttingDown; }
 
  protected:
-  virtual bool read(string* buf);
   virtual bool write(const string& buf);
   bool recover(int newSocketFd);
 
