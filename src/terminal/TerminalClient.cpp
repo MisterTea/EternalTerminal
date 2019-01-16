@@ -427,7 +427,7 @@ int main(int argc, char** argv) {
         while (globalClient->hasData()) {
           VLOG(4) << "GlobalClient has data";
           string packetTypeString;
-          if (!globalClient->readMessage(&packetTypeString)) {
+          if (!globalClient->read(&packetTypeString)) {
             break;
           }
           if (packetTypeString.length() != 1) {

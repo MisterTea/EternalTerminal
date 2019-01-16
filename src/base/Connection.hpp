@@ -15,6 +15,9 @@ class Connection {
 
   virtual ~Connection();
 
+  virtual bool read(string* buf);
+  virtual bool write(const string& buf);
+
   virtual bool readMessage(string* buf);
   virtual void writeMessage(const string& message);
 
@@ -60,7 +63,6 @@ class Connection {
   inline bool isShuttingDown() { return shuttingDown; }
 
  protected:
-  virtual bool write(const string& buf);
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;

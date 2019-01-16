@@ -25,7 +25,7 @@ inline bool isSkippableError(int err_no) {
   );
 }
 
-bool Connection::readMessage(string* buf) {
+bool Connection::read(string* buf) {
   VLOG(4) << "Before read get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   VLOG(4) << "After read get connectionMutex";
@@ -45,6 +45,25 @@ bool Connection::readMessage(string* buf) {
   } else {
     return messagesRead > 0;
   }
+}
+
+bool Connection::readMessage(string* buf) {
+  while (!shuttingDown) {
+    bool result = read(buf);
+    if (result) {
+      return true;
+    }
+    // Yield the processor
+    if (socketFd == -1) {
+      // No connection, sleep for 100ms
+      usleep(100 * 1000);
+    } else {
+      // Have a connection, sleep for 1ms
+      usleep(1 * 1000);
+    }
+    LOG_EVERY_N(1000, INFO) << "Waiting to read...";
+  }
+  return false;
 }
 
 bool Connection::write(const string& buf) {
