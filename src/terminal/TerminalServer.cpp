@@ -14,6 +14,7 @@ DEFINE_string(cfgfile, "", "Location of the config file");
 DEFINE_int32(v, 0, "verbose level");
 DEFINE_bool(logtostdout, false, "log to stdout");
 
+namespace et {
 TerminalServer::TerminalServer(
     std::shared_ptr<SocketHandler> _socketHandler,
     const SocketEndpoint &_serverEndpoint,
@@ -328,6 +329,7 @@ void startServer(shared_ptr<SocketHandler> tcpSocketHandler,
     it->join();
   }
 }
+}  // namespace et
 
 int main(int argc, char **argv) {
   // Version string need to be set before GFLAGS parse arguments
@@ -405,7 +407,8 @@ int main(int argc, char **argv) {
   std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
-  startServer(tcpSocketHandler, SocketEndpoint(FLAGS_port), pipeSocketHandler);
+  et::startServer(tcpSocketHandler, SocketEndpoint(FLAGS_port),
+                  pipeSocketHandler);
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

@@ -280,6 +280,10 @@ if(BUILD_TEST) # Build unit tests.
   add_executable(
     et-test
   
+    src/terminal/TerminalClient.cpp
+    src/terminal/Terminal.cpp
+    src/terminal/TerminalServer.cpp
+    
     test/BackedTest.cpp
     test/ConnectionTest.cpp
     test/CryptoHandlerTest.cpp

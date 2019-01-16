@@ -22,12 +22,7 @@
 
 #include "ETerminal.pb.h"
 
-using namespace et;
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
-
+namespace et {
 class TerminalClient {
  public:
   // TerminalClient(shared_ptr<SocketHandler> socketHandler,  SocketEndpoint
@@ -47,4 +42,6 @@ class TerminalClient {
   shared_ptr<ClientConnection> globalClient;
   shared_ptr<PortForwardHandler> portForwardHandler;
 };
+
+}  // namespace et
 #endif  // __ET_TERMINAL_CLIENT__

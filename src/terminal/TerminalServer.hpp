@@ -63,6 +63,10 @@ class TerminalServer : public ServerConnection {
  protected:
   mutex terminalThreadMutex;
 };
+
+void startServer(shared_ptr<SocketHandler> tcpSocketHandler,
+                 SocketEndpoint socketEndpoint,
+                 shared_ptr<PipeSocketHandler> pipeSocketHandler);
 }  // namespace et
 
 #endif  // __ET_TERMINAL_SERVER__

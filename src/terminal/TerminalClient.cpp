@@ -2,6 +2,12 @@
 
 #include "PsuedoTerminalConsole.hpp"
 
+using namespace et;
+namespace google {}
+namespace gflags {}
+using namespace google;
+using namespace gflags;
+
 DEFINE_string(u, "", "username to login");
 DEFINE_string(host, "localhost", "host to join");
 DEFINE_int32(port, 2022, "port to connect on");
