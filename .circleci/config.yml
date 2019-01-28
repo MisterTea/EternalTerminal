@@ -16,7 +16,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the root version of the project
-          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout et-v5.1.5; mkdir build; cd build; cmake ../; make -j4
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
       - run:
           name: Build the project
           command: mkdir build; cd build; cmake ../; make -j4
@@ -48,7 +48,7 @@ jobs:
           command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
       - run:
           name: Run tests
-          command: cd build/test/; ./et-test
+          command: cd build; ./et-test
   build_mac:
     macos:
       xcode: "9.0"
@@ -65,7 +65,7 @@ jobs:
           command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
       - run:
           name: Run tests
-          command: cd build/test/; ./et-test
+          command: cd build; ./et-test
 workflows:
   version: 2
   build_and_test:
