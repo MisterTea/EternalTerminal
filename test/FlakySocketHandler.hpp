@@ -6,12 +6,15 @@
 namespace et {
 class FlakySocketHandler : public SocketHandler {
  public:
-  FlakySocketHandler(shared_ptr<SocketHandler> _actualSocketHandler)
-      : actualSocketHandler(_actualSocketHandler) {}
+  FlakySocketHandler(shared_ptr<SocketHandler> _actualSocketHandler,
+                     bool _enableFlake)
+      : actualSocketHandler(_actualSocketHandler), enableFlake(_enableFlake) {}
   virtual ~FlakySocketHandler() {}
 
+  inline void setFlake(bool _enableFlake) { enableFlake = _enableFlake; }
+
   virtual int connect(const SocketEndpoint& endpoint) {
-    if (rand() % 2 == 0) {
+    if (enableFlake && rand() % 2 == 0) {
       return -1;
     }
     return actualSocketHandler->connect(endpoint);
@@ -26,7 +29,7 @@ class FlakySocketHandler : public SocketHandler {
     return actualSocketHandler->stopListening(endpoint);
   }
   virtual bool hasData(int fd) {
-    if (rand() % 2 == 0) {
+    if (enableFlake && rand() % 2 == 0) {
       return false;
     }
     return actualSocketHandler->hasData(fd);
@@ -35,11 +38,11 @@ class FlakySocketHandler : public SocketHandler {
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
-    if (millis % 10 == 0) {
+    if (enableFlake && millis % 10 == 0) {
       errno = EPIPE;
       return -1;
     }
-    if (millis % 10 == 5) {
+    if (enableFlake && millis % 10 == 5) {
       errno = EAGAIN;
       return -1;
     }
@@ -49,11 +52,11 @@ class FlakySocketHandler : public SocketHandler {
     auto millis = std::chrono::duration_cast<std::chrono::milliseconds>(
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
-    if (millis % 10 == 0) {
+    if (enableFlake && millis % 10 == 0) {
       errno = EPIPE;
       return -1;
     }
-    if (millis % 10 == 5) {
+    if (enableFlake && millis % 10 == 5) {
       errno = EAGAIN;
       return -1;
     }
@@ -64,7 +67,7 @@ class FlakySocketHandler : public SocketHandler {
   }
 
   int writeAllOrReturn(int fd, const void* buf, size_t count) {
-    if (rand() % 30 == 0) {
+    if (enableFlake && rand() % 30 == 0) {
       errno = EPIPE;
       return -1;
     }
@@ -72,7 +75,7 @@ class FlakySocketHandler : public SocketHandler {
   }
 
   virtual int accept(int fd) {
-    if (rand() % 2 == 0) {
+    if (enableFlake && rand() % 2 == 0) {
       errno = EAGAIN;
       return -1;
     }
@@ -82,6 +85,7 @@ class FlakySocketHandler : public SocketHandler {
 
  protected:
   shared_ptr<SocketHandler> actualSocketHandler;
+  bool enableFlake;
 };
 }  // namespace et
 

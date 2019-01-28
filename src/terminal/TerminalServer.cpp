@@ -374,6 +374,9 @@ int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
+  // GFLAGS parse command line arguments
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
