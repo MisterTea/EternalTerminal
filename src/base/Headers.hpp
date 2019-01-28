@@ -88,6 +88,8 @@ static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
+// On BSD/OSX we can get EINVAL if the remote side has closed the connection
+// before we have initialized it.
 #define FATAL_FAIL_UNLESS_EINVAL(X)   \
   if (((X) == -1) && errno != EINVAL) \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);

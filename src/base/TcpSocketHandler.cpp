@@ -56,15 +56,6 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       continue;
     }
 
-    // Set nonblocking just for the connect phase
-    {
-      int opts;
-      opts = fcntl(sockFd, F_GETFL);
-      FATAL_FAIL(opts);
-      opts |= O_NONBLOCK;
-      FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-    }
-    VLOG(4) << "Set nonblocking";
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       if (p->ai_canonname) {
@@ -253,8 +244,10 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
 
 void TcpSocketHandler::initSocket(int fd) {
   UnixSocketHandler::initSocket(fd);
-  int flag = 1;
-  FATAL_FAIL_UNLESS_EINVAL(
-      setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
+  {
+    int flag = 1;
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
+  }
 }
 }  // namespace et

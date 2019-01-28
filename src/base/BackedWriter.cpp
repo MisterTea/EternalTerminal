@@ -39,7 +39,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
 
   messageSize = htonl(messageSize);
   string s = string("0000") + packet.serialize();
-  if (packet.length() != s.length() - 4) {
+  if (int64_t(packet.length()) != int64_t(s.length()) - 4) {
     LOG(FATAL) << "Packet header size is invalid: " << packet.length()
                << " != " << (s.length() - 4);
   }
@@ -61,9 +61,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
       if (bytesWritten == count) {
         return BackedWriterWriteState::SUCCESS;
       }
-    } else if (errno == EAGAIN) {
-      // Keep trying after 10ms
-      ::usleep(10 * 1000);
+      usleep(1000);
     } else {
       // Error, we don't know how many bytes were written but it
       // doesn't matter because the reader is going to have to

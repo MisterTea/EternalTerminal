@@ -172,7 +172,7 @@ TEST_F(ReliableBackedTest, ReadWrite) {
     BackedWriterWriteState r =
         serverCollector->write(string((&s[0] + a * 1024), 1024));
     if (r != BackedWriterWriteState::SUCCESS) {
-      throw runtime_error("Oops");
+      LOG(FATAL) << "Invalid write state: " << int(r);
     }
   }
 

@@ -25,7 +25,8 @@ class SocketHandler {
     int64_t length;
     readAll(fd, &length, sizeof(int64_t), timeout);
     if (length < 0 || length > 128 * 1024 * 1024) {
-      // If the message is <= 0 or too big, assume this is a bad packet and throw
+      // If the message is <= 0 or too big, assume this is a bad packet and
+      // throw
       string s = string("Invalid size (<0 or >128 MB): ") + to_string(length);
       throw std::runtime_error(s.c_str());
     }
@@ -43,12 +44,13 @@ class SocketHandler {
   template <typename T>
   inline void writeProto(int fd, const T& t, bool timeout) {
     string s;
-    if(!t.SerializeToString(&s)) {
+    if (!t.SerializeToString(&s)) {
       LOG(FATAL) << "Serialization of " << t.DebugString() << " failed!";
     }
     int64_t length = s.length();
-    if (length < 0 || length > 128*1024*1024) {
-      LOG(FATAL) << "Invalid proto length: " << length << " For proto " << t.DebugString();
+    if (length < 0 || length > 128 * 1024 * 1024) {
+      LOG(FATAL) << "Invalid proto length: " << length << " For proto "
+                 << t.DebugString();
     }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     if (length > 0) {
@@ -66,7 +68,7 @@ class SocketHandler {
       throw std::runtime_error(s.c_str());
     }
     if (length == 0) {
-      return "";
+      return Packet("");
     }
     string s(length, '\0');
     readAll(fd, &s[0], length, false);
@@ -76,7 +78,7 @@ class SocketHandler {
   inline void writePacket(int fd, const Packet& packet) {
     string s = packet.serialize();
     int64_t length = s.length();
-    if (length < 0 || length > 128*1024*1024) {
+    if (length < 0 || length > 128 * 1024 * 1024) {
       LOG(FATAL) << "Invalid message length: " << length;
     }
     writeAllOrThrow(fd, (const char*)&length, sizeof(int64_t), false);

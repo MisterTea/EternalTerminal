@@ -422,7 +422,7 @@ int main(int argc, char** argv) {
         while (globalClient->hasData()) {
           VLOG(4) << "GlobalClient has data";
           Packet packet;
-          if (!globalClient->readPacket(&packet)) {
+          if (!globalClient->read(&packet)) {
             break;
           }
           char packetType = packet.getHeader();
