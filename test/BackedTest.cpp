@@ -1,6 +1,4 @@
-#include "Headers.hpp"
-
-#include "gtest/gtest.h"
+#include "TestHeaders.hpp"
 
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
@@ -92,95 +90,81 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
   *serverClientFd = fd;
 }
 
-class BackedTest : public testing::Test {
- protected:
-  void SetUp() override {
-    string tmpPath = string("/tmp/et_test_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
-    pipePath = string(pipeDirectory) + "/pipe";
-    SocketEndpoint endpoint(pipePath);
-    int serverClientFd = -1;
-    std::thread serverListenThread(listenFn, serverSocketHandler, endpoint,
-                                   &serverClientFd);
-
-    // Wait for server to spin up
-    ::usleep(1000 * 1000);
-    int clientServerFd = clientSocketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
-    serverListenThread.join();
-    FATAL_FAIL(serverClientFd);
-
-    serverCollector.reset(new BackedCollector(
-        shared_ptr<BackedReader>(new BackedReader(
-            serverSocketHandler,
-            shared_ptr<CryptoHandler>(new CryptoHandler(
-                "12345678901234567890123456789012", CLIENT_SERVER_NONCE_MSB)),
-            serverClientFd)),
-        shared_ptr<BackedWriter>(new BackedWriter(
-            serverSocketHandler,
-            shared_ptr<CryptoHandler>(new CryptoHandler(
-                "12345678901234567890123456789012", SERVER_CLIENT_NONCE_MSB)),
-            serverClientFd))));
-
-    clientCollector.reset(new BackedCollector(
-        shared_ptr<BackedReader>(new BackedReader(
-            clientSocketHandler,
-            shared_ptr<CryptoHandler>(new CryptoHandler(
-                "12345678901234567890123456789012", SERVER_CLIENT_NONCE_MSB)),
-            clientServerFd)),
-        shared_ptr<BackedWriter>(new BackedWriter(
-            clientSocketHandler,
-            shared_ptr<CryptoHandler>(new CryptoHandler(
-                "12345678901234567890123456789012", CLIENT_SERVER_NONCE_MSB)),
-            clientServerFd))));
-  }
-
-  void TearDown() override {
-    FATAL_FAIL(::remove(pipePath.c_str()));
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
-  }
-
+TEST_CASE("BackedTest", "[BackedTest]") {
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
+  serverSocketHandler.reset(new PipeSocketHandler());
+  clientSocketHandler.reset(new PipeSocketHandler());
+
   shared_ptr<BackedCollector> serverCollector;
   shared_ptr<BackedCollector> clientCollector;
   string pipeDirectory;
   string pipePath;
-};
 
-class ReliableBackedTest : public BackedTest {
- protected:
-  void SetUp() override {
-    srand(1);
+  string tmpPath = string("/tmp/et_test_XXXXXXXX");
+  pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  pipePath = string(pipeDirectory) + "/pipe";
+  SocketEndpoint endpoint(pipePath);
+  int serverClientFd = -1;
+  std::thread serverListenThread(listenFn, serverSocketHandler, endpoint,
+                                 &serverClientFd);
 
-    serverSocketHandler.reset(new PipeSocketHandler());
-    clientSocketHandler.reset(new PipeSocketHandler());
+  // Wait for server to spin up
+  ::usleep(1000 * 1000);
+  int clientServerFd = clientSocketHandler->connect(endpoint);
+  FATAL_FAIL(clientServerFd);
+  serverListenThread.join();
+  FATAL_FAIL(serverClientFd);
 
-    BackedTest::SetUp();
-  }
-};
+  serverCollector.reset(new BackedCollector(
+      shared_ptr<BackedReader>(new BackedReader(
+          serverSocketHandler,
+          shared_ptr<CryptoHandler>(new CryptoHandler(
+              "12345678901234567890123456789012", CLIENT_SERVER_NONCE_MSB)),
+          serverClientFd)),
+      shared_ptr<BackedWriter>(new BackedWriter(
+          serverSocketHandler,
+          shared_ptr<CryptoHandler>(new CryptoHandler(
+              "12345678901234567890123456789012", SERVER_CLIENT_NONCE_MSB)),
+          serverClientFd))));
 
-TEST_F(ReliableBackedTest, ReadWrite) {
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
-    s[a] = rand() % 26 + 'A';
-  }
-  s[64 * 1024 - 1] = 0;
+  clientCollector.reset(new BackedCollector(
+      shared_ptr<BackedReader>(new BackedReader(
+          clientSocketHandler,
+          shared_ptr<CryptoHandler>(new CryptoHandler(
+              "12345678901234567890123456789012", SERVER_CLIENT_NONCE_MSB)),
+          clientServerFd)),
+      shared_ptr<BackedWriter>(new BackedWriter(
+          clientSocketHandler,
+          shared_ptr<CryptoHandler>(new CryptoHandler(
+              "12345678901234567890123456789012", CLIENT_SERVER_NONCE_MSB)),
+          clientServerFd))));
 
-  for (int a = 0; a < 64; a++) {
-    VLOG(1) << "Writing packet " << a;
-    BackedWriterWriteState r =
-        serverCollector->write(string((&s[0] + a * 1024), 1024));
-    if (r != BackedWriterWriteState::SUCCESS) {
-      LOG(FATAL) << "Invalid write state: " << int(r);
+  SECTION("ReliableBackedTest") {
+    string s(64 * 1024, '\0');
+    for (int a = 0; a < 64 * 1024 - 1; a++) {
+      s[a] = rand() % 26 + 'A';
     }
+    s[64 * 1024 - 1] = 0;
+
+    for (int a = 0; a < 64; a++) {
+      VLOG(1) << "Writing packet " << a;
+      BackedWriterWriteState r =
+          serverCollector->write(string((&s[0] + a * 1024), 1024));
+      if (r != BackedWriterWriteState::SUCCESS) {
+        LOG(FATAL) << "Invalid write state: " << int(r);
+      }
+    }
+
+    string resultConcat;
+    string result;
+    for (int a = 0; a < 64; a++) {
+      result = clientCollector->read();
+      resultConcat = resultConcat.append(result);
+    }
+    REQUIRE(resultConcat == s);
   }
 
-  string resultConcat;
-  string result;
-  for (int a = 0; a < 64; a++) {
-    result = clientCollector->read();
-    resultConcat = resultConcat.append(result);
-  }
-  EXPECT_EQ(resultConcat, s);
+  FATAL_FAIL(::remove(pipePath.c_str()));
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }

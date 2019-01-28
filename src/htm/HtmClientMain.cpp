@@ -59,6 +59,9 @@ int main(int argc, char** argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
+  // GFLAGS parse command line arguments
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   uid_t myuid = getuid();
   if (FLAGS_x) {
     LOG(INFO) << "Killing previous htmd";

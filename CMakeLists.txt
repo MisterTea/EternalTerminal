@@ -7,9 +7,6 @@ option(CODE_COVERAGE "Enable code coverage" OFF)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_HANDLE_SIGABRT")
-IF(BUILD_TEST)
-  add_subdirectory(${CMAKE_SOURCE_DIR}/external/googletest)
-ENDIF(BUILD_TEST)
 IF(CODE_COVERAGE)
   if(UNIX)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
@@ -94,6 +91,9 @@ ENDIF()
 
 include_directories(
   external
+  external/Catch2/single_include
+  external/cxxopts/include
+  external/msgpack-c/include
   src/base
   src/terminal
   src/htm
@@ -274,7 +274,38 @@ target_link_libraries (
 if(BUILD_TEST) # Build unit tests.
   message(STATUS "Enabling test for ${PROJECT_NAME}")
   enable_testing()
-  add_subdirectory(test)
+
+  file(GLOB TEST_SRCS test/*Test.cpp )
+  add_executable(
+    et-test
+  
+    ${TEST_SRCS}
+    test/Main.cpp
+    )
+  
+  add_dependencies(
+    et-test
+    TerminalCommon
+    et-lib)
+  
+  target_link_libraries(
+    et-test
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBRARIES}
+    ${GFLAGS_LIBRARIES}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES}
+    resolv
+    util
+    )
+  add_test(
+    et-test
+    et-test
+    )
 endif()
 
 install(TARGETS etserver etterminal et htm htmd

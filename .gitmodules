@@ -1,6 +1,3 @@
-[submodule "googletest"]
-	path = external/googletest
-	url = https://github.com/google/googletest.git
 [submodule "external/cxxopts"]
 	path = external/cxxopts
 	url = https://github.com/jarro2783/cxxopts.git

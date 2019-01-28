@@ -26,6 +26,9 @@ int main(int argc, char **argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
+  // GFLAGS parse command line arguments
+  gflags::ParseCommandLineFlags(&argc, &argv, true);
+
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   HtmServer htm(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
   htm.run();
