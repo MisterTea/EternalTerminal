@@ -1,7 +1,6 @@
 cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 5.1.9)
 
-option(BUILD_TEST "Build all unit test" OFF)
 option(CODE_COVERAGE "Enable code coverage" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
@@ -271,42 +270,39 @@ target_link_libraries (
   ${CORE_LIBRARIES}
 )
 
-if(BUILD_TEST) # Build unit tests.
-  message(STATUS "Enabling test for ${PROJECT_NAME}")
-  enable_testing()
+enable_testing()
 
-  file(GLOB TEST_SRCS test/*Test.cpp )
-  add_executable(
-    et-test
-  
-    ${TEST_SRCS}
-    test/Main.cpp
-    )
-  
-  add_dependencies(
-    et-test
-    TerminalCommon
-    et-lib)
-  
-  target_link_libraries(
-    et-test
-    TerminalCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    ${CORE_LIBRARIES}
-    resolv
-    util
-    )
-  add_test(
-    et-test
-    et-test
-    )
-endif()
+file(GLOB TEST_SRCS test/*Test.cpp )
+add_executable(
+  et-test
+
+  ${TEST_SRCS}
+  test/Main.cpp
+  )
+
+add_dependencies(
+  et-test
+  TerminalCommon
+  et-lib)
+
+target_link_libraries(
+  et-test
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBRARIES}
+  ${GFLAGS_LIBRARIES}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${CORE_LIBRARIES}
+  resolv
+  util
+  )
+add_test(
+  et-test
+  et-test
+  )
 
 install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ

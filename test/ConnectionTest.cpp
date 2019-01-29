@@ -252,27 +252,22 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
       new std::thread(listenFn, &stopListening, serverFd, serverConnection));
 
   SECTION("ReadWrite") {
-    SECTION("Not Flaky") {
-      readWriteTest("1234567890123456", clientSocketHandler, serverConnection,
-                    endpoint);
-    }
+    SECTION("Not Flaky") {}
     SECTION("Flaky") {
       serverSocketHandler->setFlake(true);
       clientSocketHandler->setFlake(true);
-      readWriteTest("1234567890123456", clientSocketHandler, serverConnection,
-                    endpoint);
     }
+    readWriteTest("1234567890123456", clientSocketHandler, serverConnection,
+                  endpoint);
   }
 
   SECTION("MultiReadWrite") {
-    SECTION("Not Flaky") {
-      multiReadWriteTest(clientSocketHandler, serverConnection, endpoint);
-    }
+    SECTION("Not Flaky") {}
     SECTION("Flaky") {
       serverSocketHandler->setFlake(true);
       clientSocketHandler->setFlake(true);
-      multiReadWriteTest(clientSocketHandler, serverConnection, endpoint);
     }
+    multiReadWriteTest(clientSocketHandler, serverConnection, endpoint);
   }
 
   SECTION("InvalidClient") {

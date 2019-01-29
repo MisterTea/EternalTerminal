@@ -45,7 +45,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
+          command: mkdir build; cd build; cmake ../; make -j4
       - run:
           name: Run tests
           command: cd build; ./et-test
@@ -62,7 +62,7 @@ jobs:
           command: git submodule update --init
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DBUILD_TEST=1 ../; make -j4
+          command: mkdir build; cd build; cmake ../; make -j4
       - run:
           name: Run tests
           command: cd build; ./et-test
