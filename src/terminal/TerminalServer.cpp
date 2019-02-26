@@ -351,7 +351,7 @@ int main(int argc, char **argv) {
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
   if (FLAGS_daemon) {
-    if (DaemonCreator::create() == -1) {
+    if (DaemonCreator::create(true) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
   }

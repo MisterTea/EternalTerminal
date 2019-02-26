@@ -1,7 +1,7 @@
 #include "DaemonCreator.hpp"
 
 namespace et {
-int DaemonCreator::create() {
+int DaemonCreator::create(bool parentExit) {
   pid_t pid;
 
   /* Fork off the parent process */
@@ -11,7 +11,12 @@ int DaemonCreator::create() {
   if (pid < 0) exit(EXIT_FAILURE);
 
   /* Success: Return so the parent can continue */
-  if (pid > 0) return PARENT;
+  if (pid > 0) {
+    if (parentExit) {
+      exit(0);
+    }
+    return PARENT;
+  }
 
   /* On success: The child process becomes session leader */
   if (setsid() < 0) exit(EXIT_FAILURE);
