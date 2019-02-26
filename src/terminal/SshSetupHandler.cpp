@@ -120,17 +120,17 @@ string SshSetupHandler::SetupSsh(string user, string host, string host_alias,
              << endl;
         exit(1);
       }
-      if (split(string(buf_client), ':').size() != 2 ||
-          split(string(buf_client), ':')[0] != "IDPASSKEY") {
-        // Returned value not start with "IDPASSKEY:"
-        cout << "Error in authentication with etserver: " << buf_client
+      auto sshBuffer = string(buf_client, nbytes);
+      auto passKeyIndex = sshBuffer.find(string("IDPASSKEY:"));
+      if (passKeyIndex == string::npos) {
+        // Returned value not contain "IDPASSKEY:"
+        cout << "Error in authentication with etserver: " << sshBuffer
              << ", please make sure you don't print anything in server's "
                 ".bashrc/.zshrc"
              << endl;
         exit(1);
       }
-      auto idpasskey = split(string(buf_client), ':')[1];
-      idpasskey = idpasskey.substr(0, 16 + 1 + 32);
+      auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
       auto idpasskey_splited = split(idpasskey, '/');
       string returned_id = idpasskey_splited[0];
       string returned_passkey = idpasskey_splited[1];
