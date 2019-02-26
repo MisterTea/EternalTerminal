@@ -37,11 +37,13 @@ int DaemonCreator::create() {
   /* or another appropriated directory */
   chdir("/");
 
-  /* Close all open file descriptors */
-  int x;
-  for (x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
-    close(x);
-  }
+  auto fd = open("/dev/null", O_WRONLY | O_CREAT, 0666);
+  dup2(fd, STDOUT_FILENO);
+  dup2(fd, STDERR_FILENO);
+
+  auto fd2 = open("/dev/null", O_RDONLY);
+  dup2(fd2, STDIN_FILENO);
+
   return CHILD;
 }
 }  // namespace et
