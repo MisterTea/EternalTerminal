@@ -10,12 +10,6 @@
 #include "SshSetupHandler.hpp"
 #include "TcpSocketHandler.hpp"
 
-#include <errno.h>
-#include <pwd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
-
 #include "ETerminal.pb.h"
 
 using namespace et;

@@ -1,7 +1,7 @@
 #include "DaemonCreator.hpp"
 
 namespace et {
-int DaemonCreator::create() {
+int DaemonCreator::create(bool parentExit) {
   pid_t pid;
 
   /* Fork off the parent process */
@@ -11,7 +11,12 @@ int DaemonCreator::create() {
   if (pid < 0) exit(EXIT_FAILURE);
 
   /* Success: Return so the parent can continue */
-  if (pid > 0) return PARENT;
+  if (pid > 0) {
+    if (parentExit) {
+      exit(0);
+    }
+    return PARENT;
+  }
 
   /* On success: The child process becomes session leader */
   if (setsid() < 0) exit(EXIT_FAILURE);
@@ -30,18 +35,17 @@ int DaemonCreator::create() {
   /* Success: Let the parent terminate */
   if (pid > 0) exit(EXIT_SUCCESS);
 
-  /* Set new file permissions */
-  umask(0);
-
   /* Change the working directory to the root directory */
   /* or another appropriated directory */
   chdir("/");
 
-  /* Close all open file descriptors */
-  int x;
-  for (x = sysconf(_SC_OPEN_MAX); x >= 0; x--) {
-    close(x);
-  }
+  auto fd = open("/dev/null", O_WRONLY | O_CREAT, 0666);
+  dup2(fd, STDOUT_FILENO);
+  dup2(fd, STDERR_FILENO);
+
+  auto fd2 = open("/dev/null", O_RDONLY);
+  dup2(fd2, STDIN_FILENO);
+
   return CHILD;
 }
 }  // namespace et
