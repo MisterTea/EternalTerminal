@@ -350,6 +350,12 @@ int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
+  if (FLAGS_daemon) {
+    if (DaemonCreator::create() == -1) {
+      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+    }
+  }
+
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
@@ -399,12 +405,6 @@ int main(int argc, char **argv) {
 
   if (FLAGS_port == 0) {
     FLAGS_port = 2022;
-  }
-
-  if (FLAGS_daemon) {
-    if (DaemonCreator::create() == -1) {
-      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
-    }
   }
 
   // Set log file for etserver process here.
