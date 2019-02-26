@@ -30,9 +30,6 @@ int DaemonCreator::create() {
   /* Success: Let the parent terminate */
   if (pid > 0) exit(EXIT_SUCCESS);
 
-  /* Set new file permissions */
-  umask(0);
-
   /* Change the working directory to the root directory */
   /* or another appropriated directory */
   chdir("/");
