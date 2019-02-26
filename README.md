@@ -132,7 +132,7 @@ make
 
 ### Debian/Ubuntu
 
-Grab the deps and then follow the same process as for OS/X:
+Grab the deps and then follow this process:
 
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
@@ -142,6 +142,16 @@ mkdir build
 cd build
 cmake ../
 make
+sudo make install
+```
+
+Copy config file, the service and enable it:
+
+```
+sudo cp ../systemctl/et.service /etc/systemd/system/
+sudo cp ../etc/etc.cfg /etc/
+sudo systemctl enable et.service
+sudo systemctl start et.service
 ```
 
 ## Reporting issues
