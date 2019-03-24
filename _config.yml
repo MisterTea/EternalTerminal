@@ -4,7 +4,7 @@
 # baseurl is the website's URL without the hostname
 
 # If you are building a GitHub project page then use these settings:
-url: "eternalterminal.dev"
+url: "https://eternalterminal.dev"
 baseurl: "/"
 
 # Of course don't forget to change the username and projectname to YOUR username and project
