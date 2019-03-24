@@ -4,8 +4,8 @@
 # baseurl is the website's URL without the hostname
 
 # If you are building a GitHub project page then use these settings:
-url: "http://mistertea.github.io/EternalTerminal"
-baseurl: "/EternalTerminal"
+url: "eternalterminal.dev"
+baseurl: "/"
 
 # Of course don't forget to change the username and projectname to YOUR username and project
 
@@ -80,7 +80,7 @@ share-links-active:
 
 # How to display the link to the website in the footer
 # Remove this if you don't want a link in the footer
-url-pretty: "http://mistertea.github.io/EternalTerminal"  # eg. "deanattali.com/beautiful-jekyll"
+url-pretty: "https://eternalterminal.dev"  # eg. "deanattali.com/beautiful-jekyll"
 
 # --- Misc --- #
 # Fill in your Disqus shortname (NOT the userid) if you want to support Disqus comments
