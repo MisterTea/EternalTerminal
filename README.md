@@ -149,7 +149,7 @@ Copy config file, the service and enable it:
 
 ```
 sudo cp ../systemctl/et.service /etc/systemd/system/
-sudo cp ../etc/etc.cfg /etc/
+sudo cp ../etc/et.cfg /etc/
 sudo systemctl enable et.service
 sudo systemctl start et.service
 ```
