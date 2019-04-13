@@ -81,7 +81,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           VLOG(4) << "Jumphost serverClientState has data";
           string message;
           if (!serverClientState->read(&message)) {
-            break;
+            continue;
           }
           try {
             terminalSocketHandler->writeMessage(terminalFd, message);
