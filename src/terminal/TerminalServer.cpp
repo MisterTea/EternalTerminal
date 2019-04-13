@@ -80,7 +80,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
         if (serverClientState->hasData()) {
           VLOG(4) << "Jumphost serverClientState has data";
           string message;
-          if (!serverClientState->readMessage(&message)) {
+          if (!serverClientState->read(&message)) {
             break;
           }
           try {
