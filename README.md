@@ -35,7 +35,7 @@ For debian, use our deb repo. For stretch:
 ### CentOS 7
 _Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
 
-Install dependencies
+Install dependencies:
 ```
 sudo yum -y install epel-release
 sudo yum install cmake3
@@ -44,7 +44,6 @@ protobuf-compiler cmake gflags-devel wget unzip
 ```
 
 Download and install from source:
-
 ```
 wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
 unzip master.zip
@@ -60,6 +59,7 @@ Find the actual location of et:
 
 	which etserver	
 
+Correct the service file:
 Open up /etc/systemd/system/et.service in an editor.
 Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)). 
 
