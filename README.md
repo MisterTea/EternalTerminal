@@ -31,6 +31,48 @@ For debian, use our deb repo. For stretch:
 	sudo apt update
 	sudo apt install et
 
+
+### CentOS 7
+_Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
+
+Install dependencies:
+```
+sudo yum -y install epel-release
+sudo yum install cmake3
+sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+protobuf-compiler cmake gflags-devel wget unzip
+```
+
+Download and install from source:
+```
+wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
+unzip master.zip
+cd EternalTerminal-master
+mkdir build
+cd build
+cmake3 ../
+make && sudo make install
+sudo cp ../systemctl/et.service /etc/systemd/system/
+sudo cp ../etc/et.cfg /etc/
+```
+Find the actual location of et:
+
+	which etserver	
+
+Correct the service file:
+Open up /etc/systemd/system/et.service in an editor.
+Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)). 
+
+	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+
+Start the et service:
+
+```
+sudo systemctl enable et.service
+sudo systemctl start et.service
+```
+	
+
 ### FreeBSD
 On FreeBSD, use:
         pkg install eternalterminal
