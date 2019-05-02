@@ -77,7 +77,7 @@ int main(int argc, char** argv) {
 
   if (pgrepOutput.length() == 0) {
     // Fork to create the daemon
-    int result = DaemonCreator::create();
+    int result = DaemonCreator::create(false);
     if (result == DaemonCreator::CHILD) {
       // This means we are the daemon
       exit(system("htmd"));

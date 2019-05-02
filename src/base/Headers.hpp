@@ -10,13 +10,12 @@
 #include <util.h>
 #elif __FreeBSD__
 #include <libutil.h>
+#include <sys/socket.h>
 #elif __NetBSD__  // do not need pty.h on NetBSD
+#include <util.h>
 #else
 #include <pty.h>
-#endif
-
-#if __NetBSD__
-#include <util.h>
+#include <signal.h>
 #endif
 
 #include <arpa/inet.h>
@@ -33,6 +32,7 @@
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/un.h>
+#include <sys/wait.h>
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
