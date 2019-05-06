@@ -1,6 +1,6 @@
 If you have set up ET correctly and are having an issue connecting/maintaining a session, please consider running in verbose mode and adding client & server logs to your issue.
 
-To run in verbose mode, pass the -v flag to et.
+To run in verbose mode, pass the --verbose=9 flag to et.
 
 To collect logs, run the following on your client:
 
