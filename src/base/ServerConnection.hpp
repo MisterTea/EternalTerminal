@@ -8,19 +8,15 @@
 #include "SocketHandler.hpp"
 
 namespace et {
-class ServerConnectionHandler {
- public:
-  virtual ~ServerConnectionHandler() {}
-
-  virtual bool newClient(
-      shared_ptr<ServerClientConnection> serverClientState) = 0;
+struct IdKeyPair {
+  string id;
+  string key;
 };
 
 class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
-                            const SocketEndpoint& _serverEndpoint,
-                            shared_ptr<ServerConnectionHandler> serverHandler);
+                            const SocketEndpoint& _serverEndpoint);
 
   ~ServerConnection();
 
@@ -59,10 +55,12 @@ class ServerConnection {
     return it->second;
   }
 
+  virtual bool newClient(
+      shared_ptr<ServerClientConnection> serverClientState) = 0;
+
  protected:
   shared_ptr<SocketHandler> socketHandler;
   SocketEndpoint serverEndpoint;
-  shared_ptr<ServerConnectionHandler> serverHandler;
   bool stop;
   std::unordered_map<string, string> clientKeys;
   std::unordered_map<string, shared_ptr<ServerClientConnection>>

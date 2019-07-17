@@ -1,29 +1,10 @@
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "DaemonCreator.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
-#include "TcpSocketHandler.hpp"
-#include "UserTerminalHandler.hpp"
-#include "UserTerminalRouter.hpp"
-
-#include "simpleini/SimpleIni.h"
-
-#include "ETerminal.pb.h"
+#include "Terminal.hpp"
 
 using namespace et;
 namespace google {}
 namespace gflags {}
 using namespace google;
 using namespace gflags;
-
-// This should be at least double the value of KEEP_ALIVE_DURATION in client to
-// allow enough time.
-const int KEEP_ALIVE_DURATION = 11;
 
 DEFINE_string(idpasskey, "",
               "If set, uses IPC to send a client id/key to the server daemon");
@@ -66,8 +47,9 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
 }
 
 void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
-                       string idpasskey, bool noratelimit) {
-  UserTerminalHandler uth(ipcSocketHandler, noratelimit);
+                       shared_ptr<UserTerminal> term, string idpasskey,
+                       bool noratelimit) {
+  UserTerminalHandler uth(ipcSocketHandler, term, noratelimit);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (DaemonCreator::create(true) == -1) {
@@ -78,14 +60,11 @@ void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
 }
 
 void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
-                         string idpasskey) {
+                         string idpasskey, SocketEndpoint dstSocketEndpoint) {
   cout << "IDPASSKEY:" << idpasskey << endl;
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
-
-  string host = FLAGS_dsthost;
-  int port = FLAGS_dstport;
 
   if (DaemonCreator::create(true) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
@@ -101,7 +80,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
               "(re)start the et daemon on the server."
            << endl;
     } else {
-      cout << "Error:  Connection error communicating with et deamon: "
+      cout << "Error:  Connection error communicating with et daemon: "
            << strerror(errno) << "." << endl;
     }
     exit(1);
@@ -117,9 +96,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   InitialPayload payload;
 
   shared_ptr<SocketHandler> jumpclientSocket(new TcpSocketHandler());
-  shared_ptr<ClientConnection> jumpclient =
-      shared_ptr<ClientConnection>(new ClientConnection(
-          jumpclientSocket, SocketEndpoint(host, port), id, passkey));
+  shared_ptr<ClientConnection> jumpclient = shared_ptr<ClientConnection>(
+      new ClientConnection(jumpclientSocket, dstSocketEndpoint, id, passkey));
 
   int connectFailCount = 0;
   while (true) {
@@ -137,8 +115,8 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       }
     } catch (const runtime_error &err) {
       LOG(INFO) << "Could not make initial connection to dst server";
-      cout << "Could not make initial connection to " << host << ": "
-           << err.what() << endl;
+      cout << "Could not make initial connection to " << dstSocketEndpoint
+           << ": " << err.what() << endl;
       exit(1);
     }
     break;
@@ -147,7 +125,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
 
   bool run = true;
   bool is_reconnecting = false;
-  time_t keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+  time_t keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
 
   while (run && !jumpclient->isShuttingDown()) {
     // Data structures needed for select() and
@@ -190,7 +168,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
           jumpclient->writePacket(p);
           VLOG(3) << "Sent message from router to dst terminal: " << p.length();
         }
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
       }
       // forward DST terminal -> local router
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
@@ -202,7 +180,7 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
                     << receivedMessage.length();
           }
         }
-        keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
       }
       // src disconnects, close jump -> dst
       if (jumpClientFd > 0 && keepaliveTime < time(NULL)) {
@@ -270,6 +248,7 @@ int main(int argc, char **argv) {
   srand(1);
 
   shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
+  shared_ptr<PsuedoUserTerminal> term(new PsuedoUserTerminal());
 
   if (FLAGS_idpasskey.length() == 0 && FLAGS_idpasskeyfile.length() == 0) {
     // Try to read from stdin
@@ -317,7 +296,8 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    startJumpHostClient(ipcSocketHandler, idpasskey);
+    startJumpHostClient(ipcSocketHandler, idpasskey,
+                        SocketEndpoint(FLAGS_dsthost, FLAGS_dstport));
 
     // Uninstall log rotation callback
     el::Helpers::uninstallPreRollOutCallback();
@@ -335,7 +315,7 @@ int main(int argc, char **argv) {
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-  startUserTerminal(ipcSocketHandler, idpasskey, FLAGS_noratelimit);
+  et::startUserTerminal(ipcSocketHandler, term, idpasskey, FLAGS_noratelimit);
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

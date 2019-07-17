@@ -14,7 +14,7 @@ class UserTerminalRouter {
   UserTerminalRouter(shared_ptr<PipeSocketHandler> _socketHandler,
                      const string& routerFifoName);
   inline int getServerFd() { return serverFd; }
-  void acceptNewConnection(shared_ptr<ServerConnection> globalServer);
+  optional<IdKeyPair> acceptNewConnection();
   int getFd(const string& id);
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;

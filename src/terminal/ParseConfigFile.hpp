@@ -1,5 +1,6 @@
 /* Acknowledgement: this file gathers config file parsing related functions in
  * libssh */
+#pragma once
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>

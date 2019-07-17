@@ -12,14 +12,13 @@ IF(CODE_COVERAGE)
   endif()
 ENDIF(CODE_COVERAGE)
 
-# Enable C++-11
+# Enable C++-17
 if(UNIX)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17")
+
+  # Enable debug info
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 endif()
-
-# Enable debug info
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
-
 
 #Using FreeBSD?
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
@@ -142,6 +141,8 @@ add_library(
   src/terminal/PortForwardHandler.cpp
   src/terminal/PortForwardSourceHandler.cpp
   src/terminal/PortForwardDestinationHandler.cpp
+  src/terminal/TerminalServer.cpp
+  src/terminal/UserTerminalRouter.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -152,8 +153,7 @@ add_dependencies(
 
 add_executable (
   etserver
-  src/terminal/TerminalServer.cpp
-  src/terminal/UserTerminalRouter.cpp
+  src/terminal/TerminalServerMain.cpp
   )
 
 target_link_libraries (

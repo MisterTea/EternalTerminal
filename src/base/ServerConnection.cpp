@@ -2,11 +2,9 @@
 namespace et {
 ServerConnection::ServerConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
-    const SocketEndpoint& _serverEndpoint,
-    shared_ptr<ServerConnectionHandler> _serverHandler)
+    const SocketEndpoint& _serverEndpoint)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
-      serverHandler(_serverHandler),
       clientHandlerThreadPool(8) {
   socketHandler->listen(serverEndpoint);
 }
@@ -100,7 +98,8 @@ void ServerConnection::clientHandler(int clientSocketFd) {
             socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
         clientConnections.insert(std::make_pair(clientId, serverClientState));
 
-        if (serverHandler && !serverHandler->newClient(serverClientState)) {
+        if (!newClient(serverClientState)) {
+          VLOG(1) << "newClient failed";
           // Client creation failed, Destroy the new client
           removeClient(clientId);
           socketHandler->close(clientSocketFd);

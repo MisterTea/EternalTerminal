@@ -47,6 +47,7 @@
 #include <memory>
 #include <mutex>
 #include <set>
+#include <optional>
 #include <sstream>
 #include <streambuf>
 #include <string>
@@ -83,6 +84,16 @@ static const int PROTOCOL_VERSION = 4;
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
 static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;
+
+// system ssh config files
+const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
+const string USER_SSH_CONFIG_PATH = "/.ssh/config";
+
+// Keepalive configs
+const int CLIENT_KEEP_ALIVE_DURATION = 5;
+// This should be at least double the value of CLIENT_KEEP_ALIVE_DURATION to
+// allow enough time.
+const int SERVER_KEEP_ALIVE_DURATION = 11;
 
 #define FATAL_FAIL(X) \
   if (((X) == -1))    \
@@ -167,5 +178,17 @@ inline string protoToString(const T& t) {
   return s;
 }
 }  // namespace et
+
+inline bool operator==(const google::protobuf::MessageLite& msg_a,
+                       const google::protobuf::MessageLite& msg_b) {
+  return (msg_a.GetTypeName() == msg_b.GetTypeName()) &&
+         (msg_a.SerializeAsString() == msg_b.SerializeAsString());
+}
+
+inline bool operator!=(const google::protobuf::MessageLite& msg_a,
+                       const google::protobuf::MessageLite& msg_b) {
+  return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
+         (msg_a.SerializeAsString() != msg_b.SerializeAsString());
+}
 
 #endif

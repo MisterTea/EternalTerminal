@@ -9,15 +9,14 @@ UserTerminalRouter::UserTerminalRouter(
   serverFd = *(socketHandler->listen(SocketEndpoint(routerFifoName)).begin());
 }
 
-void UserTerminalRouter::acceptNewConnection(
-    shared_ptr<ServerConnection> globalServer) {
+optional<IdKeyPair> UserTerminalRouter::acceptNewConnection() {
   LOG(INFO) << "Listening to id/key FIFO";
   int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
     if (errno != EAGAIN && errno != EWOULDBLOCK) {
       FATAL_FAIL(-1);  // LOG(FATAL) with the error
     } else {
-      return;  // Nothing to accept this time
+      return nullopt;  // Nothing to accept this time
     }
   }
 
@@ -38,11 +37,13 @@ void UserTerminalRouter::acceptNewConnection(
       string id = buf.substr(0, slashIndex);
       string key = buf.substr(slashIndex + 1);
       idFdMap[id] = terminalFd;
-      globalServer->addClientKey(id, key);
+      return IdKeyPair({id, key});
     }
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Router can't talk to terminal: " << re.what();
   }
+
+  return nullopt;
 }
 
 int UserTerminalRouter::getFd(const string &id) {

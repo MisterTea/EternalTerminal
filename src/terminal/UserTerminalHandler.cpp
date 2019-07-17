@@ -5,7 +5,7 @@
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
-#include <stdlib.h>
+
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -15,16 +15,6 @@
 #include <sys/wait.h>
 #include <termios.h>
 #include <unistd.h>
-
-#if __APPLE__
-#include <sys/ucred.h>
-#include <util.h>
-#elif __FreeBSD__
-#include <libutil.h>
-#elif __NetBSD__  // do not need pty.h on NetBSD
-#else
-#include <pty.h>
-#endif
 
 #ifdef WITH_UTEMPTER
 #include <utempter.h>
@@ -38,8 +28,9 @@
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
-    shared_ptr<SocketHandler> _socketHandler, bool _noratelimit)
-    : socketHandler(_socketHandler), noratelimit(_noratelimit) {}
+    shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
+    bool _noratelimit)
+    : socketHandler(_socketHandler), term(_term), noratelimit(_noratelimit) {}
 
 void UserTerminalHandler::connectToRouter(const string &idPasskey) {
   routerFd = socketHandler->connect(SocketEndpoint(ROUTER_FIFO_NAME));
@@ -65,42 +56,13 @@ void UserTerminalHandler::connectToRouter(const string &idPasskey) {
 }
 
 void UserTerminalHandler::run() {
-  int masterfd;
-
-  pid_t pid = forkpty(&masterfd, NULL, NULL, NULL);
-  switch (pid) {
-    case -1:
-      FATAL_FAIL(pid);
-    case 0: {
-      close(routerFd);
-      passwd *pwd = getpwuid(getuid());
-      chdir(pwd->pw_dir);
-      string terminal = string(::getenv("SHELL"));
-      VLOG(1) << "Child process " << pid << " launching terminal " << terminal;
-      setenv("ET_VERSION", ET_VERSION, 1);
-      execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
-      exit(0);
-      break;
-    }
-    default: {
-      // parent
-      VLOG(1) << "pty opened " << masterfd;
-      runUserTerminal(masterfd, pid);
-      close(routerFd);
-      break;
-    }
-  }
+  int masterfd = term->setup(routerFd);
+  VLOG(1) << "pty opened " << masterfd;
+  runUserTerminal(masterfd);
+  close(routerFd);
 }
 
-void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
-#ifdef WITH_UTEMPTER
-  {
-    char buf[1024];
-    sprintf(buf, "et [%lld]", (long long)getpid());
-    utempter_add_record(masterFd, buf);
-  }
-#endif
-
+void UserTerminalHandler::runUserTerminal(int masterFd) {
   bool run = true;
 
 #define BUF_SIZE (16 * 1024)
@@ -148,14 +110,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
                   << std::count(s.begin(), s.end(), '\n');
         } else {
           LOG(INFO) << "Terminal session ended";
-#if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
-                // least -CURRENT) sadness for now :/
-          int throwaway;
-          FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
-#else
-          siginfo_t childInfo;
-          FATAL_FAIL(waitid(P_PID, childPid, &childInfo, WEXITED));
-#endif
+          term->handleSessionEnd();
           run = false;
           break;
         }
@@ -187,7 +142,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
             tmpwin.ws_col = ti.column();
             tmpwin.ws_xpixel = ti.width();
             tmpwin.ws_ypixel = ti.height();
-            ioctl(masterFd, TIOCSWINSZ, &tmpwin);
+            term->setInfo(tmpwin);
             break;
           }
         }
@@ -199,8 +154,6 @@ void UserTerminalHandler::runUserTerminal(int masterFd, pid_t childPid) {
     }
   }
 
-#ifdef WITH_UTEMPTER
-  utempter_remove_record(masterFd);
-#endif
+  term->cleanup();
 }
 }  // namespace et

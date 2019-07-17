@@ -1,41 +1,78 @@
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "DaemonCreator.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
-#include "TcpSocketHandler.hpp"
-#include "UserTerminalHandler.hpp"
-#include "UserTerminalRouter.hpp"
-
-#include "simpleini/SimpleIni.h"
-
-#include "ETerminal.pb.h"
-
-using namespace et;
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
+#include "TerminalServer.hpp"
 
 #define BUF_SIZE (16 * 1024)
 
-DEFINE_int32(port, 0, "Port to listen on");
-DEFINE_bool(daemon, false, "Daemonize the server");
-DEFINE_string(cfgfile, "", "Location of the config file");
-DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostdout, false, "log to stdout");
+namespace et {
+TerminalServer::TerminalServer(
+    std::shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint &_serverEndpoint,
+    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler):
+    ServerConnection(_socketHandler, _serverEndpoint)
+    {
+  terminalRouter = shared_ptr<UserTerminalRouter>(
+      new UserTerminalRouter(_pipeSocketHandler, ROUTER_FIFO_NAME));
+}
 
-shared_ptr<ServerConnection> globalServer;
-shared_ptr<UserTerminalRouter> terminalRouter;
-vector<shared_ptr<thread>> terminalThreads;
-mutex terminalThreadMutex;
-bool halt = false;
+TerminalServer::~TerminalServer() {}
 
-void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
+void TerminalServer::run() {
+  LOG(INFO) << "Creating server";
+  fd_set coreFds;
+  int numCoreFds = 0;
+  int maxCoreFd = 0;
+  FD_ZERO(&coreFds);
+  set<int> serverPortFds = socketHandler->getEndpointFds(serverEndpoint);
+  for (int i : serverPortFds) {
+    FD_SET(i, &coreFds);
+    maxCoreFd = max(maxCoreFd, i);
+    numCoreFds++;
+  }
+  FD_SET(terminalRouter->getServerFd(), &coreFds);
+  maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
+  numCoreFds++;
+
+  while (true) {
+    // Select blocks until there is something useful to do
+    fd_set rfds = coreFds;
+    int numFds = numCoreFds;
+    int maxFd = maxCoreFd;
+    timeval tv;
+
+    if (numFds > FD_SETSIZE) {
+      LOG(FATAL) << "Tried to select() on too many FDs";
+    }
+
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+    FATAL_FAIL(numFdsSet);
+    if (numFdsSet == 0) {
+      continue;
+    }
+
+    // We have something to do!
+    for (int i : serverPortFds) {
+      if (FD_ISSET(i, &rfds)) {
+        acceptNewConnection(i);
+      }
+    }
+    if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
+      auto idKeyPair = terminalRouter->acceptNewConnection();
+      if (idKeyPair) {
+          addClientKey(idKeyPair->id, idKeyPair->key);
+      }
+    }
+  }
+
+  shutdown();
+  halt = true;
+  for (auto it : terminalThreads) {
+    it->join();
+  }
+}
+
+void TerminalServer::runJumpHost(
+    shared_ptr<ServerClientConnection> serverClientState) {
   // set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
@@ -104,11 +141,12 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
   {
     string id = serverClientState->getId();
     serverClientState.reset();
-    globalServer->removeClient(id);
+    removeClient(id);
   }
 }
 
-void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
+void TerminalServer::runTerminal(
+    shared_ptr<ServerClientConnection> serverClientState) {
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -117,8 +155,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler =
-      globalServer->getSocketHandler();
+  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   PortForwardHandler portForwardHandler(serverSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
@@ -162,7 +199,7 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
-          globalServer->removeClient(serverClientState->getId());
+          removeClient(serverClientState->getId());
           break;
         }
       }
@@ -251,11 +288,12 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
   {
     string id = serverClientState->getId();
     serverClientState.reset();
-    globalServer->removeClient(id);
+    removeClient(id);
   }
 }
 
-void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
+void TerminalServer::handleConnection(
+    shared_ptr<ServerClientConnection> serverClientState) {
   Packet packet;
   while (!serverClientState->readPacket(&packet)) {
     LOG(INFO) << "Waiting for initial packet...";
@@ -273,158 +311,12 @@ void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
   }
 }
 
-class TerminalServerHandler : public ServerConnectionHandler {
-  virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState) {
-    lock_guard<std::mutex> guard(terminalThreadMutex);
-    shared_ptr<thread> t =
-        shared_ptr<thread>(new thread(handleConnection, serverClientState));
-    terminalThreads.push_back(t);
-    return true;
-  }
-};
-
-void startServer() {
-  std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
-  std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
-
-  LOG(INFO) << "Creating server";
-
-  globalServer = shared_ptr<ServerConnection>(new ServerConnection(
-      tcpSocketHandler, SocketEndpoint(FLAGS_port),
-      shared_ptr<TerminalServerHandler>(new TerminalServerHandler())));
-  terminalRouter = shared_ptr<UserTerminalRouter>(
-      new UserTerminalRouter(pipeSocketHandler, ROUTER_FIFO_NAME));
-  fd_set coreFds;
-  int numCoreFds = 0;
-  int maxCoreFd = 0;
-  FD_ZERO(&coreFds);
-  set<int> serverPortFds =
-      tcpSocketHandler->getEndpointFds(SocketEndpoint(FLAGS_port));
-  for (int i : serverPortFds) {
-    FD_SET(i, &coreFds);
-    maxCoreFd = max(maxCoreFd, i);
-    numCoreFds++;
-  }
-  FD_SET(terminalRouter->getServerFd(), &coreFds);
-  maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
-  numCoreFds++;
-
-  while (true) {
-    // Select blocks until there is something useful to do
-    fd_set rfds = coreFds;
-    int numFds = numCoreFds;
-    int maxFd = maxCoreFd;
-    timeval tv;
-
-    if (numFds > FD_SETSIZE) {
-      LOG(FATAL) << "Tried to select() on too many FDs";
-    }
-
-    tv.tv_sec = 0;
-    tv.tv_usec = 10000;
-    int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
-    FATAL_FAIL(numFdsSet);
-    if (numFdsSet == 0) {
-      continue;
-    }
-
-    // We have something to do!
-    for (int i : serverPortFds) {
-      if (FD_ISSET(i, &rfds)) {
-        globalServer->acceptNewConnection(i);
-      }
-    }
-    if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
-      terminalRouter->acceptNewConnection(globalServer);
-    }
-  }
-
-  globalServer->shutdown();
-  halt = true;
-  for (auto it : terminalThreads) {
-    it->join();
-  }
+bool TerminalServer::newClient(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  lock_guard<std::mutex> guard(terminalThreadMutex);
+  shared_ptr<thread> t = shared_ptr<thread>(
+      new thread(&TerminalServer::handleConnection, this, serverClientState));
+  terminalThreads.push_back(t);
+  return true;
 }
-
-int main(int argc, char **argv) {
-  // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
-
-  // Setup easylogging configurations
-  el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
-
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-
-  if (FLAGS_daemon) {
-    if (DaemonCreator::create(true) == -1) {
-      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
-    }
-  }
-
-  if (FLAGS_logtostdout) {
-    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-  } else {
-    defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-    // Redirect std streams to a file
-    LogHandler::stderrToFile("/tmp/etserver");
-  }
-
-  // default max log file size is 20MB for etserver
-  string maxlogsize = "20971520";
-
-  if (FLAGS_cfgfile.length()) {
-    // Load the config file
-    CSimpleIniA ini(true, true, true);
-    SI_Error rc = ini.LoadFile(FLAGS_cfgfile.c_str());
-    if (rc == 0) {
-      if (FLAGS_port == 0) {
-        const char *portString = ini.GetValue("Networking", "Port", NULL);
-        if (portString) {
-          FLAGS_port = stoi(portString);
-        }
-      }
-      // read verbose level
-      const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
-      if (vlevel) {
-        el::Loggers::setVerboseLevel(atoi(vlevel));
-      }
-      // read silent setting
-      const char *silent = ini.GetValue("Debug", "silent", NULL);
-      if (silent && atoi(silent) != 0) {
-        defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
-      }
-      // read log file size limit
-      const char *logsize = ini.GetValue("Debug", "logsize", NULL);
-      if (logsize && atoi(logsize) != 0) {
-        // make sure maxlogsize is a string of int value
-        maxlogsize = string(logsize);
-      }
-
-    } else {
-      LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
-    }
-  }
-
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
-  srand(1);
-
-  if (FLAGS_port == 0) {
-    FLAGS_port = 2022;
-  }
-
-  // Set log file for etserver process here.
-  LogHandler::setupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
-                           maxlogsize);
-  // Reconfigure default logger to apply settings above
-  el::Loggers::reconfigureLogger("default", defaultConf);
-  // set thread name
-  el::Helpers::setThreadName("etserver-main");
-  // Install log rotation callback
-  el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
-
-  startServer();
-
-  // Uninstall log rotation callback
-  el::Helpers::uninstallPreRollOutCallback();
-}
+}  // namespace et
