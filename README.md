@@ -75,7 +75,8 @@ sudo systemctl start et.service
 
 ### FreeBSD
 On FreeBSD, use:
-        pkg install eternalterminal
+
+	pkg install eternalterminal
 
 ### Other Linux
 
