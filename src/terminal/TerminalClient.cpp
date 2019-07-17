@@ -225,7 +225,7 @@ void TerminalClient::run(const string& command, const string& tunnels,
         while (globalClient->hasData()) {
           VLOG(4) << "GlobalClient has data";
           string packetTypeString;
-          if (!globalClient->readMessage(&packetTypeString)) {
+          if (!globalClient->read(&packetTypeString)) {
             break;
           }
           if (packetTypeString.length() != 1) {

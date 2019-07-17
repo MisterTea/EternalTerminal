@@ -52,7 +52,7 @@ void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,
   UserTerminalHandler uth(ipcSocketHandler, term, noratelimit);
   uth.connectToRouter(idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
-  if (::daemon(0, 0) == -1) {
+  if (DaemonCreator::create(true) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
   setDaemonLogFile(idpasskey, "terminal");
@@ -66,7 +66,10 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
 
-  if (::daemon(0, 0) == -1) {
+  string host = FLAGS_dsthost;
+  int port = FLAGS_dstport;
+
+  if (DaemonCreator::create(true) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
   setDaemonLogFile(idpasskey, "jumphost");

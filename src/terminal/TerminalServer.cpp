@@ -72,8 +72,8 @@ void TerminalServer::runJumpHost(
         if (serverClientState->hasData()) {
           VLOG(4) << "Jumphost serverClientState has data";
           string message;
-          if (!serverClientState->readMessage(&message)) {
-            break;
+          if (!serverClientState->read(&message)) {
+            continue;
           }
           try {
             terminalSocketHandler->writeMessage(terminalFd, message);
@@ -338,6 +338,12 @@ int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
+  if (FLAGS_daemon) {
+    if (DaemonCreator::create(true) == -1) {
+      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+    }
+  }
+
   if (FLAGS_logtostdout) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
@@ -387,12 +393,6 @@ int main(int argc, char **argv) {
 
   if (FLAGS_port == 0) {
     FLAGS_port = 2022;
-  }
-
-  if (FLAGS_daemon) {
-    if (::daemon(0, 0) == -1) {
-      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
-    }
   }
 
   // Set log file for etserver process here.

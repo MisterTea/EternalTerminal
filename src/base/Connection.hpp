@@ -15,6 +15,9 @@ class Connection {
 
   virtual ~Connection();
 
+  virtual bool read(string* buf);
+  virtual bool write(const string& buf);
+
   virtual bool readMessage(string* buf);
   virtual void writeMessage(const string& message);
 
@@ -47,7 +50,10 @@ class Connection {
 
   string getId() { return id; }
 
-  inline bool hasData() { return reader->hasData(); }
+  inline bool hasData() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return reader->hasData();
+  }
 
   virtual void closeSocket();
   virtual void closeSocketAndMaybeReconnect() {
@@ -60,8 +66,6 @@ class Connection {
   inline bool isShuttingDown() { return shuttingDown; }
 
  protected:
-  virtual bool read(string* buf);
-  virtual bool write(const string& buf);
   bool recover(int newSocketFd);
 
   shared_ptr<SocketHandler> socketHandler;

@@ -1,21 +1,6 @@
 #ifndef __TERMINAL_HPP__
 #define __TERMINAL_HPP__
 
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "PsuedoUserTerminal.hpp"
-#include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
-#include "TcpSocketHandler.hpp"
-#include "UserTerminalHandler.hpp"
-#include "UserTerminalRouter.hpp"
-
-#include "simpleini/SimpleIni.h"
-
 #include <errno.h>
 #include <fcntl.h>
 #include <pwd.h>
@@ -42,6 +27,22 @@
 #endif
 
 #include "ETerminal.pb.h"
+
+#include "ClientConnection.hpp"
+#include "CryptoHandler.hpp"
+#include "DaemonCreator.hpp"
+#include "Headers.hpp"
+#include "LogHandler.hpp"
+#include "ParseConfigFile.hpp"
+#include "PortForwardHandler.hpp"
+#include "PsuedoUserTerminal.hpp"
+#include "ServerConnection.hpp"
+#include "SystemUtils.hpp"
+#include "TcpSocketHandler.hpp"
+#include "UserTerminalHandler.hpp"
+#include "UserTerminalRouter.hpp"
+
+#include "simpleini/SimpleIni.h"
 
 namespace et {
 void startUserTerminal(shared_ptr<SocketHandler> ipcSocketHandler,

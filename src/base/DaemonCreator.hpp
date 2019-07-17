@@ -6,7 +6,7 @@
 namespace et {
 class DaemonCreator {
  public:
-  static int create();
+  static int create(bool terminateParent);
   static const int PARENT = 1;
   static const int CHILD = 2;
 };
