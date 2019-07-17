@@ -196,10 +196,11 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
       if (jumpClientFd > 0 && FD_ISSET(jumpClientFd, &rfd)) {
         if (jumpclient->hasData()) {
           Packet receivedMessage;
-          jumpclient->readPacket(&receivedMessage);
-          socketHandler->writePacket(routerFd, receivedMessage);
-          VLOG(3) << "Send message from dst terminal to router: "
-                  << receivedMessage.length();
+          if (jumpclient->readPacket(&receivedMessage)) {
+            socketHandler->writePacket(routerFd, receivedMessage);
+            VLOG(3) << "Send message from dst terminal to router: "
+                    << receivedMessage.length();
+          }
         }
         keepaliveTime = time(NULL) + KEEP_ALIVE_DURATION;
       }

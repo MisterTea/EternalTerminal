@@ -45,7 +45,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
-  while (!halt && run) {
+  while (!halt && run && !serverClientState->isShuttingDown()) {
     fd_set rfd;
     timeval tv;
 
@@ -81,7 +81,7 @@ void runJumpHost(shared_ptr<ServerClientConnection> serverClientState) {
           VLOG(4) << "Jumphost serverClientState has data";
           Packet packet;
           if (!serverClientState->readPacket(&packet)) {
-            break;
+            continue;
           }
           try {
             terminalSocketHandler->writePacket(terminalFd, packet);
@@ -257,7 +257,10 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
 
 void handleConnection(shared_ptr<ServerClientConnection> serverClientState) {
   Packet packet;
-  serverClientState->readPacket(&packet);
+  while (!serverClientState->readPacket(&packet)) {
+    LOG(INFO) << "Waiting for initial packet...";
+    sleep(1);
+  }
   if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
     LOG(FATAL) << "Invalid header: expecting INITIAL_PAYLOAD but got "
                << packet.getHeader();

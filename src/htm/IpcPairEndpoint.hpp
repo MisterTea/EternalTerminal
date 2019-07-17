@@ -3,6 +3,7 @@
 
 #include "Headers.hpp"
 
+#include "HtmHeaderCodes.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -12,6 +13,8 @@ class IpcPairEndpoint {
   virtual ~IpcPairEndpoint();
   inline int getEndpointFd() { return endpointFd; }
   virtual void closeEndpoint() {
+    unsigned char header = SESSION_END;
+    socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->close(endpointFd);
     endpointFd = -1;
   }
