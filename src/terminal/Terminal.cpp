@@ -66,9 +66,6 @@ void startJumpHostClient(shared_ptr<SocketHandler> socketHandler,
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
 
-  string host = FLAGS_dsthost;
-  int port = FLAGS_dstport;
-
   if (DaemonCreator::create(true) == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }

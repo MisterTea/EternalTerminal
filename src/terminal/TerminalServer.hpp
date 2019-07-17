@@ -1,18 +1,5 @@
 #ifndef __ET_TERMINAL_SERVER__
 #define __ET_TERMINAL_SERVER__
-#include "ClientConnection.hpp"
-#include "CryptoHandler.hpp"
-#include "Headers.hpp"
-#include "LogHandler.hpp"
-#include "ParseConfigFile.hpp"
-#include "PortForwardHandler.hpp"
-#include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
-#include "TcpSocketHandler.hpp"
-#include "UserTerminalHandler.hpp"
-#include "UserTerminalRouter.hpp"
-
-#include "simpleini/SimpleIni.h"
 
 #include <errno.h>
 #include <fcntl.h>
@@ -40,6 +27,21 @@
 #endif
 
 #include "ETerminal.pb.h"
+
+#include "ClientConnection.hpp"
+#include "CryptoHandler.hpp"
+#include "Headers.hpp"
+#include "LogHandler.hpp"
+#include "DaemonCreator.hpp"
+#include "ParseConfigFile.hpp"
+#include "PortForwardHandler.hpp"
+#include "ServerConnection.hpp"
+#include "SystemUtils.hpp"
+#include "TcpSocketHandler.hpp"
+#include "UserTerminalHandler.hpp"
+#include "UserTerminalRouter.hpp"
+
+#include "simpleini/SimpleIni.h"
 
 namespace et {
 
