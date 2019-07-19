@@ -63,8 +63,12 @@ void Connection::closeSocket() {
   // TODO: There is a race condition where we invalidate and another
   // thread can try to read/write to the socket.  For now we handle the
   // error but it would be better to avoid it.
-  reader->invalidateSocket();
-  writer->invalidateSocket();
+  if (reader) {
+    reader->invalidateSocket();
+  }
+  if (writer) {
+    writer->invalidateSocket();
+  }
   int fd = socketFd;
   socketFd = -1;
   socketHandler->close(fd);

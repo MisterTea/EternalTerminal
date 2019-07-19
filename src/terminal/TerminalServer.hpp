@@ -30,9 +30,9 @@
 
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
+#include "DaemonCreator.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
-#include "DaemonCreator.hpp"
 #include "PortForwardHandler.hpp"
 #include "ServerConnection.hpp"
 #include "SystemUtils.hpp"
@@ -47,8 +47,9 @@ namespace et {
 class TerminalServer : public ServerConnection {
  public:
   TerminalServer(std::shared_ptr<SocketHandler> _socketHandler,
-                 const SocketEndpoint& _serverEndpoint,
-                 std::shared_ptr<PipeSocketHandler> _pipeSocketHandler);
+                 const SocketEndpoint &_serverEndpoint,
+                 std::shared_ptr<PipeSocketHandler> _pipeSocketHandler,
+                 const SocketEndpoint &_routerEndpoint);
   virtual ~TerminalServer();
   void runJumpHost(shared_ptr<ServerClientConnection> serverClientState);
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState);
@@ -56,6 +57,7 @@ class TerminalServer : public ServerConnection {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 
   void run();
+  void shutdown() { halt = true; }
 
   shared_ptr<UserTerminalRouter> terminalRouter;
 
@@ -64,11 +66,8 @@ class TerminalServer : public ServerConnection {
 
  protected:
   mutex terminalThreadMutex;
+  SocketEndpoint routerEndpoint;
 };
-
-void startServer(shared_ptr<SocketHandler> tcpSocketHandler,
-                 SocketEndpoint socketEndpoint,
-                 shared_ptr<PipeSocketHandler> pipeSocketHandler);
 }  // namespace et
 
 #endif  // __ET_TERMINAL_SERVER__

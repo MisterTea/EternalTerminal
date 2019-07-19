@@ -83,7 +83,7 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
         usleep(100 * 1000);
         LOG(INFO) << "Got EAGAIN, waiting 100ms...";
       } else {
-        VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
+        LOG(ERROR) << "Failed a call to writeAll: " << strerror(errno);
         throw std::runtime_error("Failed a call to writeAll");
       }
     } else if (bytesWritten == 0) {

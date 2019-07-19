@@ -1,6 +1,7 @@
 # Build artifacts
 deps
 out
+.vscode
 
 # Code Coverage
 code-coverage.info

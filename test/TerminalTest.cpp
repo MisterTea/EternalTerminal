@@ -1,7 +1,6 @@
 #include "TestHeaders.hpp"
 
 #include "FakeConsole.hpp"
-#include "Terminal.hpp"
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 
@@ -91,37 +90,50 @@ void readWriteTest(const string& clientId,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
                    shared_ptr<SocketHandler> clientSocketHandler,
-                   shared_ptr<FakeConsole> fakeConsole) {
-  thread t_terminal([routerSocketHandler, fakeUserTerminal, clientId]() {
-    et::startUserTerminal(routerSocketHandler, fakeUserTerminal,
-                          clientId + CRYPTO_KEY, true);
-  });
+                   shared_ptr<FakeConsole> fakeConsole,
+                   const SocketEndpoint& routerEndpoint) {
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, serverEndpoint, clientId, CRYPTO_KEY, fakeConsole));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", "", ""); });
+  sleep(3);
 
-  const int NUM_MESSAGES = 32;
-  string s(NUM_MESSAGES * 1024, '\0');
-  for (int a = 0; a < NUM_MESSAGES * 1024; a++) {
+  string s(1024, '\0');
+  for (int a = 0; a < 1024; a++) {
     s[a] = rand() % 26 + 'A';
   }
 
-  for (int a = 0; a < NUM_MESSAGES; a++) {
-    VLOG(1) << "Writing packet " << a;
-    fakeConsole->simulateKeystrokes(string((&s[0] + a * 1024)));
-  }
+  thread typeKeysThread([s, fakeConsole]() {
+    for (int a = 0; a < 1024; a++) {
+      VLOG(1) << "Writing packet " << a;
+      fakeConsole->simulateKeystrokes(string(1, s[a]));
+    }
+  });
 
   string resultConcat;
   string result;
-  for (int a = 0; a < NUM_MESSAGES; a++) {
-    result = fakeUserTerminal->getKeystrokes(1024);
+  for (int a = 0; a < 1024; a++) {
+    result = fakeUserTerminal->getKeystrokes(1);
     resultConcat = resultConcat.append(result);
     LOG(INFO) << "ON MESSAGE " << a;
   }
+  typeKeysThread.join();
 
   REQUIRE(resultConcat == s);
 
-  // TODO: reverse order
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
 }
 
 TEST_CASE("EndToEndTest", "[EndToEndTest]") {
@@ -138,7 +150,6 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   shared_ptr<FakeUserTerminal> fakeUserTerminal;
 
   string pipeDirectory;
-  string pipePath;
 
   srand(1);
   clientSocketHandler.reset(new PipeSocketHandler());
@@ -147,7 +158,6 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   el::Helpers::setThreadName("Main");
   consoleSocketHandler.reset(new PipeSocketHandler());
   fakeConsole.reset(new FakeConsole(consoleSocketHandler));
-  fakeConsole->setup();
 
   userTerminalSocketHandler.reset(new PipeSocketHandler());
   fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
@@ -155,15 +165,24 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
 
   string tmpPath = string("/tmp/etserver_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
-  pipePath = string(pipeDirectory) + "/pipe";
-  serverEndpoint = SocketEndpoint(pipePath);
 
-  thread t_server([serverSocketHandler, serverEndpoint, routerSocketHandler]() {
-    et::startServer(serverSocketHandler, serverEndpoint, routerSocketHandler);
+  string routerPipePath = string(pipeDirectory) + "/pipe_router";
+  auto routerEndpoint = SocketEndpoint(routerPipePath);
+
+  string serverPipePath = string(pipeDirectory) + "/pipe_server";
+  serverEndpoint = SocketEndpoint(serverPipePath);
+
+  auto server = shared_ptr<TerminalServer>(new TerminalServer(serverSocketHandler, serverEndpoint,
+                          routerSocketHandler, routerEndpoint));
+  thread t_server([server]() {
+    server->run();
   });
+  sleep(1);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
-                serverEndpoint, clientSocketHandler, fakeConsole);
+                serverEndpoint, clientSocketHandler, fakeConsole,
+                routerEndpoint);
+  server->shutdown();
   t_server.join();
 
   consoleSocketHandler.reset();
@@ -171,7 +190,8 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   serverSocketHandler.reset();
   clientSocketHandler.reset();
   routerSocketHandler.reset();
-  FATAL_FAIL(::remove(pipePath.c_str()));
+  FATAL_FAIL(::remove(routerPipePath.c_str()));
+  FATAL_FAIL(::remove(serverPipePath.c_str()));
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
 
