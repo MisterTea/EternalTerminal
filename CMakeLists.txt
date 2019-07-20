@@ -19,10 +19,10 @@ ENDIF(CODE_COVERAGE)
 # Enable C++-11
 if(UNIX)
 	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
-endif()
 
-# Enable debug info
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+  # Enable debug info
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+endif()
 
 
 #Using FreeBSD?
