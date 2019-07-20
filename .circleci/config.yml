@@ -56,7 +56,7 @@ jobs:
       - checkout
       - run:
           name: Install system dependencies
-          command: brew upgrade python@2 python; brew install git cmake; brew install protobuf libsodium gflags
+          command: brew upgrade python@2 python; brew install -f git cmake; brew install -f protobuf libsodium gflags
       - run:
           name: Init submodules
           command: git submodule update --init
