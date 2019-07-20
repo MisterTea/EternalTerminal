@@ -189,57 +189,62 @@ void runTerminal(shared_ptr<ServerClientConnection> serverClientState) {
         while (serverClientState->hasData()) {
           VLOG(3) << "ServerClientState has data";
           string packetTypeString;
-          if (!serverClientState->readMessage(&packetTypeString)) {
-            break;
-          }
-          char packetType = packetTypeString[0];
-          if (packetType == et::PacketType::PORT_FORWARD_DATA ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
-              packetType == et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            portForwardHandler.handlePacket(packetType, serverClientState);
-            continue;
-          }
-          switch (packetType) {
-            case et::PacketType::OBSOLETE_PORT_FORWARD_DATA:
-            case et::PacketType::OBSOLETE_PORT_FORWARD_REQUEST:
-              // Legacy port forwarding requests/data are ignored.
-              LOG(ERROR)
-                  << "Received legacy port forwarding request.  Ignoring...";
-              break;
-            case et::PacketType::TERMINAL_BUFFER: {
-              // Read from the server and write to our fake terminal
-              et::TerminalBuffer tb =
-                  serverClientState->readProto<et::TerminalBuffer>();
-              VLOG(2) << "Got bytes from client: " << tb.buffer().length()
-                      << " "
-                      << serverClientState->getReader()->getSequenceNumber();
-              char c = TERMINAL_BUFFER;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
-                                                     sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, tb, false);
+          if (!serverClientState->read(&packetTypeString)) {
+            if (serverClientState->isShuttingDown()) {
               break;
             }
-            case et::PacketType::KEEP_ALIVE: {
-              // Echo keepalive back to client
-              LOG(INFO) << "Got keep alive";
-              char c = et::PacketType::KEEP_ALIVE;
-              serverClientState->writeMessage(string(1, c));
-              break;
+          } else {
+            char packetType = packetTypeString[0];
+            if (packetType == et::PacketType::PORT_FORWARD_DATA ||
+                packetType == et::PacketType::PORT_FORWARD_SOURCE_REQUEST ||
+                packetType == et::PacketType::PORT_FORWARD_SOURCE_RESPONSE ||
+                packetType ==
+                    et::PacketType::PORT_FORWARD_DESTINATION_REQUEST ||
+                packetType ==
+                    et::PacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
+              portForwardHandler.handlePacket(packetType, serverClientState);
+              continue;
             }
-            case et::PacketType::TERMINAL_INFO: {
-              LOG(INFO) << "Got terminal info";
-              et::TerminalInfo ti =
-                  serverClientState->readProto<et::TerminalInfo>();
-              char c = TERMINAL_INFO;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
-                                                     sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, ti, false);
-              break;
+            switch (packetType) {
+              case et::PacketType::OBSOLETE_PORT_FORWARD_DATA:
+              case et::PacketType::OBSOLETE_PORT_FORWARD_REQUEST:
+                // Legacy port forwarding requests/data are ignored.
+                LOG(ERROR)
+                    << "Received legacy port forwarding request.  Ignoring...";
+                break;
+              case et::PacketType::TERMINAL_BUFFER: {
+                // Read from the server and write to our fake terminal
+                et::TerminalBuffer tb =
+                    serverClientState->readProto<et::TerminalBuffer>();
+                VLOG(2) << "Got bytes from client: " << tb.buffer().length()
+                        << " "
+                        << serverClientState->getReader()->getSequenceNumber();
+                char c = TERMINAL_BUFFER;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, tb, false);
+                break;
+              }
+              case et::PacketType::KEEP_ALIVE: {
+                // Echo keepalive back to client
+                LOG(INFO) << "Got keep alive";
+                char c = et::PacketType::KEEP_ALIVE;
+                serverClientState->writeMessage(string(1, c));
+                break;
+              }
+              case et::PacketType::TERMINAL_INFO: {
+                LOG(INFO) << "Got terminal info";
+                et::TerminalInfo ti =
+                    serverClientState->readProto<et::TerminalInfo>();
+                char c = TERMINAL_INFO;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, ti, false);
+                break;
+              }
+              default:
+                LOG(FATAL) << "Unknown packet type: " << int(packetType);
             }
-            default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
           }
         }
       }
