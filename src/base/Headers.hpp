@@ -176,6 +176,19 @@ inline string protoToString(const T& t) {
   }
   return s;
 }
+
+inline bool waitOnSocketData(int fd) {
+    fd_set fdset;
+    FD_ZERO(&fdset);
+    FD_SET(fd, &fdset);
+    timeval tv;
+    tv.tv_sec = 1;
+    tv.tv_usec = 0;
+    VLOG(4) << "Before selecting sockFd";
+    FATAL_FAIL(select(fd + 1, &fdset, NULL, NULL, &tv));
+    return FD_ISSET(fd, &fdset);
+}
+
 }  // namespace et
 
 inline bool operator==(const google::protobuf::MessageLite& msg_a,
