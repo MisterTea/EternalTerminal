@@ -28,8 +28,13 @@ string genCommand(const string &passkey, const string &id,
                   const string &command_prefix, const string &options) {
   string SSH_SCRIPT_PREFIX;
 
+#ifdef __APPLE__
+#define TERMINAL_PATH "/usr/local/bin/etterminal"
+#else
+#define TERMINAL_PATH "etterminal"
+#endif
   string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
-                   "\n\" | " + command_prefix + " etterminal " + options;
+                   "\n\" | " + command_prefix + " " TERMINAL_PATH " " + options;
 
   // Kill old ET sessions of the user
   if (kill) {

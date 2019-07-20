@@ -22,13 +22,13 @@ jobs:
           command: mkdir build; cd build; cmake ../; make -j4
       - run:
           name: Connect new -> old
-          command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost
+          command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --v=9
       - run:
           name: Kill server
           command: pkill etserver
       - run:
           name: Connect old -> new
-          command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost
+          command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost --logtostdout --v=9
       - run:
           name: Kill server
           command: pkill etserver
