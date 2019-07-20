@@ -207,21 +207,24 @@ void readWriteTest(const string& clientId,
 void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
                         shared_ptr<ServerConnection> serverConnection,
                         SocketEndpoint endpoint) {
-  thread_pool pool(16);
+  ThreadPool pool(16);
   string base_id = "1234567890123456";
+  vector<future<void>> futures;
   for (int a = 0; a < 16; a++) {
     string new_id = base_id;
     new_id[0] = 'A' + a;
-    pool.push(
-        [clientSocketHandler, serverConnection, endpoint](int id,
-                                                          string clientId) {
+    auto f = pool.enqueue(
+        [clientSocketHandler, serverConnection, endpoint](string clientId) {
           readWriteTest(clientId, clientSocketHandler, serverConnection,
                         endpoint);
         },
         new_id);
+    futures.push_back(std::move(f));
     ::usleep((500 + rand() % 1000) * 1000);
   }
-  pool.stop(true);
+  for (auto& f : futures) {
+    f.get();
+  }
 }
 
 TEST_CASE("ConnectionTest", "[ConnectionTest]") {

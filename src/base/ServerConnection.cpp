@@ -5,7 +5,7 @@ ServerConnection::ServerConnection(
     const SocketEndpoint& _serverEndpoint)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
-      clientHandlerThreadPool(8) {
+      clientHandlerThreadPool(new ThreadPool(8)) {
   socketHandler->listen(serverEndpoint);
 }
 
@@ -20,14 +20,14 @@ bool ServerConnection::acceptNewConnection(int fd) {
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   lock_guard<std::recursive_mutex> guard(classMutex);
-  clientHandlerThreadPool.push(
-      [this, clientSocketFd](int id) { this->clientHandler(clientSocketFd); });
+  clientHandlerThreadPool->enqueue(
+      [this, clientSocketFd]() { this->clientHandler(clientSocketFd); });
   return true;
 }
 
 void ServerConnection::shutdown() {
   socketHandler->stopListening(serverEndpoint);
-  clientHandlerThreadPool.stop();
+  clientHandlerThreadPool.reset();
   for (const auto& it : clientConnections) {
     it.second->shutdown();
   }

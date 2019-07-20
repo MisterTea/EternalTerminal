@@ -46,8 +46,8 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <streambuf>
 #include <string>
@@ -66,7 +66,7 @@
 #include "json.hpp"
 #include "sole.hpp"
 
-#include "ctpl_stl.h"
+#include "ThreadPool.h"
 
 using namespace std;
 
@@ -76,7 +76,6 @@ using namespace google;
 using namespace gflags;
 
 using json = nlohmann::json;
-using namespace ctpl;
 
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 4;
