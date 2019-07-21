@@ -19,9 +19,7 @@ class SocketHandler {
   int writeAllOrReturn(int fd, const void* buf, size_t count);
   void writeAllOrThrow(int fd, const void* buf, size_t count, bool timeout);
 
-  template <typename T>
-  inline T readProto(int fd, bool timeout) {
-    T t;
+  inline string readString(int fd, bool timeout) {
     int64_t length;
     readAll(fd, &length, sizeof(int64_t), timeout);
     if (length < 0 || length > 128 * 1024 * 1024) {
@@ -31,26 +29,17 @@ class SocketHandler {
       throw std::runtime_error(s.c_str());
     }
     if (length == 0) {
-      return t;
+      return "";
     }
     string s(length, '\0');
     readAll(fd, &s[0], length, timeout);
-    if (!t.ParseFromString(s)) {
-      throw std::runtime_error("Invalid proto");
-    }
-    return t;
+    return s;
   }
 
-  template <typename T>
-  inline void writeProto(int fd, const T& t, bool timeout) {
-    string s;
-    if (!t.SerializeToString(&s)) {
-      LOG(FATAL) << "Serialization of " << t.DebugString() << " failed!";
-    }
+  inline void writeString(int fd, const string& s, bool timeout) {
     int64_t length = s.length();
     if (length < 0 || length > 128 * 1024 * 1024) {
-      LOG(FATAL) << "Invalid proto length: " << length << " For proto "
-                 << t.DebugString();
+      LOG(FATAL) << "Invalid string length: " << length;
     }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     if (length > 0) {

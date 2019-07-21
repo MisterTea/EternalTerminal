@@ -26,8 +26,6 @@
 #include <signal.h>
 #endif
 
-#include "ETerminal.pb.h"
-
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "Headers.hpp"

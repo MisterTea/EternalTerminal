@@ -4,7 +4,6 @@
 #include "Console.hpp"
 #include "UserTerminal.hpp"
 
-#include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
 
 namespace et {

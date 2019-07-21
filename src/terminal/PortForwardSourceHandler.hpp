@@ -3,7 +3,6 @@
 
 #include "Headers.hpp"
 
-#include "ETerminal.pb.h"
 #include "SocketHandler.hpp"
 
 namespace et {

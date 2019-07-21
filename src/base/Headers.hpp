@@ -21,8 +21,12 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <resolv.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -46,8 +50,8 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <set>
 #include <optional>
+#include <set>
 #include <sstream>
 #include <streambuf>
 #include <string>
@@ -58,9 +62,8 @@
 
 #include <gflags/gflags.h>
 
-#include <google/protobuf/message.h>
-#include "ET.pb.h"
 #include "easylogging++.h"
+#include "msgpack.hpp"
 
 #include "base64.hpp"
 #include "json.hpp"
@@ -110,6 +113,31 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #endif
 
 namespace et {
+enum ConnectStatus {
+  NEW_CLIENT = 1,
+  RETURNING_CLIENT = 2,
+  INVALID_KEY = 3,
+  MISMATCHED_PROTOCOL = 4,
+};
+
+enum EtPacketType {
+  // Count down from 254 to avoid collisions
+  HEARTBEAT = 254,
+  INITIAL_PAYLOAD = 253,
+};
+
+enum TerminalPacketType {
+  KEEP_ALIVE = 0,
+  TERMINAL_BUFFER = 1,
+  TERMINAL_INFO = 2,
+  PORT_FORWARD_SOURCE_REQUEST = 3,
+  PORT_FORWARD_SOURCE_RESPONSE = 4,
+  PORT_FORWARD_DESTINATION_REQUEST = 5,
+  PORT_FORWARD_DESTINATION_RESPONSE = 6,
+  PORT_FORWARD_DATA = 7,
+  IDPASSKEY = 8,
+};
+
 template <typename Out>
 inline void split(const std::string& s, char delim, Out result) {
   std::stringstream ss;
@@ -178,17 +206,5 @@ inline string protoToString(const T& t) {
   return s;
 }
 }  // namespace et
-
-inline bool operator==(const google::protobuf::MessageLite& msg_a,
-                       const google::protobuf::MessageLite& msg_b) {
-  return (msg_a.GetTypeName() == msg_b.GetTypeName()) &&
-         (msg_a.SerializeAsString() == msg_b.SerializeAsString());
-}
-
-inline bool operator!=(const google::protobuf::MessageLite& msg_a,
-                       const google::protobuf::MessageLite& msg_b) {
-  return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
-         (msg_a.SerializeAsString() != msg_b.SerializeAsString());
-}
 
 #endif

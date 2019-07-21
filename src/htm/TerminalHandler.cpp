@@ -34,8 +34,6 @@
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
 
-#include "ETerminal.pb.h"
-
 namespace et {
 TerminalHandler::TerminalHandler() : run(true), bufferLength(0) {}
 

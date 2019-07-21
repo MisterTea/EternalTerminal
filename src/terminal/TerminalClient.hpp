@@ -20,8 +20,6 @@
 #include <sys/types.h>
 #include <termios.h>
 
-#include "ETerminal.pb.h"
-
 namespace et {
 class TerminalClient {
  public:

@@ -1,5 +1,7 @@
 #include "Connection.hpp"
 
+#include "MessageReader.hpp"
+
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
@@ -79,32 +81,36 @@ bool Connection::recover(int newSocketFd) {
   try {
     {
       // Write the current sequence number
-      et::SequenceHeader sh;
-      sh.set_sequencenumber(reader->getSequenceNumber());
-      socketHandler->writeProto(newSocketFd, sh, true);
+      int64_t seqNum = reader->getSequenceNumber();
+      socketHandler->writeAllOrThrow(newSocketFd, &seqNum, sizeof(seqNum),
+                                     true);
     }
 
     // Read the remote sequence number
-    et::SequenceHeader remoteHeader =
-        socketHandler->readProto<et::SequenceHeader>(newSocketFd, true);
+    int64_t remoteSequenceNumber;
+    socketHandler->readAll(newSocketFd, &remoteSequenceNumber,
+                           sizeof(remoteSequenceNumber), true);
 
     {
       // Fetch the catchup bytes and send
-      et::CatchupBuffer catchupBuffer;
-      vector<string> recoveredMessages =
-          writer->recover(remoteHeader.sequencenumber());
+      MessageWriter writer;
+      vector<string> recoveredMessages = writer->recover(remoteSequenceNumber);
+      writer.writePrimitive(int(recoveredMessages.size()));
       for (auto it : recoveredMessages) {
-        catchupBuffer.add_buffer(it);
+        writer.writePrimitive(it);
       }
-      socketHandler->writeProto(newSocketFd, catchupBuffer, true);
+      socketHandler->writeString(newSocketFd, writer.finish(), true);
     }
 
-    et::CatchupBuffer catchupBuffer =
-        socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+    string catchupBuffer = socketHandler->readString(newSocketFd, true);
+    MessageReader reader(catchupBuffer);
+    int numRecoveredMessages = reader.readPrimitive<int>();
+    vector<string> recoveredMessages;
+    for (int a = 0; a < numRecoveredMessages; a++) {
+      recoveredMessages.push_back(reader.readPrimitive<string>());
+    }
 
     socketFd = newSocketFd;
-    vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
-                                     catchupBuffer.buffer().end());
 
     reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);

@@ -24,8 +24,6 @@
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
 
-#include "ETerminal.pb.h"
-
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,

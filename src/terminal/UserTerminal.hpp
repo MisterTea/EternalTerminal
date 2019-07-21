@@ -3,8 +3,6 @@
 
 #include "Headers.hpp"
 
-#include "ETerminal.pb.h"
-
 namespace et {
 class UserTerminal {
  public:

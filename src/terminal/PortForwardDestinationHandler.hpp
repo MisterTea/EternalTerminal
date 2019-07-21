@@ -5,8 +5,6 @@
 
 #include "SocketHandler.hpp"
 
-#include "ETerminal.pb.h"
-
 namespace et {
 class PortForwardDestinationHandler {
  public:

@@ -1,4 +1,8 @@
 #include "ServerConnection.hpp"
+
+#include "MessageReader.hpp"
+#include "MessageWriter.hpp"
+
 namespace et {
 ServerConnection::ServerConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
@@ -39,30 +43,40 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
   string clientId;
   try {
-    et::ConnectRequest request =
-        socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
+    string request = socketHandler->readString(socketFd, true);
+    string requestId;
+    int requestVersion;
     {
-      int version = request.version();
+      MessageReader reader(request);
+      requestId = reader.readPrimitive<string>();
+      requestVersion = reader.readPrimitive<int>();
+    }
+    {
+      int version = requestVersion;
       if (version != PROTOCOL_VERSION) {
         LOG(ERROR) << "Got a client request but the client version does not "
                       "match.  Client: "
                    << version << " != Server: " << PROTOCOL_VERSION;
-        et::ConnectResponse response;
+        string response;
 
         std::ostringstream errorStream;
         errorStream
             << "Mismatched protocol versions.  "
             << "Your client & server must be on the same version of ET.  "
-            << "Client: " << request.version()
+            << "Client: " << requestVersion
             << " != Server: " << PROTOCOL_VERSION;
-        response.set_status(MISMATCHED_PROTOCOL);
-        response.set_error(errorStream.str());
-        socketHandler->writeProto(clientSocketFd, response, true);
+        {
+          MessageWriter writer;
+          writer.writePrimitive(int(MISMATCHED_PROTOCOL));
+          writer.writePrimitive(errorStream.str());
+          response = writer.finish();
+        }
+        socketHandler->writeString(clientSocketFd, response, true);
         socketHandler->close(clientSocketFd);
         return;
       }
     }
-    clientId = request.clientid();
+    clientId = requestId;
     LOG(INFO) << "Got client with id: " << clientId;
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
@@ -76,18 +90,27 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     if (!clientKeyExistsNow) {
       LOG(ERROR) << "Got a client that we have no key for";
 
-      et::ConnectResponse response;
+      string response;
       std::ostringstream errorStream;
       errorStream << "Client is not registered";
-      response.set_error(errorStream.str());
-      response.set_status(INVALID_KEY);
-      socketHandler->writeProto(clientSocketFd, response, true);
+      {
+        MessageWriter writer;
+        writer.writePrimitive(int(INVALID_KEY));
+        writer.writePrimitive(errorStream.str());
+        response = writer.finish();
+      }
+      socketHandler->writeString(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
     } else if (serverClientState.get() == NULL) {
-      et::ConnectResponse response;
-      response.set_status(NEW_CLIENT);
-      socketHandler->writeProto(clientSocketFd, response, true);
+      string response;
+      {
+        MessageWriter writer;
+        writer.writePrimitive(int(NEW_CLIENT));
+        writer.writePrimitive(string("");
+        response = writer.finish();
+      }
+      socketHandler->writeString(clientSocketFd, response, true);
 
       LOG(INFO) << "New client.  Setting up connection";
       VLOG(1) << "Created client with id " << clientId;
@@ -106,9 +129,14 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         }
       }
     } else {
-      et::ConnectResponse response;
-      response.set_status(RETURNING_CLIENT);
-      socketHandler->writeProto(clientSocketFd, response, true);
+      string response;
+      {
+        MessageWriter writer;
+        writer.writePrimitive(int(RETURNING_CLIENT));
+        writer.writePrimitive(string(""));
+        response = writer.finish();
+      }
+      socketHandler->writeString(clientSocketFd, response, true);
 
       lock_guard<std::recursive_mutex> guard(classMutex);
       serverClientState->recoverClient(clientSocketFd);

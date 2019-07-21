@@ -9,7 +9,6 @@ using namespace et;
 int main(int argc, char **argv) {
   // Version string need to be set before GFLAGS parse arguments
   SetVersionString(string(ET_VERSION));
-  GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
   // Setup easylogging configurations

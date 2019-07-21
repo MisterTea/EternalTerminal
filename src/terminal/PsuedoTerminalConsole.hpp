@@ -3,7 +3,6 @@
 
 #include "Console.hpp"
 
-#include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 
 namespace et {

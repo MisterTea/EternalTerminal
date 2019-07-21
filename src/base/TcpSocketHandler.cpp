@@ -1,13 +1,5 @@
 #include "TcpSocketHandler.hpp"
 
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <resolv.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 namespace et {
 TcpSocketHandler::TcpSocketHandler() {}
 

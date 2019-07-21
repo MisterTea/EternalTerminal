@@ -1,5 +1,8 @@
 #include "ClientConnection.hpp"
 
+#include "MessageReader.hpp"
+#include "MessageWriter.hpp"
+
 namespace et {
 ClientConnection::ClientConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
@@ -25,24 +28,33 @@ bool ClientConnection::connect() {
       return false;
     }
     VLOG(1) << "Sending id";
-    et::ConnectRequest request;
-    request.set_clientid(id);
-    request.set_version(PROTOCOL_VERSION);
-    socketHandler->writeProto(socketFd, request, true);
+    string request;
+    {
+      MessageWriter writer;
+      writer.writePrimitive(id);
+      writer.writePrimitive(PROTOCOL_VERSION);
+      request = writer.finish();
+    }
+    socketHandler->writeString(socketFd, request, true);
     VLOG(1) << "Receiving client id";
-    et::ConnectResponse response =
-        socketHandler->readProto<et::ConnectResponse>(socketFd, true);
-    if (response.status() != NEW_CLIENT &&
-        response.status() != RETURNING_CLIENT) {
+    string response = socketHandler->readString(socketFd, true);
+    int responseStatus;
+    string responseError;
+    {
+      MessageReader reader(response);
+      responseStatus = reader.readPrimitive<int>();
+      responseError = reader.readPrimitive<string>();
+    }
+    if (responseStatus != NEW_CLIENT && responseStatus != RETURNING_CLIENT) {
       // Note: the response can be returning client if the client died while
       // performing the initial connection but the server thought the client
       // survived.
-      LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
-                 << response.error();
-      cout << "Error connecting to server: " << response.status() << ": "
-           << response.error() << endl;
+      LOG(ERROR) << "Error connecting to server: " << responseStatus << ": "
+                 << responseError;
+      cout << "Error connecting to server: " << responseStatus << ": "
+           << responseError << endl;
       string s = string("Error connecting to server: ") +
-                 to_string(response.status()) + string(": ") + response.error();
+                 to_string(responseStatus) + string(": ") + responseError;
       throw std::runtime_error(s.c_str());
     }
     VLOG(1) << "Creating backed reader";
@@ -95,15 +107,25 @@ void ClientConnection::pollReconnect() {
       int newSocketFd = socketHandler->connect(remoteEndpoint);
       if (newSocketFd != -1) {
         try {
-          et::ConnectRequest request;
-          request.set_clientid(id);
-          request.set_version(PROTOCOL_VERSION);
-          socketHandler->writeProto(newSocketFd, request, true);
-          et::ConnectResponse response =
-              socketHandler->readProto<et::ConnectResponse>(newSocketFd, true);
-          LOG(INFO) << "Got response with status: " << response.status() << " "
+          string request;
+          {
+            MessageWriter writer;
+            writer.writePrimitive(id);
+            writer.writePrimitive(PROTOCOL_VERSION);
+            request = writer.finish();
+          }
+          socketHandler->writeString(newSocketFd, request, true);
+          string response = socketHandler->readString(socketFd, true);
+          int responseStatus;
+          string responseError;
+          {
+            MessageReader reader(response);
+            responseStatus = reader.readPrimitive<int>();
+            responseError = reader.readPrimitive<string>();
+          }
+          LOG(INFO) << "Got response with status: " << responseStatus << " "
                     << INVALID_KEY;
-          if (response.status() == INVALID_KEY) {
+          if (responseStatus == INVALID_KEY) {
             LOG(INFO) << "Got invalid key on reconnect, assume that server has "
                          "terminated the session.";
             // This means that the server has terminated the connection.
@@ -111,11 +133,11 @@ void ClientConnection::pollReconnect() {
             socketHandler->close(newSocketFd);
             return;
           }
-          if (response.status() != RETURNING_CLIENT) {
-            LOG(ERROR) << "Error reconnecting to server: " << response.status()
-                       << ": " << response.error();
-            cerr << "Error reconnecting to server: " << response.status()
-                 << ": " << response.error() << endl;
+          if (responseStatus != RETURNING_CLIENT) {
+            LOG(ERROR) << "Error reconnecting to server: " << responseStatus
+                       << ": " << responseError;
+            cerr << "Error reconnecting to server: " << responseStatus << ": "
+                 << responseError << endl;
             socketHandler->close(newSocketFd);
           } else {
             recover(newSocketFd);

@@ -1,7 +1,5 @@
 #include "UserTerminalRouter.hpp"
 
-#include "ETerminal.pb.h"
-
 namespace et {
 UserTerminalRouter::UserTerminalRouter(
     shared_ptr<PipeSocketHandler> _socketHandler, const string &routerFifoName)
