@@ -94,7 +94,9 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
 void TerminalClient::run(const string& command, const string& tunnels,
                          const string& reverseTunnels) {
-  console->setup();
+  if (console) {
+    console->setup();
+  }
 
   shared_ptr<TcpSocketHandler> socketHandler =
       static_pointer_cast<TcpSocketHandler>(connection->getSocketHandler());
@@ -147,6 +149,10 @@ void TerminalClient::run(const string& command, const string& tunnels,
 
   TerminalInfo lastTerminalInfo;
 
+  if (!console.get()) {
+    cerr << "ET running, feel free to background..." << endl;
+  }
+
   while (!shuttingDown && !connection->isShuttingDown()) {
     // Data structures needed for select() and
     // non-blocking I/O.
@@ -154,9 +160,13 @@ void TerminalClient::run(const string& command, const string& tunnels,
     timeval tv;
 
     FD_ZERO(&rfd);
-    int consoleFd = console->getFd();
-    int maxfd = consoleFd;
-    FD_SET(consoleFd, &rfd);
+    int maxfd = -1;
+    int consoleFd = -1;
+    if (console) {
+      consoleFd = console->getFd();
+      maxfd = consoleFd;
+      FD_SET(consoleFd, &rfd);
+    }
     int clientFd = connection->getSocketFd();
     if (clientFd > 0) {
       FD_SET(clientFd, &rfd);
@@ -168,28 +178,30 @@ void TerminalClient::run(const string& command, const string& tunnels,
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
-      // Check for data to send.
-      if (FD_ISSET(consoleFd, &rfd)) {
-        // Read from stdin and write to our client that will then send it to the
-        // server.
-        VLOG(4) << "Got data from stdin";
-        int rc = read(consoleFd, b, BUF_SIZE);
-        FATAL_FAIL(rc);
-        if (rc > 0) {
-          // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
-          // connection->getWriter()->getSequenceNumber();
-          string s(b, rc);
-          et::TerminalBuffer tb;
-          tb.set_buffer(s);
+      if (console) {
+        // Check for data to send.
+        if (FD_ISSET(consoleFd, &rfd)) {
+          // Read from stdin and write to our client that will then send it to
+          // the server.
+          VLOG(4) << "Got data from stdin";
+          int rc = read(consoleFd, b, BUF_SIZE);
+          FATAL_FAIL(rc);
+          if (rc > 0) {
+            // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
+            // connection->getWriter()->getSequenceNumber();
+            string s(b, rc);
+            et::TerminalBuffer tb;
+            tb.set_buffer(s);
 
-          connection->writePacket(
-              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-          keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            connection->writePacket(
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+            keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+          }
         }
       }
 
       if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
-        VLOG(4) << "Cliendfd is selected";
+        VLOG(4) << "Clientfd is selected";
         while (connection->hasData()) {
           VLOG(4) << "connection has data";
           Packet packet;
@@ -213,16 +225,18 @@ void TerminalClient::run(const string& command, const string& tunnels,
           }
           switch (packetType) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
-              VLOG(3) << "Got terminal buffer";
-              // Read from the server and write to our fake terminal
-              et::TerminalBuffer tb =
-                  stringToProto<et::TerminalBuffer>(packet.getPayload());
-              const string& s = tb.buffer();
-              // VLOG(5) << "Got message: " << s;
-              // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
-              // connection->getReader()->getSequenceNumber();
-              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
-              console->write(s);
+              if (console) {
+                VLOG(3) << "Got terminal buffer";
+                // Read from the server and write to our fake terminal
+                et::TerminalBuffer tb =
+                    stringToProto<et::TerminalBuffer>(packet.getPayload());
+                const string& s = tb.buffer();
+                // VLOG(5) << "Got message: " << s;
+                // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
+                // connection->getReader()->getSequenceNumber();
+                keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+                console->write(s);
+              }
               break;
             }
             case et::TerminalPacketType::KEEP_ALIVE:
@@ -254,13 +268,15 @@ void TerminalClient::run(const string& command, const string& tunnels,
         waitingOnKeepalive = false;
       }
 
-      TerminalInfo ti = console->getTerminalInfo();
+      if (console) {
+        TerminalInfo ti = console->getTerminalInfo();
 
-      if (ti != lastTerminalInfo) {
-        LOG(INFO) << "Window size changed: " << ti.DebugString();
-        lastTerminalInfo = ti;
-        connection->writePacket(
-            Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
+        if (ti != lastTerminalInfo) {
+          LOG(INFO) << "Window size changed: " << ti.DebugString();
+          lastTerminalInfo = ti;
+          connection->writePacket(
+              Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
+        }
       }
 
       vector<PortForwardDestinationRequest> requests;
@@ -285,7 +301,9 @@ void TerminalClient::run(const string& command, const string& tunnels,
       shuttingDown = true;
     }
   }
-  console->teardown();
+  if (console) {
+    console->teardown();
+  }
   cout << "Session terminated" << endl;
 }
 }  // namespace et
