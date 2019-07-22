@@ -224,9 +224,7 @@ void TerminalServer::runTerminal(
           VLOG(3) << "ServerClientState has data";
           Packet packet;
           if (!serverClientState->readPacket(&packet)) {
-            if (serverClientState->isShuttingDown()) {
-              break;
-            }
+            break;
           }
           char packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||

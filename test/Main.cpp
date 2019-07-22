@@ -14,11 +14,6 @@ int main(int argc, char **argv) {
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
   // el::Loggers::setVerboseLevel(9);
 
-  string stderrPathPrefix =
-      string("/tmp/et_test_") + to_string(rand()) + string("_");
-  string stderrPath = et::LogHandler::stderrToFile(stderrPathPrefix);
-  cout << "Writing stderr to " << stderrPath << endl;
-
   string logDirectoryPattern = string("/tmp/et_test_XXXXXXXX");
   string logDirectory = string(mkdtemp(&logDirectoryPattern[0]));
   string logPath = string(logDirectory) + "/log";
@@ -30,7 +25,6 @@ int main(int argc, char **argv) {
 
   int result = Catch::Session().run(argc, argv);
 
-  FATAL_FAIL(::remove(stderrPath.c_str()));
   FATAL_FAIL(::remove(logPath.c_str()));
   FATAL_FAIL(::remove(logDirectory.c_str()));
   return result;
