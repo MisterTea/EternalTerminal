@@ -10,14 +10,14 @@ UserTerminalRouter::UserTerminalRouter(
   serverFd = *(socketHandler->listen(_routerEndpoint).begin());
 }
 
-optional<IdKeyPair> UserTerminalRouter::acceptNewConnection() {
+IdKeyPair UserTerminalRouter::acceptNewConnection() {
   LOG(INFO) << "Listening to id/key FIFO";
   int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
     if (errno != EAGAIN && errno != EWOULDBLOCK) {
       FATAL_FAIL(-1);  // LOG(FATAL) with the error
     } else {
-      return nullopt;  // Nothing to accept this time
+      return IdKeyPair({"", ""});  // Nothing to accept this time
     }
   }
 
@@ -44,7 +44,7 @@ optional<IdKeyPair> UserTerminalRouter::acceptNewConnection() {
     LOG(FATAL) << "Router can't talk to terminal: " << re.what();
   }
 
-  return nullopt;
+  return IdKeyPair({"", ""});
 }
 
 int UserTerminalRouter::getFd(const string &id) {
