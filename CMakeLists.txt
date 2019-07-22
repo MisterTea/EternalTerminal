@@ -12,9 +12,9 @@ IF(CODE_COVERAGE)
   endif()
 ENDIF(CODE_COVERAGE)
 
-# Enable C++-11
 if(UNIX)
-	SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
+  # Enable C++-11
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 
   # Enable debug info
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")

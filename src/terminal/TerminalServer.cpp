@@ -224,7 +224,9 @@ void TerminalServer::runTerminal(
           VLOG(3) << "ServerClientState has data";
           Packet packet;
           if (!serverClientState->readPacket(&packet)) {
-            break;
+            if (serverClientState->isShuttingDown()) {
+              break;
+            }
           }
           char packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
@@ -267,11 +269,8 @@ void TerminalServer::runTerminal(
               char c = TERMINAL_INFO;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, ti, false);
-              break;
-            }
-            default:
               LOG(FATAL) << "Unknown packet type: " << int(packetType);
+            }
           }
         }
       }
