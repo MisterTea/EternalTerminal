@@ -277,24 +277,22 @@ void TerminalServer::runTerminal(
           }
         }
       }
+    } catch (const runtime_error &re) {
+      LOG(ERROR) << "Error: " << re.what();
+      cout << "Error: " << re.what();
+      serverClientState->closeSocket();
+      // If the client disconnects the session, it shouldn't end
+      // because the client may be starting a new one.  TODO: Start a
+      // timer which eventually kills the server.
+
+      // run=false;
     }
   }
-  catch (const runtime_error &re) {
-    LOG(ERROR) << "Error: " << re.what();
-    cout << "Error: " << re.what();
-    serverClientState->closeSocket();
-    // If the client disconnects the session, it shouldn't end
-    // because the client may be starting a new one.  TODO: Start a
-    // timer which eventually kills the server.
-
-    // run=false;
+  {
+    string id = serverClientState->getId();
+    serverClientState.reset();
+    removeClient(id);
   }
-}
-{
-  string id = serverClientState->getId();
-  serverClientState.reset();
-  removeClient(id);
-}
 }  // namespace et
 
 void TerminalServer::handleConnection(
