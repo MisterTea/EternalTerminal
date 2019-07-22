@@ -55,6 +55,7 @@ class FakeConsole : public Console {
     FATAL_FAIL(clientServerFd);
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
+    LOG(ERROR) << "FDs: " << clientServerFd << " " << serverClientFd;
   }
 
   virtual void teardown() {
@@ -82,6 +83,7 @@ class FakeConsole : public Console {
   }
 
   void simulateKeystrokes(const string& s) {
+    LOG(ERROR) << "FDs: " << clientServerFd << " " << serverClientFd;
     socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
                                    false);
   }

@@ -6,11 +6,12 @@ namespace et {
 TerminalServer::TerminalServer(
     std::shared_ptr<SocketHandler> _socketHandler,
     const SocketEndpoint &_serverEndpoint,
-    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler):
-    ServerConnection(_socketHandler, _serverEndpoint)
-    {
+    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler,
+    const SocketEndpoint &_routerEndpoint)
+    : ServerConnection(_socketHandler, _serverEndpoint),
+      routerEndpoint(_routerEndpoint) {
   terminalRouter = shared_ptr<UserTerminalRouter>(
-      new UserTerminalRouter(_pipeSocketHandler, ROUTER_FIFO_NAME));
+      new UserTerminalRouter(_pipeSocketHandler, _routerEndpoint));
 }
 
 TerminalServer::~TerminalServer() {}
@@ -31,7 +32,7 @@ void TerminalServer::run() {
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
 
-  while (true) {
+  while (!halt) {
     // Select blocks until there is something useful to do
     fd_set rfds = coreFds;
     int numFds = numCoreFds;
@@ -59,7 +60,7 @@ void TerminalServer::run() {
     if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
       auto idKeyPair = terminalRouter->acceptNewConnection();
       if (idKeyPair) {
-          addClientKey(idKeyPair->id, idKeyPair->key);
+        addClientKey(idKeyPair->id, idKeyPair->key);
       }
     }
   }

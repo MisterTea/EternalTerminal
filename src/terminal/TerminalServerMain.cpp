@@ -92,7 +92,8 @@ int main(int argc, char **argv) {
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
   TerminalServer terminalServer(tcpSocketHandler, SocketEndpoint(FLAGS_port),
-                  pipeSocketHandler);
+                                pipeSocketHandler,
+                                SocketEndpoint(ROUTER_FIFO_NAME));
   terminalServer.run();
 
   // Uninstall log rotation callback

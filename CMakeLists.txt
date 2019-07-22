@@ -143,6 +143,10 @@ add_library(
   src/terminal/PortForwardDestinationHandler.cpp
   src/terminal/TerminalServer.cpp
   src/terminal/UserTerminalRouter.cpp
+  src/terminal/TerminalClient.cpp
+  src/terminal/SshSetupHandler.cpp
+  src/terminal/UserTerminalHandler.cpp
+  src/terminal/UserJumphostHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
@@ -172,8 +176,7 @@ target_link_libraries (
 
 add_executable (
   etterminal
-  src/terminal/Terminal.cpp
-  src/terminal/UserTerminalHandler.cpp
+  src/terminal/TerminalMain.cpp
   )
 
 target_link_libraries (
@@ -192,8 +195,7 @@ target_link_libraries (
 
 add_executable (
   et
-  src/terminal/TerminalClient.cpp
-  src/terminal/SshSetupHandler.cpp
+  src/terminal/TerminalClientMain.cpp
   )
 
 target_link_libraries (

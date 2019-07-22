@@ -4,9 +4,10 @@
 
 namespace et {
 UserTerminalRouter::UserTerminalRouter(
-    shared_ptr<PipeSocketHandler> _socketHandler, const string &routerFifoName)
+    shared_ptr<PipeSocketHandler> _socketHandler,
+    const SocketEndpoint &_routerEndpoint)
     : socketHandler(_socketHandler) {
-  serverFd = *(socketHandler->listen(SocketEndpoint(routerFifoName)).begin());
+  serverFd = *(socketHandler->listen(_routerEndpoint).begin());
 }
 
 optional<IdKeyPair> UserTerminalRouter::acceptNewConnection() {
@@ -25,7 +26,7 @@ optional<IdKeyPair> UserTerminalRouter::acceptNewConnection() {
   try {
     Packet packet = socketHandler->readPacket(terminalFd);
     if (packet.getHeader() != TerminalPacketType::IDPASSKEY) {
-      LOG(FATAL) << "Got an invalid packet header: " << packet.getHeader();
+      LOG(FATAL) << "Got an invalid packet header: " << int(packet.getHeader());
     }
     string buf = packet.getPayload();
     VLOG(1) << "Got passkey: " << buf;

@@ -29,11 +29,14 @@
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
-    bool _noratelimit)
-    : socketHandler(_socketHandler), term(_term), noratelimit(_noratelimit) {}
-
-void UserTerminalHandler::connectToRouter(const string &idPasskey) {
-  routerFd = socketHandler->connect(SocketEndpoint(ROUTER_FIFO_NAME));
+    bool _noratelimit, const SocketEndpoint &_routerEndpoint,
+    const string &idPasskey)
+    : socketHandler(_socketHandler),
+      term(_term),
+      noratelimit(_noratelimit),
+      routerEndpoint(_routerEndpoint),
+      shuttingDown(false) {
+  routerFd = socketHandler->connect(routerEndpoint);
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
@@ -63,15 +66,13 @@ void UserTerminalHandler::run() {
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {
-  bool run = true;
-
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
   time_t lastSecond = time(NULL);
   int64_t outputPerSecond = 0;
 
-  while (run) {
+  while (!shuttingDown) {
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -111,7 +112,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         } else {
           LOG(INFO) << "Terminal session ended";
           term->handleSessionEnd();
-          run = false;
+          shuttingDown = true;
           break;
         }
       }
@@ -149,7 +150,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
       }
     } catch (const std::exception &ex) {
       LOG(INFO) << ex.what();
-      run = false;
+      shuttingDown = true;
       break;
     }
   }

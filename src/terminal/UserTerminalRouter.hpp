@@ -12,7 +12,7 @@ namespace et {
 class UserTerminalRouter {
  public:
   UserTerminalRouter(shared_ptr<PipeSocketHandler> _socketHandler,
-                     const string& routerFifoName);
+                     const SocketEndpoint& _routerEndpoint);
   inline int getServerFd() { return serverFd; }
   optional<IdKeyPair> acceptNewConnection();
   int getFd(const string& id);

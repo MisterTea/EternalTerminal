@@ -10,15 +10,19 @@ namespace et {
 class UserTerminalHandler {
  public:
   UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
-                      shared_ptr<UserTerminal> _term, bool noratelimit);
-  void connectToRouter(const string& idPasskey);
+                      shared_ptr<UserTerminal> _term, bool noratelimit,
+                      const SocketEndpoint &_routerEndpoint,
+                      const string &idPasskey);
   void run();
+  void shutdown() { shuttingDown = true; }
 
  protected:
   int routerFd;
   shared_ptr<SocketHandler> socketHandler;
   shared_ptr<UserTerminal> term;
   bool noratelimit;
+  SocketEndpoint routerEndpoint;
+  bool shuttingDown;
 
   void runUserTerminal(int masterFd);
 };
