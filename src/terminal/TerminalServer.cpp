@@ -135,7 +135,7 @@ void TerminalServer::runJumpHost(
       }
     } catch (const runtime_error &re) {
       LOG(ERROR) << "Jumphost Error: " << re.what();
-      cerr << "ERROR: " << re.what();
+      cout << "ERROR: " << re.what();
       serverClientState->closeSocket();
     }
   }
@@ -277,7 +277,7 @@ void TerminalServer::runTerminal(
       }
     } catch (const runtime_error &re) {
       LOG(ERROR) << "Error: " << re.what();
-      cerr << "Error: " << re.what();
+      cout << "Error: " << re.what();
       serverClientState->closeSocket();
       // If the client disconnects the session, it shouldn't end
       // because the client may be starting a new one.  TODO: Start a

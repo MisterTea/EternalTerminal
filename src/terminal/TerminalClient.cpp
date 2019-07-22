@@ -143,14 +143,14 @@ void TerminalClient::run(const string& command, const string& tunnels,
       }
     }
   } catch (const std::runtime_error& ex) {
-    cerr << "Error establishing port forward: " << ex.what() << endl;
+    cout << "Error establishing port forward: " << ex.what() << endl;
     LOG(FATAL) << "Error establishing port forward: " << ex.what();
   }
 
   TerminalInfo lastTerminalInfo;
 
   if (!console.get()) {
-    cerr << "ET running, feel free to background..." << endl;
+    cout << "ET running, feel free to background..." << endl;
   }
 
   while (!shuttingDown && !connection->isShuttingDown()) {

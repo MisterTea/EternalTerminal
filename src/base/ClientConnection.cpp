@@ -114,7 +114,7 @@ void ClientConnection::pollReconnect() {
           if (response.status() != RETURNING_CLIENT) {
             LOG(ERROR) << "Error reconnecting to server: " << response.status()
                        << ": " << response.error();
-            cerr << "Error reconnecting to server: " << response.status()
+            cout << "Error reconnecting to server: " << response.status()
                  << ": " << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {

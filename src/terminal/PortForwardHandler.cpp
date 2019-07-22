@@ -131,7 +131,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       PortForwardSourceResponse pfsresponse =
           stringToProto<PortForwardSourceResponse>(packet.getPayload());
       if (pfsresponse.has_error()) {
-        cerr << "FATAL: A reverse tunnel has failed (probably because someone "
+        cout << "FATAL: A reverse tunnel has failed (probably because someone "
                 "else is already using that port on the destination server"
              << endl;
         LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse.error();

@@ -187,7 +187,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
       LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
                  << "/" << p->ai_protocol << ": " << errno << " "
                  << strerror(errno);
-      cerr << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
+      cout << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
            << p->ai_protocol << ": " << errno << " " << strerror(errno) << endl;
       stringstream oss;
       oss << "Error binding port " << port << ": " << errno << " "
