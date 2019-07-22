@@ -89,6 +89,7 @@ ENDIF()
 
 include_directories(
   external
+  external/ThreadPool
   external/Catch2/single_include
   external/cxxopts/include
   external/msgpack-c/include

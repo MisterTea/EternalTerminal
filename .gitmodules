@@ -7,3 +7,6 @@
 [submodule "external/msgpack-c"]
 	path = external/msgpack-c
 	url = https://github.com/msgpack/msgpack-c.git
+[submodule "external/ThreadPool"]
+	path = external/ThreadPool
+	url = https://github.com/progschj/ThreadPool.git
