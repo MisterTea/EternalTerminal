@@ -1,7 +1,7 @@
 #include "TerminalClient.hpp"
 
-#include "PsuedoTerminalConsole.hpp"
 #include "ParseConfigFile.hpp"
+#include "PsuedoTerminalConsole.hpp"
 
 using namespace et;
 namespace google {}
@@ -33,6 +33,7 @@ DEFINE_bool(silent, false, "If enabled, disable logging");
 DEFINE_bool(noratelimit, false,
             "There's 1024 lines/second limit, which can be "
             "disabled based on different use case.");
+DEFINE_bool(N, false, "Do not create a terminal");
 
 using namespace et;
 
@@ -196,7 +197,10 @@ int main(int argc, char** argv) {
   SocketEndpoint socketEndpoint =
       SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
   shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
-  shared_ptr<Console> console(new PsuedoTerminalConsole());
+  shared_ptr<Console> console;
+  if (!FLAGS_N) {
+    console.reset(new PsuedoTerminalConsole());
+  }
 
   TerminalClient terminalClient =
       TerminalClient(clientSocket, socketEndpoint, id, passkey, console);
