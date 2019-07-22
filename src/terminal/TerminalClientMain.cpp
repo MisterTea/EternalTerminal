@@ -37,6 +37,18 @@ DEFINE_bool(N, false, "Do not create a terminal");
 
 using namespace et;
 
+bool ping(SocketEndpoint socketEndpoint,
+          shared_ptr<SocketHandler> clientSocketHandler) {
+  VLOG(1) << "Connecting";
+  int socketFd = clientSocketHandler->connect(socketEndpoint);
+  if (socketFd == -1) {
+    VLOG(1) << "Could not connect to host";
+    return false;
+  }
+  clientSocketHandler->close(socketFd);
+  return true;
+}
+
 int main(int argc, char** argv) {
   // Version string need to be set before GFLAGS parse arguments
   SetVersionString(string(ET_VERSION));
@@ -169,6 +181,22 @@ int main(int argc, char** argv) {
     LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
   }
 
+  bool is_jumphost = false;
+  if (!FLAGS_jumphost.empty()) {
+    is_jumphost = true;
+    FLAGS_host = FLAGS_jumphost;
+    FLAGS_port = FLAGS_jport;
+  }
+  SocketEndpoint socketEndpoint =
+      SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
+  shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
+
+  if (!ping(socketEndpoint, clientSocket)) {
+    cout << "Could not reach the ET server: " << FLAGS_host << ":" << FLAGS_port
+         << endl;
+    exit(1);
+  }
+
   string idpasskeypair = SshSetupHandler::SetupSsh(
       FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
       FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
@@ -188,15 +216,6 @@ int main(int argc, char** argv) {
     LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
                << passkey.length();
   }
-  bool is_jumphost = false;
-  if (!FLAGS_jumphost.empty()) {
-    is_jumphost = true;
-    FLAGS_host = FLAGS_jumphost;
-    FLAGS_port = FLAGS_jport;
-  }
-  SocketEndpoint socketEndpoint =
-      SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
-  shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
   shared_ptr<Console> console;
   if (!FLAGS_N) {
     console.reset(new PsuedoTerminalConsole());
