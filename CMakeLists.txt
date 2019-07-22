@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.0.2)
-project (EternalTCP VERSION 5.1.9)
+project (EternalTCP VERSION 6.0.0)
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 
