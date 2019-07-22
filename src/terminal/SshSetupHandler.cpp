@@ -29,7 +29,7 @@ string genCommand(const string &passkey, const string &id,
   string SSH_SCRIPT_PREFIX;
 
   string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
-                   "\n\" | " + command_prefix + " " TERMINAL_PATH " " + options;
+                   "\n\" | " + command_prefix + " etterminal " + options;
 
   // Kill old ET sessions of the user
   if (kill) {
