@@ -22,6 +22,20 @@ For Ubuntu, use our PPA:
 	sudo apt-get update
 	sudo apt-get install et
 
+Install and build from source:
+```
+sudo apt install libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake wget unzip
+wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
+unzip master.zip
+cd EternalTerminal-master
+mkdir build
+cd build
+cmake ../
+make && sudo make install
+sudo cp ../etc/et.cfg /etc/
+```
+Once built, the binary only requires `libgflags-dev`.
+
 ### Debian
 
 For debian, use our deb repo. For stretch:
@@ -82,14 +96,14 @@ On FreeBSD, use:
 
 Install dependencies:
 
-    Fedora (tested on 25):
+* Fedora (tested on 25):
 
-        sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+      sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
 	protobuf-compiler cmake gflags-devel wget unzip
 
-    Gentoo:
+* Gentoo:
 
-        sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
+      sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
 	dev-libs/protobuf dev-util/cmake dev-cpp/gflags \
 	net-misc/wget app-arch/unzip
 
