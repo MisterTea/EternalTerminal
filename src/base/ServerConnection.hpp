@@ -65,7 +65,7 @@ class ServerConnection {
   std::unordered_map<string, string> clientKeys;
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;
-  ctpl::thread_pool clientHandlerThreadPool;
+  std::unique_ptr<ThreadPool> clientHandlerThreadPool;
   recursive_mutex classMutex;
   mutex connectMutex;
 };

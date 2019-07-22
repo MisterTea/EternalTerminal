@@ -59,8 +59,8 @@ void TerminalServer::run() {
     }
     if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
       auto idKeyPair = terminalRouter->acceptNewConnection();
-      if (idKeyPair) {
-        addClientKey(idKeyPair->id, idKeyPair->key);
+      if (idKeyPair.id.length()) {
+        addClientKey(idKeyPair.id, idKeyPair.key);
       }
     }
   }

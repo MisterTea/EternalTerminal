@@ -14,7 +14,7 @@ class UserTerminalRouter {
   UserTerminalRouter(shared_ptr<PipeSocketHandler> _socketHandler,
                      const SocketEndpoint& _routerEndpoint);
   inline int getServerFd() { return serverFd; }
-  optional<IdKeyPair> acceptNewConnection();
+  IdKeyPair acceptNewConnection();
   int getFd(const string& id);
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;
