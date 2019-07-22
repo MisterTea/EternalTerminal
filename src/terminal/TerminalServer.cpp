@@ -269,28 +269,33 @@ void TerminalServer::runTerminal(
               char c = TERMINAL_INFO;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+              terminalSocketHandler->writeProto(terminalFd, ti, false);
+              break;
             }
+            default:
+              LOG(FATAL) << "Unknown packet type: " << int(packetType);
           }
         }
       }
-    } catch (const runtime_error &re) {
-      LOG(ERROR) << "Error: " << re.what();
-      cout << "Error: " << re.what();
-      serverClientState->closeSocket();
-      // If the client disconnects the session, it shouldn't end
-      // because the client may be starting a new one.  TODO: Start a
-      // timer which eventually kills the server.
-
-      // run=false;
     }
   }
-  {
-    string id = serverClientState->getId();
-    serverClientState.reset();
-    removeClient(id);
+  catch (const runtime_error &re) {
+    LOG(ERROR) << "Error: " << re.what();
+    cout << "Error: " << re.what();
+    serverClientState->closeSocket();
+    // If the client disconnects the session, it shouldn't end
+    // because the client may be starting a new one.  TODO: Start a
+    // timer which eventually kills the server.
+
+    // run=false;
   }
 }
+{
+  string id = serverClientState->getId();
+  serverClientState.reset();
+  removeClient(id);
+}
+}  // namespace et
 
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
