@@ -28,18 +28,15 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
   }
 }
 
-PortForwardSourceResponse PortForwardHandler::createSource(
-    const PortForwardSourceRequest& pfsr) {
+string PortForwardHandler::createSource(int sourcePort, int destinationPort) {
   try {
     auto handler =
         shared_ptr<PortForwardSourceHandler>(new PortForwardSourceHandler(
-            socketHandler, pfsr.sourceport(), pfsr.destinationport()));
+            socketHandler, sourcePort, destinationPort);
     sourceHandlers.push_back(handler);
-    return PortForwardSourceResponse();
+    return "";
   } catch (const std::runtime_error& ex) {
-    PortForwardSourceResponse pfsr;
-    pfsr.set_error(ex.what());
-    return pfsr;
+    return ex.what();
   }
 }
 
@@ -119,22 +116,21 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       LOG(INFO) << "Got new port source request";
       PortForwardSourceRequest pfsr =
           stringToProto<PortForwardSourceRequest>(packet.getPayload());
-      PortForwardSourceResponse pfsresponse = createSource(pfsr);
+      string pfsresponse = createSource(pfsr);
       Packet sendPacket(
           uint8_t(TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE),
-          protoToString(pfsresponse));
+          pfsresponse);
       connection->writePacket(sendPacket);
       break;
     }
     case TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE: {
       LOG(INFO) << "Got port source response";
-      PortForwardSourceResponse pfsresponse =
-          stringToProto<PortForwardSourceResponse>(packet.getPayload());
-      if (pfsresponse.has_error()) {
+      string pfsresponse = packet.getPayload();
+      if (pfsresponse.length()) {
         cerr << "FATAL: A reverse tunnel has failed (probably because someone "
                 "else is already using that port on the destination server"
              << endl;
-        LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse.error();
+        LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse;
       }
       break;
     }

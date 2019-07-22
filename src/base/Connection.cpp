@@ -1,6 +1,7 @@
 #include "Connection.hpp"
 
 #include "MessageReader.hpp"
+#include "MessageWriter.hpp"
 
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
@@ -93,21 +94,21 @@ bool Connection::recover(int newSocketFd) {
 
     {
       // Fetch the catchup bytes and send
-      MessageWriter writer;
+      MessageWriter messageWriter;
       vector<string> recoveredMessages = writer->recover(remoteSequenceNumber);
-      writer.writePrimitive(int(recoveredMessages.size()));
+      messageWriter.writePrimitive(int(recoveredMessages.size()));
       for (auto it : recoveredMessages) {
-        writer.writePrimitive(it);
+        messageWriter.writePrimitive(it);
       }
-      socketHandler->writeString(newSocketFd, writer.finish(), true);
+      socketHandler->writeString(newSocketFd, messageWriter.finish(), true);
     }
 
     string catchupBuffer = socketHandler->readString(newSocketFd, true);
-    MessageReader reader(catchupBuffer);
-    int numRecoveredMessages = reader.readPrimitive<int>();
+    MessageReader messageReader(catchupBuffer);
+    int numRecoveredMessages = messageReader.readPrimitive<int>();
     vector<string> recoveredMessages;
     for (int a = 0; a < numRecoveredMessages; a++) {
-      recoveredMessages.push_back(reader.readPrimitive<string>());
+      recoveredMessages.push_back(messageReader.readPrimitive<string>());
     }
 
     socketFd = newSocketFd;

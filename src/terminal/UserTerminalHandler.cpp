@@ -124,10 +124,8 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         }
         switch (packetType) {
           case TERMINAL_BUFFER: {
-            TerminalBuffer tb =
-                socketHandler->readProto<TerminalBuffer>(routerFd, false);
+            string buffer = socketHandler->readString(routerFd, false);
             VLOG(4) << "Read from router";
-            const string &buffer = tb.buffer();
             RawSocketUtils::writeAll(masterFd, &buffer[0], buffer.length());
             VLOG(4) << "Write to terminal";
             break;

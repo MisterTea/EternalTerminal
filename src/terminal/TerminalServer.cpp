@@ -6,9 +6,8 @@ namespace et {
 TerminalServer::TerminalServer(
     std::shared_ptr<SocketHandler> _socketHandler,
     const SocketEndpoint &_serverEndpoint,
-    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler):
-    ServerConnection(_socketHandler, _serverEndpoint)
-    {
+    std::shared_ptr<PipeSocketHandler> _pipeSocketHandler)
+    : ServerConnection(_socketHandler, _serverEndpoint) {
   terminalRouter = shared_ptr<UserTerminalRouter>(
       new UserTerminalRouter(_pipeSocketHandler, ROUTER_FIFO_NAME));
 }
@@ -59,7 +58,7 @@ void TerminalServer::run() {
     if (FD_ISSET(terminalRouter->getServerFd(), &rfds)) {
       auto idKeyPair = terminalRouter->acceptNewConnection();
       if (idKeyPair) {
-          addClientKey(idKeyPair->id, idKeyPair->key);
+        addClientKey(idKeyPair->id, idKeyPair->key);
       }
     }
   }
@@ -192,10 +191,8 @@ void TerminalServer::runTerminal(
           VLOG(2) << "Sending bytes from terminal: " << rc << " "
                   << serverClientState->getWriter()->getSequenceNumber();
           string s(b, rc);
-          et::TerminalBuffer tb;
-          tb.set_buffer(s);
           serverClientState->writePacket(
-              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              Packet(TerminalPacketType::TERMINAL_BUFFER, s));
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
@@ -241,15 +238,13 @@ void TerminalServer::runTerminal(
           switch (packetType) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
               // Read from the server and write to our fake terminal
-              et::TerminalBuffer tb =
-                  stringToProto<et::TerminalBuffer>(packet.getPayload());
-              VLOG(2) << "Got bytes from client: " << tb.buffer().length()
-                      << " "
+              string tb = packet.getPayload();
+              VLOG(2) << "Got bytes from client: " << tb.length() << " "
                       << serverClientState->getReader()->getSequenceNumber();
               char c = TERMINAL_BUFFER;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, tb, false);
+              terminalSocketHandler->writeString(terminalFd, tb, false);
               break;
             }
             case et::TerminalPacketType::KEEP_ALIVE: {

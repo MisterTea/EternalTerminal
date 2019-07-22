@@ -136,11 +136,9 @@ void TerminalClient::run(const string& command, const string& tunnels,
 
   if (command.length()) {
     LOG(INFO) << "Got command: " << command;
-    et::TerminalBuffer tb;
-    tb.set_buffer(command + "; exit\n");
+    string s = command + "; exit\n";
 
-    globalClient->writePacket(
-        Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+    globalClient->writePacket(Packet(TerminalPacketType::TERMINAL_BUFFER, s));
   }
 
   try {
@@ -207,11 +205,9 @@ void TerminalClient::run(const string& command, const string& tunnels,
           // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
           // globalClient->getWriter()->getSequenceNumber();
           string s(b, rc);
-          et::TerminalBuffer tb;
-          tb.set_buffer(s);
 
           globalClient->writePacket(
-              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              Packet(TerminalPacketType::TERMINAL_BUFFER, s));
           keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
         }
       }
@@ -243,9 +239,7 @@ void TerminalClient::run(const string& command, const string& tunnels,
             case et::TerminalPacketType::TERMINAL_BUFFER: {
               VLOG(3) << "Got terminal buffer";
               // Read from the server and write to our fake terminal
-              et::TerminalBuffer tb =
-                  stringToProto<et::TerminalBuffer>(packet.getPayload());
-              const string& s = tb.buffer();
+              string s = packet.getPayload();
               // VLOG(5) << "Got message: " << s;
               // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
               // globalClient->getReader()->getSequenceNumber();

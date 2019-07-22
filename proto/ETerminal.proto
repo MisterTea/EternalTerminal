@@ -2,10 +2,6 @@ syntax = "proto2";
 package et;
 
 
-message TerminalBuffer {
-  optional bytes buffer = 1;
-}
-
 message TerminalInfo {
   optional string id = 1;
   optional int32 row = 2;
@@ -17,10 +13,6 @@ message TerminalInfo {
 message PortForwardSourceRequest {
   optional int32 sourceport = 1;
   optional int32 destinationport = 2;
-}
-
-message PortForwardSourceResponse {
-  optional string error = 1;
 }
 
 message PortForwardDestinationRequest {

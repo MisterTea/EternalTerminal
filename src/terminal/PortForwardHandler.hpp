@@ -13,7 +13,7 @@ class PortForwardHandler {
   void update(vector<PortForwardDestinationRequest>* requests,
               vector<PortForwardData>* dataToSend);
   void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
-  PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr);
+  string createSource(int sourcePort, int destinationPort);
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
 

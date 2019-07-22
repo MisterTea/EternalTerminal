@@ -102,6 +102,11 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
 
+#define FATAL_IF_FALSE(X)  \
+  if (!(X)) {              \
+    LOG(FATAL) << "Error"; \
+  }
+
 // On BSD/OSX we can get EINVAL if the remote side has closed the connection
 // before we have initialized it.
 #define FATAL_FAIL_UNLESS_EINVAL(X)   \
@@ -186,24 +191,6 @@ inline int replaceAll(std::string& str, const std::string& from,
                                // 'x' with 'yx'
   }
   return retval;
-}
-
-template <typename T>
-inline T stringToProto(const string& s) {
-  T t;
-  if (!t.ParseFromString(s)) {
-    LOG(FATAL) << "Error parsing string to proto: " << s.length() << " " << s;
-  }
-  return t;
-}
-
-template <typename T>
-inline string protoToString(const T& t) {
-  string s;
-  if (!t.SerializeToString(&s)) {
-    LOG(FATAL) << "Error serializing proto to string";
-  }
-  return s;
 }
 }  // namespace et
 
