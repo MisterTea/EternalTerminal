@@ -77,7 +77,7 @@ using namespace gflags;
 using json = nlohmann::json;
 
 // The ET protocol version supported by this binary
-static const int PROTOCOL_VERSION = 4;
+static const int PROTOCOL_VERSION = 6;
 
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
