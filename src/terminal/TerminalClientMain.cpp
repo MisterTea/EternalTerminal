@@ -4,38 +4,6 @@
 #include "PsuedoTerminalConsole.hpp"
 
 using namespace et;
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
-
-DEFINE_string(u, "", "username to login");
-DEFINE_string(host, "localhost", "host to join");
-DEFINE_int32(port, 2022, "port to connect on");
-DEFINE_string(c, "", "Command to run immediately after connecting");
-DEFINE_string(
-    prefix, "",
-    "Command prefix to launch etserver/etterminal on the server side");
-DEFINE_string(t, "",
-              "Array of source:destination ports or "
-              "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
-              "10080:80,10443:443, 10090-10092:8000-8002)");
-DEFINE_string(rt, "",
-              "Array of source:destination ports or "
-              "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
-              "10080:80,10443:443, 10090-10092:8000-8002)");
-DEFINE_string(jumphost, "", "jumphost between localhost and destination");
-DEFINE_int32(jport, 2022, "port to connect on jumphost");
-DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
-DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostdout, false, "log to stdout");
-DEFINE_bool(silent, false, "If enabled, disable logging");
-DEFINE_bool(noratelimit, false,
-            "There's 1024 lines/second limit, which can be "
-            "disabled based on different use case.");
-DEFINE_bool(N, false, "Do not create a terminal");
-
-using namespace et;
 
 bool ping(SocketEndpoint socketEndpoint,
           shared_ptr<SocketHandler> clientSocketHandler) {
@@ -50,16 +18,61 @@ bool ping(SocketEndpoint socketEndpoint,
 }
 
 int main(int argc, char** argv) {
-  // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
-
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  // Parse command line arguments
+  cxxopts::Options options("et", "Remote shell for the busy and impatient");
+  options.positional_help("[user@]hostname[:port]").show_positional_help();
+  options.allow_unrecognised_options();
 
-  if (FLAGS_logtostdout) {
+  options.add_options()             //
+      ("help", "Print help")        //
+      ("version", "Print version")  //
+      ("u,username", "Username")    //
+      ("host", "Remote host name",
+       cxxopts::value<std::string>())  //
+      ("p,port", "Remote machine port",
+       cxxopts::value<int>()->default_value("2022"))  //
+      ("c,command", "Run command on connect",
+       cxxopts::value<std::string>())  //
+      ("prefix", "Add prefix when launching etterminal on server side",
+       cxxopts::value<std::string>())  //
+      ("t,tunnel",
+       "Tunnel: Array of source:destination ports or "
+       "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
+       "10080:80,10443:443, 10090-10092:8000-8002)",
+       cxxopts::value<std::string>())  //
+      ("r,reversetunnel",
+       "Reverse Tunnel: Array of source:destination ports or "
+       "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges",
+       cxxopts::value<std::string>())  //
+      ("jumphost", "jumphost between localhost and destination",
+       cxxopts::value<std::string>())  //
+      ("jport", "Jumphost machine port",
+       cxxopts::value<int>()->default_value("2022"))  //
+      ("x,kill-other-sessions",
+       "kill all old sessions belonging to the user")  //
+      ("v,verbose", "Enable verbose logging",
+       cxxopts::value<int>()->default_value("0"))    //
+      ("logtostdout", "Write log to stdout")         //
+      ("silent", "Disable logging")                  //
+      ("N,no-terminal", "Do not create a terminal")  //
+      ;
+
+  options.parse_positional({"host", "positional"});
+
+  auto result = options.parse(argc, argv);
+  if (result.count("help")) {
+    cout << options.help({}) << endl;
+    exit(0);
+  }
+  if (result.count("version")) {
+    cout << "et version " << ET_VERSION << endl;
+    exit(0);
+  }
+
+  if (result.count("logtostdout")) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
@@ -68,7 +81,7 @@ int main(int argc, char** argv) {
   }
 
   // silent Flag, since etclient doesn't read /etc/et.cfg file
-  if (FLAGS_silent) {
+  if (result.count("silent")) {
     defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
   }
 
@@ -82,55 +95,37 @@ int main(int argc, char** argv) {
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-  // Override -h & --help
-  for (int i = 1; i < argc; i++) {
-    string s(argv[i]);
-    if (s == "-h" || s == "--help") {
-      cout << "et (options) [user@]hostname[:port]\n"
-              "Options:\n"
-              "-h Basic usage\n"
-              "-p Port for etserver to run on.  Default: 2022\n"
-              "-u Username to connect to ssh & ET\n"
-              "-v=9 verbose log files\n"
-              "-c Initial command to execute upon connecting\n"
-              "-prefix Command prefix to launch etserver/etterminal on the "
-              "server side\n"
-              "-t Map local to remote TCP port (TCP Tunneling)\n"
-              "   example: et -t=\"18000:8000\" hostname maps localhost:18000\n"
-              "-rt Map remote to local TCP port (TCP Reverse Tunneling)\n"
-              "   example: et -rt=\"18000:8000\" hostname maps hostname:18000\n"
-              "to localhost:8000\n"
-              "-jumphost Jumphost between localhost and destination\n"
-              "-jport Port to connect on jumphost\n"
-              "-x Flag to kill all sessions belongs to the user\n"
-              "-logtostdout Sent log message to stdout\n"
-              "-silent Disable all logs\n"
-              "-noratelimit Disable rate limit"
-           << endl;
-      exit(1);
-    }
-  }
-
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
-  // Parse command-line argument
-  if (argc > 1) {
-    string arg = string(argv[1]);
-    if (arg.find('@') != string::npos) {
-      int i = arg.find('@');
-      FLAGS_u = arg.substr(0, i);
-      arg = arg.substr(i + 1);
-    }
-    if (arg.find(':') != string::npos) {
-      int i = arg.find(':');
-      FLAGS_port = stoi(arg.substr(i + 1));
-      arg = arg.substr(0, i);
-    }
-    FLAGS_host = arg;
+  string username = "";
+  if (result.count("username")) {
+    username = result["username"].as<string>();
   }
+  int port = result["port"].as<int>();
+  LOG(INFO) << "Port initially set to " << port;
+  string host;
 
-  Options options = {
+  // Parse command-line argument
+  if (!result.count("host")) {
+    cout << "Missing host to connect to" << endl;
+    cout << options.help({}) << endl;
+    exit(0);
+  }
+  string arg = result["host"].as<std::string>();
+  if (arg.find('@') != string::npos) {
+    int i = arg.find('@');
+    username = arg.substr(0, i);
+    arg = arg.substr(i + 1);
+  }
+  if (arg.find(':') != string::npos) {
+    int i = arg.find(':');
+    port = stoi(arg.substr(i + 1));
+    arg = arg.substr(0, i);
+  }
+  host = arg;
+
+  Options sshConfigOptions = {
       NULL,  // username
       NULL,  // host
       NULL,  // sshdir
@@ -148,58 +143,63 @@ int main(int argc, char** argv) {
   };
 
   char* home_dir = ssh_get_user_home_dir();
-  string host_alias = FLAGS_host;
-  ssh_options_set(&options, SSH_OPTIONS_HOST, FLAGS_host.c_str());
+  string host_alias = host;
+  ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST, host.c_str());
   // First parse user-specific ssh config, then system-wide config.
-  parse_ssh_config_file(&options, string(home_dir) + USER_SSH_CONFIG_PATH);
-  parse_ssh_config_file(&options, SYSTEM_SSH_CONFIG_PATH);
-  LOG(INFO) << "Parsed ssh config file, connecting to " << options.host;
-  FLAGS_host = string(options.host);
+  parse_ssh_config_file(&sshConfigOptions,
+                        string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(&sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
+  LOG(INFO) << "Parsed ssh config file, connecting to "
+            << sshConfigOptions.host;
+  host = string(sshConfigOptions.host);
 
   // Parse username: cmdline > sshconfig > localuser
-  if (FLAGS_u.empty()) {
-    if (options.username) {
-      FLAGS_u = string(options.username);
+  if (username.empty()) {
+    if (sshConfigOptions.username) {
+      username = string(sshConfigOptions.username);
     } else {
-      FLAGS_u = string(ssh_get_local_username());
+      username = string(ssh_get_local_username());
     }
   }
 
   // Parse jumphost: cmd > sshconfig
-  if (options.ProxyJump && FLAGS_jumphost.length() == 0) {
-    string proxyjump = string(options.ProxyJump);
+  string jumphost =
+      result.count("jumphost") ? result["jumphost"].as<string>() : "";
+  if (sshConfigOptions.ProxyJump && jumphost.length() == 0) {
+    string proxyjump = string(sshConfigOptions.ProxyJump);
     size_t colonIndex = proxyjump.find(":");
     if (colonIndex != string::npos) {
       string userhostpair = proxyjump.substr(0, colonIndex);
       size_t atIndex = userhostpair.find("@");
       if (atIndex != string::npos) {
-        FLAGS_jumphost = userhostpair.substr(atIndex + 1);
+        jumphost = userhostpair.substr(atIndex + 1);
       }
     } else {
-      FLAGS_jumphost = proxyjump;
+      jumphost = proxyjump;
     }
     LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
   }
 
   bool is_jumphost = false;
-  if (!FLAGS_jumphost.empty()) {
+  if (!jumphost.empty()) {
     is_jumphost = true;
-    FLAGS_host = FLAGS_jumphost;
-    FLAGS_port = FLAGS_jport;
+    host = jumphost;
+    port = result["jport"].as<int>();
+    LOG(INFO) << "Setting port to jumphost port";
   }
-  SocketEndpoint socketEndpoint =
-      SocketEndpoint(FLAGS_host, FLAGS_port, is_jumphost);
+  SocketEndpoint socketEndpoint = SocketEndpoint(host, port, is_jumphost);
   shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
 
   if (!ping(socketEndpoint, clientSocket)) {
-    cout << "Could not reach the ET server: " << FLAGS_host << ":" << FLAGS_port
-         << endl;
+    cout << "Could not reach the ET server: " << host << ":" << port << endl;
     exit(1);
   }
 
+  int jport = result["jport"].as<int>();
   string idpasskeypair = SshSetupHandler::SetupSsh(
-      FLAGS_u, FLAGS_host, host_alias, FLAGS_port, FLAGS_jumphost, FLAGS_jport,
-      FLAGS_x, FLAGS_v, FLAGS_prefix, FLAGS_noratelimit);
+      username, host, host_alias, port, jumphost, jport, result.count("x") > 0,
+      result["v"].as<int>(),
+      result.count("prefix") ? result["prefix"].as<string>() : "", true);
 
   string id = "", passkey = "";
   // Trim whitespace
@@ -217,13 +217,16 @@ int main(int argc, char** argv) {
                << passkey.length();
   }
   shared_ptr<Console> console;
-  if (!FLAGS_N) {
+  if (!result.count("N")) {
     console.reset(new PsuedoTerminalConsole());
   }
 
   TerminalClient terminalClient =
       TerminalClient(clientSocket, socketEndpoint, id, passkey, console);
-  terminalClient.run(FLAGS_c, FLAGS_t, FLAGS_rt);
+  terminalClient.run(
+      result.count("command") ? result["command"].as<string>() : "",
+      result.count("t") ? result["t"].as<string>() : "",
+      result.count("rt") ? result["rt"].as<string>() : "");
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

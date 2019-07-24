@@ -35,7 +35,6 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 
 # Required packages
 find_package(Threads REQUIRED)
-find_package(GFlags REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(Sodium REQUIRED)
 
@@ -101,7 +100,6 @@ include_directories(
   ${CMAKE_CURRENT_SOURCE_DIR}
   ${CURSES_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
-  ${GFLAGS_INCLUDE_DIRS}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
   )
@@ -168,7 +166,6 @@ target_link_libraries (
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -187,7 +184,6 @@ target_link_libraries (
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -206,7 +202,6 @@ target_link_libraries (
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBRARIES}
-    ${GFLAGS_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
@@ -243,8 +238,6 @@ target_link_libraries (
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -265,8 +258,6 @@ target_link_libraries (
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GLOG_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -294,7 +285,6 @@ target_link_libraries(
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
   ${PROTOBUF_LIBRARIES}
-  ${GFLAGS_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}

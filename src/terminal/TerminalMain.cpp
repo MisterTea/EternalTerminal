@@ -10,62 +10,51 @@
 #include "simpleini/SimpleIni.h"
 
 using namespace et;
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
-
-DEFINE_string(idpasskey, "",
-              "If set, uses IPC to send a client id/key to the server daemon");
-DEFINE_string(idpasskeyfile, "",
-              "If set, uses IPC to send a client id/key to the server daemon "
-              "from a file");
-DEFINE_bool(jump, false,
-            "If set, forward all packets between client and dst terminal");
-DEFINE_string(dsthost, "", "Must be set if jump is set to true");
-DEFINE_int32(dstport, 2022, "Must be set if jump is set to true");
-DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostdout, false, "log to stdout");
-DEFINE_string(cfgfile, "", "Location of the config file");
-DEFINE_bool(noratelimit, false, "Disable rate limit");
-
-string getIdpasskey() {
-  string idpasskey = FLAGS_idpasskey;
-  if (FLAGS_idpasskeyfile.length() > 0) {
-    // Check for passkey file
-    std::ifstream t(FLAGS_idpasskeyfile.c_str());
-    std::stringstream buffer;
-    buffer << t.rdbuf();
-    idpasskey = buffer.str();
-    // Trim whitespace
-    idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-    // Delete the file with the passkey
-    remove(FLAGS_idpasskeyfile.c_str());
-  }
-  return idpasskey;
-}
 
 void setDaemonLogFile(string idpasskey, string daemonType) {
-  if (!FLAGS_logtostdout) {
-    string first_idpass_chars = idpasskey.substr(0, 10);
-    string logFile =
-        string("/tmp/etterminal_") + daemonType + "_" + first_idpass_chars;
-    // Redirect std streams to a file
-    LogHandler::stderrToFile(logFile);
-  }
+  string first_idpass_chars = idpasskey.substr(0, 10);
+  string logFile =
+      string("/tmp/etterminal_") + daemonType + "_" + first_idpass_chars;
 }
 
 int main(int argc, char **argv) {
-  // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
-
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  // Parse command line arguments
+  cxxopts::Options options("et", "Remote shell for the busy and impatient");
+  options.positional_help("[user@]hostname[:port]").show_positional_help();
+  options.allow_unrecognised_options();
 
-  if (FLAGS_logtostdout) {
+  options.add_options()       //
+      ("help", "Print help")  //
+      ("idpasskey",
+       "If set, uses IPC to send a client id/key to the server daemon",
+       cxxopts::value<std::string>()->default_value(""))  //
+      ("idpasskeyfile",
+       "If set, uses IPC to send a client id/key to the server daemon from a "
+       "file",
+       cxxopts::value<std::string>()->default_value(""))  //
+      ("jump",
+       "If set, forward all packets between client and dst terminal")  //
+      ("dsthost", "Must be set if jump is set to true",
+       cxxopts::value<std::string>()->default_value(""))  //
+      ("dstport", "Must be set if jump is set to true",
+       cxxopts::value<int>()->default_value("2022"))  //
+      ("v,verbose", "Enable verbose logging",
+       cxxopts::value<int>()->default_value("0"))  //
+      ("logtostdout", "Write log to stdout")       //
+      ;
+
+  options.parse_positional({"host", "positional"});
+
+  auto result = options.parse(argc, argv);
+  if (result.count("help")) {
+    cout << options.help({}) << endl;
+    exit(0);
+  }
+
+  if (result.count("logtostdout")) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
@@ -74,40 +63,14 @@ int main(int argc, char **argv) {
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
 
-  if (FLAGS_cfgfile.length()) {
-    // Load the config file
-    CSimpleIniA ini(true, true, true);
-    SI_Error rc = ini.LoadFile(FLAGS_cfgfile.c_str());
-    if (rc == 0) {
-      // read verbose level
-      const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
-      if (vlevel) {
-        el::Loggers::setVerboseLevel(atoi(vlevel));
-      }
-      // read silent setting
-      const char *silent = ini.GetValue("Debug", "silent", NULL);
-      if (silent && atoi(silent) != 0) {
-        defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
-      }
-      // read log file size limit
-      const char *logsize = ini.GetValue("Debug", "logsize", NULL);
-      if (logsize && atoi(logsize) != 0) {
-        // make sure maxlogsize is a string of int value
-        maxlogsize = string(logsize);
-      }
-
-    } else {
-      LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
-    }
-  }
-
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
   shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
   shared_ptr<PsuedoUserTerminal> term(new PsuedoUserTerminal());
 
-  if (FLAGS_idpasskey.length() == 0 && FLAGS_idpasskeyfile.length() == 0) {
+  string idpasskey;
+  if (result.count("idpasskey") == 0 && result.count("idpasskeyfile") == 0) {
     // Try to read from stdin
     struct timeval timeout;
     timeout.tv_sec = 1;
@@ -134,14 +97,24 @@ int main(int argc, char **argv) {
       exit(1);
     }
     auto tokens = split(stdinData, '_');
-    FLAGS_idpasskey = tokens[0];
+    idpasskey = tokens[0];
     FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
+  } else {
+    string idpasskey = result["idpasskey"].as<string>();
+    if (result.count("idpasskeyfile")) {
+      // Check for passkey file
+      std::ifstream t(result["idpasskeyfile"].as<string>().c_str());
+      std::stringstream buffer;
+      buffer << t.rdbuf();
+      idpasskey = buffer.str();
+      // Trim whitespace
+      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
+    }
   }
 
-  string idpasskey = getIdpasskey();
   string id = split(idpasskey, '/')[0];
   string username = string(ssh_get_local_username());
-  if (FLAGS_jump) {
+  if (result.count("jump")) {
     setDaemonLogFile(idpasskey, "jumphost");
 
     // etserver with --jump cannot write to the default log file(root)
@@ -161,7 +134,8 @@ int main(int argc, char **argv) {
     }
     shared_ptr<SocketHandler> jumpClientSocketHandler(new TcpSocketHandler());
     UserJumphostHandler ujh(jumpClientSocketHandler, idpasskey,
-                            SocketEndpoint(FLAGS_dsthost, FLAGS_dstport),
+                            SocketEndpoint(result["dsthost"].as<string>(),
+                                           result["dstport"].as<int>()),
                             ipcSocketHandler, SocketEndpoint(ROUTER_FIFO_NAME));
     ujh.run();
 
@@ -183,7 +157,7 @@ int main(int argc, char **argv) {
   // Install log rotation callback
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-  UserTerminalHandler uth(ipcSocketHandler, term, FLAGS_noratelimit,
+  UserTerminalHandler uth(ipcSocketHandler, term, true,
                           SocketEndpoint(ROUTER_FIFO_NAME), idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
   if (DaemonCreator::create(true) == -1) {
