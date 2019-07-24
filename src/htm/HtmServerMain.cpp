@@ -8,7 +8,6 @@ using namespace et;
 
 int main(int argc, char **argv) {
   // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
@@ -25,9 +24,6 @@ int main(int argc, char **argv) {
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
-
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
 
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   HtmServer htm(socketHandler, SocketEndpoint(HtmServer::getPipeName()));

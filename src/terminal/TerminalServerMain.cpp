@@ -6,29 +6,45 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-DEFINE_int32(port, 0, "Port to listen on");
-DEFINE_bool(daemon, false, "Daemonize the server");
-DEFINE_string(cfgfile, "", "Location of the config file");
-DEFINE_int32(v, 0, "verbose level");
-DEFINE_bool(logtostdout, false, "log to stdout");
-
 int main(int argc, char **argv) {
-  // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
-
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
+  // Parse command line arguments
+  cxxopts::Options options("etserver",
+                           "Remote shell for the busy and impatient");
+  options.allow_unrecognised_options();
 
-  if (FLAGS_daemon) {
+  options.add_options()             //
+      ("help", "Print help")        //
+      ("version", "Print version")  //
+      ("port", "Port to listen on",
+       cxxopts::value<int>()->default_value("0"))  //
+      ("daemon", "Daemonize the server")           //
+      ("cfgfile", "Location of the config file",
+       cxxopts::value<std::string>()->default_value(""))  //
+      ("logtostdout", "log to stdout")                    //
+      ("v,verbose", "Enable verbose logging",
+       cxxopts::value<int>()->default_value("0"))  //
+      ;
+
+  auto result = options.parse(argc, argv);
+  if (result.count("help")) {
+    cout << options.help({}) << endl;
+    exit(0);
+  }
+  if (result.count("version")) {
+    cout << "et version " << ET_VERSION << endl;
+    exit(0);
+  }
+
+  if (result.count("daemon")) {
     if (DaemonCreator::create(true) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
   }
 
-  if (FLAGS_logtostdout) {
+  if (result.count("logtostdout")) {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   } else {
     defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
@@ -39,15 +55,16 @@ int main(int argc, char **argv) {
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
 
-  if (FLAGS_cfgfile.length()) {
+  int port = 0;
+  if (result.count("cfgfile")) {
     // Load the config file
     CSimpleIniA ini(true, true, true);
-    SI_Error rc = ini.LoadFile(FLAGS_cfgfile.c_str());
+    SI_Error rc = ini.LoadFile(result["cfgfile"].as<string>().c_str());
     if (rc == 0) {
-      if (FLAGS_port == 0) {
+      if (!result.count("port")) {
         const char *portString = ini.GetValue("Networking", "Port", NULL);
         if (portString) {
-          FLAGS_port = stoi(portString);
+          port = stoi(portString);
         }
       }
       // read verbose level
@@ -68,15 +85,15 @@ int main(int argc, char **argv) {
       }
 
     } else {
-      LOG(FATAL) << "Invalid config file: " << FLAGS_cfgfile;
+      LOG(FATAL) << "Invalid config file: " << result["cfgfile"].as<string>();
     }
   }
 
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
 
-  if (FLAGS_port == 0) {
-    FLAGS_port = 2022;
+  if (port == 0) {
+    port = 2022;
   }
 
   // Set log file for etserver process here.
@@ -91,7 +108,7 @@ int main(int argc, char **argv) {
   std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
 
-  TerminalServer terminalServer(tcpSocketHandler, SocketEndpoint(FLAGS_port),
+  TerminalServer terminalServer(tcpSocketHandler, SocketEndpoint(port),
                                 pipeSocketHandler,
                                 SocketEndpoint(ROUTER_FIFO_NAME));
   terminalServer.run();

@@ -10,8 +10,6 @@
 
 using namespace et;
 
-DEFINE_bool(x, false, "flag to kill all old sessions belonging to the user");
-
 termios terminal_backup;
 
 void term(int signum) {
@@ -25,10 +23,24 @@ void term(int signum) {
 }
 
 int main(int argc, char** argv) {
-  // Version string need to be set before GFLAGS parse arguments
-  SetVersionString(string(ET_VERSION));
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
+
+  // Parse command line arguments
+  cxxopts::Options options("htm", "Headless terminal multiplexer");
+  options.allow_unrecognised_options();
+
+  options.add_options()       //
+      ("help", "Print help")  //
+      ("x,kill-other-sessions",
+       "kill all old sessions belonging to the user")  //
+      ;
+
+  auto result = options.parse(argc, argv);
+  if (result.count("help")) {
+    cout << options.help({}) << endl;
+    exit(0);
+  }
 
   setvbuf(stdin, NULL, _IONBF, 0);   // turn off buffering
   setvbuf(stdout, NULL, _IONBF, 0);  // turn off buffering
@@ -59,11 +71,8 @@ int main(int argc, char** argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
-  // GFLAGS parse command line arguments
-  gflags::ParseCommandLineFlags(&argc, &argv, true);
-
   uid_t myuid = getuid();
-  if (FLAGS_x) {
+  if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
     // Kill previous htm daemon
     string command =

@@ -55,12 +55,11 @@
 #include <unordered_set>
 #include <vector>
 
-#include <gflags/gflags.h>
-
 #include <google/protobuf/message.h>
 #include "ET.pb.h"
 #include "easylogging++.h"
 
+#include <cxxopts.hpp>
 #include "base64.hpp"
 #include "json.hpp"
 #include "sole.hpp"
