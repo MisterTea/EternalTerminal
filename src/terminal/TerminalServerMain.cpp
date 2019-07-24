@@ -59,7 +59,8 @@ int main(int argc, char **argv) {
   if (result.count("cfgfile")) {
     // Load the config file
     CSimpleIniA ini(true, true, true);
-    SI_Error rc = ini.LoadFile(result["cfgfile"].as<string>().c_str());
+    string cfgfilename = result["cfgfile"].as<string>();
+    SI_Error rc = ini.LoadFile(cfgfilename.c_str());
     if (rc == 0) {
       if (!result.count("port")) {
         const char *portString = ini.GetValue("Networking", "Port", NULL);
@@ -85,7 +86,7 @@ int main(int argc, char **argv) {
       }
 
     } else {
-      LOG(FATAL) << "Invalid config file: " << result["cfgfile"].as<string>();
+      LOG(FATAL) << "Invalid config file: " << cfgfilename;
     }
   }
 
