@@ -199,7 +199,7 @@ int main(int argc, char** argv) {
   string idpasskeypair = SshSetupHandler::SetupSsh(
       username, host, host_alias, port, jumphost, jport, result.count("x") > 0,
       result["v"].as<int>(),
-      result.count("prefix") ? result["prefix"].as<string>() : "", true);
+      result.count("prefix") ? result["prefix"].as<string>() : "");
 
   string id = "", passkey = "";
   // Trim whitespace

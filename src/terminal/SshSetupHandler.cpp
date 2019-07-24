@@ -43,8 +43,7 @@ string genCommand(const string &passkey, const string &id,
 string SshSetupHandler::SetupSsh(const string &user, const string &host,
                                  const string &host_alias, int port,
                                  const string &jumphost, int jport, bool kill,
-                                 int vlevel, const string &cmd_prefix,
-                                 bool noratelimit) {
+                                 int vlevel, const string &cmd_prefix) {
   string clientTerm("xterm-256color");
   auto envString = getenv("TERM");
   if (envString != NULL) {
@@ -53,11 +52,7 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
   }
   string passkey = genRandom(32);
   string id = genRandom(16);
-  string cmdoptions{"--v=" + std::to_string(vlevel)};
-
-  if (noratelimit) {
-    cmdoptions += " --noratelimit";
-  }
+  string cmdoptions{"--verbose=" + std::to_string(vlevel)};
 
   string SSH_SCRIPT_DST =
       genCommand(passkey, id, clientTerm, user, kill, cmd_prefix, cmdoptions);
