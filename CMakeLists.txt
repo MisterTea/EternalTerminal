@@ -165,7 +165,7 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -183,7 +183,7 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -201,7 +201,7 @@ target_link_libraries (
     TerminalCommon
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
+    ${PROTOBUF_LITE_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
@@ -237,7 +237,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -257,7 +257,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -284,7 +284,7 @@ target_link_libraries(
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}

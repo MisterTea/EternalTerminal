@@ -1,5 +1,6 @@
 syntax = "proto2";
 package et;
+option optimize_for = LITE_RUNTIME;
 
 enum TerminalPacketType {
   KEEP_ALIVE = 0;
