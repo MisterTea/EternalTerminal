@@ -55,7 +55,7 @@
 #include <unordered_set>
 #include <vector>
 
-#include <google/protobuf/message.h>
+#include <google/protobuf/message_lite.h>
 #include "ET.pb.h"
 #include "easylogging++.h"
 

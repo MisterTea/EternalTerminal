@@ -272,7 +272,11 @@ void TerminalClient::run(const string& command, const string& tunnels,
         TerminalInfo ti = console->getTerminalInfo();
 
         if (ti != lastTerminalInfo) {
-          LOG(INFO) << "Window size changed: " << ti.DebugString();
+          LOG(INFO)
+              << "Window size changed: row: " << ti.row()
+              << " column: " << ti.column()
+              << " width: " << ti.width()
+              << " height: " << ti.height();
           lastTerminalInfo = ti;
           connection->writePacket(
               Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
