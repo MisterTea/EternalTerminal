@@ -53,7 +53,7 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
   }
   string passkey = genRandom(32);
   string id = genRandom(16);
-  string cmdoptions{"--v=" + std::to_string(vlevel)};
+  string cmdoptions{"--verbose=" + std::to_string(vlevel)};
 
   if (noratelimit) {
     cmdoptions += " --noratelimit";
