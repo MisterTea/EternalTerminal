@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
     cout << "IDPASSKEY:" << idpasskey << endl;
-    if (DaemonCreator::create(true) == -1) {
+    if (DaemonCreator::create(true, "") == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
     shared_ptr<SocketHandler> jumpClientSocketHandler(new TcpSocketHandler());
@@ -160,7 +160,7 @@ int main(int argc, char **argv) {
   UserTerminalHandler uth(ipcSocketHandler, term, true,
                           SocketEndpoint(ROUTER_FIFO_NAME), idpasskey);
   cout << "IDPASSKEY:" << idpasskey << endl;
-  if (DaemonCreator::create(true) == -1) {
+  if (DaemonCreator::create(true, "") == -1) {
     LOG(FATAL) << "Error creating daemon: " << strerror(errno);
   }
   uth.run();
