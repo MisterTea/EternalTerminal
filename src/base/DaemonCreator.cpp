@@ -1,7 +1,7 @@
 #include "DaemonCreator.hpp"
 
 namespace et {
-int DaemonCreator::create(bool parentExit) {
+int DaemonCreator::create(bool parentExit, string childPidFile) {
   pid_t pid;
 
   /* Fork off the parent process */
@@ -13,7 +13,7 @@ int DaemonCreator::create(bool parentExit) {
   /* Success: Return so the parent can continue */
   if (pid > 0) {
     if (parentExit) {
-      exit(0);
+      exit(EXIT_SUCCESS);
     }
     return PARENT;
   }
@@ -34,6 +34,21 @@ int DaemonCreator::create(bool parentExit) {
 
   /* Success: Let the parent terminate */
   if (pid > 0) exit(EXIT_SUCCESS);
+
+  /* Child process, write pid file */
+  if (childPidFile != "") {
+    int pidFilehandle = open(childPidFile.c_str(), O_RDWR|O_CREAT, 0600);
+    if (pidFilehandle == -1) {
+      LOG(FATAL) << "Error opening pidfile for writing: "<< childPidFile;
+    }
+
+    // Max pid length for x86_64 is 2^22 ~ 4000000
+    std::stringstream pid_ss;
+    pid_ss << getpid() << "\n";
+    std::string pid_str = pid_ss.str();
+    write(pidFilehandle, pid_str.c_str(), pid_str.length());
+    close(pidFilehandle);
+  }
 
   /* Change the working directory to the root directory */
   /* or another appropriated directory */

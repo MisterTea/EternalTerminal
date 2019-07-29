@@ -71,11 +71,11 @@ sudo cp ../etc/et.cfg /etc/
 ```
 Find the actual location of et:
 
-	which etserver	
+	which etserver
 
 Correct the service file:
 Open up /etc/systemd/system/et.service in an editor.
-Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)). 
+Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)).
 
 	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
 
@@ -85,7 +85,7 @@ Start the et service:
 sudo systemctl enable et.service
 sudo systemctl start et.service
 ```
-	
+
 
 ### FreeBSD
 On FreeBSD, use:
@@ -187,12 +187,26 @@ cmake ../
 make
 ```
 
-### Debian/Ubuntu
+### Debian/Ubuntu/CentOS
 
 Grab the deps and then follow this process:
 
+Debian/Ubuntu Dependencies:
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
+```
+
+CentOS/RHEL Dependencies:
+```
+sudo yum -y install epel-release
+sudo yum install cmake3
+sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+  protobuf-compiler cmake gflags-devel wget unzip
+```
+
+Source and setup:
+
+```
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build

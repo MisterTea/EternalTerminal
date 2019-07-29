@@ -24,6 +24,8 @@ int main(int argc, char **argv) {
       ("cfgfile", "Location of the config file",
        cxxopts::value<std::string>()->default_value(""))  //
       ("logtostdout", "log to stdout")                    //
+      ("pidfile", "Location of the pid file",
+        cxxopts::value<std::string>()->default_value("/var/run/etserver.pid"))  //
       ("v,verbose", "Enable verbose logging",
        cxxopts::value<int>()->default_value("0"))  //
       ;
@@ -39,7 +41,7 @@ int main(int argc, char **argv) {
   }
 
   if (result.count("daemon")) {
-    if (DaemonCreator::create(true) == -1) {
+    if (DaemonCreator::create(true, result["pidfile"].as<string>()) == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);
     }
   }
@@ -108,6 +110,8 @@ int main(int argc, char **argv) {
   el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
   std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
   std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
+
+  LOG(INFO) << "In child, about to start server.";
 
   TerminalServer terminalServer(tcpSocketHandler, SocketEndpoint(port),
                                 pipeSocketHandler,
