@@ -31,14 +31,9 @@ cd libtool-2.4.6
 ./configure --prefix="$PWD"/../out --disable-shared --enable-static
 make -j8 install
 cd .. || exit
-git clone https://github.com/gflags/gflags.git
 git clone https://github.com/jedisct1/libsodium.git
 git clone https://github.com/google/protobuf.git
-cd gflags || exit
-git checkout v2.2.0
-cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -DBUILD_SHARED_LIBS=OFF ./
-make -j8 install
-cd ../protobuf || exit
+cd protobuf || exit
 git checkout v3.4.1
 cmake -DCMAKE_INSTALL_PREFIX="$PWD"/../out -Dprotobuf_BUILD_TESTS=OFF ./cmake
 make -j8 install
@@ -49,8 +44,6 @@ git checkout 1.0.12
 make -j8 install
 cd ../../build || exit
 cmake \
-    -DGFLAGS_INCLUDE_DIR="$PWD"/../deps/out/include \
-    -DGFLAGS_LIBRARY="$PWD"/../deps/out/lib/libgflags.a \
     -DProtobuf_INCLUDE_DIR="$PWD"/../deps/out/include \
     -DProtobuf_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libprotobuf.a \
     -DProtobuf_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libprotobuf.a \
