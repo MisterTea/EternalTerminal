@@ -43,15 +43,20 @@ git checkout 1.0.12
 ./configure --prefix="$PWD"/../out --disable-shared --enable-static
 make -j8 install
 cd ../../build || exit
+if  [[ -f "$PWD/../deps/out/lib64/libprotobuf.a" ]]; then
+PROTO_LIB_DIR="$PWD/../deps/out/lib64"
+else
+PROTO_LIB_DIR="$PWD/../deps/out/lib"
+fi
 cmake \
     -DProtobuf_INCLUDE_DIR="$PWD"/../deps/out/include \
-    -DProtobuf_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libprotobuf.a \
-    -DProtobuf_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libprotobuf.a \
-    -DProtobuf_LITE_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libprotobuf-lite.a \
-    -DProtobuf_LITE_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libprotobuf-lite.a \
+    -DProtobuf_LIBRARY_DEBUG="$PROTO_LIB_DIR"/libprotobuf.a \
+    -DProtobuf_LIBRARY_RELEASE="$PROTO_LIB_DIR"/libprotobuf.a \
+    -DProtobuf_LITE_LIBRARY_DEBUG="$PROTO_LIB_DIR"/libprotobuf-lite.a \
+    -DProtobuf_LITE_LIBRARY_RELEASE="$PROTO_LIB_DIR"/libprotobuf-lite.a \
     -DProtobuf_PROTOC_EXECUTABLE="$PWD"/../deps/out/bin/protoc \
-    -DProtobuf_PROTOC_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libprotoc.a \
-    -DProtobuf_PROTOC_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libprotoc.a \
+    -DProtobuf_PROTOC_LIBRARY_DEBUG="$PROTO_LIB_DIR"/libprotoc.a \
+    -DProtobuf_PROTOC_LIBRARY_RELEASE="$PROTO_LIB_DIR"/libprotoc.a \
     -Dsodium_INCLUDE_DIR="$PWD"/../deps/out/include \
     -Dsodium_LIBRARY_DEBUG="$PWD"/../deps/out/lib/libsodium.a \
     -Dsodium_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libsodium.a \
