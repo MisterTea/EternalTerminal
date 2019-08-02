@@ -40,10 +40,11 @@ class SocketEndpoint {
 
 inline ostream &operator<<(ostream &os, const SocketEndpoint &self) {
   if (self.getPort() >= 0) {
-    return os << self.getName() << ":" << self.getPort(), os;
+    os << self.getName() << ":" << self.getPort();
   } else {
-    return os << self.getName(), os;
+    os << self.getName();
   }
+  return os;
 }
 }  // namespace et
 
