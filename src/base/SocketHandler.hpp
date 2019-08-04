@@ -88,7 +88,7 @@ class SocketHandler {
   }
 
   inline void writeB64(int fd, const char* buf, size_t count) {
-    int encodedLength = base64::Base64::EncodedLength(count);
+    size_t encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     if (!base64::Base64::Encode(buf, count, &s[0], s.length())) {
       throw runtime_error("b64 decode failed");
@@ -97,7 +97,7 @@ class SocketHandler {
   }
 
   inline void readB64(int fd, char* buf, size_t count) {
-    int encodedLength = base64::Base64::EncodedLength(count);
+    size_t encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length(), false);
     if (!base64::Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
