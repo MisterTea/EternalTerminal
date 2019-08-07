@@ -92,6 +92,11 @@ On FreeBSD, use:
 
 	pkg install eternalterminal
 
+### Fedora (version 29 and later):
+```
+sudo dnf install et
+```
+
 ### Other Linux
 
 Install dependencies:
