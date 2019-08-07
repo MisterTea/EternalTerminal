@@ -6,6 +6,7 @@
 namespace et {
 class DaemonCreator {
  public:
+  static int createSessionLeader();
   static int create(bool terminateParent, string childPidFile);
   static const int PARENT = 1;
   static const int CHILD = 2;

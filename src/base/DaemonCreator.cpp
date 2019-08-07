@@ -1,6 +1,8 @@
 #include "DaemonCreator.hpp"
 
 namespace et {
+int DaemonCreator::createSessionLeader() { return ::daemon(0, 0); }
+
 int DaemonCreator::create(bool parentExit, string childPidFile) {
   pid_t pid;
 
@@ -22,8 +24,6 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
   if (setsid() < 0) exit(EXIT_FAILURE);
 
   /* Catch, ignore and handle signals */
-  // TODO: Implement a working signal handler */
-  signal(SIGCHLD, SIG_IGN);
   signal(SIGHUP, SIG_IGN);
 
   /* Fork off for the second time*/
@@ -37,9 +37,9 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
 
   /* Child process, write pid file */
   if (childPidFile != "") {
-    int pidFilehandle = open(childPidFile.c_str(), O_RDWR|O_CREAT, 0600);
+    int pidFilehandle = open(childPidFile.c_str(), O_RDWR | O_CREAT, 0600);
     if (pidFilehandle == -1) {
-      LOG(FATAL) << "Error opening pidfile for writing: "<< childPidFile;
+      LOG(FATAL) << "Error opening pidfile for writing: " << childPidFile;
     }
 
     // Max pid length for x86_64 is 2^22 ~ 4000000
