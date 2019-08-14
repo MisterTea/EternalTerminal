@@ -34,10 +34,8 @@ void LogHandler::setupLogFile(el::Configurations *defaultConf, string filename,
 
 void LogHandler::rolloutHandler(const char *filename, std::size_t size) {
   // SHOULD NOT LOG ANYTHING HERE BECAUSE LOG FILE IS CLOSED!
-  std::stringstream ss;
   // REMOVE OLD LOG
-  ss << "rm " << filename;
-  system(ss.str().c_str());
+  remove(filename);
 }
 
 string LogHandler::stderrToFile(const string &pathPrefix) {
