@@ -1,11 +1,10 @@
 cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 6.0.0)
 
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+FIND_PACKAGE(Sanitizers)
+
 option(CODE_COVERAGE "Enable code coverage" OFF)
-option(TSAN "Enable thread sanitizer" OFF)
-option(ASAN "Enable address sanitizer" OFF)
-option(MSAN "Enable memory sanitizer" OFF)
-option(UBSAN "Enable undefined behavior sanitizer" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
@@ -23,24 +22,6 @@ if(UNIX)
   # Enable debug info
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 endif()
-
-IF(ASAN)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
-ELSEIF(TSAN)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=thread")
-SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=thread")
-ELSEIF(MSAN)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=memory")
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=memory")
-SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=memory")
-ELSEIF(UBSAN)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
-SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=undefined")
-SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=undefined")
-ENDIF()
 
 #Using FreeBSD?
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
@@ -154,6 +135,7 @@ add_dependencies(
   et-lib
   generated-code
   )
+add_sanitizers(et-lib)
 
 add_library(
   TerminalCommon
@@ -175,12 +157,12 @@ add_dependencies(
   TerminalCommon
   generated-code
   )
+add_sanitizers(TerminalCommon)
 
 add_executable (
   etserver
   src/terminal/TerminalServerMain.cpp
   )
-
 target_link_libraries (
   etserver
   LINK_PUBLIC
@@ -193,12 +175,12 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(etserver)
 
 add_executable (
   etterminal
   src/terminal/TerminalMain.cpp
   )
-
 target_link_libraries (
   etterminal
   LINK_PUBLIC
@@ -211,12 +193,12 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(etterminal)
 
 add_executable (
   et
   src/terminal/TerminalClientMain.cpp
   )
-
 target_link_libraries (
     et
     LINK_PUBLIC
@@ -228,6 +210,7 @@ target_link_libraries (
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
 )
+add_sanitizers(et)
 
 add_library (
   HtmCommon
@@ -245,13 +228,13 @@ add_dependencies(
   HtmCommon
   generated-code
   )
+add_sanitizers(HtmCommon)
 
 add_executable (
   htm
 
   src/htm/HtmClientMain.cpp
   )
-
 target_link_libraries (
   htm
   LINK_PUBLIC
@@ -265,13 +248,13 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(htm)
 
 add_executable (
   htmd
 
   src/htm/HtmServerMain.cpp
   )
-
 target_link_libraries (
   htmd
   LINK_PUBLIC
@@ -285,6 +268,7 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(htmd)
 
 enable_testing()
 
@@ -295,12 +279,10 @@ add_executable(
   ${TEST_SRCS}
   test/Main.cpp
   )
-
 add_dependencies(
   et-test
   TerminalCommon
   et-lib)
-
 target_link_libraries(
   et-test
   TerminalCommon
@@ -318,6 +300,7 @@ add_test(
   et-test
   et-test
   )
+add_sanitizers(et-test)
 
 install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ

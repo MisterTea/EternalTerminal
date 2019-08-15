@@ -98,9 +98,6 @@ void TerminalClient::run(const string& command, const string& tunnels,
     console->setup();
   }
 
-  shared_ptr<TcpSocketHandler> socketHandler =
-      static_pointer_cast<TcpSocketHandler>(connection->getSocketHandler());
-
 // TE sends/receives data to/from the shell one char at a time.
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
@@ -272,11 +269,9 @@ void TerminalClient::run(const string& command, const string& tunnels,
         TerminalInfo ti = console->getTerminalInfo();
 
         if (ti != lastTerminalInfo) {
-          LOG(INFO)
-              << "Window size changed: row: " << ti.row()
-              << " column: " << ti.column()
-              << " width: " << ti.width()
-              << " height: " << ti.height();
+          LOG(INFO) << "Window size changed: row: " << ti.row()
+                    << " column: " << ti.column() << " width: " << ti.width()
+                    << " height: " << ti.height();
           lastTerminalInfo = ti;
           connection->writePacket(
               Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
