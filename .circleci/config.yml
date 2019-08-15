@@ -1,4 +1,4 @@
-version: 3
+version: 2
 jobs:
   connect_to_initial_version:
     docker:
@@ -116,7 +116,7 @@ jobs:
           name: Run tests
           command: cd build; ./et-test
 workflows:
-  version: 3
+  version: 2
   build_and_test:
     jobs:
       - linux_asan
