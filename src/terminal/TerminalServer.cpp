@@ -66,7 +66,10 @@ void TerminalServer::run() {
   }
 
   shutdown();
-  halt = true;
+  {
+    lock_guard<std::mutex> guard(terminalThreadMutex);
+    halt = true;
+  }
   for (auto it : terminalThreads) {
     it->join();
   }
@@ -163,7 +166,14 @@ void TerminalServer::runTerminal(
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
-  while (!halt && run) {
+  while (run) {
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      if (halt) {
+        break;
+      }
+    }
+
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;

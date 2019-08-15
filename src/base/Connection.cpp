@@ -37,18 +37,30 @@ bool Connection::readPacket(Packet* packet) {
 }
 
 void Connection::writePacket(const Packet& packet) {
-  while (!shuttingDown) {
+  while (true) {
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     bool success = write(packet);
     if (success) {
       return;
     }
+    bool hasConnection;
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      hasConnection = (socketFd != -1);
+    }
+
     // Yield the processor
-    if (socketFd == -1) {
-      // No connection, sleep for 100ms
-      usleep(100 * 1000);
-    } else {
+    if (hasConnection) {
       // Have a connection, sleep for 1ms
       usleep(1 * 1000);
+    } else {
+      // No connection, sleep for 100ms
+      usleep(100 * 1000);
     }
     LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }
@@ -106,7 +118,10 @@ bool Connection::recover(int newSocketFd) {
     et::CatchupBuffer catchupBuffer =
         socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
-    socketFd = newSocketFd;
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      socketFd = newSocketFd;
+    }
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
                                      catchupBuffer.buffer().end());
 
@@ -122,6 +137,7 @@ bool Connection::recover(int newSocketFd) {
 }
 
 void Connection::shutdown() {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   LOG(INFO) << "Shutting down connection";
   shuttingDown = true;
   closeSocket();

@@ -57,7 +57,10 @@ class TerminalServer : public ServerConnection {
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 
   void run();
-  void shutdown() { halt = true; }
+  void shutdown() {
+    lock_guard<std::mutex> guard(terminalThreadMutex);
+    halt = true;
+  }
 
   shared_ptr<UserTerminalRouter> terminalRouter;
 

@@ -8,33 +8,35 @@
 #include "PipeSocketHandler.hpp"
 
 namespace et {
-inline void consoleListenFn(shared_ptr<SocketHandler> socketHandler,
-                            SocketEndpoint endpoint, int* serverClientFd) {
-  // Only works when there is 1:1 mapping between endpoint and fds.  Will fix in
-  // future api
-  int serverFd = *(socketHandler->listen(endpoint).begin());
-  int fd;
-  while (true) {
-    fd = socketHandler->accept(serverFd);
-    if (fd == -1) {
-      if (errno != EAGAIN) {
-        FATAL_FAIL(fd);
-      } else {
-        ::usleep(100 * 1000);  // Sleep for client to connect
-      }
-    } else {
-      break;
-    }
-  }
-  *serverClientFd = fd;
-}
-
 class FakeConsole : public Console {
  public:
   FakeConsole(shared_ptr<PipeSocketHandler> _socketHandler)
       : socketHandler(_socketHandler), getTerminalInfoCount(0) {}
 
   virtual ~FakeConsole() {}
+
+  void consoleListenFn(shared_ptr<SocketHandler> socketHandler,
+                       SocketEndpoint endpoint, int* serverClientFd) {
+    // Only works when there is 1:1 mapping between endpoint and fds.  Will fix
+    // in future api
+    int serverFd = *(socketHandler->listen(endpoint).begin());
+    int fd;
+    while (true) {
+      fd = socketHandler->accept(serverFd);
+      if (fd == -1) {
+        if (errno != EAGAIN) {
+          FATAL_FAIL(fd);
+        } else {
+          ::usleep(100 * 1000);  // Sleep for client to connect
+        }
+      } else {
+        break;
+      }
+    }
+
+    lock_guard<recursive_mutex> lock(_mutex);
+    *serverClientFd = fd;
+  }
 
   virtual void setup() {
     fakeTerminalInfo.set_row(1);
@@ -46,9 +48,12 @@ class FakeConsole : public Console {
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint(pipePath);
-    serverClientFd = -1;
-    std::thread serverListenThread(consoleListenFn, socketHandler, endpoint,
-                                   &serverClientFd);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      serverClientFd = -1;
+    }
+    std::thread serverListenThread(&FakeConsole::consoleListenFn, this,
+                                   socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
     ::usleep(1000 * 1000);
     clientServerFd = socketHandler->connect(endpoint);
@@ -89,6 +94,7 @@ class FakeConsole : public Console {
   }
 
  protected:
+  recursive_mutex _mutex;
   shared_ptr<PipeSocketHandler> socketHandler;
   TerminalInfo fakeTerminalInfo;
   int getTerminalInfoCount;
@@ -109,14 +115,36 @@ class FakeUserTerminal : public UserTerminal {
 
   virtual ~FakeUserTerminal() {}
 
+  void listenFn(shared_ptr<SocketHandler> socketHandler,
+                SocketEndpoint endpoint, int* serverClientFd) {
+    // Only works when there is 1:1 mapping between endpoint and fds.  Will fix
+    // in future api
+    int serverFd = *(socketHandler->listen(endpoint).begin());
+    int fd;
+    while (true) {
+      fd = socketHandler->accept(serverFd);
+      if (fd == -1) {
+        if (errno != EAGAIN) {
+          FATAL_FAIL(fd);
+        } else {
+          ::usleep(100 * 1000);  // Sleep for client to connect
+        }
+      } else {
+        break;
+      }
+    }
+    lock_guard<recursive_mutex> lock(_mutex);
+    *serverClientFd = fd;
+  }
+
   virtual int setup(int routerFd) {
     string tmpPath = string("/tmp/et_test_userterminal_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint(pipePath);
     serverClientFd = -1;
-    std::thread serverListenThread(consoleListenFn, socketHandler, endpoint,
-                                   &serverClientFd);
+    std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
+                                   socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
     ::usleep(1000 * 1000);
     clientServerFd = socketHandler->connect(endpoint);
@@ -133,12 +161,14 @@ class FakeUserTerminal : public UserTerminal {
   virtual int getFd() { return clientServerFd; }
 
   string getKeystrokes(int count) {
+    lock_guard<recursive_mutex> lock(_mutex);
     string s(count, '\0');
     socketHandler->readAll(serverClientFd, &s[0], count, false);
     return s;
   }
 
   void simulateTerminalResponse(const string& s) {
+    lock_guard<recursive_mutex> lock(_mutex);
     socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
                                    false);
   }
@@ -147,6 +177,7 @@ class FakeUserTerminal : public UserTerminal {
   virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
 
  protected:
+  recursive_mutex _mutex;
   shared_ptr<PipeSocketHandler> socketHandler;
   int serverClientFd;
   int clientServerFd;
