@@ -10,7 +10,7 @@ int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf =
       et::LogHandler::setupLogHandler(&argc, &argv);
-  defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
+  defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
   // el::Loggers::setVerboseLevel(9);
 

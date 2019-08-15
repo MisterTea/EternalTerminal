@@ -2,6 +2,10 @@ cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 6.0.0)
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
+option(TSAN "Enable thread sanitizer" OFF)
+option(ASAN "Enable address sanitizer" OFF)
+option(MSAN "Enable memory sanitizer" OFF)
+option(UBSAN "Enable undefined behavior sanitizer" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
@@ -19,6 +23,24 @@ if(UNIX)
   # Enable debug info
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
 endif()
+
+IF(ASAN)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=address")
+ELSEIF(TSAN)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=thread")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=thread")
+SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=thread")
+ELSEIF(MSAN)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=memory")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=memory")
+SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=memory")
+ELSEIF(UBSAN)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=undefined")
+SET(CMAKE_CXX_FLAGS_DEBUG "${CMAKE_CXX_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=undefined")
+SET(CMAKE_LINKER_FLAGS_DEBUG "${CMAKE_LINKER_FLAGS_DEBUG} -fno-omit-frame-pointer -fsanitize=undefined")
+ENDIF()
 
 #Using FreeBSD?
 if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
@@ -87,7 +109,7 @@ ELSE()
 ENDIF()
 
 include_directories(
-  external
+  external/easyloggingpp/src
   external/ThreadPool
   external/Catch2/single_include
   external/cxxopts/include
@@ -108,7 +130,7 @@ add_library(
   et-lib
   STATIC
 
-  external/easylogging++.cc
+  external/easyloggingpp/src/easylogging++.cc
 
   src/base/BackedReader.cpp
   src/base/BackedWriter.cpp

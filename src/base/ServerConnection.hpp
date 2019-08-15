@@ -26,6 +26,7 @@ class ServerConnection {
   }
 
   inline bool clientConnectionExists(const string& clientId) {
+    lock_guard<std::recursive_mutex> guard(classMutex);
     return clientConnections.find(clientId) != clientConnections.end();
   }
 

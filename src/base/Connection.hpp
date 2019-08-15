@@ -32,10 +32,7 @@ class Connection {
 
   string getId() { return id; }
 
-  inline bool hasData() {
-    lock_guard<std::recursive_mutex> guard(connectionMutex);
-    return reader->hasData();
-  }
+  inline bool hasData() { return reader->hasData(); }
 
   virtual void closeSocket();
   virtual void closeSocketAndMaybeReconnect() {
@@ -45,7 +42,10 @@ class Connection {
 
   void shutdown();
 
-  inline bool isShuttingDown() { return shuttingDown; }
+  inline bool isShuttingDown() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return shuttingDown;
+  }
 
  protected:
   bool recover(int newSocketFd);

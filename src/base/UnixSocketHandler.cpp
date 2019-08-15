@@ -127,6 +127,8 @@ int UnixSocketHandler::accept(int sockFd) {
     LOG_EVERY_N(100, INFO) << "Waiting for read/write to time out...";
     usleep(1 * 1000);
   }
+
+  lock_guard<std::recursive_mutex> guard(globalMutex);
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
