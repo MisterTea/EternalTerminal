@@ -116,9 +116,11 @@ jobs:
           name: Run tests
           command: cd build; ./et-test
 workflows:
-  version: 2
+  version: 3
   build_and_test:
     jobs:
-      - build_linux
-      - build_mac
+      - linux_asan
+      - linux_tsan
+      - linux_ubsan
+      - mac_tsan
       - connect_to_initial_version
