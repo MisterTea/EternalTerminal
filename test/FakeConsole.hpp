@@ -11,7 +11,7 @@ namespace et {
 class FakeConsole : public Console {
  public:
   FakeConsole(shared_ptr<PipeSocketHandler> _socketHandler)
-      : socketHandler(_socketHandler), getTerminalInfoCount(0) {}
+      : socketHandler(_socketHandler), getTerminalInfoCount(0), clientServerFd(-1) {}
 
   virtual ~FakeConsole() {}
 
