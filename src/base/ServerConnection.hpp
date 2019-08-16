@@ -62,7 +62,6 @@ class ServerConnection {
  protected:
   shared_ptr<SocketHandler> socketHandler;
   SocketEndpoint serverEndpoint;
-  bool stop;
   std::unordered_map<string, string> clientKeys;
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;

@@ -3,7 +3,7 @@
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
-    : socketHandler(_socketHandler), id(_id), key(_key), shuttingDown(false) {}
+    : socketHandler(_socketHandler), id(_id), key(_key), socketFd(-1), shuttingDown(false) {}
 
 Connection::~Connection() {
   if (!shuttingDown) {
