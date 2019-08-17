@@ -97,7 +97,7 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
       return retval;
     }
   }
-  throw new std::runtime_error("Client is too far behind server.");
+  throw std::runtime_error("Client is too far behind server.");
 }
 
 void BackedWriter::revive(int newSocketFd) { socketFd = newSocketFd; }

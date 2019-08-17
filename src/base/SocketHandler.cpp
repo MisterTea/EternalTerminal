@@ -7,7 +7,6 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
   time_t startTime = time(NULL);
   size_t pos = 0;
   while (pos < count) {
-
     if (!waitOnSocketData(fd)) {
       time_t currentTime = time(NULL);
       if (timeout && currentTime > startTime + 10) {
@@ -34,10 +33,7 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
       }
     } else {
       pos += bytesRead;
-      if (bytesRead > 0) {
-        // Reset the timeout as long as we are reading bytes
-        startTime = time(NULL);
-      }
+      startTime = time(NULL);
     }
   }
 }

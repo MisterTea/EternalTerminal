@@ -21,7 +21,7 @@ TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
   REQUIRE(!socketHandler->hasData(fakeConsole->getFd()));
 
   thread t([fakeConsole, s]() { fakeConsole->simulateKeystrokes(s); });
-  usleep(1000);
+  sleep(1);
 
   REQUIRE(socketHandler->hasData(fakeConsole->getFd()));
 
@@ -172,11 +172,10 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   string serverPipePath = string(pipeDirectory) + "/pipe_server";
   serverEndpoint = SocketEndpoint(serverPipePath);
 
-  auto server = shared_ptr<TerminalServer>(new TerminalServer(serverSocketHandler, serverEndpoint,
-                          routerSocketHandler, routerEndpoint));
-  thread t_server([server]() {
-    server->run();
-  });
+  auto server = shared_ptr<TerminalServer>(
+      new TerminalServer(serverSocketHandler, serverEndpoint,
+                         routerSocketHandler, routerEndpoint));
+  thread t_server([server]() { server->run(); });
   sleep(1);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
