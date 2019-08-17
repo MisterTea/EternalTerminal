@@ -28,7 +28,7 @@ int main(int argc, char** argv) {
     options.allow_unrecognised_options();
 
     options.add_options()             //
-        ("h,help", "Print help")        //
+        ("h,help", "Print help")      //
         ("version", "Print version")  //
         ("u,username", "Username")    //
         ("host", "Remote host name",
@@ -198,8 +198,8 @@ int main(int argc, char** argv) {
 
     int jport = result["jport"].as<int>();
     string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, host, host_alias, port, jumphost, jport, result.count("x") > 0,
-        result["v"].as<int>(),
+        username, host, host_alias, port, jumphost, jport,
+        result.count("x") > 0, result["v"].as<int>(),
         result.count("prefix") ? result["prefix"].as<string>() : "");
 
     string id = "", passkey = "";
@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("t") ? result["t"].as<string>() : "",
-        result.count("rt") ? result["rt"].as<string>() : "");
+        result.count("r") ? result["r"].as<string>() : "");
   } catch (cxxopts::OptionException& oe) {
     cout << "Exception: " << oe.what() << "\n" << endl;
     cout << options.help({}) << endl;
