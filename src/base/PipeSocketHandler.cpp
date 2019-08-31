@@ -83,7 +83,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) != pipeServerSockets.end()) {
-    LOG(FATAL) << "Tried to listen twice on the same path";
+    throw runtime_error("Tried to listen twice on the same path");
   }
 
   sockaddr_un local;

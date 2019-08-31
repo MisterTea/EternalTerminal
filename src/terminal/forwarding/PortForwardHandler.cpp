@@ -43,9 +43,12 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       destination = pfsr.destination();
     } else {
       // Make a random file to forward the pipe
-      string destinationPath = "/tmp/et_sock_XXXXXX";
-      FATAL_FAIL(mkstemp(&destinationPath[0]));
+      string destinationPattern = string("/tmp/et_forward_sock_XXXXXXXX");
+      string destinationDirectory = string(mkdtemp(&destinationPattern[0]));
+      string destinationPath = string(destinationDirectory) + "/sock";
+
       destination.set_name(destinationPath);
+      LOG(INFO) << "Creating pipe at " << destinationPath;
     }
     if (pfsr.destination().has_port()) {
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
