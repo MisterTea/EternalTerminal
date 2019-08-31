@@ -42,7 +42,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       source = pfsr.source();
     } else {
       // Make a random file to forward the pipe
-      string sourcePattern = string("/tmp/et_forward_sock_XXXXXXXX");
+      string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
       string sourcePath = string(sourceDirectory) + "/sock";
 
@@ -76,6 +76,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   int fd = -1;
+  bool isTcp = pfdr.destination().has_port();
   if (pfdr.destination().has_port()) {
     // Try ipv6 first
     SocketEndpoint ipv6Localhost;
@@ -110,8 +111,9 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     }
     if (!pfdresponse.has_error()) {
       LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
-      destinationHandlers[socketId] = shared_ptr<ForwardDestinationHandler>(
-          new ForwardDestinationHandler(networkSocketHandler, fd, socketId));
+      destinationHandlers[socketId] =
+          shared_ptr<ForwardDestinationHandler>(new ForwardDestinationHandler(
+              isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId));
       pfdresponse.set_socketid(socketId);
     }
   }
