@@ -34,30 +34,29 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr) {
   try {
-    if (pfsr.has_destination() && !pfsr.destination().has_port()) {
-      throw runtime_error(
-          "Do not set a destination when forwarding named pipes");
+    if (pfsr.has_source() && !pfsr.source().has_port()) {
+      throw runtime_error("Do not set a source when forwarding named pipes");
     }
-    SocketEndpoint destination;
-    if (pfsr.has_destination()) {
-      destination = pfsr.destination();
+    SocketEndpoint source;
+    if (pfsr.has_source()) {
+      source = pfsr.source();
     } else {
       // Make a random file to forward the pipe
-      string destinationPattern = string("/tmp/et_forward_sock_XXXXXXXX");
-      string destinationDirectory = string(mkdtemp(&destinationPattern[0]));
-      string destinationPath = string(destinationDirectory) + "/sock";
+      string sourcePattern = string("/tmp/et_forward_sock_XXXXXXXX");
+      string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
+      string sourcePath = string(sourceDirectory) + "/sock";
 
-      destination.set_name(destinationPath);
-      LOG(INFO) << "Creating pipe at " << destinationPath;
+      source.set_name(sourcePath);
+      LOG(INFO) << "Creating pipe at " << sourcePath;
     }
-    if (pfsr.destination().has_port()) {
+    if (pfsr.source().has_port()) {
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
-          networkSocketHandler, pfsr.source(), destination));
+          networkSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     } else {
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
-          pipeSocketHandler, pfsr.source(), destination));
+          pipeSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
       if (pfsr.has_environmentvariable()) {
         if (setenv(pfsr.environmentvariable().c_str(),

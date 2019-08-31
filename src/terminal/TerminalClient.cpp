@@ -148,7 +148,7 @@ void TerminalClient::run(const string& command, const string& tunnels,
         exit(1);
       }
       string authSock = string(authSockEnv);
-      pfsr.mutable_source()->set_name(authSock);
+      pfsr.mutable_destination()->set_name(authSock);
       pfsr.set_environmentvariable("SSH_AUTH_SOCK");
       connection->writePacket(
           Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
