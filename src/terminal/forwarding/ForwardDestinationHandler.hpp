@@ -8,11 +8,10 @@
 #include "ETerminal.pb.h"
 
 namespace et {
-class PortForwardDestinationHandler {
+class ForwardDestinationHandler {
  public:
-  PortForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler,
-                                int _fd, int _socketId);
-
+  ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
+                            int _socketId);
   void write(const string& s);
 
   void update(vector<PortForwardData>* retval);

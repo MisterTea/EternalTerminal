@@ -4,10 +4,10 @@
 #include "ClientConnection.hpp"
 #include "Console.hpp"
 #include "CryptoHandler.hpp"
+#include "ForwardSourceHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
 #include "PortForwardHandler.hpp"
-#include "PortForwardSourceHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
@@ -25,18 +25,18 @@ namespace et {
 class TerminalClient {
  public:
   TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
+                 std::shared_ptr<SocketHandler> _pipeSocketHandler,
                  const SocketEndpoint& _socketEndpoint, const string& id,
-                 const string& passkey, shared_ptr<Console> _console);
+                 const string& passkey, shared_ptr<Console> _console,
+                 bool jumphost);
   virtual ~TerminalClient();
   void setUpTunnel(const string& tunnels);
   void setUpReverseTunnels(const string& reverseTunnels);
   void handleWindowChanged(winsize* win);
   // void handlePfwPacket(char packetType);
   void run(const string& command, const string& tunnels,
-           const string& reverseTunnels);
-  void shutdown() {
-    shuttingDown = true;
-  }
+           const string& reverseTunnels, bool forwardSshAgent);
+  void shutdown() { shuttingDown = true; }
 
  protected:
   shared_ptr<Console> console;

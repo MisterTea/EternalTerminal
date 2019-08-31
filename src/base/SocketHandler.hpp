@@ -4,7 +4,6 @@
 #include "Headers.hpp"
 
 #include "Packet.hpp"
-#include "SocketEndpoint.hpp"
 
 namespace et {
 class SocketHandler {

@@ -14,7 +14,7 @@ PipeSocketHandler::PipeSocketHandler() {}
 int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  string pipePath = endpoint.getName();
+  string pipePath = endpoint.name();
   sockaddr_un remote;
 
   int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
@@ -81,7 +81,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  string pipePath = endpoint.getName();
+  string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) != pipeServerSockets.end()) {
     LOG(FATAL) << "Tried to listen twice on the same path";
   }
@@ -106,7 +106,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  string pipePath = endpoint.getName();
+  string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) == pipeServerSockets.end()) {
     LOG(FATAL)
         << "Tried to getPipeFd on a pipe without calling listen() first: "
@@ -118,7 +118,7 @@ set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
 void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  string pipePath = endpoint.getName();
+  string pipePath = endpoint.name();
   auto it = pipeServerSockets.find(pipePath);
   if (it == pipeServerSockets.end()) {
     LOG(FATAL)

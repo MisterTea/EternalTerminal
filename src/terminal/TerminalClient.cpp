@@ -1,17 +1,16 @@
 #include "TerminalClient.hpp"
 
 namespace et {
-TerminalClient::TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
+TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
+                               shared_ptr<SocketHandler> _pipeSocketHandler,
                                const SocketEndpoint& _socketEndpoint,
                                const string& id, const string& passkey,
-                               shared_ptr<Console> _console)
+                               shared_ptr<Console> _console, bool jumphost)
     : console(_console), shuttingDown(false) {
-  portForwardHandler =
-      shared_ptr<PortForwardHandler>(new PortForwardHandler(_socketHandler));
+  portForwardHandler = shared_ptr<PortForwardHandler>(
+      new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
-  if (_socketEndpoint.isJumphost()) {
-    payload.set_jumphost(true);
-  }
+  payload.set_jumphost(jumphost);
 
   connection = shared_ptr<ClientConnection>(
       new ClientConnection(_socketHandler, _socketEndpoint, id, passkey));
@@ -93,7 +92,7 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 }
 
 void TerminalClient::run(const string& command, const string& tunnels,
-                         const string& reverseTunnels) {
+                         const string& reverseTunnels, bool forwardSshAgent) {
   if (console) {
     console->setup();
   }
@@ -119,8 +118,8 @@ void TerminalClient::run(const string& command, const string& tunnels,
       auto pairs = parseRangesToPairs(tunnels);
       for (auto& pair : pairs) {
         PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
+        pfsr.mutable_source()->set_port(pair.first);
+        pfsr.mutable_destination()->set_port(pair.second);
         auto pfsresponse = portForwardHandler->createSource(pfsr);
         if (pfsresponse.has_error()) {
           throw std::runtime_error(pfsresponse.error());
@@ -131,13 +130,29 @@ void TerminalClient::run(const string& command, const string& tunnels,
       auto pairs = parseRangesToPairs(reverseTunnels);
       for (auto& pair : pairs) {
         PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
+        pfsr.mutable_source()->set_port(pair.first);
+        pfsr.mutable_destination()->set_port(pair.second);
 
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
                    protoToString(pfsr)));
       }
+    }
+    if (forwardSshAgent) {
+      PortForwardSourceRequest pfsr;
+      auto authSockEnv = getenv("SSH_AUTH_SOCK");
+      if (!authSockEnv) {
+        cerr << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
+                "ran ssh-agent first?"
+             << endl;
+        exit(1);
+      }
+      string authSock = string(authSockEnv);
+      pfsr.mutable_source()->set_name(authSock);
+      pfsr.set_environmentvariable("SSH_AUTH_SOCK");
+      connection->writePacket(
+          Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
+                 protoToString(pfsr)));
     }
   } catch (const std::runtime_error& ex) {
     cout << "Error establishing port forward: " << ex.what() << endl;

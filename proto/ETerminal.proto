@@ -2,6 +2,8 @@ syntax = "proto2";
 package et;
 option optimize_for = LITE_RUNTIME;
 
+import "ET.proto";
+
 enum TerminalPacketType {
   KEEP_ALIVE = 0;
   TERMINAL_BUFFER = 1;
@@ -27,8 +29,9 @@ message TerminalInfo {
 }
 
 message PortForwardSourceRequest {
-  optional int32 sourceport = 1;
-  optional int32 destinationport = 2;
+  optional SocketEndpoint source = 1;
+  optional SocketEndpoint destination = 2;
+  optional string environmentvariable = 3;
 }
 
 message PortForwardSourceResponse {
@@ -36,7 +39,7 @@ message PortForwardSourceResponse {
 }
 
 message PortForwardDestinationRequest {
-  optional int32 port = 1;
+  optional SocketEndpoint destination = 1;
   optional int32 fd = 2;
 }
 

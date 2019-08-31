@@ -160,7 +160,8 @@ void TerminalServer::runTerminal(
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-  PortForwardHandler portForwardHandler(serverSocketHandler);
+  shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
+  PortForwardHandler portForwardHandler(serverSocketHandler, pipeSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
   shared_ptr<SocketHandler> terminalSocketHandler =

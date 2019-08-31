@@ -262,7 +262,8 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
   string tmpPath = string("/tmp/et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
-  endpoint = SocketEndpoint(pipePath);
+  endpoint = SocketEndpoint();
+  endpoint.set_name(pipePath);
 
   serverConnection.reset(
       new TestServerConnection(serverSocketHandler, endpoint));

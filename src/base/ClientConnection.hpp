@@ -4,7 +4,6 @@
 #include "Headers.hpp"
 
 #include "Connection.hpp"
-#include "SocketEndpoint.hpp"
 
 namespace et {
 extern const int NULL_CLIENT_ID;

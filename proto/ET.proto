@@ -32,3 +32,8 @@ message SequenceHeader {
 message CatchupBuffer {
   repeated bytes buffer = 1;
 }
+
+message SocketEndpoint {
+  optional string name = 1;
+  optional int32 port = 2;
+}

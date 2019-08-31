@@ -1,7 +1,6 @@
 #include "Headers.hpp"
 
 #include "ClientConnection.hpp"
-#include "SocketEndpoint.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {

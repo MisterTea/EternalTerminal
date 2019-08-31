@@ -47,7 +47,8 @@ class FakeConsole : public Console {
     string tmpPath = string("/tmp/et_test_console_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
-    SocketEndpoint endpoint(pipePath);
+    SocketEndpoint endpoint;
+    endpoint.set_name(pipePath);
     {
       lock_guard<recursive_mutex> lock(_mutex);
       serverClientFd = -1;
@@ -141,7 +142,8 @@ class FakeUserTerminal : public UserTerminal {
     string tmpPath = string("/tmp/et_test_userterminal_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
-    SocketEndpoint endpoint(pipePath);
+    SocketEndpoint endpoint;
+    endpoint.set_name(pipePath);
     serverClientFd = -1;
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);

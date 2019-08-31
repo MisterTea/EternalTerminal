@@ -97,6 +97,7 @@ include_directories(
   external/msgpack-c/include
   src/base
   src/terminal
+  src/terminal/forwarding
   src/htm
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -141,9 +142,9 @@ add_library(
   TerminalCommon
   STATIC
 
-  src/terminal/PortForwardHandler.cpp
-  src/terminal/PortForwardSourceHandler.cpp
-  src/terminal/PortForwardDestinationHandler.cpp
+  src/terminal/forwarding/PortForwardHandler.cpp
+  src/terminal/forwarding/ForwardSourceHandler.cpp
+  src/terminal/forwarding/ForwardDestinationHandler.cpp
   src/terminal/TerminalServer.cpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.cpp
