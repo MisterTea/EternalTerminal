@@ -64,7 +64,7 @@ inline std::ostream& operator<<(std::ostream& os,
     os << se.name();
   }
   if (se.has_port()) {
-    os << se.port();
+    os << ":" << se.port();
   }
   return os;
 }
