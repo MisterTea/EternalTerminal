@@ -150,7 +150,9 @@ void TerminalServer::runJumpHost(
 }
 
 void TerminalServer::runTerminal(
-    shared_ptr<ServerClientConnection> serverClientState) {
+    shared_ptr<ServerClientConnection> serverClientState,
+    shared_ptr<PortForwardHandler> portForwardHandler,
+    map<string, string> environmentVariables) {
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -160,12 +162,19 @@ void TerminalServer::runTerminal(
   char b[BUF_SIZE];
 
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-  shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
-  PortForwardHandler portForwardHandler(serverSocketHandler, pipeSocketHandler);
 
   int terminalFd = terminalRouter->getFd(serverClientState->getId());
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
+
+  TermInit termInit;
+  for (auto &it : environmentVariables) {
+    *(termInit.add_environmentnames()) = it.first;
+    *(termInit.add_environmentvalues()) = it.second;
+  }
+  terminalSocketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
 
   while (run) {
     {
@@ -218,7 +227,7 @@ void TerminalServer::runTerminal(
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardHandler.update(&requests, &dataToSend);
+      portForwardHandler->update(&requests, &dataToSend);
       for (auto &pfr : requests) {
         serverClientState->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
@@ -240,14 +249,10 @@ void TerminalServer::runTerminal(
           char packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
               packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            portForwardHandler.handlePacket(packet, serverClientState);
+            portForwardHandler->handlePacket(packet, serverClientState);
             continue;
           }
           switch (packetType) {
@@ -302,7 +307,7 @@ void TerminalServer::runTerminal(
     serverClientState.reset();
     removeClient(id);
   }
-}  // namespace et
+}
 
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
@@ -316,10 +321,35 @@ void TerminalServer::handleConnection(
                << packet.getHeader();
   }
   InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
+  InitialResponse response;
   if (payload.jumphost()) {
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
     runJumpHost(serverClientState);
   } else {
-    runTerminal(serverClientState);
+    shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
+    shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
+    shared_ptr<PortForwardHandler> portForwardHandler(
+        new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
+    map<string, string> environmentVariables;
+    for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
+      PortForwardSourceResponse pfsresponse =
+          portForwardHandler->createSource(pfsr);
+      if (pfsresponse.has_error()) {
+        InitialResponse response;
+        response.set_error(pfsresponse.error());
+        serverClientState->writePacket(Packet(
+            uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+        return;
+      }
+      if (pfsr.has_environmentvariable()) {
+        environmentVariables[pfsr.environmentvariable()] =
+            pfsr.destination().name();
+      }
+    }
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+    runTerminal(serverClientState, portForwardHandler, environmentVariables);
   }
 }
 

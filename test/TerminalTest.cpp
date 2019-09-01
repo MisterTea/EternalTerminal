@@ -101,9 +101,9 @@ void readWriteTest(const string& clientId,
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false));
+      CRYPTO_KEY, fakeConsole, false, "", "", false));
   thread terminalClientThread(
-      [terminalClient]() { terminalClient->run("", "", "", false); });
+      [terminalClient]() { terminalClient->run(""); });
   sleep(3);
 
   string s(1024, '\0');

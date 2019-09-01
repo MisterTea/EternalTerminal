@@ -227,13 +227,12 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
-    TerminalClient terminalClient =
-        TerminalClient(clientSocket, clientPipeSocket, socketEndpoint, id,
-                       passkey, console, is_jumphost);
-    terminalClient.run(
-        result.count("command") ? result["command"].as<string>() : "",
-        result.count("t") ? result["t"].as<string>() : "",
+    TerminalClient terminalClient = TerminalClient(
+        clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
+        is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "", result.count("f"));
+    terminalClient.run(result.count("command") ? result["command"].as<string>()
+                                               : "");
   } catch (cxxopts::OptionException& oe) {
     cout << "Exception: " << oe.what() << "\n" << endl;
     cout << options.help({}) << endl;

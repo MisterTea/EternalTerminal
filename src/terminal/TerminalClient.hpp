@@ -28,14 +28,14 @@ class TerminalClient {
                  std::shared_ptr<SocketHandler> _pipeSocketHandler,
                  const SocketEndpoint& _socketEndpoint, const string& id,
                  const string& passkey, shared_ptr<Console> _console,
-                 bool jumphost);
+                 bool jumphost, const string& tunnels,
+                 const string& reverseTunnels, bool forwardSshAgent);
   virtual ~TerminalClient();
   void setUpTunnel(const string& tunnels);
   void setUpReverseTunnels(const string& reverseTunnels);
   void handleWindowChanged(winsize* win);
   // void handlePfwPacket(char packetType);
-  void run(const string& command, const string& tunnels,
-           const string& reverseTunnels, bool forwardSshAgent);
+  void run(const string& command);
   void shutdown() { shuttingDown = true; }
 
  protected:

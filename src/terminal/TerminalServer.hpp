@@ -52,7 +52,9 @@ class TerminalServer : public ServerConnection {
                  const SocketEndpoint &_routerEndpoint);
   virtual ~TerminalServer();
   void runJumpHost(shared_ptr<ServerClientConnection> serverClientState);
-  void runTerminal(shared_ptr<ServerClientConnection> serverClientState);
+  void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
+                   shared_ptr<PortForwardHandler> portForwardHandler,
+                   map<string, string> environmentVariables);
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 

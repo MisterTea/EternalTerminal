@@ -8,12 +8,11 @@ enum TerminalPacketType {
   KEEP_ALIVE = 0;
   TERMINAL_BUFFER = 1;
   TERMINAL_INFO = 2;
-  PORT_FORWARD_SOURCE_REQUEST = 3;
-  PORT_FORWARD_SOURCE_RESPONSE = 4;
   PORT_FORWARD_DESTINATION_REQUEST = 5;
   PORT_FORWARD_DESTINATION_RESPONSE = 6;
   PORT_FORWARD_DATA = 7;
   IDPASSKEY = 8;
+  TERMINAL_INIT = 9;
 }
 
 message TerminalBuffer {
@@ -59,9 +58,19 @@ message PortForwardData {
 
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
+  repeated PortForwardSourceRequest reversetunnels = 2;
+}
+
+message InitialResponse {
+  optional string error = 1;
 }
 
 message ConfigParams {
   optional int32 vlevel = 1;
   optional int32 minloglevel = 2;
+}
+
+message TermInit {
+  repeated string environmentnames = 1;
+  repeated string environmentvalues = 2;
 }

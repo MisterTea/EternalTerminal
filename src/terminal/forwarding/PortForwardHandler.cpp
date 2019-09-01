@@ -58,12 +58,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
-      if (pfsr.has_environmentvariable()) {
-        if (setenv(pfsr.environmentvariable().c_str(),
-                   pfsr.destination().name().c_str(), 1) == -1) {
-          throw runtime_error(strerror(errno));
-        }
-      }
       return PortForwardSourceResponse();
     }
   } catch (const std::runtime_error& ex) {
@@ -156,29 +150,6 @@ void PortForwardHandler::handlePacket(const Packet& packet,
           VLOG(1) << "Got data for source socket: " << pwd.socketid();
           sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
         }
-      }
-      break;
-    }
-    case TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST: {
-      LOG(INFO) << "Got new port source request";
-      PortForwardSourceRequest pfsr =
-          stringToProto<PortForwardSourceRequest>(packet.getPayload());
-      PortForwardSourceResponse pfsresponse = createSource(pfsr);
-      Packet sendPacket(
-          uint8_t(TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE),
-          protoToString(pfsresponse));
-      connection->writePacket(sendPacket);
-      break;
-    }
-    case TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE: {
-      LOG(INFO) << "Got port source response";
-      PortForwardSourceResponse pfsresponse =
-          stringToProto<PortForwardSourceResponse>(packet.getPayload());
-      if (pfsresponse.has_error()) {
-        cout << "FATAL: A reverse tunnel has failed (probably because someone "
-                "else is already using that port on the destination server"
-             << endl;
-        LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse.error();
       }
       break;
     }
