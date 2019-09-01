@@ -69,6 +69,11 @@ void UserTerminalHandler::run() {
     setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
            true);
   }
+  for (const auto &pipePath : ti.pipepaths()) {
+    // Take ownership of pipes
+    ::chown(pipePath.c_str(), getuid(), getgid());
+    ::chmod(pipePath.c_str(), 700);
+  }
 
   int masterfd = term->setup(routerFd);
   VLOG(1) << "pty opened " << masterfd;

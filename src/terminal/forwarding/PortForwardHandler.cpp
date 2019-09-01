@@ -32,7 +32,7 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 }
 
 PortForwardSourceResponse PortForwardHandler::createSource(
-    const PortForwardSourceRequest& pfsr) {
+    const PortForwardSourceRequest& pfsr, string* sourceName) {
   try {
     if (pfsr.has_source() && !pfsr.source().has_port()) {
       throw runtime_error("Do not set a source when forwarding named pipes");
@@ -44,12 +44,23 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       // Make a random file to forward the pipe
       string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
+      ::chmod(sourceDirectory.c_str(), 0777);
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
+      if (sourceName == nullptr) {
+        LOG(FATAL)
+            << "Tried to create a pipe but without a place to put the name!";
+      }
+      *sourceName = sourcePath;
       LOG(INFO) << "Creating pipe at " << sourcePath;
     }
     if (pfsr.source().has_port()) {
+      if (sourceName != nullptr) {
+        LOG(FATAL) << "Tried to create a port forward but with a place to put "
+                      "the name!";
+      }
+
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           networkSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);

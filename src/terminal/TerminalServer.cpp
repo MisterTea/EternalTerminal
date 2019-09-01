@@ -152,7 +152,8 @@ void TerminalServer::runJumpHost(
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
     shared_ptr<PortForwardHandler> portForwardHandler,
-    map<string, string> environmentVariables) {
+    const map<string, string> &environmentVariables,
+    const vector<string> &pipePaths) {
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -171,6 +172,9 @@ void TerminalServer::runTerminal(
   for (auto &it : environmentVariables) {
     *(termInit.add_environmentnames()) = it.first;
     *(termInit.add_environmentvalues()) = it.second;
+  }
+  for (auto &it : pipePaths) {
+    *(termInit.add_pipepaths()) = it;
   }
   terminalSocketHandler->writePacket(
       terminalFd,
@@ -332,9 +336,11 @@ void TerminalServer::handleConnection(
     shared_ptr<PortForwardHandler> portForwardHandler(
         new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
     map<string, string> environmentVariables;
+    vector<string> pipePaths;
     for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
+      string sourceName;
       PortForwardSourceResponse pfsresponse =
-          portForwardHandler->createSource(pfsr);
+          portForwardHandler->createSource(pfsr, &sourceName);
       if (pfsresponse.has_error()) {
         InitialResponse response;
         response.set_error(pfsresponse.error());
@@ -343,13 +349,13 @@ void TerminalServer::handleConnection(
         return;
       }
       if (pfsr.has_environmentvariable()) {
-        environmentVariables[pfsr.environmentvariable()] =
-            pfsr.destination().name();
+        environmentVariables[pfsr.environmentvariable()] = sourceName;
+        pipePaths.push_back(sourceName);
       }
     }
     serverClientState->writePacket(Packet(
         uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
-    runTerminal(serverClientState, portForwardHandler, environmentVariables);
+    runTerminal(serverClientState, portForwardHandler, environmentVariables, pipePaths);
   }
 }
 

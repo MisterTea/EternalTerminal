@@ -54,7 +54,8 @@ class TerminalServer : public ServerConnection {
   void runJumpHost(shared_ptr<ServerClientConnection> serverClientState);
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
                    shared_ptr<PortForwardHandler> portForwardHandler,
-                   map<string, string> environmentVariables);
+                   const map<string, string> &environmentVariables,
+                   const vector<string> &pipePaths);
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 
