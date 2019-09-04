@@ -200,9 +200,6 @@ void TerminalServer::runTerminal(
     *(termInit.add_environmentnames()) = it.first;
     *(termInit.add_environmentvalues()) = it.second;
   }
-  for (auto &it : pipePaths) {
-    *(termInit.add_pipepaths()) = it;
-  }
   terminalSocketHandler->writePacket(
       terminalFd,
       Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));

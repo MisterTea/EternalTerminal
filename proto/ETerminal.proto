@@ -73,7 +73,6 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
-  repeated string pipepaths = 3;
 }
 
 message TerminalUserInfo {

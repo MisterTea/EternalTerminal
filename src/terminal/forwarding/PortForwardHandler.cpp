@@ -45,7 +45,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       // Make a random file to forward the pipe
       string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
-      FATAL_FAIL(::chmod(sourceDirectory.c_str(), 0700));
+      FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
       string sourcePath = string(sourceDirectory) + "/sock";
 
@@ -73,7 +73,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
-      FATAL_FAIL(::chmod(source.name().c_str(), 0700));
+      FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();

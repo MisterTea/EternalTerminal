@@ -97,7 +97,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
   ::listen(fd, 5);
-  chmod(local.sun_path, 0777);
+  FATAL_FAIL(::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR));
 
   pipeServerSockets[pipePath] = set<int>({fd});
   return pipeServerSockets[pipePath];
