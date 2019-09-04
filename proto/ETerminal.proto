@@ -11,7 +11,7 @@ enum TerminalPacketType {
   PORT_FORWARD_DESTINATION_REQUEST = 5;
   PORT_FORWARD_DESTINATION_RESPONSE = 6;
   PORT_FORWARD_DATA = 7;
-  IDPASSKEY = 8;
+  TERMINAL_USER_INFO = 8;
   TERMINAL_INIT = 9;
 }
 
@@ -74,4 +74,12 @@ message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
   repeated string pipepaths = 3;
+}
+
+message TerminalUserInfo {
+  optional string id = 1;
+  optional string passkey = 2;
+  optional int64 uid = 3;
+  optional int64 gid = 4;
+  optional int64 fd = 5;
 }

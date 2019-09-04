@@ -37,6 +37,14 @@ UserTerminalHandler::UserTerminalHandler(
       routerEndpoint(_routerEndpoint),
       shuttingDown(false) {
   routerFd = socketHandler->connect(routerEndpoint);
+  auto idpasskey_splited = split(idPasskey, '/');
+  string id = idpasskey_splited[0];
+  string passkey = idpasskey_splited[1];
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
@@ -52,7 +60,9 @@ UserTerminalHandler::UserTerminalHandler(
 
   try {
     socketHandler->writePacket(
-        routerFd, Packet(TerminalPacketType::IDPASSKEY, idPasskey));
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Error connecting to router: " << re.what();
   }

@@ -32,7 +32,8 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 }
 
 PortForwardSourceResponse PortForwardHandler::createSource(
-    const PortForwardSourceRequest& pfsr, string* sourceName) {
+    const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
+    gid_t groupid) {
   try {
     if (pfsr.has_source() && !pfsr.source().has_port()) {
       throw runtime_error("Do not set a source when forwarding named pipes");
@@ -44,7 +45,8 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       // Make a random file to forward the pipe
       string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
-      ::chmod(sourceDirectory.c_str(), 0777);
+      FATAL_FAIL(::chmod(sourceDirectory.c_str(), 0700));
+      FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
@@ -60,14 +62,19 @@ PortForwardSourceResponse PortForwardHandler::createSource(
         LOG(FATAL) << "Tried to create a port forward but with a place to put "
                       "the name!";
       }
-
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           networkSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     } else {
+      if (userid < 0 || groupid < 0) {
+        LOG(FATAL)
+            << "Tried to create a unix socket forward with no userid/groupid";
+      }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
+      FATAL_FAIL(::chmod(source.name().c_str(), 0700));
+      FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     }

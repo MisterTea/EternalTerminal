@@ -77,12 +77,16 @@ void TerminalServer::run() {
 
 void TerminalServer::runJumpHost(
     shared_ptr<ServerClientConnection> serverClientState) {
+  InitialResponse response;
+  serverClientState->writePacket(
+      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
   // set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
   bool b[BUF_SIZE];
-  int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  int terminalFd =
+      terminalRouter->getInfoForId(serverClientState->getId()).fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
@@ -151,9 +155,34 @@ void TerminalServer::runJumpHost(
 
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
-    shared_ptr<PortForwardHandler> portForwardHandler,
-    const map<string, string> &environmentVariables,
-    const vector<string> &pipePaths) {
+    const InitialPayload &payload) {
+  auto userInfo = terminalRouter->getInfoForId(serverClientState->getId());
+  InitialResponse response;
+  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
+  shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
+  shared_ptr<PortForwardHandler> portForwardHandler(
+      new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
+  map<string, string> environmentVariables;
+  vector<string> pipePaths;
+  for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
+    string sourceName;
+    PortForwardSourceResponse pfsresponse = portForwardHandler->createSource(
+        pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+    if (pfsresponse.has_error()) {
+      InitialResponse response;
+      response.set_error(pfsresponse.error());
+      serverClientState->writePacket(Packet(
+          uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+      return;
+    }
+    if (pfsr.has_environmentvariable()) {
+      environmentVariables[pfsr.environmentvariable()] = sourceName;
+      pipePaths.push_back(sourceName);
+    }
+  }
+  serverClientState->writePacket(
+      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -162,9 +191,7 @@ void TerminalServer::runTerminal(
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-
-  int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
@@ -325,37 +352,10 @@ void TerminalServer::handleConnection(
                << packet.getHeader();
   }
   InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
-  InitialResponse response;
   if (payload.jumphost()) {
-    serverClientState->writePacket(Packet(
-        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
     runJumpHost(serverClientState);
   } else {
-    shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-    shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
-    shared_ptr<PortForwardHandler> portForwardHandler(
-        new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
-    map<string, string> environmentVariables;
-    vector<string> pipePaths;
-    for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
-      string sourceName;
-      PortForwardSourceResponse pfsresponse =
-          portForwardHandler->createSource(pfsr, &sourceName);
-      if (pfsresponse.has_error()) {
-        InitialResponse response;
-        response.set_error(pfsresponse.error());
-        serverClientState->writePacket(Packet(
-            uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
-        return;
-      }
-      if (pfsr.has_environmentvariable()) {
-        environmentVariables[pfsr.environmentvariable()] = sourceName;
-        pipePaths.push_back(sourceName);
-      }
-    }
-    serverClientState->writePacket(Packet(
-        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
-    runTerminal(serverClientState, portForwardHandler, environmentVariables, pipePaths);
+    runTerminal(serverClientState, payload);
   }
 }
 

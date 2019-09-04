@@ -12,6 +12,11 @@ UserJumphostHandler::UserJumphostHandler(
   auto idpasskey_splited = split(idpasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
 
   routerFd = routerSocketHandler->connect(routerEndpoint);
 
@@ -29,7 +34,8 @@ UserJumphostHandler::UserJumphostHandler(
 
   try {
     routerSocketHandler->writePacket(
-        routerFd, Packet(TerminalPacketType::IDPASSKEY, idpasskey));
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
   }

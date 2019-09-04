@@ -112,22 +112,52 @@ add_library(
   et-lib
   STATIC
 
+  external/easyloggingpp/src/easylogging++.h
   external/easyloggingpp/src/easylogging++.cc
 
+  src/base/BackedReader.hpp
   src/base/BackedReader.cpp
+
+  src/base/BackedWriter.hpp
   src/base/BackedWriter.cpp
+
+  src/base/ClientConnection.hpp
   src/base/ClientConnection.cpp
+
+  src/base/Connection.hpp
   src/base/Connection.cpp
+
+  src/base/CryptoHandler.hpp
   src/base/CryptoHandler.cpp
+
+  src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
+
+  src/base/ServerConnection.hpp
   src/base/ServerConnection.cpp
+
+  src/base/SocketHandler.hpp
   src/base/SocketHandler.cpp
+
+  src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+
+  src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
+
+  src/base/UnixSocketHandler.hpp
   src/base/UnixSocketHandler.cpp
+
+  src/base/LogHandler.hpp
   src/base/LogHandler.cpp
+
+  src/base/DaemonCreator.hpp
   src/base/DaemonCreator.cpp
+
+  src/base/SystemUtils.hpp
   src/base/SystemUtils.cpp
+
+  src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
 
   ${ET_SRCS}
@@ -142,14 +172,31 @@ add_library(
   TerminalCommon
   STATIC
 
+  src/terminal/forwarding/PortForwardHandler.hpp
   src/terminal/forwarding/PortForwardHandler.cpp
+
+  src/terminal/forwarding/ForwardSourceHandler.hpp
   src/terminal/forwarding/ForwardSourceHandler.cpp
+
+  src/terminal/forwarding/ForwardDestinationHandler.hpp
   src/terminal/forwarding/ForwardDestinationHandler.cpp
+
+  src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+
+  src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
+
+  src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+
+  src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
+
+  src/terminal/UserTerminalHandler.hpp
   src/terminal/UserTerminalHandler.cpp
+
+  src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}

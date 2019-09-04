@@ -66,7 +66,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         PortForwardSourceRequest pfsr;
         pfsr.mutable_source()->set_port(pair.first);
         pfsr.mutable_destination()->set_port(pair.second);
-        auto pfsresponse = portForwardHandler->createSource(pfsr, nullptr);
+        auto pfsresponse =
+            portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
           throw std::runtime_error(pfsresponse.error());
         }
