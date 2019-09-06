@@ -1,11 +1,14 @@
 cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 6.0.0)
 
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+FIND_PACKAGE(Sanitizers)
+
 option(CODE_COVERAGE "Enable code coverage" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_HANDLE_SIGABRT")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE")
 IF(CODE_COVERAGE)
   if(UNIX)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
@@ -87,13 +90,14 @@ ELSE()
 ENDIF()
 
 include_directories(
-  external
+  external/easyloggingpp/src
   external/ThreadPool
   external/Catch2/single_include
   external/cxxopts/include
   external/msgpack-c/include
   src/base
   src/terminal
+  src/terminal/forwarding
   src/htm
   ${PROTOBUF_INCLUDE_DIRS}
   ${CMAKE_CURRENT_BINARY_DIR}
@@ -108,22 +112,52 @@ add_library(
   et-lib
   STATIC
 
-  external/easylogging++.cc
+  external/easyloggingpp/src/easylogging++.h
+  external/easyloggingpp/src/easylogging++.cc
 
+  src/base/BackedReader.hpp
   src/base/BackedReader.cpp
+
+  src/base/BackedWriter.hpp
   src/base/BackedWriter.cpp
+
+  src/base/ClientConnection.hpp
   src/base/ClientConnection.cpp
+
+  src/base/Connection.hpp
   src/base/Connection.cpp
+
+  src/base/CryptoHandler.hpp
   src/base/CryptoHandler.cpp
+
+  src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
+
+  src/base/ServerConnection.hpp
   src/base/ServerConnection.cpp
+
+  src/base/SocketHandler.hpp
   src/base/SocketHandler.cpp
+
+  src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+
+  src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
+
+  src/base/UnixSocketHandler.hpp
   src/base/UnixSocketHandler.cpp
+
+  src/base/LogHandler.hpp
   src/base/LogHandler.cpp
+
+  src/base/DaemonCreator.hpp
   src/base/DaemonCreator.cpp
+
+  src/base/SystemUtils.hpp
   src/base/SystemUtils.cpp
+
+  src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
 
   ${ET_SRCS}
@@ -132,19 +166,37 @@ add_dependencies(
   et-lib
   generated-code
   )
+add_sanitizers(et-lib)
 
 add_library(
   TerminalCommon
   STATIC
 
-  src/terminal/PortForwardHandler.cpp
-  src/terminal/PortForwardSourceHandler.cpp
-  src/terminal/PortForwardDestinationHandler.cpp
+  src/terminal/forwarding/PortForwardHandler.hpp
+  src/terminal/forwarding/PortForwardHandler.cpp
+
+  src/terminal/forwarding/ForwardSourceHandler.hpp
+  src/terminal/forwarding/ForwardSourceHandler.cpp
+
+  src/terminal/forwarding/ForwardDestinationHandler.hpp
+  src/terminal/forwarding/ForwardDestinationHandler.cpp
+
+  src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+
+  src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
+
+  src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+
+  src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
+
+  src/terminal/UserTerminalHandler.hpp
   src/terminal/UserTerminalHandler.cpp
+
+  src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
 
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
@@ -153,59 +205,60 @@ add_dependencies(
   TerminalCommon
   generated-code
   )
+add_sanitizers(TerminalCommon)
 
 add_executable (
   etserver
   src/terminal/TerminalServerMain.cpp
   )
-
 target_link_libraries (
   etserver
   LINK_PUBLIC
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(etserver)
 
 add_executable (
   etterminal
   src/terminal/TerminalMain.cpp
   )
-
 target_link_libraries (
   etterminal
   LINK_PUBLIC
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(etterminal)
 
 add_executable (
   et
   src/terminal/TerminalClientMain.cpp
   )
-
 target_link_libraries (
     et
     LINK_PUBLIC
     TerminalCommon
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBRARIES}
+    ${PROTOBUF_LITE_LIBRARIES}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
 )
+add_sanitizers(et)
 
 add_library (
   HtmCommon
@@ -223,13 +276,13 @@ add_dependencies(
   HtmCommon
   generated-code
   )
+add_sanitizers(HtmCommon)
 
 add_executable (
   htm
 
   src/htm/HtmClientMain.cpp
   )
-
 target_link_libraries (
   htm
   LINK_PUBLIC
@@ -237,19 +290,19 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(htm)
 
 add_executable (
   htmd
 
   src/htm/HtmServerMain.cpp
   )
-
 target_link_libraries (
   htmd
   LINK_PUBLIC
@@ -257,12 +310,13 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
+add_sanitizers(htmd)
 
 enable_testing()
 
@@ -273,18 +327,16 @@ add_executable(
   ${TEST_SRCS}
   test/Main.cpp
   )
-
 add_dependencies(
   et-test
   TerminalCommon
   et-lib)
-
 target_link_libraries(
   et-test
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBRARIES}
+  ${PROTOBUF_LITE_LIBRARIES}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -296,6 +348,7 @@ add_test(
   et-test
   et-test
   )
+add_sanitizers(et-test)
 
 install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ

@@ -127,6 +127,8 @@ int UnixSocketHandler::accept(int sockFd) {
     LOG_EVERY_N(100, INFO) << "Waiting for read/write to time out...";
     usleep(1 * 1000);
   }
+
+  lock_guard<std::recursive_mutex> guard(globalMutex);
   VLOG(3) << "Socket " << sockFd
           << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
@@ -157,7 +159,9 @@ void UnixSocketHandler::close(int fd) {
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
   VLOG(1) << "Closing connection: " << fd;
-  FATAL_FAIL(::close(fd));
+  if (fcntl(fd, F_GETFD) != -1) {
+    FATAL_FAIL(::close(fd));
+  }
   activeSocketMutexes.erase(it);
 }
 

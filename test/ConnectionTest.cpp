@@ -109,9 +109,16 @@ class Collector {
   bool done;
 };
 
+recursive_mutex testMutex;
 void listenFn(bool* stopListening, int serverFd,
               shared_ptr<ServerConnection> serverConnection) {
-  while (*stopListening == false) {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> lock(testMutex);
+      if (*stopListening) {
+        break;
+      }
+    }
     if (serverConnection->getSocketHandler()->hasData(serverFd)) {
       serverConnection->acceptNewConnection(serverFd);
     }
@@ -120,6 +127,7 @@ void listenFn(bool* stopListening, int serverFd,
 }
 
 map<string, shared_ptr<ServerClientConnection>> serverClientConnections;
+mutex serverClientConnectionMutex;
 class TestServerConnection : public ServerConnection {
  public:
   TestServerConnection(shared_ptr<SocketHandler> _socketHandler,
@@ -129,6 +137,7 @@ class TestServerConnection : public ServerConnection {
   virtual bool newClient(
       shared_ptr<ServerClientConnection> _serverClientState) {
     string clientId = _serverClientState->getId();
+    lock_guard<mutex> lock(serverClientConnectionMutex);
     if (serverClientConnections.find(clientId) !=
         serverClientConnections.end()) {
       LOG(FATAL) << "TRIED TO CREATE DUPLICATE CLIENT ID";
@@ -160,8 +169,14 @@ void readWriteTest(const string& clientId,
     }
   }
 
-  while (serverClientConnections.find(clientId) ==
-         serverClientConnections.end()) {
+  while (true) {
+    {
+      lock_guard<mutex> lock(serverClientConnectionMutex);
+      if (serverClientConnections.find(clientId) !=
+          serverClientConnections.end()) {
+        break;
+      }
+    }
     ::usleep(1000 * 1000);
   }
   shared_ptr<Collector> serverCollector(
@@ -247,15 +262,17 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
   string tmpPath = string("/tmp/et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
-  endpoint = SocketEndpoint(pipePath);
+  endpoint = SocketEndpoint();
+  endpoint.set_name(pipePath);
 
   serverConnection.reset(
       new TestServerConnection(serverSocketHandler, endpoint));
 
   int serverFd = *(serverSocketHandler->getEndpointFds(endpoint).begin());
-  stopListening = false;
-  serverListenThread.reset(
-      new std::thread(listenFn, &stopListening, serverFd, serverConnection));
+  {
+    lock_guard<recursive_mutex> lock(testMutex);
+    stopListening = false;
+  }
 
   SECTION("ReadWrite") {
     SECTION("Not Flaky") {}
@@ -263,6 +280,8 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
       serverSocketHandler->setFlake(true);
       clientSocketHandler->setFlake(true);
     }
+    serverListenThread.reset(
+        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
     readWriteTest("1234567890123456", clientSocketHandler, serverConnection,
                   endpoint);
   }
@@ -273,10 +292,14 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
       serverSocketHandler->setFlake(true);
       clientSocketHandler->setFlake(true);
     }
+    serverListenThread.reset(
+        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
     multiReadWriteTest(clientSocketHandler, serverConnection, endpoint);
   }
 
   SECTION("InvalidClient") {
+    serverListenThread.reset(
+        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
     for (int a = 0; a < 128; a++) {
       string junk(16 * 1024 * 1024, 't');
       for (int b = 0; b < 16 * 1024 * 1024; b++) {
@@ -290,7 +313,10 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
     }
   }
 
-  stopListening = true;
+  {
+    lock_guard<recursive_mutex> lock(testMutex);
+    stopListening = true;
+  }
   serverListenThread->join();
   serverListenThread.reset();
   serverClientConnections.clear();

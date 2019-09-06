@@ -21,7 +21,7 @@ TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
   REQUIRE(!socketHandler->hasData(fakeConsole->getFd()));
 
   thread t([fakeConsole, s]() { fakeConsole->simulateKeystrokes(s); });
-  usleep(1000);
+  sleep(1);
 
   REQUIRE(socketHandler->hasData(fakeConsole->getFd()));
 
@@ -90,6 +90,7 @@ void readWriteTest(const string& clientId,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
                    shared_ptr<SocketHandler> clientSocketHandler,
+                   shared_ptr<SocketHandler> clientPipeSocketHandler,
                    shared_ptr<FakeConsole> fakeConsole,
                    const SocketEndpoint& routerEndpoint) {
   auto uth = shared_ptr<UserTerminalHandler>(
@@ -99,9 +100,10 @@ void readWriteTest(const string& clientId,
   sleep(1);
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
-      clientSocketHandler, serverEndpoint, clientId, CRYPTO_KEY, fakeConsole));
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
+      CRYPTO_KEY, fakeConsole, false, "", "", false));
   thread terminalClientThread(
-      [terminalClient]() { terminalClient->run("", "", ""); });
+      [terminalClient]() { terminalClient->run(""); });
   sleep(3);
 
   string s(1024, '\0');
@@ -143,6 +145,7 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
 
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
+  shared_ptr<SocketHandler> clientPipeSocketHandler;
 
   SocketEndpoint serverEndpoint;
 
@@ -153,6 +156,7 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
 
   srand(1);
   clientSocketHandler.reset(new PipeSocketHandler());
+  clientPipeSocketHandler.reset(new PipeSocketHandler());
   serverSocketHandler.reset(new PipeSocketHandler());
   routerSocketHandler.reset(new PipeSocketHandler());
   el::Helpers::setThreadName("Main");
@@ -167,20 +171,20 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
 
   string routerPipePath = string(pipeDirectory) + "/pipe_router";
-  auto routerEndpoint = SocketEndpoint(routerPipePath);
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(routerPipePath);
 
   string serverPipePath = string(pipeDirectory) + "/pipe_server";
-  serverEndpoint = SocketEndpoint(serverPipePath);
+  serverEndpoint.set_name(serverPipePath);
 
-  auto server = shared_ptr<TerminalServer>(new TerminalServer(serverSocketHandler, serverEndpoint,
-                          routerSocketHandler, routerEndpoint));
-  thread t_server([server]() {
-    server->run();
-  });
+  auto server = shared_ptr<TerminalServer>(
+      new TerminalServer(serverSocketHandler, serverEndpoint,
+                         routerSocketHandler, routerEndpoint));
+  thread t_server([server]() { server->run(); });
   sleep(1);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
-                serverEndpoint, clientSocketHandler, fakeConsole,
+                serverEndpoint, clientSocketHandler, clientPipeSocketHandler, fakeConsole,
                 routerEndpoint);
   server->shutdown();
   t_server.join();
@@ -189,6 +193,7 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   userTerminalSocketHandler.reset();
   serverSocketHandler.reset();
   clientSocketHandler.reset();
+  clientPipeSocketHandler.reset();
   routerSocketHandler.reset();
   FATAL_FAIL(::remove(routerPipePath.c_str()));
   FATAL_FAIL(::remove(serverPipePath.c_str()));

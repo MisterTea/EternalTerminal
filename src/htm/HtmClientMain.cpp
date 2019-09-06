@@ -6,7 +6,6 @@
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
 #include "RawSocketUtils.hpp"
-#include "SocketEndpoint.hpp"
 
 using namespace et;
 
@@ -86,7 +85,7 @@ int main(int argc, char** argv) {
 
   if (pgrepOutput.length() == 0) {
     // Fork to create the daemon
-    int result = DaemonCreator::create(false);
+    int result = DaemonCreator::create(false, "");
     if (result == DaemonCreator::CHILD) {
       // This means we are the daemon
       exit(system("htmd"));
@@ -96,7 +95,9 @@ int main(int argc, char** argv) {
   // This means we are the client to the daemon
   usleep(10 * 1000);  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
-  HtmClient htmClient(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
+  SocketEndpoint pipeEndpoint;
+  pipeEndpoint.set_name(HtmServer::getPipeName());
+  HtmClient htmClient(socketHandler, pipeEndpoint);
   htmClient.run();
 
   char buf[] = {

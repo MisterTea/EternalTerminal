@@ -20,7 +20,13 @@ class BackedCollector {
   ~BackedCollector() { finish(); }
 
   void run() {
-    while (!done) {
+    while (true) {
+      {
+        lock_guard<std::mutex> guard(collectorMutex);
+        if (done) {
+          break;
+        }
+      }
       Packet packet;
       if (reader->read(&packet) > 0) {
         lock_guard<std::mutex> guard(collectorMutex);
@@ -54,7 +60,10 @@ class BackedCollector {
   }
 
   void finish() {
-    done = true;
+    {
+      lock_guard<std::mutex> guard(collectorMutex);
+      done = true;
+    }
     collectorThread.join();
   }
 
@@ -104,7 +113,8 @@ TEST_CASE("BackedTest", "[BackedTest]") {
   string tmpPath = string("/tmp/et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
-  SocketEndpoint endpoint(pipePath);
+  SocketEndpoint endpoint;
+  endpoint.set_name(pipePath);
   int serverClientFd = -1;
   std::thread serverListenThread(listenFn, serverSocketHandler, endpoint,
                                  &serverClientFd);

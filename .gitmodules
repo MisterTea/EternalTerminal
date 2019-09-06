@@ -10,3 +10,9 @@
 [submodule "external/ThreadPool"]
 	path = external/ThreadPool
 	url = https://github.com/progschj/ThreadPool.git
+[submodule "external/easyloggingpp"]
+	path = external/easyloggingpp
+	url = https://github.com/zuhd-org/easyloggingpp.git
+[submodule "external/sanitizers-cmake"]
+	path = external/sanitizers-cmake
+	url = git://github.com/arsenm/sanitizers-cmake.git

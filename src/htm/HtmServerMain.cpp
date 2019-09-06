@@ -26,7 +26,9 @@ int main(int argc, char **argv) {
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
-  HtmServer htm(socketHandler, SocketEndpoint(HtmServer::getPipeName()));
+  SocketEndpoint endpoint;
+  endpoint.set_name(HtmServer::getPipeName());
+  HtmServer htm(socketHandler, endpoint);
   htm.run();
   LOG(INFO) << "Server is shutting down";
 

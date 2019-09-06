@@ -3,7 +3,7 @@
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
-    : socketHandler(_socketHandler), id(_id), key(_key), shuttingDown(false) {}
+    : socketHandler(_socketHandler), id(_id), key(_key), socketFd(-1), shuttingDown(false) {}
 
 Connection::~Connection() {
   if (!shuttingDown) {
@@ -18,6 +18,7 @@ Connection::~Connection() {
 inline bool isSkippableError(int err_no) {
   return (err_no == EAGAIN || err_no == ECONNRESET || err_no == ETIMEDOUT ||
           err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
+          err_no == ENOTCONN ||
           err_no == EBADF  // Bad file descriptor can happen when
                            // there's a race condition between a thread
                            // closing a connection and one
@@ -37,18 +38,30 @@ bool Connection::readPacket(Packet* packet) {
 }
 
 void Connection::writePacket(const Packet& packet) {
-  while (!shuttingDown) {
+  while (true) {
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     bool success = write(packet);
     if (success) {
       return;
     }
+    bool hasConnection;
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      hasConnection = (socketFd != -1);
+    }
+
     // Yield the processor
-    if (socketFd == -1) {
-      // No connection, sleep for 100ms
-      usleep(100 * 1000);
-    } else {
+    if (hasConnection) {
       // Have a connection, sleep for 1ms
       usleep(1 * 1000);
+    } else {
+      // No connection, sleep for 100ms
+      usleep(100 * 1000);
     }
     LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }
@@ -106,7 +119,10 @@ bool Connection::recover(int newSocketFd) {
     et::CatchupBuffer catchupBuffer =
         socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
-    socketFd = newSocketFd;
+    {
+      lock_guard<std::recursive_mutex> guard(connectionMutex);
+      socketFd = newSocketFd;
+    }
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
                                      catchupBuffer.buffer().end());
 
@@ -122,6 +138,7 @@ bool Connection::recover(int newSocketFd) {
 }
 
 void Connection::shutdown() {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   LOG(INFO) << "Shutting down connection";
   shuttingDown = true;
   closeSocket();

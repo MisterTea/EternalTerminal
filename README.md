@@ -24,10 +24,9 @@ For Ubuntu, use our PPA:
 
 Install and build from source:
 ```
-sudo apt install libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake wget unzip
-wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
-unzip master.zip
-cd EternalTerminal-master
+sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
 mkdir build
 cd build
 cmake ../
@@ -54,14 +53,13 @@ Install dependencies:
 sudo yum -y install epel-release
 sudo yum install cmake3
 sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-protobuf-compiler cmake gflags-devel wget unzip
+protobuf-compiler cmake gflags-devel
 ```
 
 Download and install from source:
 ```
-wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
-unzip master.zip
-cd EternalTerminal-master
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
 mkdir build
 cd build
 cmake3 ../
@@ -71,11 +69,11 @@ sudo cp ../etc/et.cfg /etc/
 ```
 Find the actual location of et:
 
-	which etserver	
+	which etserver
 
 Correct the service file:
 Open up /etc/systemd/system/et.service in an editor.
-Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)). 
+Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)).
 
 	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
 
@@ -85,12 +83,17 @@ Start the et service:
 sudo systemctl enable et.service
 sudo systemctl start et.service
 ```
-	
+
 
 ### FreeBSD
 On FreeBSD, use:
 
 	pkg install eternalterminal
+
+### Fedora (version 29 and later):
+```
+sudo dnf install et
+```
 
 ### Other Linux
 
@@ -99,19 +102,17 @@ Install dependencies:
 * Fedora (tested on 25):
 
       sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-	protobuf-compiler cmake gflags-devel wget unzip
+	protobuf-compiler cmake gflags-devel
 
 * Gentoo:
 
       sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
-	dev-libs/protobuf dev-util/cmake dev-cpp/gflags \
-	net-misc/wget app-arch/unzip
+	dev-libs/protobuf dev-util/cmake dev-cpp/gflags
 
 Download and install from source:
 
-	wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
-	unzip master.zip
-	cd EternalTerminal-master
+	git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+	cd EternalTerminal
 	mkdir build
 	cd build
 	cmake ../
@@ -187,12 +188,26 @@ cmake ../
 make
 ```
 
-### Debian/Ubuntu
+### Debian/Ubuntu/CentOS
 
 Grab the deps and then follow this process:
 
+Debian/Ubuntu Dependencies:
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
+```
+
+CentOS/RHEL Dependencies:
+```
+sudo yum -y install epel-release
+sudo yum install cmake3
+sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+  protobuf-compiler cmake gflags-devel
+```
+
+Source and setup:
+
+```
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build

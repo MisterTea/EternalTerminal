@@ -4,7 +4,6 @@
 #include "Headers.hpp"
 
 #include "ServerClientConnection.hpp"
-#include "SocketEndpoint.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -26,6 +25,7 @@ class ServerConnection {
   }
 
   inline bool clientConnectionExists(const string& clientId) {
+    lock_guard<std::recursive_mutex> guard(classMutex);
     return clientConnections.find(clientId) != clientConnections.end();
   }
 
@@ -61,7 +61,6 @@ class ServerConnection {
  protected:
   shared_ptr<SocketHandler> socketHandler;
   SocketEndpoint serverEndpoint;
-  bool stop;
   std::unordered_map<string, string> clientKeys;
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;

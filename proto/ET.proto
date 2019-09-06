@@ -1,10 +1,12 @@
 syntax = "proto2";
 package et;
+option optimize_for = LITE_RUNTIME;
 
 enum EtPacketType {
   // Count down from 254 to avoid collisions
   HEARTBEAT = 254;
   INITIAL_PAYLOAD = 253;
+  INITIAL_RESPONSE = 252;
 }
 
 message ConnectRequest {
@@ -24,10 +26,11 @@ message ConnectResponse {
   optional string error = 2;
 }
 
-message SequenceHeader {
-  optional int32 sequenceNumber = 1;
-}
+message SequenceHeader { optional int32 sequenceNumber = 1; }
 
-message CatchupBuffer {
-  repeated bytes buffer = 1;
+message CatchupBuffer { repeated bytes buffer = 1; }
+
+message SocketEndpoint {
+  optional string name = 1;
+  optional int32 port = 2;
 }

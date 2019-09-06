@@ -121,6 +121,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 }
 
 bool ServerConnection::removeClient(const string& id) {
+  lock_guard<std::recursive_mutex> guard(classMutex);
   if (clientKeys.find(id) == clientKeys.end()) {
     return false;
   }

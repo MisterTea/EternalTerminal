@@ -9,7 +9,11 @@
 namespace et {
 class PsuedoTerminalConsole : public Console {
  public:
-  PsuedoTerminalConsole() {}
+  PsuedoTerminalConsole() {
+    termios terminal_local;
+    tcgetattr(0, &terminal_local);
+    memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
+  }
 
   virtual ~PsuedoTerminalConsole() {}
 

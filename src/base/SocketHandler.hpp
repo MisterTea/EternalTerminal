@@ -4,7 +4,6 @@
 #include "Headers.hpp"
 
 #include "Packet.hpp"
-#include "SocketEndpoint.hpp"
 
 namespace et {
 class SocketHandler {
@@ -45,12 +44,12 @@ class SocketHandler {
   inline void writeProto(int fd, const T& t, bool timeout) {
     string s;
     if (!t.SerializeToString(&s)) {
-      LOG(FATAL) << "Serialization of " << t.DebugString() << " failed!";
+      LOG(FATAL) << "Serialization of " << t.GetTypeName() << " failed!";
     }
     int64_t length = s.length();
     if (length < 0 || length > 128 * 1024 * 1024) {
       LOG(FATAL) << "Invalid proto length: " << length << " For proto "
-                 << t.DebugString();
+                 << t.GetTypeName();
     }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     if (length > 0) {
@@ -88,7 +87,7 @@ class SocketHandler {
   }
 
   inline void writeB64(int fd, const char* buf, size_t count) {
-    int encodedLength = base64::Base64::EncodedLength(count);
+    size_t encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     if (!base64::Base64::Encode(buf, count, &s[0], s.length())) {
       throw runtime_error("b64 decode failed");
@@ -97,7 +96,7 @@ class SocketHandler {
   }
 
   inline void readB64(int fd, char* buf, size_t count) {
-    int encodedLength = base64::Base64::EncodedLength(count);
+    size_t encodedLength = base64::Base64::EncodedLength(count);
     string s(encodedLength, '\0');
     readAll(fd, &s[0], s.length(), false);
     if (!base64::Base64::Decode((const char*)&s[0], s.length(), buf, count)) {

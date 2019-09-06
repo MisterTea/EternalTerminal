@@ -25,8 +25,8 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
 #else
   hints.ai_flags = (AI_CANONNAME | AI_V4MAPPED | AI_ADDRCONFIG | AI_ALL);
 #endif
-  std::string portname = std::to_string(endpoint.getPort());
-  std::string hostname = endpoint.getName();
+  std::string portname = std::to_string(endpoint.port());
+  std::string hostname = endpoint.name();
 
   // (re)initialize the DNS system
   ::res_init();
@@ -140,7 +140,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
 set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  int port = endpoint.getPort();
+  int port = endpoint.port();
   if (portServerSockets.find(port) != portServerSockets.end()) {
     LOG(FATAL) << "Tried to listen twice on the same port";
   }
@@ -219,7 +219,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  int port = endpoint.getPort();
+  int port = endpoint.port();
   if (portServerSockets.find(port) == portServerSockets.end()) {
     LOG(FATAL)
         << "Tried to getEndpointFds on a port without calling listen() first";
@@ -230,7 +230,7 @@ set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
 void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   lock_guard<std::recursive_mutex> guard(mutex);
 
-  int port = endpoint.getPort();
+  int port = endpoint.port();
   auto it = portServerSockets.find(port);
   if (it == portServerSockets.end()) {
     LOG(FATAL)

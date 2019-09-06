@@ -58,7 +58,7 @@ class PsuedoUserTerminal : public UserTerminal {
     string terminal = string(::getenv("SHELL"));
     VLOG(1) << "Child process launching terminal " << terminal;
     setenv("ET_VERSION", ET_VERSION, 1);
-    execl(terminal.c_str(), terminal.c_str(), "--login", NULL);
+    FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "--login", NULL));
   }
 
   virtual void cleanup() {

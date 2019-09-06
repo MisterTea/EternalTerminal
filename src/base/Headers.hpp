@@ -55,8 +55,20 @@
 #include <unordered_set>
 #include <vector>
 
-#include <google/protobuf/message.h>
+#include <google/protobuf/message_lite.h>
 #include "ET.pb.h"
+#include "ETerminal.pb.h"
+inline std::ostream& operator<<(std::ostream& os,
+                                const et::SocketEndpoint& se) {
+  if (se.has_name()) {
+    os << se.name();
+  }
+  if (se.has_port()) {
+    os << ":" << se.port();
+  }
+  return os;
+}
+
 #include "easylogging++.h"
 
 #include <cxxopts.hpp>
