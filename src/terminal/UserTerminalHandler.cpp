@@ -37,6 +37,14 @@ UserTerminalHandler::UserTerminalHandler(
       routerEndpoint(_routerEndpoint),
       shuttingDown(false) {
   routerFd = socketHandler->connect(routerEndpoint);
+  auto idpasskey_splited = split(idPasskey, '/');
+  string id = idpasskey_splited[0];
+  string passkey = idpasskey_splited[1];
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
@@ -52,13 +60,26 @@ UserTerminalHandler::UserTerminalHandler(
 
   try {
     socketHandler->writePacket(
-        routerFd, Packet(TerminalPacketType::IDPASSKEY, idPasskey));
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+
   } catch (const std::runtime_error &re) {
     LOG(FATAL) << "Error connecting to router: " << re.what();
   }
 }
 
 void UserTerminalHandler::run() {
+  Packet termInitPacket = socketHandler->readPacket(routerFd);
+  if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
+    LOG(FATAL) << "Invalid terminal init packet header: "
+               << termInitPacket.getHeader();
+  }
+  TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
+  for (int a = 0; a < ti.environmentnames_size(); a++) {
+    setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+           true);
+  }
+
   int masterfd = term->setup(routerFd);
   VLOG(1) << "pty opened " << masterfd;
   runUserTerminal(masterfd);

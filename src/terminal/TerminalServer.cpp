@@ -77,12 +77,16 @@ void TerminalServer::run() {
 
 void TerminalServer::runJumpHost(
     shared_ptr<ServerClientConnection> serverClientState) {
+  InitialResponse response;
+  serverClientState->writePacket(
+      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
   // set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
   bool b[BUF_SIZE];
-  int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  int terminalFd =
+      terminalRouter->getInfoForId(serverClientState->getId()).fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
@@ -150,7 +154,35 @@ void TerminalServer::runJumpHost(
 }
 
 void TerminalServer::runTerminal(
-    shared_ptr<ServerClientConnection> serverClientState) {
+    shared_ptr<ServerClientConnection> serverClientState,
+    const InitialPayload &payload) {
+  auto userInfo = terminalRouter->getInfoForId(serverClientState->getId());
+  InitialResponse response;
+  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
+  shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
+  shared_ptr<PortForwardHandler> portForwardHandler(
+      new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
+  map<string, string> environmentVariables;
+  vector<string> pipePaths;
+  for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
+    string sourceName;
+    PortForwardSourceResponse pfsresponse = portForwardHandler->createSource(
+        pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+    if (pfsresponse.has_error()) {
+      InitialResponse response;
+      response.set_error(pfsresponse.error());
+      serverClientState->writePacket(Packet(
+          uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+      return;
+    }
+    if (pfsr.has_environmentvariable()) {
+      environmentVariables[pfsr.environmentvariable()] = sourceName;
+      pipePaths.push_back(sourceName);
+    }
+  }
+  serverClientState->writePacket(
+      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
@@ -159,12 +191,18 @@ void TerminalServer::runTerminal(
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
 
-  shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
-  PortForwardHandler portForwardHandler(serverSocketHandler);
-
-  int terminalFd = terminalRouter->getFd(serverClientState->getId());
+  int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
+
+  TermInit termInit;
+  for (auto &it : environmentVariables) {
+    *(termInit.add_environmentnames()) = it.first;
+    *(termInit.add_environmentvalues()) = it.second;
+  }
+  terminalSocketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
 
   while (run) {
     {
@@ -217,7 +255,7 @@ void TerminalServer::runTerminal(
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-      portForwardHandler.update(&requests, &dataToSend);
+      portForwardHandler->update(&requests, &dataToSend);
       for (auto &pfr : requests) {
         serverClientState->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
@@ -239,14 +277,10 @@ void TerminalServer::runTerminal(
           char packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
               packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE ||
-              packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            portForwardHandler.handlePacket(packet, serverClientState);
+            portForwardHandler->handlePacket(packet, serverClientState);
             continue;
           }
           switch (packetType) {
@@ -301,7 +335,7 @@ void TerminalServer::runTerminal(
     serverClientState.reset();
     removeClient(id);
   }
-}  // namespace et
+}
 
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
@@ -318,7 +352,7 @@ void TerminalServer::handleConnection(
   if (payload.jumphost()) {
     runJumpHost(serverClientState);
   } else {
-    runTerminal(serverClientState);
+    runTerminal(serverClientState, payload);
   }
 }
 

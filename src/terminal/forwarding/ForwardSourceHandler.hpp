@@ -1,16 +1,16 @@
-#ifndef __PORT_FORWARD_SOURCE_LISTENER_H__
-#define __PORT_FORWARD_SOURCE_LISTENER_H__
+#ifndef __FORWARD_SOURCE_HANDLER_H__
+#define __FORWARD_SOURCE_HANDLER_H__
 
 #include "Headers.hpp"
 
-#include "ETerminal.pb.h"
 #include "SocketHandler.hpp"
 
 namespace et {
-class PortForwardSourceHandler {
+class ForwardSourceHandler {
  public:
-  PortForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
-                           int _sourcePort, int _destinationPort);
+  ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
+                       const SocketEndpoint& _source,
+                       const SocketEndpoint& _destination);
 
   int listen();
 
@@ -26,15 +26,15 @@ class PortForwardSourceHandler {
 
   void sendDataOnSocket(int socketId, const string& data);
 
-  inline int getDestinationPort() { return destinationPort; }
+  inline SocketEndpoint getDestination() { return destination; }
 
  protected:
   shared_ptr<SocketHandler> socketHandler;
-  int sourcePort;
-  int destinationPort;
+  SocketEndpoint source;
+  SocketEndpoint destination;
   unordered_set<int> unassignedFds;
   unordered_map<int, int> socketFdMap;
 };
 }  // namespace et
 
-#endif  // __PORT_FORWARD_SOURCE_LISTENER_H__
+#endif  // __FORWARD_SOURCE_HANDLER_H__

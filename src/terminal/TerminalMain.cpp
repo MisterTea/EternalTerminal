@@ -134,12 +134,15 @@ int main(int argc, char** argv) {
       if (DaemonCreator::createSessionLeader() == -1) {
         LOG(FATAL) << "Error creating daemon: " << strerror(errno);
       }
+      SocketEndpoint routerFifoEndpoint;
+      routerFifoEndpoint.set_name(ROUTER_FIFO_NAME);
+      SocketEndpoint destinationEndpoint;
+      destinationEndpoint.set_name(result["dsthost"].as<string>());
+      destinationEndpoint.set_port(result["dstport"].as<int>());
       shared_ptr<SocketHandler> jumpClientSocketHandler(new TcpSocketHandler());
       UserJumphostHandler ujh(jumpClientSocketHandler, idpasskey,
-                              SocketEndpoint(result["dsthost"].as<string>(),
-                                             result["dstport"].as<int>()),
-                              ipcSocketHandler,
-                              SocketEndpoint(ROUTER_FIFO_NAME));
+                              destinationEndpoint, ipcSocketHandler,
+                              routerFifoEndpoint);
       ujh.run();
 
       // Uninstall log rotation callback
@@ -160,8 +163,10 @@ int main(int argc, char** argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    UserTerminalHandler uth(ipcSocketHandler, term, true,
-                            SocketEndpoint(ROUTER_FIFO_NAME), idpasskey);
+    SocketEndpoint routerEndpoint;
+    routerEndpoint.set_name(ROUTER_FIFO_NAME);
+    UserTerminalHandler uth(ipcSocketHandler, term, true, routerEndpoint,
+                            idpasskey);
     cout << "IDPASSKEY:" << idpasskey << endl;
     if (DaemonCreator::createSessionLeader() == -1) {
       LOG(FATAL) << "Error creating daemon: " << strerror(errno);

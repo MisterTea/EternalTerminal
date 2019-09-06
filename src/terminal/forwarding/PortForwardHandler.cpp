@@ -1,8 +1,11 @@
 #include "PortForwardHandler.hpp"
 
 namespace et {
-PortForwardHandler::PortForwardHandler(shared_ptr<SocketHandler> _socketHandler)
-    : socketHandler(_socketHandler) {}
+PortForwardHandler::PortForwardHandler(
+    shared_ptr<SocketHandler> _networkSocketHandler,
+    shared_ptr<SocketHandler> _pipeSocketHandler)
+    : networkSocketHandler(_networkSocketHandler),
+      pipeSocketHandler(_pipeSocketHandler) {}
 
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend) {
@@ -11,7 +14,7 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     int fd = it->listen();
     if (fd >= 0) {
       PortForwardDestinationRequest pfr;
-      pfr.set_port(it->getDestinationPort());
+      *(pfr.mutable_destination()) = it->getDestination();
       pfr.set_fd(fd);
       requests->push_back(pfr);
     }
@@ -29,13 +32,52 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 }
 
 PortForwardSourceResponse PortForwardHandler::createSource(
-    const PortForwardSourceRequest& pfsr) {
+    const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
+    gid_t groupid) {
   try {
-    auto handler =
-        shared_ptr<PortForwardSourceHandler>(new PortForwardSourceHandler(
-            socketHandler, pfsr.sourceport(), pfsr.destinationport()));
-    sourceHandlers.push_back(handler);
-    return PortForwardSourceResponse();
+    if (pfsr.has_source() && !pfsr.source().has_port()) {
+      throw runtime_error("Do not set a source when forwarding named pipes");
+    }
+    SocketEndpoint source;
+    if (pfsr.has_source()) {
+      source = pfsr.source();
+    } else {
+      // Make a random file to forward the pipe
+      string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
+      string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
+      FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
+      FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
+      string sourcePath = string(sourceDirectory) + "/sock";
+
+      source.set_name(sourcePath);
+      if (sourceName == nullptr) {
+        LOG(FATAL)
+            << "Tried to create a pipe but without a place to put the name!";
+      }
+      *sourceName = sourcePath;
+      LOG(INFO) << "Creating pipe at " << sourcePath;
+    }
+    if (pfsr.source().has_port()) {
+      if (sourceName != nullptr) {
+        LOG(FATAL) << "Tried to create a port forward but with a place to put "
+                      "the name!";
+      }
+      auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+          networkSocketHandler, source, pfsr.destination()));
+      sourceHandlers.push_back(handler);
+      return PortForwardSourceResponse();
+    } else {
+      if (userid < 0 || groupid < 0) {
+        LOG(FATAL)
+            << "Tried to create a unix socket forward with no userid/groupid";
+      }
+      auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+          pipeSocketHandler, source, pfsr.destination()));
+      FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
+      FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+      sourceHandlers.push_back(handler);
+      return PortForwardSourceResponse();
+    }
   } catch (const std::runtime_error& ex) {
     PortForwardSourceResponse pfsr;
     pfsr.set_error(ex.what());
@@ -45,11 +87,24 @@ PortForwardSourceResponse PortForwardHandler::createSource(
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
-  // Try ipv6 first
-  int fd = socketHandler->connect(SocketEndpoint("::1", pfdr.port()));
-  if (fd == -1) {
-    // Try ipv4 next
-    fd = socketHandler->connect(SocketEndpoint("127.0.0.1", pfdr.port()));
+  int fd = -1;
+  bool isTcp = pfdr.destination().has_port();
+  if (pfdr.destination().has_port()) {
+    // Try ipv6 first
+    SocketEndpoint ipv6Localhost;
+    ipv6Localhost.set_name("::1");
+    ipv6Localhost.set_port(pfdr.destination().port());
+
+    fd = networkSocketHandler->connect(ipv6Localhost);
+    if (fd == -1) {
+      SocketEndpoint ipv4Localhost;
+      ipv4Localhost.set_name("127.0.0.1");
+      ipv4Localhost.set_port(pfdr.destination().port());
+      // Try ipv4 next
+      fd = networkSocketHandler->connect(ipv4Localhost);
+    }
+  } else {
+    fd = pipeSocketHandler->connect(pfdr.destination());
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
@@ -68,8 +123,9 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     }
     if (!pfdresponse.has_error()) {
       LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
-      destinationHandlers[socketId] = shared_ptr<PortForwardDestinationHandler>(
-          new PortForwardDestinationHandler(socketHandler, fd, socketId));
+      destinationHandlers[socketId] =
+          shared_ptr<ForwardDestinationHandler>(new ForwardDestinationHandler(
+              isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId));
       pfdresponse.set_socketid(socketId);
     }
   }
@@ -115,33 +171,11 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       }
       break;
     }
-    case TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST: {
-      LOG(INFO) << "Got new port source request";
-      PortForwardSourceRequest pfsr =
-          stringToProto<PortForwardSourceRequest>(packet.getPayload());
-      PortForwardSourceResponse pfsresponse = createSource(pfsr);
-      Packet sendPacket(
-          uint8_t(TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE),
-          protoToString(pfsresponse));
-      connection->writePacket(sendPacket);
-      break;
-    }
-    case TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE: {
-      LOG(INFO) << "Got port source response";
-      PortForwardSourceResponse pfsresponse =
-          stringToProto<PortForwardSourceResponse>(packet.getPayload());
-      if (pfsresponse.has_error()) {
-        cout << "FATAL: A reverse tunnel has failed (probably because someone "
-                "else is already using that port on the destination server"
-             << endl;
-        LOG(FATAL) << "Reverse tunnel request failed: " << pfsresponse.error();
-      }
-      break;
-    }
     case TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST: {
       PortForwardDestinationRequest pfdr =
           stringToProto<PortForwardDestinationRequest>(packet.getPayload());
-      LOG(INFO) << "Got new port destination request for port " << pfdr.port();
+      LOG(INFO) << "Got new port destination request for "
+                << pfdr.destination();
       PortForwardDestinationResponse pfdresponse = createDestination(pfdr);
       Packet sendPacket(
           uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),

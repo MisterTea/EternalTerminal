@@ -21,12 +21,13 @@ int main(int argc, char **argv) {
         ("version", "Print version")  //
         ("port", "Port to listen on",
          cxxopts::value<int>()->default_value("0"))  //
-        ("daemon", "Daemonize the server")              //
+        ("daemon", "Daemonize the server")           //
         ("cfgfile", "Location of the config file",
          cxxopts::value<std::string>()->default_value(""))  //
-        ("logtostdout", "log to stdout")                       //
+        ("logtostdout", "log to stdout")                    //
         ("pidfile", "Location of the pid file",
-         cxxopts::value<std::string>()->default_value("/var/run/etserver.pid"))  //
+         cxxopts::value<std::string>()->default_value(
+             "/var/run/etserver.pid"))  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"), "LEVEL")  //
         ;
@@ -114,16 +115,20 @@ int main(int argc, char **argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
     std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
-    std::shared_ptr<PipeSocketHandler> pipeSocketHandler(new PipeSocketHandler());
+    std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
+        new PipeSocketHandler());
 
     LOG(INFO) << "In child, about to start server.";
 
-    TerminalServer terminalServer(tcpSocketHandler, SocketEndpoint(port),
-                                  pipeSocketHandler,
-                                  SocketEndpoint(ROUTER_FIFO_NAME));
+    SocketEndpoint serverEndpoint;
+    serverEndpoint.set_port(port);
+    SocketEndpoint routerFifo;
+    routerFifo.set_name(ROUTER_FIFO_NAME);
+    TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
+                                  pipeSocketHandler, routerFifo);
     terminalServer.run();
 
-  } catch (cxxopts::OptionException& oe) {
+  } catch (cxxopts::OptionException &oe) {
     cout << "Exception: " << oe.what() << "\n" << endl;
     cout << options.help({}) << endl;
     exit(1);

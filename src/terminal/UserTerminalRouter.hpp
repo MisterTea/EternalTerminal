@@ -15,14 +15,14 @@ class UserTerminalRouter {
                      const SocketEndpoint& _routerEndpoint);
   inline int getServerFd() { return serverFd; }
   IdKeyPair acceptNewConnection();
-  int getFd(const string& id);
+  TerminalUserInfo getInfoForId(const string& id);
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;
   }
 
  protected:
   int serverFd;
-  unordered_map<string, int> idFdMap;
+  unordered_map<string, TerminalUserInfo> idInfoMap;
   shared_ptr<PipeSocketHandler> socketHandler;
 };
 }  // namespace et

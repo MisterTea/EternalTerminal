@@ -1,6 +1,7 @@
 #include "TerminalClient.hpp"
 
 #include "ParseConfigFile.hpp"
+#include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
 
 using namespace et;
@@ -55,10 +56,11 @@ int main(int argc, char** argv) {
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("v,verbose", "Enable verbose logging",
-         cxxopts::value<int>()->default_value("0"))    //
-        ("logtostdout", "Write log to stdout")         //
-        ("silent", "Disable logging")                  //
-        ("N,no-terminal", "Do not create a terminal")  //
+         cxxopts::value<int>()->default_value("0"))          //
+        ("logtostdout", "Write log to stdout")               //
+        ("silent", "Disable logging")                        //
+        ("N,no-terminal", "Do not create a terminal")        //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ;
 
     options.parse_positional({"host", "positional"});
@@ -188,8 +190,11 @@ int main(int argc, char** argv) {
       port = result["jport"].as<int>();
       LOG(INFO) << "Setting port to jumphost port";
     }
-    SocketEndpoint socketEndpoint = SocketEndpoint(host, port, is_jumphost);
+    SocketEndpoint socketEndpoint;
+    socketEndpoint.set_name(host);
+    socketEndpoint.set_port(port);
     shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
+    shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
     if (!ping(socketEndpoint, clientSocket)) {
       cout << "Could not reach the ET server: " << host << ":" << port << endl;
@@ -222,12 +227,12 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
-    TerminalClient terminalClient =
-        TerminalClient(clientSocket, socketEndpoint, id, passkey, console);
-    terminalClient.run(
-        result.count("command") ? result["command"].as<string>() : "",
-        result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "");
+    TerminalClient terminalClient = TerminalClient(
+        clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
+        is_jumphost, result.count("t") ? result["t"].as<string>() : "",
+        result.count("r") ? result["r"].as<string>() : "", result.count("f"));
+    terminalClient.run(result.count("command") ? result["command"].as<string>()
+                                               : "");
   } catch (cxxopts::OptionException& oe) {
     cout << "Exception: " << oe.what() << "\n" << endl;
     cout << options.help({}) << endl;

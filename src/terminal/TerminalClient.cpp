@@ -1,53 +1,6 @@
 #include "TerminalClient.hpp"
 
 namespace et {
-TerminalClient::TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
-                               const SocketEndpoint& _socketEndpoint,
-                               const string& id, const string& passkey,
-                               shared_ptr<Console> _console)
-    : console(_console), shuttingDown(false) {
-  portForwardHandler =
-      shared_ptr<PortForwardHandler>(new PortForwardHandler(_socketHandler));
-  InitialPayload payload;
-  if (_socketEndpoint.isJumphost()) {
-    payload.set_jumphost(true);
-  }
-
-  connection = shared_ptr<ClientConnection>(
-      new ClientConnection(_socketHandler, _socketEndpoint, id, passkey));
-
-  int connectFailCount = 0;
-  while (true) {
-    try {
-      if (connection->connect()) {
-        connection->writePacket(
-            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
-        break;
-      } else {
-        LOG(ERROR) << "Connecting to server failed: Connect timeout";
-        connectFailCount++;
-        if (connectFailCount == 3) {
-          throw std::runtime_error("Connect Timeout");
-        }
-      }
-    } catch (const runtime_error& err) {
-      LOG(INFO) << "Could not make initial connection to server";
-      cout << "Could not make initial connection to " << _socketEndpoint << ": "
-           << err.what() << endl;
-      exit(1);
-    }
-    break;
-  }
-  VLOG(1) << "Client created with id: " << connection->getId();
-};
-
-TerminalClient::~TerminalClient() {
-  connection->shutdown();
-  console.reset();
-  portForwardHandler.reset();
-  connection.reset();
-}
-
 vector<pair<int, int>> parseRangesToPairs(const string& input) {
   vector<pair<int, int>> pairs;
   auto j = split(input, ',');
@@ -92,8 +45,128 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
   return pairs;
 }
 
-void TerminalClient::run(const string& command, const string& tunnels,
-                         const string& reverseTunnels) {
+TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
+                               shared_ptr<SocketHandler> _pipeSocketHandler,
+                               const SocketEndpoint& _socketEndpoint,
+                               const string& id, const string& passkey,
+                               shared_ptr<Console> _console, bool jumphost,
+                               const string& tunnels,
+                               const string& reverseTunnels,
+                               bool forwardSshAgent)
+    : console(_console), shuttingDown(false) {
+  portForwardHandler = shared_ptr<PortForwardHandler>(
+      new PortForwardHandler(_socketHandler, _pipeSocketHandler));
+  InitialPayload payload;
+  payload.set_jumphost(jumphost);
+
+  try {
+    if (tunnels.length()) {
+      auto pairs = parseRangesToPairs(tunnels);
+      for (auto& pair : pairs) {
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_port(pair.first);
+        pfsr.mutable_destination()->set_port(pair.second);
+        auto pfsresponse =
+            portForwardHandler->createSource(pfsr, nullptr, -1, -1);
+        if (pfsresponse.has_error()) {
+          throw std::runtime_error(pfsresponse.error());
+        }
+      }
+    }
+    if (reverseTunnels.length()) {
+      auto pairs = parseRangesToPairs(reverseTunnels);
+      for (auto& pair : pairs) {
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_port(pair.first);
+        pfsr.mutable_destination()->set_port(pair.second);
+        *(payload.add_reversetunnels()) = pfsr;
+      }
+    }
+    if (forwardSshAgent) {
+      PortForwardSourceRequest pfsr;
+      auto authSockEnv = getenv("SSH_AUTH_SOCK");
+      if (!authSockEnv) {
+        cerr << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
+                "ran ssh-agent first?"
+             << endl;
+        exit(1);
+      }
+      string authSock = string(authSockEnv);
+      pfsr.mutable_destination()->set_name(authSock);
+      pfsr.set_environmentvariable("SSH_AUTH_SOCK");
+      *(payload.add_reversetunnels()) = pfsr;
+    }
+  } catch (const std::runtime_error& ex) {
+    cout << "Error establishing port forward: " << ex.what() << endl;
+    LOG(FATAL) << "Error establishing port forward: " << ex.what();
+  }
+
+  connection = shared_ptr<ClientConnection>(
+      new ClientConnection(_socketHandler, _socketEndpoint, id, passkey));
+
+  int connectFailCount = 0;
+  while (true) {
+    try {
+      bool fail = true;
+      if (connection->connect()) {
+        connection->writePacket(
+            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+        fd_set rfd;
+        timeval tv;
+
+        for (int a = 0; a < 3; a++) {
+          FD_ZERO(&rfd);
+          int clientFd = connection->getSocketFd();
+          FD_SET(clientFd, &rfd);
+          tv.tv_sec = 1;
+          tv.tv_usec = 0;
+          select(clientFd + 1, &rfd, NULL, NULL, &tv);
+          if (FD_ISSET(clientFd, &rfd)) {
+            Packet initialResponsePacket;
+            if (connection->readPacket(&initialResponsePacket)) {
+              if (initialResponsePacket.getHeader() !=
+                  EtPacketType::INITIAL_RESPONSE) {
+                LOG(FATAL) << "Missing initial response!";
+              }
+              auto initialResponse = stringToProto<InitialResponse>(
+                  initialResponsePacket.getPayload());
+              if (initialResponse.has_error()) {
+                cout << "Error initializing connection: "
+                     << initialResponse.error() << endl;
+                exit(1);
+              }
+              fail = false;
+              break;
+            }
+          }
+        }
+      }
+      if (fail) {
+        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        connectFailCount++;
+        if (connectFailCount == 3) {
+          throw std::runtime_error("Connect Timeout");
+        }
+      }
+    } catch (const runtime_error& err) {
+      LOG(INFO) << "Could not make initial connection to server";
+      cout << "Could not make initial connection to " << _socketEndpoint << ": "
+           << err.what() << endl;
+      exit(1);
+    }
+    break;
+  }
+  VLOG(1) << "Client created with id: " << connection->getId();
+};
+
+TerminalClient::~TerminalClient() {
+  connection->shutdown();
+  console.reset();
+  portForwardHandler.reset();
+  connection.reset();
+}
+
+void TerminalClient::run(const string& command) {
   if (console) {
     console->setup();
   }
@@ -112,36 +185,6 @@ void TerminalClient::run(const string& command, const string& tunnels,
 
     connection->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-  }
-
-  try {
-    if (tunnels.length()) {
-      auto pairs = parseRangesToPairs(tunnels);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
-        auto pfsresponse = portForwardHandler->createSource(pfsr);
-        if (pfsresponse.has_error()) {
-          throw std::runtime_error(pfsresponse.error());
-        }
-      }
-    }
-    if (reverseTunnels.length()) {
-      auto pairs = parseRangesToPairs(reverseTunnels);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.set_sourceport(pair.first);
-        pfsr.set_destinationport(pair.second);
-
-        connection->writePacket(
-            Packet(TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST,
-                   protoToString(pfsr)));
-      }
-    }
-  } catch (const std::runtime_error& ex) {
-    cout << "Error establishing port forward: " << ex.what() << endl;
-    LOG(FATAL) << "Error establishing port forward: " << ex.what();
   }
 
   TerminalInfo lastTerminalInfo;
@@ -207,10 +250,6 @@ void TerminalClient::run(const string& command, const string& tunnels,
           }
           char packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
-              packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_REQUEST ||
-              packetType ==
-                  et::TerminalPacketType::PORT_FORWARD_SOURCE_RESPONSE ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType ==

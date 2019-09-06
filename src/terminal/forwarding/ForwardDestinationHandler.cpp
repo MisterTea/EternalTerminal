@@ -1,18 +1,18 @@
-#include "PortForwardDestinationHandler.hpp"
+#include "ForwardDestinationHandler.hpp"
 
 namespace et {
-PortForwardDestinationHandler::PortForwardDestinationHandler(
+ForwardDestinationHandler::ForwardDestinationHandler(
     shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId)
     : socketHandler(_socketHandler), fd(_fd), socketId(_socketId) {}
 
-void PortForwardDestinationHandler::close() { socketHandler->close(fd); }
+void ForwardDestinationHandler::close() { socketHandler->close(fd); }
 
-void PortForwardDestinationHandler::write(const string& s) {
+void ForwardDestinationHandler::write(const string& s) {
   VLOG(1) << "Writing " << s.length() << " bytes to port destination";
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
 }
 
-void PortForwardDestinationHandler::update(vector<PortForwardData>* retval) {
+void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
   if (fd == -1) {
     return;
   }

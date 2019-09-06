@@ -4,18 +4,21 @@
 #include "ETerminal.pb.h"
 
 #include "Connection.hpp"
-#include "PortForwardDestinationHandler.hpp"
-#include "PortForwardSourceHandler.hpp"
+#include "ForwardDestinationHandler.hpp"
+#include "ForwardSourceHandler.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
 class PortForwardHandler {
  public:
-  explicit PortForwardHandler(shared_ptr<SocketHandler> _socketHandler);
+  explicit PortForwardHandler(shared_ptr<SocketHandler> _networkSocketHandler,
+                              shared_ptr<SocketHandler> _pipeSocketHandler);
   void update(vector<PortForwardDestinationRequest>* requests,
               vector<PortForwardData>* dataToSend);
   void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
-  PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr);
+  PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
+                                         string* sourceName, uid_t userid,
+                                         gid_t groupid);
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
 
@@ -25,13 +28,12 @@ class PortForwardHandler {
   void sendDataToSourceOnSocket(int socketId, const string& data);
 
  protected:
-  shared_ptr<SocketHandler> socketHandler;
-  unordered_map<int, shared_ptr<PortForwardDestinationHandler>>
-      destinationHandlers;
+  shared_ptr<SocketHandler> networkSocketHandler;
+  shared_ptr<SocketHandler> pipeSocketHandler;
+  unordered_map<int, shared_ptr<ForwardDestinationHandler>> destinationHandlers;
 
-  vector<shared_ptr<PortForwardSourceHandler>> sourceHandlers;
-  unordered_map<int, shared_ptr<PortForwardSourceHandler>>
-      socketIdSourceHandlerMap;
+  vector<shared_ptr<ForwardSourceHandler>> sourceHandlers;
+  unordered_map<int, shared_ptr<ForwardSourceHandler>> socketIdSourceHandlerMap;
 };
 }  // namespace et
 

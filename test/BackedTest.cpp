@@ -113,7 +113,8 @@ TEST_CASE("BackedTest", "[BackedTest]") {
   string tmpPath = string("/tmp/et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
-  SocketEndpoint endpoint(pipePath);
+  SocketEndpoint endpoint;
+  endpoint.set_name(pipePath);
   int serverClientFd = -1;
   std::thread serverListenThread(listenFn, serverSocketHandler, endpoint,
                                  &serverClientFd);
