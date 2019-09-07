@@ -86,7 +86,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       PortForwardSourceRequest pfsr;
       auto authSockEnv = getenv("SSH_AUTH_SOCK");
       if (!authSockEnv) {
-        cerr << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
+        cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
                 "ran ssh-agent first?"
              << endl;
         exit(1);
@@ -98,7 +98,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
     }
   } catch (const std::runtime_error& ex) {
     cout << "Error establishing port forward: " << ex.what() << endl;
-    LOG(FATAL) << "Error establishing port forward: " << ex.what();
+    exit(1);
   }
 
   connection = shared_ptr<ClientConnection>(
