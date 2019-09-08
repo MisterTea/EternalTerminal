@@ -166,8 +166,14 @@ void TerminalServer::runTerminal(
   vector<string> pipePaths;
   for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
     string sourceName;
-    PortForwardSourceResponse pfsresponse = portForwardHandler->createSource(
-        pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+    PortForwardSourceResponse pfsresponse;
+    if (pfsr.has_environmentvariable()) {
+      pfsresponse = portForwardHandler->createSource(
+          pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+    } else {
+      pfsresponse = portForwardHandler->createSource(
+          pfsr, nullptr, userInfo.uid(), userInfo.gid());
+    }
     if (pfsresponse.has_error()) {
       InitialResponse response;
       response.set_error(pfsresponse.error());
