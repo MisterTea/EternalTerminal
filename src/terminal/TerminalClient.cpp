@@ -117,6 +117,10 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         for (int a = 0; a < 3; a++) {
           FD_ZERO(&rfd);
           int clientFd = connection->getSocketFd();
+          if (clientFd < 0) {
+            sleep(1);
+            continue;
+          }
           FD_SET(clientFd, &rfd);
           tv.tv_sec = 1;
           tv.tv_usec = 0;
@@ -126,6 +130,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
             if (connection->readPacket(&initialResponsePacket)) {
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
+                cout << "Error: Missing initial response\n";
                 LOG(FATAL) << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
