@@ -240,6 +240,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   for (int sockFd : serverSockets) {
     close(sockFd);
   }
+  portServerSockets.erase(it);
 }
 
 void TcpSocketHandler::initSocket(int fd) {
