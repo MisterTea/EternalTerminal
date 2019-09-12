@@ -1,7 +1,7 @@
 #include "SshSetupHandler.hpp"
 
-#include <sys/wait.h>
 #include <sodium.h>
+#include <sys/wait.h>
 
 namespace et {
 string genRandom(int len) {
@@ -12,7 +12,7 @@ string genRandom(int len) {
   string s(len, '\0');
 
   for (int i = 0; i < len; ++i) {
-    s[i] = alphanum[randombytes_uniform(sizeof(alphanum))];
+    s[i] = alphanum[randombytes_uniform(sizeof(alphanum) - 1)];
   }
 
   return s;
