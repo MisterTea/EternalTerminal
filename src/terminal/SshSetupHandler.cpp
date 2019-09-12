@@ -1,6 +1,7 @@
 #include "SshSetupHandler.hpp"
 
 #include <sys/wait.h>
+#include <sodium.h>
 
 namespace et {
 string genRandom(int len) {
@@ -10,15 +11,9 @@ string genRandom(int len) {
       "abcdefghijklmnopqrstuvwxyz";
   string s(len, '\0');
 
-  int randomFd = ::open("/dev/urandom", O_RDONLY);
-  FATAL_FAIL(randomFd);
   for (int i = 0; i < len; ++i) {
-    uint32_t randNum;
-    ssize_t rc = ::read(randomFd, &randNum, sizeof(uint32_t));
-    FATAL_FAIL(rc);
-    s[i] = alphanum[randNum % (sizeof(alphanum) - 1)];
+    s[i] = alphanum[randombytes_uniform(sizeof(alphanum))];
   }
-  close(randomFd);
 
   return s;
 }
