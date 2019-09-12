@@ -238,7 +238,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   }
   auto &serverSockets = it->second;
   for (int sockFd : serverSockets) {
-    close(sockFd);
+    ::close(sockFd);
   }
   portServerSockets.erase(it);
 }
