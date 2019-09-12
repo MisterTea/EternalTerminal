@@ -12,6 +12,8 @@ class ForwardSourceHandler {
                        const SocketEndpoint& _source,
                        const SocketEndpoint& _destination);
 
+  ~ForwardSourceHandler();
+
   int listen();
 
   void update(vector<PortForwardData>* data);

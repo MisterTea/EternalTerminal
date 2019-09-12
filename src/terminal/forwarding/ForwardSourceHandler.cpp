@@ -10,6 +10,10 @@ ForwardSourceHandler::ForwardSourceHandler(
   socketHandler->listen(source);
 }
 
+ForwardSourceHandler::~ForwardSourceHandler() {
+  socketHandler->stopListening(source);
+}
+
 int ForwardSourceHandler::listen() {
   // TODO: Replace with select
   for (int i : socketHandler->getEndpointFds(source)) {
