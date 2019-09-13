@@ -4,6 +4,12 @@ project (EternalTCP VERSION 6.0.0)
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 FIND_PACKAGE(Sanitizers)
 
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake" ${CMAKE_MODULE_PATH})
+INCLUDE(cotire)
+if(POLICY CMP0058) 
+    cmake_policy(SET CMP0058 NEW) # Needed for cotire
+endif() 
+
 option(CODE_COVERAGE "Enable code coverage" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
@@ -89,6 +95,12 @@ ELSE()
   set(CORE_LIBRARIES util resolv)
 ENDIF()
 
+MACRO(DECORATE_TARGET TARGET_NAME)
+  add_sanitizers(${TARGET_NAME})
+  set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "src/base/Headers.hpp")
+  cotire(${TARGET_NAME})
+ENDMACRO()
+
 include_directories(
   external/easyloggingpp/src
   external/ThreadPool
@@ -166,7 +178,7 @@ add_dependencies(
   et-lib
   generated-code
   )
-add_sanitizers(et-lib)
+DECORATE_TARGET(et-lib)
 
 add_library(
   TerminalCommon
@@ -205,7 +217,7 @@ add_dependencies(
   TerminalCommon
   generated-code
   )
-add_sanitizers(TerminalCommon)
+DECORATE_TARGET(TerminalCommon)
 
 add_executable (
   etserver
@@ -223,7 +235,7 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
-add_sanitizers(etserver)
+DECORATE_TARGET(etserver)
 
 add_executable (
   etterminal
@@ -241,7 +253,7 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
-add_sanitizers(etterminal)
+DECORATE_TARGET(etterminal)
 
 add_executable (
   et
@@ -258,7 +270,7 @@ target_link_libraries (
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
 )
-add_sanitizers(et)
+DECORATE_TARGET(et)
 
 add_library (
   HtmCommon
@@ -276,7 +288,7 @@ add_dependencies(
   HtmCommon
   generated-code
   )
-add_sanitizers(HtmCommon)
+DECORATE_TARGET(HtmCommon)
 
 add_executable (
   htm
@@ -296,7 +308,7 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
-add_sanitizers(htm)
+DECORATE_TARGET(htm)
 
 add_executable (
   htmd
@@ -316,7 +328,7 @@ target_link_libraries (
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
-add_sanitizers(htmd)
+DECORATE_TARGET(htmd)
 
 enable_testing()
 
@@ -348,7 +360,7 @@ add_test(
   et-test
   et-test
   )
-add_sanitizers(et-test)
+DECORATE_TARGET(et-test)
 
 install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
