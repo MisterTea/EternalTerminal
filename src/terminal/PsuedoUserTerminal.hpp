@@ -58,6 +58,27 @@ class PsuedoUserTerminal : public UserTerminal {
     string terminal = string(::getenv("SHELL"));
     VLOG(1) << "Child process launching terminal " << terminal;
     setenv("ET_VERSION", ET_VERSION, 1);
+    // bash will not reset SIGCHLD to SIG_DFL when run, remembering the current
+    // SIGCHLD disposition as the "original value" and allowing the user to
+    // "reset" the signal handler to it's "original value" (trap --help).
+    //
+    // If our current SIGCHLD is SIG_IGN then it will be impossible, from
+    // within bash, to set it to SIG_DFL by issuing "trap -- - SIGCHLD". This
+    // in turn means that innocent implementations assuming they receive
+    // SIGCHLD without anything special required on their part, break.
+    // An example is Python2's popen(), which will fail with
+    // "IOError: [Errno 10] No child processes".
+    //
+    // Such processes *could* help themselves by setting SIGCHLD to SIG_DFL
+    // from within the process, but this is an esoteric requirement from the
+    // process and many don't. And as mentioned, the shell user can't help
+    // with "trap -- - SIGCHLD" either.
+    //
+    // Let's help everyone by setting SIGCHLD to SIG_DFL here, right before
+    // exec'ing the shell. By doing it here, and not somewhere before, we add
+    // no requirements for any wait(2) on our part.
+    //
+    signal(SIGCHLD, SIG_DFL);
     FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "--login", NULL));
   }
 
