@@ -1,0 +1,93 @@
+diff -rupN clapack-3.2.1-CMAKE/BLAS/SRC/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/BLAS/SRC/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/BLAS/SRC/CMakeLists.txt	2009-08-14 22:16:25.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/BLAS/SRC/CMakeLists.txt	2012-03-24 19:59:26.000000000 +0100
+@@ -141,3 +141,13 @@ if(UNIX)
+   target_link_libraries(blas m)
+ endif()
+ target_link_libraries(blas f2c)
++
++if (COMMAND cotire)
++	cotire(blas)
++	if (TARGET blas_unity)
++		if(UNIX)
++		  target_link_libraries(blas_unity m)
++		endif()
++		target_link_libraries(blas_unity f2c_unity)
++	endif()
++endif()
+diff -rupN clapack-3.2.1-CMAKE/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/CMakeLists.txt	2009-08-10 20:46:33.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/CMakeLists.txt	2012-03-24 19:56:58.000000000 +0100
+@@ -2,6 +2,7 @@ cmake_minimum_required(VERSION 2.6)
+ project(CLAPACK C)
+ enable_testing()
+ include(CTest)
++include("${CMAKE_SOURCE_DIR}/cotire.cmake")
+ 
+ if(WIN32 AND NOT CYGWIN)
+   set(SECOND_SRC  ${CLAPACK_SOURCE_DIR}/INSTALL/winsecond.c)
+diff -rupN clapack-3.2.1-CMAKE/F2CLIBS/libf2c/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/F2CLIBS/libf2c/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/F2CLIBS/libf2c/CMakeLists.txt	2009-08-10 20:06:06.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/F2CLIBS/libf2c/CMakeLists.txt	2012-03-24 19:58:41.000000000 +0100
+@@ -60,3 +60,6 @@ include_directories(${CLAPACK_SOURCE_DIR
+ include_directories(${CLAPACK_BINARY_DIR}/F2CLIBS/libf2c)
+ add_library(f2c ${OFILES} ${CMAKE_CURRENT_BINARY_DIR}/arith.h)
+ set_property(TARGET f2c PROPERTY PREFIX lib)
++if (COMMAND cotire)
++	cotire(f2c)
++endif()
+diff -rupN clapack-3.2.1-CMAKE/SRC/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/SRC/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/SRC/CMakeLists.txt	2009-08-10 19:47:54.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/SRC/CMakeLists.txt	2012-03-24 19:59:20.000000000 +0100
+@@ -378,3 +378,9 @@ endif()
+ add_library(lapack ${ALLOBJ} ${ALLXOBJ})
+ target_link_libraries(lapack blas)
+ 
++if (COMMAND cotire)
++	cotire(lapack)
++	if (TARGET lapack_unity)
++		target_link_libraries(lapack_unity blas_unity)
++	endif()
++endif()
+diff -rupN clapack-3.2.1-CMAKE/TESTING/EIG/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/TESTING/EIG/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/TESTING/EIG/CMakeLists.txt	2009-08-10 19:47:54.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/TESTING/EIG/CMakeLists.txt	2012-03-24 20:07:55.000000000 +0100
+@@ -120,6 +120,12 @@ set(ZEIGTST  zchkee.c 
+ macro(add_eig_executable name )
+   add_executable(${name} ${ARGN})
+   target_link_libraries(${name} tmglib lapack )
++  if (COMMAND cotire)
++    cotire(${name})
++    if (TARGET ${name}_unity)
++      target_link_libraries(${name}_unity tmglib lapack )
++    endif()
++  endif()
+ endmacro(add_eig_executable)
+ 
+ add_eig_executable(xeigtsts ${SEIGTST} ${SCIGTST} ${AEIGTST} 
+diff -rupN clapack-3.2.1-CMAKE/TESTING/LIN/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/TESTING/LIN/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/TESTING/LIN/CMakeLists.txt	2009-08-10 20:06:06.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/TESTING/LIN/CMakeLists.txt	2012-03-24 20:08:13.000000000 +0100
+@@ -190,6 +190,12 @@ set(ZLINTSTRFP  zchkrfp.c zdrvrfp.c zdrv
+ macro(add_lin_executable name )
+   add_executable(${name} ${ARGN})
+   target_link_libraries(${name} tmglib lapack)
++  if (COMMAND cotire)
++    cotire(${name})
++    if (TARGET ${name}_unity)
++      target_link_libraries(${name}_unity tmglib lapack )
++    endif()
++  endif()
+ endmacro(add_lin_executable)
+ 
+ add_lin_executable(xlintsts ${ALINTST} ${SCLNTST} ${SLINTST} 
+diff -rupN clapack-3.2.1-CMAKE/TESTING/MATGEN/CMakeLists.txt clapack-3.2.1-CMAKE.cotire/TESTING/MATGEN/CMakeLists.txt
+--- clapack-3.2.1-CMAKE/TESTING/MATGEN/CMakeLists.txt	2009-08-10 19:47:54.000000000 +0200
++++ clapack-3.2.1-CMAKE.cotire/TESTING/MATGEN/CMakeLists.txt	2012-03-24 20:05:19.000000000 +0100
+@@ -67,3 +67,6 @@ if(BUILD_COMPLEX16)
+ endif()
+ add_library(tmglib ${ALLOBJ} )
+ 
++if (COMMAND cotire)
++	cotire(tmglib)
++endif()
