@@ -127,9 +127,13 @@ Eternal Terminal works under WSL (Windows Subsystem for Linux).  Follow the ubun
 
 Verify that the client is installed correctly by looking for the `et` executable: `which et`.
 
-Verify that the server is installed correctly by checking the service status: `systemctl status et`.  On some operating systems, you may need to enable and start the service manually: `sudo systemctl enable et; sudo systemctl start et`
+Verify that the server is installed correctly by checking the service status: `systemctl status et`.  On some operating systems, you may need to enable and start the service manually: `sudo systemctl enable et; sudo systemctl start et`.
 
 You are ready to start using ET!
+
+## Configuring
+
+If you'd like to modify the server settings (e.g. to change the listening port), edit /etc/et.cfg.
 
 ## Using
 
