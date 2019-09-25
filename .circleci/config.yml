@@ -124,3 +124,6 @@ workflows:
       - linux_ubsan
       - mac_tsan
       - connect_to_initial_version
+          branches:
+            ignore:
+              - release
