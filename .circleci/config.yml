@@ -16,7 +16,7 @@ jobs:
           command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
           name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then; git submodule update --init; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
       - run:
           name: Build the root version of the project
           command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
@@ -48,7 +48,7 @@ jobs:
       - checkout
       - run:
           name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then; git submodule update --init; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DASAN=ON ../; make -j4
@@ -68,7 +68,7 @@ jobs:
       - checkout
       - run:
           name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then; git submodule update --init; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DTSAN=ON ../; make -j4
@@ -88,7 +88,7 @@ jobs:
       - checkout
       - run:
           name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then; git submodule update --init; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DUBSAN=ON ../; make -j4
@@ -108,7 +108,7 @@ jobs:
       - checkout
       - run:
           name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then; git submodule update --init; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DTSAN=ON ../; make -j4
