@@ -149,12 +149,13 @@ int main(int argc, char** argv) {
 
     char* home_dir = ssh_get_user_home_dir();
     string host_alias = destinationHost;
+    const char *host_from_command = destinationHost.c_str();
     ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                     destinationHost.c_str());
     // First parse user-specific ssh config, then system-wide config.
-    parse_ssh_config_file(&sshConfigOptions,
+    parse_ssh_config_file(host_from_command, &sshConfigOptions,
                           string(home_dir) + USER_SSH_CONFIG_PATH);
-    parse_ssh_config_file(&sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
+    parse_ssh_config_file(host_from_command, &sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
     LOG(INFO) << "Parsed ssh config file, connecting to "
               << sshConfigOptions.host;
     destinationHost = string(sshConfigOptions.host);
