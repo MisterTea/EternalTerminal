@@ -205,7 +205,7 @@ int main(int argc, char** argv) {
     }
 
     int jport = result["jport"].as<int>();
-    optional<string> serverFifo = nullopt;
+    string serverFifo = "";
     if (result["serverfifo"].as<string>() != "") {
       serverFifo = result["serverfifo"].as<string>();
     }
@@ -235,7 +235,7 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
-    TerminalClient terminalClient = TerminalClient(
+    TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "", result.count("f"));

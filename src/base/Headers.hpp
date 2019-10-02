@@ -46,7 +46,6 @@
 #include <iostream>
 #include <memory>
 #include <mutex>
-#include <optional>
 #include <set>
 #include <sstream>
 #include <streambuf>

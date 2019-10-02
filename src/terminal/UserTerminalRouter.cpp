@@ -28,16 +28,14 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   LOG(INFO) << "Connected";
 
   try {
-    auto packet = socketHandler->readPacket(terminalFd);
-    if (!bool(packet)) {
+    Packet packet;
+    if (!socketHandler->readPacket(terminalFd, &packet)) {
       LOG(FATAL) << "Missing user info packet";
     }
-    if (packet->getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
-      LOG(FATAL) << "Got an invalid packet header: "
-                 << int(packet->getHeader());
+    if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
+      LOG(FATAL) << "Got an invalid packet header: " << int(packet.getHeader());
     }
-    TerminalUserInfo tui =
-        stringToProto<TerminalUserInfo>(packet->getPayload());
+    TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     VLOG(1) << "Got id/passkey: " << tui.id() << "/" << tui.passkey();
     tui.set_fd(terminalFd);
     idInfoMap[tui.id()] = tui;

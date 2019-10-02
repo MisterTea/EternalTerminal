@@ -39,7 +39,7 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
                                  const string &host_alias, int port,
                                  const string &jumphost, int jport, bool kill,
                                  int vlevel, const string &cmd_prefix,
-                                 optional<string> serverFifo) {
+                                 const string &serverFifo) {
   string clientTerm("xterm-256color");
   auto envString = getenv("TERM");
   if (envString != NULL) {
@@ -49,8 +49,8 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
   string passkey = genRandom(32);
   string id = genRandom(16);
   string cmdoptions{"--verbose=" + std::to_string(vlevel)};
-  if (bool(serverFifo)) {
-    cmdoptions += " --serverfifo=" + *serverFifo;
+  if (!serverFifo.empty()) {
+    cmdoptions += " --serverfifo=" + serverFifo;
   }
 
   string SSH_SCRIPT_DST =

@@ -119,9 +119,9 @@ void TerminalServer::runJumpHost(
     try {
       if (FD_ISSET(terminalFd, &rfd)) {
         try {
-          auto packet = terminalSocketHandler->readPacket(terminalFd);
-          if (bool(packet)) {
-            serverClientState->writePacket(*packet);
+          Packet packet;
+          if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
+            serverClientState->writePacket(packet);
           }
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();

@@ -47,15 +47,15 @@ void UserJumphostHandler::run() {
 
   InitialPayload payload;
   while (true) {
-    auto initPacket = routerSocketHandler->readPacket(routerFd);
-    if (!bool(initPacket)) {
+    Packet initPacket;
+    if (!routerSocketHandler->readPacket(routerFd, &initPacket)) {
       continue;
     }
-    if (initPacket->getHeader() != TerminalPacketType::JUMPHOST_INIT) {
+    if (initPacket.getHeader() != TerminalPacketType::JUMPHOST_INIT) {
       LOG(FATAL) << "Invalid jumphost init packet header: "
-                 << initPacket->getHeader();
+                 << initPacket.getHeader();
     }
-    payload = stringToProto<InitialPayload>(initPacket->getPayload());
+    payload = stringToProto<InitialPayload>(initPacket.getPayload());
     break;
   }
   // Turn off jumphost
@@ -165,11 +165,11 @@ void UserJumphostHandler::run() {
           sleep(3);
           continue;
         } else {
-          auto p = routerSocketHandler->readPacket(routerFd);
-          if (bool(p)) {
-            jumpclient->writePacket(*p);
+          Packet p;
+          if (routerSocketHandler->readPacket(routerFd, &p)) {
+            jumpclient->writePacket(p);
             VLOG(3) << "Sent message from router to dst terminal: "
-                    << p->length() << " Header: " << int(p->getHeader());
+                    << p.length() << " Header: " << int(p.getHeader());
           }
         }
         keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;

@@ -10,7 +10,7 @@ class SshSetupHandler {
                          const string &host_alias, int port,
                          const string &jumphost, int jport, bool kill,
                          int vlevel, const string &cmd_prefix,
-                         optional<string> serverFifo);
+                         const string &serverFifo);
 };
 }  // namespace et
 #endif  // __ET_SSH_SETUP_HANDLER__

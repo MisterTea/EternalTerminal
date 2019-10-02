@@ -22,8 +22,8 @@ IF(CODE_COVERAGE)
 ENDIF(CODE_COVERAGE)
 
 if(UNIX)
-  # Enable C++-17
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++17")
+  # Enable C++-11
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
 
   # Enable debug info
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
