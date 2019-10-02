@@ -13,7 +13,10 @@ class UserJumphostHandler {
                       const SocketEndpoint &routerEndpoint);
 
   void run();
-  void shutdown() { shuttingDown = true; }
+  void shutdown() {
+    lock_guard<recursive_mutex> guard(shutdownMutex);
+    shuttingDown = true;
+  }
 
  protected:
   shared_ptr<SocketHandler> routerSocketHandler;
@@ -23,5 +26,6 @@ class UserJumphostHandler {
   string idpasskey;
   SocketEndpoint dstSocketEndpoint;
   bool shuttingDown;
+  recursive_mutex shutdownMutex;
 };
 }  // namespace et

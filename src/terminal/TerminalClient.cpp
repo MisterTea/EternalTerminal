@@ -258,7 +258,7 @@ void TerminalClient::run(const string& command) {
           if (!connection->read(&packet)) {
             break;
           }
-          char packetType = packet.getHeader();
+          uint8_t packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||

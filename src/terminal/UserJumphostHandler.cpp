@@ -129,7 +129,13 @@ void UserJumphostHandler::run() {
   bool is_reconnecting = false;
   time_t keepaliveTime = time(NULL) + SERVER_KEEP_ALIVE_DURATION;
 
-  while (!shuttingDown && run && !jumpclient->isShuttingDown()) {
+  while (run && !jumpclient->isShuttingDown()) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
