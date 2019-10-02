@@ -57,7 +57,7 @@ class SocketHandler {
     }
   }
 
-  inline Packet readPacket(int fd) {
+  inline optional<Packet> readPacket(int fd) {
     int64_t length;
     readAll(fd, (char*)&length, sizeof(int64_t), false);
     if (length < 0 || length > 128 * 1024 * 1024) {
@@ -67,7 +67,7 @@ class SocketHandler {
       throw std::runtime_error(s.c_str());
     }
     if (length == 0) {
-      return Packet("");
+      return nullopt;
     }
     string s(length, '\0');
     readAll(fd, &s[0], length, false);

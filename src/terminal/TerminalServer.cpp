@@ -76,7 +76,8 @@ void TerminalServer::run() {
 }
 
 void TerminalServer::runJumpHost(
-    shared_ptr<ServerClientConnection> serverClientState) {
+    shared_ptr<ServerClientConnection> serverClientState,
+    const InitialPayload &payload) {
   InitialResponse response;
   serverClientState->writePacket(
       Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
@@ -84,11 +85,14 @@ void TerminalServer::runJumpHost(
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
-  bool b[BUF_SIZE];
   int terminalFd =
       terminalRouter->getInfoForId(serverClientState->getId()).fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
+
+  terminalSocketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::JUMPHOST_INIT, protoToString(payload)));
 
   while (!halt && run && !serverClientState->isShuttingDown()) {
     fd_set rfd;
@@ -108,10 +112,11 @@ void TerminalServer::runJumpHost(
 
     try {
       if (FD_ISSET(terminalFd, &rfd)) {
-        memset(b, 0, BUF_SIZE);
         try {
-          Packet packet = terminalSocketHandler->readPacket(terminalFd);
-          serverClientState->writePacket(packet);
+          auto packet = terminalSocketHandler->readPacket(terminalFd);
+          if (bool(packet)) {
+            serverClientState->writePacket(*packet);
+          }
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();
           run = false;
@@ -119,7 +124,6 @@ void TerminalServer::runJumpHost(
         }
       }
 
-      VLOG(4) << "Jumphost serverclientFd: " << serverClientFd;
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         VLOG(4) << "Jumphost is selected";
         if (serverClientState->hasData()) {
@@ -356,8 +360,10 @@ void TerminalServer::handleConnection(
   }
   InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
   if (payload.jumphost()) {
-    runJumpHost(serverClientState);
+    LOG(INFO) << "RUNNING JUMPHOST";
+    runJumpHost(serverClientState, payload);
   } else {
+    LOG(INFO) << "RUNNING TERMINAL";
     runTerminal(serverClientState, payload);
   }
 }

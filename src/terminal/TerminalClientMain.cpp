@@ -61,6 +61,9 @@ int main(int argc, char** argv) {
         ("silent", "Disable logging")                        //
         ("N,no-terminal", "Do not create a terminal")        //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
+        ("serverfifo",
+         "If set, communicate to etserver on the matching fifo name",  //
+         cxxopts::value<std::string>())                                //
         ;
 
     options.parse_positional({"host", "positional"});
@@ -202,10 +205,15 @@ int main(int argc, char** argv) {
     }
 
     int jport = result["jport"].as<int>();
+    optional<string> serverFifo = nullopt;
+    if (result.count("serverfifo")) {
+      serverFifo = result["serverfifo"].as<string>();
+    }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, host, host_alias, port, jumphost, jport,
         result.count("x") > 0, result["v"].as<int>(),
-        result.count("prefix") ? result["prefix"].as<string>() : "");
+        result.count("prefix") ? result["prefix"].as<string>() : "",
+        serverFifo);
 
     string id = "", passkey = "";
     // Trim whitespace

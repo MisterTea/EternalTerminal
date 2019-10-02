@@ -13,6 +13,7 @@ enum TerminalPacketType {
   PORT_FORWARD_DATA = 7;
   TERMINAL_USER_INFO = 8;
   TERMINAL_INIT = 9;
+  JUMPHOST_INIT = 10;
 }
 
 message TerminalBuffer {

@@ -51,9 +51,10 @@ class TerminalServer : public ServerConnection {
                  std::shared_ptr<PipeSocketHandler> _pipeSocketHandler,
                  const SocketEndpoint &_routerEndpoint);
   virtual ~TerminalServer();
-  void runJumpHost(shared_ptr<ServerClientConnection> serverClientState);
+  void runJumpHost(shared_ptr<ServerClientConnection> serverClientState,
+                   const InitialPayload &payload);
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-    const InitialPayload& payload);
+                   const InitialPayload &payload);
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 

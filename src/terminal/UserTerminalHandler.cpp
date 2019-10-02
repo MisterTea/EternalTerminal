@@ -69,15 +69,21 @@ UserTerminalHandler::UserTerminalHandler(
 }
 
 void UserTerminalHandler::run() {
-  Packet termInitPacket = socketHandler->readPacket(routerFd);
-  if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
-    LOG(FATAL) << "Invalid terminal init packet header: "
-               << termInitPacket.getHeader();
-  }
-  TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
-  for (int a = 0; a < ti.environmentnames_size(); a++) {
-    setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
-           true);
+  while (true) {
+    auto termInitPacket = socketHandler->readPacket(routerFd);
+    if (!bool(termInitPacket)) {
+      continue;
+    }
+    if (termInitPacket->getHeader() != TerminalPacketType::TERMINAL_INIT) {
+      LOG(FATAL) << "Invalid terminal init packet header: "
+                 << termInitPacket->getHeader();
+    }
+    TermInit ti = stringToProto<TermInit>(termInitPacket->getPayload());
+    for (int a = 0; a < ti.environmentnames_size(); a++) {
+      setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+             true);
+    }
+    break;
   }
 
   int masterfd = term->setup(routerFd);

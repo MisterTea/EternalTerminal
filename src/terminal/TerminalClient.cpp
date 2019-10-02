@@ -113,7 +113,6 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
             Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
         fd_set rfd;
         timeval tv;
-
         for (int a = 0; a < 3; a++) {
           FD_ZERO(&rfd);
           int clientFd = connection->getSocketFd();
