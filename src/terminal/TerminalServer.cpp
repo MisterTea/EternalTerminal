@@ -32,7 +32,13 @@ void TerminalServer::run() {
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
 
-  while (!halt) {
+  while (true) {
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      if (halt) {
+        break;
+      }
+    }
     // Select blocks until there is something useful to do
     fd_set rfds = coreFds;
     int numFds = numCoreFds;

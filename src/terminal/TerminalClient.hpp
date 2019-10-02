@@ -36,13 +36,17 @@ class TerminalClient {
   void handleWindowChanged(winsize* win);
   // void handlePfwPacket(char packetType);
   void run(const string& command);
-  void shutdown() { shuttingDown = true; }
+  void shutdown() {
+    lock_guard<recursive_mutex> guard(shutdownMutex);
+    shuttingDown = true;
+  }
 
  protected:
   shared_ptr<Console> console;
   shared_ptr<ClientConnection> connection;
   shared_ptr<PortForwardHandler> portForwardHandler;
   bool shuttingDown;
+  recursive_mutex shutdownMutex;
 };
 
 }  // namespace et

@@ -63,7 +63,7 @@ int main(int argc, char** argv) {
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",  //
-         cxxopts::value<std::string>())                                //
+         cxxopts::value<std::string>()->default_value(""))             //
         ;
 
     options.parse_positional({"host", "positional"});
@@ -206,7 +206,7 @@ int main(int argc, char** argv) {
 
     int jport = result["jport"].as<int>();
     optional<string> serverFifo = nullopt;
-    if (result.count("serverfifo")) {
+    if (result["serverfifo"].as<string>() != "") {
       serverFifo = result["serverfifo"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(

@@ -144,19 +144,20 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest]") {
   server->shutdown();
   t_server.join();
 
-  jumphost->shutdown();
-  t_jumphost.join();
-
   consoleSocketHandler.reset();
   terminalUserSocketHandler.reset();
   serverSocketHandler.reset();
-  clientSocketHandler.reset();
-  clientPipeSocketHandler.reset();
-  routerSocketHandler.reset();
+
+  jumphost->shutdown();
+  t_jumphost.join();
 
   jumphostUserSocketHandler.reset();
   jumphostRouterSocketHandler.reset();
   jumphostSocketHandler.reset();
+
+  clientSocketHandler.reset();
+  clientPipeSocketHandler.reset();
+  routerSocketHandler.reset();
 
   FATAL_FAIL(::remove(jumphostRouterPipePath.c_str()));
   FATAL_FAIL(::remove(jumphostServerPipePath.c_str()));

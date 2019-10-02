@@ -60,7 +60,7 @@ int main(int argc, char **argv) {
       LogHandler::stderrToFile("/tmp/etserver");
     }
 
-    string serverFifo = "";
+    string serverFifo = ROUTER_FIFO_NAME;
 
     // default max log file size is 20MB for etserver
     string maxlogsize = "20971520";

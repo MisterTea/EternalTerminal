@@ -14,7 +14,10 @@ class UserTerminalHandler {
                       const SocketEndpoint &_routerEndpoint,
                       const string &idPasskey);
   void run();
-  void shutdown() { shuttingDown = true; }
+  void shutdown() {
+    lock_guard<recursive_mutex> guard(shutdownMutex);
+    shuttingDown = true;
+  }
 
  protected:
   int routerFd;
@@ -23,6 +26,7 @@ class UserTerminalHandler {
   bool noratelimit;
   SocketEndpoint routerEndpoint;
   bool shuttingDown;
+  recursive_mutex shutdownMutex;
 
   void runUserTerminal(int masterFd);
 };

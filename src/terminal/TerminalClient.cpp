@@ -197,7 +197,13 @@ void TerminalClient::run(const string& command) {
     cout << "ET running, feel free to background..." << endl;
   }
 
-  while (!shuttingDown && !connection->isShuttingDown()) {
+  while (!connection->isShuttingDown()) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -340,6 +346,7 @@ void TerminalClient::run(const string& command) {
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
+      lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;
     }
   }
