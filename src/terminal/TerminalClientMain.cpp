@@ -108,9 +108,8 @@ int main(int argc, char** argv) {
     if (result.count("username")) {
       username = result["username"].as<string>();
     }
-    int port = result["port"].as<int>();
-    LOG(INFO) << "Port initially set to " << port;
-    string host;
+    int destinationPort = result["port"].as<int>();
+    string destinationHost;
 
     // Parse command-line argument
     if (!result.count("host")) {
@@ -126,10 +125,10 @@ int main(int argc, char** argv) {
     }
     if (arg.find(':') != string::npos) {
       int i = arg.find(':');
-      port = stoi(arg.substr(i + 1));
+      destinationPort = stoi(arg.substr(i + 1));
       arg = arg.substr(0, i);
     }
-    host = arg;
+    destinationHost = arg;
 
     Options sshConfigOptions = {
         NULL,  // username
@@ -149,15 +148,16 @@ int main(int argc, char** argv) {
     };
 
     char* home_dir = ssh_get_user_home_dir();
-    string host_alias = host;
-    ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST, host.c_str());
+    string host_alias = destinationHost;
+    ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
+                    destinationHost.c_str());
     // First parse user-specific ssh config, then system-wide config.
     parse_ssh_config_file(&sshConfigOptions,
                           string(home_dir) + USER_SSH_CONFIG_PATH);
     parse_ssh_config_file(&sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
     LOG(INFO) << "Parsed ssh config file, connecting to "
               << sshConfigOptions.host;
-    host = string(sshConfigOptions.host);
+    destinationHost = string(sshConfigOptions.host);
 
     // Parse username: cmdline > sshconfig > localuser
     if (username.empty()) {
@@ -187,20 +187,22 @@ int main(int argc, char** argv) {
     }
 
     bool is_jumphost = false;
+    SocketEndpoint socketEndpoint;
     if (!jumphost.empty()) {
       is_jumphost = true;
-      host = jumphost;
-      port = result["jport"].as<int>();
       LOG(INFO) << "Setting port to jumphost port";
+      socketEndpoint.set_name(jumphost);
+      socketEndpoint.set_port(result["jport"].as<int>());
+    } else {
+      socketEndpoint.set_name(destinationHost);
+      socketEndpoint.set_port(destinationPort);
     }
-    SocketEndpoint socketEndpoint;
-    socketEndpoint.set_name(host);
-    socketEndpoint.set_port(port);
     shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
     if (!ping(socketEndpoint, clientSocket)) {
-      cout << "Could not reach the ET server: " << host << ":" << port << endl;
+      cout << "Could not reach the ET server: " << socketEndpoint.name() << ":"
+           << socketEndpoint.port() << endl;
       exit(1);
     }
 
@@ -210,7 +212,7 @@ int main(int argc, char** argv) {
       serverFifo = result["serverfifo"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, host, host_alias, port, jumphost, jport,
+        username, destinationHost, host_alias, destinationPort, jumphost, jport,
         result.count("x") > 0, result["v"].as<int>(),
         result.count("prefix") ? result["prefix"].as<string>() : "",
         serverFifo);
