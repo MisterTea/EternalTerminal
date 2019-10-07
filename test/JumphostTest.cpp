@@ -61,6 +61,7 @@ void readWriteTest(const string& clientId,
   typeKeysThread.join();
 
   REQUIRE(resultConcat == s);
+  sleep(1);
 
   terminalClient->shutdown();
   terminalClientThread.join();
