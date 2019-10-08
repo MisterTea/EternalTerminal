@@ -46,6 +46,10 @@ int main(int argc, char** argv) {
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))  //
         ("logtostdout", "Write log to stdout")       //
+        ("serverfifo",
+         "If set, connects to the etserver instance listening on the matching "
+         "fifo name",                                                     //
+         cxxopts::value<std::string>()->default_value(ROUTER_FIFO_NAME))  //
         ;
 
     options.parse_positional({"host", "positional"});
@@ -135,7 +139,7 @@ int main(int argc, char** argv) {
         LOG(FATAL) << "Error creating daemon: " << strerror(errno);
       }
       SocketEndpoint routerFifoEndpoint;
-      routerFifoEndpoint.set_name(ROUTER_FIFO_NAME);
+      routerFifoEndpoint.set_name(result["serverfifo"].as<string>());
       SocketEndpoint destinationEndpoint;
       destinationEndpoint.set_name(result["dsthost"].as<string>());
       destinationEndpoint.set_port(result["dstport"].as<int>());
@@ -164,7 +168,7 @@ int main(int argc, char** argv) {
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
     SocketEndpoint routerEndpoint;
-    routerEndpoint.set_name(ROUTER_FIFO_NAME);
+    routerEndpoint.set_name(result["serverfifo"].as<string>());
     UserTerminalHandler uth(ipcSocketHandler, term, true, routerEndpoint,
                             idpasskey);
     cout << "IDPASSKEY:" << idpasskey << endl;

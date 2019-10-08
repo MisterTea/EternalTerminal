@@ -30,6 +30,9 @@ int main(int argc, char **argv) {
              "/var/run/etserver.pid"))  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"), "LEVEL")  //
+        ("serverfifo",
+         "If set, listens on the matching fifo name",                     //
+         cxxopts::value<std::string>()->default_value(ROUTER_FIFO_NAME))  //
         ;
 
     auto result = options.parse(argc, argv);
@@ -57,6 +60,8 @@ int main(int argc, char **argv) {
       LogHandler::stderrToFile("/tmp/etserver");
     }
 
+    string serverFifo = ROUTER_FIFO_NAME;
+
     // default max log file size is 20MB for etserver
     string maxlogsize = "20971520";
 
@@ -81,6 +86,14 @@ int main(int argc, char **argv) {
           el::Loggers::setVerboseLevel(atoi(vlevel));
         }
 
+        {
+          const char *fifoName =
+              ini.GetValue("Debug", "serverfifo", ROUTER_FIFO_NAME);
+          if (fifoName) {
+            serverFifo = string(fifoName);
+          }
+        }
+
         // read silent setting
         const char *silent = ini.GetValue("Debug", "silent", NULL);
         if (silent && atoi(silent) != 0) {
@@ -96,6 +109,11 @@ int main(int argc, char **argv) {
       } else {
         LOG(FATAL) << "Invalid config file: " << cfgfilename;
       }
+    }
+
+    if (result.count("serverfifo") &&
+        result["serverfifo"].as<string>() != ROUTER_FIFO_NAME) {
+      serverFifo = result["serverfifo"].as<string>();
     }
 
     GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -123,7 +141,7 @@ int main(int argc, char **argv) {
     SocketEndpoint serverEndpoint;
     serverEndpoint.set_port(port);
     SocketEndpoint routerFifo;
-    routerFifo.set_name(ROUTER_FIFO_NAME);
+    routerFifo.set_name(serverFifo);
     TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
                                   pipeSocketHandler, routerFifo);
     terminalServer.run();

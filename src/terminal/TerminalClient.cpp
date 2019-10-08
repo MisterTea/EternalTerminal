@@ -113,7 +113,6 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
             Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
         fd_set rfd;
         timeval tv;
-
         for (int a = 0; a < 3; a++) {
           FD_ZERO(&rfd);
           int clientFd = connection->getSocketFd();
@@ -198,7 +197,13 @@ void TerminalClient::run(const string& command) {
     cout << "ET running, feel free to background..." << endl;
   }
 
-  while (!shuttingDown && !connection->isShuttingDown()) {
+  while (!connection->isShuttingDown()) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -253,7 +258,7 @@ void TerminalClient::run(const string& command) {
           if (!connection->read(&packet)) {
             break;
           }
-          char packetType = packet.getHeader();
+          uint8_t packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
@@ -341,6 +346,7 @@ void TerminalClient::run(const string& command) {
     } catch (const runtime_error& re) {
       LOG(ERROR) << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
+      lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;
     }
   }

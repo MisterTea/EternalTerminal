@@ -69,15 +69,21 @@ UserTerminalHandler::UserTerminalHandler(
 }
 
 void UserTerminalHandler::run() {
-  Packet termInitPacket = socketHandler->readPacket(routerFd);
-  if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
-    LOG(FATAL) << "Invalid terminal init packet header: "
-               << termInitPacket.getHeader();
-  }
-  TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
-  for (int a = 0; a < ti.environmentnames_size(); a++) {
-    setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
-           true);
+  while (true) {
+    Packet termInitPacket;
+    if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+      continue;
+    }
+    if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
+      LOG(FATAL) << "Invalid terminal init packet header: "
+                 << termInitPacket.getHeader();
+    }
+    TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
+    for (int a = 0; a < ti.environmentnames_size(); a++) {
+      setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+             true);
+    }
+    break;
   }
 
   int masterfd = term->setup(routerFd);
@@ -93,7 +99,13 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
   time_t lastSecond = time(NULL);
   int64_t outputPerSecond = 0;
 
-  while (!shuttingDown) {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
     // Data structures needed for select() and
     // non-blocking I/O.
     fd_set rfd;
@@ -133,6 +145,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         } else {
           LOG(INFO) << "Terminal session ended";
           term->handleSessionEnd();
+          lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
         }
@@ -171,6 +184,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
       }
     } catch (const std::exception &ex) {
       LOG(INFO) << ex.what();
+      lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;
       break;
     }

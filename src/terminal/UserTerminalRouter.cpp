@@ -28,7 +28,10 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   LOG(INFO) << "Connected";
 
   try {
-    Packet packet = socketHandler->readPacket(terminalFd);
+    Packet packet;
+    if (!socketHandler->readPacket(terminalFd, &packet)) {
+      LOG(FATAL) << "Missing user info packet";
+    }
     if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
       LOG(FATAL) << "Got an invalid packet header: " << int(packet.getHeader());
     }
@@ -41,6 +44,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     LOG(FATAL) << "Router can't talk to terminal: " << re.what();
   }
 
+  LOG(FATAL) << "Should never get here";
   return IdKeyPair({"", ""});
 }
 
