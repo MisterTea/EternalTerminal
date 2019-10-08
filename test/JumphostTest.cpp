@@ -25,13 +25,13 @@ void readWriteTest(const string& clientId,
       jumphostUserSocketHandler, clientId + "/" + CRYPTO_KEY, serverEndpoint,
       jumphostRouterSocketHandler, jumphostRouterEndpoint));
   thread ujhThread([ujh]() { ujh->run(); });
-  sleep(1);
+  sleep(3);
 
   auto uth = shared_ptr<UserTerminalHandler>(
       new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
                               routerEndpoint, clientId + "/" + CRYPTO_KEY));
   thread uthThread([uth]() { uth->run(); });
-  sleep(1);
+  sleep(3);
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, clientPipeSocketHandler, jumphostEndpoint, clientId,
@@ -61,6 +61,7 @@ void readWriteTest(const string& clientId,
   typeKeysThread.join();
 
   REQUIRE(resultConcat == s);
+  sleep(1);
 
   terminalClient->shutdown();
   terminalClientThread.join();
@@ -128,13 +129,13 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest]") {
       new TerminalServer(serverSocketHandler, serverEndpoint,
                          routerSocketHandler, routerEndpoint));
   thread t_server([server]() { server->run(); });
-  sleep(1);
+  sleep(3);
 
   auto jumphost = shared_ptr<TerminalServer>(
       new TerminalServer(jumphostSocketHandler, jumphostEndpoint,
                          jumphostRouterSocketHandler, jumphostRouterEndpoint));
   thread t_jumphost([jumphost]() { jumphost->run(); });
-  sleep(1);
+  sleep(3);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
                 serverEndpoint, clientSocketHandler, clientPipeSocketHandler,

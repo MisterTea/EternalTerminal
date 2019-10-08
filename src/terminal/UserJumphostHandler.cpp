@@ -11,7 +11,8 @@ UserJumphostHandler::UserJumphostHandler(
     : routerSocketHandler(_routerSocketHandler),
       jumpClientSocketHandler(_jumpClientSocketHandler),
       idpasskey(_idpasskey),
-      dstSocketEndpoint(_dstSocketEndpoint) {
+      dstSocketEndpoint(_dstSocketEndpoint),
+      shuttingDown(false) {
   routerFd = routerSocketHandler->connect(routerEndpoint);
 
   if (routerFd < 0) {
