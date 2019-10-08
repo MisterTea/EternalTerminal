@@ -95,7 +95,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       {
         lock_guard<std::recursive_mutex> guard(classMutex);
         serverClientState.reset(new ServerClientConnection(
-            socketHandler, clientId, clientSocketFd, clientKeys[clientId]));
+            socketHandler, clientId, clientSocketFd, clientKeys.at(clientId)));
         clientConnections.insert(std::make_pair(clientId, serverClientState));
 
         if (!newClient(serverClientState)) {
