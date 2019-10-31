@@ -162,8 +162,9 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   return SOC_UNSUPPORTED;
 }
 
-static int ssh_config_parse_line(struct Options *options, const char *line,
-                                 unsigned int count, int *parsing, int seen[]);
+static int ssh_config_parse_line(const char *targethost, struct Options *options,
+                                 const char *line, unsigned int count, int *parsing,
+                                 int seen[]);
 
 char *ssh_get_user_home_dir(void) {
   char *szPath = NULL;
@@ -1084,8 +1085,8 @@ static int ssh_config_get_yesno(char **str, int notfound) {
   return notfound;
 }
 
-static void local_parse_file(struct Options *options, const char *filename,
-                             int *parsing, int seen[]) {
+static void local_parse_file(const char *targethost, struct Options *options,
+                             const char *filename, int *parsing, int seen[]) {
   char *line = NULL;
   size_t len = 0;
   ssize_t read = 0;
@@ -1101,7 +1102,7 @@ static void local_parse_file(struct Options *options, const char *filename,
 
   while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(options, line, count, parsing, seen) < 0) {
+    if (ssh_config_parse_line(targethost, options, line, count, parsing, seen) < 0) {
       fclose(fp);
       return;
     }
@@ -1110,13 +1111,13 @@ static void local_parse_file(struct Options *options, const char *filename,
   return;
 }
 
-static int ssh_config_parse_line(struct Options *options, const char *line,
+static int ssh_config_parse_line(const char *targethost, struct Options *options, const char *line,
                                  unsigned int count, int *parsing, int seen[]) {
   enum ssh_config_opcode_e opcode;
   const char *p;
   char *s, *x;
   char *keyword;
-  char *lowerhost;
+  char *lowertargethost;
   size_t len;
   int i;
 
@@ -1156,18 +1157,18 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
 
       p = ssh_config_get_str_tok(&s, NULL);
       if (p && *parsing) {
-        local_parse_file(options, p, parsing, seen);
+        local_parse_file(targethost, options, p, parsing, seen);
       }
       break;
     case SOC_HOST: {
       int ok = 0;
 
       *parsing = 0;
-      lowerhost = (options->host) ? ssh_lowercase(options->host) : NULL;
+      lowertargethost = targethost ? ssh_lowercase(targethost) : NULL;
       for (p = ssh_config_get_str_tok(&s, NULL); p != NULL && p[0] != '\0';
            p = ssh_config_get_str_tok(&s, NULL)) {
         if (ok >= 0) {
-          ok = match_hostname(lowerhost, p, strlen(p));
+          ok = match_hostname(lowertargethost, p, strlen(p));
           if (ok < 0) {
             *parsing = 0;
           } else if (ok > 0) {
@@ -1175,7 +1176,7 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
           }
         }
       }
-      SAFE_FREE(lowerhost);
+      SAFE_FREE(lowertargethost);
       break;
     }
     case SOC_HOSTNAME:
@@ -1300,7 +1301,7 @@ static int ssh_config_parse_line(struct Options *options, const char *line,
   return 0;
 }
 
-int parse_ssh_config_file(struct Options *options, string filename) {
+int parse_ssh_config_file(const char *targethost, struct Options *options, string filename) {
   char *line = NULL;
   size_t len = 0;
   ssize_t read = 0;
@@ -1319,7 +1320,7 @@ int parse_ssh_config_file(struct Options *options, string filename) {
 
   while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(options, line, count, &parsing, seen) < 0) {
+    if (ssh_config_parse_line(targethost, options, line, count, &parsing, seen) < 0) {
       fclose(fp);
       return -1;
     }
