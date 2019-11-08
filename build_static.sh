@@ -48,6 +48,7 @@ PROTO_LIB_DIR="$PWD/../deps/out/lib64"
 else
 PROTO_LIB_DIR="$PWD/../deps/out/lib"
 fi
+DISABLE_CRASH_LOG=${DISABLE_CRASH_LOG:-OFF}
 cmake \
     -DProtobuf_INCLUDE_DIR="$PWD"/../deps/out/include \
     -DProtobuf_LIBRARY_DEBUG="$PROTO_LIB_DIR"/libprotobuf.a \
@@ -62,6 +63,7 @@ cmake \
     -Dsodium_LIBRARY_RELEASE="$PWD"/../deps/out/lib/libsodium.a \
     -Dsodium_USE_STATIC_LIBS=ON \
     -DCMAKE_INSTALL_PREFIX="$PWD"/../out \
+    -DDISABLE_CRASH_LOG="$DISABLE_CRASH_LOG"
     ../
 make -j8 install
 cd ../out || exit

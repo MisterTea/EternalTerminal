@@ -11,6 +11,7 @@ if(POLICY CMP0058)
 endif() 
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
+option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
@@ -20,6 +21,10 @@ IF(CODE_COVERAGE)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
   endif()
 ENDIF(CODE_COVERAGE)
+
+if(DISABLE_CRASH_LOG)
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
+ENDIF(DISABLE_CRASH_LOG)
 
 if(UNIX)
   # Enable C++-11
