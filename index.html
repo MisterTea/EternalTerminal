@@ -18,7 +18,7 @@ subtitle: Remote terminal for the busy and impatient
     <a href="https://linux.die.net/man/1/autossh" target="_blank"><b>autossh</b></a>:  Autossh is a utility that automatically restarts an ssh session when it detects a reconnect.  It's a more advanced version of doing "while true; ssh myhost.com".  Although autossh will automatically reconnect, it will start a new session each time.  This means, if we use tmux with control mode, we must wait for the ssh connection to die and then re-attach.  ET saves valuable time by maintaining your tmux session even when the TCP connection dies and resuming quickly.
   </li>
   <li>
-    <a href="https://mosh.org/" target="_blank"><b>mosh</b></a>:  Mosh is a popular alternative to ET.  While mosh provides the same core funtionality as ET, it does not support native scrolling nor tmux control mode (tmux -CC).
+    <a href="https://mosh.org/" target="_blank"><b>mosh</b></a>:  Mosh is a popular alternative to ET.  While mosh provides the same core functionality as ET, it does not support native scrolling nor tmux control mode (tmux -CC).
   </li>
 </ul>
 
