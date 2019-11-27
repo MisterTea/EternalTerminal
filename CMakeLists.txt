@@ -358,8 +358,6 @@ target_link_libraries(
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
-  resolv
-  util
   )
 add_test(
   et-test
