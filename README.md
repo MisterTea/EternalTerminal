@@ -230,6 +230,36 @@ sudo systemctl enable et.service
 sudo systemctl start et.service
 ```
 
+### Raspbian (Stretch):
+## (_tested on_: Raspberry Pi 3B+):
+
++ Install dependencies
+
+	sudo apt install python3-protobuf protobuf-compiler
+
++ Install from source
+```
+mkdir ~/tmp
+cd ~/tmp
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
+mkdir build
+cd build
+cmake ../
+make
+sudo make install
+```
+
+Find the actual location of et:
+
+	which etserver
+
+Correct the service file:
+Open up /etc/systemd/system/et.service in an editor.
+Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)).
+
+	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on github](https://github.com/MisterTea/EternalTerminal/issues).
