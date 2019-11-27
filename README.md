@@ -231,7 +231,7 @@ sudo systemctl start et.service
 ```
 
 ### Raspbian (Stretch):
-## (_tested on_: Raspberry Pi 3B+):
+#### (_tested on_: Raspberry Pi 3B+):
 
 + Install dependencies
 
