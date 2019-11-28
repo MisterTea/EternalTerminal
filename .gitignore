@@ -4,6 +4,15 @@ out
 .vscode
 *PVS-Studio*
 
+# Public/private keys
+id_rsa*
+
+# Emacs backups
+*~
+
+# Vagrant
+.vagrant
+
 # Code Coverage
 code-coverage.info
 code_coverage_report

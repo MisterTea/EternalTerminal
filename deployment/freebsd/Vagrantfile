@@ -1,0 +1,4 @@
+Vagrant.configure("2") do |config|
+  config.vm.box = "freebsd/FreeBSD-12.0-CURRENT"
+  config.vm.provision :shell, path: "freebsd_bootstrap.sh"
+end

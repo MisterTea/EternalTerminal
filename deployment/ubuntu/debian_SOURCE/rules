@@ -1,0 +1,11 @@
+#!/usr/bin/make -f
+
+%:
+	dh $@ --with systemd --buildsystem=cmake
+
+BUILDDIR = build_dir
+
+override_dh_install:
+	dh_install
+	mkdir -p debian/et/etc
+	cp ./etc/et.cfg debian/et/etc/
