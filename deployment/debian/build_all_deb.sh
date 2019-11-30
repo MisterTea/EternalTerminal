@@ -28,4 +28,4 @@ done
 
 rsync -raz --delete --progress ~/.aptly/public/* ~/github/debian-et/debian-source/
 
-echo "Go to ~/github/debian-et/ and push the new packages."
+echo "Go to ~/debian-et/ and push the new packages."

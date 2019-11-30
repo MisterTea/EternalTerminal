@@ -6,6 +6,7 @@ out
 
 # Public/private keys
 id_rsa*
+.gnupg
 
 # Emacs backups
 *~
