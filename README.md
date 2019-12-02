@@ -95,6 +95,14 @@ On FreeBSD, use:
 sudo dnf install et
 ```
 
+### openSUSE
+
+```
+zypper ar -f obs://network
+zypper ref
+zypper in EternalTerminal
+```
+
 ### Other Linux
 
 Install dependencies:
