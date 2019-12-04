@@ -136,6 +136,7 @@ int main(int argc, char** argv) {
         NULL,  // sshdir
         NULL,  // knownhosts
         NULL,  // ProxyCommand
+        NULL,  // IdentityAgent
         NULL,  // ProxyJump
         0,     // timeout
         0,     // port
@@ -238,10 +239,17 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
+    bool forwardAgent = result.count("f");
+    char *identityAgent = sshConfigOptions.IdentityAgent;
+    if (identityAgent == NULL && forwardAgent) {
+      identityAgent = getenv("SSH_AUTH_SOCK");
+    }
+
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "", result.count("f"));
+        result.count("r") ? result["r"].as<string>() : "", result.count("f"),
+        result.count("f") ? identityAgent : "");
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {

@@ -68,6 +68,7 @@ enum ssh_config_opcode_e {
   SOC_STRICTHOSTKEYCHECK,
   SOC_KNOWNHOSTS,
   SOC_PROXYCOMMAND,
+  SOC_IDENTITYAGENT,
   SOC_GSSAPISERVERIDENTITY,
   SOC_GSSAPICLIENTIDENTITY,
   SOC_GSSAPIDELEGATECREDENTIALS,
@@ -97,6 +98,7 @@ enum ssh_options_e {
   SSH_OPTIONS_COMPRESSION_C_S,
   SSH_OPTIONS_COMPRESSION_S_C,
   SSH_OPTIONS_PROXYCOMMAND,
+  SSH_OPTIONS_IDENTITYAGENT,
   SSH_OPTIONS_BINDADDR,
   SSH_OPTIONS_STRICTHOSTKEYCHECK,
   SSH_OPTIONS_COMPRESSION,
@@ -117,6 +119,7 @@ struct Options {
   char *sshdir;
   char *knownhosts;
   char *ProxyCommand;
+  char *IdentityAgent;
   char *ProxyJump;
   unsigned long timeout; /* seconds */
   unsigned int port;
@@ -143,6 +146,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"stricthostkeychecking", SOC_STRICTHOSTKEYCHECK},
     {"userknownhostsfile", SOC_KNOWNHOSTS},
     {"proxycommand", SOC_PROXYCOMMAND},
+    {"identityagent", SOC_IDENTITYAGENT},
     {"gssapiserveridentity", SOC_GSSAPISERVERIDENTITY},
     {"gssapiclientidentity", SOC_GSSAPICLIENTIDENTITY},
     {"gssapidelegatecredentials", SOC_GSSAPIDELEGATECREDENTIALS},
@@ -711,6 +715,12 @@ char *ssh_path_expand_escape(struct Options *options, const char *s) {
  *                Set the command to be executed in order to connect to
  *                server (const char *).
  *
+ *              - SSH_OPTIONS_IDENTITYAGENT:
+ *                Set the socket to use for SSH Agent forwarding, or
+ *                "SSH_AUTH_SOCK" to use the SSH_AUTH_SOCK environment
+ *                variable, or "$" followed by the name of an environment
+ *                variable to use for the socket path.
+ *
  *              - SSH_OPTIONS_GSSAPI_SERVER_IDENTITY
  *                Set it to specify the GSSAPI server identity that libssh
  *                should expect when connecting to the server (const char *).
@@ -938,6 +948,22 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
             return -1;
           }
           options->ProxyCommand = q;
+        }
+      }
+      break;
+    case SSH_OPTIONS_IDENTITYAGENT:
+      v = static_cast<const char *>(value);
+      if (v == NULL || v[0] == '\0') {
+        cout << "invalid error" << endl;
+        return -1;
+      } else {
+        SAFE_FREE(options->IdentityAgent);
+        if (0 == strcmp(v, "SSH_AUTH_SOCK")) {
+          options->IdentityAgent = getenv(v);
+        } else if (v[0] == '$') {
+          options->IdentityAgent = getenv(v + 1);
+        } else {
+          options->IdentityAgent = ssh_path_expand_tilde(v);
         }
       }
       break;
@@ -1271,6 +1297,12 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
       p = ssh_config_get_cmd(&s);
       if (p && *parsing) {
         ssh_options_set(options, SSH_OPTIONS_PROXYCOMMAND, p);
+      }
+      break;
+    case SOC_IDENTITYAGENT:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, p);
       }
       break;
     case SOC_GSSAPISERVERIDENTITY:

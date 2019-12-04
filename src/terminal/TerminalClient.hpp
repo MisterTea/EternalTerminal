@@ -29,7 +29,8 @@ class TerminalClient {
                  const SocketEndpoint& _socketEndpoint, const string& id,
                  const string& passkey, shared_ptr<Console> _console,
                  bool jumphost, const string& tunnels,
-                 const string& reverseTunnels, bool forwardSshAgent);
+                 const string& reverseTunnels, bool forwardSshAgent,
+                 const string& identityAgent);
   virtual ~TerminalClient();
   void setUpTunnel(const string& tunnels);
   void setUpReverseTunnels(const string& reverseTunnels);
