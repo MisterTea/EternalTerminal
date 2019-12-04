@@ -69,6 +69,7 @@ enum ssh_config_opcode_e {
   SOC_KNOWNHOSTS,
   SOC_PROXYCOMMAND,
   SOC_IDENTITYAGENT,
+  SOC_FORWARDAGENT,
   SOC_GSSAPISERVERIDENTITY,
   SOC_GSSAPICLIENTIDENTITY,
   SOC_GSSAPIDELEGATECREDENTIALS,
@@ -99,6 +100,7 @@ enum ssh_options_e {
   SSH_OPTIONS_COMPRESSION_S_C,
   SSH_OPTIONS_PROXYCOMMAND,
   SSH_OPTIONS_IDENTITYAGENT,
+  SSH_OPTIONS_FORWARDAGENT,
   SSH_OPTIONS_BINDADDR,
   SSH_OPTIONS_STRICTHOSTKEYCHECK,
   SSH_OPTIONS_COMPRESSION,
@@ -120,6 +122,7 @@ struct Options {
   char *knownhosts;
   char *ProxyCommand;
   char *IdentityAgent;
+  int ForwardAgent;
   char *ProxyJump;
   unsigned long timeout; /* seconds */
   unsigned int port;
@@ -147,6 +150,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"userknownhostsfile", SOC_KNOWNHOSTS},
     {"proxycommand", SOC_PROXYCOMMAND},
     {"identityagent", SOC_IDENTITYAGENT},
+    {"forwardagent", SOC_FORWARDAGENT},
     {"gssapiserveridentity", SOC_GSSAPISERVERIDENTITY},
     {"gssapiclientidentity", SOC_GSSAPICLIENTIDENTITY},
     {"gssapidelegatecredentials", SOC_GSSAPIDELEGATECREDENTIALS},
@@ -721,6 +725,11 @@ char *ssh_path_expand_escape(struct Options *options, const char *s) {
  *                variable, or "$" followed by the name of an environment
  *                variable to use for the socket path.
  *
+ *              - SSH_OPTIONS_FORWARDAGENT:
+ *                Forward the SSH agent requests to the remote host using
+ *                either the SSH_OPTIONS_IDENTITYAGENT or the SSH_AUTH_SOCK
+ *                environment variable.  (int, 0 = false).
+ *
  *              - SSH_OPTIONS_GSSAPI_SERVER_IDENTITY
  *                Set it to specify the GSSAPI server identity that libssh
  *                should expect when connecting to the server (const char *).
@@ -920,6 +929,16 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
         }
 
         options->ssh2 = *x & 0xffff;
+      }
+      break;
+    case SSH_OPTIONS_FORWARDAGENT:
+      if (value == NULL) {
+        cout << "invalid error" << endl;
+        return -1;
+      } else {
+        int *x = (int *)value;
+
+        options->ForwardAgent = (*x & 0xff) > 0 ? 1 : 0;
       }
       break;
     case SSH_OPTIONS_STRICTHOSTKEYCHECK:
@@ -1303,6 +1322,12 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
       p = ssh_config_get_str_tok(&s, NULL);
       if (p && *parsing) {
         ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, p);
+      }
+      break;
+    case SOC_FORWARDAGENT:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_FORWARDAGENT, &i);
       }
       break;
     case SOC_GSSAPISERVERIDENTITY:
