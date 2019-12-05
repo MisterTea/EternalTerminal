@@ -33,7 +33,7 @@ cmake ../
 make && sudo make install
 sudo cp ../etc/et.cfg /etc/
 ```
-Once built, the binary only requires `libgflags-dev`.
+Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 
 ### Debian
 
