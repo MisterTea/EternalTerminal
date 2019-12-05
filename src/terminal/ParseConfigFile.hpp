@@ -73,6 +73,8 @@ enum ssh_config_opcode_e {
   SOC_GSSAPIDELEGATECREDENTIALS,
   SOC_INCLUDE,
   SOC_PROXYJUMP,
+  SOC_FORWARDAGENT,
+  SOC_IDENTITYAGENT,
   SOC_END /* Keep this one last in the list */
 };
 
@@ -109,6 +111,8 @@ enum ssh_options_e {
   SSH_OPTIONS_HMAC_C_S,
   SSH_OPTIONS_HMAC_S_C,
   SSH_OPTIONS_PROXYJUMP,
+  SSH_OPTIONS_FORWARDAGENT,
+  SSH_OPTIONS_IDENTITYAGENT
 };
 
 struct Options {
@@ -126,6 +130,8 @@ struct Options {
   char *gss_server_identity;
   char *gss_client_identity;
   int gss_delegate_creds;
+  int forward_agent;
+  char *identity_agent;
 };
 
 struct ssh_config_keyword_table_s {
@@ -148,6 +154,8 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"gssapidelegatecredentials", SOC_GSSAPIDELEGATECREDENTIALS},
     {"include", SOC_INCLUDE},
     {"proxyjump", SOC_PROXYJUMP},
+    {"forwardagent", SOC_FORWARDAGENT},
+    {"identityagent", SOC_IDENTITYAGENT},
     {NULL, SOC_UNSUPPORTED}};
 
 static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
@@ -979,6 +987,29 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
         options->gss_delegate_creds = (x & 0xff);
       }
       break;
+    case SSH_OPTIONS_FORWARDAGENT:
+      if (value == NULL) {
+        cout << "invalid error" << endl;
+        return -1;
+      } else {
+        int x = *(int *)value;
+        options->forward_agent = (x & 0xff);
+      }
+      break;
+    case SSH_OPTIONS_IDENTITYAGENT:
+      v = static_cast<const char *>(value);
+      if (v == NULL || v[0] == '\0') {
+        cout << "invalid error" << endl;
+        return -1;
+      } else {
+        SAFE_FREE(options->identity_agent);
+        options->identity_agent = strdup(v);
+        if (options->identity_agent == NULL) {
+          cout << "error" << endl;
+          return -1;
+        }
+      }
+      break;
 
     default:
       cout << "Unknown ssh option" << endl;
@@ -1289,6 +1320,22 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
       i = ssh_config_get_yesno(&s, -1);
       if (i >= 0 && *parsing) {
         ssh_options_set(options, SSH_OPTIONS_GSSAPI_DELEGATE_CREDENTIALS, &i);
+      }
+      break;
+    case SOC_FORWARDAGENT:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_FORWARDAGENT, &i);
+      }
+      break;
+    case SOC_IDENTITYAGENT:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        char *filename = ssh_path_expand_tilde(p);
+        if (filename) {
+          ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, p);
+        }
+        SAFE_FREE(filename);
       }
       break;
     case SOC_UNSUPPORTED:

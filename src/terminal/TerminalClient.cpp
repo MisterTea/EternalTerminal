@@ -52,7 +52,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
                                shared_ptr<Console> _console, bool jumphost,
                                const string& tunnels,
                                const string& reverseTunnels,
-                               bool forwardSshAgent)
+                               bool forwardSshAgent,
+                               const string& identityAgent)
     : console(_console), shuttingDown(false) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
@@ -84,17 +85,25 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
     }
     if (forwardSshAgent) {
       PortForwardSourceRequest pfsr;
-      auto authSockEnv = getenv("SSH_AUTH_SOCK");
-      if (!authSockEnv) {
-        cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
-                "ran ssh-agent first?"
-             << endl;
-        exit(1);
+      string authSock = "";
+      if (identityAgent.length()) {
+        authSock = identityAgent;
+      } else {
+        auto authSockEnv = getenv("SSH_AUTH_SOCK");
+        if (!authSockEnv) {
+          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
+                  "you "
+                  "ran ssh-agent first?"
+               << endl;
+          exit(1);
+        }
+        authSock = string(authSockEnv);
       }
-      string authSock = string(authSockEnv);
-      pfsr.mutable_destination()->set_name(authSock);
-      pfsr.set_environmentvariable("SSH_AUTH_SOCK");
-      *(payload.add_reversetunnels()) = pfsr;
+      if (authSock.length()) {
+        pfsr.mutable_destination()->set_name(authSock);
+        pfsr.set_environmentvariable("SSH_AUTH_SOCK");
+        *(payload.add_reversetunnels()) = pfsr;
+      }
     }
   } catch (const std::runtime_error& ex) {
     cout << "Error establishing port forward: " << ex.what() << endl;

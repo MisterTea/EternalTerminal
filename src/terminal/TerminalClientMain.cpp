@@ -61,6 +61,8 @@ int main(int argc, char** argv) {
         ("silent", "Disable logging")                        //
         ("N,no-terminal", "Do not create a terminal")        //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
+        ("ssh-socket", "The ssh-agent socket to forward",
+         cxxopts::value<std::string>())  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",  //
          cxxopts::value<std::string>()->default_value(""))             //
@@ -144,18 +146,21 @@ int main(int argc, char** argv) {
         0,     // ssh1
         NULL,  // gss_server_identity
         NULL,  // gss_client_identity
-        0      // gss_delegate_creds
+        0,     // gss_delegate_creds
+        0,     // forward_agent
+        NULL   // identity_agent
     };
 
     char* home_dir = ssh_get_user_home_dir();
     string host_alias = destinationHost;
-    const char *host_from_command = destinationHost.c_str();
+    const char* host_from_command = destinationHost.c_str();
     ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                     destinationHost.c_str());
     // First parse user-specific ssh config, then system-wide config.
     parse_ssh_config_file(host_from_command, &sshConfigOptions,
                           string(home_dir) + USER_SSH_CONFIG_PATH);
-    parse_ssh_config_file(host_from_command, &sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
+    parse_ssh_config_file(host_from_command, &sshConfigOptions,
+                          SYSTEM_SSH_CONFIG_PATH);
     LOG(INFO) << "Parsed ssh config file, connecting to "
               << sshConfigOptions.host;
     destinationHost = string(sshConfigOptions.host);
@@ -238,10 +243,18 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
+    string sshSocket;
+    if (result.count("ssh-socket")) {
+      sshSocket = result["ssh-socket"].as<string>();
+    } else if (sshConfigOptions.identity_agent) {
+      sshSocket = string(sshConfigOptions.identity_agent);
+    }
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "", result.count("f"));
+        result.count("r") ? result["r"].as<string>() : "",
+        (result.count("f") || sshConfigOptions.forward_agent),
+        sshSocket;
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {
