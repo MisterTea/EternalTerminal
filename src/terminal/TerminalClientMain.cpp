@@ -253,8 +253,7 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "",
-        (result.count("f") || sshConfigOptions.forward_agent),
-        sshSocket;
+        (result.count("f") || sshConfigOptions.forward_agent), sshSocket);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {
