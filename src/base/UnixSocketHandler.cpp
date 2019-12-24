@@ -174,14 +174,6 @@ vector<int> UnixSocketHandler::getActiveSockets() {
 }
 
 void UnixSocketHandler::initSocket(int fd) {
-  {
-    // Set linger
-    struct linger so_linger;
-    so_linger.l_onoff = 1;
-    so_linger.l_linger = 5;
-    FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger));
-  }
 #ifndef MSG_NOSIGNAL
   {
     // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE

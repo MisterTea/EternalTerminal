@@ -250,5 +250,13 @@ void TcpSocketHandler::initSocket(int fd) {
     FATAL_FAIL_UNLESS_EINVAL(
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
   }
+  {
+    // Set linger if possible
+    struct linger so_linger;
+    so_linger.l_onoff = 1;
+    so_linger.l_linger = 5;
+    FATAL_FAIL_UNLESS_EINVAL(
+        setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger));
+  }
 }
 }  // namespace et
