@@ -33,7 +33,7 @@ cmake ../
 make && sudo make install
 sudo cp ../etc/et.cfg /etc/
 ```
-Once built, the binary only requires `libgflags-dev`.
+Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 
 ### Debian
 
@@ -93,6 +93,14 @@ On FreeBSD, use:
 ### Fedora (version 29 and later):
 ```
 sudo dnf install et
+```
+
+### openSUSE
+
+```
+zypper ar -f obs://network
+zypper ref
+zypper in EternalTerminal
 ```
 
 ### Other Linux
