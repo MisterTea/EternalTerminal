@@ -3,7 +3,7 @@ set -x
 
 wget `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tarball_url' | sed 's/"//g'` -O `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g' | sed 's/et-v/et_/g' | sed 's/$/.orig.tar.gz/g'`
 
-for distro in stretch; do
+for distro in `distro-info --supported | grep -v experimental`; do
     rm -Rf EternalTerminal/debian
     cp -Rf debian_SOURCE EternalTerminal/debian
     sed -i "s/##DISTRO##/${distro}/g" EternalTerminal/debian/changelog
@@ -16,10 +16,12 @@ for distro in stretch; do
     pbuilder-dist ${distro} amd64 build *.dsc
     pbuilder-dist ${distro} i386 update
     pbuilder-dist ${distro} i386 build *.dsc
-    #pbuilder-dist ${distro} armhf update
-    #pbuilder-dist ${distro} armhf build *.dsc
-    #pbuilder-dist ${distro} armel update
-    #pbuilder-dist ${distro} armel build *.dsc
+    pbuilder-dist ${distro} armhf update
+    pbuilder-dist ${distro} armhf build *.dsc
+    pbuilder-dist ${distro} armel update
+    pbuilder-dist ${distro} armel build *.dsc
+    pbuilder-dist ${distro} arm64 update
+    pbuilder-dist ${distro} arm64 build *.dsc
 
     aptly repo add et-${distro} ~/pbuilder/${distro}*_result/*.deb
     aptly publish drop ${distro} || true

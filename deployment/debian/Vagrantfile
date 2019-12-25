@@ -89,11 +89,15 @@ SHELL
   git clone --branch release git@github.com:MisterTea/EternalTerminal.git
   git clone git@github.com:MisterTea/debian-et.git
   
-  pbuilder-dist stretch i386 create --debootstrapopts --variant=buildd && \
-  pbuilder-dist stretch amd64 create --debootstrapopts --variant=buildd && \
-  pbuilder-dist stretch armhf create --debootstrapopts --variant=buildd && \
-  pbuilder-dist stretch armel create --debootstrapopts --variant=buildd
+  for distro in `distro-info --supported | grep -v experimental`; do
+    pbuilder-dist ${distro} i386 create --debootstrapopts --variant=buildd
+    pbuilder-dist ${distro} amd64 create --debootstrapopts --variant=buildd
+    pbuilder-dist ${distro} armhf create --debootstrapopts --variant=buildd
+    pbuilder-dist ${distro} armel create --debootstrapopts --variant=buildd
+    pbuilder-dist ${distro} arm64 create --debootstrapopts --variant=buildd
 
-  aptly repo create -distribution=stretch -component=main et-stretch
+    aptly repo create -distribution=${distro} -component=main et-${distro}
+  done
+
 SHELL
 end
