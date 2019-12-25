@@ -1,7 +1,7 @@
 #!/usr/bin/make -f
 
 %:
-	dh $@ --with systemd --buildsystem=cmake
+	dh $@ --parallel --with systemd --buildsystem=cmake
 
 BUILDDIR = build_dir
 

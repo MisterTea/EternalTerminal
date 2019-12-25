@@ -10,7 +10,7 @@ git checkout master
 git pull
 git checkout `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'`
 
-for distro in cosmic bionic xenial artful disco; do
+for distro in `distro-info --supported`; do
     rm -Rf debian
     cp -Rf ../debian_SOURCE debian
     sed -i "s/##DISTRO##/${distro}/g" debian/changelog
