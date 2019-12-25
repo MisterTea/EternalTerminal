@@ -178,8 +178,12 @@ void UnixSocketHandler::initSocket(int fd) {
   {
     // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
     int val = 1;
-    FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)));
+    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)) ==
+        -1) {
+      // On Debian + ARM processors, this can fail.  if so, just ignore SIGPIPE
+      // globally
+      ::signal(SIGPIPE, SIG_IGN);
+    }
   }
 #endif
   // Also set the accept socket as non-blocking
