@@ -1,0 +1,69 @@
+diff -rupN llvm-3.1.src/CMakeLists.txt llvm-3.1.src.cotire/CMakeLists.txt
+--- llvm-3.1.src/CMakeLists.txt	2012-05-16 00:06:08.000000000 +0200
++++ llvm-3.1.src.cotire/CMakeLists.txt	2012-05-23 19:49:12.000000000 +0200
+@@ -18,6 +18,7 @@ set(PACKAGE_VERSION "${LLVM_VERSION_MAJO
+ set_property(GLOBAL PROPERTY USE_FOLDERS ON)
+ 
+ include(VersionFromVCS)
++include(cotire)
+ 
+ option(LLVM_APPEND_VC_REV
+   "Append the version control system revision id to LLVM version" OFF)
+diff -rupN llvm-3.1.src/cmake/modules/AddLLVM.cmake llvm-3.1.src.cotire/cmake/modules/AddLLVM.cmake
+--- llvm-3.1.src/cmake/modules/AddLLVM.cmake	2011-11-29 20:25:30.000000000 +0100
++++ llvm-3.1.src.cotire/cmake/modules/AddLLVM.cmake	2012-05-23 19:49:59.000000000 +0200
+@@ -25,6 +25,9 @@ macro(add_llvm_library name)
+       ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
+   endif()
+   set_target_properties(${name} PROPERTIES FOLDER "Libraries")
++  if (COMMAND cotire)
++      cotire(${name})
++  endif()
+ 
+   # Add the explicit dependency information for this library.
+   #
+@@ -68,6 +71,9 @@ ${name} ignored.")
+ 	LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+ 	ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
+     endif()
++    if (COMMAND cotire)
++       cotire(${name})
++    endif()
+   endif()
+ 
+   set_target_properties(${name} PROPERTIES FOLDER "Loadable modules")
+@@ -88,6 +94,9 @@ macro(add_llvm_executable name)
+     add_dependencies( ${name} ${LLVM_COMMON_DEPENDS} )
+   endif( LLVM_COMMON_DEPENDS )
+   link_system_libs( ${name} )
++  if (COMMAND cotire)
++      cotire(${name})
++  endif()
+ endmacro(add_llvm_executable name)
+ 
+ 
+diff -rupN llvm-3.1.src/lib/Analysis/CMakeLists.txt llvm-3.1.src.cotire/lib/Analysis/CMakeLists.txt
+--- llvm-3.1.src/lib/Analysis/CMakeLists.txt	2012-03-16 06:51:52.000000000 +0100
++++ llvm-3.1.src.cotire/lib/Analysis/CMakeLists.txt	2012-05-23 19:49:12.000000000 +0200
+@@ -1,3 +1,7 @@
++if (COMMAND cotire)
++	set_source_files_properties (ConstantFolding.cpp PROPERTIES COTIRE_EXCLUDED TRUE)
++endif()
++
+ add_llvm_library(LLVMAnalysis
+   AliasAnalysis.cpp
+   AliasAnalysisCounter.cpp
+diff -rupN llvm-3.1.src/lib/Support/CMakeLists.txt llvm-3.1.src.cotire/lib/Support/CMakeLists.txt
+--- llvm-3.1.src/lib/Support/CMakeLists.txt	2012-04-17 22:03:03.000000000 +0200
++++ llvm-3.1.src.cotire/lib/Support/CMakeLists.txt	2012-05-23 19:49:12.000000000 +0200
+@@ -4,6 +4,10 @@ if( MINGW )
+   set(LLVM_REQUIRES_EH 1)
+ endif()
+ 
++if (COMMAND cotire)
++	set_source_files_properties (IsInf.cpp IsNAN.cpp PROPERTIES COTIRE_EXCLUDED TRUE)
++endif()
++
+ add_llvm_library(LLVMSupport
+   APFloat.cpp
+   APInt.cpp
