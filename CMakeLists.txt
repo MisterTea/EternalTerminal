@@ -1,10 +1,10 @@
 cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 6.0.13)
 
-SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external_imported/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 FIND_PACKAGE(Sanitizers)
 
-SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake" ${CMAKE_MODULE_PATH})
+SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external_imported/cotire/CMake" ${CMAKE_MODULE_PATH})
 INCLUDE(cotire)
 if(POLICY CMP0058) 
     cmake_policy(SET CMP0058 NEW) # Needed for cotire
@@ -124,12 +124,12 @@ MACRO(DECORATE_TARGET TARGET_NAME)
 ENDMACRO()
 
 include_directories(
-  external/easyloggingpp/src
-  external/ThreadPool
-  external/Catch2/single_include
-  external/cxxopts/include
-  external/msgpack-c/include
-  external/UniversalStacktrace/ust
+  external_imported/easyloggingpp/src
+  external_imported/ThreadPool
+  external_imported/Catch2/single_include
+  external_imported/cxxopts/include
+  external_imported/msgpack-c/include
+  external_imported/UniversalStacktrace/ust
   src/base
   src/terminal
   src/terminal/forwarding
@@ -147,8 +147,8 @@ add_library(
   et-lib
   STATIC
 
-  external/easyloggingpp/src/easylogging++.h
-  external/easyloggingpp/src/easylogging++.cc
+  external_imported/easyloggingpp/src/easylogging++.h
+  external_imported/easyloggingpp/src/easylogging++.cc
 
   src/base/BackedReader.hpp
   src/base/BackedReader.cpp

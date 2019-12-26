@@ -1,0 +1,239 @@
+language: cpp
+sudo: false
+dist: trusty
+
+install:
+ - export BASE=`pwd`
+ - mkdir ${BASE}/usr
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then wget --no-check-certificate https://cmake.org/files/v3.7/cmake-3.7.1-Linux-x86_64.sh -O cmake-3.7.1-Linux-x86_64.sh; fi
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then chmod a+x cmake-3.7.1-Linux-x86_64.sh; fi
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then ./cmake-3.7.1-Linux-x86_64.sh --prefix=${BASE}/usr --skip-license; fi
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then export PATH="${BASE}/usr/bin:$PATH"; fi
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then export LD_LIBRARY_PATH="${BASE}/usr/lib:$LD_LIBRARY_PATH"; fi
+ - if [ "$CXX" == "g++" ]; then export CXX="g++-7" CC="gcc-7"; fi
+ - if [ "$CXX" == "clang++" ] && [ "$TRAVIS_OS_NAME" == "linux" ]; then export CXX="clang++-5.0" CC="clang-5.0"; fi
+ - if [ "$CXX" == "g++" ] && [ "$TRAVIS_OS_NAME" == "linux" ]; then cd /usr/include/c++/$(g++ -v 2>&1 | grep version | awk '{print $3}')/bits; ln -s ../ext/atomicity.h .; cd ${BASE}/usr; fi
+#gtest
+ - wget https://github.com/google/googletest/archive/release-1.7.0.zip -O googletest-release-1.7.0.zip
+ - unzip -q googletest-release-1.7.0.zip
+ - cd googletest-release-1.7.0
+ - $CXX -m${ARCH} src/gtest-all.cc -I. -Iinclude -c
+ - $CXX -m${ARCH} src/gtest_main.cc -I. -Iinclude -c
+ - ar -rv libgtest.a gtest-all.o
+ - ar -rv libgtest_main.a gtest_main.o
+ - mkdir -p ${BASE}/usr/include
+ - cp -r include/gtest ${BASE}/usr/include
+ - mkdir -p ${BASE}/usr/lib
+ - mv *.a ${BASE}/usr/lib
+ - cd ..
+ # valgrind
+ - if [ "$TRAVIS_OS_NAME" == "linux" ] && [ "$MSGPACK_FUZZ_REGRESSION" != "ON" ]; then wget http://valgrind.org/downloads/valgrind-3.12.0.tar.bz2 && tar xjf valgrind-3.12.0.tar.bz2 && cd valgrind-3.12.0 && ./configure --prefix=${BASE}/usr > /dev/null && make -j3 > /dev/null && make install > /dev/null && cd ..; fi
+ # boost
+ - if [ "$BOOST" == "ON" ] && [ "MSGPACK_FUZZ_REGRESSION" != "ON" ]; then wget http://sourceforge.net/projects/boost/files/boost/1.67.0/boost_1_67_0.zip && unzip -q boost_1_67_0.zip && cd boost_1_67_0 && ./bootstrap.sh && ./b2 -j3 --prefix=${BASE}/usr --with-chrono --with-context --with-system --with-timer address-model=${ARCH} install > /dev/null && cd ..; fi
+ - if [ "$MSGPACK_FUZZ_REGRESSION" == "ON" ]; then wget http://sourceforge.net/projects/boost/files/boost/1.67.0/boost_1_67_0.zip && unzip -q boost_1_67_0.zip && cd boost_1_67_0 && ./bootstrap.sh --with-toolset=clang && ./b2 clean && ./b2 -j$(nproc) --prefix=${BASE}/usr --with-system --with-filesystem address-model=${ARCH} install > /dev/null && cd ..; fi
+ - if [ "$TRAVIS_OS_NAME" == "linux" ]; then sudo ln -s /usr/include/x86_64-linux-gnu/zconf.h /usr/include; fi
+
+matrix:
+  include:
+    - os: osx
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="64"   BOOST="ON" SHARED="ON"  CHAR_SIGN="unsigned" API_VERSION="1"
+    - os: osx
+      compiler: clang
+      env:  ACTION="ci/build_cmake.sh" CXX17="ON" ARCH="64"   BOOST="ON" SHARED="ON"  CHAR_SIGN="signed"   API_VERSION="3"
+    - os: osx
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="64"              SHARED="ON"  CHAR_SIGN="signed"   API_VERSION="2"
+    - os: osx
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"             ARCH="64"              SHARED="ON"  CHAR_SIGN="unsigned" API_VERSION="2"
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"             ARCH="64"   BOOST="ON" SHARED="ON"  CHAR_SIGN="unsigned" API_VERSION="1"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - bzip2
+            - clang-5.0
+            - libc6-dbg
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"             ARCH="32"              SHARED="ON"  CHAR_SIGN="signed"   API_VERSION="2"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - lib32stdc++6-6-dbg
+            - lib32gcc1
+            - libc6-i386
+            - lib32z1-dev
+            - zlib1g-dev
+            - bzip2
+            - clang-5.0
+            - libc6-dbg
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="64"   BOOST="ON" SHARED="ON"  CHAR_SIGN="signed"   API_VERSION="3" X3_PARSE="ON"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - bzip2
+            - clang-5.0
+            - libc6-dbg
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="32"              SHARED="OFF" CHAR_SIGN="unsigned" API_VERSION="2"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - lib32stdc++6-6-dbg
+            - lib32gcc1
+            - libc6-i386
+            - lib32z1-dev
+            - zlib1g-dev
+            - bzip2
+            - clang-5.0
+            - libc6-dbg
+    - os: linux
+      compiler: gcc
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="64"              SHARED="ON"  CHAR_SIGN="signed"   API_VERSION="2"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - bzip2
+            - libc6-dbg
+    - os: linux
+      compiler: gcc
+      env: ACTION="ci/build_cmake.sh"  CXX17="ON" ARCH="32"   BOOST="ON" SHARED="ON"  CHAR_SIGN="unsigned" API_VERSION="3" X3_PARSE="ON"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - lib32stdc++6-6-dbg
+            - lib32gcc1
+            - libc6-i386
+            - lib32z1-dev
+            - zlib1g-dev
+            - bzip2
+            - libc6-dbg
+    - os: linux
+      compiler: gcc
+      env: ACTION="ci/build_cmake.sh"             ARCH="64"              SHARED="ON"  CHAR_SIGN="unsigned" API_VERSION="2"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - bzip2
+            - libc6-dbg
+    - os: linux
+      compiler: gcc
+      env: ACTION="ci/build_cmake.sh"             ARCH="32"   BOOST="ON" SHARED="OFF" CHAR_SIGN="signed"   API_VERSION="1"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - lib32stdc++6-6-dbg
+            - lib32gcc1
+            - libc6-i386
+            - lib32z1-dev
+            - zlib1g-dev
+            - bzip2
+            - libc6-dbg
+    - os: linux
+      compiler: gcc
+      env: ACTION="ci/build_cmake.sh"             ARCH="32"   BOOST="ON" SHARED="OFF" CHAR_SIGN="signed"   API_VERSION="2"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+          packages:
+            - g++-multilib
+            - gcc-multilib
+            - gcc-7-multilib
+            - g++-7-multilib
+            - lib32stdc++6-6-dbg
+            - lib32gcc1
+            - libc6-i386
+            - lib32z1-dev
+            - zlib1g-dev
+            - bzip2
+            - libc6-dbg
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_regression.sh"         ARCH="64" SAN="UBSAN" MSGPACK_FUZZ_REGRESSION="ON"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - bzip2
+            - clang-5.0
+      script:
+        - CMAKE_CXX_COMPILER="${CXX}" CMAKE_C_COMPILER="${CC}" CMAKE_LIBRARY_PATH="${BASE}" GTEST_ROOT="${BASE}/gtest" BOOST_ROOT="${BASE}/boost" CTEST_OUTPUT_ON_FAILURE=1 MSGPACK_SAN="${SAN}" ci/build_regression.sh
+    - os: linux
+      compiler: clang
+      env: ACTION="ci/build_regression.sh"         ARCH="64" SAN="ASAN" MSGPACK_FUZZ_REGRESSION="ON"
+      addons:
+        apt:
+          sources:
+            - ubuntu-toolchain-r-test
+            - llvm-toolchain-trusty-5.0
+          packages:
+            - bzip2
+            - clang-5.0
+      script:
+        - CMAKE_CXX_COMPILER="${CXX}" CMAKE_C_COMPILER="${CC}" CMAKE_LIBRARY_PATH="${BASE}" GTEST_ROOT="${BASE}/gtest" BOOST_ROOT="${BASE}/boost" CTEST_OUTPUT_ON_FAILURE=1 MSGPACK_SAN="${SAN}" ci/build_regression.sh
+
+
+script:
+  - CMAKE_CXX_COMPILER="${CXX}" CMAKE_C_COMPILER="${CC}" CMAKE_LIBRARY_PATH="${BASE}/usr/lib:${BASE}/build" GTEST_ROOT="${BASE}/usr" BOOST_ROOT="${BASE}/usr" CFLAGS="-Werror -g" CXXFLAGS="-Werror -g" ${ACTION}
+  - cat Files.cmake| grep ".*\.[h|hpp]" | perl -pe 's/ //g' | sort > tmp1  && find include -name "*.h" -o -name "*.hpp" | sort > tmp2 && diff tmp1 tmp2
