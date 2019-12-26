@@ -12,6 +12,11 @@ endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(ENABLE_EXECINFO "Enable execinfo support" OFF)
+
+if(ENABLE_EXECINFO)
+	SET(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} -lexecinfo")
+endif()
 
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
