@@ -1,3 +1,9 @@
+et (6.0.5-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * Various compatibility fixes
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Mon, 14 Oct 2019 16:36:51 -0800
+
 et (6.0.4-##DISTRO##2) ##DISTRO##; urgency=medium
 
   * Fix bug in et.service
