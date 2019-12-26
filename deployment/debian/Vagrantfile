@@ -82,6 +82,8 @@ SHELL
 
   git config --global user.email "jgmath2000@gmail.com"
   git config --global user.name "Jason Gauci"
+
+  sudo chmod -R 0700 ~/.gnupg ~/.ssh
   
   echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > ~/.pbuilderrc
   
