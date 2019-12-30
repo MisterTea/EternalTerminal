@@ -2,7 +2,7 @@ FROM archlinux:latest
 LABEL maintainer="Jason Gauci (jgmath2000@gmail.com)"
 
 RUN pacman -Syu --noconfirm
-RUN pacman -Syu --noconfirm jq git base-devel sudo go openssh
+RUN pacman -Syu --noconfirm jq git base-devel sudo go openssh emacs
 RUN useradd builduser
 RUN passwd -d builduser
 RUN printf 'builduser ALL=(ALL) ALL\n' | tee -a /etc/sudoers # Allow the builduser passwordless sudo
@@ -25,9 +25,9 @@ RUN git config --global user.email "foo@bar.com" # Not needed for github
 RUN git config --global user.name "Foo Bar"
 
 WORKDIR /home/builduser
-RUN git clone https://aur.archlinux.org/eternalterminal.git arch_et
+RUN git clone ssh://aur@aur.archlinux.org/eternalterminal.git arch_et
 
-RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
+RUN git clone --branch `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'` git@github.com:MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /home/builduser/EternalTerminal/build
 RUN cmake ..
