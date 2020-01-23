@@ -53,7 +53,7 @@ Install dependencies:
 sudo yum -y install epel-release
 sudo yum install cmake3
 sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-protobuf-compiler cmake gflags-devel
+protobuf-compiler cmake gflags-devel protobuf-lite-devel
 ```
 
 Download and install from source:
