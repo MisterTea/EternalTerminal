@@ -116,6 +116,10 @@ int main(int argc, char **argv) {
       serverFifo = result["serverfifo"].as<string>();
     }
 
+    if (result.count("port")) {
+      port = result["port"].as<int>();
+    }
+
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
