@@ -35,21 +35,9 @@ sudo apt update
 sudo apt install et
 ```
 
-# Other Linux
+# Other Linux/Unix
 
-Download and install from source (you may need some dependencies):
-
-```
-wget https://github.com/MisterTea/EternalTerminal/archive/master.zip
-unzip master.zip
-cd master
-mkdir build
-cd build
-cmake ../
-make
-sudo make install
-```
-
+Check out the README for instructions: https://github.com/MisterTea/EternalTerminal
 
 # Windows
 
