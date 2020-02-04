@@ -46,43 +46,8 @@ For debian, use our deb repo. For stretch:
 
 
 ### CentOS 7
-_Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
 
-Install dependencies:
-```
-sudo yum -y install epel-release
-sudo yum install cmake3
-sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-protobuf-compiler cmake gflags-devel protobuf-lite-devel
-```
-
-Download and install from source:
-```
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
-cd EternalTerminal
-mkdir build
-cd build
-cmake3 ../
-make && sudo make install
-sudo cp ../systemctl/et.service /etc/systemd/system/
-sudo cp ../etc/et.cfg /etc/
-```
-Find the actual location of et:
-
-	which etserver
-
-Correct the service file:
-Open up /etc/systemd/system/et.service in an editor.
-Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)).
-
-	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
-
-Start the et service:
-
-```
-sudo systemctl enable et.service
-sudo systemctl start et.service
-```
+Up to the present day the only way to install is to [build from source](#centos-7).
 
 
 ### FreeBSD
@@ -200,21 +165,14 @@ cmake ../
 make
 ```
 
-### Debian/Ubuntu/CentOS
+### Debian/Ubuntu
 
 Grab the deps and then follow this process:
 
 Debian/Ubuntu Dependencies:
 ```
-sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
-```
-
-CentOS/RHEL Dependencies:
-```
-sudo yum -y install epel-release
-sudo yum install cmake3
-sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-  protobuf-compiler cmake gflags-devel
+sudo apt install libboost-dev libsodium-dev libncurses5-dev \
+     libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
 ```
 
 Source and setup:
@@ -229,11 +187,51 @@ make
 sudo make install
 ```
 
-Copy config file, the service and enable it:
+### CentOS 7
 
+_Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
+
+Install dependencies:
 ```
+sudo yum -y install epel-release
+sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
+     protobuf-compiler gflags-devel protobuf-lite-devel
+```
+
+Download and install from source:
+```
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
+mkdir build
+cd build
+cmake3 ../
+make && sudo make install
 sudo cp ../systemctl/et.service /etc/systemd/system/
 sudo cp ../etc/et.cfg /etc/
+```
+Find the actual location of et:
+
+	which etserver
+
+Correct the service file (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180) for details).
+
+```
+sudo sed -ie "s|ExecStart=.*[[:space:]]|ExecStart=$(which etserver) |" /etc/systemd/system/et.service
+```
+
+Alternativelly, open the file /etc/systemd/system/et.service in an editor and correct the `ExectStart=...` line to point to the correct path of the `etserver` binary.
+
+	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+
+Reload systemd configs:
+
+```
+sudo systemctl daemon-reload
+```
+
+Start the et service:
+
+```
 sudo systemctl enable et.service
 sudo systemctl start et.service
 ```
