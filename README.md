@@ -193,22 +193,29 @@ _Note: As of April 2019, the service does not start on CentOS 7, see [#182](http
 
 Install dependencies:
 ```
-sudo yum -y install epel-release
+sudo yum install epel-release
 sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
      protobuf-compiler gflags-devel protobuf-lite-devel
 ```
 
-Download and install from source:
+Install scl dependencies
+```
+sudo yum install centos-release-scl
+sudo yum install devtoolset-8
+```
+
+Download and install from source ([see #238 for details](https://github.com/MisterTea/EternalTerminal/issues/238)):
 ```
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
-cmake3 ../
-make && sudo make install
+scl enable devtoolset-8 'cmake3 ../'
+scl enable devtoolset-8 'make && sudo make install'
 sudo cp ../systemctl/et.service /etc/systemd/system/
 sudo cp ../etc/et.cfg /etc/
 ```
+
 Find the actual location of et:
 
 	which etserver
