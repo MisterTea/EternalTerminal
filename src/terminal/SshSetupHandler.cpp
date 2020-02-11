@@ -4,27 +4,12 @@
 #include <sys/wait.h>
 
 namespace et {
-string genRandom(int len) {
-  static const char alphanum[] =
-      "0123456789"
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "abcdefghijklmnopqrstuvwxyz";
-  string s(len, '\0');
-
-  for (int i = 0; i < len; ++i) {
-    s[i] = alphanum[randombytes_uniform(sizeof(alphanum) - 1)];
-  }
-
-  return s;
-}
-
-string genCommand(const string &passkey, const string &id,
-                  const string &clientTerm, const string &user, bool kill,
+string genCommand(const string &clientTerm, const string &user, bool kill,
                   const string &command_prefix, const string &options) {
   string SSH_SCRIPT_PREFIX;
 
-  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
-                   "\n\" | " + command_prefix + " etterminal " + options;
+  string COMMAND = "echo \"" + clientTerm + "\n\" | " + command_prefix +
+                   " etterminal " + options;
 
   // Kill old ET sessions of the user
   if (kill) {
@@ -46,15 +31,13 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
     // Default to xterm-256color
     clientTerm = envString;
   }
-  string passkey = genRandom(32);
-  string id = genRandom(16);
   string cmdoptions{"--verbose=" + std::to_string(vlevel)};
   if (!serverFifo.empty()) {
     cmdoptions += " --serverfifo=" + serverFifo;
   }
 
   string SSH_SCRIPT_DST =
-      genCommand(passkey, id, clientTerm, user, kill, cmd_prefix, cmdoptions);
+      genCommand(clientTerm, user, kill, cmd_prefix, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -62,6 +45,9 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
     LOG(FATAL) << "pipe";
     exit(1);
   }
+
+  string id;
+  string passkey;
 
   pid_t pid = fork();
   string SSH_USER_PREFIX = "";
@@ -112,15 +98,9 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
       }
       auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
       auto idpasskey_splited = split(idpasskey, '/');
-      string returned_id = idpasskey_splited[0];
-      string returned_passkey = idpasskey_splited[1];
-      if (returned_id == id && returned_passkey == passkey) {
-        LOG(INFO) << "etserver started";
-      } else {
-        LOG(FATAL) << "client/server idpasskey doesn't match: " << id
-                   << " != " << returned_id << " or " << passkey
-                   << " != " << returned_passkey;
-      }
+      id = idpasskey_splited[0];
+      passkey = idpasskey_splited[1];
+      LOG(INFO) << "etserver started";
     } catch (const runtime_error &err) {
       cout << "Error initializing connection" << err.what() << endl;
     }
@@ -144,8 +124,8 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
         close(link_jump[1]);
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
-        string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
-                                            cmd_prefix, jump_cmdoptions);
+        string SSH_SCRIPT_JUMP =
+            genCommand(clientTerm, user, kill, cmd_prefix, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
@@ -163,20 +143,18 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
           idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
           idpasskey = idpasskey.substr(0, 16 + 1 + 32);
           auto idpasskey_splited = split(idpasskey, '/');
-          string returned_id = idpasskey_splited[0];
-          string returned_passkey = idpasskey_splited[1];
-          if (returned_id == id && returned_passkey == passkey) {
-            LOG(INFO) << "jump client started.";
-          } else {
-            LOG(FATAL) << "client/server idpasskey doesn't match: " << id
-                       << " != " << returned_id << " or " << passkey
-                       << " != " << returned_passkey;
-          }
+          id = idpasskey_splited[0];
+          passkey = idpasskey_splited[1];
         } catch (const runtime_error &err) {
           cout << "Error initializing connection" << err.what() << endl;
         }
       }
     }
+  }
+
+  if (id.length() == 0 || passkey.length() == 0) {
+    LOG(FATAL) << "Somehow missing id or passkey: " << id.length() << " "
+               << passkey.length();
   }
   return id + "/" + passkey;
 }
