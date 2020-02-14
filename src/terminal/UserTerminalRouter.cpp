@@ -36,7 +36,6 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
       LOG(FATAL) << "Got an invalid packet header: " << int(packet.getHeader());
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
-    VLOG(1) << "Got id/passkey: " << tui.id() << "/" << tui.passkey();
     tui.set_fd(terminalFd);
     idInfoMap[tui.id()] = tui;
     return IdKeyPair({tui.id(), tui.passkey()});

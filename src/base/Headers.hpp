@@ -78,6 +78,8 @@ inline std::ostream& operator<<(std::ostream& os,
 
 #include "ThreadPool.h"
 
+#include <sodium.h>
+
 using namespace std;
 
 namespace google {}
@@ -197,6 +199,20 @@ inline bool waitOnSocketData(int fd) {
   VLOG(4) << "Before selecting sockFd";
   FATAL_FAIL(select(fd + 1, &fdset, NULL, NULL, &tv));
   return FD_ISSET(fd, &fdset);
+}
+
+inline string genRandomAlphaNum(int len) {
+  static const char alphanum[] =
+      "0123456789"
+      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
+      "abcdefghijklmnopqrstuvwxyz";
+  string s(len, '\0');
+
+  for (int i = 0; i < len; ++i) {
+    s[i] = alphanum[randombytes_uniform(sizeof(alphanum) - 1)];
+  }
+
+  return s;
 }
 
 }  // namespace et

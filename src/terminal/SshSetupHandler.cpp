@@ -4,20 +4,6 @@
 #include <sys/wait.h>
 
 namespace et {
-string genRandom(int len) {
-  static const char alphanum[] =
-      "0123456789"
-      "ABCDEFGHIJKLMNOPQRSTUVWXYZ"
-      "abcdefghijklmnopqrstuvwxyz";
-  string s(len, '\0');
-
-  for (int i = 0; i < len; ++i) {
-    s[i] = alphanum[randombytes_uniform(sizeof(alphanum) - 1)];
-  }
-
-  return s;
-}
-
 string genCommand(const string &passkey, const string &id,
                   const string &clientTerm, const string &user, bool kill,
                   const string &command_prefix, const string &options) {
@@ -46,8 +32,12 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
     // Default to xterm-256color
     clientTerm = envString;
   }
-  string passkey = genRandom(32);
-  string id = genRandom(16);
+  string passkey = genRandomAlphaNum(32);
+  string id = genRandomAlphaNum(16);
+
+  id[0] = id[1] = id[2] = 'X';  // For compatibility with old servers that do
+                                // not generate their own keys
+
   string cmdoptions{"--verbose=" + std::to_string(vlevel)};
   if (!serverFifo.empty()) {
     cmdoptions += " --serverfifo=" + serverFifo;
@@ -112,15 +102,9 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
       }
       auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
       auto idpasskey_splited = split(idpasskey, '/');
-      string returned_id = idpasskey_splited[0];
-      string returned_passkey = idpasskey_splited[1];
-      if (returned_id == id && returned_passkey == passkey) {
-        LOG(INFO) << "etserver started";
-      } else {
-        LOG(FATAL) << "client/server idpasskey doesn't match: " << id
-                   << " != " << returned_id << " or " << passkey
-                   << " != " << returned_passkey;
-      }
+      id = idpasskey_splited[0];
+      passkey = idpasskey_splited[1];
+      LOG(INFO) << "etserver started";
     } catch (const runtime_error &err) {
       cout << "Error initializing connection" << err.what() << endl;
     }
@@ -163,20 +147,18 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
           idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
           idpasskey = idpasskey.substr(0, 16 + 1 + 32);
           auto idpasskey_splited = split(idpasskey, '/');
-          string returned_id = idpasskey_splited[0];
-          string returned_passkey = idpasskey_splited[1];
-          if (returned_id == id && returned_passkey == passkey) {
-            LOG(INFO) << "jump client started.";
-          } else {
-            LOG(FATAL) << "client/server idpasskey doesn't match: " << id
-                       << " != " << returned_id << " or " << passkey
-                       << " != " << returned_passkey;
-          }
+          id = idpasskey_splited[0];
+          passkey = idpasskey_splited[1];
         } catch (const runtime_error &err) {
           cout << "Error initializing connection" << err.what() << endl;
         }
       }
     }
+  }
+
+  if (id.length() == 0 || passkey.length() == 0) {
+    LOG(FATAL) << "Somehow missing id or passkey: " << id.length() << " "
+               << passkey.length();
   }
   return id + "/" + passkey;
 }

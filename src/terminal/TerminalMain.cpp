@@ -103,8 +103,20 @@ int main(int argc, char** argv) {
         exit(1);
       }
       auto tokens = split(stdinData, '_');
-      idpasskey = tokens[0];
-      FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
+      if (tokens.size() == 2) {
+        idpasskey = tokens[0];
+        if (idpasskey.substr(0, 3) == std::string("XXX")) {
+          // New client connecting to new server, throw away passkey and
+          // regenerate
+          string passkey = genRandomAlphaNum(32);
+          string id = genRandomAlphaNum(16);
+          idpasskey = id + string("/") + passkey;
+        }
+
+        FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
+      } else {
+        LOG(FATAL) << "Invalid number of tokens: " << tokens.size();
+      }
     } else {
       string idpasskey = result["idpasskey"].as<string>();
       if (result.count("idpasskeyfile")) {
