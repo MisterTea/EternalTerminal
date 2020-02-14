@@ -105,13 +105,15 @@ int main(int argc, char** argv) {
       auto tokens = split(stdinData, '_');
       if (tokens.size() == 2) {
         idpasskey = tokens[0];
+        if (idpasskey.substr(0, 3) == std::string("XXX")) {
+          // New client connecting to new server, throw away passkey and
+          // regenerate
+          string passkey = genRandomAlphaNum(32);
+          string id = genRandomAlphaNum(16);
+          idpasskey = id + string("/") + passkey;
+        }
+
         FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
-      } else if (tokens.size() == 1) {
-        // Generate a new idpasskey for this session
-        string passkey = genRandomAlphaNum(32);
-        string id = genRandomAlphaNum(16);
-        idpasskey = id + string("/") + passkey;
-        FATAL_FAIL(setenv("TERM", tokens[0].c_str(), 1));
       } else {
         LOG(FATAL) << "Invalid number of tokens: " << tokens.size();
       }

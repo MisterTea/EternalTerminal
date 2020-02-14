@@ -4,12 +4,13 @@
 #include <sys/wait.h>
 
 namespace et {
-string genCommand(const string &clientTerm, const string &user, bool kill,
+string genCommand(const string &passkey, const string &id,
+                  const string &clientTerm, const string &user, bool kill,
                   const string &command_prefix, const string &options) {
   string SSH_SCRIPT_PREFIX;
 
-  string COMMAND = "echo \"" + clientTerm + "\n\" | " + command_prefix +
-                   " etterminal " + options;
+  string COMMAND = "echo \"" + id + "/" + passkey + "_" + clientTerm +
+                   "\n\" | " + command_prefix + " etterminal " + options;
 
   // Kill old ET sessions of the user
   if (kill) {
@@ -31,13 +32,19 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
     // Default to xterm-256color
     clientTerm = envString;
   }
+  string passkey = genRandomAlphaNum(32);
+  string id = genRandomAlphaNum(16);
+
+  id[0] = id[1] = id[2] = 'X';  // For compatibility with old servers that do
+                                // not generate their own keys
+
   string cmdoptions{"--verbose=" + std::to_string(vlevel)};
   if (!serverFifo.empty()) {
     cmdoptions += " --serverfifo=" + serverFifo;
   }
 
   string SSH_SCRIPT_DST =
-      genCommand(clientTerm, user, kill, cmd_prefix, cmdoptions);
+      genCommand(passkey, id, clientTerm, user, kill, cmd_prefix, cmdoptions);
 
   int link_client[2];
   char buf_client[4096];
@@ -45,9 +52,6 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
     LOG(FATAL) << "pipe";
     exit(1);
   }
-
-  string id;
-  string passkey;
 
   pid_t pid = fork();
   string SSH_USER_PREFIX = "";
@@ -124,8 +128,8 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
         close(link_jump[1]);
         string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                                  " --dstport=" + to_string(port);
-        string SSH_SCRIPT_JUMP =
-            genCommand(clientTerm, user, kill, cmd_prefix, jump_cmdoptions);
+        string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
+                                            cmd_prefix, jump_cmdoptions);
         // start command in interactive mode
         SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
         execlp("ssh", "ssh", jumphost.c_str(), SSH_SCRIPT_JUMP.c_str(), NULL);
