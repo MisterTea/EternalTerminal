@@ -5,7 +5,7 @@ WORKDIR /root
 RUN mkdir .ssh
 COPY id_rsa .ssh/
 COPY id_rsa.pub .ssh/
-RUN chmod 0400 .ssh/id_rsa
+RUN chmod -R 0700 ~/.ssh
 
 ENV KRB5_TRACE="/dev/stdout kinit jjg@FEDORAPROJECT.ORG"
 

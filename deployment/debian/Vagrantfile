@@ -12,12 +12,12 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "debian/stretch64"
+  config.vm.box = "debian/buster64"
   config.ssh.shell = "sh"
 
   config.vm.provider "virtualbox" do |v|
     v.memory = 2048
-    v.cpus = 4
+    v.cpus = 8
   end
 
   # Disable automatic box update checking. If you disable this, then
@@ -75,7 +75,9 @@ Vagrant.configure("2") do |config|
   # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
   # documentation for more information about their specific syntax and use.
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
-  apt update && apt install -y build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake libutempter-dev debhelper dh-systemd pbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support
+  apt update
+  DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt -q -y -o "Dpkg::Options::=--force-confdef" -o "Dpkg::Options::=--force-confold" upgrade
+  apt install -y build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake libutempter-dev debhelper git-lfs dh-systemd pbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support
 SHELL
 
   config.vm.provision "shell", privileged: false, inline: <<-SHELL
@@ -84,8 +86,11 @@ SHELL
   git config --global user.name "Jason Gauci"
 
   sudo chmod -R 0700 ~/.gnupg ~/.ssh
+  git lfs install
   
   echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > ~/.pbuilderrc
+  echo "default-cache-ttl 34560000
+max-cache-ttl 34560000" > ~/.gnupg/gpg-agent.conf
   
   ssh-keyscan github.com >> ~/.ssh/known_hosts
   git clone --branch release git@github.com:MisterTea/EternalTerminal.git
