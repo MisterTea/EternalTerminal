@@ -3,6 +3,7 @@
 set -x
 
 if [ "$1" == server ]; then
+    /usr/sbin/sshd
     shift
     exec etserver --logtostdout -v 1 "$@"
 else
