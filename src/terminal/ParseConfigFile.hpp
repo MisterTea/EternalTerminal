@@ -61,6 +61,7 @@ enum ssh_config_opcode_e {
   SOC_UNSUPPORTED = -1,
   SOC_HOST,
   SOC_HOSTNAME,
+  SOC_MATCH,
   SOC_PORT,
   SOC_USERNAME,
   SOC_TIMEOUT,
@@ -142,6 +143,7 @@ struct ssh_config_keyword_table_s {
 static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"host", SOC_HOST},
     {"hostname", SOC_HOSTNAME},
+    {"match", SOC_MATCH},
     {"port", SOC_PORT},
     {"user", SOC_USERNAME},
     {"connecttimeout", SOC_TIMEOUT},
@@ -1174,8 +1176,8 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
   }
 
   opcode = ssh_config_get_opcode(keyword);
-  if (*parsing == 1 && opcode != SOC_HOST && opcode != SOC_UNSUPPORTED &&
-      opcode != SOC_INCLUDE) {
+  if (*parsing == 1 && opcode != SOC_HOST && opcode != SOC_MATCH &&
+      opcode != SOC_UNSUPPORTED && opcode != SOC_INCLUDE) {
     if (seen[opcode] != 0) {
       SAFE_FREE(x);
       return 0;
@@ -1224,6 +1226,11 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
         ssh_options_set(options, SSH_OPTIONS_HOST, z);
         free(z);
       }
+      break;
+    case SOC_MATCH:
+      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen);
+      SAFE_FREE(x);
+      return i;
       break;
     case SOC_PORT:
       if (options->port == 0) {
