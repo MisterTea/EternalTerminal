@@ -114,7 +114,6 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
-
 Once you have an open port, the syntax is similar to ssh. Username is default to the current username starting the et process, use `-u` or `user@` to specify a different if necessary.
 ```
 et hostname (etserver running on default port 2022, username is the same as current)
@@ -188,8 +187,6 @@ sudo make install
 ```
 
 ### CentOS 7
-
-_Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
 
 Install dependencies:
 ```
