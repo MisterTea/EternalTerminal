@@ -1,3 +1,9 @@
+et (6.0.7-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.7
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Mon, 3 Mar 2020 16:36:51 -0800
+
 et (6.0.6-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.6
