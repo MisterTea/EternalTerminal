@@ -37,52 +37,17 @@ Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 
 ### Debian
 
-For debian, use our deb repo. For stretch:
+For debian, use our deb repo. For buster:
 
-	echo "deb https://mistertea.github.io/debian-et/debian-source/ stretch main" | sudo tee -a /etc/apt/sources.list
-	curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
+	echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list
+	curl -sS https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
 	sudo apt update
 	sudo apt install et
 
 
 ### CentOS 7
-_Note: As of April 2019, the service does not start on CentOS 7, see [#182](https://github.com/MisterTea/EternalTerminal/issues/182)_
 
-Install dependencies:
-```
-sudo yum -y install epel-release
-sudo yum install cmake3
-sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-protobuf-compiler cmake gflags-devel protobuf-lite-devel
-```
-
-Download and install from source:
-```
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
-cd EternalTerminal
-mkdir build
-cd build
-cmake3 ../
-make && sudo make install
-sudo cp ../systemctl/et.service /etc/systemd/system/
-sudo cp ../etc/et.cfg /etc/
-```
-Find the actual location of et:
-
-	which etserver
-
-Correct the service file:
-Open up /etc/systemd/system/et.service in an editor.
-Correct the ExectStart line to have the correct path to the etserver binary (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180)).
-
-	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
-
-Start the et service:
-
-```
-sudo systemctl enable et.service
-sudo systemctl start et.service
-```
+Up to the present day the only way to install is to [build from source](#centos-7).
 
 
 ### FreeBSD
@@ -149,7 +114,6 @@ ET uses ssh for handshaking and encryption, so you must be able to ssh into the 
 
 ET uses TCP, so you need an open port on your server. By default, it uses 2022.
 
-
 Once you have an open port, the syntax is similar to ssh. Username is default to the current username starting the et process, use `-u` or `user@` to specify a different if necessary.
 ```
 et hostname (etserver running on default port 2022, username is the same as current)
@@ -200,21 +164,14 @@ cmake ../
 make
 ```
 
-### Debian/Ubuntu/CentOS
+### Debian/Ubuntu
 
 Grab the deps and then follow this process:
 
 Debian/Ubuntu Dependencies:
 ```
-sudo apt install libboost-dev libsodium-dev libncurses5-dev libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
-```
-
-CentOS/RHEL Dependencies:
-```
-sudo yum -y install epel-release
-sudo yum install cmake3
-sudo yum install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-  protobuf-compiler cmake gflags-devel
+sudo apt install libboost-dev libsodium-dev libncurses5-dev \
+     libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
 ```
 
 Source and setup:
@@ -229,11 +186,56 @@ make
 sudo make install
 ```
 
-Copy config file, the service and enable it:
+### CentOS 7
 
+Install dependencies:
 ```
+sudo yum install epel-release
+sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
+     protobuf-compiler gflags-devel protobuf-lite-devel
+```
+
+Install scl dependencies
+```
+sudo yum install centos-release-scl
+sudo yum install devtoolset-8
+```
+
+Download and install from source ([see #238 for details](https://github.com/MisterTea/EternalTerminal/issues/238)):
+```
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
+mkdir build
+cd build
+scl enable devtoolset-8 'cmake3 ../'
+scl enable devtoolset-8 'make && sudo make install'
 sudo cp ../systemctl/et.service /etc/systemd/system/
 sudo cp ../etc/et.cfg /etc/
+```
+
+Find the actual location of et:
+
+	which etserver
+
+Correct the service file (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180) for details).
+
+```
+sudo sed -ie "s|ExecStart=.*[[:space:]]|ExecStart=$(which etserver) |" /etc/systemd/system/et.service
+```
+
+Alternativelly, open the file /etc/systemd/system/et.service in an editor and correct the `ExectStart=...` line to point to the correct path of the `etserver` binary.
+
+	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+
+Reload systemd configs:
+
+```
+sudo systemctl daemon-reload
+```
+
+Start the et service:
+
+```
 sudo systemctl enable et.service
 sudo systemctl start et.service
 ```

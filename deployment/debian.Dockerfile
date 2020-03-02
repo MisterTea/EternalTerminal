@@ -7,7 +7,9 @@ RUN mkdir .ssh
 COPY id_rsa .ssh/
 COPY id_rsa.pub .ssh/
 RUN chmod ao-rwx .ssh/id_rsa
-COPY ubuntu/debian_SOURCE ./debian_SOURCE
+COPY debian/debian_SOURCE ./debian_SOURCE
+
+RUN echo "For debian, docker doesn't work with pbuilder.  Use vagrant" && exit 1
 
 RUN apt update && apt upgrade -y && apt install -y build-essential git devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake libutempter-dev debhelper dh-systemd pbuilder ubuntu-dev-tools
 
