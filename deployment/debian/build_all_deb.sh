@@ -12,16 +12,11 @@ for distro in `distro-info --supported | grep -v experimental | grep -v sid`; do
     pushd EternalTerminal
     debuild -S
     popd
-    pbuilder-dist ${distro} amd64 update
-    pbuilder-dist ${distro} amd64 build *.dsc
-    pbuilder-dist ${distro} i386 update
-    pbuilder-dist ${distro} i386 build *.dsc
-    pbuilder-dist ${distro} armhf update
-    pbuilder-dist ${distro} armhf build *.dsc
-    pbuilder-dist ${distro} armel update
-    pbuilder-dist ${distro} armel build *.dsc
-    pbuilder-dist ${distro} arm64 update
-    pbuilder-dist ${distro} arm64 build *.dsc
+    for ARCH in amd64 i386 armhf armel arm64
+    do
+        pbuilder-dist ${distro} ${ARCH} update
+        pbuilder-dist ${distro} ${ARCH} build *.dsc
+    done
 
     aptly repo add -force-replace=true et-${distro} ~/pbuilder/${distro}*_result/*.deb
     aptly publish drop ${distro} || true
