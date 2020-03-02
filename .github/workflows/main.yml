@@ -1,0 +1,32 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  build:
+
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v2
+    - name: Checkout submodules
+      shell: bash
+      run: |
+        # If your submodules are configured to use SSH instead of HTTPS please uncomment the following line
+        # git config --global url."https://github.com/".insteadOf "git@github.com:"
+        auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+        git submodule sync --recursive
+        git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+
+    - name: Avoid hosts unknown for github
+      run: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+    - name: Install system dependencies
+      run: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+    - name: Init submodules
+      run: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init; fi
+    - name: Build the project with test
+      run: mkdir build; cd build; cmake -DUBSAN=ON ../; make -j4
+    - name: Run tests
+      run: cd build; ./et-test
