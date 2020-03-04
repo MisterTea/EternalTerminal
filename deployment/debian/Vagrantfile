@@ -86,7 +86,6 @@ SHELL
   git config --global user.name "Jason Gauci"
 
   sudo chmod -R 0700 ~/.gnupg ~/.ssh
-  git lfs install
   
   echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > ~/.pbuilderrc
   echo "default-cache-ttl 34560000
