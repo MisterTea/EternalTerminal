@@ -36,9 +36,9 @@ class Collector {
         LOG(FATAL) << "CONNECTION IS NULL";
       }
       if (connection->hasData()) {
-        lock_guard<std::mutex> guard(collectorMutex);
         Packet packet;
         bool status = connection->readPacket(&packet);
+        lock_guard<std::mutex> guard(collectorMutex);
         if (status) {
           if (packet.getHeader() == HEADER_DONE) {
             fifo.push_back("DONE");

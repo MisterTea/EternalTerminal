@@ -90,6 +90,7 @@ void Connection::closeSocket() {
 
 bool Connection::recover(int newSocketFd) {
   LOG(INFO) << "Locking reader/writer to recover...";
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
   LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
@@ -119,10 +120,7 @@ bool Connection::recover(int newSocketFd) {
     et::CatchupBuffer catchupBuffer =
         socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
-    {
-      lock_guard<std::recursive_mutex> guard(connectionMutex);
-      socketFd = newSocketFd;
-    }
+    socketFd = newSocketFd;
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
                                      catchupBuffer.buffer().end());
 
