@@ -1,10 +1,14 @@
 # Eternal Terminal
 
-[![CircleCI](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master.svg?style=svg)](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master)
-
 Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.
 
 Website: <https://mistertea.github.io/EternalTerminal/>.
+
+## Integration tests
+
+Circle: [![CircleCI](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master.svg?style=svg)](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master)
+
+Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%20CI/badge.svg?branch=master)
 
 ## Installing
 
