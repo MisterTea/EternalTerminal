@@ -25,7 +25,7 @@ jobs:
       - name: Test with ubsan
         run: |
           mkdir build
-          cd build
+          pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
           ./et-test
@@ -52,7 +52,7 @@ jobs:
       - name: Test with asan
         run: |
           mkdir build
-          cd build
+          pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
           ./et-test
@@ -79,7 +79,7 @@ jobs:
       - name: Test with msan
         run: |
           mkdir build
-          cd build
+          pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
           ./et-test
@@ -106,7 +106,7 @@ jobs:
       - name: Test with tsan
         run: |
           mkdir build
-          cd build
+          pushd build
           cmake -DSANITIZE_THREAD=ON ../
           make -j`nproc`
           ./et-test
