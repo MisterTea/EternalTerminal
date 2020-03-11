@@ -67,7 +67,7 @@ jobs:
           popd
           rm -Rf build
 
-  msan:
+  tsan:
     needs: setup
     runs-on: ubuntu-latest
 
