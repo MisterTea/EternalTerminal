@@ -25,7 +25,7 @@ jobs:
     - name: Install system dependencies
       run: sudo apt-get update; sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
     - name: Init submodules
-      run: git submodule update --init; fi
+      run: git submodule update --init
     - name: Build the project with test
       run: mkdir build; cd build; cmake -DUBSAN=ON ../; make -j4
     - name: Run tests
