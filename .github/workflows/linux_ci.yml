@@ -20,7 +20,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
 
       - name: Test with ubsan
         run: |
@@ -28,7 +28,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          ./et-test
+          echo run | gdb --args ./et-test
           popd
           rm -Rf build
 
@@ -47,7 +47,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
 
       - name: Test with asan
         run: |
@@ -55,7 +55,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
-          ./et-test
+          echo run | gdb --args ./et-test
           popd
           rm -Rf build
 
@@ -74,7 +74,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
 
       - name: Test with msan
         run: |
@@ -82,7 +82,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          ./et-test
+          echo run | gdb --args ./et-test
           popd
           rm -Rf build
 
@@ -101,7 +101,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
 
       - name: Test with tsan
         run: |
@@ -109,6 +109,6 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON ../
           make -j`nproc`
-          ./et-test
+          echo run | gdb --args ./et-test
           popd
           rm -Rf build
