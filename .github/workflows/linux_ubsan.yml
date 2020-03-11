@@ -23,7 +23,7 @@ jobs:
     - name: Avoid hosts unknown for github
       run: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
     - name: Install system dependencies
-      run: apt-get update; apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      run: sudo apt-get update; sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
     - name: Init submodules
       run: git submodule update --init; fi
     - name: Build the project with test
