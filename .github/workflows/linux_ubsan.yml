@@ -27,6 +27,6 @@ jobs:
     - name: Init submodules
       run: git submodule update --init
     - name: Build the project with test
-      run: mkdir build; cd build; cmake -DUBSAN=ON ../; make -j4
+      run: mkdir build; cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
     - name: Run tests
       run: cd build; ./et-test
