@@ -24,6 +24,7 @@ jobs:
 
   ubsan:
     needs: setup
+    runs-on: ubuntu-latest
 
     steps:
       - name: Test with ubsan
@@ -38,6 +39,7 @@ jobs:
 
   asan:
     needs: setup
+    runs-on: ubuntu-latest
 
     steps:
       - name: Test with asan
@@ -52,6 +54,7 @@ jobs:
 
   msan:
     needs: setup
+    runs-on: ubuntu-latest
 
     steps:
       - name: Test with msan
@@ -66,6 +69,7 @@ jobs:
 
   msan:
     needs: setup
+    runs-on: ubuntu-latest
 
     steps:
       - name: Test with tsan
