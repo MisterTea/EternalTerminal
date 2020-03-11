@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  setup:
+  ubsan:
     runs-on: ubuntu-latest
 
     steps:
@@ -22,11 +22,6 @@ jobs:
           sudo apt-get update
           sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
 
-  ubsan:
-    needs: setup
-    runs-on: ubuntu-latest
-
-    steps:
       - name: Test with ubsan
         run: |
           mkdir build
@@ -38,10 +33,22 @@ jobs:
           rm -Rf build
 
   asan:
-    needs: setup
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get update
+          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+
       - name: Test with asan
         run: |
           mkdir build
@@ -53,10 +60,22 @@ jobs:
           rm -Rf build
 
   msan:
-    needs: setup
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get update
+          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+
       - name: Test with msan
         run: |
           mkdir build
@@ -68,10 +87,22 @@ jobs:
           rm -Rf build
 
   tsan:
-    needs: setup
     runs-on: ubuntu-latest
 
     steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get update
+          sudo apt-get install -y git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+
       - name: Test with tsan
         run: |
           mkdir build
