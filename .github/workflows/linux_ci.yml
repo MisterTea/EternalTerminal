@@ -39,35 +39,34 @@ jobs:
           rm -Rf build
 
       - name: Test with asan
-          run: |
-            mkdir build
-            cd build
-            cmake -DSANITIZE_ADDRESS=ON ../
-            make -j`nproc`
-            pushd build
-            ./et-test
-            popd
-            rm -Rf build
+        run: |
+          mkdir build
+          cd build
+          cmake -DSANITIZE_ADDRESS=ON ../
+          make -j`nproc`
+          pushd build
+          ./et-test
+          popd
+          rm -Rf build
 
       - name: Test with msan
-            run: |
-              mkdir build
-              cd build
-              cmake -DSANITIZE_MEMORY=ON ../
-              make -j`nproc`
-              pushd build
-              ./et-test
-              popd
-              rm -Rf build
+        run: |
+          mkdir build
+          cd build
+          cmake -DSANITIZE_MEMORY=ON ../
+          make -j`nproc`
+          pushd build
+          ./et-test
+          popd
+          rm -Rf build
 
       - name: Test with tsan
-              run: |
-                mkdir build
-                cd build
-                cmake -DSANITIZE_THREAD=ON ../
-                make -j`nproc`
-                pushd build
-                ./et-test
-                popd
-                rm -Rf build
-  
+        run: |
+          mkdir build
+          cd build
+          cmake -DSANITIZE_THREAD=ON ../
+          make -j`nproc`
+          pushd build
+          ./et-test
+          popd
+          rm -Rf build
