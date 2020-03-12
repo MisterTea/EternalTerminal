@@ -111,7 +111,7 @@ jobs:
         run: |
           mkdir build
           pushd build
-          cmake -DSANITIZE_THREAD=ON ../
+          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
           gdb -batch -ex "run" -ex "bt" --args ./et-test
           popd
