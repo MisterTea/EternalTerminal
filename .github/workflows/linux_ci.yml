@@ -29,7 +29,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          gdb -batch -ex "run" -ex "bt" --args ./et-test
+          ./et-test
           popd
           rm -Rf build
 
@@ -57,7 +57,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
-          gdb -batch -ex "run" -ex "bt" --args ./et-test
+          ./et-test
           popd
           rm -Rf build
 
@@ -85,7 +85,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          gdb -batch -ex "run" -ex "bt" --args ./et-test
+          ./et-test
           popd
           rm -Rf build
 
@@ -113,6 +113,6 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
-          gdb -batch -ex "run" -ex "bt" --args ./et-test
+          ./et-test
           popd
           rm -Rf build
