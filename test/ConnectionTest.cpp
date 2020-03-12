@@ -179,10 +179,13 @@ void readWriteTest(const string& clientId,
     }
     ::usleep(1000 * 1000);
   }
-  shared_ptr<Collector> serverCollector(
-      new Collector(std::static_pointer_cast<Connection>(
-                        serverClientConnections.find(clientId)->second),
-                    "Server"));
+  shared_ptr<ServerClientConnection> serverClientConnection;
+  {
+    lock_guard<mutex> lock(serverClientConnectionMutex);
+    serverClientConnection = serverClientConnections.find(clientId)->second;
+  }
+  shared_ptr<Collector> serverCollector(new Collector(
+      std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
   serverCollector->start();
   shared_ptr<Collector> clientCollector(new Collector(
       std::static_pointer_cast<Connection>(clientConnection), "Client"));
