@@ -75,6 +75,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get upgrade
 
       - name: Test with msan
         run: |
