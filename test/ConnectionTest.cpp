@@ -208,8 +208,11 @@ void readWriteTest(const string& clientId,
     LOG(INFO) << "ON MESSAGE " << a;
   }
   result = clientCollector->read();
-  REQUIRE(result == "DONE");
-  REQUIRE(resultConcat == s);
+  {
+    lock_guard<recursive_mutex> lock(testMutex);
+    REQUIRE(result == "DONE");
+    REQUIRE(resultConcat == s);
+  }
 
   serverConnection->removeClient(serverCollector->getConnection()->getId());
   serverCollector->join();
