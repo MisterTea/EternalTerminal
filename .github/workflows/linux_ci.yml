@@ -21,6 +21,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get -y upgrade
 
       - name: Test with ubsan
         run: |
@@ -48,6 +49,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get -y upgrade
 
       - name: Test with asan
         run: |
@@ -75,7 +77,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          sudo apt-get upgrade
+          sudo apt-get -y upgrade
 
       - name: Test with msan
         run: |
@@ -103,6 +105,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get -y upgrade
 
       - name: Test with tsan
         run: |
