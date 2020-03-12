@@ -15,7 +15,7 @@ string genCommand(const string &passkey, const string &id,
   // Kill old ET sessions of the user
   if (kill) {
     SSH_SCRIPT_PREFIX =
-        "pkill etterminal -u " + user + "; " + SSH_SCRIPT_PREFIX;
+        "pkill etterminal -u " + user + "; sleep 0.5; " + SSH_SCRIPT_PREFIX;
   }
 
   return SSH_SCRIPT_PREFIX + COMMAND;

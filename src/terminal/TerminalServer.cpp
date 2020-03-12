@@ -271,7 +271,6 @@ void TerminalServer::runTerminal(
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
-          removeClient(serverClientState->getId());
           break;
         }
       }
