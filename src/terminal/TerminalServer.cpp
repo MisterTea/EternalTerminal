@@ -100,7 +100,14 @@ void TerminalServer::runJumpHost(
       terminalFd,
       Packet(TerminalPacketType::JUMPHOST_INIT, protoToString(payload)));
 
-  while (!halt && run && !serverClientState->isShuttingDown()) {
+  while (true) {
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      if (halt || !run || serverClientState->isShuttingDown()) {
+        break;
+      }
+    }
+
     fd_set rfd;
     timeval tv;
 
