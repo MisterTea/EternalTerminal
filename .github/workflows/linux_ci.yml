@@ -6,7 +6,7 @@ on:
 
 jobs:
   ubsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-bionic
 
     steps:
       - uses: actions/checkout@v2
@@ -34,7 +34,7 @@ jobs:
           rm -Rf build
 
   asan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-bionic
 
     steps:
       - uses: actions/checkout@v2
@@ -62,7 +62,7 @@ jobs:
           rm -Rf build
 
   msan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-bionic
 
     steps:
       - uses: actions/checkout@v2
@@ -90,7 +90,7 @@ jobs:
           rm -Rf build
 
   tsan:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-bionic
 
     steps:
       - uses: actions/checkout@v2
