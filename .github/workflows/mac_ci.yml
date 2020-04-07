@@ -9,6 +9,9 @@ jobs:
     runs-on: macos-10.15
 
     steps:
+      - name: GitHub Action for Homebrew
+        uses: artemnovichkov/action-homebrew@0.1.0
+
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -19,8 +22,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
           sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with ubsan
@@ -37,6 +39,9 @@ jobs:
     runs-on: macos-10.15
 
     steps:
+      - name: GitHub Action for Homebrew
+        uses: artemnovichkov/action-homebrew@0.1.0
+
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -47,8 +52,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
           sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with asan
@@ -65,6 +69,9 @@ jobs:
     runs-on: macos-10.15
 
     steps:
+      - name: GitHub Action for Homebrew
+        uses: artemnovichkov/action-homebrew@0.1.0
+
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -75,8 +82,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
           sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with msan
@@ -93,6 +99,9 @@ jobs:
     runs-on: macos-10.15
 
     steps:
+      - name: GitHub Action for Homebrew
+        uses: artemnovichkov/action-homebrew@0.1.0
+
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -103,8 +112,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
           sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with tsan
