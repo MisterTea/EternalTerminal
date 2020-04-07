@@ -1,11 +1,10 @@
-#include "TestHeaders.hpp"
-
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakySocketHandler.hpp"
 #include "LogHandler.hpp"
 #include "PipeSocketHandler.hpp"
+#include "TestHeaders.hpp"
 
 using namespace et;
 
@@ -45,7 +44,7 @@ class BackedCollector {
   string pop() {
     lock_guard<std::mutex> guard(collectorMutex);
     if (fifo.empty()) {
-      LOG(FATAL) << "Tried to pop an empty fifo";
+      STFATAL << "Tried to pop an empty fifo";
     }
     string s = fifo.front();
     fifo.pop_front();
@@ -162,7 +161,7 @@ TEST_CASE("BackedTest", "[BackedTest]") {
       BackedWriterWriteState r =
           serverCollector->write(string((&s[0] + a * 1024), 1024));
       if (r != BackedWriterWriteState::SUCCESS) {
-        LOG(FATAL) << "Invalid write state: " << int(r);
+        STFATAL << "Invalid write state: " << int(r);
       }
     }
 

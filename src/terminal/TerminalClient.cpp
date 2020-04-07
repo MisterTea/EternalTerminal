@@ -19,7 +19,7 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
         if (sourcePortEnd - sourcePortStart !=
             destinationPortEnd - destinationPortStart) {
-          LOG(FATAL) << "source/destination port range mismatch";
+          STFATAL << "source/destination port range mismatch";
           exit(1);
         } else {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
@@ -30,15 +30,15 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
         }
       } else if (sourceDestination[0].find('-') != string::npos ||
                  sourceDestination[1].find('-') != string::npos) {
-        LOG(FATAL) << "Invalid port range syntax: if source is range, "
-                      "destination must be range";
+        STFATAL << "Invalid port range syntax: if source is range, "
+                   "destination must be range";
       } else {
         int sourcePort = stoi(sourceDestination[0]);
         int destinationPort = stoi(sourceDestination[1]);
         pairs.push_back(make_pair(sourcePort, destinationPort));
       }
     } catch (const std::logic_error& lr) {
-      LOG(FATAL) << "Logic error: " << lr.what();
+      STFATAL << "Logic error: " << lr.what();
       exit(1);
     }
   }
@@ -91,7 +91,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       } else {
         auto authSockEnv = getenv("SSH_AUTH_SOCK");
         if (!authSockEnv) {
-          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
+          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
+                  "you "
                   "ran ssh-agent first?"
                << endl;
           exit(1);
@@ -138,7 +139,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
                 cout << "Error: Missing initial response\n";
-                LOG(FATAL) << "Missing initial response!";
+                STFATAL << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
                   initialResponsePacket.getPayload());
@@ -154,7 +155,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         }
       }
       if (fail) {
-        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        STERROR << "Connecting to server failed: Connect timeout";
         connectFailCount++;
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
@@ -300,7 +301,7 @@ void TerminalClient::run(const string& command) {
               LOG(INFO) << "Got a keepalive";
               break;
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+              STFATAL << "Unknown packet type: " << int(packetType);
           }
         }
       }
@@ -352,7 +353,7 @@ void TerminalClient::run(const string& command) {
         keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
       }
     } catch (const runtime_error& re) {
-      LOG(ERROR) << "Error: " << re.what();
+      STERROR << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
       lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;

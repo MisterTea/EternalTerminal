@@ -46,7 +46,7 @@ void TerminalServer::run() {
     timeval tv;
 
     if (numFds > FD_SETSIZE) {
-      LOG(FATAL) << "Tried to select() on too many FDs";
+      STFATAL << "Tried to select() on too many FDs";
     }
 
     tv.tv_sec = 0;
@@ -158,7 +158,7 @@ void TerminalServer::runJumpHost(
         }
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Jumphost Error: " << re.what();
+      STERROR << "Jumphost Error: " << re.what();
       cout << "ERROR: " << re.what();
       serverClientState->closeSocket();
     }
@@ -337,12 +337,12 @@ void TerminalServer::runTerminal(
               break;
             }
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+              STFATAL << "Unknown packet type: " << int(packetType);
           }
         }
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Error: " << re.what();
+      STERROR << "Error: " << re.what();
       cout << "Error: " << re.what();
       serverClientState->closeSocket();
       // If the client disconnects the session, it shouldn't end
@@ -367,8 +367,8 @@ void TerminalServer::handleConnection(
     sleep(1);
   }
   if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
-    LOG(FATAL) << "Invalid header: expecting INITIAL_PAYLOAD but got "
-               << packet.getHeader();
+    STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
+            << packet.getHeader();
   }
   InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
   if (payload.jumphost()) {

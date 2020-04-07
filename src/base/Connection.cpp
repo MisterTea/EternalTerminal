@@ -3,11 +3,15 @@
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
-    : socketHandler(_socketHandler), id(_id), key(_key), socketFd(-1), shuttingDown(false) {}
+    : socketHandler(_socketHandler),
+      id(_id),
+      key(_key),
+      socketFd(-1),
+      shuttingDown(false) {}
 
 Connection::~Connection() {
   if (!shuttingDown) {
-    LOG(ERROR) << "Call shutdown before destructing a Connection.";
+    STERROR << "Call shutdown before destructing a Connection.";
   }
   if (socketFd != -1) {
     LOG(INFO) << "Connection destroyed";
@@ -70,7 +74,7 @@ void Connection::writePacket(const Packet& packet) {
 void Connection::closeSocket() {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
-    LOG(ERROR) << "Tried to close a dead socket";
+    LOG(INFO) << "Tried to close a dead socket";
     return;
   }
   // TODO: There is a race condition where we invalidate and another
@@ -129,7 +133,7 @@ bool Connection::recover(int newSocketFd) {
     LOG(INFO) << "Finished recovering with socket fd: " << socketFd;
     return true;
   } catch (const runtime_error& err) {
-    LOG(ERROR) << "Error recovering: " << err.what();
+    LOG(WARNING) << "Error recovering: " << err.what();
     socketHandler->close(newSocketFd);
     return false;
   }
@@ -155,8 +159,8 @@ bool Connection::read(Packet* packet) {
       return 0;
     } else {
       // Throw the error
-      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / "
-                 << strerror(errno);
+      STERROR << "Got a serious error trying to read: " << errno << " / "
+              << strerror(errno);
       throw std::runtime_error("Failed a call to read");
     }
   } else {
@@ -188,8 +192,7 @@ bool Connection::write(const Packet& packet) {
       // The connection has been severed, handle and hide from the caller
       closeSocketAndMaybeReconnect();
     } else {
-      LOG(FATAL) << "Unexpected socket error: " << errno << " "
-                 << strerror(errno);
+      STFATAL << "Unexpected socket error: " << errno << " " << strerror(errno);
     }
   }
 

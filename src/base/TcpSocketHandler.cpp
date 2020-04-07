@@ -41,8 +41,8 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   }
 
   if (rc != 0) {
-    LOG(ERROR) << "Error getting address info for " << endpoint << ": " << rc
-               << " (" << gai_strerror(rc) << ")";
+    STERROR << "Error getting address info for " << endpoint << ": " << rc
+            << " (" << gai_strerror(rc) << ")";
     if (results) {
       freeaddrinfo(results);
     }
@@ -89,7 +89,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
           LOG(INFO) << "Connected to server: " << p->ai_canonname
                     << " using fd " << sockFd;
         } else {
-          LOG(ERROR) << "Connected to server but canonname is null somehow";
+          STERROR << "Connected to server but canonname is null somehow";
         }
         // Make sure that socket becomes blocking once it's attached to a
         // server.
@@ -127,7 +127,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
     }
   }
   if (sockFd == -1) {
-    LOG(ERROR) << "ERROR, no host found";
+    STERROR << "ERROR, no host found";
   } else {
     initSocket(sockFd);
     addToActiveSockets(sockFd);
@@ -142,7 +142,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 
   int port = endpoint.port();
   if (portServerSockets.find(port) != portServerSockets.end()) {
-    LOG(FATAL) << "Tried to listen twice on the same port";
+    STFATAL << "Tried to listen twice on the same port";
   }
 
   addrinfo hints, *servinfo, *p;
@@ -156,8 +156,8 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   std::string portname = std::to_string(port);
 
   if ((rc = getaddrinfo(NULL, portname.c_str(), &hints, &servinfo)) != 0) {
-    LOG(ERROR) << "Error getting address info for " << port << ": " << rc
-               << " (" << gai_strerror(rc) << ")";
+    STERROR << "Error getting address info for " << port << ": " << rc << " ("
+            << gai_strerror(rc) << ")";
     exit(1);
   }
 
@@ -184,9 +184,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
       // This most often happens because the port is in use.
-      LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
-                 << "/" << p->ai_protocol << ": " << errno << " "
-                 << strerror(errno);
+      STERROR << "Error binding " << p->ai_family << "/" << p->ai_socktype
+              << "/" << p->ai_protocol << ": " << errno << " "
+              << strerror(errno);
       cout << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
            << p->ai_protocol << ": " << errno << " " << strerror(errno) << endl;
       stringstream oss;
@@ -209,7 +209,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   }
 
   if (serverSockets.empty()) {
-    LOG(FATAL) << "Could not bind to any interface!";
+    STFATAL << "Could not bind to any interface!";
   }
 
   portServerSockets[port] = serverSockets;
@@ -221,7 +221,7 @@ set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
 
   int port = endpoint.port();
   if (portServerSockets.find(port) == portServerSockets.end()) {
-    LOG(FATAL)
+    STFATAL
         << "Tried to getEndpointFds on a port without calling listen() first";
   }
   return portServerSockets[port];
@@ -233,8 +233,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   int port = endpoint.port();
   auto it = portServerSockets.find(port);
   if (it == portServerSockets.end()) {
-    LOG(FATAL)
-        << "Tried to stop listening to a port that we weren't listening on";
+    STFATAL << "Tried to stop listening to a port that we weren't listening on";
   }
   auto &serverSockets = it->second;
   for (int sockFd : serverSockets) {

@@ -49,7 +49,7 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
   int link_client[2];
   char buf_client[4096];
   if (pipe(link_client) == -1) {
-    LOG(FATAL) << "pipe";
+    STFATAL << "pipe";
     exit(1);
   }
 
@@ -115,12 +115,12 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
       int link_jump[2];
       char buf_jump[4096];
       if (pipe(link_jump) == -1) {
-        LOG(FATAL) << "pipe";
+        STFATAL << "pipe";
         exit(1);
       }
       pid_t pid_jump = fork();
       if (pid_jump < 0) {
-        LOG(FATAL) << "Failed to fork";
+        STFATAL << "Failed to fork";
         exit(1);
       } else if (pid_jump == 0) {
         dup2(link_jump[1], 1);
@@ -157,8 +157,8 @@ string SshSetupHandler::SetupSsh(const string &user, const string &host,
   }
 
   if (id.length() == 0 || passkey.length() == 0) {
-    LOG(FATAL) << "Somehow missing id or passkey: " << id.length() << " "
-               << passkey.length();
+    STFATAL << "Somehow missing id or passkey: " << id.length() << " "
+            << passkey.length();
   }
   return id + "/" + passkey;
 }

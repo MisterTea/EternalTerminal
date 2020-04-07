@@ -1,19 +1,19 @@
 #include "CryptoHandler.hpp"
 
-#define SODIUM_FAIL(X)                                            \
-  {                                                               \
-    int rc = (X);                                                 \
-    if ((rc) == -1) LOG(FATAL) << "Crypto Error: (" << rc << ")"; \
+#define SODIUM_FAIL(X)                                         \
+  {                                                            \
+    int rc = (X);                                              \
+    if ((rc) == -1) STFATAL << "Crypto Error: (" << rc << ")"; \
   }
 namespace et {
 
 CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (-1 == sodium_init()) {
-    LOG(FATAL) << "libsodium init failed";
+    STFATAL << "libsodium init failed";
   }
   if (_key.length() != crypto_secretbox_KEYBYTES) {
-    LOG(FATAL) << "Invalid key length";
+    STFATAL << "Invalid key length";
   }
   memcpy(key, &_key[0], _key.length());
   memset(nonce, 0, crypto_secretbox_NONCEBYTES);
@@ -39,7 +39,7 @@ string CryptoHandler::decrypt(const string& buffer) {
   if (crypto_secretbox_open_easy((unsigned char*)&retval[0],
                                  (const unsigned char*)buffer.c_str(),
                                  buffer.length(), nonce, key) == -1) {
-    LOG(FATAL) << "Decrypt failed.  Possible key mismatch?";
+    STFATAL << "Decrypt failed.  Possible key mismatch?";
   }
   return retval;
 }

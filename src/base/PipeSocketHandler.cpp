@@ -108,9 +108,8 @@ set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
 
   string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) == pipeServerSockets.end()) {
-    LOG(FATAL)
-        << "Tried to getPipeFd on a pipe without calling listen() first: "
-        << pipePath;
+    STFATAL << "Tried to getPipeFd on a pipe without calling listen() first: "
+            << pipePath;
   }
   return pipeServerSockets[pipePath];
 }
@@ -121,9 +120,8 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   string pipePath = endpoint.name();
   auto it = pipeServerSockets.find(pipePath);
   if (it == pipeServerSockets.end()) {
-    LOG(FATAL)
-        << "Tried to stop listening to a pipe that we weren't listening on:"
-        << pipePath;
+    STFATAL << "Tried to stop listening to a pipe that we weren't listening on:"
+            << pipePath;
   }
   int sockFd = *(it->second.begin());
   ::close(sockFd);
