@@ -112,6 +112,7 @@ include_directories(
   external/Catch2/single_include
   external/cxxopts/include
   external/msgpack-c/include
+  external/UniversalStacktrace/ust
   src/base
   src/terminal
   src/terminal/forwarding

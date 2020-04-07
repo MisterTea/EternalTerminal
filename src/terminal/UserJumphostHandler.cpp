@@ -43,7 +43,7 @@ void UserJumphostHandler::run() {
         routerFd,
         Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
   } catch (const std::runtime_error &re) {
-    LOG(FATAL) << "Cannot send idpasskey to router: " << re.what();
+    STFATAL << "Cannot send idpasskey to router: " << re.what();
   }
 
   InitialPayload payload;
@@ -53,15 +53,15 @@ void UserJumphostHandler::run() {
       continue;
     }
     if (initPacket.getHeader() != TerminalPacketType::JUMPHOST_INIT) {
-      LOG(FATAL) << "Invalid jumphost init packet header: "
-                 << initPacket.getHeader();
+      STFATAL << "Invalid jumphost init packet header: "
+              << initPacket.getHeader();
     }
     payload = stringToProto<InitialPayload>(initPacket.getPayload());
     break;
   }
   // Turn off jumphost
   if (!payload.jumphost()) {
-    LOG(FATAL) << "Jumphost should be set by the initial client";
+    STFATAL << "Jumphost should be set by the initial client";
   }
   payload.set_jumphost(false);
 
@@ -94,7 +94,7 @@ void UserJumphostHandler::run() {
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
                 cout << "Error: Missing initial response\n";
-                LOG(FATAL) << "Missing initial response!";
+                STFATAL << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
                   initialResponsePacket.getPayload());
@@ -110,7 +110,7 @@ void UserJumphostHandler::run() {
         }
       }
       if (fail) {
-        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        STERROR << "Connecting to server failed: Connect timeout";
         connectFailCount++;
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
@@ -201,12 +201,12 @@ void UserJumphostHandler::run() {
         is_reconnecting = false;
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Error: " << re.what();
+      STERROR << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
       run = false;
     }
   }
-  LOG(ERROR) << "Jumpclient shutdown";
+  LOG(INFO) << "Jumpclient shutdown";
   close(routerFd);
 }
 }  // namespace et

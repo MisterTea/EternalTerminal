@@ -26,7 +26,7 @@ bool UnixSocketHandler::waitForData(int fd, int64_t sec, int64_t usec) {
   } else if (n == 0)
     return false;
   if (!FD_ISSET(fd, &input)) {
-    LOG(FATAL) << "FD_ISSET is false but we should have data by now.";
+    STFATAL << "FD_ISSET is false but we should have data by now.";
   }
   VLOG(4) << "socket " << fd << " has data";
   return true;
@@ -36,7 +36,7 @@ bool UnixSocketHandler::hasData(int fd) { return waitForData(fd, 0, 0); }
 
 ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   if (fd <= 0) {
-    LOG(FATAL) << "Tried to read from an invalid socket: " << fd;
+    STFATAL << "Tried to read from an invalid socket: " << fd;
   }
   map<int, shared_ptr<recursive_mutex>>::iterator it;
   {
@@ -53,7 +53,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
   ssize_t readBytes = ::read(fd, buf, count);
   if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-    LOG(ERROR) << "Error reading: " << errno << " " << strerror(errno);
+    STERROR << "Error reading: " << errno << " " << strerror(errno);
   }
   return readBytes;
 }
@@ -61,7 +61,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
   VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
-    LOG(FATAL) << "Tried to write to an invalid socket: " << fd;
+    STFATAL << "Tried to write to an invalid socket: " << fd;
   }
   map<int, shared_ptr<recursive_mutex>>::iterator it;
   {
@@ -105,7 +105,7 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
 void UnixSocketHandler::addToActiveSockets(int fd) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
   if (activeSocketMutexes.find(fd) != activeSocketMutexes.end()) {
-    LOG(FATAL) << "Tried to insert an fd that already exists: " << fd;
+    STFATAL << "Tried to insert an fd that already exists: " << fd;
   }
   activeSocketMutexes.insert(
       make_pair(fd, shared_ptr<recursive_mutex>(new recursive_mutex())));
@@ -139,7 +139,7 @@ int UnixSocketHandler::accept(int sockFd) {
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
-    FATAL_FAIL(-1);  // LOG(FATAL) with the error
+    FATAL_FAIL(-1);  // STFATAL with the error
   }
 
   return -1;
@@ -153,7 +153,7 @@ void UnixSocketHandler::close(int fd) {
   auto it = activeSocketMutexes.find(fd);
   if (it == activeSocketMutexes.end()) {
     // Connection was already killed.
-    LOG(ERROR) << "Tried to close a connection that doesn't exist: " << fd;
+    STERROR << "Tried to close a connection that doesn't exist: " << fd;
     return;
   }
   auto m = it->second;

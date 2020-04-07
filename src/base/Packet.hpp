@@ -23,13 +23,13 @@ class Packet {
       encrypted = false;
       payload = cryptoHandler->decrypt(payload);
     } else {
-      LOG(FATAL) << "Tried to decrypt a packet that wasn't encrypted";
+      STFATAL << "Tried to decrypt a packet that wasn't encrypted";
     }
   }
 
   void encrypt(shared_ptr<CryptoHandler> cryptoHandler) {
     if (encrypted) {
-      LOG(FATAL) << "Tried to encrypt a packet that was already encrypted";
+      STFATAL << "Tried to encrypt a packet that was already encrypted";
     } else {
       encrypted = true;
       payload = cryptoHandler->encrypt(payload);

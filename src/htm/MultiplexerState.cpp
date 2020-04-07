@@ -85,7 +85,7 @@ json MultiplexerState::toJson() {
 
 void MultiplexerState::appendData(const string &uid, const string &data) {
   if (panes.find(uid) == panes.end()) {
-    LOG(FATAL) << "Tried to write to non-existant terminal";
+    STFATAL << "Tried to write to non-existant terminal";
   }
   panes[uid]->terminal->appendData(data);
 }
@@ -162,7 +162,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
         break;
       }
       if (a + 1 == parentSplit->panes_or_splits.size()) {
-        LOG(FATAL) << "SourcePane missing from parent split";
+        STFATAL << "SourcePane missing from parent split";
       }
     }
     return;
@@ -194,7 +194,7 @@ void MultiplexerState::closePane(const string &paneId) {
     return;  // Already closed
   }
   if (panes.find(paneId) == panes.end()) {
-    LOG(FATAL) << "Tried to close a pane that doesn't exist";
+    STFATAL << "Tried to close a pane that doesn't exist";
   }
   auto pane = panes[paneId];
   panes.erase(panes.find(paneId));
@@ -222,7 +222,7 @@ void MultiplexerState::closePane(const string &paneId) {
         return;
       }
     }
-    LOG(FATAL) << "Could not find tab";
+    STFATAL << "Could not find tab";
   }
 
   // Not a top-level pane
@@ -234,8 +234,8 @@ void MultiplexerState::closePane(const string &paneId) {
       break;
     }
     if (a + 1 == split->panes_or_splits.size()) {
-      LOG(FATAL) << "Parent pane " << split->id
-                 << " did not contain child pane " << pane->id;
+      STFATAL << "Parent pane " << split->id << " did not contain child pane "
+              << pane->id;
     }
   }
   if (split->panes_or_splits.size() > 1) {
@@ -260,7 +260,7 @@ void MultiplexerState::closePane(const string &paneId) {
           break;
         }
         if (a + 1 == parentSplit->panes_or_splits.size()) {
-          LOG(FATAL) << "Could not find parent split";
+          STFATAL << "Could not find parent split";
         }
       }
     }
@@ -347,13 +347,13 @@ void MultiplexerState::resizePane(const string &paneId, int cols, int rows) {
 
 void MultiplexerState::fatalIfFound(const string &id) {
   if (panes.find(id) != panes.end()) {
-    LOG(FATAL) << "Found unexpected id in panes: " << id;
+    STFATAL << "Found unexpected id in panes: " << id;
   }
   if (splits.find(id) != splits.end()) {
-    LOG(FATAL) << "Found unexpected id in splits: " << id;
+    STFATAL << "Found unexpected id in splits: " << id;
   }
   if (tabs.find(id) != tabs.end()) {
-    LOG(FATAL) << "Found unexpected id in tabs: " << id;
+    STFATAL << "Found unexpected id in tabs: " << id;
   }
 }
 

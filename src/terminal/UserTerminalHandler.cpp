@@ -5,7 +5,6 @@
 #include <pwd.h>
 #include <signal.h>
 #include <stdio.h>
-
 #include <string.h>
 #include <sys/ioctl.h>
 #include <sys/socket.h>
@@ -20,11 +19,10 @@
 #include <utempter.h>
 #endif
 
+#include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
-
-#include "ETerminal.pb.h"
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
@@ -64,7 +62,7 @@ UserTerminalHandler::UserTerminalHandler(
         Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
 
   } catch (const std::runtime_error &re) {
-    LOG(FATAL) << "Error connecting to router: " << re.what();
+    STFATAL << "Error connecting to router: " << re.what();
   }
 }
 
@@ -75,8 +73,8 @@ void UserTerminalHandler::run() {
       continue;
     }
     if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
-      LOG(FATAL) << "Invalid terminal init packet header: "
-                 << termInitPacket.getHeader();
+      STFATAL << "Invalid terminal init packet header: "
+              << termInitPacket.getHeader();
     }
     TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
     for (int a = 0; a < ti.environmentnames_size(); a++) {

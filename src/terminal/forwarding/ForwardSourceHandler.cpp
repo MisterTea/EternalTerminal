@@ -75,7 +75,7 @@ bool ForwardSourceHandler::hasUnassignedFd(int fd) {
 
 void ForwardSourceHandler::closeUnassignedFd(int fd) {
   if (unassignedFds.find(fd) == unassignedFds.end()) {
-    LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist";
+    STERROR << "Tried to close an unassigned fd that doesn't exist";
     return;
   }
   socketHandler->close(fd);
@@ -84,8 +84,8 @@ void ForwardSourceHandler::closeUnassignedFd(int fd) {
 
 void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
   if (unassignedFds.find(sourceFd) == unassignedFds.end()) {
-    LOG(ERROR) << "Tried to close an unassigned fd that doesn't exist "
-               << sourceFd;
+    STERROR << "Tried to close an unassigned fd that doesn't exist "
+            << sourceFd;
     return;
   }
   LOG(INFO) << "Adding socket: " << socketId << " " << sourceFd;
@@ -94,7 +94,7 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
 }
 void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
-    LOG(ERROR) << "Tried to write to a socket that no longer exists!";
+    STERROR << "Tried to write to a socket that no longer exists!";
     return;
   }
 
@@ -107,7 +107,7 @@ void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
 void ForwardSourceHandler::closeSocket(int socketId) {
   auto it = socketFdMap.find(socketId);
   if (it == socketFdMap.end()) {
-    LOG(ERROR) << "Tried to remove a socket that no longer exists!";
+    STERROR << "Tried to remove a socket that no longer exists!";
   } else {
     socketHandler->close(it->second);
     socketFdMap.erase(it);

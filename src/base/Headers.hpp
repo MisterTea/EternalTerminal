@@ -21,8 +21,10 @@
 #include <arpa/inet.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <google/protobuf/message_lite.h>
 #include <pthread.h>
 #include <pwd.h>
+#include <sodium.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -36,10 +38,12 @@
 #include <termios.h>
 #include <time.h>
 #include <unistd.h>
+
 #include <algorithm>
 #include <array>
 #include <atomic>
 #include <ctime>
+#include <cxxopts.hpp>
 #include <deque>
 #include <exception>
 #include <fstream>
@@ -55,37 +59,16 @@
 #include <unordered_set>
 #include <vector>
 
-#include <google/protobuf/message_lite.h>
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
-inline std::ostream& operator<<(std::ostream& os,
-                                const et::SocketEndpoint& se) {
-  if (se.has_name()) {
-    os << se.name();
-  }
-  if (se.has_port()) {
-    os << ":" << se.port();
-  }
-  return os;
-}
-
-#include "easylogging++.h"
-
-#include <cxxopts.hpp>
+#include "ThreadPool.h"
 #include "base64.hpp"
+#include "easylogging++.h"
 #include "json.hpp"
 #include "sole.hpp"
-
-#include "ThreadPool.h"
-
-#include <sodium.h>
+#include "ust.hpp"
 
 using namespace std;
-
-namespace google {}
-namespace gflags {}
-using namespace google;
-using namespace gflags;
 
 using json = nlohmann::json;
 
@@ -106,6 +89,10 @@ const int CLIENT_KEEP_ALIVE_DURATION = 5;
 // allow enough time.
 const int SERVER_KEEP_ALIVE_DURATION = 11;
 
+#define STFATAL LOG(FATAL) << "Stack Trace: " << endl << ust::generate()
+
+#define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
+
 #define FATAL_FAIL(X) \
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
@@ -121,6 +108,17 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #endif
 
 namespace et {
+inline std::ostream& operator<<(std::ostream& os,
+                                const et::SocketEndpoint& se) {
+  if (se.has_name()) {
+    os << se.name();
+  }
+  if (se.has_port()) {
+    os << ":" << se.port();
+  }
+  return os;
+}
+
 template <typename Out>
 inline void split(const std::string& s, char delim, Out result) {
   std::stringstream ss;
@@ -175,7 +173,7 @@ template <typename T>
 inline T stringToProto(const string& s) {
   T t;
   if (!t.ParseFromString(s)) {
-    LOG(FATAL) << "Error parsing string to proto: " << s.length() << " " << s;
+    STFATAL << "Error parsing string to proto: " << s.length() << " " << s;
   }
   return t;
 }
@@ -184,7 +182,7 @@ template <typename T>
 inline string protoToString(const T& t) {
   string s;
   if (!t.SerializeToString(&s)) {
-    LOG(FATAL) << "Error serializing proto to string";
+    STFATAL << "Error serializing proto to string";
   }
   return s;
 }

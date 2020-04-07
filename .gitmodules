@@ -19,3 +19,6 @@
 [submodule "external/cotire"]
 	path = external/cotire
 	url = https://github.com/sakra/cotire.git
+[submodule "external/UniversalStacktrace"]
+	path = external/UniversalStacktrace
+	url = https://github.com/MisterTea/UniversalStacktrace.git

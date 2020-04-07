@@ -1,8 +1,7 @@
-#include "TerminalClient.hpp"
-
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
+#include "TerminalClient.hpp"
 
 using namespace et;
 
@@ -62,7 +61,7 @@ int main(int argc, char** argv) {
         ("N,no-terminal", "Do not create a terminal")        //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
-         cxxopts::value<std::string>())    //
+         cxxopts::value<std::string>())  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",  //
          cxxopts::value<std::string>()->default_value(""))             //
@@ -153,13 +152,14 @@ int main(int argc, char** argv) {
 
     char* home_dir = ssh_get_user_home_dir();
     string host_alias = destinationHost;
-    const char *host_from_command = destinationHost.c_str();
+    const char* host_from_command = destinationHost.c_str();
     ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                     destinationHost.c_str());
     // First parse user-specific ssh config, then system-wide config.
     parse_ssh_config_file(host_from_command, &sshConfigOptions,
                           string(home_dir) + USER_SSH_CONFIG_PATH);
-    parse_ssh_config_file(host_from_command, &sshConfigOptions, SYSTEM_SSH_CONFIG_PATH);
+    parse_ssh_config_file(host_from_command, &sshConfigOptions,
+                          SYSTEM_SSH_CONFIG_PATH);
     LOG(INFO) << "Parsed ssh config file, connecting to "
               << sshConfigOptions.host;
     destinationHost = string(sshConfigOptions.host);
@@ -227,15 +227,15 @@ int main(int argc, char** argv) {
     idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
     size_t slashIndex = idpasskeypair.find("/");
     if (slashIndex == string::npos) {
-      LOG(FATAL) << "Invalid idPasskey id/key pair: " << idpasskeypair;
+      STFATAL << "Invalid idPasskey id/key pair: " << idpasskeypair;
     } else {
       id = idpasskeypair.substr(0, slashIndex);
       passkey = idpasskeypair.substr(slashIndex + 1);
       LOG(INFO) << "ID PASSKEY: " << id << " " << passkey;
     }
     if (passkey.length() != 32) {
-      LOG(FATAL) << "Invalid/missing passkey: " << passkey << " "
-                 << passkey.length();
+      STFATAL << "Invalid/missing passkey: " << passkey << " "
+              << passkey.length();
     }
     shared_ptr<Console> console;
     if (!result.count("N")) {
@@ -247,8 +247,11 @@ int main(int argc, char** argv) {
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "",
         (result.count("f") || sshConfigOptions.forward_agent),
-        result.count("ssh-socket") ? result["ssh-socket"].as<string>() :
-        sshConfigOptions.identity_agent ? string(sshConfigOptions.identity_agent) : "");
+        result.count("ssh-socket")
+            ? result["ssh-socket"].as<string>()
+            : sshConfigOptions.identity_agent
+                  ? string(sshConfigOptions.identity_agent)
+                  : "");
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {

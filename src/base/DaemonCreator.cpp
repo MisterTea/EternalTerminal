@@ -39,7 +39,7 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
   if (childPidFile != "") {
     int pidFilehandle = open(childPidFile.c_str(), O_RDWR | O_CREAT, 0600);
     if (pidFilehandle == -1) {
-      LOG(FATAL) << "Error opening pidfile for writing: " << childPidFile;
+      STFATAL << "Error opening pidfile for writing: " << childPidFile;
     }
 
     // Max pid length for x86_64 is 2^22 ~ 4000000

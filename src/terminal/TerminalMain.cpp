@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
 
         FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
       } else {
-        LOG(FATAL) << "Invalid number of tokens: " << tokens.size();
+        STFATAL << "Invalid number of tokens: " << tokens.size();
       }
     } else {
       string idpasskey = result["idpasskey"].as<string>();
@@ -148,7 +148,7 @@ int main(int argc, char** argv) {
 
       cout << "IDPASSKEY:" << idpasskey << endl;
       if (DaemonCreator::createSessionLeader() == -1) {
-        LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+        STFATAL << "Error creating daemon: " << strerror(errno);
       }
       SocketEndpoint routerFifoEndpoint;
       routerFifoEndpoint.set_name(result["serverfifo"].as<string>());
@@ -185,7 +185,7 @@ int main(int argc, char** argv) {
                             idpasskey);
     cout << "IDPASSKEY:" << idpasskey << endl;
     if (DaemonCreator::createSessionLeader() == -1) {
-      LOG(FATAL) << "Error creating daemon: " << strerror(errno);
+      STFATAL << "Error creating daemon: " << strerror(errno);
     }
     uth.run();
 

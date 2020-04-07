@@ -2,7 +2,6 @@
 #define __ET_SOCKET_HANDLER__
 
 #include "Headers.hpp"
-
 #include "Packet.hpp"
 
 namespace et {
@@ -44,12 +43,12 @@ class SocketHandler {
   inline void writeProto(int fd, const T& t, bool timeout) {
     string s;
     if (!t.SerializeToString(&s)) {
-      LOG(FATAL) << "Serialization of " << t.GetTypeName() << " failed!";
+      STFATAL << "Serialization of " << t.GetTypeName() << " failed!";
     }
     int64_t length = s.length();
     if (length < 0 || length > 128 * 1024 * 1024) {
-      LOG(FATAL) << "Invalid proto length: " << length << " For proto "
-                 << t.GetTypeName();
+      STFATAL << "Invalid proto length: " << length << " For proto "
+              << t.GetTypeName();
     }
     writeAllOrThrow(fd, &length, sizeof(int64_t), timeout);
     if (length > 0) {
@@ -79,7 +78,7 @@ class SocketHandler {
     string s = packet.serialize();
     int64_t length = s.length();
     if (length < 0 || length > 128 * 1024 * 1024) {
-      LOG(FATAL) << "Invalid message length: " << length;
+      STFATAL << "Invalid message length: " << length;
     }
     writeAllOrThrow(fd, (const char*)&length, sizeof(int64_t), false);
     if (length) {

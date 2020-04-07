@@ -57,7 +57,7 @@ int BackedReader::read(Packet* packet) {
       // Read error
       return -1;
     } else {
-      LOG(FATAL) << "Read returned value outside of [-1,inf): " << bytesRead;
+      STFATAL << "Read returned value outside of [-1,inf): " << bytesRead;
     }
   }
   if (partialMessage.length() < 4) {
@@ -84,7 +84,7 @@ int BackedReader::read(Packet* packet) {
       partialMessage.append(&s[0], bytesRead);
       messageRemainder -= bytesRead;
     } else {
-      LOG(FATAL) << "Invalid value from read: " << bytesRead;
+      STFATAL << "Invalid value from read: " << bytesRead;
     }
   }
   if (!messageRemainder) {
@@ -106,7 +106,7 @@ void BackedReader::revive(int newSocketFd,
 
 int BackedReader::getPartialMessageLength() {
   if (partialMessage.length() < 4) {
-    LOG(FATAL) << "Tried to construct a message header that wasn't complete";
+    STFATAL << "Tried to construct a message header that wasn't complete";
   }
   int messageSize;
   memcpy(&messageSize, &partialMessage[0], sizeof(int));
@@ -117,7 +117,7 @@ int BackedReader::getPartialMessageLength() {
 void BackedReader::constructPartialMessage(Packet* packet) {
   int messageSize = getPartialMessageLength();
   if (int(partialMessage.length()) - 4 != messageSize) {
-    LOG(FATAL)
+    STFATAL
         << "Tried to construct a message that wasn't complete or over-filled: "
         << (int(partialMessage.length()) - 4) << " != " << messageSize;
   }

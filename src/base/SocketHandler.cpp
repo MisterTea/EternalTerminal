@@ -83,7 +83,7 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
         // This is fine, just keep retrying at 10hz
         usleep(100 * 1000);
       } else {
-        LOG(ERROR) << "Failed a call to writeAll: " << strerror(errno);
+        LOG(WARNING) << "Failed a call to writeAll: " << strerror(errno);
         throw std::runtime_error("Failed a call to writeAll");
       }
     } else if (bytesWritten == 0) {
