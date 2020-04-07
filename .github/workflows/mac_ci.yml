@@ -9,9 +9,6 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - name: GitHub Action for Homebrew
-        uses: artemnovichkov/action-homebrew@0.1.0
-
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -39,9 +36,6 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - name: GitHub Action for Homebrew
-        uses: artemnovichkov/action-homebrew@0.1.0
-
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -69,9 +63,6 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - name: GitHub Action for Homebrew
-        uses: artemnovichkov/action-homebrew@0.1.0
-
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
@@ -99,9 +90,6 @@ jobs:
     runs-on: macos-10.15
 
     steps:
-      - name: GitHub Action for Homebrew
-        uses: artemnovichkov/action-homebrew@0.1.0
-
       - uses: actions/checkout@v2
       - name: Setup
         shell: bash
