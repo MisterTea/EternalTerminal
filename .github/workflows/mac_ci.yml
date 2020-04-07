@@ -20,7 +20,6 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with ubsan
         run: |
@@ -47,7 +46,6 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with asan
         run: |
@@ -74,7 +72,6 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with msan
         run: |
@@ -101,7 +98,6 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with tsan
         run: |
