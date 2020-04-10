@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "UserJumphostHandler.hpp"
 
 #include "ETerminal.pb.h"
@@ -210,3 +211,4 @@ void UserJumphostHandler::run() {
   close(routerFd);
 }
 }  // namespace et
+#endif

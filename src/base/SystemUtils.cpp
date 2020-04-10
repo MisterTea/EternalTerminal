@@ -1,8 +1,6 @@
+#ifndef WIN32
 #include "SystemUtils.hpp"
 
-#include <grp.h>
-#include <paths.h>
-#include <pwd.h>
 #include <sys/types.h>
 
 #ifdef WITH_SELINUX
@@ -73,3 +71,4 @@ void rootToUser(passwd* pwd) {
   chdir(pwd->pw_dir);
 }
 }  // namespace et
+#endif

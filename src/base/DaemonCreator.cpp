@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "DaemonCreator.hpp"
 
 namespace et {
@@ -64,3 +65,4 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
   return CHILD;
 }
 }  // namespace et
+#endif

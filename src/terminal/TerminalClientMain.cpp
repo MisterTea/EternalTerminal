@@ -2,6 +2,7 @@
 #include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
 #include "TerminalClient.hpp"
+#include "WinsockContext.hpp"
 
 using namespace et;
 
@@ -18,6 +19,9 @@ bool ping(SocketEndpoint socketEndpoint,
 }
 
 int main(int argc, char** argv) {
+  WinsockContext context;
+  string tmpDir = GetTempDirectory();
+
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
 
@@ -84,7 +88,7 @@ int main(int argc, char** argv) {
     } else {
       defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
       // Redirect std streams to a file
-      LogHandler::stderrToFile("/tmp/etclient");
+      LogHandler::stderrToFile((tmpDir + "/etclient"));
     }
 
     // silent Flag, since etclient doesn't read /etc/et.cfg file
@@ -93,7 +97,7 @@ int main(int argc, char** argv) {
     }
 
     LogHandler::setupLogFile(&defaultConf,
-                             "/tmp/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log");
+                             (tmpDir + "etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name
@@ -131,6 +135,11 @@ int main(int argc, char** argv) {
     }
     destinationHost = arg;
 
+    string jumphost =
+      result.count("jumphost") ? result["jumphost"].as<string>() : "";
+    string host_alias = destinationHost;
+
+#ifndef WIN32
     Options sshConfigOptions = {
         NULL,  // username
         NULL,  // host
@@ -151,7 +160,6 @@ int main(int argc, char** argv) {
     };
 
     char* home_dir = ssh_get_user_home_dir();
-    string host_alias = destinationHost;
     const char* host_from_command = destinationHost.c_str();
     ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                     destinationHost.c_str());
@@ -174,8 +182,6 @@ int main(int argc, char** argv) {
     }
 
     // Parse jumphost: cmd > sshconfig
-    string jumphost =
-        result.count("jumphost") ? result["jumphost"].as<string>() : "";
     if (sshConfigOptions.ProxyJump && jumphost.length() == 0) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
       size_t colonIndex = proxyjump.find(":");
@@ -190,6 +196,7 @@ int main(int argc, char** argv) {
       }
       LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
     }
+#endif
 
     bool is_jumphost = false;
     SocketEndpoint socketEndpoint;
@@ -242,25 +249,36 @@ int main(int argc, char** argv) {
       console.reset(new PsuedoTerminalConsole());
     }
 
+    bool forwardAgent = result.count("f") > 0;
+    string sshSocket = "";
+#ifndef WIN32
+    if (sshConfigOptions.identity_agent) {
+      sshSocket = string(sshConfigOptions.identity_agent);
+    }
+    forwardAgent |= sshConfigOptions.forward_agent;
+#endif
+    if (result.count("ssh-socket")) {
+      sshSocket = result["ssh-socket"].as<string>();
+    }
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "",
-        (result.count("f") || sshConfigOptions.forward_agent),
-        result.count("ssh-socket")
-            ? result["ssh-socket"].as<string>()
-            : sshConfigOptions.identity_agent
-                  ? string(sshConfigOptions.identity_agent)
-                  : "");
+        forwardAgent,
+        sshSocket);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {
     cout << "Exception: " << oe.what() << "\n" << endl;
     cout << options.help({}) << endl;
+#ifdef WIN32
+    WSACleanup();
+#endif
     exit(1);
   }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
+
   return 0;
 }

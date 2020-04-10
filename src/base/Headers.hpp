@@ -13,31 +13,54 @@
 #include <sys/socket.h>
 #elif __NetBSD__  // do not need pty.h on NetBSD
 #include <util.h>
+#elif WIN32
+#include <WinSock2.h>
+#include <signal.h>
+#include <afunix.h>
+#include <Ws2tcpip.h>
+inline int close(int fd) {
+  return ::closesocket(fd);
+}
 #else
 #include <pty.h>
 #include <signal.h>
 #endif
 
+#ifdef WIN32
+#else
 #include <arpa/inet.h>
+#include <pthread.h>
+#include <pwd.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <sys/wait.h>
+#include <termios.h>
+#include <unistd.h>
+#include <netdb.h>
+#include <netinet/in.h>
+#include <netinet/tcp.h>
+#include <resolv.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#include <grp.h>
+#include <paths.h>
+#include <pwd.h>
+#endif
+
+
 #include <errno.h>
 #include <fcntl.h>
 #include <google/protobuf/message_lite.h>
-#include <pthread.h>
-#include <pwd.h>
 #include <sodium.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
-#include <sys/ioctl.h>
-#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/types.h>
-#include <sys/un.h>
-#include <sys/wait.h>
-#include <termios.h>
 #include <time.h>
-#include <unistd.h>
+#include <sys/types.h>
 
 #include <algorithm>
 #include <array>
@@ -58,6 +81,9 @@
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+#include <locale>
+#include <codecvt>
+#include <string>
 
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
@@ -67,6 +93,30 @@
 #include "json.hpp"
 #include "sole.hpp"
 #include "ust.hpp"
+
+#ifdef WITH_UTEMPTER
+ #include <utempter.h>
+#endif
+
+#if WIN32
+#define popen _popen
+#define pclose _pclose
+
+/* ssize_t is not defined on Windows */
+#ifndef ssize_t
+# if defined(_WIN64)
+typedef signed __int64 ssize_t;
+# else
+typedef signed long ssize_t;
+# endif
+#endif  /* !ssize_t */
+/* On MSVC, ssize_t is SSIZE_T */
+#ifdef _MSC_VER
+#include <BaseTsd.h>
+#define ssize_t SSIZE_T
+#endif
+
+#endif
 
 using namespace std;
 
@@ -93,9 +143,25 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 
 #define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
 
+#ifdef WIN32
+inline string WindowsErrnoToString() {
+  const int BUFSIZE = 4096;
+  char buf[BUFSIZE];
+  FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
+    NULL, WSAGetLastError(),
+    MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+    buf, BUFSIZE, NULL);
+  string s(buf, BUFSIZE);
+  return s;
+}
+#define FATAL_FAIL(X) \
+if (((X) == -1)) \
+  LOG(FATAL) << "Error: (" << WSAGetLastError() << "): " << WindowsErrnoToString(); 
+#else
 #define FATAL_FAIL(X) \
   if (((X) == -1))    \
     LOG(FATAL) << "Error: (" << errno << "): " << strerror(errno);
+#endif
 
 // On BSD/OSX we can get EINVAL if the remote side has closed the connection
 // before we have initialized it.
@@ -133,18 +199,6 @@ inline std::vector<std::string> split(const std::string& s, char delim) {
   std::vector<std::string> elems;
   split(s, delim, std::back_inserter(elems));
   return elems;
-}
-
-inline std::string SystemToStr(const char* cmd) {
-  std::array<char, 128> buffer;
-  std::string result;
-  std::shared_ptr<FILE> pipe(popen(cmd, "r"), pclose);
-  if (!pipe) throw std::runtime_error("popen() failed!");
-  while (!feof(pipe.get())) {
-    if (fgets(buffer.data(), 128, pipe.get()) != nullptr)
-      result += buffer.data();
-  }
-  return result;
 }
 
 inline bool replace(std::string& str, const std::string& from,
@@ -225,6 +279,19 @@ inline bool operator!=(const google::protobuf::MessageLite& msg_a,
                        const google::protobuf::MessageLite& msg_b) {
   return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
          (msg_a.SerializeAsString() != msg_b.SerializeAsString());
+}
+
+inline string GetTempDirectory() {
+  #ifdef WIN32
+  WCHAR buf[65536];
+  int retval = GetTempPath(65536, buf);
+  int a = 0;
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
+  std::string tmpDir = converter.to_bytes(wstring(buf, retval));
+  #else
+  string tmpDir = "/tmp";
+  #endif
+  return tmpDir;
 }
 
 #endif

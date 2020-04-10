@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
@@ -55,3 +56,4 @@ TerminalUserInfo UserTerminalRouter::getInfoForId(const string &id) {
   return it->second;
 }
 }  // namespace et
+#endif

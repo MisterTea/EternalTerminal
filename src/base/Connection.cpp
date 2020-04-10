@@ -62,10 +62,10 @@ void Connection::writePacket(const Packet& packet) {
     // Yield the processor
     if (hasConnection) {
       // Have a connection, sleep for 1ms
-      usleep(1 * 1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(1000));
     } else {
       // No connection, sleep for 100ms
-      usleep(100 * 1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(100*1000));
     }
     LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }

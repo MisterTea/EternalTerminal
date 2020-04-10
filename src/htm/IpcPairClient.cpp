@@ -7,7 +7,7 @@ IpcPairClient::IpcPairClient(shared_ptr<SocketHandler> _socketHandler,
   for (int retry = 0; retry < 5; retry++) {
     endpointFd = socketHandler->connect(endpoint);
     if (endpointFd < 0) {
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     } else {
       return;
     }

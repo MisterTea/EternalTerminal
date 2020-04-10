@@ -31,7 +31,7 @@ class BackedCollector {
         lock_guard<std::mutex> guard(collectorMutex);
         fifo.push_back(packet.getPayload());
       } else {
-        ::usleep(1000);
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
       }
     }
   }
@@ -53,7 +53,7 @@ class BackedCollector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(1000));
     }
     return pop();
   }
@@ -89,7 +89,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
       if (errno != EAGAIN) {
         FATAL_FAIL(fd);
       } else {
-        ::usleep(100 * 1000);  // Sleep for client to connect
+        std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
       }
     } else {
       break;
@@ -119,7 +119,7 @@ TEST_CASE("BackedTest", "[BackedTest]") {
                                  &serverClientFd);
 
   // Wait for server to spin up
-  ::usleep(1000 * 1000);
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   int clientServerFd = clientSocketHandler->connect(endpoint);
   FATAL_FAIL(clientServerFd);
   serverListenThread.join();
