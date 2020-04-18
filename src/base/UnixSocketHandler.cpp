@@ -116,6 +116,7 @@ int UnixSocketHandler::accept(int sockFd) {
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
+  auto saved_errno = errno;
   while (true) {
     {
       lock_guard<std::recursive_mutex> guard(globalMutex);
@@ -138,7 +139,8 @@ int UnixSocketHandler::accept(int sockFd) {
     initSocket(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
-  } else if (errno != EAGAIN && errno != EWOULDBLOCK) {
+  } else if (saved_errno != EAGAIN && saved_errno != EWOULDBLOCK) {
+    errno = saved_errno;
     FATAL_FAIL(-1);  // STFATAL with the error
   }
 
