@@ -160,7 +160,7 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ### macOS
 
-To build Eternal Terminal on Mac, the easiest way is to grab dependencies with homebrew:
+To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
 
 ```
 brew install --only-dependencies MisterTea/et/et
