@@ -18,6 +18,10 @@ The easiest way to install is using Homebrew:
 
 	brew install MisterTea/et/et
 
+Alternatively, a package is available in MacPorts:
+
+	sudo port install et
+
 ### Ubuntu
 
 For Ubuntu, use our PPA:
