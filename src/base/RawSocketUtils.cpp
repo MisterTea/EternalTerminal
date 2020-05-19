@@ -4,11 +4,11 @@ namespace et {
 void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   size_t bytesWritten = 0;
   do {
-    int rc = ::write(fd, buf + bytesWritten, count - bytesWritten);
+    int rc = ::send(fd, buf + bytesWritten, count - bytesWritten, 0);
     if (rc < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying
-        usleep(100 * 1000);
+        std::this_thread::sleep_for(std::chrono::microseconds(100*1000));
         continue;
       }
       throw std::runtime_error("Cannot write to raw socket");
@@ -26,7 +26,7 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     if (!waitOnSocketData(fd)) {
       continue;
     }
-    int rc = ::read(fd, buf + bytesRead, count - bytesRead);
+    int rc = ::recv(fd, buf + bytesRead, count - bytesRead, 0);
     if (rc < 0) {
       if (errno == EAGAIN || errno == EWOULDBLOCK) {
         // This is fine, just keep retrying

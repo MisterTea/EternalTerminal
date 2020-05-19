@@ -1,18 +1,10 @@
 #include "PipeSocketHandler.hpp"
 
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <resolv.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 namespace et {
 PipeSocketHandler::PipeSocketHandler() {}
 
 int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> mutexGuard(mutex);
 
   string pipePath = endpoint.name();
   sockaddr_un remote;
@@ -29,7 +21,11 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   if (result < 0 && errno != EINPROGRESS) {
     VLOG(3) << "Connection result: " << result << " (" << strerror(errno)
             << ")";
+#ifdef WIN32
+    ::shutdown(sockFd, SD_BOTH);
+#else
     ::shutdown(sockFd, SHUT_RDWR);
+#endif
     ::close(sockFd);
     sockFd = -1;
     return sockFd;
@@ -49,7 +45,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
     int so_error;
     socklen_t len = sizeof so_error;
 
-    FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, &so_error, &len));
+    FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
 
     if (so_error == 0) {
       LOG(INFO) << "Connected to endpoint " << endpoint;
@@ -97,7 +93,9 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
   ::listen(fd, 5);
+#ifndef WIN32
   FATAL_FAIL(::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR));
+#endif
 
   pipeServerSockets[pipePath] = set<int>({fd});
   return pipeServerSockets[pipePath];

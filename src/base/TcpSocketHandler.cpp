@@ -1,13 +1,5 @@
 #include "TcpSocketHandler.hpp"
 
-#include <fcntl.h>
-#include <netdb.h>
-#include <netinet/in.h>
-#include <netinet/tcp.h>
-#include <resolv.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 namespace et {
 TcpSocketHandler::TcpSocketHandler() {}
 
@@ -28,8 +20,10 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   std::string portname = std::to_string(endpoint.port());
   std::string hostname = endpoint.name();
 
+#ifndef WIN32
   // (re)initialize the DNS system
   ::res_init();
+#endif
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc == EAI_NONAME) {
@@ -82,7 +76,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       int so_error;
       socklen_t len = sizeof so_error;
 
-      FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, &so_error, &len));
+      FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -93,6 +87,15 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         }
         // Make sure that socket becomes blocking once it's attached to a
         // server.
+#ifdef WIN32
+        {
+          u_long iMode = 0;
+          auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
+          if (result != NO_ERROR) {
+            STFATAL << result;
+          }
+        }
+#else
         {
           int opts;
           opts = fcntl(sockFd, F_GETFL);
@@ -100,6 +103,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
           opts &= (~O_NONBLOCK);
           FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
         }
+#endif
         break;  // if we get here, we must have connected successfully
       } else {
         if (p->ai_canonname) {
@@ -255,7 +259,7 @@ void TcpSocketHandler::initSocket(int fd) {
     so_linger.l_onoff = 1;
     so_linger.l_linger = 5;
     FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, SOL_SOCKET, SO_LINGER, &so_linger, sizeof so_linger));
+        setsockopt(fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
   }
 }
 }  // namespace et

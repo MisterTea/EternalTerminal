@@ -48,6 +48,9 @@ string LogHandler::stderrToFile(const string &pathPrefix) {
   string current_time(buffer);
   string stderrFilename = pathPrefix + "_stderr_" + current_time;
   FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
+  if (!stderr_stream) {
+    STFATAL << "Invalid filename " << stderrFilename;
+  }
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   return stderrFilename;
 }

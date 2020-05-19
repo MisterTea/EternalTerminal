@@ -64,6 +64,9 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
     if (tunnels.length()) {
       auto pairs = parseRangesToPairs(tunnels);
       for (auto& pair : pairs) {
+#ifdef WIN32
+        STFATAL << "Source tunnel not supported on windows yet";
+#else
         PortForwardSourceRequest pfsr;
         pfsr.mutable_source()->set_port(pair.first);
         pfsr.mutable_destination()->set_port(pair.second);
@@ -72,6 +75,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         if (pfsresponse.has_error()) {
           throw std::runtime_error(pfsresponse.error());
         }
+#endif
       }
     }
     if (reverseTunnels.length()) {
@@ -126,7 +130,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
           FD_ZERO(&rfd);
           int clientFd = connection->getSocketFd();
           if (clientFd < 0) {
-            sleep(1);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
           }
           FD_SET(clientFd, &rfd);
@@ -243,7 +247,34 @@ void TerminalClient::run(const string& command) {
           // Read from stdin and write to our client that will then send it to
           // the server.
           VLOG(4) << "Got data from stdin";
-          int rc = read(consoleFd, b, BUF_SIZE);
+#ifdef WIN32
+          DWORD events;
+          INPUT_RECORD buffer[128];
+          HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+          PeekConsoleInput(handle, buffer, 128, &events);
+          if (events > 0)
+          {
+            ReadConsoleInput(handle, buffer, 128, &events);
+            string s;
+            for (int keyEvent = 0; keyEvent < events; keyEvent++) {
+              if (buffer[keyEvent].EventType == KEY_EVENT && buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+                char charPressed = ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+                if (charPressed) {
+                  s += charPressed;
+                }
+              }
+            }
+            if (s.length()) {
+              et::TerminalBuffer tb;
+              tb.set_buffer(s);
+
+              connection->writePacket(
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            }
+          }
+#else
+          int rc = ::read(consoleFd, b, BUF_SIZE);
           FATAL_FAIL(rc);
           if (rc > 0) {
             // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
@@ -253,9 +284,10 @@ void TerminalClient::run(const string& command) {
             tb.set_buffer(s);
 
             connection->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
             keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
           }
+#endif
         }
       }
 

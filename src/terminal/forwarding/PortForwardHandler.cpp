@@ -31,6 +31,8 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
   }
 }
 
+#ifdef WIN32
+#else
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
@@ -84,6 +86,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     return pfsr;
   }
 }
+#endif
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {

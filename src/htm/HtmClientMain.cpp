@@ -6,6 +6,7 @@
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
 #include "RawSocketUtils.hpp"
+#include "SubprocessToString.hpp"
 
 using namespace et;
 
@@ -93,7 +94,7 @@ int main(int argc, char** argv) {
   }
 
   // This means we are the client to the daemon
-  usleep(10 * 1000);  // Sleep for 10ms to let the daemon come alive
+  std::this_thread::sleep_for(std::chrono::microseconds(10*1000));  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());

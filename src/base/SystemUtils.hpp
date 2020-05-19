@@ -3,8 +3,6 @@
 
 #include "Headers.hpp"
 
-#include <pwd.h>
-
 namespace et {
 void rootToUser(passwd* pwd);
 }

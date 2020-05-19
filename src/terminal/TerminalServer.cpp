@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "TerminalServer.hpp"
 
 #define BUF_SIZE (16 * 1024)
@@ -389,3 +390,4 @@ bool TerminalServer::newClient(
   return true;
 }
 }  // namespace et
+#endif

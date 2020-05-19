@@ -10,24 +10,67 @@ namespace et {
 class PsuedoTerminalConsole : public Console {
  public:
   PsuedoTerminalConsole() {
+#ifdef WIN32
+    auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
+    GetConsoleMode(hstdin, &inputMode);
+    auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    GetConsoleMode(hstdin, &outputMode);
+#else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
     memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
+#endif
   }
 
   virtual ~PsuedoTerminalConsole() {}
 
   virtual void setup() {
+#ifdef WIN32
+    auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
+    SetConsoleMode(hstdin, 0);
+#else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
     memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
     cfmakeraw(&terminal_local);
     tcsetattr(0, TCSANOW, &terminal_local);
+#endif
   }
 
-  virtual void teardown() { tcsetattr(0, TCSANOW, &terminal_backup); }
+  virtual void teardown() {
+#ifdef WIN32
+    auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
+    SetConsoleMode(hstdin, inputMode);
+    auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleMode(hstdin, outputMode);
+#else
+    tcsetattr(0, TCSANOW, &terminal_backup);
+#endif
+  }
 
   virtual TerminalInfo getTerminalInfo() {
+#ifdef WIN32
+    CONSOLE_SCREEN_BUFFER_INFO csbi;
+    int columns, rows;
+
+    if (!GetConsoleScreenBufferInfo(GetStdHandle(STD_OUTPUT_HANDLE), &csbi)) {
+      STFATAL << "Error getting console info: " << GetLastError();
+    }
+    TerminalInfo ti;
+    ti.set_column(csbi.srWindow.Right - csbi.srWindow.Left + 1);
+    ti.set_row(csbi.srWindow.Bottom - csbi.srWindow.Top + 1);
+
+    /* TODO: Find out why this does not work
+    HWND myconsole = GetConsoleWindow();
+    HDC mydc = GetDC(myconsole);
+    RECT rect;
+    GetClientRect(myconsole, &rect);
+    ti.set_height(rect.bottom - rect.top);
+    ti.set_width(rect.right - rect.left);
+    */
+
+    return ti;
+#else
     winsize win;
     ioctl(1, TIOCGWINSZ, &win);
     TerminalInfo ti;
@@ -36,12 +79,24 @@ class PsuedoTerminalConsole : public Console {
     ti.set_width(win.ws_xpixel);
     ti.set_height(win.ws_ypixel);
     return ti;
+#endif
   }
 
-  virtual int getFd() { return STDIN_FILENO; }
+  virtual int getFd() {
+#ifdef WIN32
+    return _fileno(stdin);
+#else
+    return STDIN_FILENO; 
+#endif
+  }
 
  protected:
-  termios terminal_backup;
+#ifdef WIN32
+   DWORD inputMode;
+   DWORD outputMode;
+#else
+   termios terminal_backup;
+#endif
 
 };  // namespace et
 }  // namespace et

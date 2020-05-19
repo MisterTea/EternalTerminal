@@ -1,3 +1,5 @@
+#ifdef WIN32
+#else
 /* Acknowledgement: this file gathers config file parsing related functions in
  * libssh */
 #pragma once
@@ -1386,3 +1388,4 @@ int parse_ssh_config_file(const char *targethost, struct Options *options, strin
   fclose(fp);
   return 0;
 }
+#endif

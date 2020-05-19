@@ -129,7 +129,7 @@ void ClientConnection::pollReconnect() {
 
     if (socketFd == -1) {
       VLOG_EVERY_N(10, 1) << "Waiting to retry...";
-      usleep(1000 * 1000);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
   LOG(INFO) << "Reconnect complete";

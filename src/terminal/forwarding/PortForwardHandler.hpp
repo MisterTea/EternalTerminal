@@ -16,9 +16,11 @@ class PortForwardHandler {
   void update(vector<PortForwardDestinationRequest>* requests,
               vector<PortForwardData>* dataToSend);
   void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
+#ifndef WIN32
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
                                          string* sourceName, uid_t userid,
                                          gid_t groupid);
+#endif
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
 

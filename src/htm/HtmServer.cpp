@@ -14,7 +14,7 @@ HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
 void HtmServer::run() {
   while (running) {
     if (endpointFd < 0) {
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       pollAccept();
       continue;
     }
@@ -149,7 +149,7 @@ void HtmServer::recover() {
   socketHandler->writeAllOrThrow(endpointFd, buf, sizeof(buf), false);
   fflush(stdout);
   // Sleep to make sure the client can process the escape code
-  usleep(10 * 1000);
+  std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
 
   // Send the state
   STERROR << "Starting terminal";
