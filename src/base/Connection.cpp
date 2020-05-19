@@ -175,6 +175,7 @@ bool Connection::write(const Packet& packet) {
   }
 
   BackedWriterWriteState bwws = writer->write(packet);
+  auto writeErrno = errno;
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     VLOG(4) << "Write skipped";
@@ -187,12 +188,13 @@ bool Connection::write(const Packet& packet) {
     if (socketFd == -1) {
       // The socket was already closed
       VLOG(1) << "Socket closed";
-    } else if (isSkippableError(errno)) {
+    } else if (isSkippableError(writeErrno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
       closeSocketAndMaybeReconnect();
     } else {
-      STFATAL << "Unexpected socket error: " << errno << " " << strerror(errno);
+      STFATAL << "Unexpected socket error: " << writeErrno << " "
+              << strerror(writeErrno);
     }
   }
 
