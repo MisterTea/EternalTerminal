@@ -12,11 +12,15 @@ Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%
 
 ## Installing
 
-### Mac OS X
+### macOS
 
-The easiest way to install is using homebrew:
+The easiest way to install is using Homebrew:
 
 	brew install MisterTea/et/et
+
+Alternatively, a package is available in MacPorts:
+
+	sudo port install et
 
 ### Ubuntu
 
@@ -154,9 +158,9 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ## Building from source
 
-### OS/X
+### macOS
 
-To build eternal terminal on mac, the easiest way is to grab dependencies with homebrew:
+To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
 
 ```
 brew install --only-dependencies MisterTea/et/et
