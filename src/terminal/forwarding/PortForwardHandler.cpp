@@ -37,8 +37,8 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
   try {
-    if (pfsr.has_source() && !pfsr.source().has_port()) {
-      throw runtime_error("Do not set a source when forwarding named pipes");
+    if (pfsr.has_source() && sourceName) {
+      throw runtime_error("Do not set a source when forwarding named pipes with environment variables");
     }
     SocketEndpoint source;
     if (pfsr.has_source()) {

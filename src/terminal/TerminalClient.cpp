@@ -1,13 +1,19 @@
 #include "TerminalClient.hpp"
 
 namespace et {
-vector<pair<int, int>> parseRangesToPairs(const string& input) {
-  vector<pair<int, int>> pairs;
+vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
+  vector<PortForwardSourceRequest> pfsrs;
   auto j = split(input, ',');
   for (auto& pair : j) {
     vector<string> sourceDestination = split(pair, ':');
     try {
-      if (sourceDestination[0].find('-') != string::npos &&
+      if (sourceDestination[0].find_first_not_of("0123456789-") != string::npos &&
+          sourceDestination[1].find_first_not_of("0123456789-") != string::npos) {
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_name(sourceDestination[0]);
+        pfsr.mutable_destination()->set_name(sourceDestination[1]);
+        pfsrs.push_back(pfsr);
+      } else if (sourceDestination[0].find('-') != string::npos &&
           sourceDestination[1].find('-') != string::npos) {
         vector<string> sourcePortRange = split(sourceDestination[0], '-');
         int sourcePortStart = stoi(sourcePortRange[0]);
@@ -24,8 +30,10 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
         } else {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
           for (int i = 0; i < portRangeLength; ++i) {
-            pairs.push_back(
-                make_pair(sourcePortStart + i, destinationPortStart + i));
+            PortForwardSourceRequest pfsr;
+            pfsr.mutable_source()->set_port(sourcePortStart + i);
+            pfsr.mutable_destination()->set_port(destinationPortStart + i);
+            pfsrs.push_back(pfsr);
           }
         }
       } else if (sourceDestination[0].find('-') != string::npos ||
@@ -33,16 +41,17 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
         STFATAL << "Invalid port range syntax: if source is range, "
                    "destination must be range";
       } else {
-        int sourcePort = stoi(sourceDestination[0]);
-        int destinationPort = stoi(sourceDestination[1]);
-        pairs.push_back(make_pair(sourcePort, destinationPort));
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_port(stoi(sourceDestination[0]));
+        pfsr.mutable_destination()->set_port(stoi(sourceDestination[1]));
+        pfsrs.push_back(pfsr);
       }
     } catch (const std::logic_error& lr) {
       STFATAL << "Logic error: " << lr.what();
       exit(1);
     }
   }
-  return pairs;
+  return pfsrs;
 }
 
 TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
@@ -62,14 +71,11 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
 
   try {
     if (tunnels.length()) {
-      auto pairs = parseRangesToPairs(tunnels);
-      for (auto& pair : pairs) {
+      auto pfsrs = parseRangesToRequests(reverseTunnels);
+      for (auto& pfsr : pfsrs) {
 #ifdef WIN32
         STFATAL << "Source tunnel not supported on windows yet";
 #else
-        PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_port(pair.first);
-        pfsr.mutable_destination()->set_port(pair.second);
         auto pfsresponse =
             portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
@@ -79,11 +85,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       }
     }
     if (reverseTunnels.length()) {
-      auto pairs = parseRangesToPairs(reverseTunnels);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_port(pair.first);
-        pfsr.mutable_destination()->set_port(pair.second);
+      auto pfsrs = parseRangesToRequests(reverseTunnels);
+      for (auto& pfsr : pfsrs) {
         *(payload.add_reversetunnels()) = pfsr;
       }
     }
