@@ -256,7 +256,15 @@ target_link_libraries (
 )
 DECORATE_TARGET(et)
 
-IF(NOT WIN32)
+IF(WIN32)
+install(TARGETS et
+  DESTINATION "bin"
+  COMPONENT client
+  )
+set(CPACK_COMPONENTS_ALL client)
+set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
+  
+ELSE(WIN32)
 add_executable (
   etserver
   src/terminal/TerminalServerMain.cpp
@@ -386,3 +394,16 @@ install(TARGETS etserver etterminal et htm htmd
   DESTINATION "bin"
   )
 ENDIF()
+
+set(CPACK_PACKAGE_NAME "Eternal Terminal")
+set(CPACK_PACKAGE_VENDOR "https://github.com/MisterTea/EternalTerminal")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Remote terminal for the busy and impatient")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "EternalTerminal")
+SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+# This must always be last!
+include(CPack)
