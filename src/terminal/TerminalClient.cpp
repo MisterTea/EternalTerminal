@@ -71,7 +71,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
 
   try {
     if (tunnels.length()) {
-      auto pfsrs = parseRangesToRequests(reverseTunnels);
+      auto pfsrs = parseRangesToRequests(tunnels);
       for (auto& pfsr : pfsrs) {
 #ifdef WIN32
         STFATAL << "Source tunnel not supported on windows yet";
