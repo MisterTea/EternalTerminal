@@ -57,6 +57,18 @@ For debian, use our deb repo. For buster:
 
 Up to the present day the only way to install is to [build from source](#centos-7).
 
+### CentOS 8
+
+You currently can't build et on CentOS 8 due to the lack of `protobuf-lite-devel` package.
+But you can install it from the Fedora repository using the following commands:
+```
+sudo dnf install epel-release
+sudo dnf install libsodium-devel
+sudo dnf install https://ftp.lysator.liu.se/pub/opensuse/distribution/leap/15.2/repo/oss/x86_64/libprotobuf-lite20-3.9.2-lp152.1.3.x86_64.rpm
+sudo dnf install https://ftp.lysator.liu.se/pub/opensuse/distribution/leap/15.2/repo/oss/x86_64/EternalTerminal-6.0.7-lp152.1.3.x86_64.rpm 
+sudo systemctl enable et
+sudo systemctl start et
+```
 
 ### FreeBSD
 On FreeBSD, use:
