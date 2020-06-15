@@ -28,7 +28,8 @@ ENDIF(DISABLE_CRASH_LOG)
 
 if(UNIX)
   # Enable debug info
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -ggdb3")
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
 endif()
 
 # Enable C++-11
