@@ -11,7 +11,7 @@ if(POLICY CMP0058)
 endif() 
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
-option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" ON)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
