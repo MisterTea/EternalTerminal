@@ -48,7 +48,7 @@ Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 For debian, use our deb repo. For buster:
 
 	echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list
-	curl -sS https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
+	curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
 	sudo apt update
 	sudo apt install et
 
