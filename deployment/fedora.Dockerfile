@@ -27,3 +27,4 @@ RUN mkdir -p EternalTerminal/build
 WORKDIR /root/EternalTerminal/build
 RUN cmake ..
 RUN make -j`nproc`
+RUN ./et-test

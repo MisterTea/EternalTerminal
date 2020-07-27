@@ -24,7 +24,7 @@ RUN git config --global user.name "Jason Gauci"
 
 RUN echo -e "StrictHostKeyChecking no\n" >> ~/.ssh/config
 
-RUN git clone --branch centos_8_support --recurse-submodules git@github.com:MisterTea/EternalTerminal.git
+RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /root/EternalTerminal/build
 RUN cmake -DFULL_PROTOBUF=ON ..
