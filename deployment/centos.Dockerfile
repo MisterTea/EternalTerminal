@@ -25,5 +25,6 @@ RUN echo -e "StrictHostKeyChecking no\n" >> ~/.ssh/config
 RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /root/EternalTerminal/build
-RUN cmake ..
+RUN cmake -DFULL_PROTOBUF=ON ..
 RUN make -j`nproc`
+RUN ./et-test

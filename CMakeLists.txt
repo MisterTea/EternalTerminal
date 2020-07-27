@@ -58,13 +58,20 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Required packages
 find_package(Threads REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(Sodium REQUIRED)
+find_package(sodium REQUIRED)
 
 # Optional packages
 IF(LINUX)
 find_package(SELinux)
 ENDIF()
 find_package(UTempter)
+
+option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" OFF)
+IF(FULL_PROTOBUF)
+    SET(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
+ELSE()
+    SET(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
+ENDIF()
 
 IF(SELINUX_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
@@ -250,7 +257,7 @@ target_link_libraries (
     TerminalCommon
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LITE_LIBRARIES}
+    ${PROTOBUF_LIBS}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
     ${CORE_LIBRARIES}
@@ -276,7 +283,7 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -294,7 +301,7 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -332,7 +339,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -352,7 +359,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -378,7 +385,7 @@ target_link_libraries(
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
