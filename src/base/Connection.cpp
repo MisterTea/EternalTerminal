@@ -31,6 +31,7 @@ inline bool isSkippableError(int err_no) {
 }
 
 bool Connection::readPacket(Packet* packet) {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
     return false;
   }
@@ -65,7 +66,7 @@ void Connection::writePacket(const Packet& packet) {
       std::this_thread::sleep_for(std::chrono::microseconds(1000));
     } else {
       // No connection, sleep for 100ms
-      std::this_thread::sleep_for(std::chrono::microseconds(100*1000));
+      std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
     }
     LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }

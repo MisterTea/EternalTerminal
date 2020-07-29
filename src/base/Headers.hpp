@@ -18,6 +18,8 @@
 #include <Ws2tcpip.h>
 #include <afunix.h>
 #include <signal.h>
+
+#include <codecvt>
 inline int close(int fd) { return ::closesocket(fd); }
 #else
 #include <pty.h>
@@ -58,7 +60,6 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <algorithm>
 #include <array>
 #include <atomic>
-#include <codecvt>
 #include <ctime>
 #include <cxxopts.hpp>
 #include <deque>
