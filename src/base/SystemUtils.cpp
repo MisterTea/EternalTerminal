@@ -1,9 +1,7 @@
+#ifndef WIN32
 #include "SystemUtils.hpp"
-#include <paths.h>
-#include <pwd.h>
-#include <sys/types.h>
 
-#include <grp.h>
+#include <sys/types.h>
 
 #ifdef WITH_SELINUX
 #include <selinux/get_context_list.h>
@@ -28,11 +26,11 @@ void rootToUser(passwd* pwd) {
 
 #ifdef __APPLE__
   if (getgrouplist(pwd->pw_name, pwd->pw_gid, (int*)groups, &ngroups) == -1) {
-    LOG(FATAL) << "User is part of more than 65536 groups!";
+    STFATAL << "User is part of more than 65536 groups!";
   }
 #else
   if (getgrouplist(pwd->pw_name, pwd->pw_gid, groups, &ngroups) == -1) {
-    LOG(FATAL) << "User is part of more than 65536 groups!";
+    STFATAL << "User is part of more than 65536 groups!";
   }
 #endif
 
@@ -73,3 +71,4 @@ void rootToUser(passwd* pwd) {
   chdir(pwd->pw_dir);
 }
 }  // namespace et
+#endif

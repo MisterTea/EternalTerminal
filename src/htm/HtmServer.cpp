@@ -14,7 +14,7 @@ HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
 void HtmServer::run() {
   while (running) {
     if (endpointFd < 0) {
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
       pollAccept();
       continue;
     }
@@ -36,26 +36,26 @@ void HtmServer::run() {
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (FD_ISSET(endpointFd, &rfd)) {
-        LOG(ERROR) << "READING FROM STDIN";
+        STERROR << "READING FROM STDIN";
         socketHandler->readAll(endpointFd, (char *)&header, 1, false);
-        LOG(ERROR) << "Got message header: " << int(header);
+        STERROR << "Got message header: " << int(header);
         int32_t length;
         socketHandler->readB64(endpointFd, (char *)&length, 4);
-        LOG(ERROR) << "READ LENGTH: " << length;
+        STERROR << "READ LENGTH: " << length;
         switch (header) {
           case INSERT_KEYS: {
             string uid = string(UUID_LENGTH, '0');
             socketHandler->readAll(endpointFd, &uid[0], uid.length(), false);
             length -= uid.length();
-            LOG(ERROR) << "READING FROM " << uid << ":" << length;
+            STERROR << "READING FROM " << uid << ":" << length;
             string data;
             socketHandler->readB64EncodedLength(endpointFd, &data, length);
-            LOG(ERROR) << "READ FROM " << uid << ":" << data << " " << length;
+            STERROR << "READ FROM " << uid << ":" << data << " " << length;
             state.appendData(uid, data);
             break;
           }
           case INSERT_DEBUG_KEYS: {
-            LOG(ERROR) << "READING DEBUG: " << length;
+            STERROR << "READING DEBUG: " << length;
             string data(length, '\0');
             socketHandler->readAll(endpointFd, &data[0], length, false);
             if (data[0] == 'x') {
@@ -118,14 +118,14 @@ void HtmServer::run() {
             break;
           }
           default: {
-            LOG(FATAL) << "Got unknown packet header: " << int(header);
+            STFATAL << "Got unknown packet header: " << int(header);
           }
         }
       }
 
       state.update(endpointFd);
     } catch (std::runtime_error &re) {
-      LOG(ERROR) << re.what();
+      STERROR << re.what();
       closeEndpoint();
     }
   }
@@ -149,10 +149,10 @@ void HtmServer::recover() {
   socketHandler->writeAllOrThrow(endpointFd, buf, sizeof(buf), false);
   fflush(stdout);
   // Sleep to make sure the client can process the escape code
-  usleep(10 * 1000);
+  std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
 
   // Send the state
-  LOG(ERROR) << "Starting terminal";
+  STERROR << "Starting terminal";
 
   sendDebug("Initializing HTM, please wait...\n\r");
 

@@ -1,11 +1,10 @@
-#include "TestHeaders.hpp"
-
 #include "ClientConnection.hpp"
 #include "Connection.hpp"
 #include "FlakySocketHandler.hpp"
 #include "LogHandler.hpp"
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
+#include "TestHeaders.hpp"
 
 using namespace et;
 
@@ -20,7 +19,7 @@ class Collector {
 
   ~Collector() {
     if (done == false) {
-      LOG(FATAL) << "Did not shut down properly";
+      STFATAL << "Did not shut down properly";
     }
   }
 
@@ -33,12 +32,12 @@ class Collector {
     auto lastSecond = time(NULL);
     while (!done) {
       if (connection.get() == NULL) {
-        LOG(FATAL) << "CONNECTION IS NULL";
+        STFATAL << "CONNECTION IS NULL";
       }
       if (connection->hasData()) {
-        lock_guard<std::mutex> guard(collectorMutex);
         Packet packet;
         bool status = connection->readPacket(&packet);
+        lock_guard<std::mutex> guard(collectorMutex);
         if (status) {
           if (packet.getHeader() == HEADER_DONE) {
             fifo.push_back("DONE");
@@ -47,7 +46,7 @@ class Collector {
           } else if (packet.getHeader() == HEARTBEAT) {
             // Do nothing
           } else {
-            LOG(FATAL) << "INVALID PACKET HEADER: " << packet.getHeader();
+            STFATAL << "INVALID PACKET HEADER: " << packet.getHeader();
           }
         }
       }
@@ -80,7 +79,7 @@ class Collector {
   string pop() {
     lock_guard<std::mutex> guard(collectorMutex);
     if (fifo.empty()) {
-      LOG(FATAL) << "Tried to pop an empty fifo";
+      STFATAL << "Tried to pop an empty fifo";
     }
     string s = fifo.front();
     fifo.pop_front();
@@ -140,7 +139,7 @@ class TestServerConnection : public ServerConnection {
     lock_guard<mutex> lock(serverClientConnectionMutex);
     if (serverClientConnections.find(clientId) !=
         serverClientConnections.end()) {
-      LOG(FATAL) << "TRIED TO CREATE DUPLICATE CLIENT ID";
+      STFATAL << "TRIED TO CREATE DUPLICATE CLIENT ID";
     }
     serverClientConnections[clientId] = _serverClientState;
     return true;
@@ -165,7 +164,7 @@ void readWriteTest(const string& clientId,
       LOG(INFO) << "Connection failed, retrying...";
       ::usleep(1000 * 1000);
     } catch (const std::runtime_error& ex) {
-      LOG(FATAL) << "Error connecting to server: " << ex.what();
+      STFATAL << "Error connecting to server: " << ex.what();
     }
   }
 
@@ -179,10 +178,13 @@ void readWriteTest(const string& clientId,
     }
     ::usleep(1000 * 1000);
   }
-  shared_ptr<Collector> serverCollector(
-      new Collector(std::static_pointer_cast<Connection>(
-                        serverClientConnections.find(clientId)->second),
-                    "Server"));
+  shared_ptr<ServerClientConnection> serverClientConnection;
+  {
+    lock_guard<mutex> lock(serverClientConnectionMutex);
+    serverClientConnection = serverClientConnections.find(clientId)->second;
+  }
+  shared_ptr<Collector> serverCollector(new Collector(
+      std::static_pointer_cast<Connection>(serverClientConnection), "Server"));
   serverCollector->start();
   shared_ptr<Collector> clientCollector(new Collector(
       std::static_pointer_cast<Connection>(clientConnection), "Client"));
@@ -208,8 +210,11 @@ void readWriteTest(const string& clientId,
     LOG(INFO) << "ON MESSAGE " << a;
   }
   result = clientCollector->read();
-  REQUIRE(result == "DONE");
-  REQUIRE(resultConcat == s);
+  {
+    lock_guard<recursive_mutex> lock(testMutex);
+    REQUIRE(result == "DONE");
+    REQUIRE(resultConcat == s);
+  }
 
   serverConnection->removeClient(serverCollector->getConnection()->getId());
   serverCollector->join();
@@ -327,10 +332,10 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
 
   auto v = serverSocketHandler->getActiveSockets();
   if (!v.empty()) {
-    LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    STFATAL << "Dangling socket fd (first): " << v[0];
   }
   v = clientSocketHandler->getActiveSockets();
   if (!v.empty()) {
-    LOG(FATAL) << "Dangling socket fd (first): " << v[0];
+    STFATAL << "Dangling socket fd (first): " << v[0];
   }
 }

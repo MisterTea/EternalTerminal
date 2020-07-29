@@ -13,12 +13,6 @@
 #include "SshSetupHandler.hpp"
 #include "TcpSocketHandler.hpp"
 
-#include <errno.h>
-#include <pwd.h>
-#include <sys/ioctl.h>
-#include <sys/types.h>
-#include <termios.h>
-
 #include "ETerminal.pb.h"
 
 namespace et {
@@ -32,10 +26,6 @@ class TerminalClient {
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent);
   virtual ~TerminalClient();
-  void setUpTunnel(const string& tunnels);
-  void setUpReverseTunnels(const string& reverseTunnels);
-  void handleWindowChanged(winsize* win);
-  // void handlePfwPacket(char packetType);
   void run(const string& command);
   void shutdown() {
     lock_guard<recursive_mutex> guard(shutdownMutex);

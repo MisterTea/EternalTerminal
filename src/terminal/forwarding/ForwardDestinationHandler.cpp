@@ -20,7 +20,8 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
   while (socketHandler->hasData(fd)) {
     char buf[1024];
     int bytesRead = socketHandler->read(fd, buf, 1024);
-    if (bytesRead == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+    auto readErrno = errno;
+    if (bytesRead == -1 && (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
       // Bail for now
       break;
     }
@@ -29,8 +30,8 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
     pwd.set_sourcetodestination(false);
     if (bytesRead == -1) {
       VLOG(1) << "Got error reading socket " << socketId << " "
-              << strerror(errno);
-      pwd.set_error(strerror(errno));
+              << strerror(readErrno);
+      pwd.set_error(strerror(readErrno));
     } else if (bytesRead == 0) {
       VLOG(1) << "Got close reading socket " << socketId;
       pwd.set_closed(true);
@@ -42,8 +43,8 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
     if (bytesRead < 1) {
       LOG(INFO) << "Socket " << socketId << " closed";
       if (bytesRead < 0) {
-        LOG(ERROR) << "Socket " << socketId << " closed with error " << errno
-                   << ' ' << strerror(errno);
+        STERROR << "Socket " << socketId << " closed with error " << readErrno
+                << ' ' << strerror(readErrno);
       }
       socketHandler->close(fd);
       fd = -1;

@@ -1,13 +1,19 @@
 #include "TerminalClient.hpp"
 
 namespace et {
-vector<pair<int, int>> parseRangesToPairs(const string& input) {
-  vector<pair<int, int>> pairs;
+vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
+  vector<PortForwardSourceRequest> pfsrs;
   auto j = split(input, ',');
   for (auto& pair : j) {
     vector<string> sourceDestination = split(pair, ':');
     try {
-      if (sourceDestination[0].find('-') != string::npos &&
+      if (sourceDestination[0].find_first_not_of("0123456789-") != string::npos &&
+          sourceDestination[1].find_first_not_of("0123456789-") != string::npos) {
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_name(sourceDestination[0]);
+        pfsr.mutable_destination()->set_name(sourceDestination[1]);
+        pfsrs.push_back(pfsr);
+      } else if (sourceDestination[0].find('-') != string::npos &&
           sourceDestination[1].find('-') != string::npos) {
         vector<string> sourcePortRange = split(sourceDestination[0], '-');
         int sourcePortStart = stoi(sourcePortRange[0]);
@@ -19,30 +25,33 @@ vector<pair<int, int>> parseRangesToPairs(const string& input) {
 
         if (sourcePortEnd - sourcePortStart !=
             destinationPortEnd - destinationPortStart) {
-          LOG(FATAL) << "source/destination port range mismatch";
+          STFATAL << "source/destination port range mismatch";
           exit(1);
         } else {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
           for (int i = 0; i < portRangeLength; ++i) {
-            pairs.push_back(
-                make_pair(sourcePortStart + i, destinationPortStart + i));
+            PortForwardSourceRequest pfsr;
+            pfsr.mutable_source()->set_port(sourcePortStart + i);
+            pfsr.mutable_destination()->set_port(destinationPortStart + i);
+            pfsrs.push_back(pfsr);
           }
         }
       } else if (sourceDestination[0].find('-') != string::npos ||
                  sourceDestination[1].find('-') != string::npos) {
-        LOG(FATAL) << "Invalid port range syntax: if source is range, "
-                      "destination must be range";
+        STFATAL << "Invalid port range syntax: if source is range, "
+                   "destination must be range";
       } else {
-        int sourcePort = stoi(sourceDestination[0]);
-        int destinationPort = stoi(sourceDestination[1]);
-        pairs.push_back(make_pair(sourcePort, destinationPort));
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_port(stoi(sourceDestination[0]));
+        pfsr.mutable_destination()->set_port(stoi(sourceDestination[1]));
+        pfsrs.push_back(pfsr);
       }
     } catch (const std::logic_error& lr) {
-      LOG(FATAL) << "Logic error: " << lr.what();
+      STFATAL << "Logic error: " << lr.what();
       exit(1);
     }
   }
-  return pairs;
+  return pfsrs;
 }
 
 TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
@@ -62,24 +71,22 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
 
   try {
     if (tunnels.length()) {
-      auto pairs = parseRangesToPairs(tunnels);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_port(pair.first);
-        pfsr.mutable_destination()->set_port(pair.second);
+      auto pfsrs = parseRangesToRequests(tunnels);
+      for (auto& pfsr : pfsrs) {
+#ifdef WIN32
+        STFATAL << "Source tunnel not supported on windows yet";
+#else
         auto pfsresponse =
             portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
           throw std::runtime_error(pfsresponse.error());
         }
+#endif
       }
     }
     if (reverseTunnels.length()) {
-      auto pairs = parseRangesToPairs(reverseTunnels);
-      for (auto& pair : pairs) {
-        PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_port(pair.first);
-        pfsr.mutable_destination()->set_port(pair.second);
+      auto pfsrs = parseRangesToRequests(reverseTunnels);
+      for (auto& pfsr : pfsrs) {
         *(payload.add_reversetunnels()) = pfsr;
       }
     }
@@ -91,7 +98,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       } else {
         auto authSockEnv = getenv("SSH_AUTH_SOCK");
         if (!authSockEnv) {
-          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure you "
+          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
+                  "you "
                   "ran ssh-agent first?"
                << endl;
           exit(1);
@@ -125,7 +133,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
           FD_ZERO(&rfd);
           int clientFd = connection->getSocketFd();
           if (clientFd < 0) {
-            sleep(1);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
           }
           FD_SET(clientFd, &rfd);
@@ -138,7 +146,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
                 cout << "Error: Missing initial response\n";
-                LOG(FATAL) << "Missing initial response!";
+                STFATAL << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
                   initialResponsePacket.getPayload());
@@ -154,7 +162,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         }
       }
       if (fail) {
-        LOG(ERROR) << "Connecting to server failed: Connect timeout";
+        STERROR << "Connecting to server failed: Connect timeout";
         connectFailCount++;
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
@@ -242,7 +250,34 @@ void TerminalClient::run(const string& command) {
           // Read from stdin and write to our client that will then send it to
           // the server.
           VLOG(4) << "Got data from stdin";
-          int rc = read(consoleFd, b, BUF_SIZE);
+#ifdef WIN32
+          DWORD events;
+          INPUT_RECORD buffer[128];
+          HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+          PeekConsoleInput(handle, buffer, 128, &events);
+          if (events > 0)
+          {
+            ReadConsoleInput(handle, buffer, 128, &events);
+            string s;
+            for (int keyEvent = 0; keyEvent < events; keyEvent++) {
+              if (buffer[keyEvent].EventType == KEY_EVENT && buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+                char charPressed = ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+                if (charPressed) {
+                  s += charPressed;
+                }
+              }
+            }
+            if (s.length()) {
+              et::TerminalBuffer tb;
+              tb.set_buffer(s);
+
+              connection->writePacket(
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            }
+          }
+#else
+          int rc = ::read(consoleFd, b, BUF_SIZE);
           FATAL_FAIL(rc);
           if (rc > 0) {
             // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
@@ -252,9 +287,10 @@ void TerminalClient::run(const string& command) {
             tb.set_buffer(s);
 
             connection->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
             keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
           }
+#endif
         }
       }
 
@@ -300,7 +336,7 @@ void TerminalClient::run(const string& command) {
               LOG(INFO) << "Got a keepalive";
               break;
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+              STFATAL << "Unknown packet type: " << int(packetType);
           }
         }
       }
@@ -352,7 +388,7 @@ void TerminalClient::run(const string& command) {
         keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
       }
     } catch (const runtime_error& re) {
-      LOG(ERROR) << "Error: " << re.what();
+      STERROR << "Error: " << re.what();
       cout << "Connection closing because of error: " << re.what() << endl;
       lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;

@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "TerminalServer.hpp"
 
 #define BUF_SIZE (16 * 1024)
@@ -46,7 +47,7 @@ void TerminalServer::run() {
     timeval tv;
 
     if (numFds > FD_SETSIZE) {
-      LOG(FATAL) << "Tried to select() on too many FDs";
+      STFATAL << "Tried to select() on too many FDs";
     }
 
     tv.tv_sec = 0;
@@ -100,7 +101,14 @@ void TerminalServer::runJumpHost(
       terminalFd,
       Packet(TerminalPacketType::JUMPHOST_INIT, protoToString(payload)));
 
-  while (!halt && run && !serverClientState->isShuttingDown()) {
+  while (true) {
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      if (halt || !run || serverClientState->isShuttingDown()) {
+        break;
+      }
+    }
+
     fd_set rfd;
     timeval tv;
 
@@ -151,7 +159,7 @@ void TerminalServer::runJumpHost(
         }
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Jumphost Error: " << re.what();
+      STERROR << "Jumphost Error: " << re.what();
       cout << "ERROR: " << re.what();
       serverClientState->closeSocket();
     }
@@ -264,7 +272,6 @@ void TerminalServer::runTerminal(
         } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
-          removeClient(serverClientState->getId());
           break;
         }
       }
@@ -331,12 +338,12 @@ void TerminalServer::runTerminal(
               break;
             }
             default:
-              LOG(FATAL) << "Unknown packet type: " << int(packetType);
+              STFATAL << "Unknown packet type: " << int(packetType);
           }
         }
       }
     } catch (const runtime_error &re) {
-      LOG(ERROR) << "Error: " << re.what();
+      STERROR << "Error: " << re.what();
       cout << "Error: " << re.what();
       serverClientState->closeSocket();
       // If the client disconnects the session, it shouldn't end
@@ -361,8 +368,8 @@ void TerminalServer::handleConnection(
     sleep(1);
   }
   if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
-    LOG(FATAL) << "Invalid header: expecting INITIAL_PAYLOAD but got "
-               << packet.getHeader();
+    STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
+            << packet.getHeader();
   }
   InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
   if (payload.jumphost()) {
@@ -383,3 +390,4 @@ bool TerminalServer::newClient(
   return true;
 }
 }  // namespace et
+#endif

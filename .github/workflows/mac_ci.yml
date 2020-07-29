@@ -1,0 +1,110 @@
+name: Mac CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  ubsan:
+    runs-on: macos-10.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+
+      - name: Test with ubsan
+        run: |
+          mkdir build
+          pushd build
+          cmake -DSANITIZE_UNDEFINED=ON ../
+          make -j`nproc`
+          ./et-test
+          popd
+          rm -Rf build
+
+  asan:
+    runs-on: macos-10.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+
+      - name: Test with asan
+        run: |
+          mkdir build
+          pushd build
+          cmake -DSANITIZE_ADDRESS=ON ../
+          make -j`nproc`
+          ./et-test
+          popd
+          rm -Rf build
+
+  msan:
+    runs-on: macos-10.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+
+      - name: Test with msan
+        run: |
+          mkdir build
+          pushd build
+          cmake -DSANITIZE_MEMORY=ON ../
+          make -j`nproc`
+          ./et-test
+          popd
+          rm -Rf build
+
+  tsan:
+    runs-on: macos-10.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+
+      - name: Test with tsan
+        run: |
+          mkdir build
+          pushd build
+          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          make -j`nproc`
+          ./et-test
+          popd
+          rm -Rf build

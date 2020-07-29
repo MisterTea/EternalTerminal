@@ -40,8 +40,8 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
   messageSize = htonl(messageSize);
   string s = string("0000") + packet.serialize();
   if (int64_t(packet.length()) != int64_t(s.length()) - 4) {
-    LOG(FATAL) << "Packet header size is invalid: " << packet.length()
-               << " != " << (s.length() - 4);
+    STFATAL << "Packet header size is invalid: " << packet.length()
+            << " != " << (s.length() - 4);
   }
   memcpy(&s[0], &messageSize, sizeof(int));
 
@@ -61,7 +61,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
       if (bytesWritten == count) {
         return BackedWriterWriteState::SUCCESS;
       }
-      usleep(1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(1000));
     } else {
       // Error, we don't know how many bytes were written but it
       // doesn't matter because the reader is going to have to
@@ -80,7 +80,7 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (messagesToRecover < 0) {
-    LOG(FATAL) << "Something went really wrong, client is ahead of server";
+    STFATAL << "Something went really wrong, client is ahead of server";
   }
   if (messagesToRecover == 0) {
     return vector<std::string>();

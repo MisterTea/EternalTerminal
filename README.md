@@ -1,18 +1,26 @@
 # Eternal Terminal
 
-[![CircleCI](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master.svg?style=svg)](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master)
-
 Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.
 
 Website: <https://mistertea.github.io/EternalTerminal/>.
 
+## Integration tests
+
+Circle: [![CircleCI](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master.svg?style=svg)](https://circleci.com/gh/MisterTea/EternalTerminal/tree/master)
+
+Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%20CI/badge.svg?branch=master)
+
 ## Installing
 
-### Mac OS X
+### macOS
 
-The easiest way to install is using homebrew:
+The easiest way to install is using Homebrew:
 
 	brew install MisterTea/et/et
+
+Alternatively, a package is available in MacPorts:
+
+	sudo port install et
 
 ### Ubuntu
 
@@ -40,7 +48,7 @@ Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 For debian, use our deb repo. For buster:
 
 	echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list
-	curl -sS https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
+	curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
 	sudo apt update
 	sudo apt install et
 
@@ -100,7 +108,7 @@ Eternal Terminal works under WSL (Windows Subsystem for Linux).  Follow the ubun
 
 Verify that the client is installed correctly by looking for the `et` executable: `which et`.
 
-Verify that the server is installed correctly by checking the service status: `systemctl status et`.  On some operating systems, you may need to enable and start the service manually: `sudo systemctl enable et; sudo systemctl start et`.
+Verify that the server is installed correctly by checking the service status: `systemctl status et`.  On some operating systems, you may need to enable and start the service manually: `sudo systemctl enable --now et`.
 
 You are ready to start using ET!
 
@@ -150,9 +158,9 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ## Building from source
 
-### OS/X
+### macOS
 
-To build eternal terminal on mac, the easiest way is to grab dependencies with homebrew:
+To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
 
 ```
 brew install --only-dependencies MisterTea/et/et
@@ -236,8 +244,7 @@ sudo systemctl daemon-reload
 Start the et service:
 
 ```
-sudo systemctl enable et.service
-sudo systemctl start et.service
+sudo systemctl enable --now et.service
 ```
 
 ## Reporting issues

@@ -2,7 +2,6 @@
 #define __ET_SERVER_CONNECTION__
 
 #include "Headers.hpp"
-
 #include "ServerClientConnection.hpp"
 #include "SocketHandler.hpp"
 
@@ -49,8 +48,7 @@ class ServerConnection {
     lock_guard<std::recursive_mutex> guard(mutex);
     auto it = clientConnections.find(clientId);
     if (it == clientConnections.end()) {
-      LOG(FATAL)
-          << "Error: Tried to get a client connection that doesn't exist";
+      STFATAL << "Error: Tried to get a client connection that doesn't exist";
     }
     return it->second;
   }

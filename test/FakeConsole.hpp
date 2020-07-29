@@ -2,16 +2,17 @@
 #define __FAKE_CONSOLE_HPP__
 
 #include "Console.hpp"
-#include "UserTerminal.hpp"
-
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
+#include "UserTerminal.hpp"
 
 namespace et {
 class FakeConsole : public Console {
  public:
   FakeConsole(shared_ptr<PipeSocketHandler> _socketHandler)
-      : socketHandler(_socketHandler), getTerminalInfoCount(0), clientServerFd(-1) {}
+      : socketHandler(_socketHandler),
+        getTerminalInfoCount(0),
+        clientServerFd(-1) {}
 
   virtual ~FakeConsole() {}
 
@@ -61,7 +62,7 @@ class FakeConsole : public Console {
     FATAL_FAIL(clientServerFd);
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
-    LOG(ERROR) << "FDs: " << clientServerFd << " " << serverClientFd;
+    LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
   }
 
   virtual void teardown() {
@@ -89,7 +90,7 @@ class FakeConsole : public Console {
   }
 
   void simulateKeystrokes(const string& s) {
-    LOG(ERROR) << "FDs: " << clientServerFd << " " << serverClientFd;
+    LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
     socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
                                    false);
   }

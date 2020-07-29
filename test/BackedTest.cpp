@@ -1,11 +1,10 @@
-#include "TestHeaders.hpp"
-
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "CryptoHandler.hpp"
 #include "FlakySocketHandler.hpp"
 #include "LogHandler.hpp"
 #include "PipeSocketHandler.hpp"
+#include "TestHeaders.hpp"
 
 using namespace et;
 
@@ -32,7 +31,7 @@ class BackedCollector {
         lock_guard<std::mutex> guard(collectorMutex);
         fifo.push_back(packet.getPayload());
       } else {
-        ::usleep(1000);
+        std::this_thread::sleep_for(std::chrono::microseconds(1000));
       }
     }
   }
@@ -45,7 +44,7 @@ class BackedCollector {
   string pop() {
     lock_guard<std::mutex> guard(collectorMutex);
     if (fifo.empty()) {
-      LOG(FATAL) << "Tried to pop an empty fifo";
+      STFATAL << "Tried to pop an empty fifo";
     }
     string s = fifo.front();
     fifo.pop_front();
@@ -54,7 +53,7 @@ class BackedCollector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(1000));
     }
     return pop();
   }
@@ -90,7 +89,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
       if (errno != EAGAIN) {
         FATAL_FAIL(fd);
       } else {
-        ::usleep(100 * 1000);  // Sleep for client to connect
+        std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
       }
     } else {
       break;
@@ -120,7 +119,7 @@ TEST_CASE("BackedTest", "[BackedTest]") {
                                  &serverClientFd);
 
   // Wait for server to spin up
-  ::usleep(1000 * 1000);
+  std::this_thread::sleep_for(std::chrono::seconds(1));
   int clientServerFd = clientSocketHandler->connect(endpoint);
   FATAL_FAIL(clientServerFd);
   serverListenThread.join();
@@ -162,7 +161,7 @@ TEST_CASE("BackedTest", "[BackedTest]") {
       BackedWriterWriteState r =
           serverCollector->write(string((&s[0] + a * 1024), 1024));
       if (r != BackedWriterWriteState::SUCCESS) {
-        LOG(FATAL) << "Invalid write state: " << int(r);
+        STFATAL << "Invalid write state: " << int(r);
       }
     }
 

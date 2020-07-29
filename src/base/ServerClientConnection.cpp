@@ -25,8 +25,11 @@ ServerClientConnection::~ServerClientConnection() {
 }
 
 bool ServerClientConnection::recoverClient(int newSocketFd) {
-  if (socketFd != -1) {
-    closeSocket();
+  {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    if (socketFd != -1) {
+      closeSocket();
+    }
   }
   return recover(newSocketFd);
 }

@@ -3,11 +3,15 @@
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
-    : socketHandler(_socketHandler), id(_id), key(_key), socketFd(-1), shuttingDown(false) {}
+    : socketHandler(_socketHandler),
+      id(_id),
+      key(_key),
+      socketFd(-1),
+      shuttingDown(false) {}
 
 Connection::~Connection() {
   if (!shuttingDown) {
-    LOG(ERROR) << "Call shutdown before destructing a Connection.";
+    STERROR << "Call shutdown before destructing a Connection.";
   }
   if (socketFd != -1) {
     LOG(INFO) << "Connection destroyed";
@@ -27,6 +31,7 @@ inline bool isSkippableError(int err_no) {
 }
 
 bool Connection::readPacket(Packet* packet) {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
     return false;
   }
@@ -58,10 +63,10 @@ void Connection::writePacket(const Packet& packet) {
     // Yield the processor
     if (hasConnection) {
       // Have a connection, sleep for 1ms
-      usleep(1 * 1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(1000));
     } else {
       // No connection, sleep for 100ms
-      usleep(100 * 1000);
+      std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
     }
     LOG_EVERY_N(1000, INFO) << "Waiting to write...";
   }
@@ -70,7 +75,7 @@ void Connection::writePacket(const Packet& packet) {
 void Connection::closeSocket() {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
-    LOG(ERROR) << "Tried to close a dead socket";
+    LOG(INFO) << "Tried to close a dead socket";
     return;
   }
   // TODO: There is a race condition where we invalidate and another
@@ -90,6 +95,7 @@ void Connection::closeSocket() {
 
 bool Connection::recover(int newSocketFd) {
   LOG(INFO) << "Locking reader/writer to recover...";
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
   LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
@@ -119,10 +125,7 @@ bool Connection::recover(int newSocketFd) {
     et::CatchupBuffer catchupBuffer =
         socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
-    {
-      lock_guard<std::recursive_mutex> guard(connectionMutex);
-      socketFd = newSocketFd;
-    }
+    socketFd = newSocketFd;
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
                                      catchupBuffer.buffer().end());
 
@@ -131,7 +134,7 @@ bool Connection::recover(int newSocketFd) {
     LOG(INFO) << "Finished recovering with socket fd: " << socketFd;
     return true;
   } catch (const runtime_error& err) {
-    LOG(ERROR) << "Error recovering: " << err.what();
+    LOG(WARNING) << "Error recovering: " << err.what();
     socketHandler->close(newSocketFd);
     return false;
   }
@@ -157,8 +160,8 @@ bool Connection::read(Packet* packet) {
       return 0;
     } else {
       // Throw the error
-      LOG(ERROR) << "Got a serious error trying to read: " << errno << " / "
-                 << strerror(errno);
+      STERROR << "Got a serious error trying to read: " << errno << " / "
+              << strerror(errno);
       throw std::runtime_error("Failed a call to read");
     }
   } else {
@@ -173,6 +176,7 @@ bool Connection::write(const Packet& packet) {
   }
 
   BackedWriterWriteState bwws = writer->write(packet);
+  auto writeErrno = errno;
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     VLOG(4) << "Write skipped";
@@ -185,13 +189,13 @@ bool Connection::write(const Packet& packet) {
     if (socketFd == -1) {
       // The socket was already closed
       VLOG(1) << "Socket closed";
-    } else if (isSkippableError(errno)) {
+    } else if (isSkippableError(writeErrno)) {
       VLOG(1) << " Connection is severed";
       // The connection has been severed, handle and hide from the caller
       closeSocketAndMaybeReconnect();
     } else {
-      LOG(FATAL) << "Unexpected socket error: " << errno << " "
-                 << strerror(errno);
+      STFATAL << "Unexpected socket error: " << writeErrno << " "
+              << strerror(writeErrno);
     }
   }
 

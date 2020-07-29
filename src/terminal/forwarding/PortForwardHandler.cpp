@@ -31,12 +31,14 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
   }
 }
 
+#ifdef WIN32
+#else
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
   try {
-    if (pfsr.has_source() && !pfsr.source().has_port()) {
-      throw runtime_error("Do not set a source when forwarding named pipes");
+    if (pfsr.has_source() && sourceName) {
+      throw runtime_error("Do not set a source when forwarding named pipes with environment variables");
     }
     SocketEndpoint source;
     if (pfsr.has_source()) {
@@ -51,7 +53,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
 
       source.set_name(sourcePath);
       if (sourceName == nullptr) {
-        LOG(FATAL)
+        STFATAL
             << "Tried to create a pipe but without a place to put the name!";
       }
       *sourceName = sourcePath;
@@ -59,8 +61,8 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     }
     if (pfsr.source().has_port()) {
       if (sourceName != nullptr) {
-        LOG(FATAL) << "Tried to create a port forward but with a place to put "
-                      "the name!";
+        STFATAL << "Tried to create a port forward but with a place to put "
+                   "the name!";
       }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           networkSocketHandler, source, pfsr.destination()));
@@ -68,7 +70,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       return PortForwardSourceResponse();
     } else {
       if (userid < 0 || groupid < 0) {
-        LOG(FATAL)
+        STFATAL
             << "Tried to create a unix socket forward with no userid/groupid";
       }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
@@ -84,6 +86,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     return pfsr;
   }
 }
+#endif
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
@@ -141,8 +144,8 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         VLOG(1) << "Got data for destination socket: " << pwd.socketid();
         auto it = destinationHandlers.find(pwd.socketid());
         if (it == destinationHandlers.end()) {
-          LOG(ERROR) << "Got data for a socket id that has already closed: "
-                     << pwd.socketid();
+          STERROR << "Got data for a socket id that has already closed: "
+                  << pwd.socketid();
         } else {
           if (pwd.has_closed()) {
             LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
@@ -198,7 +201,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       break;
     }
     default: {
-      LOG(FATAL) << "Unknown packet type: " << int(packet.getHeader());
+      STFATAL << "Unknown packet type: " << int(packet.getHeader());
     }
   }
 }
@@ -210,9 +213,9 @@ void PortForwardHandler::closeSourceFd(int fd) {
       return;
     }
   }
-  LOG(ERROR) << "Tried to close an unassigned socket that didn't exist (maybe "
-                "it was already removed?): "
-             << fd;
+  STERROR << "Tried to close an unassigned socket that didn't exist (maybe "
+             "it was already removed?): "
+          << fd;
 }
 
 void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
@@ -223,15 +226,15 @@ void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
       return;
     }
   }
-  LOG(ERROR) << "Tried to add a socketId but the corresponding sourceFd is "
-                "already dead: "
-             << socketId << " " << sourceFd;
+  STERROR << "Tried to add a socketId but the corresponding sourceFd is "
+             "already dead: "
+          << socketId << " " << sourceFd;
 }
 
 void PortForwardHandler::closeSourceSocketId(int socketId) {
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
-    LOG(ERROR) << "Tried to close a socket id that doesn't exist";
+    STERROR << "Tried to close a socket id that doesn't exist";
     return;
   }
   it->second->closeSocket(socketId);
@@ -242,8 +245,8 @@ void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
                                                   const string& data) {
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
-    LOG(ERROR) << "Tried to send data on a socket id that doesn't exist: "
-               << socketId;
+    STERROR << "Tried to send data on a socket id that doesn't exist: "
+            << socketId;
     return;
   }
   it->second->sendDataOnSocket(socketId, data);

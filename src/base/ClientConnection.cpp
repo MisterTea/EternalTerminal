@@ -37,8 +37,8 @@ bool ClientConnection::connect() {
       // Note: the response can be returning client if the client died while
       // performing the initial connection but the server thought the client
       // survived.
-      LOG(ERROR) << "Error connecting to server: " << response.status() << ": "
-                 << response.error();
+      STERROR << "Error connecting to server: " << response.status() << ": "
+              << response.error();
       cout << "Error connecting to server: " << response.status() << ": "
            << response.error() << endl;
       string s = string("Error connecting to server: ") +
@@ -112,8 +112,8 @@ void ClientConnection::pollReconnect() {
             return;
           }
           if (response.status() != RETURNING_CLIENT) {
-            LOG(ERROR) << "Error reconnecting to server: " << response.status()
-                       << ": " << response.error();
+            STERROR << "Error reconnecting to server: " << response.status()
+                    << ": " << response.error();
             cout << "Error reconnecting to server: " << response.status()
                  << ": " << response.error() << endl;
             socketHandler->close(newSocketFd);
@@ -129,7 +129,7 @@ void ClientConnection::pollReconnect() {
 
     if (socketFd == -1) {
       VLOG_EVERY_N(10, 1) << "Waiting to retry...";
-      usleep(1000 * 1000);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
   }
   LOG(INFO) << "Reconnect complete";

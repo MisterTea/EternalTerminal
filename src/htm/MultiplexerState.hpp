@@ -2,7 +2,6 @@
 #define __MULTIPLEXER_STATE_HPP__
 
 #include "Headers.hpp"
-
 #include "SocketHandler.hpp"
 #include "TerminalHandler.hpp"
 
@@ -37,21 +36,21 @@ class MultiplexerState {
   inline shared_ptr<Tab> getTab(const string& id) {
     auto it = tabs.find(id);
     if (it == tabs.end()) {
-      LOG(FATAL) << "Tried to get a pane that doesn't exist: " << id;
+      STFATAL << "Tried to get a pane that doesn't exist: " << id;
     }
     return it->second;
   }
   inline shared_ptr<Pane> getPane(const string& id) {
     auto it = panes.find(id);
     if (it == panes.end()) {
-      LOG(FATAL) << "Tried to get a pane that doesn't exist: " << id;
+      STFATAL << "Tried to get a pane that doesn't exist: " << id;
     }
     return it->second;
   }
   inline shared_ptr<Split> getSplit(const string& id) {
     auto it = splits.find(id);
     if (it == splits.end()) {
-      LOG(FATAL) << "Tried to get a pane that doesn't exist: " << id;
+      STFATAL << "Tried to get a pane that doesn't exist: " << id;
     }
     return it->second;
   }

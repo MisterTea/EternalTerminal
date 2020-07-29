@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
@@ -19,7 +20,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
     if (errno != EAGAIN && errno != EWOULDBLOCK) {
-      FATAL_FAIL(-1);  // LOG(FATAL) with the error
+      FATAL_FAIL(-1);  // STFATAL with the error
     } else {
       return IdKeyPair({"", ""});  // Nothing to accept this time
     }
@@ -30,28 +31,29 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   try {
     Packet packet;
     if (!socketHandler->readPacket(terminalFd, &packet)) {
-      LOG(FATAL) << "Missing user info packet";
+      STFATAL << "Missing user info packet";
     }
     if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
-      LOG(FATAL) << "Got an invalid packet header: " << int(packet.getHeader());
+      STFATAL << "Got an invalid packet header: " << int(packet.getHeader());
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
     idInfoMap[tui.id()] = tui;
     return IdKeyPair({tui.id(), tui.passkey()});
   } catch (const std::runtime_error &re) {
-    LOG(FATAL) << "Router can't talk to terminal: " << re.what();
+    STFATAL << "Router can't talk to terminal: " << re.what();
   }
 
-  LOG(FATAL) << "Should never get here";
+  STFATAL << "Should never get here";
   return IdKeyPair({"", ""});
 }
 
 TerminalUserInfo UserTerminalRouter::getInfoForId(const string &id) {
   auto it = idInfoMap.find(id);
   if (it == idInfoMap.end()) {
-    LOG(FATAL) << " Tried to read from an id that no longer exists";
+    STFATAL << " Tried to read from an id that no longer exists";
   }
   return it->second;
 }
 }  // namespace et
+#endif

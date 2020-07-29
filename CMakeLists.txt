@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.0.2)
-project (EternalTCP VERSION 6.0.7)
+project (EternalTCP VERSION 6.0.8)
 
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external_imported/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 FIND_PACKAGE(Sanitizers)
@@ -13,7 +13,7 @@ endif()
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_VERSION='\"${PROJECT_VERSION}\"'")
+add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE")
 IF(CODE_COVERAGE)
@@ -27,11 +27,19 @@ SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
 ENDIF(DISABLE_CRASH_LOG)
 
 if(UNIX)
-  # Enable C++-11
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -std=c++11")
-
   # Enable debug info
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -ggdb3")
+  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
+endif()
+
+# Enable C++-11
+set(CMAKE_CXX_STANDARD 11)
+set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(WIN32)
+# Enable unicode
+ADD_DEFINITIONS(-DUNICODE)
+ADD_DEFINITIONS(-D_UNICODE)
 endif()
 
 #Using FreeBSD?
@@ -50,13 +58,20 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 # Required packages
 find_package(Threads REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(Sodium REQUIRED)
+find_package(sodium REQUIRED)
 
 # Optional packages
 IF(LINUX)
 find_package(SELinux)
 ENDIF()
 find_package(UTempter)
+
+option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" OFF)
+IF(FULL_PROTOBUF)
+    SET(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
+ELSE()
+    SET(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
+ENDIF()
 
 IF(SELINUX_FOUND)
   SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
@@ -96,6 +111,8 @@ IF(FREEBSD)
   set(CORE_LIBRARIES util execinfo)
 ELSEIF(NETBSD)
   set(CORE_LIBRARIES util resolv execinfo)
+ELSEIF(WIN32)
+  set(CORE_LIBRARIES Ws2_32 Shlwapi dbghelp)
 ELSE()
   set(CORE_LIBRARIES util resolv)
 ENDIF()
@@ -112,6 +129,7 @@ include_directories(
   external_imported/Catch2/single_include
   external_imported/cxxopts/include
   external_imported/msgpack-c/include
+  external_imported/UniversalStacktrace/ust
   src/base
   src/terminal
   src/terminal/forwarding
@@ -177,6 +195,11 @@ add_library(
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
 
+  src/base/WinsockContext.hpp
+
+  src/base/SubprocessToString.hpp
+  src/base/SubprocessToString.cpp
+
   ${ET_SRCS}
   )
 add_dependencies(
@@ -225,6 +248,32 @@ add_dependencies(
 DECORATE_TARGET(TerminalCommon)
 
 add_executable (
+  et
+  src/terminal/TerminalClientMain.cpp
+  )
+target_link_libraries (
+    et
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES}
+)
+DECORATE_TARGET(et)
+
+IF(WIN32)
+install(TARGETS et
+  DESTINATION "bin"
+  COMPONENT client
+  )
+set(CPACK_COMPONENTS_ALL client)
+set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
+  
+ELSE(WIN32)
+add_executable (
   etserver
   src/terminal/TerminalServerMain.cpp
   )
@@ -234,7 +283,7 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -252,30 +301,13 @@ target_link_libraries (
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(etterminal)
-
-add_executable (
-  et
-  src/terminal/TerminalClientMain.cpp
-  )
-target_link_libraries (
-    et
-    LINK_PUBLIC
-    TerminalCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LITE_LIBRARIES}
-    ${sodium_LIBRARY_RELEASE}
-    ${UTEMPTER_LIBRARIES}
-    ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(et)
 
 add_library (
   HtmCommon
@@ -307,7 +339,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -327,7 +359,7 @@ target_link_libraries (
   HtmCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -353,7 +385,7 @@ target_link_libraries(
   TerminalCommon
   et-lib
   ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LITE_LIBRARIES}
+  ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
@@ -369,3 +401,17 @@ install(TARGETS etserver etterminal et htm htmd
   PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
   DESTINATION "bin"
   )
+ENDIF()
+
+set(CPACK_PACKAGE_NAME "Eternal Terminal")
+set(CPACK_PACKAGE_VENDOR "https://github.com/MisterTea/EternalTerminal")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Remote terminal for the busy and impatient")
+set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
+set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+set(CPACK_PACKAGE_INSTALL_DIRECTORY "EternalTerminal")
+SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+# This must always be last!
+include(CPack)

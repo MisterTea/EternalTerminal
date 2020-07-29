@@ -15,7 +15,10 @@
 	url = https://github.com/zuhd-org/easyloggingpp.git
 [submodule "external/sanitizers-cmake"]
 	path = external/sanitizers-cmake
-	url = git://github.com/arsenm/sanitizers-cmake.git
+	url = https://github.com/arsenm/sanitizers-cmake.git
 [submodule "external/cotire"]
 	path = external/cotire
 	url = https://github.com/sakra/cotire.git
+[submodule "external/UniversalStacktrace"]
+	path = external/UniversalStacktrace
+	url = https://github.com/MisterTea/UniversalStacktrace.git
