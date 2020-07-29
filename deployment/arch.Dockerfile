@@ -27,7 +27,7 @@ RUN git config --global user.name "Foo Bar"
 WORKDIR /home/builduser
 RUN git clone ssh://aur@aur.archlinux.org/eternalterminal.git arch_et
 
-RUN git clone --branch `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'` git@github.com:MisterTea/EternalTerminal.git
+RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /home/builduser/EternalTerminal/build
 RUN cmake ..
