@@ -8,6 +8,7 @@ COPY id_rsa.pub .ssh/
 COPY .gnupg .gnupg
 COPY debian/debian_SOURCE ./debian_SOURCE
 RUN chmod ao-rwx .ssh/id_rsa
+ARG DEBIAN_FRONTEND=noninteractive
 
 RUN apt update && apt upgrade -y && apt install -y distro-info build-essential git devscripts ubuntu-dev-tools aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake libutempter-dev debhelper dh-systemd
 

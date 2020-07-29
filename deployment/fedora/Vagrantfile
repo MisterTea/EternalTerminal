@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
   
     # Every Vagrant development environment requires a box. You can search for
     # boxes at https://vagrantcloud.com/search.
-    config.vm.box = "generic/fedora28"
+    config.vm.box = "generic/fedora31"
     config.ssh.shell = "sh"
   
     config.vm.provider "virtualbox" do |v|
@@ -109,6 +109,7 @@ Vagrant.configure("2") do |config|
     pushd EternalTerminal/build
     cmake ..
     make -j`nproc`
+    ./et-test
     popd
   SHELL
   end
