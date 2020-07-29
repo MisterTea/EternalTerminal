@@ -15,12 +15,8 @@ RUN dnf install -y @development-tools et openssh-server fedpkg fedora-packager c
 ENV KRB5CCNAME=/tmp/ticket
 # RUN kinit jjg@FEDORAPROJECT.ORG
 
-RUN git config --global user.email "jgmath2000@gmail.com"
-RUN git config --global user.name "Jason Gauci"
-
-RUN echo -e "StrictHostKeyChecking no\n" >> ~/.ssh/config
 RUN echo "jjg" > ~/.fedora.upn
-RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
+RUN git clone --branch release https://github.com/MisterTea/EternalTerminal.git
 RUN fedpkg clone et
 
 RUN mkdir -p EternalTerminal/build

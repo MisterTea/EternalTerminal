@@ -13,14 +13,10 @@ RUN echo "For debian, docker doesn't work with pbuilder.  Use vagrant" && exit 1
 
 RUN apt update && apt upgrade -y && apt install -y build-essential git devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake libutempter-dev debhelper dh-systemd pbuilder ubuntu-dev-tools
 
-RUN git config --global user.email "jgmath2000@gmail.com"
-RUN git config --global user.name "Jason Gauci"
-
 RUN echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > ~/.pbuilderrc
 
-RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
-RUN git clone --branch release git@github.com:MisterTea/EternalTerminal.git
-RUN git clone git@github.com:MisterTea/debian-et.git
+RUN git clone --branch release https://github.com/MisterTea/EternalTerminal.git
+RUN git clone https://github.com/MisterTea/debian-et.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /root/EternalTerminal/build
 RUN cmake ..

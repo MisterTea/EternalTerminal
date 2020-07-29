@@ -1,7 +1,6 @@
 FROM archlinux:latest
 LABEL maintainer="Jason Gauci (jgmath2000@gmail.com)"
 
-RUN pacman -Syu --noconfirm
 RUN pacman -Syu --noconfirm jq git base-devel sudo go openssh emacs
 RUN useradd builduser
 RUN passwd -d builduser
@@ -19,15 +18,10 @@ WORKDIR /home/builduser/yay
 RUN makepkg -si --noconfirm
 RUN yay -Syu --noconfirm eternalterminal
 
-RUN ssh-keyscan github.com >> ~/.ssh/known_hosts
-
-RUN git config --global user.email "foo@bar.com" # Not needed for github
-RUN git config --global user.name "Foo Bar"
-
 WORKDIR /home/builduser
-RUN git clone ssh://aur@aur.archlinux.org/eternalterminal.git arch_et
+RUN git clone https://aur.archlinux.org/eternalterminal.git arch_et
 
-RUN git clone --branch `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'` git@github.com:MisterTea/EternalTerminal.git
+RUN git clone --branch `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'` https://github.com/MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /home/builduser/EternalTerminal/build
 RUN cmake ..
