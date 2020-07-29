@@ -275,7 +275,7 @@ Start the et service:
 sudo systemctl enable --now et.service
 ```
 
-## Building using docker
+## Building using Docker
 
 Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: Arch, CentOS 8, Debian, Fedora, openSUSE and Ubuntu.
 
