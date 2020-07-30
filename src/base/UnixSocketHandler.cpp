@@ -44,13 +44,15 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   lock_guard<recursive_mutex> guard(*(it->second));
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
 #ifdef WIN32
-  ssize_t readBytes = ::recv(fd, (char*)buf, count, 0);
+  ssize_t readBytes = ::recv(fd, (char *)buf, count, 0);
 #else
   ssize_t readBytes = ::read(fd, buf, count);
 #endif
-  if (readBytes < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
-    STERROR << "Error reading: " << errno << " " << strerror(errno);
+  auto localErrno = errno;
+  if (readBytes < 0 && localErrno != EAGAIN && localErrno != EWOULDBLOCK) {
+    STERROR << "Error reading: " << localErrno << " " << strerror(localErrno);
   }
+  errno = localErrno;
   return readBytes;
 }
 
@@ -76,7 +78,7 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
     lock_guard<recursive_mutex> guard(*(it->second));
     int w;
 #ifdef WIN32
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
+    w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten, 0);
 #else
 #ifdef MSG_NOSIGNAL
     w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten,
@@ -143,6 +145,7 @@ int UnixSocketHandler::accept(int sockFd) {
     FATAL_FAIL(-1);  // STFATAL with the error
   }
 
+  errno = acceptErrno;
   return -1;
 }
 

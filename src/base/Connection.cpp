@@ -152,16 +152,18 @@ bool Connection::read(Packet* packet) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   VLOG(4) << "After read get connectionMutex";
   ssize_t messagesRead = reader->read(packet);
+  auto localErrno = errno;
   if (messagesRead == -1) {
-    if (isSkippableError(errno)) {
+    if (isSkippableError(localErrno)) {
       // Close the socket and invalidate, then return 0 messages
-      LOG(INFO) << "Closing socket because " << errno << " " << strerror(errno);
+      LOG(INFO) << "Closing socket because " << localErrno << " "
+                << strerror(localErrno);
       closeSocketAndMaybeReconnect();
       return 0;
     } else {
       // Throw the error
-      STERROR << "Got a serious error trying to read: " << errno << " / "
-              << strerror(errno);
+      STERROR << "Got a serious error trying to read: " << localErrno << " / "
+              << strerror(localErrno);
       throw std::runtime_error("Failed a call to read");
     }
   } else {
