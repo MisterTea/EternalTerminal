@@ -277,7 +277,7 @@ sudo systemctl enable --now et.service
 
 ## Building using Docker
 
-Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: Arch, CentOS 8, Debian, Fedora, openSUSE and Ubuntu.
+Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: CentOS 8, openSUSE and Ubuntu.
 
 ## Reporting issues
 
