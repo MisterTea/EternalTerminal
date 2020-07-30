@@ -38,7 +38,7 @@ int main(int argc, char** argv) {
 
   auto result = options.parse(argc, argv);
   if (result.count("help")) {
-    cout << options.help({}) << endl;
+    CLOG(INFO, "stdout") << options.help({}) << endl;
     exit(0);
   }
 
@@ -94,7 +94,8 @@ int main(int argc, char** argv) {
   }
 
   // This means we are the client to the daemon
-  std::this_thread::sleep_for(std::chrono::microseconds(10*1000));  // Sleep for 10ms to let the daemon come alive
+  std::this_thread::sleep_for(std::chrono::microseconds(
+      10 * 1000));  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());

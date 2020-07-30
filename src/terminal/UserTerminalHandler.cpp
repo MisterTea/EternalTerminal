@@ -28,12 +28,14 @@ UserTerminalHandler::UserTerminalHandler(
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
-      cout << "Error:  The Eternal Terminal daemon is not running.  Please "
-              "(re)start the et daemon on the server."
-           << endl;
+      CLOG(INFO, "stdout")
+          << "Error:  The Eternal Terminal daemon is not running.  Please "
+             "(re)start the et daemon on the server."
+          << endl;
     } else {
-      cout << "Error:  Connection error communicating with et deamon: "
-           << strerror(errno) << "." << endl;
+      CLOG(INFO, "stdout")
+          << "Error:  Connection error communicating with et deamon: "
+          << strerror(errno) << "." << endl;
     }
     exit(1);
   }

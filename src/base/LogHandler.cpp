@@ -5,7 +5,8 @@ INITIALIZE_EASYLOGGINGPP
 namespace et {
 void interruptSignalHandler(int signum) {
   STERROR << "Got interrupt";
-  cout << endl << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
+  CLOG(INFO, "stdout") << endl
+                       << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
   ::exit(signum);
 }
 
@@ -62,5 +63,17 @@ string LogHandler::stderrToFile(const string &pathPrefix) {
   }
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
   return stderrFilename;
+}
+
+void LogHandler::setupStdoutLogger() {
+  el::Logger *stdoutLogger = el::Loggers::getLogger("stdout");
+  // Easylogging configurations
+  el::Configurations stdoutConf;
+  stdoutConf.setToDefault();
+  // Values are always std::string
+  stdoutConf.setGlobally(el::ConfigurationType::Format, "%msg");
+  stdoutConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
+  stdoutConf.setGlobally(el::ConfigurationType::ToFile, "false");
+  el::Loggers::reconfigureLogger(stdoutLogger, stdoutConf);
 }
 }  // namespace et
