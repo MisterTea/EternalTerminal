@@ -19,7 +19,8 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   int result =
       ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
   if (result < 0 && errno != EINPROGRESS) {
-    VLOG(3) << "Connection result: " << result << " (" << strerror(errno)
+    auto localErrno = errno;
+    VLOG(3) << "Connection result: " << result << " (" << strerror(localErrno)
             << ")";
 #ifdef WIN32
     ::shutdown(sockFd, SD_BOTH);
@@ -28,6 +29,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 #endif
     ::close(sockFd);
     sockFd = -1;
+    errno = localErrno;
     return sockFd;
   }
 
@@ -45,7 +47,8 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
     int so_error;
     socklen_t len = sizeof so_error;
 
-    FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+    FATAL_FAIL(
+        ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
 
     if (so_error == 0) {
       LOG(INFO) << "Connected to endpoint " << endpoint;
@@ -61,8 +64,9 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
       sockFd = -1;
     }
   } else {
-    LOG(INFO) << "Error connecting to " << endpoint << ": " << errno << " "
-              << strerror(errno);
+    auto localErrno = errno;
+    LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno << " "
+              << strerror(localErrno);
     ::close(sockFd);
     sockFd = -1;
   }
