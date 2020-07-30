@@ -38,11 +38,11 @@ int main(int argc, char **argv) {
     auto result = options.parse(argc, argv);
 
     if (result.count("help")) {
-      cout << options.help({}) << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
     if (result.count("version")) {
-      cout << "et version " << ET_VERSION << endl;
+      CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
       exit(0);
     }
 
@@ -136,6 +136,9 @@ int main(int argc, char **argv) {
     el::Helpers::setThreadName("etserver-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
+    LogHandler::setupStdoutLogger();
+
     std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
     std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
         new PipeSocketHandler());
@@ -151,8 +154,8 @@ int main(int argc, char **argv) {
     terminalServer.run();
 
   } catch (cxxopts::OptionException &oe) {
-    cout << "Exception: " << oe.what() << "\n" << endl;
-    cout << options.help({}) << endl;
+    CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
+    CLOG(INFO, "stdout") << options.help({}) << endl;
     exit(1);
   }
 

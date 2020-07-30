@@ -75,11 +75,11 @@ int main(int argc, char** argv) {
 
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
-      cout << options.help({}) << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
     if (result.count("version")) {
-      cout << "et version " << ET_VERSION << endl;
+      CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
       exit(0);
     }
 
@@ -96,12 +96,14 @@ int main(int argc, char** argv) {
       defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
     }
 
-    LogHandler::setupLogFile(&defaultConf,
-                             (tmpDir + "etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
+    LogHandler::setupLogFile(
+        &defaultConf, (tmpDir + "etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name
     el::Helpers::setThreadName("client-main");
+
+    LogHandler::setupStdoutLogger();
 
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
@@ -118,8 +120,8 @@ int main(int argc, char** argv) {
 
     // Parse command-line argument
     if (!result.count("host")) {
-      cout << "Missing host to connect to" << endl;
-      cout << options.help({}) << endl;
+      CLOG(INFO, "stdout") << "Missing host to connect to" << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
     string arg = result["host"].as<std::string>();
@@ -136,7 +138,7 @@ int main(int argc, char** argv) {
     destinationHost = arg;
 
     string jumphost =
-      result.count("jumphost") ? result["jumphost"].as<string>() : "";
+        result.count("jumphost") ? result["jumphost"].as<string>() : "";
     string host_alias = destinationHost;
 
 #ifndef WIN32
@@ -213,8 +215,9 @@ int main(int argc, char** argv) {
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
     if (!ping(socketEndpoint, clientSocket)) {
-      cout << "Could not reach the ET server: " << socketEndpoint.name() << ":"
-           << socketEndpoint.port() << endl;
+      CLOG(INFO, "stdout") << "Could not reach the ET server: "
+                           << socketEndpoint.name() << ":"
+                           << socketEndpoint.port() << endl;
       exit(1);
     }
 
@@ -263,14 +266,13 @@ int main(int argc, char** argv) {
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "",
-        forwardAgent,
+        result.count("r") ? result["r"].as<string>() : "", forwardAgent,
         sshSocket);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {
-    cout << "Exception: " << oe.what() << "\n" << endl;
-    cout << options.help({}) << endl;
+    CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
+    CLOG(INFO, "stdout") << options.help({}) << endl;
 #ifdef WIN32
     WSACleanup();
 #endif

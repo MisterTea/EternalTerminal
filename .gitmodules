@@ -22,3 +22,6 @@
 [submodule "external/UniversalStacktrace"]
 	path = external/UniversalStacktrace
 	url = https://github.com/MisterTea/UniversalStacktrace.git
+[submodule "external/vcpkg"]
+	path = external/vcpkg
+	url = https://github.com/microsoft/vcpkg.git

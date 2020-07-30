@@ -46,17 +46,21 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   // loop through all the results and connect to the first we can
   for (p = results; p != NULL; p = p->ai_next) {
     if ((sockFd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      LOG(INFO) << "Error creating socket: " << errno << " " << strerror(errno);
+      auto localErrno = errno;
+      LOG(INFO) << "Error creating socket: " << localErrno << " "
+                << strerror(localErrno);
       continue;
     }
 
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
+      auto localErrno = errno;
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
-                  << errno << " " << strerror(errno);
+                  << localErrno << " " << strerror(localErrno);
       } else {
-        LOG(INFO) << "Error connecting: " << errno << " " << strerror(errno);
+        LOG(INFO) << "Error connecting: " << localErrno << " "
+                  << strerror(localErrno);
       }
       ::close(sockFd);
       sockFd = -1;
@@ -76,7 +80,8 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       int so_error;
       socklen_t len = sizeof so_error;
 
-      FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+      FATAL_FAIL(
+          ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len));
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -118,12 +123,13 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         continue;
       }
     } else {
+      auto localErrno = errno;
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
-                  << errno << " " << strerror(errno);
+                  << localErrno << " " << strerror(localErrno);
       } else {
-        LOG(INFO) << "Error connecting to " << endpoint << ": " << errno << " "
-                  << strerror(errno);
+        LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno
+                  << " " << strerror(localErrno);
       }
       ::close(sockFd);
       sockFd = -1;
@@ -170,9 +176,10 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   for (p = servinfo; p != NULL; p = p->ai_next) {
     int sockFd;
     if ((sockFd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
+      auto localErrno = errno;
       LOG(INFO) << "Error creating socket " << p->ai_family << "/"
-                << p->ai_socktype << "/" << p->ai_protocol << ": " << errno
-                << " " << strerror(errno);
+                << p->ai_socktype << "/" << p->ai_protocol << ": " << localErrno
+                << " " << strerror(localErrno);
       continue;
     }
     initServerSocket(sockFd);
@@ -188,14 +195,16 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
       // This most often happens because the port is in use.
+      auto localErrno = errno;
       STERROR << "Error binding " << p->ai_family << "/" << p->ai_socktype
-              << "/" << p->ai_protocol << ": " << errno << " "
-              << strerror(errno);
-      cout << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
-           << p->ai_protocol << ": " << errno << " " << strerror(errno) << endl;
+              << "/" << p->ai_protocol << ": " << localErrno << " "
+              << strerror(localErrno);
+      CLOG(INFO, "stdout") << "Error binding " << p->ai_family << "/"
+                           << p->ai_socktype << "/" << p->ai_protocol << ": "
+                           << localErrno << " " << strerror(localErrno) << endl;
       stringstream oss;
-      oss << "Error binding port " << port << ": " << errno << " "
-          << strerror(errno);
+      oss << "Error binding port " << port << ": " << localErrno << " "
+          << strerror(localErrno);
       string s = oss.str();
       close(sockFd);
       throw std::runtime_error(s.c_str());
@@ -258,8 +267,8 @@ void TcpSocketHandler::initSocket(int fd) {
     struct linger so_linger;
     so_linger.l_onoff = 1;
     so_linger.l_linger = 5;
-    FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
+    FATAL_FAIL_UNLESS_EINVAL(setsockopt(
+        fd, SOL_SOCKET, SO_LINGER, (const char *)&so_linger, sizeof so_linger));
   }
 }
 }  // namespace et

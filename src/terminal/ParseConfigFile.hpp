@@ -6,6 +6,7 @@
 #include <netdb.h>
 #include <string.h>
 #include <unistd.h>
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -13,14 +14,13 @@
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
 #include <arpa/inet.h>
+#include <ctype.h>
+#include <errno.h>
+#include <limits.h>
 #include <netinet/in.h>
 #include <pwd.h>
 #include <sys/socket.h>
 #include <sys/types.h>
-
-#include <ctype.h>
-#include <errno.h>
-#include <limits.h>
 #if __FreeBSD__
 #define _WITH_GETLINE
 #endif
@@ -174,9 +174,9 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   return SOC_UNSUPPORTED;
 }
 
-static int ssh_config_parse_line(const char *targethost, struct Options *options,
-                                 const char *line, unsigned int count, int *parsing,
-                                 int seen[]);
+static int ssh_config_parse_line(const char *targethost,
+                                 struct Options *options, const char *line,
+                                 unsigned int count, int *parsing, int seen[]);
 
 char *ssh_get_user_home_dir(void) {
   char *szPath = NULL;
@@ -456,12 +456,12 @@ char *ssh_path_expand_escape(struct Options *options, const char *s) {
 
   r = ssh_path_expand_tilde(s);
   if (r == NULL) {
-    cout << "error" << endl;
+    CLOG(INFO, "stdout") << "error" << endl;
     return NULL;
   }
 
   if (strlen(r) > MAX_BUF_SIZE) {
-    cout << "string to expand too long" << endl;
+    CLOG(INFO, "stdout") << "string to expand too long" << endl;
     free(r);
     return NULL;
   }
@@ -513,20 +513,20 @@ char *ssh_path_expand_escape(struct Options *options, const char *s) {
         }
         break;
       default:
-        cout << "Wrong escape sequence detected" << endl;
+        CLOG(INFO, "stdout") << "Wrong escape sequence detected" << endl;
         free(r);
         return NULL;
     }
 
     if (x == NULL) {
-      cout << "error" << endl;
+      CLOG(INFO, "stdout") << "error" << endl;
       free(r);
       return NULL;
     }
 
     i += strlen(x);
     if (i >= MAX_BUF_SIZE) {
-      cout << "String too long" << endl;
+      CLOG(INFO, "stdout") << "String too long" << endl;
       free(x);
       free(r);
       return NULL;
@@ -756,12 +756,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_HOST:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         q = strdup(static_cast<const char *>(value));
         if (q == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
         p = strchr(q, '@');
@@ -773,7 +773,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
           options->host = strdup(p + 1);
           if (options->host == NULL) {
             SAFE_FREE(q);
-            cout << "error" << endl;
+            CLOG(INFO, "stdout") << "error" << endl;
             return -1;
           }
 
@@ -781,7 +781,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
           options->username = strdup(q);
           SAFE_FREE(q);
           if (options->username == NULL) {
-            cout << "error" << endl;
+            CLOG(INFO, "stdout") << "error" << endl;
             return -1;
           }
         } else {
@@ -791,12 +791,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       break;
     case SSH_OPTIONS_PORT:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int *x = (int *)value;
         if (*x <= 0) {
-          cout << "invalid error" << endl;
+          CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
@@ -806,12 +806,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_PORT_STR:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         q = strdup(v);
         if (q == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
         i = strtol(q, &p, 10);
@@ -820,7 +820,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
         }
         SAFE_FREE(q);
         if (i <= 0) {
-          cout << "invalid error" << endl;
+          CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
@@ -833,17 +833,17 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       if (v == NULL) {
         q = ssh_get_local_username();
         if (q == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
         options->username = q;
       } else if (v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else { /* username provided */
         options->username = strdup(static_cast<const char *>(value));
         if (options->username == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
@@ -852,12 +852,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       v = static_cast<const char *>(value);
       SAFE_FREE(options->ProxyJump);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else { /* ProxyJump provided */
         options->ProxyJump = strdup(static_cast<const char *>(value));
         if (options->ProxyJump == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
@@ -868,28 +868,28 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       if (v == NULL) {
         options->knownhosts = ssh_path_expand_escape(options, "%d/known_hosts");
         if (options->knownhosts == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       } else if (v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         options->knownhosts = strdup(v);
         if (options->knownhosts == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
       break;
     case SSH_OPTIONS_TIMEOUT:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         long *x = (long *)value;
         if (*x < 0) {
-          cout << "invalid error" << endl;
+          CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
@@ -898,12 +898,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       break;
     case SSH_OPTIONS_SSH1:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int *x = (int *)value;
         if (*x < 0) {
-          cout << "invalid error" << endl;
+          CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
@@ -912,12 +912,12 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       break;
     case SSH_OPTIONS_SSH2:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int *x = (int *)value;
         if (*x < 0) {
-          cout << "invalid error" << endl;
+          CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
@@ -926,7 +926,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       break;
     case SSH_OPTIONS_STRICTHOSTKEYCHECK:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int *x = (int *)value;
@@ -938,7 +938,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_PROXYCOMMAND:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         SAFE_FREE(options->ProxyCommand);
@@ -956,13 +956,13 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_GSSAPI_SERVER_IDENTITY:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         SAFE_FREE(options->gss_server_identity);
         options->gss_server_identity = strdup(v);
         if (options->gss_server_identity == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
@@ -970,20 +970,20 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_GSSAPI_CLIENT_IDENTITY:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         SAFE_FREE(options->gss_client_identity);
         options->gss_client_identity = strdup(v);
         if (options->gss_client_identity == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
       break;
     case SSH_OPTIONS_GSSAPI_DELEGATE_CREDENTIALS:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int x = *(int *)value;
@@ -993,7 +993,7 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
       break;
     case SSH_OPTIONS_FORWARDAGENT:
       if (value == NULL) {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         int x = *(int *)value;
@@ -1003,20 +1003,20 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
     case SSH_OPTIONS_IDENTITYAGENT:
       v = static_cast<const char *>(value);
       if (v == NULL || v[0] == '\0') {
-        cout << "invalid error" << endl;
+        CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else {
         SAFE_FREE(options->identity_agent);
         options->identity_agent = strdup(v);
         if (options->identity_agent == NULL) {
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
       }
       break;
 
     default:
-      cout << "Unknown ssh option" << endl;
+      CLOG(INFO, "stdout") << "Unknown ssh option" << endl;
       return -1;
       break;
   }
@@ -1137,7 +1137,8 @@ static void local_parse_file(const char *targethost, struct Options *options,
 
   while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line, count, parsing, seen) < 0) {
+    if (ssh_config_parse_line(targethost, options, line, count, parsing, seen) <
+        0) {
       fclose(fp);
       return;
     }
@@ -1146,7 +1147,8 @@ static void local_parse_file(const char *targethost, struct Options *options,
   return;
 }
 
-static int ssh_config_parse_line(const char *targethost, struct Options *options, const char *line,
+static int ssh_config_parse_line(const char *targethost,
+                                 struct Options *options, const char *line,
                                  unsigned int count, int *parsing, int seen[]) {
   enum ssh_config_opcode_e opcode;
   const char *p;
@@ -1158,7 +1160,7 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
 
   x = s = strdup(line);
   if (s == NULL) {
-    cout << "error reading file" << endl;
+    CLOG(INFO, "stdout") << "error reading file" << endl;
     return -1;
   }
 
@@ -1265,7 +1267,7 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
         b = strdup(p);
         if (b == NULL) {
           SAFE_FREE(x);
-          cout << "error" << endl;
+          CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
         i = 0;
@@ -1351,7 +1353,7 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
       LOG(INFO) << "unsupported config line: " << string(line) << ", ignored";
       break;
     default:
-      cout << "parse error" << endl;
+      CLOG(INFO, "stdout") << "parse error" << endl;
       SAFE_FREE(x);
       return -1;
       break;
@@ -1361,7 +1363,8 @@ static int ssh_config_parse_line(const char *targethost, struct Options *options
   return 0;
 }
 
-int parse_ssh_config_file(const char *targethost, struct Options *options, string filename) {
+int parse_ssh_config_file(const char *targethost, struct Options *options,
+                          string filename) {
   char *line = NULL;
   size_t len = 0;
   ssize_t read = 0;
@@ -1380,7 +1383,8 @@ int parse_ssh_config_file(const char *targethost, struct Options *options, strin
 
   while ((read = getline(&line, &len, fp)) != -1) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line, count, &parsing, seen) < 0) {
+    if (ssh_config_parse_line(targethost, options, line, count, &parsing,
+                              seen) < 0) {
       fclose(fp);
       return -1;
     }
