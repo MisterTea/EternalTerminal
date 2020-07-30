@@ -18,12 +18,14 @@ UserJumphostHandler::UserJumphostHandler(
 
   if (routerFd < 0) {
     if (errno == ECONNREFUSED) {
-      cout << "Error:  The Eternal Terminal daemon is not running.  Please "
-              "(re)start the et daemon on the server."
-           << endl;
+      CLOG(INFO, "stdout")
+          << "Error:  The Eternal Terminal daemon is not running.  Please "
+             "(re)start the et daemon on the server."
+          << endl;
     } else {
-      cout << "Error:  Connection error communicating with et daemon: "
-           << strerror(errno) << "." << endl;
+      CLOG(INFO, "stdout")
+          << "Error:  Connection error communicating with et daemon: "
+          << strerror(errno) << "." << endl;
     }
     exit(1);
   }
@@ -94,14 +96,14 @@ void UserJumphostHandler::run() {
             if (jumpclient->readPacket(&initialResponsePacket)) {
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
-                cout << "Error: Missing initial response\n";
+                CLOG(INFO, "stdout") << "Error: Missing initial response\n";
                 STFATAL << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
                   initialResponsePacket.getPayload());
               if (initialResponse.has_error()) {
-                cout << "Error initializing connection: "
-                     << initialResponse.error() << endl;
+                CLOG(INFO, "stdout") << "Error initializing connection: "
+                                     << initialResponse.error() << endl;
                 exit(1);
               }
               fail = false;
@@ -119,8 +121,8 @@ void UserJumphostHandler::run() {
       }
     } catch (const runtime_error &err) {
       LOG(INFO) << "Could not make initial connection to dst server";
-      cout << "Could not make initial connection to " << dstSocketEndpoint
-           << ": " << err.what() << endl;
+      CLOG(INFO, "stdout") << "Could not make initial connection to "
+                           << dstSocketEndpoint << ": " << err.what() << endl;
       exit(1);
     }
     break;
@@ -203,7 +205,8 @@ void UserJumphostHandler::run() {
       }
     } catch (const runtime_error &re) {
       STERROR << "Error: " << re.what();
-      cout << "Connection closing because of error: " << re.what() << endl;
+      CLOG(INFO, "stdout") << "Connection closing because of error: "
+                           << re.what() << endl;
       run = false;
     }
   }

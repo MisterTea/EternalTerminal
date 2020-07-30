@@ -39,8 +39,9 @@ bool ClientConnection::connect() {
       // survived.
       STERROR << "Error connecting to server: " << response.status() << ": "
               << response.error();
-      cout << "Error connecting to server: " << response.status() << ": "
-           << response.error() << endl;
+      CLOG(INFO, "stdout") << "Error connecting to server: "
+                           << response.status() << ": " << response.error()
+                           << endl;
       string s = string("Error connecting to server: ") +
                  to_string(response.status()) + string(": ") + response.error();
       throw std::runtime_error(s.c_str());
@@ -114,8 +115,9 @@ void ClientConnection::pollReconnect() {
           if (response.status() != RETURNING_CLIENT) {
             STERROR << "Error reconnecting to server: " << response.status()
                     << ": " << response.error();
-            cout << "Error reconnecting to server: " << response.status()
-                 << ": " << response.error() << endl;
+            CLOG(INFO, "stdout")
+                << "Error reconnecting to server: " << response.status() << ": "
+                << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {
             recover(newSocketFd);

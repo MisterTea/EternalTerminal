@@ -56,7 +56,7 @@ int main(int argc, char** argv) {
 
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
-      cout << options.help({}) << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
 
@@ -91,15 +91,17 @@ int main(int argc, char** argv) {
         FATAL_FAIL(res);
       }
       if (res == 0) {
-        cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
-                "this information on stdin\n";
+        CLOG(INFO, "stdout")
+            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
+               "this information on stdin\n";
         exit(1);
       }
 
       string stdinData;
       if (!getline(cin, stdinData)) {
-        cout << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
-                "this information on stdin\n";
+        CLOG(INFO, "stdout")
+            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
+               "this information on stdin\n";
         exit(1);
       }
       auto tokens = split(stdinData, '_');
@@ -146,7 +148,9 @@ int main(int argc, char** argv) {
       // Install log rotation callback
       el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-      cout << "IDPASSKEY:" << idpasskey << endl;
+      LogHandler::setupStdoutLogger();
+
+      CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
       if (DaemonCreator::createSessionLeader() == -1) {
         STFATAL << "Error creating daemon: " << strerror(errno);
       }
@@ -179,19 +183,21 @@ int main(int argc, char** argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
+    LogHandler::setupStdoutLogger();
+
     SocketEndpoint routerEndpoint;
     routerEndpoint.set_name(result["serverfifo"].as<string>());
     UserTerminalHandler uth(ipcSocketHandler, term, true, routerEndpoint,
                             idpasskey);
-    cout << "IDPASSKEY:" << idpasskey << endl;
+    CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
     if (DaemonCreator::createSessionLeader() == -1) {
       STFATAL << "Error creating daemon: " << strerror(errno);
     }
     uth.run();
 
   } catch (cxxopts::OptionException& oe) {
-    cout << "Exception: " << oe.what() << "\n" << endl;
-    cout << options.help({}) << endl;
+    CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
+    CLOG(INFO, "stdout") << options.help({}) << endl;
     exit(1);
   }
 

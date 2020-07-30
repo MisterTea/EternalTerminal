@@ -7,14 +7,16 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
   for (auto& pair : j) {
     vector<string> sourceDestination = split(pair, ':');
     try {
-      if (sourceDestination[0].find_first_not_of("0123456789-") != string::npos &&
-          sourceDestination[1].find_first_not_of("0123456789-") != string::npos) {
+      if (sourceDestination[0].find_first_not_of("0123456789-") !=
+              string::npos &&
+          sourceDestination[1].find_first_not_of("0123456789-") !=
+              string::npos) {
         PortForwardSourceRequest pfsr;
         pfsr.mutable_source()->set_name(sourceDestination[0]);
         pfsr.mutable_destination()->set_name(sourceDestination[1]);
         pfsrs.push_back(pfsr);
       } else if (sourceDestination[0].find('-') != string::npos &&
-          sourceDestination[1].find('-') != string::npos) {
+                 sourceDestination[1].find('-') != string::npos) {
         vector<string> sourcePortRange = split(sourceDestination[0], '-');
         int sourcePortStart = stoi(sourcePortRange[0]);
         int sourcePortEnd = stoi(sourcePortRange[1]);
@@ -98,10 +100,11 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       } else {
         auto authSockEnv = getenv("SSH_AUTH_SOCK");
         if (!authSockEnv) {
-          cout << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
-                  "you "
-                  "ran ssh-agent first?"
-               << endl;
+          CLOG(INFO, "stdout")
+              << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
+                 "you "
+                 "ran ssh-agent first?"
+              << endl;
           exit(1);
         }
         authSock.assign(authSockEnv);
@@ -113,7 +116,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       }
     }
   } catch (const std::runtime_error& ex) {
-    cout << "Error establishing port forward: " << ex.what() << endl;
+    CLOG(INFO, "stdout") << "Error establishing port forward: " << ex.what()
+                         << endl;
     exit(1);
   }
 
@@ -145,14 +149,14 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
             if (connection->readPacket(&initialResponsePacket)) {
               if (initialResponsePacket.getHeader() !=
                   EtPacketType::INITIAL_RESPONSE) {
-                cout << "Error: Missing initial response\n";
+                CLOG(INFO, "stdout") << "Error: Missing initial response\n";
                 STFATAL << "Missing initial response!";
               }
               auto initialResponse = stringToProto<InitialResponse>(
                   initialResponsePacket.getPayload());
               if (initialResponse.has_error()) {
-                cout << "Error initializing connection: "
-                     << initialResponse.error() << endl;
+                CLOG(INFO, "stdout") << "Error initializing connection: "
+                                     << initialResponse.error() << endl;
                 exit(1);
               }
               fail = false;
@@ -170,8 +174,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
-      cout << "Could not make initial connection to " << _socketEndpoint << ": "
-           << err.what() << endl;
+      CLOG(INFO, "stdout") << "Could not make initial connection to "
+                           << _socketEndpoint << ": " << err.what() << endl;
       exit(1);
     }
     break;
@@ -210,7 +214,7 @@ void TerminalClient::run(const string& command) {
   TerminalInfo lastTerminalInfo;
 
   if (!console.get()) {
-    cout << "ET running, feel free to background..." << endl;
+    CLOG(INFO, "stdout") << "ET running, feel free to background..." << endl;
   }
 
   while (!connection->isShuttingDown()) {
@@ -255,13 +259,14 @@ void TerminalClient::run(const string& command) {
           INPUT_RECORD buffer[128];
           HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
           PeekConsoleInput(handle, buffer, 128, &events);
-          if (events > 0)
-          {
+          if (events > 0) {
             ReadConsoleInput(handle, buffer, 128, &events);
             string s;
             for (int keyEvent = 0; keyEvent < events; keyEvent++) {
-              if (buffer[keyEvent].EventType == KEY_EVENT && buffer[keyEvent].Event.KeyEvent.bKeyDown) {
-                char charPressed = ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+              if (buffer[keyEvent].EventType == KEY_EVENT &&
+                  buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+                char charPressed =
+                    ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
                 if (charPressed) {
                   s += charPressed;
                 }
@@ -271,8 +276,8 @@ void TerminalClient::run(const string& command) {
               et::TerminalBuffer tb;
               tb.set_buffer(s);
 
-              connection->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              connection->writePacket(Packet(
+                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
               keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
             }
           }
@@ -287,7 +292,7 @@ void TerminalClient::run(const string& command) {
             tb.set_buffer(s);
 
             connection->writePacket(
-              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
             keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
           }
 #endif
@@ -389,7 +394,8 @@ void TerminalClient::run(const string& command) {
       }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();
-      cout << "Connection closing because of error: " << re.what() << endl;
+      CLOG(INFO, "stdout") << "Connection closing because of error: "
+                           << re.what() << endl;
       lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;
     }
@@ -397,6 +403,6 @@ void TerminalClient::run(const string& command) {
   if (console) {
     console->teardown();
   }
-  cout << "Session terminated" << endl;
+  CLOG(INFO, "stdout") << "Session terminated" << endl;
 }
 }  // namespace et

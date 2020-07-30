@@ -11,6 +11,7 @@ class LogHandler {
                            string maxlogsize = "20971520");
   static void rolloutHandler(const char *filename, std::size_t size);
   static string stderrToFile(const string &pathPrefix);
+  static void setupStdoutLogger();
 };
 }  // namespace et
 #endif  // __ET_LOG_HANDLER__

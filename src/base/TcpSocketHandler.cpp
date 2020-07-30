@@ -76,7 +76,8 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       int so_error;
       socklen_t len = sizeof so_error;
 
-      FATAL_FAIL(::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+      FATAL_FAIL(
+          ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len));
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -191,8 +192,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
       STERROR << "Error binding " << p->ai_family << "/" << p->ai_socktype
               << "/" << p->ai_protocol << ": " << errno << " "
               << strerror(errno);
-      cout << "Error binding " << p->ai_family << "/" << p->ai_socktype << "/"
-           << p->ai_protocol << ": " << errno << " " << strerror(errno) << endl;
+      CLOG(INFO, "stdout") << "Error binding " << p->ai_family << "/"
+                           << p->ai_socktype << "/" << p->ai_protocol << ": "
+                           << errno << " " << strerror(errno) << endl;
       stringstream oss;
       oss << "Error binding port " << port << ": " << errno << " "
           << strerror(errno);
@@ -258,8 +260,8 @@ void TcpSocketHandler::initSocket(int fd) {
     struct linger so_linger;
     so_linger.l_onoff = 1;
     so_linger.l_linger = 5;
-    FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
+    FATAL_FAIL_UNLESS_EINVAL(setsockopt(
+        fd, SOL_SOCKET, SO_LINGER, (const char *)&so_linger, sizeof so_linger));
   }
 }
 }  // namespace et
