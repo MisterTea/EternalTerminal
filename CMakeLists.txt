@@ -1,5 +1,5 @@
 cmake_minimum_required (VERSION 3.0.2)
-project (EternalTCP VERSION 6.0.9)
+project (EternalTCP VERSION 6.0.11)
 
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 FIND_PACKAGE(Sanitizers)
