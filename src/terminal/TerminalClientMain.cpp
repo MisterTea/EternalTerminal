@@ -24,6 +24,7 @@ int main(int argc, char** argv) {
 
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
+  LogHandler::setupStdoutLogger();
 
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
@@ -102,8 +103,6 @@ int main(int argc, char** argv) {
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name
     el::Helpers::setThreadName("client-main");
-
-    LogHandler::setupStdoutLogger();
 
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);

@@ -9,6 +9,7 @@ int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf =
       et::LogHandler::setupLogHandler(&argc, &argv);
+  et::LogHandler::setupStdoutLogger();
   defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
   // el::Loggers::setVerboseLevel(9);
@@ -21,8 +22,6 @@ int main(int argc, char **argv) {
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
-
-  et::LogHandler::setupStdoutLogger();
 
   int result = Catch::Session().run(argc, argv);
 
