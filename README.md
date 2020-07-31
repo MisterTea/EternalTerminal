@@ -16,21 +16,28 @@ Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%
 
 The easiest way to install is using Homebrew:
 
-	brew install MisterTea/et/et
+```
+brew install MisterTea/et/et
+```
 
 Alternatively, a package is available in MacPorts:
 
-	sudo port install et
+```
+sudo port install et
+```
 
 ### Ubuntu
 
 For Ubuntu, use our PPA:
 
-	sudo add-apt-repository ppa:jgmath2000/et
-	sudo apt-get update
-	sudo apt-get install et
+```
+sudo add-apt-repository ppa:jgmath2000/et
+sudo apt-get update
+sudo apt-get install et
+```
 
 Install and build from source:
+
 ```
 sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
@@ -41,29 +48,40 @@ cmake ../
 make && sudo make install
 sudo cp ../etc/et.cfg /etc/
 ```
+
 Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 
 ### Debian
 
 For debian, use our deb repo. For buster:
 
-	echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list
-	curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
-	sudo apt update
-	sudo apt install et
-
+```
+echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list
+curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
+sudo apt update
+sudo apt install et
+```
 
 ### CentOS 7
 
-Up to the present day the only way to install is to [build from source](#centos-7).
+Up to the present day the only way to install is to [build from source](#centos-7-1).
 
+### CentOS 8
+
+```
+sudo dnf install epel-release
+sudo dnf install et
+```
 
 ### FreeBSD
 On FreeBSD, use:
 
-	pkg install eternalterminal
+```
+pkg install eternalterminal
+```
 
 ### Fedora (version 29 and later):
+
 ```
 sudo dnf install et
 ```
@@ -82,27 +100,37 @@ Install dependencies:
 
 * Fedora (tested on 25):
 
-      sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-	protobuf-compiler cmake gflags-devel
+  ```
+  sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+  	protobuf-compiler cmake gflags-devel
+  ```
 
 * Gentoo:
 
-      sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
-	dev-libs/protobuf dev-util/cmake dev-cpp/gflags
+  ```
+  sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
+  	dev-libs/protobuf dev-util/cmake dev-cpp/gflag
+  ```
 
 Download and install from source:
 
-	git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
-	cd EternalTerminal
-	mkdir build
-	cd build
-	cmake ../
-	make
-	sudo make install
+```
+git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+cd EternalTerminal
+mkdir build
+cd build
+cmake ../
+make
+sudo make install
+```
 
 ### Windows
 
 Eternal Terminal works under WSL (Windows Subsystem for Linux).  Follow the ubuntu instructions.
+
+### Docker Image
+
+See [docker/README.md](docker/)
 
 ## Verifying
 
@@ -179,7 +207,7 @@ Grab the deps and then follow this process:
 Debian/Ubuntu Dependencies:
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev \
-     libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
+	libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
 ```
 
 Source and setup:
@@ -246,6 +274,10 @@ Start the et service:
 ```
 sudo systemctl enable --now et.service
 ```
+
+## Building using Docker
+
+Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: CentOS 8, openSUSE and Ubuntu.
 
 ## Reporting issues
 
