@@ -20,6 +20,7 @@ void setDaemonLogFile(string idpasskey, string daemonType) {
 int main(int argc, char** argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
+  LogHandler::setupStdoutLogger();
 
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
@@ -148,8 +149,6 @@ int main(int argc, char** argv) {
       // Install log rotation callback
       el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-      LogHandler::setupStdoutLogger();
-
       CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
       if (DaemonCreator::createSessionLeader() == -1) {
         STFATAL << "Error creating daemon: " << strerror(errno);
@@ -182,8 +181,6 @@ int main(int argc, char** argv) {
     el::Helpers::setThreadName("terminal-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
-
-    LogHandler::setupStdoutLogger();
 
     SocketEndpoint routerEndpoint;
     routerEndpoint.set_name(result["serverfifo"].as<string>());

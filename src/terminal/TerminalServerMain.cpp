@@ -9,6 +9,7 @@ using namespace gflags;
 int main(int argc, char **argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
+  LogHandler::setupStdoutLogger();
 
   cxxopts::Options options("etserver",
                            "Remote shell for the busy and impatient");
@@ -136,8 +137,6 @@ int main(int argc, char **argv) {
     el::Helpers::setThreadName("etserver-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
-
-    LogHandler::setupStdoutLogger();
 
     std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
     std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
