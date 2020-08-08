@@ -27,9 +27,7 @@ sudo apt-get install et
 For debian, use our deb repo.  For stretch:
 
 ```
-echo "
-deb https://mistertea.github.io/debian-et/debian-source/ stretch main
-" | sudo tee -a /etc/apt/sources.list
+echo "deb https://mistertea.github.io/debian-et/debian-source/ buster main" | sudo tee /etc/apt/sources.list.d/et.list
 curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
 sudo apt update
 sudo apt install et
