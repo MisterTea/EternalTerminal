@@ -39,7 +39,7 @@ Check out the README for instructions: https://github.com/MisterTea/EternalTermi
 
 # Windows
 
-ET works under WSL (Windows Subsystem for Linux), but you must be running xenial or higher.  See this issue for details: https://github.com/Microsoft/BashOnWindows/issues/482
+ET works under WSL (Windows Subsystem for Linux), but you must be running xenial or higher.  See this issue for details: https://github.com/microsoft/WSL/issues/482
 
 As long as you are running Xenial, you can follow the ubuntu instructions for installation.
 
