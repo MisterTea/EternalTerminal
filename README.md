@@ -256,7 +256,7 @@ Find the actual location of et:
 Correct the service file (see [#180](https://github.com/MisterTea/EternalTerminal/issues/180) for details).
 
 ```
-sudo sed -ie "s|ExecStart=.*[[:space:]]|ExecStart=$(which etserver) |" /etc/systemd/system/et.service
+sudo sed -ie "s|ExecStart=[^[:space:]]*[[:space:]]|ExecStart=$(which etserver) |" /etc/systemd/system/et.service
 ```
 
 Alternativelly, open the file /etc/systemd/system/et.service in an editor and correct the `ExectStart=...` line to point to the correct path of the `etserver` binary.
