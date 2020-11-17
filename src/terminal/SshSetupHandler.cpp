@@ -89,16 +89,16 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
                          << endl;
   }
+
   // start jumpclient daemon on jumphost.
   if (!jumphost.empty()) {
     /* If jumphost is set, we need to pass dst host and port to jumphost
      * and connect to jumphost here */
+    string cmdoptions{"--verbose=" + std::to_string(vlevel)};
     string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
                              " --dstport=" + to_string(port);
     string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
                                         cmd_prefix, jump_cmdoptions);
-    // start command in interactive mode
-    SSH_SCRIPT_JUMP = "$SHELL -lc \'" + SSH_SCRIPT_JUMP + "\'";
 
     string sshLinkBuffer =
         SubprocessToStringInteractive("ssh", {jumphost, SSH_SCRIPT_JUMP});

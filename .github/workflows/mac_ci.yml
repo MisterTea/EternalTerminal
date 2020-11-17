@@ -19,7 +19,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install protobuf libsodium
 
       - name: Test with ubsan
         run: |
@@ -45,7 +45,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install protobuf libsodium
 
       - name: Test with asan
         run: |
@@ -71,7 +71,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install protobuf libsodium
 
       - name: Test with msan
         run: |
@@ -97,7 +97,7 @@ jobs:
           git submodule update --init
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install protobuf libsodium
 
       - name: Test with tsan
         run: |

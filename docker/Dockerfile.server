@@ -2,7 +2,7 @@ FROM centos:7 as base
 
 ENV BUILD_REPOS="epel-release centos-release-scl" \
     BUILD_DEPS="cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
-        protobuf-compiler gflags-devel protobuf-lite-devel git devtoolset-8"
+    protobuf-compiler gflags-devel protobuf-lite-devel git devtoolset-8"
 
 WORKDIR /
 

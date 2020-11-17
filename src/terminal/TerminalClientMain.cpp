@@ -227,7 +227,7 @@ int main(int argc, char** argv) {
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["v"].as<int>(),
+        result.count("x") > 0, result["verbose"].as<int>(),
         result.count("prefix") ? result["prefix"].as<string>() : "",
         serverFifo);
 
