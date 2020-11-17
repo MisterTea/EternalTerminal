@@ -5,7 +5,7 @@ on:
   pull_request:
 
 jobs:
-  ubsan:
+  ubsan_linux:
     runs-on: ubuntu-18.04
 
     steps:
@@ -13,15 +13,15 @@ jobs:
       - name: Setup
         shell: bash
         run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          apt-get update
+          apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          ACCEPT_EULA=Y apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
           git submodule update --init
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with ubsan
         run: |
@@ -33,7 +33,7 @@ jobs:
           popd
           rm -Rf build
 
-  asan:
+  asan_linux:
     runs-on: ubuntu-18.04
 
     steps:
@@ -41,15 +41,15 @@ jobs:
       - name: Setup
         shell: bash
         run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          apt-get update
+          apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          ACCEPT_EULA=Y apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
           git submodule update --init
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with asan
         run: |
@@ -61,7 +61,7 @@ jobs:
           popd
           rm -Rf build
 
-  msan:
+  msan_linux:
     runs-on: ubuntu-18.04
 
     steps:
@@ -69,15 +69,15 @@ jobs:
       - name: Setup
         shell: bash
         run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          apt-get update
+          apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          ACCEPT_EULA=Y apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
           git submodule update --init
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with msan
         run: |
@@ -89,7 +89,7 @@ jobs:
           popd
           rm -Rf build
 
-  tsan:
+  tsan_linux:
     runs-on: ubuntu-18.04
 
     steps:
@@ -97,15 +97,15 @@ jobs:
       - name: Setup
         shell: bash
         run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          apt-get update
+          apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          ACCEPT_EULA=Y apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
           git submodule update --init
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo apt-get install -y git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          sudo ACCEPT_EULA=Y apt-get -y upgrade
 
       - name: Test with tsan
         run: |
