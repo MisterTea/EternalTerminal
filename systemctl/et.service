@@ -3,9 +3,8 @@ Description=Eternal Terminal
 After=syslog.target network.target
 
 [Service]
-Type=forking
-PIDFile=/run/etserver.pid
-ExecStart=/usr/bin/etserver --daemon --cfgfile=/etc/et.cfg
+Type=simple
+ExecStart=/usr/bin/etserver --cfgfile=/etc/et.cfg
 
 [Install]
 WantedBy=multi-user.target
