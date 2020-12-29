@@ -114,7 +114,7 @@ ELSEIF(NETBSD)
 ELSEIF(WIN32)
   set(CORE_LIBRARIES Ws2_32 Shlwapi dbghelp)
 ELSE()
-  set(CORE_LIBRARIES util resolv)
+  set(CORE_LIBRARIES unwind util resolv)
 ENDIF()
 
 MACRO(DECORATE_TARGET TARGET_NAME)
