@@ -2,7 +2,7 @@ Source: et
 Section: universe/net
 Priority: optional
 Maintainer: Jason Gauci <jgmath2000@gmail.com>
-Build-Depends: debhelper (>=9), libsodium-dev, libprotobuf-dev, protobuf-compiler, cmake, dh-systemd, libutempter-dev
+Build-Depends: debhelper (>=9), libsodium-dev, libprotobuf-dev, protobuf-compiler, cmake, dh-systemd, libutempter-dev, libunwind-dev
 Standards-Version: 3.9.7
 Homepage: https://mistertea.github.io/EternalTCP/
 #Vcs-Git: git://anonscm.debian.org/collab-maint/et.git
