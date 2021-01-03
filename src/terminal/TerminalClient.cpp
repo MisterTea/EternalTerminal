@@ -1,5 +1,7 @@
 #include "TerminalClient.hpp"
 
+#include "TelemetryService.hpp"
+
 namespace et {
 vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
   vector<PortForwardSourceRequest> pfsrs;
@@ -178,6 +180,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
                            << _socketEndpoint << ": " << err.what() << endl;
       exit(1);
     }
+
+    TelemetryService::get()->log(SENTRY_LEVEL_INFO, "Connection Established");
     break;
   }
   VLOG(1) << "Client created with id: " << connection->getId();

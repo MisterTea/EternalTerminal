@@ -16,12 +16,11 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git submodule update --init --force --recursive
 
       - name: Test with ubsan
         run: |
@@ -44,12 +43,11 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git submodule update --init --force --recursive
 
       - name: Test with asan
         run: |
@@ -72,12 +70,11 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git submodule update --init --force --recursive
 
       - name: Test with msan
         run: |
@@ -100,12 +97,11 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git submodule update --init --force --recursive
 
       - name: Test with tsan
         run: |

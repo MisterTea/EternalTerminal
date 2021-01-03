@@ -91,6 +91,8 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <utempter.h>
 #endif
 
+#include "sentry.h"
+
 #if WIN32
 #define popen _popen
 #define pclose _pclose

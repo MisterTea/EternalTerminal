@@ -25,3 +25,6 @@
 [submodule "external/vcpkg"]
 	path = external/vcpkg
 	url = https://github.com/microsoft/vcpkg.git
+[submodule "external/sentry-native"]
+	path = external/sentry-native
+	url = https://github.com/getsentry/sentry-native.git
