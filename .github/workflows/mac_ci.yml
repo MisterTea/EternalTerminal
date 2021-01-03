@@ -17,8 +17,8 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew install cmake; brew install protobuf libsodium
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
 
       - name: Test with ubsan
         run: |
@@ -39,8 +39,8 @@ jobs:
         shell: bash
         run: |
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew install cmake; brew install protobuf libsodium
@@ -64,8 +64,8 @@ jobs:
         shell: bash
         run: |
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew install cmake; brew install protobuf libsodium
@@ -89,8 +89,8 @@ jobs:
         shell: bash
         run: |
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           brew install cmake; brew install protobuf libsodium
