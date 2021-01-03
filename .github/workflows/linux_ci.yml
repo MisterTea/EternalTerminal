@@ -20,8 +20,8 @@ jobs:
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule update --init --recursive
 
       - name: Test with ubsan
         run: |
@@ -48,8 +48,8 @@ jobs:
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule update --init --recursive
 
       - name: Test with asan
         run: |
@@ -76,8 +76,8 @@ jobs:
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule update --init --recursive
 
       - name: Test with msan
         run: |
@@ -104,8 +104,8 @@ jobs:
           ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
-          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
-          git submodule update --init
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive
+          git submodule update --init --recursive
 
       - name: Test with tsan
         run: |
