@@ -1,8 +1,25 @@
 cmake_minimum_required (VERSION 3.0.2)
 project (EternalTCP VERSION 6.0.13)
 
+include(CMakeFindDependencyMacro)
+
+# Add cmake script directory.
+LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
-FIND_PACKAGE(Sanitizers)
+
+# Required packages
+FIND_PACKAGE(Sanitizers REQUIRED)
+find_package(Threads REQUIRED)
+find_package(sodium REQUIRED)
+find_package(Protobuf REQUIRED)
+
+# Optional packages
+find_package(UTempter)
+IF(LINUX)
+find_package(SELinux)
+ENDIF()
+
+add_subdirectory("external/sentry-native")
 
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake" ${CMAKE_MODULE_PATH})
 INCLUDE(cotire)
@@ -15,7 +32,7 @@ option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DSENTRY_BUILD_STATIC")
 IF(CODE_COVERAGE)
   if(UNIX)
     SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
@@ -52,25 +69,19 @@ if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   set(NETBSD TRUE)
 endif (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
-# Add cmake script directory.
-LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-
-# Required packages
-find_package(Threads REQUIRED)
-find_package(Protobuf REQUIRED)
-find_package(sodium REQUIRED)
-
-# Optional packages
-IF(LINUX)
-find_package(SELinux)
-ENDIF()
-find_package(UTempter)
-
 option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" OFF)
 IF(FULL_PROTOBUF)
-    SET(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
+    IF(WIN32)
+      SET(PROTOBUF_LIBS protobuf::libprotobuf)
+    ELSE()
+      SET(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
+    ENDIF()
 ELSE()
-    SET(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
+    IF(WIN32)
+      SET(PROTOBUF_LIBS protobuf::libprotobuf-lite)
+    ELSE()
+      SET(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
+    ENDIF()
 ENDIF()
 
 IF(SELINUX_FOUND)
@@ -132,6 +143,7 @@ include_directories(
   external/cxxopts/include
   external/msgpack-c/include
   external/UniversalStacktrace/ust
+  external/sentry-native/include
   src/base
   src/terminal
   src/terminal/forwarding
@@ -241,6 +253,9 @@ add_library(
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
 
+  src/terminal/TelemetryService.hpp
+  src/terminal/TelemetryService.cpp
+
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
 add_dependencies(
@@ -262,6 +277,7 @@ target_link_libraries (
     ${PROTOBUF_LIBS}
     ${sodium_LIBRARY_RELEASE}
     ${UTEMPTER_LIBRARIES}
+    sentry::sentry
     ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(et)
@@ -289,6 +305,7 @@ target_link_libraries (
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
+  sentry::sentry
   ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(etserver)
@@ -307,6 +324,7 @@ target_link_libraries (
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
+  sentry::sentry
   ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(etterminal)
@@ -345,6 +363,7 @@ target_link_libraries (
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
+  sentry::sentry
   ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(htm)
@@ -365,6 +384,7 @@ target_link_libraries (
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
+  sentry::sentry
   ${CORE_LIBRARIES}
 )
 DECORATE_TARGET(htmd)
@@ -391,6 +411,7 @@ target_link_libraries(
   ${sodium_LIBRARY_RELEASE}
   ${SELINUX_LIBRARIES}
   ${UTEMPTER_LIBRARIES}
+  sentry::sentry
   ${CORE_LIBRARIES}
   )
 add_test(

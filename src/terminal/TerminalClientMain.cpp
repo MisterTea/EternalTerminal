@@ -1,6 +1,7 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
+#include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
 #include "WinsockContext.hpp"
 
@@ -67,6 +68,9 @@ int main(int argc, char** argv) {
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
+        ("telemetry",
+         "Allow et to anonymously send errors to guide future improvements",
+         cxxopts::value<bool>()->default_value("true"))  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",  //
          cxxopts::value<std::string>()->default_value(""))             //
@@ -109,6 +113,9 @@ int main(int argc, char** argv) {
 
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
+
+    TelemetryService::create(result["telemetry"].as<bool>(),
+                             tmpDir + "/.sentry-native-et", "Client");
 
     string username = "";
     if (result.count("username")) {
@@ -262,6 +269,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-socket")) {
       sshSocket = result["ssh-socket"].as<string>();
     }
+    TelemetryService::get()->log(SENTRY_LEVEL_INFO, "Session Started");
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
@@ -277,6 +285,8 @@ int main(int argc, char** argv) {
 #endif
     exit(1);
   }
+
+  TelemetryService::destroy();
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

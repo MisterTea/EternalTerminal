@@ -1,7 +1,10 @@
 #define CATCH_CONFIG_RUNNER
 
 #include "LogHandler.hpp"
+#include "TelemetryService.hpp"
 #include "TestHeaders.hpp"
+
+using namespace et;
 
 int main(int argc, char **argv) {
   srand(1);
@@ -23,7 +26,11 @@ int main(int argc, char **argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
+  TelemetryService::create(false, "", "");
+
   int result = Catch::Session().run(argc, argv);
+
+  TelemetryService::destroy();
 
   FATAL_FAIL(::remove(logPath.c_str()));
   FATAL_FAIL(::remove(logDirectory.c_str()));
