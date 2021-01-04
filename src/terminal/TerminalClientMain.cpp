@@ -102,7 +102,7 @@ int main(int argc, char** argv) {
     }
 
     LogHandler::setupLogFile(
-        &defaultConf, (tmpDir + "etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
+        &defaultConf, (tmpDir + "/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

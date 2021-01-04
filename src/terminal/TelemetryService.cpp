@@ -1,6 +1,21 @@
 #include "TelemetryService.hpp"
 
 namespace et {
+class SentryDispatcher : public el::LogDispatchCallback {
+ protected:
+  void handle(const el::LogDispatchData* data) noexcept override {
+    if (TelemetryService::exists() &&
+        data->dispatchAction() == el::base::DispatchAction::NormalLog &&
+        (data->logMessage()->level() == el::Level::Fatal ||
+         data->logMessage()->level() == el::Level::Error)) {
+      auto logText = data->logMessage()->logger()->logBuilder()->build(
+          data->logMessage(),
+          data->dispatchAction() == el::base::DispatchAction::NormalLog);
+      TelemetryService::get()->log(SENTRY_LEVEL_FATAL, logText.c_str());
+    }
+  }
+};
+
 TelemetryService::TelemetryService(bool _allow, const string& databasePath,
                                    const string& environment)
     : allowed(_allow) {
@@ -19,6 +34,48 @@ TelemetryService::TelemetryService(bool _allow, const string& databasePath,
     sentry_options_set_environment(options, environment.c_str());
 
     sentry_init(options);
+
+    auto sentryShutdownHandler = [](int i) {
+      cerr << "Shutting down sentry" << endl;
+      sentry_shutdown();
+    };
+    vector<int> signalsToCatch = {
+#ifdef SIGINT
+        SIGINT,
+#endif
+#ifdef SIGILL
+        SIGILL,
+#endif
+#ifdef SIGABRT
+        SIGABRT,
+#endif
+#ifdef SIGFPE
+        SIGFPE,
+#endif
+#ifdef SIGSEGV
+        SIGSEGV,
+#endif
+#ifdef SIGTERM
+        SIGTERM,
+#endif
+#ifdef SIGKILL
+        SIGKILL,
+#endif
+    };
+    for (auto it : signalsToCatch) {
+      signal(it, sentryShutdownHandler);
+    }
+    atexit([] {
+      cerr << "Shutting down sentry" << endl;
+      sentry_shutdown();
+    });
+
+    el::Helpers::installLogDispatchCallback<SentryDispatcher>(
+        "SentryDispatcher");
+    auto* dispatcher =
+        el::Helpers::logDispatchCallback<SentryDispatcher>("SentryDispatcher");
+
+    dispatcher->setEnabled(true);
   }
 }
 
