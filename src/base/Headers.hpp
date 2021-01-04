@@ -85,7 +85,9 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include "easylogging++.h"
 #include "json.hpp"
 #include "sole.hpp"
+#if !defined(__ANDROID__)
 #include "ust.hpp"
+#endif
 
 #ifdef WITH_UTEMPTER
 #include <utempter.h>
@@ -135,9 +137,15 @@ const int CLIENT_KEEP_ALIVE_DURATION = 5;
 // allow enough time.
 const int SERVER_KEEP_ALIVE_DURATION = 11;
 
+#if defined(__ANDROID__)
+#define STFATAL LOG(FATAL) << "No Stack Trace on Android" << endl
+
+#define STERROR LOG(ERROR) << "No Stack Trace on Android" << endl
+#else
 #define STFATAL LOG(FATAL) << "Stack Trace: " << endl << ust::generate()
 
 #define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
+#endif
 
 #ifdef WIN32
 inline string WindowsErrnoToString() {
@@ -288,7 +296,7 @@ inline string GetTempDirectory() {
   std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
   std::string tmpDir = converter.to_bytes(wstring(buf, retval));
 #else
-  string tmpDir = "/tmp";
+  string tmpDir = _PATH_TMP;
 #endif
   return tmpDir;
 }

@@ -64,9 +64,9 @@ int main(int argc, char** argv) {
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  LogHandler::setupLogFile(&defaultConf, "/tmp/htm.log", maxlogsize);
+  LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "htm.log", maxlogsize);
   // Redirect std streams to a file
-  LogHandler::stderrToFile("/tmp/htm");
+  LogHandler::stderrToFile(GetTempDirectory() + "htm");
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);

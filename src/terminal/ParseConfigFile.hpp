@@ -34,6 +34,8 @@
 #include <sys/time.h>
 #endif /* HAVE_SYS_TIME_H */
 
+#include "Headers.hpp"
+
 using namespace std;
 
 #define MAX_LINE_SIZE 1024

@@ -167,7 +167,7 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
   fakeUserTerminal->setup(-1);
 
-  string tmpPath = string("/tmp/etserver_test_XXXXXXXX");
+  string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
 
   string routerPipePath = string(pipeDirectory) + "/pipe_router";

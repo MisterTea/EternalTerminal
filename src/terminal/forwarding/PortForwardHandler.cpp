@@ -45,7 +45,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       source = pfsr.source();
     } else {
       // Make a random file to forward the pipe
-      string sourcePattern = string("/tmp/et_forward_sock_XXXXXX");
+      string sourcePattern = GetTempDirectory() + string("et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
       FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
