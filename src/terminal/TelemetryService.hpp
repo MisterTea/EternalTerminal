@@ -20,6 +20,8 @@ class TelemetryService {
 
   static void destroy() { telemetryServiceInstance.reset(); }
 
+  static bool exists() { return telemetryServiceInstance.get() != NULL; }
+
   static shared_ptr<TelemetryService> get() {
     if (telemetryServiceInstance) {
       return telemetryServiceInstance;
