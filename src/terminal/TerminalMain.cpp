@@ -14,7 +14,7 @@ using namespace et;
 void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
   string logFile =
-      string("/tmp/etterminal_") + daemonType + "_" + first_idpass_chars;
+      string(GetTempDirectory() + "etterminal_") + daemonType + "_" + first_idpass_chars;
 }
 
 int main(int argc, char** argv) {
@@ -140,7 +140,7 @@ int main(int argc, char** argv) {
 
       // etserver with --jump cannot write to the default log file(root)
       LogHandler::setupLogFile(&defaultConf,
-                               "/tmp/etjump-" + username + "-" + id + ".log",
+                               GetTempDirectory() + "etjump-" + username + "-" + id + ".log",
                                maxlogsize);
       // Reconfigure default logger to apply settings above
       el::Loggers::reconfigureLogger("default", defaultConf);
@@ -173,7 +173,7 @@ int main(int argc, char** argv) {
 
     // etserver with --idpasskey cannot write to the default log file(root)
     LogHandler::setupLogFile(&defaultConf,
-                             "/tmp/etterminal-" + username + "-" + id + ".log",
+                             GetTempDirectory() + "etterminal-" + username + "-" + id + ".log",
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);

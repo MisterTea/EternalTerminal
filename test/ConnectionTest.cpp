@@ -264,7 +264,7 @@ TEST_CASE("ConnectionTest", "[ConnectionTest]") {
 
   el::Helpers::setThreadName("Main");
 
-  string tmpPath = string("/tmp/et_test_XXXXXXXX");
+  string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
   endpoint = SocketEndpoint();
