@@ -45,7 +45,7 @@ class FakeConsole : public Console {
     fakeTerminalInfo.set_width(8);
     fakeTerminalInfo.set_height(10);
 
-    string tmpPath = string("/tmp/et_test_console_XXXXXXXX");
+    string tmpPath = GetTempDirectory() + string("et_test_console_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint;
@@ -140,7 +140,7 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
-    string tmpPath = string("/tmp/et_test_userterminal_XXXXXXXX");
+    string tmpPath = GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint;

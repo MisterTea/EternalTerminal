@@ -6,7 +6,7 @@
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
 
-#define ROUTER_FIFO_NAME "/tmp/etserver.idpasskey.fifo"
+const string ROUTER_FIFO_NAME = GetTempDirectory() + "etserver.idpasskey.fifo";
 
 namespace et {
 class UserTerminalRouter {

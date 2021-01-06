@@ -109,7 +109,7 @@ TEST_CASE("BackedTest", "[BackedTest]") {
   string pipeDirectory;
   string pipePath;
 
-  string tmpPath = string("/tmp/et_test_XXXXXXXX");
+  string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
   SocketEndpoint endpoint;

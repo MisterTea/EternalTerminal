@@ -83,6 +83,11 @@ TelemetryService::TelemetryService(bool _allow, const string& databasePath,
     sentry_init(options);
 
     auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
+    sentry_value_t user = sentry_value_new_object();
+    sentry_value_set_by_key(user, "ip_address",
+                            sentry_value_new_string("{{auto}}"));
+    sentry_set_user(user);
+
     vector<int> signalsToCatch = {
 #ifdef SIGINT
         SIGINT,

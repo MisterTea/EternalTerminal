@@ -125,7 +125,9 @@ add_custom_target(
   ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
   )
 
-IF(FREEBSD)
+IF(ANDROID)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util)
+ELSEIF(FREEBSD)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util execinfo)
 ELSEIF(NETBSD)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv execinfo)
@@ -140,7 +142,11 @@ ENDIF()
 MACRO(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
   set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "src/base/Headers.hpp")
-  cotire(${TARGET_NAME})
+  IF(CMAKE_CROSSCOMPILING)
+    # Doesn't work when cross-compiling
+  ELSE()
+    cotire(${TARGET_NAME})
+  ENDIF()
 ENDMACRO()
 
 include_directories(
@@ -149,7 +155,6 @@ include_directories(
   external/Catch2/single_include
   external/cxxopts/include
   external/msgpack-c/include
-  external/UniversalStacktrace/ust
   external/sentry-native/include
   external/cpp-httplib
   src/base
@@ -164,6 +169,10 @@ include_directories(
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
   )
+
+IF(NOT ANDROID)
+  include_directories( external/UniversalStacktrace/ust )
+ENDIF()
 
 add_library(
   et-lib

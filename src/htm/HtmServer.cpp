@@ -176,6 +176,6 @@ void HtmServer::recover() {
 
 string HtmServer::getPipeName() {
   uid_t myuid = getuid();
-  return string("/tmp/htm.") + to_string(myuid) + string(".ipc");
+  return string(GetTempDirectory() + "htm.") + to_string(myuid) + string(".ipc");
 }
 }  // namespace et

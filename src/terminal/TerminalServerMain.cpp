@@ -58,7 +58,7 @@ int main(int argc, char **argv) {
     } else {
       defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
       // Redirect std streams to a file
-      LogHandler::stderrToFile("/tmp/etserver");
+      LogHandler::stderrToFile(GetTempDirectory() + "etserver");
     }
 
     string serverFifo = ROUTER_FIFO_NAME;
@@ -89,7 +89,7 @@ int main(int argc, char **argv) {
 
         {
           const char *fifoName =
-              ini.GetValue("Debug", "serverfifo", ROUTER_FIFO_NAME);
+              ini.GetValue("Debug", "serverfifo", ROUTER_FIFO_NAME.c_str());
           if (fifoName) {
             serverFifo = string(fifoName);
           }
@@ -129,7 +129,7 @@ int main(int argc, char **argv) {
     }
 
     // Set log file for etserver process here.
-    LogHandler::setupLogFile(&defaultConf, "/tmp/etserver-%datetime.log",
+    LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "etserver-%datetime.log",
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
