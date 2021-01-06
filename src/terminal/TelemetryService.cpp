@@ -63,7 +63,7 @@ TelemetryService::TelemetryService(bool _allow, const string& databasePath,
                                    const string& _environment)
     : allowed(_allow),
       environment(_environment),
-      logHttpClient("https://http-intake.logs.datadoghq.com"),
+      logHttpClient("https://browser-http-intake.logs.datadoghq.com"),
       shuttingDown(false) {
   if (allowed) {
     sentry_options_t* options = sentry_options_new();
@@ -150,8 +150,11 @@ TelemetryService::TelemetryService(bool _allow, const string& databasePath,
               // on shutdown
               break;
             }
-            logHttpClient.Post("/v1/input", headers, payload,
-                               "application/json");
+            logHttpClient.Post(
+                "/v1/input/"
+                "pubfe47c2f8dfb3e8c26eb66ba4a456ec79?ddsource=browser&ddtags="
+                "sdk_version:2.1.1",
+                headers, payload, "application/json");
           }
         }
         this_thread::sleep_for(chrono::milliseconds(100));
