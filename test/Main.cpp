@@ -30,6 +30,7 @@ int main(int argc, char **argv) {
 
   int result = Catch::Session().run(argc, argv);
 
+  TelemetryService::get()->shutdown();
   TelemetryService::destroy();
 
   FATAL_FAIL(::remove(logPath.c_str()));

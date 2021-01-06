@@ -1,6 +1,11 @@
 #ifndef __ET_HEADERS__
 #define __ET_HEADERS__
 
+#define CPPHTTPLIB_ZLIB_SUPPORT (1)
+#define CPPHTTPLIB_OPENSSL_SUPPORT (1)
+// httplib has to come before windows.h
+#include "httplib.h"
+
 #if __FreeBSD__
 #define _WITH_GETLINE
 #endif

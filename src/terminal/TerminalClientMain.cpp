@@ -247,7 +247,7 @@ int main(int argc, char** argv) {
     } else {
       id = idpasskeypair.substr(0, slashIndex);
       passkey = idpasskeypair.substr(slashIndex + 1);
-      LOG(INFO) << "ID PASSKEY: " << id << " " << passkey;
+      CLOG(INFO, "stdout") << "ID PASSKEY: " << id << " " << passkey;
     }
     if (passkey.length() != 32) {
       STFATAL << "Invalid/missing passkey: " << passkey << " "
@@ -269,7 +269,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-socket")) {
       sshSocket = result["ssh-socket"].as<string>();
     }
-    TelemetryService::get()->log(SENTRY_LEVEL_INFO, "Session Started");
+    TelemetryService::get()->logToSentry(SENTRY_LEVEL_INFO, "Session Started");
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
@@ -280,12 +280,14 @@ int main(int argc, char** argv) {
   } catch (cxxopts::OptionException& oe) {
     CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
     CLOG(INFO, "stdout") << options.help({}) << endl;
-#ifdef WIN32
-    WSACleanup();
-#endif
     exit(1);
   }
 
+#ifdef WIN32
+  WSACleanup();
+#endif
+
+  TelemetryService::get()->shutdown();
   TelemetryService::destroy();
 
   // Uninstall log rotation callback
