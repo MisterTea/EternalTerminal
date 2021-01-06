@@ -159,7 +159,7 @@ jobs:
                   command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
             - run:
                   name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl-DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
+                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
             - run:
                   name: Run tests
                   command: cd build; ./et-test
