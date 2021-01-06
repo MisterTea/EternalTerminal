@@ -1,4 +1,9 @@
 cmake_minimum_required (VERSION 3.0.2)
+
+IF(WIN32)
+set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING "")
+ENDIF()
+
 project (EternalTCP VERSION 6.0.13)
 
 include(CMakeFindDependencyMacro)
@@ -8,10 +13,12 @@ LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 
 # Required packages
+find_package(OpenSSL REQUIRED)
 FIND_PACKAGE(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
+find_package(ZLIB REQUIRED)
 
 # Optional packages
 find_package(UTempter)
@@ -119,17 +126,17 @@ add_custom_target(
   )
 
 IF(ANDROID)
-  set(CORE_LIBRARIES util)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util)
 ELSEIF(FREEBSD)
-  set(CORE_LIBRARIES util execinfo)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util execinfo)
 ELSEIF(NETBSD)
-  set(CORE_LIBRARIES util resolv execinfo)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv execinfo)
 ELSEIF(WIN32)
-  set(CORE_LIBRARIES Ws2_32 Shlwapi dbghelp)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi dbghelp)
 ELSEIF(APPLE)
-  set(CORE_LIBRARIES util resolv)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
 ELSE()
-  set(CORE_LIBRARIES unwind util resolv)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB unwind util resolv)
 ENDIF()
 
 MACRO(DECORATE_TARGET TARGET_NAME)
@@ -149,6 +156,7 @@ include_directories(
   external/cxxopts/include
   external/msgpack-c/include
   external/sentry-native/include
+  external/cpp-httplib
   src/base
   src/terminal
   src/terminal/forwarding
@@ -160,6 +168,7 @@ include_directories(
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIR}
   )
 
 IF(NOT ANDROID)

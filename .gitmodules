@@ -28,3 +28,6 @@
 [submodule "external/sentry-native"]
 	path = external/sentry-native
 	url = https://github.com/getsentry/sentry-native.git
+[submodule "external/cpp-httplib"]
+	path = external/cpp-httplib
+	url = https://github.com/yhirose/cpp-httplib.git

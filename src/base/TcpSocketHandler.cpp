@@ -137,7 +137,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
     }
   }
   if (sockFd == -1) {
-    STERROR << "ERROR, no host found";
+    LOG(INFO) << "No host found";
   } else {
     initSocket(sockFd);
     addToActiveSockets(sockFd);

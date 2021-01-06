@@ -181,7 +181,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       exit(1);
     }
 
-    TelemetryService::get()->log(SENTRY_LEVEL_INFO, "Connection Established");
+    TelemetryService::get()->logToSentry(SENTRY_LEVEL_INFO,
+                                         "Connection Established");
     break;
   }
   VLOG(1) << "Client created with id: " << connection->getId();

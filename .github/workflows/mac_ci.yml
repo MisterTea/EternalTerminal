@@ -15,7 +15,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install openssl protobuf libsodium
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -24,7 +24,7 @@ jobs:
         run: |
           mkdir build
           pushd build
-          cmake -DSANITIZE_UNDEFINED=ON ../
+          cmake -DSANITIZE_UNDEFINED=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
           ./et-test
           popd
@@ -43,13 +43,13 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install openssl protobuf libsodium
 
       - name: Test with asan
         run: |
           mkdir build
           pushd build
-          cmake -DSANITIZE_ADDRESS=ON ../
+          cmake -DSANITIZE_ADDRESS=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
           ./et-test
           popd
@@ -68,13 +68,13 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install openssl protobuf libsodium
 
       - name: Test with msan
         run: |
           mkdir build
           pushd build
-          cmake -DSANITIZE_MEMORY=ON ../
+          cmake -DSANITIZE_MEMORY=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
           ./et-test
           popd
@@ -93,13 +93,13 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install protobuf libsodium
+          brew install cmake; brew install openssl protobuf libsodium
 
       - name: Test with tsan
         run: |
           mkdir build
           pushd build
-          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
           ./et-test
           popd

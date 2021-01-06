@@ -9,7 +9,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
             - checkout
             - run:
                   name: Set up ssh & known_hosts
@@ -45,7 +45,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
             - checkout
             - run:
                   name: Set up ssh & known_hosts
@@ -72,7 +72,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
             - checkout
             - run:
                   name: Init submodules
@@ -92,7 +92,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
             - checkout
             - run:
                   name: Init submodules
@@ -112,7 +112,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
             - checkout
             - run:
                   name: Init submodules
@@ -132,7 +132,7 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: apt-get update; apt-get install -y libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+                  command: apt-get update; apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
             - checkout
             - run:
                   name: Init submodules
@@ -152,14 +152,14 @@ jobs:
                   command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
             - run:
                   name: Install system dependencies
-                  command: brew remove python@2; brew upgrade python; brew install cmake; brew install protobuf libsodium gflags
+                  command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags
             - checkout
             - run:
                   name: Init submodules
                   command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
             - run:
                   name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
+                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
             - run:
                   name: Run tests
                   command: cd build; ./et-test

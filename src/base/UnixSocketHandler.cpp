@@ -50,7 +50,8 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
 #endif
   auto localErrno = errno;
   if (readBytes < 0 && localErrno != EAGAIN && localErrno != EWOULDBLOCK) {
-    STERROR << "Error reading: " << localErrno << " " << strerror(localErrno);
+    LOG(WARNING) << "Error reading: " << localErrno << " "
+                 << strerror(localErrno);
   }
   errno = localErrno;
   return readBytes;
