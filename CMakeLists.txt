@@ -168,6 +168,7 @@ include_directories(
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
+  ${OPENSSL_INCLUDE_DIR}
   )
 
 IF(NOT ANDROID)
