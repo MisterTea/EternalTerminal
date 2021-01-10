@@ -4,6 +4,7 @@ After=syslog.target network.target
 
 [Service]
 Type=simple
+Restart=on-failure
 ExecStart=/usr/bin/etserver --cfgfile=/etc/et.cfg
 
 [Install]
