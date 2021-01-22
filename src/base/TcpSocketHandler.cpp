@@ -88,7 +88,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
           LOG(INFO) << "Connected to server: " << p->ai_canonname
                     << " using fd " << sockFd;
         } else {
-          STERROR << "Connected to server but canonname is null somehow";
+          LOG(INFO) << "Connected to server but canonname is null somehow";
         }
         // Make sure that socket becomes blocking once it's attached to a
         // server.
@@ -196,9 +196,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
       // This most often happens because the port is in use.
       auto localErrno = errno;
-      STERROR << "Error binding " << p->ai_family << "/" << p->ai_socktype
-              << "/" << p->ai_protocol << ": " << localErrno << " "
-              << strerror(localErrno);
+      LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
+                 << "/" << p->ai_protocol << ": " << localErrno << " "
+                 << strerror(localErrno);
       CLOG(INFO, "stdout") << "Error binding " << p->ai_family << "/"
                            << p->ai_socktype << "/" << p->ai_protocol << ": "
                            << localErrno << " " << strerror(localErrno) << endl;
