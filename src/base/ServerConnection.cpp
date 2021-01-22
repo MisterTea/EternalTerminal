@@ -26,6 +26,7 @@ bool ServerConnection::acceptNewConnection(int fd) {
 }
 
 void ServerConnection::shutdown() {
+  lock_guard<std::recursive_mutex> guard(classMutex);
   socketHandler->stopListening(serverEndpoint);
   clientHandlerThreadPool.reset();
   for (const auto& it : clientConnections) {
