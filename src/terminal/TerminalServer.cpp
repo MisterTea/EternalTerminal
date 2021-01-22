@@ -1,6 +1,8 @@
 #ifndef WIN32
 #include "TerminalServer.hpp"
 
+#include "TelemetryService.hpp"
+
 #define BUF_SIZE (16 * 1024)
 
 namespace et {
@@ -32,6 +34,8 @@ void TerminalServer::run() {
   FD_SET(terminalRouter->getServerFd(), &coreFds);
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
+
+  TelemetryService::get()->logToSentry(SENTRY_LEVEL_INFO, "Server started");
 
   while (true) {
     {
