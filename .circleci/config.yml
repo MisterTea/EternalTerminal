@@ -2,7 +2,7 @@ version: 2
 jobs:
     connect_to_initial_version:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
@@ -38,7 +38,7 @@ jobs:
 
     connect_with_jumphost:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
@@ -65,7 +65,7 @@ jobs:
 
     linux_msan:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
@@ -85,7 +85,7 @@ jobs:
                   command: cd build; ./et-test
     linux_asan:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
@@ -105,7 +105,7 @@ jobs:
                   command: cd build; ./et-test
     linux_tsan:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
@@ -125,7 +125,7 @@ jobs:
                   command: cd build; ./et-test
     linux_ubsan:
         docker:
-            - image: ubuntu:bionic
+            - image: ubuntu:focal
         steps:
             - run:
                   name: Avoid hosts unknown for github
