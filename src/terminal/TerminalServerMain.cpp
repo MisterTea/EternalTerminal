@@ -1,3 +1,4 @@
+#include "TelemetryService.hpp"
 #include "TerminalServer.hpp"
 
 using namespace et;
@@ -34,6 +35,9 @@ int main(int argc, char **argv) {
         ("serverfifo",
          "If set, listens on the matching fifo name",                     //
          cxxopts::value<std::string>()->default_value(ROUTER_FIFO_NAME))  //
+        ("telemetry",
+         "Allow et to anonymously send errors to guide future improvements",
+         cxxopts::value<bool>())  //
         ;
 
     auto result = options.parse(argc, argv);
@@ -67,6 +71,7 @@ int main(int argc, char **argv) {
     string maxlogsize = "20971520";
 
     int port = 0;
+    bool telemetry = true;
     if (result.count("cfgfile")) {
       // Load the config file
       CSimpleIniA ini(true, true, true);
@@ -79,6 +84,8 @@ int main(int argc, char **argv) {
             port = stoi(portString);
           }
         }
+
+        telemetry = bool(stoi(ini.GetValue("Debug", "Telemetry", "1")));
         // read verbose level (prioritize command line option over cfgfile)
         const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
         if (result.count("verbose")) {
@@ -121,6 +128,10 @@ int main(int argc, char **argv) {
       port = result["port"].as<int>();
     }
 
+    if (result.count("telemetry")) {
+      telemetry = result["telemetry"].as<bool>();
+    }
+
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
@@ -129,7 +140,8 @@ int main(int argc, char **argv) {
     }
 
     // Set log file for etserver process here.
-    LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "etserver-%datetime.log",
+    LogHandler::setupLogFile(&defaultConf,
+                             GetTempDirectory() + "etserver-%datetime.log",
                              maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
@@ -137,6 +149,9 @@ int main(int argc, char **argv) {
     el::Helpers::setThreadName("etserver-main");
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
+
+    TelemetryService::create(
+        telemetry, GetTempDirectory() + "/.sentry-native-etserver", "Server");
 
     std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
     std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
