@@ -1,8 +1,7 @@
-#include "TestHeaders.hpp"
-
 #include "FakeConsole.hpp"
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
+#include "TestHeaders.hpp"
 
 namespace et {
 TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
@@ -69,8 +68,6 @@ TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
   thread t2([fakeUserTerminal, s]() {
     fakeUserTerminal->simulateTerminalResponse(s);
   });
-  usleep(1000);
-  REQUIRE(socketHandler->hasData(fakeUserTerminal->getFd()));
 
   string s3(64 * 1024, '\0');
   socketHandler->readAll(fakeUserTerminal->getFd(), &s3[0], s3.length(), false);
@@ -102,8 +99,7 @@ void readWriteTest(const string& clientId,
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
       CRYPTO_KEY, fakeConsole, false, "", "", false, ""));
-  thread terminalClientThread(
-      [terminalClient]() { terminalClient->run(""); });
+  thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
   sleep(3);
 
   string s(1024, '\0');
@@ -184,8 +180,8 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   sleep(1);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
-                serverEndpoint, clientSocketHandler, clientPipeSocketHandler, fakeConsole,
-                routerEndpoint);
+                serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
+                fakeConsole, routerEndpoint);
   server->shutdown();
   t_server.join();
 
