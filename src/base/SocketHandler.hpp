@@ -41,6 +41,7 @@ class SocketHandler {
 
   template <typename T>
   inline void writeProto(int fd, const T& t, bool timeout) {
+    lock_guard<std::mutex> guard(writeMutex);
     string s;
     if (!t.SerializeToString(&s)) {
       STFATAL << "Serialization of " << t.GetTypeName() << " failed!";
@@ -119,6 +120,10 @@ class SocketHandler {
   virtual void stopListening(const SocketEndpoint& endpoint) = 0;
   virtual void close(int fd) = 0;
   virtual vector<int> getActiveSockets() = 0;
+
+ protected:
+  // This mutex only exists to remove a tsan error in integration tests
+  mutex writeMutex;
 };
 }  // namespace et
 

@@ -247,7 +247,6 @@ int main(int argc, char** argv) {
     } else {
       id = idpasskeypair.substr(0, slashIndex);
       passkey = idpasskeypair.substr(slashIndex + 1);
-      CLOG(INFO, "stdout") << "ID PASSKEY: " << id << " " << passkey;
     }
     if (passkey.length() != 32) {
       STFATAL << "Invalid/missing passkey: " << passkey << " "

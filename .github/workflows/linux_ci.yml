@@ -6,7 +6,7 @@ on:
 
 jobs:
   ubsan_linux:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
       - uses: actions/checkout@v2
@@ -16,8 +16,8 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          ACCEPT_EULA=Y sudo apt-get -y upgrade
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -33,7 +33,7 @@ jobs:
           rm -Rf build
 
   asan_linux:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
       - uses: actions/checkout@v2
@@ -43,8 +43,8 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          ACCEPT_EULA=Y sudo apt-get -y upgrade
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -60,7 +60,7 @@ jobs:
           rm -Rf build
 
   msan_linux:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
       - uses: actions/checkout@v2
@@ -70,8 +70,8 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          ACCEPT_EULA=Y sudo apt-get -y upgrade
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -87,7 +87,7 @@ jobs:
           rm -Rf build
 
   tsan_linux:
-    runs-on: ubuntu-18.04
+    runs-on: ubuntu-20.04
 
     steps:
       - uses: actions/checkout@v2
@@ -97,8 +97,8 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          ACCEPT_EULA=Y sudo apt-get -y upgrade
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get -y upgrade
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
