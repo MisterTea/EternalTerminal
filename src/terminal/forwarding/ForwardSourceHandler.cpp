@@ -109,7 +109,7 @@ void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
 void ForwardSourceHandler::closeSocket(int socketId) {
   auto it = socketFdMap.find(socketId);
   if (it == socketFdMap.end()) {
-    STERROR << "Tried to remove a socket that no longer exists!";
+    LOG(WARNING) << "Tried to remove a socket that no longer exists!";
   } else {
     socketHandler->close(it->second);
     socketFdMap.erase(it);

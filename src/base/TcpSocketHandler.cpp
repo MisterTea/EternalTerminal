@@ -196,9 +196,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
       // This most often happens because the port is in use.
       auto localErrno = errno;
-      LOG(ERROR) << "Error binding " << p->ai_family << "/" << p->ai_socktype
-                 << "/" << p->ai_protocol << ": " << localErrno << " "
-                 << strerror(localErrno);
+      LOG(WARNING) << "Error binding " << p->ai_family << "/" << p->ai_socktype
+                   << "/" << p->ai_protocol << ": " << localErrno << " "
+                   << strerror(localErrno);
       CLOG(INFO, "stdout") << "Error binding " << p->ai_family << "/"
                            << p->ai_socktype << "/" << p->ai_protocol << ": "
                            << localErrno << " " << strerror(localErrno) << endl;
