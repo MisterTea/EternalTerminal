@@ -19,6 +19,7 @@ class SocketHandler {
 
   template <typename T>
   inline T readProto(int fd, bool timeout) {
+    lock_guard<std::mutex> guard(makeTsanHappyMutex);
     T t;
     int64_t length;
     readAll(fd, &length, sizeof(int64_t), timeout);
@@ -41,7 +42,7 @@ class SocketHandler {
 
   template <typename T>
   inline void writeProto(int fd, const T& t, bool timeout) {
-    lock_guard<std::mutex> guard(writeMutex);
+    lock_guard<std::mutex> guard(makeTsanHappyMutex);
     string s;
     if (!t.SerializeToString(&s)) {
       STFATAL << "Serialization of " << t.GetTypeName() << " failed!";
@@ -123,7 +124,7 @@ class SocketHandler {
 
  protected:
   // This mutex only exists to remove a tsan error in integration tests
-  mutex writeMutex;
+  mutex makeTsanHappyMutex;
 };
 }  // namespace et
 
