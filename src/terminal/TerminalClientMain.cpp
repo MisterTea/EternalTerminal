@@ -74,6 +74,8 @@ int main(int argc, char** argv) {
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",  //
          cxxopts::value<std::string>()->default_value(""))             //
+        ("ssh-option", "Options to pass down to `ssh -o`",
+         cxxopts::value<std::vector<std::string>>())
         ;
 
     options.parse_positional({"host", "positional"});
@@ -232,11 +234,16 @@ int main(int argc, char** argv) {
     if (result["serverfifo"].as<string>() != "") {
       serverFifo = result["serverfifo"].as<string>();
     }
+    std::vector<string> ssh_options;
+    if (result.count("ssh-option")) {
+      ssh_options = result["ssh-option"].as<std::vector<string>>();
+    }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
         result.count("x") > 0, result["verbose"].as<int>(),
         result.count("prefix") ? result["prefix"].as<string>() : "",
-        serverFifo);
+        serverFifo,
+        ssh_options);
 
     string id = "", passkey = "";
     // Trim whitespace

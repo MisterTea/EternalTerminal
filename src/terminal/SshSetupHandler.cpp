@@ -24,7 +24,8 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
                                  const string& host_alias, int port,
                                  const string& jumphost, int jport, bool kill,
                                  int vlevel, const string& cmd_prefix,
-                                 const string& serverFifo) {
+                                 const string& serverFifo,
+                                 const std::vector<std::string>& ssh_options) {
   string clientTerm("xterm-256color");
   auto envString = getenv("TERM");
   if (envString != NULL) {
@@ -50,17 +51,24 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     SSH_USER_PREFIX += user + "@";
   }
 
-  string sshBuffer;
-  if (jumphost.empty()) {
-    sshBuffer = SubprocessToStringInteractive(
-        "ssh",
-        {(SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str()});
-  } else {
-    sshBuffer = SubprocessToStringInteractive(
-        "ssh",
-        {"-J", (SSH_USER_PREFIX + jumphost).c_str(),
-         (SSH_USER_PREFIX + host_alias).c_str(), (SSH_SCRIPT_DST).c_str()});
+  std::vector<std::string> ssh_args ;
+  if (!jumphost.empty()) {
+    ssh_args = {
+      "-J",
+      SSH_USER_PREFIX + jumphost,
+    };
   }
+
+  ssh_args.push_back(SSH_USER_PREFIX + host_alias);
+
+  for (auto& arg : ssh_options) {
+    ssh_args.push_back("-o" + arg);
+  }
+
+  ssh_args.push_back(SSH_SCRIPT_DST);
+
+  auto sshBuffer = SubprocessToStringInteractive("ssh", ssh_args);
+
   try {
     if (sshBuffer.length() <= 0) {
       // Ssh failed
