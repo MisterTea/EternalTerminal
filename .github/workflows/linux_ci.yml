@@ -112,3 +112,34 @@ jobs:
           ./et-test
           popd
           rm -Rf build
+
+  codecov:
+    runs-on: ubuntu-20.04
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y upgrade
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
+
+      - name: Test with code coverage
+        run: |
+          mkdir build
+          pushd build
+          cmake -DCODE_COVERAGE=ON ../
+          make -j`nproc`
+          ./et-test
+          lcov --capture --directory . --output-file coverage.info
+          lcov --remove coverage.info '/usr/*' --output-file coverage.info # filter system-files
+          lcov --list coverage.info # debug info
+          # Uploading report to CodeCov
+          bash <(curl -s https://codecov.io/bash) -f coverage.info || echo "Codecov did not collect coverage reports"
+          popd
