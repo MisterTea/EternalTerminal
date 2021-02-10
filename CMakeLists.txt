@@ -40,11 +40,11 @@ option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 # For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DSENTRY_BUILD_STATIC")
-IF(CODE_COVERAGE)
-  if(UNIX)
-    SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fprofile-arcs -ftest-coverage")
-  endif()
-ENDIF(CODE_COVERAGE)
+
+if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage")
+SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage")
+endif(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 
 if(DISABLE_CRASH_LOG)
 SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
