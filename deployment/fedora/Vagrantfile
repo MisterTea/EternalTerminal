@@ -109,7 +109,7 @@ Vagrant.configure("2") do |config|
     pushd EternalTerminal/build
     cmake ..
     make -j`nproc`
-    ./et-test
+    TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
     popd
   SHELL
   end

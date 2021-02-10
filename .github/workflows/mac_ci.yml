@@ -26,7 +26,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -51,7 +51,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -76,7 +76,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -101,6 +101,6 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build

@@ -1,179 +1,179 @@
 version: 2
 jobs:
-    connect_to_initial_version:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
-            - checkout
-            - run:
-                  name: Set up ssh & known_hosts
-                  command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the root version of the project
-                  command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
-            - run:
-                  name: Build the project
-                  command: mkdir build; cd build; cmake ../; make -j4
-            - run:
-                  name: Connect new -> old
-                  command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --verbose=9
-            - run:
-                  name: Kill server
-                  command: pkill etserver
-            - run:
-                  name: Connect old -> new
-                  command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
-            - run:
-                  name: Kill server
-                  command: pkill etserver
+  connect_to_initial_version:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+      - checkout
+      - run:
+          name: Set up ssh & known_hosts
+          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the root version of the project
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
+      - run:
+          name: Build the project
+          command: mkdir build; cd build; cmake ../; make -j4
+      - run:
+          name: Connect new -> old
+          command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --verbose=9
+      - run:
+          name: Kill server
+          command: pkill etserver
+      - run:
+          name: Connect old -> new
+          command: export TERM=xterm-256color; build/etserver --daemon; cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
+      - run:
+          name: Kill server
+          command: pkill etserver
 
-    connect_with_jumphost:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
-            - checkout
-            - run:
-                  name: Set up ssh & known_hosts
-                  command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the project
-                  command: mkdir build; cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
-            - run:
-                  name: Start Servers
-                  command: build/etserver --daemon; build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
-            - run:
-                  name: Kill servers
-                  command: pkill etserver
+  connect_with_jumphost:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+      - checkout
+      - run:
+          name: Set up ssh & known_hosts
+          command: /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the project
+          command: mkdir build; cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
+      - run:
+          name: Start Servers
+          command: build/etserver --daemon; build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
+      - run:
+          name: Kill servers
+          command: pkill etserver
 
-    linux_msan:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-            - checkout
-            - run:
-                  name: Init submodules
-                  command: git submodule update --init --recursive
-            - run:
-                  name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
-            - run:
-                  name: Run tests
-                  command: cd build; ./et-test
-    linux_asan:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-            - checkout
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
-            - run:
-                  name: Run tests
-                  command: cd build; ./et-test
-    linux_tsan:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-            - checkout
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
-            - run:
-                  name: Run tests
-                  command: cd build; ./et-test
-    linux_ubsan:
-        docker:
-            - image: ubuntu:focal
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-            - checkout
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
-            - run:
-                  name: Run tests
-                  command: cd build; ./et-test
-    mac_tsan:
-        macos:
-            xcode: "10.2.1"
-        steps:
-            - run:
-                  name: Avoid hosts unknown for github
-                  command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-            - run:
-                  name: Install system dependencies
-                  command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags
-            - checkout
-            - run:
-                  name: Init submodules
-                  command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-            - run:
-                  name: Build the project with test
-                  command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
-            - run:
-                  name: Run tests
-                  command: cd build; ./et-test
+  linux_msan:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - checkout
+      - run:
+          name: Init submodules
+          command: git submodule update --init --recursive
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
+      - run:
+          name: Run tests
+          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+  linux_asan:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - checkout
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
+      - run:
+          name: Run tests
+          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+  linux_tsan:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - checkout
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
+      - run:
+          name: Run tests
+          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+  linux_ubsan:
+    docker:
+      - image: ubuntu:focal
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+      - checkout
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
+      - run:
+          name: Run tests
+          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+  mac_tsan:
+    macos:
+      xcode: "10.2.1"
+    steps:
+      - run:
+          name: Avoid hosts unknown for github
+          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+      - run:
+          name: Install system dependencies
+          command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags
+      - checkout
+      - run:
+          name: Init submodules
+          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: Build the project with test
+          command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
+      - run:
+          name: Run tests
+          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
 workflows:
-    version: 2
-    build_and_test:
-        jobs:
-            - linux_asan
-            - linux_tsan
-            - linux_ubsan
-            - mac_tsan
-            - connect_with_jumphost
-            - connect_to_initial_version:
-                  filters:
-                      branches:
-                          ignore:
-                              - release
+  version: 2
+  build_and_test:
+    jobs:
+      - linux_asan
+      - linux_tsan
+      - linux_ubsan
+      - mac_tsan
+      - connect_with_jumphost
+      - connect_to_initial_version:
+          filters:
+            branches:
+              ignore:
+                - release

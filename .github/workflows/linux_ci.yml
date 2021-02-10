@@ -28,7 +28,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -55,7 +55,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -82,7 +82,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
 
@@ -109,6 +109,6 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
-          ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
           rm -Rf build
