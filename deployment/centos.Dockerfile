@@ -24,4 +24,4 @@ RUN mkdir -p EternalTerminal/build
 WORKDIR /root/EternalTerminal/build
 RUN cmake -DFULL_PROTOBUF=ON ..
 RUN make -j`nproc`
-RUN ./et-test
+RUN TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
