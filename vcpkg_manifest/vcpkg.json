@@ -1,0 +1,10 @@
+{
+    "name": "EternalTerminal",
+    "version-string": "6.0.13",
+    "dependencies": [
+        "zlib",
+        "openssl",
+        "protobuf",
+        "libsodium"
+    ]
+  }
