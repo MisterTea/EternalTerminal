@@ -6,6 +6,7 @@ on:
 
 jobs: 
   build:
+    runs-on: windows-latest
     env:
       buildDir: '${{ github.workspace }}/build/'
     steps:
