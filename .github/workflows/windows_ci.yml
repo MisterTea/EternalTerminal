@@ -44,4 +44,4 @@ jobs:
           # This input tells run-cmake to consume the vcpkg.cmake toolchain file set by run-vcpkg.
           useVcpkgToolchainFile: true
           buildWithCMake: true
-          cmakeAppendedArgs: '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake'
+          cmakeAppendedArgs: '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md'
