@@ -9,9 +9,14 @@ jobs:
     runs-on: windows-latest
     env:
       buildDir: '${{ github.workspace }}/build/'
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       #-uses: actions/cache@v1   <===== YOU DO NOT NEED THIS!
-      
+
+      - uses: actions/checkout@v2
+        with:
+          submodules: true
+
       # Install latest CMake.
       - uses: lukka/get-cmake@latest
 
@@ -39,4 +44,4 @@ jobs:
           # This input tells run-cmake to consume the vcpkg.cmake toolchain file set by run-vcpkg.
           useVcpkgToolchainFile: true
           buildWithCMake: true
-          cmakeAppendedArgs: '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md'
+          cmakeAppendedArgs: '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake'
