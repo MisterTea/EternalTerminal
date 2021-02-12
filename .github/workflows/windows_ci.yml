@@ -1,0 +1,41 @@
+name: Windows CI
+
+on:
+  push:
+  pull_request:
+
+jobs: 
+  build:
+    env:
+      buildDir: '${{ github.workspace }}/build/'
+    steps:
+      #-uses: actions/cache@v1   <===== YOU DO NOT NEED THIS!
+      
+      # Install latest CMake.
+      - uses: lukka/get-cmake@latest
+
+      # Restore from cache the previously built ports. If a "cache miss" occurs, then vcpkg is bootstrapped. Since a the vcpkg.json is being used later on to install the packages when run-cmake runs, no packages are installed at this time and the input 'setupOnly:true' is mandatory.
+      - name: Restore artifacts, or setup vcpkg (do not install any package)
+        uses: lukka/run-vcpkg@v6
+        with:
+          # Just install vcpkg for now, do not install any ports in this step yet.
+          setupOnly: true
+          # Location of the vcpkg submodule in the Git repository.
+          vcpkgDirectory: '${{ github.workspace }}/external/vcpkg'
+          # Since the cache must be invalidated when content of the vcpkg.json file changes, let's
+          # compute its hash and append this to the computed cache's key.
+          appendedCacheKey: ${{ hashFiles( '**/vcpkg_manifest/vcpkg.json' ) }}
+          vcpkgTriplet: x64-windows-static-md
+          # Ensure the vcpkg artifacts are cached, they are generated in the 'CMAKE_BINARY_DIR/vcpkg_installed' directory.
+          additionalCachedPaths: ${{ env.buildDir }}/vcpkg_installed
+
+      - name: Run CMake to install the dependencies specified in the vcpkg.json manifest, generate project file and build the project
+        uses: lukka/run-cmake@v3
+        with:
+          cmakeListsOrSettingsJson: CMakeListsTxtAdvanced
+          cmakeListsTxtPath: '${{ github.workspace }}/CMakeLists.txt'
+          buildDirectory: ${{ env.buildDir }}
+          # This input tells run-cmake to consume the vcpkg.cmake toolchain file set by run-vcpkg.
+          useVcpkgToolchainFile: true
+          buildWithCMake: true
+          cmakeAppendedArgs: '-DVCPKG_TARGET_TRIPLET=x64-windows-static-md'
