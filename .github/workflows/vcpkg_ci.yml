@@ -1,10 +1,9 @@
 name: vcpkg CI
-
 on:
   push:
   pull_request:
 
-jobs: 
+jobs:
   build_vcpkg:
     name: ${{ matrix.os }}-hosted-pure
     runs-on: ${{ matrix.os }}
@@ -14,25 +13,24 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: windows-latest
-            triplet: x64-windows-static-md
+            triplet: x64-windows
           - os: ubuntu-latest
             triplet: x64-linux
           - os: macos-latest
             triplet: x64-osx
     env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build/
-      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg/
+
     steps:
       - uses: actions/checkout@v2
         with:
           submodules: true
 
       # Setup the build agen machine with the most recent versions of CMake and Ninja. Both are cached if not already: on subsequent runs both will be quickly restored from GitHub cache service.
-      - uses: lukka/get-cmake@v3.19.2
-
-      # Last command doesn't set up ninja for some reason so we do it again
-      - uses: seanmiddleditch/gha-setup-ninja@master
-
+      - uses: lukka/get-cmake@latest
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
         uses: actions/cache@v2
@@ -46,17 +44,13 @@ jobs:
           # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
           key: |
             ${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.triplet }}
-
       # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
       - uses: ilammy/msvc-dev-cmd@v1
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files
         run: |
-          cmake -B "${{ env.CMAKE_BUILD_DIR }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
-      - name: Show content of workspace at its completion
-        run: find $RUNNER_WORKSPACE
-        shell: bash
