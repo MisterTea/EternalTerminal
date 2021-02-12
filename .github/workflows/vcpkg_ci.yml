@@ -31,7 +31,7 @@ jobs:
       - uses: lukka/get-cmake@v3.19.2
 
       # Last command doesn't set up ninja for some reason so we do it again
-      # - uses: seanmiddleditch/gha-setup-ninja@master
+      - uses: seanmiddleditch/gha-setup-ninja@master
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
