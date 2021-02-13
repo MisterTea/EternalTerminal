@@ -1,9 +1,5 @@
 cmake_minimum_required (VERSION 3.0.2)
 
-IF(WIN32)
-set(VCPKG_TARGET_TRIPLET "x64-windows-static-md" CACHE STRING "")
-ENDIF()
-
 project (EternalTCP VERSION 6.0.13)
 
 include(CMakeFindDependencyMacro)

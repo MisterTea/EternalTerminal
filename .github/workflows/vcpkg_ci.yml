@@ -13,7 +13,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: windows-latest
-            triplet: x64-windows
+            triplet: x64-windows-static-md
           - os: ubuntu-latest
             triplet: x64-linux
           - os: macos-latest
@@ -36,8 +36,8 @@ jobs:
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake"
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -DProtobuf_PROTOC_EXECUTABLE=${{ env.VCPKG_ROOT }}/installed/${{ matrix.triplet }}/tools/protobuf/protoc"
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
-          pushd "${{ env.CMAKE_BUILD_DIR }}" && ninja
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
