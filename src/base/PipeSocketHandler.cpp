@@ -27,7 +27,11 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 #else
     ::shutdown(sockFd, SHUT_RDWR);
 #endif
-    ::close(sockFd);
+#ifdef _MSC_VER
+    FATAL_FAIL(::closesocket(sockFd));
+#else
+    FATAL_FAIL(::close(sockFd));
+#endif
     sockFd = -1;
     errno = localErrno;
     return sockFd;
@@ -60,14 +64,22 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
     } else {
       LOG(INFO) << "Error connecting to " << endpoint << ": " << so_error << " "
                 << strerror(so_error);
-      ::close(sockFd);
+#ifdef _MSC_VER
+      FATAL_FAIL(::closesocket(sockFd));
+#else
+      FATAL_FAIL(::close(sockFd));
+#endif
       sockFd = -1;
     }
   } else {
     auto localErrno = errno;
     LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno << " "
               << strerror(localErrno);
-    ::close(sockFd);
+#ifdef _MSC_VER
+    FATAL_FAIL(::closesocket(sockFd));
+#else
+    FATAL_FAIL(::close(sockFd));
+#endif
     sockFd = -1;
   }
 
@@ -126,6 +138,10 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
             << pipePath;
   }
   int sockFd = *(it->second.begin());
-  ::close(sockFd);
+#ifdef _MSC_VER
+  FATAL_FAIL(::closesocket(sockFd));
+#else
+  FATAL_FAIL(::close(sockFd));
+#endif
 }
 }  // namespace et
