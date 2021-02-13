@@ -15,12 +15,12 @@ jobs:
           - os: windows-latest
             triplet: x64-windows-static-md
             extension: .exe
-          - os: ubuntu-latest
-            triplet: x64-linux
-            extension:
-          - os: macos-latest
-            triplet: x64-osx
-            extension:
+          #- os: ubuntu-latest
+          #  triplet: x64-linux
+          #  extension:
+          #- os: macos-latest
+          #  triplet: x64-osx
+          #  extension:
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
