@@ -39,7 +39,7 @@ jobs:
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake -DProtobuf_PROTOC_EXECUTABLE=${{ env.VCPKG_ROOT }}/packages/protobuf_${{ matrix.triplet }}/tools/protobuf/protoc${{matrix.extension}}"
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" -DProtobuf_PROTOC_EXECUTABLE="${{ env.VCPKG_ROOT }}/packages/protobuf_${{ matrix.triplet }}/tools/protobuf/protoc${{matrix.extension}}"
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
