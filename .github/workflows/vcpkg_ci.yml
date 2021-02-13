@@ -40,4 +40,4 @@ jobs:
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
-          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+          pushd "${{ env.CMAKE_BUILD_DIR }}" && ninja
