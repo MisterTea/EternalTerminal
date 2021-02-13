@@ -5,6 +5,7 @@
         "zlib",
         "openssl",
         "protobuf",
-        "libsodium"
+        "libsodium",
+        "curl"
     ]
   }
