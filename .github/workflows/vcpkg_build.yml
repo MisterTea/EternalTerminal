@@ -1,4 +1,4 @@
-name: vcpkg CI
+name: Vcpkg Build
 on:
   push:
   pull_request:
@@ -69,3 +69,8 @@ jobs:
       - name: Build
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: my-artifact
+          path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

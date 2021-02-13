@@ -18,7 +18,7 @@
 #include <sys/socket.h>
 #elif __NetBSD__  // do not need pty.h on NetBSD
 #include <util.h>
-#elif WIN32
+#elif defined(_MSC_VER)
 #include <WinSock2.h>
 #include <Ws2tcpip.h>
 #include <afunix.h>
@@ -100,7 +100,7 @@ inline int close(int fd) { return ::closesocket(fd); }
 
 #include "sentry.h"
 
-#if WIN32
+#if defined(_MSC_VER)
 #define popen _popen
 #define pclose _pclose
 
@@ -109,7 +109,7 @@ inline int close(int fd) { return ::closesocket(fd); }
 #if defined(_WIN64)
 typedef signed __int64 ssize_t;
 #else
-typedef signed long ssize_t;
+typedef int ssize_t;
 #endif
 #endif /* !ssize_t */
 
