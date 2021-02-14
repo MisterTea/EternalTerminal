@@ -164,7 +164,11 @@ void UnixSocketHandler::close(int fd) {
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
   VLOG(1) << "Closing connection: " << fd;
+#ifdef _MSC_VER
+  FATAL_FAIL(::closesocket(fd));
+#else
   FATAL_FAIL(::close(fd));
+#endif
   activeSocketMutexes.erase(it);
 }
 

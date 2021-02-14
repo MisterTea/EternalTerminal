@@ -1,0 +1,91 @@
+name: Vcpkg Build
+on:
+  push:
+  pull_request:
+
+jobs:
+  build_vcpkg:
+    name: build-vcpkg-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, macos-latest, windows-latest]
+        include:
+          - os: windows-latest
+            triplet: x64-windows-static-md
+            extension: .exe
+            zlib: zlib.lib
+            zlib_debug: zlibd.lib
+          - os: ubuntu-latest
+            triplet: x64-linux
+            extension:
+            zlib: libz.a
+            zlib_debug: libz.a
+          - os: macos-latest
+            triplet: x64-osx
+            extension:
+            zlib: libz.a
+            zlib_debug: libz.a
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+
+    steps:
+      - name: Install Dependencies (Linux)
+        run: sudo apt-get update && sudo apt-get install ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
+        if: matrix.os == 'ubuntu-latest'
+      - name: Install Dependencies (Windows)
+        run: choco install ninja
+        if: matrix.os == 'windows-latest'
+      - name: Install Dependencies (macOS)
+        run: brew install ninja
+        if: matrix.os == 'macos-latest'
+
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      # Setup the build machine with the most recent versions of CMake and Ninja. Both are cached if not already: on subsequent runs both will be quickly restored from GitHub cache service.
+      - uses: lukka/get-cmake@latest
+
+      # Restore both vcpkg and its artifacts from the GitHub cache service.
+      - name: Restore vcpkg and its artifacts.
+        uses: actions/cache@v2
+        with:
+          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
+          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
+          # The other paths starting with '!' are exclusions: they contain termporary files generated during the build of the installed packages.
+          path: |
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
+            ${{ env.VCPKG_ROOT }}
+            !${{ env.VCPKG_ROOT }}/buildtrees
+            !${{ env.VCPKG_ROOT }}/packages
+            !${{ env.VCPKG_ROOT }}/downloads
+          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
+          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
+          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
+          key: |
+            ${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.triplet }}-invalidate
+
+      - name: Show content of workspace after cache has been restored
+        run: find $RUNNER_WORKSPACE
+        shell: bash
+
+      # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
+      - uses: ilammy/msvc-dev-cmd@v1
+      # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
+      - name: Install dependencies and generate project files
+        run: |
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" -DProtobuf_PROTOC_EXECUTABLE="${{ env.VCPKG_ROOT }}/packages/protobuf_${{ matrix.triplet }}/tools/protobuf/protoc${{matrix.extension}}" -DZLIB_LIBRARY_RELEASE="${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/${{ matrix.triplet }}/lib/${{ matrix.zlib }}" -DZLIB_LIBRARY_DEBUG="${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/${{ matrix.triplet }}/debug/lib/${{matrix.zlib_debug}}"
+      # Build the whole project with Ninja (which is spawn by CMake).
+      - name: Build
+        run: |
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+
+      - uses: actions/upload-artifact@v2
+        with:
+          name: et-client-${{matrix.os}}
+          path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

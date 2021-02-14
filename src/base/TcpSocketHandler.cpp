@@ -62,7 +62,11 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         LOG(INFO) << "Error connecting: " << localErrno << " "
                   << strerror(localErrno);
       }
-      ::close(sockFd);
+#ifdef _MSC_VER
+      FATAL_FAIL(::closesocket(sockFd));
+#else
+      FATAL_FAIL(::close(sockFd));
+#endif
       sockFd = -1;
       continue;
     }
@@ -118,7 +122,11 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
           LOG(INFO) << "Error connecting to " << endpoint << ": " << so_error
                     << " " << strerror(so_error);
         }
-        ::close(sockFd);
+#ifdef _MSC_VER
+        FATAL_FAIL(::closesocket(sockFd));
+#else
+        FATAL_FAIL(::close(sockFd));
+#endif
         sockFd = -1;
         continue;
       }
@@ -131,7 +139,11 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno
                   << " " << strerror(localErrno);
       }
-      ::close(sockFd);
+#ifdef _MSC_VER
+      FATAL_FAIL(::closesocket(sockFd));
+#else
+      FATAL_FAIL(::close(sockFd));
+#endif
       sockFd = -1;
       continue;
     }
@@ -206,7 +218,11 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
       oss << "Error binding port " << port << ": " << localErrno << " "
           << strerror(localErrno);
       string s = oss.str();
-      close(sockFd);
+#ifdef _MSC_VER
+      FATAL_FAIL(::closesocket(sockFd));
+#else
+      FATAL_FAIL(::close(sockFd));
+#endif
       throw std::runtime_error(s.c_str());
     }
 
@@ -250,7 +266,11 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   }
   auto &serverSockets = it->second;
   for (int sockFd : serverSockets) {
-    ::close(sockFd);
+#ifdef _MSC_VER
+    FATAL_FAIL(::closesocket(sockFd));
+#else
+    FATAL_FAIL(::close(sockFd));
+#endif
   }
   portServerSockets.erase(it);
 }
