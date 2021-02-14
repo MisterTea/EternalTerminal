@@ -35,7 +35,7 @@ jobs:
 
     steps:
       - name: Install Dependencies (Linux)
-        run: sudo apt-get update && sudo apt-get install ninja-build libutempter-dev libunwind-dev
+        run: sudo apt-get update && sudo apt-get install ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
         run: choco install ninja

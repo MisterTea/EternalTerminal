@@ -6,6 +6,9 @@
         "openssl",
         "protobuf",
         "libsodium",
-        "curl"
+        {
+            "name": "curl",
+            "platform": "windows"
+        }
     ]
   }
