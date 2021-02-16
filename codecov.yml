@@ -1,0 +1,11 @@
+ignore:
+  - "external"
+  - "external_imported"
+  - "src/base/WinsockContext.hpp"
+  - "src/htm" # HTM not tested yet
+  - "src/terminal/ParseConfigFile.hpp"
+  - "src/terminal/TelemetryService*"
+  - "src/terminal/PsuedoTerminalConsole.hpp"
+  - "src/terminal/PsuedoUserTerminal.hpp"
+  - "src/base/TcpSocketHandler*"
+  - "src/base/SubprocessToString*"
