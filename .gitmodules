@@ -31,3 +31,12 @@
 [submodule "external/cpp-httplib"]
 	path = external/cpp-httplib
 	url = https://github.com/yhirose/cpp-httplib.git
+[submodule "external/PlatformFolders"]
+	path = external/PlatformFolders
+	url = https://github.com/sago007/PlatformFolders.git
+[submodule "external/sole"]
+	path = external/sole
+	url = https://github.com/r-lyeh-archived/sole.git
+[submodule "external/simpleini"]
+	path = external/simpleini
+	url = https://github.com/brofield/simpleini.git

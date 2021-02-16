@@ -23,6 +23,7 @@ find_package(SELinux)
 ENDIF()
 
 add_subdirectory("external/sentry-native")
+add_subdirectory("external/PlatformFolders")
 
 SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake" ${CMAKE_MODULE_PATH})
 INCLUDE(cotire)
@@ -52,8 +53,8 @@ if(UNIX)
   SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
 endif()
 
-# Enable C++-11
-set(CMAKE_CXX_STANDARD 11)
+# Enable C++-17
+set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
@@ -122,17 +123,17 @@ add_custom_target(
   )
 
 IF(ANDROID)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util)
 ELSEIF(FREEBSD)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util execinfo)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util execinfo)
 ELSEIF(NETBSD)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv execinfo)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv execinfo)
 ELSEIF(WIN32)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi dbghelp)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi dbghelp)
 ELSEIF(APPLE)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv)
 ELSE()
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB unwind util resolv)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB unwind util resolv)
 ENDIF()
 
 MACRO(DECORATE_TARGET TARGET_NAME)
@@ -148,10 +149,13 @@ ENDMACRO()
 include_directories(
   external/easyloggingpp/src
   external/ThreadPool
+  external/PlatformFolders
   external/Catch2/single_include
   external/cxxopts/include
   external/msgpack-c/include
   external/sentry-native/include
+  external/sole
+  external/simpleini
   external/cpp-httplib
   src/base
   src/terminal

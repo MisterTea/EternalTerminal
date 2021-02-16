@@ -5,7 +5,7 @@
 namespace et {
 class TelemetryService {
  public:
-  TelemetryService(bool _allow, const string& databasePath,
+  TelemetryService(const bool _allow, const string& databasePath,
                    const string& environment);
 
   virtual ~TelemetryService();

@@ -59,12 +59,17 @@ void shutdownTelemetry() {
   }
 }
 
-TelemetryService::TelemetryService(bool _allow, const string& databasePath,
+TelemetryService::TelemetryService(const bool _allow,
+                                   const string& databasePath,
                                    const string& _environment)
     : allowed(_allow),
       environment(_environment),
       logHttpClient("https://browser-http-intake.logs.datadoghq.com"),
       shuttingDown(false) {
+  char* disableTelementry = ::getenv("ET_NO_TELEMETRY");
+  if (disableTelementry) {
+    allowed = false;
+  }
   if (allowed) {
     sentry_options_t* options = sentry_options_new();
     logHttpClient.set_compress(true);
@@ -84,8 +89,42 @@ TelemetryService::TelemetryService(bool _allow, const string& databasePath,
 
     auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
     sentry_value_t user = sentry_value_new_object();
-    sentry_value_set_by_key(user, "ip_address",
-                            sentry_value_new_string("{{auto}}"));
+    auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
+    auto sentryId = sole::uuid4();
+    if (filesystem::exists(telemetryConfigPath)) {
+      // Load the config file
+      CSimpleIniA ini(true, false, false);
+      SI_Error rc = ini.LoadFile(telemetryConfigPath.c_str());
+      if (rc == 0) {
+        const char* sentryIdString = ini.GetValue("Sentry", "Id", NULL);
+        if (sentryIdString) {
+          sentryId = sole::rebuild(sentryIdString);
+        } else {
+          STFATAL << "Invalid telemetry config";
+        }
+      } else {
+        STFATAL << "Invalid config file: " << telemetryConfigPath;
+      }
+    } else {
+      // Ensure directory exists
+      filesystem::create_directories(sago::getConfigHome() + "/et");
+
+      // Create ini
+      CSimpleIniA ini(true, false, false);
+      ini.SetValue("Sentry", "Id", sentryId.str().c_str());
+      ini.SaveFile(telemetryConfigPath.c_str());
+
+      // Let user know about telemetry
+      CLOG(INFO, "stdout")
+          << "Eternal Terminal collects crashes and errors in order to help us "
+             "improve your experience.\nThe data collected is anonymous.\nYou "
+             "can opt-out of telemetry by setting the environment variable "
+             "ET_NO_TELEMETRY to any non-empty value."
+          << endl;
+      std::this_thread::sleep_for(3000ms);
+    }
+    sentry_value_set_by_key(user, "id",
+                            sentry_value_new_string(sentryId.str().c_str()));
     sentry_set_user(user);
 
     vector<int> signalsToCatch = {

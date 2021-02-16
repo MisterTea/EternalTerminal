@@ -69,6 +69,7 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <cxxopts.hpp>
 #include <deque>
 #include <exception>
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <locale>
@@ -85,11 +86,15 @@ inline int close(int fd) { return ::closesocket(fd); }
 
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
+#include "SimpleIni.h"
 #include "ThreadPool.h"
 #include "base64.hpp"
 #include "easylogging++.h"
 #include "json.hpp"
+#include "sago/platform_folders.h"
+#include "sentry.h"
 #include "sole.hpp"
+
 #if !defined(__ANDROID__)
 #include "ust.hpp"
 #endif
@@ -97,8 +102,6 @@ inline int close(int fd) { return ::closesocket(fd); }
 #ifdef WITH_UTEMPTER
 #include <utempter.h>
 #endif
-
-#include "sentry.h"
 
 #if defined(_MSC_VER)
 #define popen _popen
