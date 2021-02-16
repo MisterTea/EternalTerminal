@@ -121,7 +121,6 @@ TelemetryService::TelemetryService(const bool _allow,
              "can opt-out of telemetry by setting the environment variable "
              "ET_NO_TELEMETRY to any non-empty value."
           << endl;
-      std::this_thread::sleep_for(3000ms);
     }
     sentry_value_set_by_key(user, "id",
                             sentry_value_new_string(sentryId.str().c_str()));

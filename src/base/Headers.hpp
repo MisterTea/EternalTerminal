@@ -69,7 +69,6 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <cxxopts.hpp>
 #include <deque>
 #include <exception>
-#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <locale>
@@ -83,6 +82,13 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
+
+#if __has_include(<filesystem>)
+#include <filesystem>
+#else
+#include <experimental/filesystem>
+using namespace std::experimental;
+#endif
 
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
