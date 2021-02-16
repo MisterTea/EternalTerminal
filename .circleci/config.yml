@@ -145,7 +145,7 @@ jobs:
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   mac_tsan:
     macos:
-      xcode: "10.2.1"
+      xcode: "11.3.1"
     steps:
       - run:
           name: Avoid hosts unknown for github
