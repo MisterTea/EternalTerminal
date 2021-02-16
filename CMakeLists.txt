@@ -108,13 +108,15 @@ PROTOBUF_GENERATE_CPP(
 
   proto/ET.proto
   )
+SET_SOURCE_FILES_PROPERTIES(${ET_SRCS} ${ET_HDRS} PROPERTIES GENERATED TRUE)
 PROTOBUF_GENERATE_CPP(
   ETERMINAL_SRCS
   ETERMINAL_HDRS
 
   proto/ETerminal.proto
   )
-add_custom_target(
+SET_SOURCE_FILES_PROPERTIES(${ETERMINAL_SRCS} ${ETERMINAL_HDRS} PROPERTIES GENERATED TRUE)
+  add_custom_target(
   generated-code
   DEPENDS
 
@@ -222,9 +224,6 @@ add_library(
 
   src/base/DaemonCreator.hpp
   src/base/DaemonCreator.cpp
-
-  src/base/SystemUtils.hpp
-  src/base/SystemUtils.cpp
 
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp

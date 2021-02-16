@@ -9,7 +9,6 @@
 #include "LogHandler.hpp"
 #include "PortForwardHandler.hpp"
 #include "ServerConnection.hpp"
-#include "SystemUtils.hpp"
 #include "TcpSocketHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
