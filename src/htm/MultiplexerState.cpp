@@ -276,8 +276,7 @@ void MultiplexerState::update(int endpointFd) {
     if (terminalData.length()) {
       const string &paneId = it.first;
       header = APPEND_TO_PANE;
-      int32_t length =
-          base64::Base64::EncodedLength(terminalData) + paneId.length();
+      int32_t length = Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
       socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
                                      false);
@@ -326,8 +325,7 @@ void MultiplexerState::sendTerminalBuffers(int endpointFd) {
         terminalData.append(it);
       }
       header = APPEND_TO_PANE;
-      int32_t length =
-          base64::Base64::EncodedLength(terminalData) + paneId.length();
+      int32_t length = Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
       socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
                                      false);

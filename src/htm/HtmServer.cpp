@@ -135,7 +135,7 @@ void HtmServer::run() {
 void HtmServer::sendDebug(const string &msg) {
   LOG(INFO) << "SENDING DEBUG LOG: " << msg;
   unsigned char header = DEBUG_LOG;
-  int32_t length = base64::Base64::EncodedLength(msg);
+  int32_t length = Base64::EncodedLength(msg);
   socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
   socketHandler->writeB64(endpointFd, (const char *)&length, 4);
   socketHandler->writeB64(endpointFd, &msg[0], msg.length());
@@ -176,6 +176,7 @@ void HtmServer::recover() {
 
 string HtmServer::getPipeName() {
   uid_t myuid = getuid();
-  return string(GetTempDirectory() + "htm.") + to_string(myuid) + string(".ipc");
+  return string(GetTempDirectory() + "htm.") + to_string(myuid) +
+         string(".ipc");
 }
 }  // namespace et

@@ -94,7 +94,7 @@ using namespace std::experimental;
 #include "ETerminal.pb.h"
 #include "SimpleIni.h"
 #include "ThreadPool.h"
-#include "base64.hpp"
+#include "base64.h"
 #include "easylogging++.h"
 #include "json.hpp"
 #include "sago/platform_folders.h"

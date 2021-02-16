@@ -40,3 +40,9 @@
 [submodule "external/simpleini"]
 	path = external/simpleini
 	url = https://github.com/brofield/simpleini.git
+[submodule "external/json"]
+	path = external/json
+	url = https://github.com/nlohmann/json.git
+[submodule "external/base64"]
+	path = external/base64
+	url = https://github.com/tkislan/base64.git

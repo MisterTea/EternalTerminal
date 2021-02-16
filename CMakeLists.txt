@@ -154,7 +154,9 @@ include_directories(
   external/cxxopts/include
   external/msgpack-c/include
   external/sentry-native/include
+  external/json/single_include/nlohmann
   external/sole
+  external/base64
   external/simpleini
   external/cpp-httplib
   src/base
