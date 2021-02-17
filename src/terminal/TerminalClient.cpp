@@ -168,7 +168,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         }
       }
       if (fail) {
-        STERROR << "Connecting to server failed: Connect timeout";
+        LOG(WARNING) << "Connecting to server failed: Connect timeout";
         connectFailCount++;
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
@@ -181,8 +181,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       exit(1);
     }
 
-    TelemetryService::get()->logToSentry(SENTRY_LEVEL_INFO,
-                                         "Connection Established");
+    TelemetryService::get()->logToAll(SENTRY_LEVEL_INFO,
+                                      "Connection Established");
     break;
   }
   VLOG(1) << "Client created with id: " << connection->getId();

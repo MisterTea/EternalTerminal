@@ -75,8 +75,7 @@ int main(int argc, char** argv) {
          "If set, communicate to etserver on the matching fifo name",  //
          cxxopts::value<std::string>()->default_value(""))             //
         ("ssh-option", "Options to pass down to `ssh -o`",
-         cxxopts::value<std::vector<std::string>>())
-        ;
+         cxxopts::value<std::vector<std::string>>());
 
     options.parse_positional({"host", "positional"});
 
@@ -241,8 +240,7 @@ int main(int argc, char** argv) {
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
         result.count("x") > 0, result["verbose"].as<int>(),
-        result.count("prefix") ? result["prefix"].as<string>() : "",
-        serverFifo,
+        result.count("prefix") ? result["prefix"].as<string>() : "", serverFifo,
         ssh_options);
 
     string id = "", passkey = "";
@@ -275,7 +273,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-socket")) {
       sshSocket = result["ssh-socket"].as<string>();
     }
-    TelemetryService::get()->logToSentry(SENTRY_LEVEL_INFO, "Session Started");
+    TelemetryService::get()->logToAll(SENTRY_LEVEL_INFO, "Session Started");
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",

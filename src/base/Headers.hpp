@@ -83,13 +83,24 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_set>
 #include <vector>
 
+#if __has_include(<filesystem>)
+#include <filesystem>
+#else
+#include <experimental/filesystem>
+using namespace std::experimental;
+#endif
+
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
+#include "SimpleIni.h"
 #include "ThreadPool.h"
-#include "base64.hpp"
+#include "base64.h"
 #include "easylogging++.h"
 #include "json.hpp"
+#include "sago/platform_folders.h"
+#include "sentry.h"
 #include "sole.hpp"
+
 #if !defined(__ANDROID__)
 #include "ust.hpp"
 #endif
@@ -97,8 +108,6 @@ inline int close(int fd) { return ::closesocket(fd); }
 #ifdef WITH_UTEMPTER
 #include <utempter.h>
 #endif
-
-#include "sentry.h"
 
 #if defined(_MSC_VER)
 #define popen _popen

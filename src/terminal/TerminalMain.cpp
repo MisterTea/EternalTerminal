@@ -7,14 +7,13 @@
 #include "UserJumphostHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
-#include "simpleini/SimpleIni.h"
 
 using namespace et;
 
 void setDaemonLogFile(string idpasskey, string daemonType) {
   string first_idpass_chars = idpasskey.substr(0, 10);
-  string logFile =
-      string(GetTempDirectory() + "etterminal_") + daemonType + "_" + first_idpass_chars;
+  string logFile = string(GetTempDirectory() + "etterminal_") + daemonType +
+                   "_" + first_idpass_chars;
 }
 
 int main(int argc, char** argv) {
@@ -139,9 +138,10 @@ int main(int argc, char** argv) {
       setDaemonLogFile(idpasskey, "jumphost");
 
       // etserver with --jump cannot write to the default log file(root)
-      LogHandler::setupLogFile(&defaultConf,
-                               GetTempDirectory() + "etjump-" + username + "-" + id + ".log",
-                               maxlogsize);
+      LogHandler::setupLogFile(
+          &defaultConf,
+          GetTempDirectory() + "etjump-" + username + "-" + id + ".log",
+          maxlogsize);
       // Reconfigure default logger to apply settings above
       el::Loggers::reconfigureLogger("default", defaultConf);
       // set thread name
@@ -172,9 +172,10 @@ int main(int argc, char** argv) {
     setDaemonLogFile(idpasskey, "terminal");
 
     // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::setupLogFile(&defaultConf,
-                             GetTempDirectory() + "etterminal-" + username + "-" + id + ".log",
-                             maxlogsize);
+    LogHandler::setupLogFile(
+        &defaultConf,
+        GetTempDirectory() + "etterminal-" + username + "-" + id + ".log",
+        maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

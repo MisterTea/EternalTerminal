@@ -74,7 +74,7 @@ int main(int argc, char **argv) {
     bool telemetry = true;
     if (result.count("cfgfile")) {
       // Load the config file
-      CSimpleIniA ini(true, true, true);
+      CSimpleIniA ini(true, false, false);
       string cfgfilename = result["cfgfile"].as<string>();
       SI_Error rc = ini.LoadFile(cfgfilename.c_str());
       if (rc == 0) {
