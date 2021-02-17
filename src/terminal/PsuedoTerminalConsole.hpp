@@ -2,7 +2,6 @@
 #define __PSUEDO_TERMINAL_CONSOLE_HPP__
 
 #include "Console.hpp"
-
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 
@@ -84,18 +83,18 @@ class PsuedoTerminalConsole : public Console {
 
   virtual int getFd() {
 #ifdef WIN32
-    return _fileno(stdin);
+    return _fileno(stdout);
 #else
-    return STDIN_FILENO; 
+    return STDOUT_FILENO;
 #endif
   }
 
  protected:
 #ifdef WIN32
-   DWORD inputMode;
-   DWORD outputMode;
+  DWORD inputMode;
+  DWORD outputMode;
 #else
-   termios terminal_backup;
+  termios terminal_backup;
 #endif
 
 };  // namespace et
