@@ -14,6 +14,8 @@ class TelemetryService {
 
   void logToDatadog(map<string, string> message);
 
+  void logToAll(sentry_level_e level, const std::string& message);
+
   static void create(bool _allow, const string& databasePath,
                      const string& environment) {
     telemetryServiceInstance.reset(
