@@ -35,21 +35,18 @@ jobs:
 
     steps:
       - name: Install Dependencies (Linux)
-        run: sudo apt-get update && sudo apt-get install ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
+        run: sudo apt-get update && sudo apt-get install cmake ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install ninja
+        run: choco install ninja nsis
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew install ninja
+        run: brew install ninja cmake
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v2
         with:
           submodules: recursive
-
-      # Setup the build machine with the most recent versions of CMake and Ninja. Both are cached if not already: on subsequent runs both will be quickly restored from GitHub cache service.
-      - uses: lukka/get-cmake@latest
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -84,7 +81,7 @@ jobs:
       - name: Build
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
-
+      
       - uses: actions/upload-artifact@v2
         with:
           name: et-client-${{matrix.os}}
