@@ -168,7 +168,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
         }
       }
       if (fail) {
-        STERROR << "Connecting to server failed: Connect timeout";
+        LOG(WARNING) << "Connecting to server failed: Connect timeout";
         connectFailCount++;
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
