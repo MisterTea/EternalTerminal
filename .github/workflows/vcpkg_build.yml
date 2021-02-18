@@ -38,7 +38,7 @@ jobs:
         run: sudo apt-get update && sudo apt-get install cmake ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install ninja nsis
+        run: choco install ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
         run: brew install ninja cmake
