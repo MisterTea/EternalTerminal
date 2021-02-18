@@ -13,7 +13,7 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         include:
           - os: windows-latest
-            triplet: x64-windows-static-md
+            triplet: x64-windows-static
             extension: .exe
             zlib: zlib.lib
             zlib_debug: zlibd.lib
