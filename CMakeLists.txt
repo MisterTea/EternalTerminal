@@ -1,4 +1,4 @@
-cmake_minimum_required (VERSION 3.0.2)
+cmake_minimum_required (VERSION 3.15.0)
 
 project (EternalTCP VERSION 6.0.13)
 
@@ -13,6 +13,8 @@ find_package(OpenSSL REQUIRED)
 FIND_PACKAGE(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
+set(Protobuf_USE_STATIC_LIBS ON)
+set(protobuf_MSVC_STATIC_RUNTIME ON)
 find_package(Protobuf REQUIRED)
 find_package(ZLIB REQUIRED)
 
@@ -22,6 +24,12 @@ IF(LINUX)
 find_package(SELinux)
 ENDIF()
 
+IF(MSVC)
+set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+ENDIF()
+
+set(SENTRY_BUILD_RUNTIMESTATIC ON)
+set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("external/sentry-native")
 add_subdirectory("external/PlatformFolders")
 
