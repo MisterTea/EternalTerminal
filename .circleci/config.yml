@@ -18,6 +18,9 @@ jobs:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
+      - run:
           name: Build the root version of the project
           command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
       - run:
@@ -54,6 +57,9 @@ jobs:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
+      - run:
           name: Build the project
           command: mkdir build; cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
       - run:
@@ -78,6 +84,9 @@ jobs:
           name: Init submodules
           command: git submodule update --init --recursive
       - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
+      - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
       - run:
@@ -97,6 +106,9 @@ jobs:
       - run:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
@@ -118,6 +130,9 @@ jobs:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
+      - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
       - run:
@@ -138,6 +153,9 @@ jobs:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
+      - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
       - run:
@@ -157,6 +175,9 @@ jobs:
       - run:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
+      - run:
+          name: vcpkg
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; external/vcpkg/vcpkg install; fi
       - run:
           name: Build the project with test
           command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
