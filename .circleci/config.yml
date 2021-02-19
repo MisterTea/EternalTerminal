@@ -1,8 +1,8 @@
 version: 2
 jobs:
   connect_to_initial_version:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -37,8 +37,8 @@ jobs:
           command: pkill etserver
 
   connect_with_jumphost:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -64,8 +64,8 @@ jobs:
           command: pkill etserver
 
   linux_msan:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -84,8 +84,8 @@ jobs:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_asan:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -104,8 +104,8 @@ jobs:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_tsan:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -124,8 +124,8 @@ jobs:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_ubsan:
-    docker:
-      - image: ubuntu:focal
+    machine:
+      - image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -152,7 +152,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags
+          command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags pkg-config
       - checkout
       - run:
           name: Init submodules
