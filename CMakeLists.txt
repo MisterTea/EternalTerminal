@@ -12,11 +12,13 @@ ELSE()
 SET(VCPKG_TARGET_TRIPLET "x64-linux")
 ENDIF()
 
-# Some hacks to fix vcpkg on windows
+# Some hacks to fix vcpkg
 IF(WIN32)
 SET(Protobuf_PROTOC_EXECUTABLE "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe")
 SET(ZLIB_LIBRARY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib")
 SET(ZLIB_LIBRARY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib")
+ELSE()
+SET(Protobuf_PROTOC_EXECUTABLE "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc")
 ENDIF()
 
 project (EternalTCP VERSION 6.0.13)
