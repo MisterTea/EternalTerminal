@@ -3,7 +3,6 @@ jobs:
   connect_to_initial_version:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -40,7 +39,6 @@ jobs:
   connect_with_jumphost:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -68,7 +66,6 @@ jobs:
   linux_msan:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -89,7 +86,6 @@ jobs:
   linux_asan:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -110,7 +106,6 @@ jobs:
   linux_tsan:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -131,7 +126,6 @@ jobs:
   linux_ubsan:
     machine:
       image: ubuntu-2004:202101-01
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -152,7 +146,6 @@ jobs:
   mac_tsan:
     macos:
       xcode: "11.3.1"
-    resource_class: xlarge
     steps:
       - run:
           name: Avoid hosts unknown for github
