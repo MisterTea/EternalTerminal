@@ -2,7 +2,7 @@ version: 2
 jobs:
   connect_to_initial_version:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -38,7 +38,7 @@ jobs:
 
   connect_with_jumphost:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -65,7 +65,7 @@ jobs:
 
   linux_msan:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -85,7 +85,7 @@ jobs:
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_asan:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -105,7 +105,7 @@ jobs:
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_tsan:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -125,7 +125,7 @@ jobs:
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
   linux_ubsan:
     machine:
-      - image: ubuntu-2004:202101-01
+      image: ubuntu-2004:202101-01
     steps:
       - run:
           name: Avoid hosts unknown for github
