@@ -1,11 +1,10 @@
-#ifdef WIN32
-#else
 /* Acknowledgement: this file gathers config file parsing related functions in
  * libssh */
 #pragma once
-#include <netdb.h>
-#include <string.h>
-#include <unistd.h>
+#include "Headers.hpp"
+//#include <netdb.h>
+//#include <string.h>
+//#include <unistd.h>
 
 #include <fstream>
 #include <iostream>
@@ -13,13 +12,13 @@
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
-#include <arpa/inet.h>
+//#include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-#include <netinet/in.h>
-#include <pwd.h>
-#include <sys/socket.h>
+//#include <netinet/in.h>
+//#include <pwd.h>
+//#include <sys/socket.h>
 #include <sys/types.h>
 #if __FreeBSD__
 #define _WITH_GETLINE
@@ -33,8 +32,6 @@
 #ifdef HAVE_SYS_TIME_H
 #include <sys/time.h>
 #endif /* HAVE_SYS_TIME_H */
-
-#include "Headers.hpp"
 
 using namespace std;
 
@@ -57,8 +54,10 @@ using namespace std;
 #endif
 
 /* Socket type */
+#ifndef WIN32
 #ifndef socket_t
 typedef int socket_t;
+#endif
 #endif
 
 enum ssh_config_opcode_e {
@@ -181,6 +180,9 @@ static int ssh_config_parse_line(const char *targethost,
                                  unsigned int count, int *parsing, int seen[]);
 
 char *ssh_get_user_home_dir(void) {
+#ifdef WIN32
+  return strdup(getenv("USERPROFILE"));
+#else
   char *szPath = NULL;
   struct passwd pwd;
   struct passwd *pwdbuf;
@@ -202,9 +204,16 @@ char *ssh_get_user_home_dir(void) {
   szPath = strdup(pwd.pw_dir);
 
   return szPath;
+#endif
 }
 
 char *ssh_get_local_username(void) {
+#ifdef WIN32
+  char username[UNLEN + 1];
+  DWORD username_len = UNLEN + 1;
+  GetUserNameA(username, &username_len);
+  return strdup(username);
+#else
   struct passwd pwd;
   struct passwd *pwdbuf;
   char buf[NSS_BUFLEN_PASSWD];
@@ -223,6 +232,7 @@ char *ssh_get_local_username(void) {
   }
 
   return name;
+#endif
 }
 
 char *ssh_lowercase(const char *str) {
@@ -407,8 +417,12 @@ char *ssh_path_expand_tilde(const char *d) {
   d++;
 
   /* handle ~user/path */
+
   p = strchr(d, '/');
   if (p != NULL && p > d) {
+#ifdef WIN32
+    STFATAL << "~user/path format not supported on windows";
+#else
     struct passwd *pw;
     size_t s = p - d;
     char u[128];
@@ -424,6 +438,7 @@ char *ssh_path_expand_tilde(const char *d) {
     }
     ld = strlen(p);
     h = strdup(pw->pw_dir);
+#endif
   } else {
     ld = strlen(d);
     p = (char *)d;
@@ -1113,6 +1128,9 @@ static int ssh_config_get_yesno(char **str, int notfound) {
     return notfound;
   }
 
+#ifdef WIN32
+#define strncasecmp(x,y,z) _strnicmp(x,y,z)
+#endif
   if (strncasecmp(p, "yes", 3) == 0) {
     return 1;
   } else if (strncasecmp(p, "no", 2) == 0) {
@@ -1124,28 +1142,26 @@ static int ssh_config_get_yesno(char **str, int notfound) {
 
 static void local_parse_file(const char *targethost, struct Options *options,
                              const char *filename, int *parsing, int seen[]) {
-  char *line = NULL;
+  string line;
   size_t len = 0;
-  ssize_t read = 0;
 
   unsigned int count = 0;
 
-  FILE *fp;
-  fp = fopen(filename, "r");
-  if (fp == NULL) {
+  ifstream infile(filename);
+  if (!infile.good()) {
     LOG(INFO) << filename << "not found";
     return;
   }
 
-  while ((read = getline(&line, &len, fp)) != -1) {
+  while (std::getline(infile, line)) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line, count, parsing, seen) <
+    if (ssh_config_parse_line(targethost, options, line.c_str(), count, parsing, seen) <
         0) {
-      fclose(fp);
+      infile.close();
       return;
     }
   }
-  fclose(fp);
+  infile.close();
   return;
 }
 
@@ -1367,31 +1383,29 @@ static int ssh_config_parse_line(const char *targethost,
 
 int parse_ssh_config_file(const char *targethost, struct Options *options,
                           string filename) {
-  char *line = NULL;
+  string line;
   size_t len = 0;
   ssize_t read = 0;
   unsigned int count = 0;
   int parsing;
   int seen[SOC_END - SOC_UNSUPPORTED] = {0};
 
-  FILE *fp;
-  fp = fopen(filename.c_str(), "r");
-  if (fp == NULL) {
+  ifstream infile(filename);
+  if (!infile.good()) {
     LOG(INFO) << filename << "not found";
     return 0;
   }
 
   parsing = 1;
 
-  while ((read = getline(&line, &len, fp)) != -1) {
+  while (std::getline(infile, line)) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line, count, &parsing,
+    if (ssh_config_parse_line(targethost, options, line.c_str(), count, &parsing,
                               seen) < 0) {
-      fclose(fp);
+      infile.close();
       return -1;
     }
   }
-  fclose(fp);
+  infile.close();
   return 0;
 }
-#endif

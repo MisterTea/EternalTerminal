@@ -45,7 +45,7 @@ class ServerConnection {
 
   shared_ptr<ServerClientConnection> getClientConnection(
       const string& clientId) {
-    lock_guard<std::recursive_mutex> guard(mutex);
+    lock_guard<std::recursive_mutex> guard(classMutex);
     auto it = clientConnections.find(clientId);
     if (it == clientConnections.end()) {
       STFATAL << "Error: Tried to get a client connection that doesn't exist";

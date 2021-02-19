@@ -148,7 +148,6 @@ int main(int argc, char** argv) {
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
     string host_alias = destinationHost;
 
-#ifndef WIN32
     Options sshConfigOptions = {
         NULL,  // username
         NULL,  // host
@@ -205,7 +204,6 @@ int main(int argc, char** argv) {
       }
       LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
     }
-#endif
 
     bool is_jumphost = false;
     SocketEndpoint socketEndpoint;
