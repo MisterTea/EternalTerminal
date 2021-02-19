@@ -8,25 +8,9 @@ jobs:
     name: build-vcpkg-${{ matrix.os }}
     runs-on: ${{ matrix.os }}
     strategy:
-      fail-fast: false
+      fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        include:
-          - os: windows-latest
-            triplet: x64-windows-static
-            extension: .exe
-            zlib: zlib.lib
-            zlib_debug: zlibd.lib
-          - os: ubuntu-latest
-            triplet: x64-linux
-            extension:
-            zlib: libz.a
-            zlib_debug: libz.a
-          - os: macos-latest
-            triplet: x64-osx
-            extension:
-            zlib: libz.a
-            zlib_debug: libz.a
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
@@ -65,7 +49,7 @@ jobs:
           # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
           # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
           key: |
-            ${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.triplet }}-invalidate
+            ${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.os }}-invalidate
 
       - name: Show content of workspace after cache has been restored
         run: find $RUNNER_WORKSPACE
@@ -76,7 +60,7 @@ jobs:
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DVCPKG_TARGET_TRIPLET="${{ matrix.triplet }}" -DCMAKE_TOOLCHAIN_FILE="${{ env.VCPKG_ROOT }}/scripts/buildsystems/vcpkg.cmake" -DProtobuf_PROTOC_EXECUTABLE="${{ env.VCPKG_ROOT }}/packages/protobuf_${{ matrix.triplet }}/tools/protobuf/protoc${{matrix.extension}}" -DZLIB_LIBRARY_RELEASE="${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/${{ matrix.triplet }}/lib/${{ matrix.zlib }}" -DZLIB_LIBRARY_DEBUG="${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/${{ matrix.triplet }}/debug/lib/${{matrix.zlib_debug}}"
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |

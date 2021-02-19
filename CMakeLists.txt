@@ -1,5 +1,24 @@
 cmake_minimum_required (VERSION 3.15.0)
 
+# Enable vcpkg
+SET(CMAKE_TOOLCHAIN_FILE "../external/vcpkg/scripts/buildsystems/vcpkg.cmake")
+
+# Set the triplet
+IF(WIN32)
+SET(VCPKG_TARGET_TRIPLET "x64-windows-static")
+ELSEIF(APPLE)
+SET(VCPKG_TARGET_TRIPLET "x64-osx")
+ELSE()
+SET(VCPKG_TARGET_TRIPLET "x64-linux")
+ENDIF()
+
+# Some hacks to fix vcpkg on windows
+IF(WIN32)
+SET(Protobuf_PROTOC_EXECUTABLE "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe")
+SET(ZLIB_LIBRARY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib")
+SET(ZLIB_LIBRARY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib")
+ENDIF()
+
 project (EternalTCP VERSION 6.0.13)
 
 include(CMakeFindDependencyMacro)
