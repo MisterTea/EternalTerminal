@@ -16,7 +16,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -42,7 +42,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -68,7 +68,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -94,7 +94,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -120,7 +120,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl libssl-dev libcurl4-openssl-dev libunwind-dev git cmake gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
