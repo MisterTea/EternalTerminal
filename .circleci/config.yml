@@ -22,7 +22,7 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the root version of the project
-          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; cd build; cmake ../; make -j4
           no_output_timeout: 60m
       - run:
           name: Build the project
@@ -67,7 +67,7 @@ jobs:
           no_output_timeout: 60m
       - run:
           name: Start Servers
-          command: build/etserver --daemon; build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
+          command: sudo build/etserver --daemon; sudo build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
       - run:
           name: Kill servers
           command: pkill etserver
