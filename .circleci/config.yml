@@ -63,7 +63,7 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project
-          command: cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
+          command: cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4; sudo make install
           no_output_timeout: 60m
       - run:
           name: Start Servers
