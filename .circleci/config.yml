@@ -19,13 +19,15 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the root version of the project
           command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; mkdir build; cd build; cmake ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Build the project
-          command: mkdir build; cd build; cmake ../; make -j4
+          command: cd build; cmake ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Connect new -> old
           command: ../root_version/build/etserver --daemon; cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --verbose=9
@@ -58,10 +60,11 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project
-          command: mkdir build; cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
+          command: cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4 install
+          no_output_timeout: 60m
       - run:
           name: Start Servers
           command: build/etserver --daemon; build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
@@ -85,10 +88,11 @@ jobs:
           command: git submodule update --init --recursive
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
+          command: cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
@@ -108,10 +112,11 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
+          command: cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
@@ -131,10 +136,11 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
+          command: cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
@@ -154,10 +160,11 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
+          command: cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
@@ -177,10 +184,11 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
       - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; fi
+          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-osx --feature-flags="manifests" install; fi
       - run:
           name: Build the project with test
-          command: mkdir build; cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
+          command: cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
+          no_output_timeout: 60m
       - run:
           name: Run tests
           command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
