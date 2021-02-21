@@ -1,0 +1,25 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO owt5008137/libcopp
+    REF d7ee2550fdcaf3961e4284bb5218e3ed05be437c # 1.3.4
+    SHA512 0fa7a83c17046e187183d0244828e82adeb5e39e75b27757d1b540fd8948c48b02de40edea706d588ba553a276c4f2f8e9e3dad78065e515a1652abe4fbea8b0
+    HEAD_REF v2
+)
+
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    DISABLE_PARALLEL_CONFIGURE
+)
+
+vcpkg_install_cmake()
+
+file(MAKE_DIRECTORY ${CURRENT_PACKAGES_DIR}/share/${PORT})
+file(INSTALL ${SOURCE_PATH}/BOOST_LICENSE_1_0.txt DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT})
+file(INSTALL ${SOURCE_PATH}/LICENSE DESTINATION ${CURRENT_PACKAGES_DIR}/share/${PORT} RENAME copyright)
+
+vcpkg_copy_pdbs()
+
+vcpkg_fixup_cmake_targets(CONFIG_PATH lib/cmake)
+
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/include")
+file(REMOVE_RECURSE "${CURRENT_PACKAGES_DIR}/debug/share")

@@ -1,0 +1,22 @@
+# Editors and OS
+.DS_Store
+.vs
+CMakeSettings.json
+
+# CMake builds
+/build
+/build*
+leak-build
+
+# Run files
+.sentry-native
+
+# Python
+.venv
+__pycache__
+
+# Devtools
+CodeChecker
+
+# Coverage
+coverage

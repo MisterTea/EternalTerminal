@@ -1,0 +1,11 @@
+language: cpp
+
+compiler:
+  - clang
+  - gcc
+
+install:
+  - wget --quiet -O - https://raw.githubusercontent.com/r-lyeh/depot/master/travis.pre.sh   | bash -x
+
+script:
+  - wget --quiet -O - https://raw.githubusercontent.com/r-lyeh/depot/master/travis.build.sh | bash -x

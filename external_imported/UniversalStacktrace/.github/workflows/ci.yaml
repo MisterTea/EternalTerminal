@@ -1,0 +1,60 @@
+name: CI
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  linux_test:
+    runs-on: ubuntu-latest
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get update
+          sudo apt-get install -y git cmake gdb protobuf-compiler libunwind-dev g++
+          ACCEPT_EULA=Y sudo apt-get -y upgrade
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+
+      - name: Test
+        run: |
+          mkdir build
+          pushd build
+          cmake ../
+          make -j`nproc`
+          ./ust-test
+          popd
+          rm -Rf build
+
+  mac_test:
+    runs-on: macos-10.15
+
+    steps:
+      - uses: actions/checkout@v2
+      - name: Setup
+        shell: bash
+        run: |
+          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          git submodule sync --recursive
+          git -c "http.extraheader=$auth_header" -c protocol.version=2 submodule update --init --force --recursive --depth=1
+          git submodule update --init
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          brew install cmake
+
+      - name: Test with ubsan
+        run: |
+          mkdir build
+          pushd build
+          cmake ../
+          make -j`nproc`
+          ./ust-test
+          popd
+          rm -Rf build
