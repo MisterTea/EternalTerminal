@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.0.2)
 
-set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
+set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external_imported")
 
 if(NOT WIN32)
   set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")

@@ -1,0 +1,128 @@
+diff -rupN llvm-3.3.src/CMakeLists.txt llvm-3.3.src.cotire/CMakeLists.txt
+--- llvm-3.3.src/CMakeLists.txt	2013-05-06 18:23:07.000000000 +0200
++++ llvm-3.3.src.cotire/CMakeLists.txt	2013-10-13 10:05:20.000000000 +0200
+@@ -1,7 +1,7 @@
+ # See docs/CMake.html for instructions about how to build LLVM with CMake.
+ 
+ project(LLVM)
+-cmake_minimum_required(VERSION 2.8)
++cmake_minimum_required(VERSION 2.8.11)
+ 
+ # Add path for custom modules
+ set(CMAKE_MODULE_PATH
+@@ -21,6 +21,8 @@ if ( LLVM_USE_FOLDERS )
+ endif()
+ 
+ include(VersionFromVCS)
++include(cotire)
++set_property(DIRECTORY PROPERTY COTIRE_UNITY_LINK_LIBRARIES_INIT "COPY_UNITY")
+ 
+ option(LLVM_APPEND_VC_REV
+   "Append the version control system revision id to LLVM version" OFF)
+@@ -187,7 +189,7 @@ option(LLVM_USE_OPROFILE
+ # If enabled, verify we are on a platform that supports oprofile.
+ if( LLVM_USE_OPROFILE )
+   if( NOT CMAKE_SYSTEM_NAME MATCHES "Linux" )
+-    message(FATAL_ERROR "OProfile support is available on Linux only.") 
++    message(FATAL_ERROR "OProfile support is available on Linux only.")
+   endif( NOT CMAKE_SYSTEM_NAME MATCHES "Linux" )
+ endif( LLVM_USE_OPROFILE )
+ 
+diff -rupN llvm-3.3.src/cmake/modules/AddLLVM.cmake llvm-3.3.src.cotire/cmake/modules/AddLLVM.cmake
+--- llvm-3.3.src/cmake/modules/AddLLVM.cmake	2013-04-21 11:04:59.000000000 +0200
++++ llvm-3.3.src.cotire/cmake/modules/AddLLVM.cmake	2013-10-13 10:43:04.000000000 +0200
+@@ -34,6 +34,10 @@ macro(add_llvm_library name)
+   # property has been set to an empty value.
+   get_property(lib_deps GLOBAL PROPERTY LLVMBUILD_LIB_DEPS_${name})
+   target_link_libraries(${name} ${lib_deps})
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+ endmacro(add_llvm_library name)
+ 
+ macro(add_llvm_loadable_module name)
+@@ -69,6 +73,10 @@ ${name} ignored.")
+         LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+         ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
+     endif()
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+   endif()
+ 
+   set_target_properties(${name} PROPERTIES FOLDER "Loadable modules")
+@@ -101,6 +109,10 @@ macro(add_llvm_tool name)
+     install(TARGETS ${name} RUNTIME DESTINATION bin)
+   endif()
+   set_target_properties(${name} PROPERTIES FOLDER "Tools")
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+ endmacro(add_llvm_tool name)
+ 
+ 
+@@ -114,12 +126,20 @@ macro(add_llvm_example name)
+     install(TARGETS ${name} RUNTIME DESTINATION examples)
+   endif()
+   set_target_properties(${name} PROPERTIES FOLDER "Examples")
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+ endmacro(add_llvm_example name)
+ 
+ 
+ macro(add_llvm_utility name)
+   add_llvm_executable(${name} ${ARGN})
+   set_target_properties(${name} PROPERTIES FOLDER "Utils")
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+ endmacro(add_llvm_utility name)
+ 
+ 
+@@ -198,6 +218,10 @@ function(add_unittest test_suite test_na
+     set(target_compile_flags "${target_compile_flags} -Wno-variadic-macros")
+   endif ()
+   set_property(TARGET ${test_name} PROPERTY COMPILE_FLAGS "${target_compile_flags}")
++if (COMMAND cotire)
++  set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++  cotire(${name})
++endif()
+ endfunction()
+ 
+ # This function provides an automatic way to 'configure'-like generate a file
+diff -rupN llvm-3.3.src/include/llvm/Transforms/Utils/BlackList.h llvm-3.3.src.cotire/include/llvm/Transforms/Utils/BlackList.h
+--- llvm-3.3.src/include/llvm/Transforms/Utils/BlackList.h	2013-04-11 15:20:00.000000000 +0200
++++ llvm-3.3.src.cotire/include/llvm/Transforms/Utils/BlackList.h	2013-10-13 11:52:41.000000000 +0200
+@@ -30,6 +30,9 @@
+ //===----------------------------------------------------------------------===//
+ //
+ 
++#ifndef LLVM_TRANSFORMS_UTILS_BLACKLIST_H
++#define LLVM_TRANSFORMS_UTILS_BLACKLIST_H
++
+ #include "llvm/ADT/StringMap.h"
+ 
+ namespace llvm {
+@@ -57,3 +60,5 @@ class BlackList {
+ };
+ 
+ }  // namespace llvm
++
++#endif
+diff -rupN llvm-3.3.src/lib/Support/CMakeLists.txt llvm-3.3.src.cotire/lib/Support/CMakeLists.txt
+--- llvm-3.3.src/lib/Support/CMakeLists.txt	2013-04-23 10:28:39.000000000 +0200
++++ llvm-3.3.src.cotire/lib/Support/CMakeLists.txt	2013-10-13 10:25:45.000000000 +0200
+@@ -1,3 +1,7 @@
++if (COMMAND cotire)
++	set_source_files_properties (IsInf.cpp IsNAN.cpp PROPERTIES COTIRE_EXCLUDED TRUE)
++endif()
++
+ add_llvm_library(LLVMSupport
+   APFloat.cpp
+   APInt.cpp

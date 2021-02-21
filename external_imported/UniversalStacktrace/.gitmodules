@@ -1,0 +1,6 @@
+[submodule "external/Catch2"]
+	path = external/Catch2
+	url = https://github.com/catchorg/Catch2.git
+[submodule "external/sanitizers-cmake"]
+	path = external/sanitizers-cmake
+	url = https://github.com/arsenm/sanitizers-cmake.git

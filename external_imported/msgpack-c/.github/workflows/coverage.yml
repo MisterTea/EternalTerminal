@@ -1,0 +1,62 @@
+name: coverage
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+  push:
+    branches:
+    - master
+    tags:
+    - '*'
+
+jobs:
+
+  codecov:
+    timeout-minutes: 30
+    runs-on: ubuntu-latest
+
+    steps:
+    - uses: actions/checkout@v1
+    - name: install depends
+      run: |
+        sudo apt-get update
+        sudo apt-get install g++-multilib lcov
+    - name: Cache boost
+      id: cache-boost
+      uses: actions/cache@v1
+      with:
+        path: usr
+        key: ${{ runner.os }}-boost-20200107
+    - name: Build boost
+      if: steps.cache-boost.outputs.cache-hit != 'true'
+      run: ./.github/depends/boost.sh -b both -t gcc
+    - name: Compile tests
+      run: |
+        # install gtest
+        BASE=`pwd`
+        wget https://github.com/google/googletest/archive/release-1.7.0.zip -O googletest-release-1.7.0.zip
+        unzip -q googletest-release-1.7.0.zip
+        cd googletest-release-1.7.0
+        g++ -m64 src/gtest-all.cc -I. -Iinclude -c -fPIC
+        g++ -m64 src/gtest_main.cc -I. -Iinclude -c -fPIC
+        ar -rv libgtest.a gtest-all.o
+        ar -rv libgtest_main.a gtest_main.o
+        mkdir -p ${BASE}/usr/include
+        cp -r include/gtest ${BASE}/usr/include
+        mkdir -p ${BASE}/usr/lib
+        mv *.a ${BASE}/usr/lib
+        cd ..
+
+        mkdir build && cd build
+        CMAKE_LIBRARY_PATH="${BASE}/build" GTEST_ROOT="${BASE}/usr" CMAKE_PREFIX_PATH="${BASE}/usr/gcc/lib64/cmake" cmake -DMSGPACK_CXX17=ON -DMSGPACK_32BIT=OFF -DMSGPACK_BOOST=ON -DBUILD_SHARED_LIBS=ON -DMSGPACK_CHAR_SIGN=signed -DMSGPACK_USE_X3_PARSE=ON -DMSGPACK_ENABLE_CXX=ON -DMSGPACK_BUILD_EXAMPLES=ON -DMSGPACK_BUILD_TESTS=ON -DCMAKE_BUILD_TYPE=Debug -DMSGPACK_GEN_COVERAGE=ON ..
+        make -j4
+        make test
+    - name: Upload coverage to Codecov
+      working-directory: build
+      run: |
+        # Create lcov report
+        lcov --capture --directory . --output-file coverage.info
+        lcov --remove coverage.info '/usr/*' --output-file coverage.info # filter system-files
+        lcov --list coverage.info # debug info
+        # Uploading report to CodeCov
+        bash <(curl -s https://codecov.io/bash) -f coverage.info || echo "Codecov did not collect coverage reports"
