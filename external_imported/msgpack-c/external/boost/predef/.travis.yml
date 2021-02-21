@@ -1,0 +1,109 @@
+# Use, modification, and distribution are
+# subject to the Boost Software License, Version 1.0. (See accompanying
+# file LICENSE_1_0.txt or copy at http://www.boost.org/LICENSE_1_0.txt)
+#
+# Copyright Rene Rivera 2015-2016.
+
+# Setting up notifications like this is optional as the default behavior
+# of Travis is to notify the commiter of problems. But setting a specific
+# recipient this way ensures you get all the communications about the
+# builds.
+notifications:
+  email:
+    recipients:
+      - grafikrobot@gmail.com
+
+# For now the CI scripts only support the two main branches available
+# on the boost super-project.
+branches:
+  only:
+    - master
+    - develop
+
+# We specify a generic language instead of C++ as Travis sets up
+# additional environment vars that point to its default toolset
+# instead of the one we install. The extra env doesn't interfere,
+# but at the same time it's misleading. So to avoid confusion and
+# possible unseen side effects we stick with no C++ default setup.
+language: generic
+
+# Speficy the default as Linux here, to avoid duplication in the matrix
+# below. We use Trausty as that's the latest we can use. And it's better
+# supported by the whole range of C++ toolsets we like to test on.
+dist: trusty
+os: linux
+
+# Because we install our own toolsets and other software we need
+# to run the sudo support.
+sudo: required
+
+# Travis has a long standing bug with their rather complicated
+# build matrix evaluation that causes empty jobs to be created.
+# This global matrix entry in combination with the exclusion
+# below works around that bug. This is the suggested fix from
+# the Travis support people.
+env:
+  matrix:
+    - TRAVIS_EMPTY_JOB_WORKAROUND=true
+
+# This lists all the toolsets we will test with the Boost CI
+# scripts. Predef needs to check all of them as its job is to
+# distiguish between all of them. For other libraries you would
+# want to limit the list to the toolsets that are important
+# for that.
+matrix:
+  exclude:
+    - env: TRAVIS_EMPTY_JOB_WORKAROUND=true
+  include:
+    - env: TOOLSET=clang-3.4
+    - env: TOOLSET=clang-3.5
+    - env: TOOLSET=clang-3.6
+    - env: TOOLSET=clang-3.7
+    - env: TOOLSET=clang-3.8
+    - env: TOOLSET=clang-3.9
+    - env: TOOLSET=clang-4.0
+    - env: TOOLSET=clang-5.0
+    - env: TOOLSET=gcc-4.7
+    - env: TOOLSET=gcc-4.8
+    - env: TOOLSET=gcc-4.9
+    - env: TOOLSET=gcc-5
+    - env: TOOLSET=gcc-6
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=c++03
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=c++11
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=c++14
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=c++1z
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=gnu++03
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=gnu++11
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=gnu++14
+    - env: TOOLSET=gcc-7 CXXFLAGS=-std=gnu++1z
+    - env: TOOLSET=xcode-6.1
+      os: osx
+    - env: TOOLSET=xcode-6.4
+      os: osx
+      osx_image: xcode6.4
+    - env: TOOLSET=xcode-7.3
+      os: osx
+      osx_image: xcode7.3
+    - env: TOOLSET=xcode-8.3 CXXFLAGS=-std=c++03
+      os: osx
+      osx_image: xcode8.3
+    - env: TOOLSET=xcode-8.3 CXXFLAGS=-std=c++11
+      os: osx
+      osx_image: xcode8.3
+    - env: TOOLSET=xcode-8.3 CXXFLAGS=-std=c++14
+      os: osx
+      osx_image: xcode8.3
+    - env: TOOLSET=xcode-8.3 CXXFLAGS=-std=c++1z
+      os: osx
+      osx_image: xcode8.3
+
+install: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" install
+before_script: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" before_script
+script: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" script
+before_cache: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" before_cache
+after_success: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" after_success
+after_failure: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" after_failure
+after_script: python "${TRAVIS_BUILD_DIR}/tools/ci/library_test.py" after_script
+cache:
+  directories:
+    - $HOME/boostorg/boost
