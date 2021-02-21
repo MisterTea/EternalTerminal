@@ -1,0 +1,5 @@
+# Not really sure if this is a real leak or just ASAN not correctly handling the autorelease pool.
+# The leak is reported both from the `crashpad_handler` as well as sentry itself.
+# Adding a manual `[paths release]` "fixes" the `crashpad_handler` leak, but leads to a use-after-free in sentry.
+# https://github.com/getsentry/crashpad/blob/9cd1a4dadb51b31665f5e50c5ffc25bb9d10571a/client/crash_report_database_mac.mm#L705
+leak:contentsOfDirectoryAtPath

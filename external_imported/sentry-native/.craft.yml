@@ -1,0 +1,29 @@
+minVersion: "0.15.0"
+github:
+  owner: getsentry
+  repo: sentry-native
+changelogPolicy: auto
+
+statusProvider:
+  name: github
+artifactProvider:
+  name: github
+
+targets:
+  - name: github
+  - name: registry
+    type: sdk
+    config:
+      canonical: "github:getsentry/sentry-native"
+  - name: gcs
+    bucket: sentry-sdk-assets
+    paths:
+      - path: /sentry-native/{{version}}/
+        metadata:
+          cacheControl: "public, max-age=2592000"
+      - path: /sentry-native/latest/
+        metadata:
+          cacheControl: "public, max-age=600"
+
+requireNames:
+  - /^sentry-native.zip$/

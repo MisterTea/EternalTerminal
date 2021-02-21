@@ -1,0 +1,39 @@
+diff -rupN --exclude=.DS_Store cfe-3.5.0.src/CMakeLists.txt cfe-3.5.0.src.cotire/CMakeLists.txt
+--- cfe-3.5.0.src/CMakeLists.txt	2014-07-16 18:48:33.000000000 +0200
++++ cfe-3.5.0.src.cotire/CMakeLists.txt	2014-12-21 19:58:36.000000000 +0100
+@@ -94,6 +94,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURR
+   include(AddLLVM)
+   include(TableGen)
+   include(HandleLLVMOptions)
++  include(cotire)
++  set_property(DIRECTORY PROPERTY COTIRE_UNITY_LINK_LIBRARIES_INIT "COPY_UNITY")
+ 
+   set(PACKAGE_VERSION "${LLVM_PACKAGE_VERSION}")
+ 
+@@ -343,6 +345,12 @@ macro(add_clang_library name)
+   endif()
+ 
+   set_target_properties(${name} PROPERTIES FOLDER "Clang libraries")
++  if (COMMAND cotire)
++    if (NOT "${name}" MATCHES "libclang")
++      set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++      cotire(${name})
++    endif()
++  endif()
+ endmacro(add_clang_library)
+ 
+ macro(add_clang_executable name)
+diff -rupN --exclude=.DS_Store cfe-3.5.0.src/tools/libclang/CMakeLists.txt cfe-3.5.0.src.cotire/tools/libclang/CMakeLists.txt
+--- cfe-3.5.0.src/tools/libclang/CMakeLists.txt	2014-07-15 00:17:16.000000000 +0200
++++ cfe-3.5.0.src.cotire/tools/libclang/CMakeLists.txt	2014-12-21 19:58:36.000000000 +0100
+@@ -114,3 +114,10 @@ if(ENABLE_SHARED)
+                  LINK_FLAGS ${LIBCLANG_LINK_FLAGS})
+   endif()
+ endif()
++
++if (COMMAND cotire)
++  cotire(libclang)
++  if (TARGET ${LIBCLANG_STATIC_TARGET_NAME})
++    cotire(${LIBCLANG_STATIC_TARGET_NAME})
++  endif()
++endif()

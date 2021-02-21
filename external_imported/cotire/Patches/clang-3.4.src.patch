@@ -1,0 +1,48 @@
+diff -rupN clang-3.4.src/CMakeLists.txt clang-3.4.src.cotire/CMakeLists.txt
+--- clang-3.4.src/CMakeLists.txt	2013-11-06 09:37:50.000000000 +0100
++++ clang-3.4.src.cotire/CMakeLists.txt	2014-01-17 20:33:42.000000000 +0100
+@@ -2,7 +2,7 @@
+ # standalone project, using LLVM as an external library:
+ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURRENT_SOURCE_DIR )
+   project(Clang)
+-  cmake_minimum_required(VERSION 2.8)
++  cmake_minimum_required(VERSION 2.8.11)
+ 
+   set(CLANG_PATH_TO_LLVM_SOURCE "" CACHE PATH
+     "Path to LLVM source code. Not necessary if using an installed LLVM.")
+@@ -40,6 +40,8 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURR
+   include(TableGen)
+   include("${CLANG_PATH_TO_LLVM_BUILD}/share/llvm/cmake/LLVMConfig.cmake")
+   include(HandleLLVMOptions)
++  include(cotire)
++  set_property(DIRECTORY PROPERTY COTIRE_UNITY_LINK_LIBRARIES_INIT "COPY_UNITY")
+ 
+   set(PACKAGE_VERSION "${LLVM_PACKAGE_VERSION}")
+ 
+@@ -286,6 +288,12 @@ macro(add_clang_library name)
+   endif()
+ 
+   set_target_properties(${name} PROPERTIES FOLDER "Clang libraries")
++  if (COMMAND cotire)
++    if (NOT "${name}" MATCHES "libclang")
++      set_target_properties(${name} PROPERTIES COTIRE_UNITY_SOURCE_POST_UNDEFS "DEBUG_TYPE")
++      cotire(${name})
++    endif()
++  endif()
+ endmacro(add_clang_library)
+ 
+ macro(add_clang_executable name)
+diff -rupN clang-3.4.src/tools/libclang/CMakeLists.txt clang-3.4.src.cotire/tools/libclang/CMakeLists.txt
+--- clang-3.4.src/tools/libclang/CMakeLists.txt	2013-11-13 23:26:04.000000000 +0100
++++ clang-3.4.src.cotire/tools/libclang/CMakeLists.txt	2014-01-17 20:37:53.000000000 +0100
+@@ -124,3 +124,10 @@ if( (NOT LLVM_ENABLE_PIC OR LIBCLANG_BUI
+     PROPERTIES
+     OUTPUT_NAME "clang")
+ endif()
++
++if (COMMAND cotire)
++  cotire(libclang)
++  if (TARGET ${LIBCLANG_STATIC_TARGET_NAME})
++    cotire(${LIBCLANG_STATIC_TARGET_NAME})
++  endif()
++endif()

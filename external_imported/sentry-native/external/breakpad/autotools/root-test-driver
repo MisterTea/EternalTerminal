@@ -1,0 +1,3 @@
+#!/bin/sh
+# -E to keep the environment variables needed to run the tests.
+exec sudo -E "$@"

@@ -6,7 +6,7 @@ ENDIF()
 
 # Enable vcpkg
 set(CMAKE_TOOLCHAIN_FILE
-    "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    "${CMAKE_SOURCE_DIR}/external_imported/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 # Set the triplet
 if(WIN32)
@@ -44,7 +44,7 @@ endif()
 # Some hacks to fix vcpkg
 if(WIN32)
   set(Protobuf_PROTOC_EXECUTABLE
-      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+      "${CMAKE_SOURCE_DIR}/external_imported/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
   )
   set(ZLIB_LIBRARY_RELEASE
       "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
@@ -54,7 +54,7 @@ if(WIN32)
   )
 else()
   set(Protobuf_PROTOC_EXECUTABLE
-      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+      "${CMAKE_SOURCE_DIR}/external_imported/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
   )
 endif()
 
@@ -64,7 +64,7 @@ include(CMakeFindDependencyMacro)
 
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake"
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external_imported/sanitizers-cmake/cmake"
                       ${CMAKE_MODULE_PATH})
 
 # Required packages
@@ -90,10 +90,10 @@ endif()
 
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
-add_subdirectory("external/sentry-native")
-add_subdirectory("external/PlatformFolders")
+add_subdirectory("external_imported/sentry-native")
+add_subdirectory("external_imported/PlatformFolders")
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake"
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external_imported/cotire/CMake"
                       ${CMAKE_MODULE_PATH})
 include(cotire)
 if(POLICY CMP0058)
@@ -213,18 +213,18 @@ macro(DECORATE_TARGET TARGET_NAME)
 endmacro()
 
 include_directories(
-  external/easyloggingpp/src
-  external/ThreadPool
-  external/PlatformFolders
-  external/Catch2/single_include
-  external/cxxopts/include
-  external/msgpack-c/include
-  external/sentry-native/include
-  external/json/single_include/nlohmann
-  external/sole
-  external/base64
-  external/simpleini
-  external/cpp-httplib
+  external_imported/easyloggingpp/src
+  external_imported/ThreadPool
+  external_imported/PlatformFolders
+  external_imported/Catch2/single_include
+  external_imported/cxxopts/include
+  external_imported/msgpack-c/include
+  external_imported/sentry-native/include
+  external_imported/json/single_include/nlohmann
+  external_imported/sole
+  external_imported/base64
+  external_imported/simpleini
+  external_imported/cpp-httplib
   src/base
   src/terminal
   src/terminal/forwarding
@@ -239,13 +239,13 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR})
 
 if(NOT ANDROID)
-  include_directories(external/UniversalStacktrace/ust)
+  include_directories(external_imported/UniversalStacktrace/ust)
 endif()
 
 add_library(
   et-lib STATIC
-  external/easyloggingpp/src/easylogging++.h
-  external/easyloggingpp/src/easylogging++.cc
+  external_imported/easyloggingpp/src/easylogging++.h
+  external_imported/easyloggingpp/src/easylogging++.cc
   src/base/BackedReader.hpp
   src/base/BackedReader.cpp
   src/base/BackedWriter.hpp
