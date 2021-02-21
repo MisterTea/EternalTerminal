@@ -1,9 +1,12 @@
 #!/usr/bin/make -f
+export DH_VERBOSE = 1
 
 %:
-	dh $@ --parallel --with systemd --buildsystem=cmake
+	dh $@ --parallel --with systemd --buildsystem=cmake --builddirectory=build
 
-BUILDDIR = build_dir
+override_dh_auto_configure:
+    dh_auto_configure -- \
+    -DCMAKE_TOOLCHAIN_FILE=../external_imported/vcpkg/scripts/buildsystems/vcpkg.cmake
 
 override_dh_install:
 	dh_install
