@@ -1,7 +1,7 @@
 cmake_minimum_required (VERSION 3.15.0)
 
 # Enable vcpkg
-SET(CMAKE_TOOLCHAIN_FILE "../external/vcpkg/scripts/buildsystems/vcpkg.cmake")
+SET(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 # Set the triplet
 IF(WIN32)
