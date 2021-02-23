@@ -1,5 +1,9 @@
 cmake_minimum_required(VERSION 3.15.0)
 
+IF (NOT WIN32)
+  set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
+ENDIF()
+
 # Enable vcpkg
 set(CMAKE_TOOLCHAIN_FILE
     "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
@@ -19,12 +23,17 @@ elseif(APPLE)
     set(VCPKG_TARGET_TRIPLET "x64-osx")
   endif()
 else()
+  execute_process(
+    COMMAND uname -m
+    COMMAND tr -d '\n'
+    OUTPUT_VARIABLE ARCHITECTURE)
+  message(STATUS "Architecture: ${ARCHITECTURE}")
   if(${ARCHITECTURE} STREQUAL "x86_64")
     set(VCPKG_TARGET_TRIPLET "x64-linux")
   elseif(${ARCHITECTURE} STREQUAL "x86_86")
     set(VCPKG_TARGET_TRIPLET "x86-linux")
   else()
-    set(VCPKG_TARGET_TRIPLET "${ARCHTECTURE}-linux")
+    set(VCPKG_TARGET_TRIPLET "${ARCHITECTURE}-linux")
   endif()
 endif()
 
@@ -185,7 +194,7 @@ elseif(APPLE)
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv)
 else()
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB unwind::unwind
-                     util resolv)
+                     util resolv atomic stdc++fs)
 endif()
 
 macro(DECORATE_TARGET TARGET_NAME)
