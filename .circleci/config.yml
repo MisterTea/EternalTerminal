@@ -177,7 +177,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags pkg-config
+          command: brew remove python@2; brew upgrade python; brew install cmake ninja; brew install openssl protobuf libsodium gflags pkg-config
       - checkout
       - run:
           name: Init submodules

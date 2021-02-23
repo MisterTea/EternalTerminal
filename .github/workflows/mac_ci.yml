@@ -43,7 +43,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install openssl protobuf libsodium
+          brew install cmake ninja; brew install openssl protobuf libsodium
 
       - name: Test with asan
         run: |
@@ -68,7 +68,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install openssl protobuf libsodium
+          brew install cmake ninja; brew install openssl protobuf libsodium
 
       - name: Test with msan
         run: |
@@ -93,7 +93,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake; brew install openssl protobuf libsodium
+          brew install cmake ninja; brew install openssl protobuf libsodium
 
       - name: Test with tsan
         run: |
