@@ -9,7 +9,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build libutempter-dev build-essential openssh-server
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build libutempter-dev build-essential openssh-server protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev
       - checkout
       - run:
           name: Set up ssh & known_hosts
