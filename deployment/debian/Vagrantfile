@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "debian/buster64"
+  config.vm.box = "debian/testing64"
   config.ssh.shell = "sh"
 
   config.vm.provider "virtualbox" do |v|
@@ -75,9 +75,10 @@ Vagrant.configure("2") do |config|
   # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
   # documentation for more information about their specific syntax and use.
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
+  echo "set grub-pc/install_devices /dev/sda" | debconf-communicate
   apt update
   DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt -q -y -o "Dpkg::Options::=--force-confdef" -o "Dpkg::Options::=--force-confold" upgrade
-  apt install -y build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake ninja-build libutempter-dev debhelper git-lfs dh-systemd pbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support
+  DEBIAN_FRONTEND=noninteractive apt install -y build-essential git curl zip unzip tar devscripts aptly dput jq cmake pkg-config ninja-build libutempter-dev debhelper git-lfs pbuilder cowbuilder python3-distutils ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support libunwind-dev libcurl4-openssl-dev
 SHELL
 
   config.vm.provision "shell", privileged: false, inline: <<-SHELL
@@ -95,9 +96,9 @@ max-cache-ttl 34560000" > ~/.gnupg/gpg-agent.conf
   git clone --branch release git@github.com:MisterTea/EternalTerminal.git
   git clone git@github.com:MisterTea/debian-et.git
   
-  for distro in `distro-info --supported | grep -v experimental`; do
+  for distro in `distro-info --stable` `distro-info --testing`; do
     for ARCH in amd64 i386 armhf armel arm64; do
-      pbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
+      cowbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
     done
 
     aptly repo create -distribution=${distro} -component=main et-${distro}

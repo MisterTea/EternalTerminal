@@ -1,85 +1,116 @@
-cmake_minimum_required (VERSION 3.15.0)
+cmake_minimum_required(VERSION 3.15.0)
 
 # Enable vcpkg
-SET(CMAKE_TOOLCHAIN_FILE "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
+set(CMAKE_TOOLCHAIN_FILE
+    "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
 # Set the triplet
-IF(WIN32)
-SET(VCPKG_TARGET_TRIPLET "x64-windows-static")
-ELSEIF(APPLE)
-SET(VCPKG_TARGET_TRIPLET "x64-osx")
-ELSE()
-SET(VCPKG_TARGET_TRIPLET "x64-linux")
-ENDIF()
+if(WIN32)
+  set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+elseif(APPLE)
+  execute_process(
+    COMMAND uname -m
+    COMMAND tr -d '\n'
+    OUTPUT_VARIABLE ARCHITECTURE)
+  message(STATUS "Architecture: ${ARCHITECTURE}")
+  if(${ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
+    set(VCPKG_TARGET_TRIPLET "arm64-osx")
+  else()
+    set(VCPKG_TARGET_TRIPLET "x64-osx")
+  endif()
+else()
+  if(${ARCHITECTURE} STREQUAL "x86_64")
+    set(VCPKG_TARGET_TRIPLET "x64-linux")
+  elseif(${ARCHITECTURE} STREQUAL "x86_86")
+    set(VCPKG_TARGET_TRIPLET "x86-linux")
+  else()
+    set(VCPKG_TARGET_TRIPLET "${ARCHTECTURE}-linux")
+  endif()
+endif()
 
 # Some hacks to fix vcpkg
-IF(WIN32)
-SET(Protobuf_PROTOC_EXECUTABLE "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe")
-SET(ZLIB_LIBRARY_RELEASE "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib")
-SET(ZLIB_LIBRARY_DEBUG "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib")
-ELSE()
-SET(Protobuf_PROTOC_EXECUTABLE "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc")
-ENDIF()
+if(WIN32)
+  set(Protobuf_PROTOC_EXECUTABLE
+      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+  )
+  set(ZLIB_LIBRARY_RELEASE
+      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
+  )
+  set(ZLIB_LIBRARY_DEBUG
+      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
+  )
+else()
+  set(Protobuf_PROTOC_EXECUTABLE
+      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+  )
+endif()
 
-project (EternalTCP VERSION 6.0.13)
+project(EternalTCP VERSION 6.0.13)
 
 include(CMakeFindDependencyMacro)
 
 # Add cmake script directory.
-LIST(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake"
+                      ${CMAKE_MODULE_PATH})
 
 # Required packages
 find_package(OpenSSL REQUIRED)
-FIND_PACKAGE(Sanitizers REQUIRED)
+find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 set(Protobuf_USE_STATIC_LIBS ON)
 set(protobuf_MSVC_STATIC_RUNTIME ON)
 find_package(Protobuf REQUIRED)
 find_package(ZLIB REQUIRED)
+find_package(Unwind)
 
 # Optional packages
 find_package(UTempter)
-IF(LINUX)
-find_package(SELinux)
-ENDIF()
+if(LINUX)
+  find_package(SELinux)
+endif()
 
-IF(MSVC)
-set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
-ENDIF()
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("external/sentry-native")
 add_subdirectory("external/PlatformFolders")
 
-SET(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake" ${CMAKE_MODULE_PATH})
-INCLUDE(cotire)
-if(POLICY CMP0058) 
-    cmake_policy(SET CMP0058 NEW) # Needed for cotire
-endif() 
+set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake"
+                      ${CMAKE_MODULE_PATH})
+include(cotire)
+if(POLICY CMP0058)
+  cmake_policy(SET CMP0058 NEW) # Needed for cotire
+endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
-# For easylogging, disable default log file, enable crash log, ensure thread safe, and catch c++ exceptions
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DSENTRY_BUILD_STATIC")
+# For easylogging, disable default log file, enable crash log, ensure thread
+# safe, and catch c++ exceptions
+set(CMAKE_CXX_FLAGS
+    "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DSENTRY_BUILD_STATIC"
+)
 
 if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage")
-SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage")
 endif(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 
 if(DISABLE_CRASH_LOG)
-SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
-ENDIF(DISABLE_CRASH_LOG)
+  set(CMAKE_CXX_FLAGS
+      "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
+endif(DISABLE_CRASH_LOG)
 
 if(UNIX)
   # Enable debug info
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -ggdb3")
-  SET(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g -ggdb3")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
 endif()
 
 # Enable C++-17
@@ -87,95 +118,86 @@ set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
 if(WIN32)
-# Enable unicode
-ADD_DEFINITIONS(-DUNICODE)
-ADD_DEFINITIONS(-D_UNICODE)
+  # Enable unicode
+  add_definitions(-DUNICODE)
+  add_definitions(-D_UNICODE)
 endif()
 
-#Using FreeBSD?
-if (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-    set(FREEBSD TRUE)
-endif (CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+# Using FreeBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  set(FREEBSD TRUE)
+endif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
 
-#Using NetBSD?
-if (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+# Using NetBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   set(NETBSD TRUE)
-endif (CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
-option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" OFF)
-IF(FULL_PROTOBUF)
-    IF(WIN32)
-      SET(PROTOBUF_LIBS protobuf::libprotobuf)
-    ELSE()
-      SET(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
-    ENDIF()
-ELSE()
-    IF(WIN32)
-      SET(PROTOBUF_LIBS protobuf::libprotobuf-lite)
-    ELSE()
-      SET(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
-    ENDIF()
-ENDIF()
+option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite"
+       OFF)
+if(FULL_PROTOBUF)
+  if(WIN32)
+    set(PROTOBUF_LIBS protobuf::libprotobuf)
+  else()
+    set(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
+  endif()
+else()
+  if(WIN32)
+    set(PROTOBUF_LIBS protobuf::libprotobuf-lite)
+  else()
+    set(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
+  endif()
+endif()
 
-IF(SELINUX_FOUND)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
-ELSE()
-  SET(SELINUX_INCLUDE_DIR "")
-  SET(SELINUX_LIBRARIES "")
-ENDIF()
+if(SELINUX_FOUND)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
+else()
+  set(SELINUX_INCLUDE_DIR "")
+  set(SELINUX_LIBRARIES "")
+endif()
 
-IF(UTEMPTER_FOUND)
-  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER")
-ELSE()
-  SET(UTEMPTER_INCLUDE_DIR "")
-  SET(UTEMPTER_LIBRARIES "")
-ENDIF()
+if(UTEMPTER_FOUND)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_UTEMPTER")
+else()
+  set(UTEMPTER_INCLUDE_DIR "")
+  set(UTEMPTER_LIBRARIES "")
+endif()
 
-PROTOBUF_GENERATE_CPP(
-  ET_SRCS
-  ET_HDRS
+protobuf_generate_cpp(ET_SRCS ET_HDRS proto/ET.proto)
+set_source_files_properties(${ET_SRCS} ${ET_HDRS} PROPERTIES GENERATED TRUE)
+protobuf_generate_cpp(ETERMINAL_SRCS ETERMINAL_HDRS proto/ETerminal.proto)
+set_source_files_properties(${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
+                            PROPERTIES GENERATED TRUE)
+add_custom_target(generated-code DEPENDS ${ET_SRCS} ${ET_HDRS}
+                                         ${ETERMINAL_SRCS} ${ETERMINAL_HDRS})
 
-  proto/ET.proto
-  )
-SET_SOURCE_FILES_PROPERTIES(${ET_SRCS} ${ET_HDRS} PROPERTIES GENERATED TRUE)
-PROTOBUF_GENERATE_CPP(
-  ETERMINAL_SRCS
-  ETERMINAL_HDRS
-
-  proto/ETerminal.proto
-  )
-SET_SOURCE_FILES_PROPERTIES(${ETERMINAL_SRCS} ${ETERMINAL_HDRS} PROPERTIES GENERATED TRUE)
-  add_custom_target(
-  generated-code
-  DEPENDS
-
-  ${ET_SRCS} ${ET_HDRS}
-  ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
-  )
-
-IF(ANDROID)
+if(ANDROID)
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util)
-ELSEIF(FREEBSD)
+elseif(FREEBSD)
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util execinfo)
-ELSEIF(NETBSD)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv execinfo)
-ELSEIF(WIN32)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi dbghelp)
-ELSEIF(APPLE)
+elseif(NETBSD)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv
+                     execinfo)
+elseif(WIN32)
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
+                     dbghelp)
+elseif(APPLE)
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv)
-ELSE()
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB unwind util resolv)
-ENDIF()
+else()
+  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB unwind::unwind
+                     util resolv)
+endif()
 
-MACRO(DECORATE_TARGET TARGET_NAME)
+macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
-  set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT "src/base/Headers.hpp")
-  IF(CMAKE_CROSSCOMPILING)
+  set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT
+                                                  "src/base/Headers.hpp")
+  if(CMAKE_CROSSCOMPILING)
     # Doesn't work when cross-compiling
-  ELSE()
+  else()
     cotire(${TARGET_NAME})
-  ENDIF()
-ENDMACRO()
+  endif()
+endmacro()
 
 include_directories(
   external/easyloggingpp/src
@@ -201,288 +223,215 @@ include_directories(
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
-  ${OPENSSL_INCLUDE_DIR}
-  )
+  ${OPENSSL_INCLUDE_DIR})
 
-IF(NOT ANDROID)
-  include_directories( external/UniversalStacktrace/ust )
-ENDIF()
+if(NOT ANDROID)
+  include_directories(external/UniversalStacktrace/ust)
+endif()
 
 add_library(
-  et-lib
-  STATIC
-
+  et-lib STATIC
   external/easyloggingpp/src/easylogging++.h
   external/easyloggingpp/src/easylogging++.cc
-
   src/base/BackedReader.hpp
   src/base/BackedReader.cpp
-
   src/base/BackedWriter.hpp
   src/base/BackedWriter.cpp
-
   src/base/ClientConnection.hpp
   src/base/ClientConnection.cpp
-
   src/base/Connection.hpp
   src/base/Connection.cpp
-
   src/base/CryptoHandler.hpp
   src/base/CryptoHandler.cpp
-
   src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
-
   src/base/ServerConnection.hpp
   src/base/ServerConnection.cpp
-
   src/base/SocketHandler.hpp
   src/base/SocketHandler.cpp
-
   src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
-
   src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
-
   src/base/UnixSocketHandler.hpp
   src/base/UnixSocketHandler.cpp
-
   src/base/LogHandler.hpp
   src/base/LogHandler.cpp
-
   src/base/DaemonCreator.hpp
   src/base/DaemonCreator.cpp
-
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
-
   src/base/WinsockContext.hpp
-
   src/base/SubprocessToString.hpp
   src/base/SubprocessToString.cpp
-
-  ${ET_SRCS}
-  )
-add_dependencies(
-  et-lib
-  generated-code
-  )
-DECORATE_TARGET(et-lib)
+  ${ET_SRCS})
+add_dependencies(et-lib generated-code)
+decorate_target(et-lib)
 
 add_library(
-  TerminalCommon
-  STATIC
-
+  TerminalCommon STATIC
   src/terminal/forwarding/PortForwardHandler.hpp
   src/terminal/forwarding/PortForwardHandler.cpp
-
   src/terminal/forwarding/ForwardSourceHandler.hpp
   src/terminal/forwarding/ForwardSourceHandler.cpp
-
   src/terminal/forwarding/ForwardDestinationHandler.hpp
   src/terminal/forwarding/ForwardDestinationHandler.cpp
-
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
-
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
-
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
-
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
-
   src/terminal/UserTerminalHandler.hpp
   src/terminal/UserTerminalHandler.cpp
-
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
-
   src/terminal/TelemetryService.hpp
   src/terminal/TelemetryService.cpp
+  ${ETERMINAL_SRCS}
+  ${ETERMINAL_HDRS})
+add_dependencies(TerminalCommon generated-code)
+decorate_target(TerminalCommon)
 
-  ${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
-  )
-add_dependencies(
-  TerminalCommon
-  generated-code
-  )
-DECORATE_TARGET(TerminalCommon)
-
-add_executable (
+add_executable(et src/terminal/TerminalClientMain.cpp)
+target_link_libraries(
   et
-  src/terminal/TerminalClientMain.cpp
-  )
-target_link_libraries (
-    et
+  LINK_PUBLIC
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${UTEMPTER_LIBRARIES}
+  sentry::sentry
+  ${CORE_LIBRARIES})
+decorate_target(et)
+
+if(WIN32)
+  install(
+    TARGETS et
+    DESTINATION "bin"
+    COMPONENT client)
+  set(CPACK_COMPONENTS_ALL client)
+  set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
+
+else(WIN32)
+  add_executable(etserver src/terminal/TerminalServerMain.cpp)
+  target_link_libraries(
+    etserver
     LINK_PUBLIC
     TerminalCommon
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBS}
     ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
     sentry::sentry
-    ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(et)
+    ${CORE_LIBRARIES})
+  decorate_target(etserver)
 
-IF(WIN32)
-install(TARGETS et
-  DESTINATION "bin"
-  COMPONENT client
-  )
-set(CPACK_COMPONENTS_ALL client)
-set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
-  
-ELSE(WIN32)
-add_executable (
-  etserver
-  src/terminal/TerminalServerMain.cpp
-  )
-target_link_libraries (
-  etserver
-  LINK_PUBLIC
-  TerminalCommon
-  et-lib
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBS}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  sentry::sentry
-  ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(etserver)
+  add_executable(etterminal src/terminal/TerminalMain.cpp)
+  target_link_libraries(
+    etterminal
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    sentry::sentry
+    ${CORE_LIBRARIES})
+  decorate_target(etterminal)
 
-add_executable (
-  etterminal
-  src/terminal/TerminalMain.cpp
-  )
-target_link_libraries (
-  etterminal
-  LINK_PUBLIC
-  TerminalCommon
-  et-lib
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBS}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  sentry::sentry
-  ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(etterminal)
+  add_library(
+    HtmCommon STATIC
+    src/htm/TerminalHandler.cpp
+    src/htm/MultiplexerState.cpp
+    src/htm/IpcPairClient.cpp
+    src/htm/IpcPairEndpoint.cpp
+    src/htm/IpcPairServer.cpp
+    src/htm/HtmClient.cpp
+    src/htm/HtmServer.cpp)
+  add_dependencies(HtmCommon generated-code)
+  decorate_target(HtmCommon)
 
-add_library (
-  HtmCommon
-  STATIC
+  add_executable(htm src/htm/HtmClientMain.cpp)
+  target_link_libraries(
+    htm
+    LINK_PUBLIC
+    HtmCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    sentry::sentry
+    ${CORE_LIBRARIES})
+  decorate_target(htm)
 
-  src/htm/TerminalHandler.cpp
-  src/htm/MultiplexerState.cpp
-  src/htm/IpcPairClient.cpp
-  src/htm/IpcPairEndpoint.cpp
-  src/htm/IpcPairServer.cpp
-  src/htm/HtmClient.cpp
-  src/htm/HtmServer.cpp
-)
-add_dependencies(
-  HtmCommon
-  generated-code
-  )
-DECORATE_TARGET(HtmCommon)
+  add_executable(htmd src/htm/HtmServerMain.cpp)
+  target_link_libraries(
+    htmd
+    LINK_PUBLIC
+    HtmCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    sentry::sentry
+    ${CORE_LIBRARIES})
+  decorate_target(htmd)
 
-add_executable (
-  htm
+  enable_testing()
 
-  src/htm/HtmClientMain.cpp
-  )
-target_link_libraries (
-  htm
-  LINK_PUBLIC
+  file(GLOB TEST_SRCS test/*Test.cpp)
+  add_executable(et-test ${TEST_SRCS} test/Main.cpp)
+  add_dependencies(et-test TerminalCommon et-lib)
+  target_link_libraries(
+    et-test
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    sentry::sentry
+    ${CORE_LIBRARIES})
+  add_test(et-test et-test)
+  decorate_target(et-test)
 
-  HtmCommon
-  et-lib
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBS}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  sentry::sentry
-  ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(htm)
-
-add_executable (
-  htmd
-
-  src/htm/HtmServerMain.cpp
-  )
-target_link_libraries (
-  htmd
-  LINK_PUBLIC
-
-  HtmCommon
-  et-lib
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBS}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  sentry::sentry
-  ${CORE_LIBRARIES}
-)
-DECORATE_TARGET(htmd)
-
-enable_testing()
-
-file(GLOB TEST_SRCS test/*Test.cpp )
-add_executable(
-  et-test
-
-  ${TEST_SRCS}
-  test/Main.cpp
-  )
-add_dependencies(
-  et-test
-  TerminalCommon
-  et-lib)
-target_link_libraries(
-  et-test
-  TerminalCommon
-  et-lib
-  ${CMAKE_THREAD_LIBS_INIT}
-  ${PROTOBUF_LIBS}
-  ${sodium_LIBRARY_RELEASE}
-  ${SELINUX_LIBRARIES}
-  ${UTEMPTER_LIBRARIES}
-  sentry::sentry
-  ${CORE_LIBRARIES}
-  )
-add_test(
-  et-test
-  et-test
-  )
-DECORATE_TARGET(et-test)
-
-install(TARGETS etserver etterminal et htm htmd
-  PERMISSIONS  OWNER_EXECUTE OWNER_WRITE OWNER_READ GROUP_EXECUTE GROUP_READ WORLD_EXECUTE WORLD_READ
-  DESTINATION "bin"
-  )
-ENDIF()
+  install(
+    TARGETS etserver etterminal et htm htmd
+    PERMISSIONS
+      OWNER_EXECUTE
+      OWNER_WRITE
+      OWNER_READ
+      GROUP_EXECUTE
+      GROUP_READ
+      WORLD_EXECUTE
+      WORLD_READ
+    DESTINATION "bin")
+endif()
 
 set(CPACK_PACKAGE_NAME "Eternal Terminal")
 set(CPACK_PACKAGE_VENDOR "https://github.com/MisterTea/EternalTerminal")
-set(CPACK_PACKAGE_DESCRIPTION_SUMMARY "Remote terminal for the busy and impatient")
+set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
+    "Remote terminal for the busy and impatient")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "EternalTerminal")
-SET(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 
 # This must always be last!
 include(CPack)
