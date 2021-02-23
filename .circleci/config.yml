@@ -9,7 +9,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
       - checkout
       - run:
           name: Set up ssh & known_hosts
@@ -50,7 +50,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
       - checkout
       - run:
           name: Set up ssh & known_hosts
@@ -81,7 +81,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
       - checkout
       - run:
           name: Init submodules
@@ -105,7 +105,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
       - checkout
       - run:
           name: Init submodules
@@ -129,7 +129,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
       - checkout
       - run:
           name: Init submodules
@@ -153,7 +153,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
       - checkout
       - run:
           name: Init submodules
