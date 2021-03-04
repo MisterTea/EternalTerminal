@@ -9,7 +9,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build libutempter-dev build-essential openssh-server protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev
       - checkout
       - run:
           name: Set up ssh & known_hosts
@@ -50,7 +50,7 @@ jobs:
           command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
       - run:
           name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ openssh-server
+          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build libutempter-dev build-essential openssh-server
       - checkout
       - run:
           name: Set up ssh & known_hosts
@@ -72,134 +72,10 @@ jobs:
           name: Kill servers
           command: sudo pkill etserver
 
-  linux_msan:
-    machine:
-      image: ubuntu-2004:202101-01
-    steps:
-      - run:
-          name: Avoid hosts unknown for github
-          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-      - run:
-          name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-      - checkout
-      - run:
-          name: Init submodules
-          command: git submodule update --init --recursive
-      - run:
-          name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
-      - run:
-          name: Build the project with test
-          command: cd build; cmake -DSANITIZE_MEMORY=ON ../; make -j4
-          no_output_timeout: 60m
-      - run:
-          name: Run tests
-          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
-  linux_asan:
-    machine:
-      image: ubuntu-2004:202101-01
-    steps:
-      - run:
-          name: Avoid hosts unknown for github
-          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-      - run:
-          name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-      - checkout
-      - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
-          name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
-      - run:
-          name: Build the project with test
-          command: cd build; cmake -DSANITIZE_ADDRESS=ON ../; make -j4
-          no_output_timeout: 60m
-      - run:
-          name: Run tests
-          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
-  linux_tsan:
-    machine:
-      image: ubuntu-2004:202101-01
-    steps:
-      - run:
-          name: Avoid hosts unknown for github
-          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-      - run:
-          name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-      - checkout
-      - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
-          name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
-      - run:
-          name: Build the project with test
-          command: cd build; cmake -DSANITIZE_THREAD=ON ../; make -j4
-          no_output_timeout: 60m
-      - run:
-          name: Run tests
-          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
-  linux_ubsan:
-    machine:
-      image: ubuntu-2004:202101-01
-    steps:
-      - run:
-          name: Avoid hosts unknown for github
-          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-      - run:
-          name: Install system dependencies
-          command: sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -y update; sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-      - checkout
-      - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
-          name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
-      - run:
-          name: Build the project with test
-          command: cd build; cmake -DSANITIZE_UNDEFINED=ON ../; make -j4
-          no_output_timeout: 60m
-      - run:
-          name: Run tests
-          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
-  mac_tsan:
-    macos:
-      xcode: "11.3.1"
-    steps:
-      - run:
-          name: Avoid hosts unknown for github
-          command: mkdir -p ~/.ssh/ && echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-      - run:
-          name: Install system dependencies
-          command: brew remove python@2; brew upgrade python; brew install cmake; brew install openssl protobuf libsodium gflags pkg-config
-      - checkout
-      - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
-          name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-osx --feature-flags="manifests" install; fi
-      - run:
-          name: Build the project with test
-          command: cd build; cmake -DSANITIZE_THREAD=ON -DOPENSSL_ROOT_DIR=/usr/local/opt/openssl -DOPENSSL_INCLUDE_DIR=/usr/local/opt/openssl/include -DOPENSSL_LIBRARIES=/usr/local/opt/openssl/lib ../; make -j4
-          no_output_timeout: 60m
-      - run:
-          name: Run tests
-          command: cd build; TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
 workflows:
   version: 2
   build_and_test:
     jobs:
-      - linux_asan
-      - linux_tsan
-      - linux_ubsan
-      - mac_tsan
       - connect_with_jumphost
       - connect_to_initial_version:
           filters:
