@@ -1,0 +1,46 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+template("buildflag_header") {
+  action(target_name) {
+    script = "write_buildflag_header.py"
+
+    if (defined(invoker.header_dir)) {
+      header_file = "${invoker.header_dir}/${invoker.header}"
+    } else {
+      # Compute the path from the root to this file.
+      header_file = rebase_path(".", "//") + "/${invoker.header}"
+    }
+
+    outputs = [ "$root_gen_dir/$header_file" ]
+
+    # Always write --flags to the file so it's not empty. Empty will confuse GN
+    # into thinking the response file isn't used.
+    response_file_contents = [ "--flags" ]
+    if (defined(invoker.flags)) {
+      response_file_contents += invoker.flags
+    }
+
+    args = [
+      "--output",
+      header_file,  # Not rebased, Python script puts it inside gen-dir.
+      "--rulename",
+      get_label_info(":$target_name", "label_no_toolchain"),
+      "--gen-dir",
+      rebase_path(root_gen_dir, root_build_dir),
+      "--definitions",
+      "{{response_file_name}}",
+    ]
+
+    forward_variables_from(invoker,
+                           [
+                             "deps",
+                             "public_deps",
+                             "testonly",
+                             "visibility",
+                           ])
+
+    public_deps = [ ":buildflag_header_h" ]
+  }
+}
