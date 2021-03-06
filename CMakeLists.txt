@@ -221,7 +221,7 @@ else()
 endif()
 
 IF(USE_SENTRY)
-  set(CORE_LIBRARIES ${CORE_LIBARIES} sentry::sentry)
+  list(PREPEND CORE_LIBRARIES sentry::sentry)
 ENDIF()
 
 macro(DECORATE_TARGET TARGET_NAME)
