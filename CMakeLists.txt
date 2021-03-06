@@ -1,5 +1,7 @@
 cmake_minimum_required(VERSION 3.15.0)
 
+set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
+
 if(NOT WIN32)
   set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
 endif()
@@ -8,11 +10,7 @@ if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
-      "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
-
-  # Enable sentry
-  set(USE_SENTRY TRUE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTRY")
+      "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
   # Set the triplet
   if(WIN32)
@@ -50,7 +48,7 @@ else()
   # Some hacks to fix vcpkg
   if(WIN32)
     set(Protobuf_PROTOC_EXECUTABLE
-        "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+        "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
     )
     set(ZLIB_LIBRARY_RELEASE
         "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
@@ -60,7 +58,7 @@ else()
     )
   else()
     set(Protobuf_PROTOC_EXECUTABLE
-        "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+        "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
     )
   endif()
 endif()
@@ -71,7 +69,7 @@ include(CMakeFindDependencyMacro)
 
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/sanitizers-cmake/cmake"
+set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake"
                       ${CMAKE_MODULE_PATH})
 
 # Required packages
@@ -116,12 +114,12 @@ endif()
 if(USE_SENTRY)
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
-add_subdirectory("external/sentry-native")
+add_subdirectory("${EXTERNAL_DIR}/sentry-native")
 endif()
 
-add_subdirectory("external/PlatformFolders")
+add_subdirectory("${EXTERNAL_DIR}/PlatformFolders")
 
-set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake"
+set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
                       ${CMAKE_MODULE_PATH})
 include(cotire)
 if(POLICY CMP0058)
@@ -242,18 +240,18 @@ macro(DECORATE_TARGET TARGET_NAME)
 endmacro()
 
 include_directories(
-  external/easyloggingpp/src
-  external/ThreadPool
-  external/PlatformFolders
-  external/Catch2/single_include
-  external/cxxopts/include
-  external/msgpack-c/include
-  external/sentry-native/include
-  external/json/single_include/nlohmann
-  external/sole
-  external/base64
-  external/simpleini
-  external/cpp-httplib
+  ${EXTERNAL_DIR}/easyloggingpp/src
+  ${EXTERNAL_DIR}/ThreadPool
+  ${EXTERNAL_DIR}/PlatformFolders
+  ${EXTERNAL_DIR}/Catch2/single_include
+  ${EXTERNAL_DIR}/cxxopts/include
+  ${EXTERNAL_DIR}/msgpack-c/include
+  ${EXTERNAL_DIR}/sentry-native/include
+  ${EXTERNAL_DIR}/json/single_include/nlohmann
+  ${EXTERNAL_DIR}/sole
+  ${EXTERNAL_DIR}/base64
+  ${EXTERNAL_DIR}/simpleini
+  ${EXTERNAL_DIR}/cpp-httplib
   src/base
   src/terminal
   src/terminal/forwarding
@@ -268,13 +266,13 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR})
 
 if(NOT ANDROID)
-  include_directories(external/UniversalStacktrace/ust)
+  include_directories(${EXTERNAL_DIR}/UniversalStacktrace/ust)
 endif()
 
 add_library(
   et-lib STATIC
-  external/easyloggingpp/src/easylogging++.h
-  external/easyloggingpp/src/easylogging++.cc
+  ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.h
+  ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.cc
   src/base/BackedReader.hpp
   src/base/BackedReader.cpp
   src/base/BackedWriter.hpp
