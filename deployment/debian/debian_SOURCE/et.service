@@ -1,0 +1,10 @@
+[Unit]
+Description=Eternal Terminal
+After=syslog.target network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/etserver --cfgfile=/etc/et.cfg
+
+[Install]
+WantedBy=multi-user.target

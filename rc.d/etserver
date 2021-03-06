@@ -1,0 +1,29 @@
+#!/bin/sh
+
+# FreeBSD rc.d service file
+#
+# PROVIDE: etserver
+# REQUIRE: DAEMON
+# KEYWORD: shutdown
+#
+# Add the following lines to /etc/rc.conf.local or /etc/rc.conf
+# to enable this service:
+#
+# etserver_enable (bool):	Set to NO by default.
+#				Set it to YES to enable etserver.
+
+. /etc/rc.subr
+
+name=etserver
+rcvar="${name}_enable"
+
+command="/usr/local/bin/etserver"
+pidfile=${etserver_pidfile:="/var/run/etserver.pid"}
+
+load_rc_config $name
+
+: ${etserver_enable:="NO"}
+
+command_args="--daemon --cfgfile /usr/local/etc/etserver/et.cfg --pidfile ${pidfile}"
+
+run_rc_command "$1"

@@ -1,0 +1,41 @@
+name: eternal-terminal
+version: "6.0.4"
+summary: Remote terminal for the busy and impatient
+description: |
+  Eternal Terminal (ET) is a remote shell that automatically reconnects
+  without interrupting the session.
+
+grade: devel
+confinement: devmode
+
+apps:
+  et:
+    command: bin/et
+    plugs:
+      - network
+  etterminal:
+    command: bin/etterminal
+    plugs:
+      - network
+  etserver:
+    command: bin/etserver --daemon --cfgfile=etc/et.cfg
+    daemon: forking
+    plugs:
+      - network
+
+parts:
+  et:
+    plugin: cmake
+    source: https://github.com/MisterTea/EternalTerminal.git
+    source-tag: et-v6.0.4
+    build-packages:
+      - libsodium-dev
+      - libprotobuf-dev
+      - protobuf-compiler
+      - cmake
+      - g++
+      - libutempter-dev
+    stage-packages:
+      - libsodium-dev
+      - libprotobuf-dev
+      - libutempter-dev
