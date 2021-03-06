@@ -1,22 +1,10 @@
 cmake_minimum_required(VERSION 3.15.0)
 
-# Using FreeBSD?
-if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-  set(FREEBSD TRUE)
-endif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-
-# Using NetBSD?
-if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-  set(NETBSD TRUE)
-endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-
 if(NOT WIN32)
   set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
 endif()
 
-if(FREEBSD OR NETBSD)
-  # vcpkg doesn't work on BSD
-  # Sentry doesn't work on BSD
+if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
@@ -105,6 +93,24 @@ endif()
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+# Using FreeBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  set(FREEBSD TRUE)
+endif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+
+# Using NetBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+  set(NETBSD TRUE)
+endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+
+if(FREEBSD OR NETBSD)
+  # Sentry doesn't work on BSD
+else()
+  # Enable sentry
+  set(USE_SENTRY TRUE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTRY")
 endif()
 
 if(USE_SENTRY)
