@@ -271,7 +271,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-socket")) {
       sshSocket = result["ssh-socket"].as<string>();
     }
-    TelemetryService::get()->logToAll(SENTRY_LEVEL_INFO, "Session Started");
+    TelemetryService::get()->logToAll(el::Level::Info, "Session Started");
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",

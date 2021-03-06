@@ -1,6 +1,7 @@
 #include "TelemetryService.hpp"
 
 namespace et {
+#ifdef USE_SENTRY
 inline sentry_level_e logLevelToSentry(el::Level l) {
   switch (l) {
     case el::Level::Info:
@@ -15,21 +16,29 @@ inline sentry_level_e logLevelToSentry(el::Level l) {
       return SENTRY_LEVEL_DEBUG;
   }
 }
+#endif
 
-inline std::string sentryLevelToString(sentry_level_t l) {
+inline std::string logLevelToString(el::Level l) {
   switch (l) {
-    case SENTRY_LEVEL_DEBUG:
-      return "Debug";
-    case SENTRY_LEVEL_INFO:
-      return "Info";
-    case SENTRY_LEVEL_WARNING:
-      return "Warning";
-    case SENTRY_LEVEL_ERROR:
-      return "Error";
-    case SENTRY_LEVEL_FATAL:
-      return "Fatal";
-    default:
-      return "Unknown";
+  case el::Level::Global:
+    return "Global";
+  case el::Level::Trace:
+    return "Trace";
+  case el::Level::Debug:
+    return "Debug";
+  case el::Level::Fatal:
+    return "Fatal";
+  case el::Level::Error:
+    return "Error";
+  case el::Level::Warning:
+    return "Warning";
+  case el::Level::Verbose:
+    return "Verbose";
+  case el::Level::Info:
+    return "Info";
+  case el::Level::Unknown:
+  default:
+    return "Unknown";
   }
 }
 
@@ -44,8 +53,7 @@ class TelemetryDispatcher : public el::LogDispatchCallback {
           data->dispatchAction() == el::base::DispatchAction::NormalLog);
       if (data->logMessage()->level() == el::Level::Fatal ||
           data->logMessage()->level() == el::Level::Error) {
-        TelemetryService::get()->logToAll(
-            logLevelToSentry(data->logMessage()->level()), logText);
+        TelemetryService::get()->logToAll(data->logMessage()->level(), logText);
       }
     }
   }
@@ -71,6 +79,42 @@ TelemetryService::TelemetryService(const bool _allow,
     allowed = false;
   }
   if (allowed) {
+
+    auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
+    auto telemetryId = sole::uuid4();
+    if (filesystem::exists(telemetryConfigPath)) {
+      // Load the config file
+      CSimpleIniA ini(true, false, false);
+      SI_Error rc = ini.LoadFile(telemetryConfigPath.c_str());
+      if (rc == 0) {
+        const char* telemetryIdString = ini.GetValue("Sentry", "Id", NULL);
+        if (telemetryIdString) {
+          telemetryId = sole::rebuild(telemetryIdString);
+        } else {
+          STFATAL << "Invalid telemetry config";
+        }
+      } else {
+        STFATAL << "Invalid config file: " << telemetryConfigPath;
+      }
+    } else {
+      // Ensure directory exists
+      filesystem::create_directories(sago::getConfigHome() + "/et");
+
+      // Create ini
+      CSimpleIniA ini(true, false, false);
+      ini.SetValue("Sentry", "Id", telemetryId.str().c_str());
+      ini.SaveFile(telemetryConfigPath.c_str());
+
+      // Let user know about telemetry
+      CLOG(INFO, "stdout")
+          << "Eternal Terminal collects crashes and errors in order to help us "
+             "improve your experience.\nThe data collected is anonymous.\nYou "
+             "can opt-out of telemetry by setting the environment variable "
+             "ET_NO_TELEMETRY to any non-empty value."
+          << endl;
+    }
+
+#ifdef USE_SENTRY
     sentry_options_t* options = sentry_options_new();
     logHttpClient.set_compress(true);
 
@@ -89,41 +133,8 @@ TelemetryService::TelemetryService(const bool _allow,
 
     auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
     sentry_value_t user = sentry_value_new_object();
-    auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
-    auto sentryId = sole::uuid4();
-    if (filesystem::exists(telemetryConfigPath)) {
-      // Load the config file
-      CSimpleIniA ini(true, false, false);
-      SI_Error rc = ini.LoadFile(telemetryConfigPath.c_str());
-      if (rc == 0) {
-        const char* sentryIdString = ini.GetValue("Sentry", "Id", NULL);
-        if (sentryIdString) {
-          sentryId = sole::rebuild(sentryIdString);
-        } else {
-          STFATAL << "Invalid telemetry config";
-        }
-      } else {
-        STFATAL << "Invalid config file: " << telemetryConfigPath;
-      }
-    } else {
-      // Ensure directory exists
-      filesystem::create_directories(sago::getConfigHome() + "/et");
-
-      // Create ini
-      CSimpleIniA ini(true, false, false);
-      ini.SetValue("Sentry", "Id", sentryId.str().c_str());
-      ini.SaveFile(telemetryConfigPath.c_str());
-
-      // Let user know about telemetry
-      CLOG(INFO, "stdout")
-          << "Eternal Terminal collects crashes and errors in order to help us "
-             "improve your experience.\nThe data collected is anonymous.\nYou "
-             "can opt-out of telemetry by setting the environment variable "
-             "ET_NO_TELEMETRY to any non-empty value."
-          << endl;
-    }
     sentry_value_set_by_key(user, "id",
-                            sentry_value_new_string(sentryId.str().c_str()));
+                            sentry_value_new_string(telemetryId.str().c_str()));
     sentry_set_user(user);
 
     vector<int> signalsToCatch = {
@@ -152,6 +163,7 @@ TelemetryService::TelemetryService(const bool _allow,
     for (auto it : signalsToCatch) {
       signal(it, sentryShutdownHandler);
     }
+#endif
     atexit([] { shutdownTelemetry(); });
 
     el::Helpers::installLogDispatchCallback<TelemetryDispatcher>(
@@ -212,11 +224,13 @@ TelemetryService::~TelemetryService() {
   }
 }
 
-void TelemetryService::logToSentry(sentry_level_e level,
+void TelemetryService::logToSentry(el::Level level,
                                    const string& message) {
   if (!allowed) return;
+#ifdef USE_SENTRY
   sentry_capture_event(
-      sentry_value_new_message_event(level, "stderr", message.c_str()));
+      sentry_value_new_message_event(logLevelToSentry(level), "stderr", message.c_str()));
+#endif
 }
 
 void TelemetryService::logToDatadog(map<string, string> message) {
@@ -231,10 +245,12 @@ void TelemetryService::logToDatadog(map<string, string> message) {
   logBuffer.push_back(message);
 }
 
-void TelemetryService::logToAll(sentry_level_e level,
+void TelemetryService::logToAll(el::Level level,
                                 const std::string& message) {
+#ifdef USE_SENTRY
   logToSentry(level, message);
-  logToDatadog({{"message", message}, {"level", sentryLevelToString(level)}});
+#endif
+  logToDatadog({{"message", message}, {"level", logLevelToString(level)}});
 }
 
 shared_ptr<TelemetryService> TelemetryService::telemetryServiceInstance;

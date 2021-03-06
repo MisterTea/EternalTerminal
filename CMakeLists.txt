@@ -1,61 +1,80 @@
 cmake_minimum_required(VERSION 3.15.0)
 
-IF (NOT WIN32)
+# Using FreeBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+  set(FREEBSD TRUE)
+endif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
+
+# Using NetBSD?
+if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+  set(NETBSD TRUE)
+endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
+
+if(NOT WIN32)
   set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
-ENDIF()
-
-# Enable vcpkg
-set(CMAKE_TOOLCHAIN_FILE
-    "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
-
-# Set the triplet
-if(WIN32)
-  set(VCPKG_TARGET_TRIPLET "x64-windows-static")
-elseif(APPLE)
-  execute_process(
-    COMMAND uname -m
-    COMMAND tr -d '\n'
-    OUTPUT_VARIABLE ARCHITECTURE)
-  message(STATUS "Architecture: ${ARCHITECTURE}")
-  if(${ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
-    set(VCPKG_TARGET_TRIPLET "arm64-osx")
-  else()
-    set(VCPKG_TARGET_TRIPLET "x64-osx")
-  endif()
-else()
-  execute_process(
-    COMMAND uname -m
-    COMMAND tr -d '\n'
-    OUTPUT_VARIABLE ARCHITECTURE)
-  message(STATUS "Architecture: ${ARCHITECTURE}")
-  if(${ARCHITECTURE} STREQUAL "x86_64")
-    set(VCPKG_TARGET_TRIPLET "x64-linux")
-  elseif(${ARCHITECTURE} STREQUAL "x86_86")
-    set(VCPKG_TARGET_TRIPLET "x86-linux")
-  elseif(${ARCHITECTURE} STREQUAL "arm64")
-    set(VCPKG_TARGET_TRIPLET "arm64-linux")
-  elseif(${ARCHITECTURE} MATCHES "arm.*")
-    set(VCPKG_TARGET_TRIPLET "arm-linux")
-  else()
-    set(VCPKG_TARGET_TRIPLET "${ARCHITECTURE}-linux")
-  endif()
 endif()
 
-# Some hacks to fix vcpkg
-if(WIN32)
-  set(Protobuf_PROTOC_EXECUTABLE
-      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
-  )
-  set(ZLIB_LIBRARY_RELEASE
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
-  )
-  set(ZLIB_LIBRARY_DEBUG
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
-  )
+if(FREEBSD OR NETBSD)
+  # vcpkg doesn't work on BSD
+  # Sentry doesn't work on BSD
 else()
-  set(Protobuf_PROTOC_EXECUTABLE
-      "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
-  )
+  # Enable vcpkg
+  set(CMAKE_TOOLCHAIN_FILE
+      "${CMAKE_SOURCE_DIR}/external/vcpkg/scripts/buildsystems/vcpkg.cmake")
+
+  # Enable sentry
+  set(USE_SENTRY TRUE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DUSE_SENTRY")
+
+  # Set the triplet
+  if(WIN32)
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+  elseif(APPLE)
+    execute_process(
+      COMMAND uname -m
+      COMMAND tr -d '\n'
+      OUTPUT_VARIABLE ARCHITECTURE)
+    message(STATUS "Architecture: ${ARCHITECTURE}")
+    if(${ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
+      set(VCPKG_TARGET_TRIPLET "arm64-osx")
+    else()
+      set(VCPKG_TARGET_TRIPLET "x64-osx")
+    endif()
+  else()
+    execute_process(
+      COMMAND uname -m
+      COMMAND tr -d '\n'
+      OUTPUT_VARIABLE ARCHITECTURE)
+    message(STATUS "Architecture: ${ARCHITECTURE}")
+    if(${ARCHITECTURE} STREQUAL "x86_64")
+      set(VCPKG_TARGET_TRIPLET "x64-linux")
+    elseif(${ARCHITECTURE} STREQUAL "x86_86")
+      set(VCPKG_TARGET_TRIPLET "x86-linux")
+    elseif(${ARCHITECTURE} STREQUAL "arm64")
+      set(VCPKG_TARGET_TRIPLET "arm64-linux")
+    elseif(${ARCHITECTURE} MATCHES "arm.*")
+      set(VCPKG_TARGET_TRIPLET "arm-linux")
+    else()
+      set(VCPKG_TARGET_TRIPLET "${ARCHITECTURE}-linux")
+    endif()
+  endif()
+
+  # Some hacks to fix vcpkg
+  if(WIN32)
+    set(Protobuf_PROTOC_EXECUTABLE
+        "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+    )
+    set(ZLIB_LIBRARY_RELEASE
+        "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
+    )
+    set(ZLIB_LIBRARY_DEBUG
+        "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
+    )
+  else()
+    set(Protobuf_PROTOC_EXECUTABLE
+        "${CMAKE_SOURCE_DIR}/external/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+    )
+  endif()
 endif()
 
 project(EternalTCP VERSION 6.1.0)
@@ -88,9 +107,12 @@ if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
+if(USE_SENTRY)
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("external/sentry-native")
+endif()
+
 add_subdirectory("external/PlatformFolders")
 
 set(CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/external/cotire/CMake"
@@ -135,16 +157,6 @@ if(WIN32)
   add_definitions(-DUNICODE)
   add_definitions(-D_UNICODE)
 endif()
-
-# Using FreeBSD?
-if(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-  set(FREEBSD TRUE)
-endif(CMAKE_SYSTEM_NAME MATCHES "FreeBSD")
-
-# Using NetBSD?
-if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
-  set(NETBSD TRUE)
-endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
 option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite"
        OFF)
@@ -197,9 +209,20 @@ elseif(WIN32)
 elseif(APPLE)
   set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv)
 else()
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB unwind::unwind
-                     util resolv atomic stdc++fs)
+  set(CORE_LIBRARIES
+      platform_folders
+      OpenSSL::SSL
+      ZLIB::ZLIB
+      unwind::unwind
+      util
+      resolv
+      atomic
+      stdc++fs)
 endif()
+
+IF(USE_SENTRY)
+  set(CORE_LIBRARIES ${CORE_LIBARIES} sentry::sentry)
+ENDIF()
 
 macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
@@ -318,7 +341,6 @@ target_link_libraries(
   ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${UTEMPTER_LIBRARIES}
-  sentry::sentry
   ${CORE_LIBRARIES})
 decorate_target(et)
 
@@ -342,8 +364,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
-    sentry::sentry
-    ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
   decorate_target(etserver)
 
   add_executable(etterminal src/terminal/TerminalMain.cpp)
@@ -357,8 +378,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
-    sentry::sentry
-    ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
   decorate_target(etterminal)
 
   add_library(
@@ -384,8 +404,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
-    sentry::sentry
-    ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
   decorate_target(htm)
 
   add_executable(htmd src/htm/HtmServerMain.cpp)
@@ -399,8 +418,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
-    sentry::sentry
-    ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
   decorate_target(htmd)
 
   enable_testing()
@@ -417,8 +435,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
-    sentry::sentry
-    ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
   add_test(et-test et-test)
   decorate_target(et-test)
 

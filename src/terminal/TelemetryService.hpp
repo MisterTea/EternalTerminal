@@ -10,11 +10,11 @@ class TelemetryService {
 
   virtual ~TelemetryService();
 
-  void logToSentry(sentry_level_e level, const std::string& message);
+  void logToSentry(el::Level level, const std::string& message);
 
   void logToDatadog(map<string, string> message);
 
-  void logToAll(sentry_level_e level, const std::string& message);
+  void logToAll(el::Level level, const std::string& message);
 
   static void create(bool _allow, const string& databasePath,
                      const string& environment) {
@@ -29,7 +29,9 @@ class TelemetryService {
       return;
     }
     shuttingDown = true;
+#ifdef USE_SENTRY
     sentry_shutdown();
+#endif
     if (logSendingThread) {
       logSendingThread->join();
       logSendingThread.reset();
