@@ -1,3 +1,7 @@
+et (6.1.1-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.1
+
 et (6.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.0

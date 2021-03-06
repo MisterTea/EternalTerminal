@@ -63,7 +63,7 @@ else()
   endif()
 endif()
 
-project(EternalTCP VERSION 6.1.0)
+project(EternalTCP VERSION 6.1.1)
 
 include(CMakeFindDependencyMacro)
 
