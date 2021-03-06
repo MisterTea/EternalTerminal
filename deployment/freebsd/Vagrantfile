@@ -71,7 +71,7 @@ Vagrant.configure("2") do |config|
     git clone --branch release https://github.com/MisterTea/EternalTerminal.git
     mkdir -p EternalTerminal/build
     cd EternalTerminal/build
-    VCPKG_FORCE_SYSTEM_BINARIES=1 cmake ..
+    cmake -DDISABLE_VCPKG=1 ..
     make
   SHELL
 end
