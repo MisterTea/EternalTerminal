@@ -75,7 +75,7 @@ Vagrant.configure("2") do |config|
     # documentation for more information about their specific syntax and use.
     config.vm.provision "shell", privileged: true, inline: <<-SHELL
     dnf update -y
-    dnf install -y @development-tools et openssh-server fedpkg fedora-packager cmake gcc-c++ protobuf-devel protobuf-lite-devel libsodium-devel emacs libcurl4-openssl-dev
+    dnf install -y @development-tools et openssh-server fedpkg fedora-packager cmake gcc-c++ emacs libcurl-devel ninja-build libunwind-devel libatomic
     touch /home/vagrant/.ssh/config
     chmod -R 0700 /home/vagrant/.gnupg /home/vagrant/.ssh
     chown -R vagrant /home/vagrant/.gnupg /home/vagrant/.ssh

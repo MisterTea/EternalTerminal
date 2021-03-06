@@ -35,7 +35,7 @@ void TerminalServer::run() {
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
 
-  TelemetryService::get()->logToAll(SENTRY_LEVEL_INFO, "Server started");
+  TelemetryService::get()->logToAll(el::Level::Info, "Server started");
 
   while (true) {
     {

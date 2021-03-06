@@ -181,7 +181,7 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       exit(1);
     }
 
-    TelemetryService::get()->logToAll(SENTRY_LEVEL_INFO,
+    TelemetryService::get()->logToAll(el::Level::Info,
                                       "Connection Established");
     break;
   }
