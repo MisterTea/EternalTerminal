@@ -82,3 +82,4 @@ workflows:
             branches:
               ignore:
                 - release
+                - deployment

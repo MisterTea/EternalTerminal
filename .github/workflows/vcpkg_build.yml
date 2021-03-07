@@ -1,6 +1,8 @@
 name: Vcpkg Build
 on:
   push:
+    branches:
+      - master
   pull_request:
 
 jobs:
