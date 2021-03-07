@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.15.0)
+cmake_minimum_required(VERSION 3.0.2)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
@@ -63,7 +63,17 @@ else()
   endif()
 endif()
 
-project(EternalTCP VERSION 6.1.1)
+# Don't specify languages yet in case we need to bump the cmake version
+project(EternalTCP VERSION 6.1.1 LANGUAGES NONE)
+
+if(WIN32)
+message(STATUS "Windows detected.  Bumping up cmake version.")
+# Hack to force a higher minimum version on windows
+cmake_minimum_required(VERSION 3.15.0)
+endif()
+
+enable_language(C)
+enable_language(CXX)
 
 include(CMakeFindDependencyMacro)
 
