@@ -14,8 +14,8 @@ for distro in `distro-info --stable` `distro-info --testing`; do
     popd
     for ARCH in amd64 i386 armhf armel arm64
     do
-        pbuilder-dist ${distro} ${ARCH} update
-        pbuilder-dist ${distro} ${ARCH} build *.dsc
+        cowbuilder-dist ${distro} ${ARCH} update
+        cowbuilder-dist ${distro} ${ARCH} build *.dsc
     done
 
     aptly repo add -force-replace=true et-${distro} ~/pbuilder/${distro}*_result/*.deb
