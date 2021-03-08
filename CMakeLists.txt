@@ -223,12 +223,15 @@ else()
       platform_folders
       OpenSSL::SSL
       ZLIB::ZLIB
-      unwind::unwind
       util
       resolv
       atomic
       stdc++fs)
 endif()
+
+IF(Unwind_FOUND)
+  list(INSERT CORE_LIBRARIES 0 unwind::unwind)
+ENDIF()
 
 IF(USE_SENTRY)
   list(INSERT CORE_LIBRARIES 0 sentry::sentry)
