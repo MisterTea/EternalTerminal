@@ -2,10 +2,6 @@ cmake_minimum_required(VERSION 3.0.2)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
-if(NOT WIN32)
-  set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
-endif()
-
 if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
@@ -235,7 +231,7 @@ else()
 endif()
 
 IF(USE_SENTRY)
-  list(PREPEND CORE_LIBRARIES sentry::sentry)
+  list(INSERT CORE_LIBRARIES 0 sentry::sentry)
 ENDIF()
 
 macro(DECORATE_TARGET TARGET_NAME)
