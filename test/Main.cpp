@@ -8,6 +8,9 @@ using namespace et;
 
 int main(int argc, char **argv) {
   srand(1);
+  std::set_terminate( []() ->void {
+    STFATAL << "Uncaught c++ exception";
+  } );
 
   // Setup easylogging configurations
   el::Configurations defaultConf =

@@ -25,6 +25,9 @@ void term(int signum) {
 int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
+  std::set_terminate( []() ->void {
+    STFATAL << "Uncaught c++ exception";
+  } );
 
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
