@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "debian/testing64"
+  config.vm.box = "debian/bullseye64"
   config.ssh.shell = "sh"
 
   config.vm.provider "virtualbox" do |v|
@@ -98,7 +98,7 @@ max-cache-ttl 34560000" > ~/.gnupg/gpg-agent.conf
   
   for distro in `distro-info --stable` `distro-info --testing`; do
     for ARCH in amd64 armhf armel arm64; do
-      cowbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
+      pbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
     done
 
     aptly repo create -distribution=${distro} -component=main et-${distro}
