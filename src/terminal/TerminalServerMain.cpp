@@ -8,6 +8,10 @@ using namespace google;
 using namespace gflags;
 
 int main(int argc, char **argv) {
+  std::set_terminate( []() ->void {
+    STFATAL << "Uncaught c++ exception";
+  } );
+
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
