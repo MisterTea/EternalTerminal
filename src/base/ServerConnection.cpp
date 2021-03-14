@@ -118,6 +118,9 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     // Comm failed, close the connection
     LOG(WARNING) << "Error handling new client: " << err.what();
     socketHandler->close(clientSocketFd);
+  } catch (const std::exception &e) {
+    LOG(ERROR) << "Got an unexpected error handling new client: " << e.what();
+    socketHandler->close(clientSocketFd);
   }
 }
 

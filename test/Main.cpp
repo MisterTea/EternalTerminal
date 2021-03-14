@@ -8,9 +8,6 @@ using namespace et;
 
 int main(int argc, char **argv) {
   srand(1);
-  std::set_terminate( []() ->void {
-    STFATAL << "Uncaught c++ exception";
-  } );
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
@@ -19,6 +16,8 @@ int main(int argc, char **argv) {
   defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
   // el::Loggers::setVerboseLevel(9);
+
+  et::HandleTerminate();
 
   string logDirectoryPattern = GetTempDirectory() + string("et_test_XXXXXXXX");
   string logDirectory = string(mkdtemp(&logDirectoryPattern[0]));

@@ -22,13 +22,12 @@ bool ping(SocketEndpoint socketEndpoint,
 int main(int argc, char** argv) {
   WinsockContext context;
   string tmpDir = GetTempDirectory();
-  std::set_terminate( []() ->void {
-    STFATAL << "Uncaught c++ exception";
-  } );
 
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
+
+  et::HandleTerminate();
 
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");

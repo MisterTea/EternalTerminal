@@ -10,9 +10,6 @@ int main(int argc, char **argv) {
   // Version string need to be set before GFLAGS parse arguments
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
-  std::set_terminate( []() ->void {
-    STFATAL << "Uncaught c++ exception";
-  } );
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
@@ -27,6 +24,8 @@ int main(int argc, char **argv) {
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+
+  et::HandleTerminate();
 
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint endpoint;
