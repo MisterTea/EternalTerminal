@@ -98,11 +98,6 @@ using namespace std::experimental;
 #include "easylogging++.h"
 #include "json.hpp"
 #include "sago/platform_folders.h"
-
-#if defined(USE_SENTRY)
-#include "sentry.h"
-#endif
-
 #include "sole.hpp"
 
 #if !defined(__ANDROID__)

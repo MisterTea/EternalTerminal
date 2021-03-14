@@ -1,5 +1,9 @@
 #include "TelemetryService.hpp"
 
+#if defined(USE_SENTRY)
+#include "sentry.h"
+#endif
+
 namespace et {
 #ifdef USE_SENTRY
 inline sentry_level_e logLevelToSentry(el::Level l) {
@@ -20,25 +24,25 @@ inline sentry_level_e logLevelToSentry(el::Level l) {
 
 inline std::string logLevelToString(el::Level l) {
   switch (l) {
-  case el::Level::Global:
-    return "Global";
-  case el::Level::Trace:
-    return "Trace";
-  case el::Level::Debug:
-    return "Debug";
-  case el::Level::Fatal:
-    return "Fatal";
-  case el::Level::Error:
-    return "Error";
-  case el::Level::Warning:
-    return "Warning";
-  case el::Level::Verbose:
-    return "Verbose";
-  case el::Level::Info:
-    return "Info";
-  case el::Level::Unknown:
-  default:
-    return "Unknown";
+    case el::Level::Global:
+      return "Global";
+    case el::Level::Trace:
+      return "Trace";
+    case el::Level::Debug:
+      return "Debug";
+    case el::Level::Fatal:
+      return "Fatal";
+    case el::Level::Error:
+      return "Error";
+    case el::Level::Warning:
+      return "Warning";
+    case el::Level::Verbose:
+      return "Verbose";
+    case el::Level::Info:
+      return "Info";
+    case el::Level::Unknown:
+    default:
+      return "Unknown";
   }
 }
 
@@ -79,7 +83,6 @@ TelemetryService::TelemetryService(const bool _allow,
     allowed = false;
   }
   if (allowed) {
-
     auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
     auto telemetryId = sole::uuid4();
     if (filesystem::exists(telemetryConfigPath)) {
@@ -224,12 +227,11 @@ TelemetryService::~TelemetryService() {
   }
 }
 
-void TelemetryService::logToSentry(el::Level level,
-                                   const string& message) {
+void TelemetryService::logToSentry(el::Level level, const string& message) {
   if (!allowed) return;
 #ifdef USE_SENTRY
-  sentry_capture_event(
-      sentry_value_new_message_event(logLevelToSentry(level), "stderr", message.c_str()));
+  sentry_capture_event(sentry_value_new_message_event(
+      logLevelToSentry(level), "stderr", message.c_str()));
 #endif
 }
 
@@ -245,12 +247,25 @@ void TelemetryService::logToDatadog(map<string, string> message) {
   logBuffer.push_back(message);
 }
 
-void TelemetryService::logToAll(el::Level level,
-                                const std::string& message) {
+void TelemetryService::logToAll(el::Level level, const std::string& message) {
 #ifdef USE_SENTRY
   logToSentry(level, message);
 #endif
   logToDatadog({{"message", message}, {"level", logLevelToString(level)}});
+}
+
+void TelemetryService::shutdown() {
+  if (shuttingDown) {
+    return;
+  }
+  shuttingDown = true;
+#ifdef USE_SENTRY
+  sentry_shutdown();
+#endif
+  if (logSendingThread) {
+    logSendingThread->join();
+    logSendingThread.reset();
+  }
 }
 
 shared_ptr<TelemetryService> TelemetryService::telemetryServiceInstance;

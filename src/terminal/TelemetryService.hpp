@@ -24,19 +24,7 @@ class TelemetryService {
 
   static void destroy() { telemetryServiceInstance.reset(); }
 
-  void shutdown() {
-    if (shuttingDown) {
-      return;
-    }
-    shuttingDown = true;
-#ifdef USE_SENTRY
-    sentry_shutdown();
-#endif
-    if (logSendingThread) {
-      logSendingThread->join();
-      logSendingThread.reset();
-    }
-  }
+  void shutdown();
 
   static bool exists() { return telemetryServiceInstance.get() != NULL; }
 
