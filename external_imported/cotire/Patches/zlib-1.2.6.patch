@@ -1,0 +1,23 @@
+diff -rupN zlib-1.2.6/CMakeLists.txt zlib-1.2.6.cotire/CMakeLists.txt
+--- zlib-1.2.6/CMakeLists.txt	2012-01-17 03:51:23.000000000 +0100
++++ zlib-1.2.6.cotire/CMakeLists.txt	2012-03-24 21:08:41.000000000 +0100
+@@ -7,6 +7,8 @@ if(NOT DEFINED BUILD_SHARED_LIBS)
+     option(BUILD_SHARED_LIBS "Build a shared library form of zlib" ON)
+ endif()
+ 
++include("${CMAKE_SOURCE_DIR}/cotire.cmake") 
++
+ include(CheckTypeSize)
+ include(CheckFunctionExists)
+ include(CheckIncludeFile)
+@@ -176,6 +178,10 @@ if(NOT SKIP_INSTALL_FILES AND NOT SKIP_I
+     install(FILES zlib.3 DESTINATION share/man/man3)
+ endif()
+ 
++if (COMMAND cotire)
++	cotire(zlib)
++endif()
++
+ #============================================================================
+ # Example binaries
+ #============================================================================

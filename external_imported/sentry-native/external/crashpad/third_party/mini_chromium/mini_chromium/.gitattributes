@@ -1,0 +1,23 @@
+# Copyright 2019 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+*.c text eol=lf
+*.cc text eol=lf
+*.gn text eol=lf
+*.gni text eol=lf
+*.gyp text eol=lf
+*.gypi text eol=lf
+*.h text eol=lf
+*.m text eol=lf
+*.md text eol=lf
+*.mm text eol=lf
+*.plist text eol=lf
+*.py text eol=lf
+.clang-format text eol=lf
+.gitattributes text eol=lf
+.gitignore text eol=lf
+/AUTHORS text eol=lf
+/LICENSE text eol=lf
+/codereview.settings text eol=lf
+README.chromium text eol=lf
