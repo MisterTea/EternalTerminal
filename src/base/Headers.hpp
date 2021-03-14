@@ -292,6 +292,34 @@ inline string genRandomAlphaNum(int len) {
   return s;
 }
 
+inline string GetTempDirectory() {
+#ifdef WIN32
+  WCHAR buf[65536];
+  int retval = GetTempPath(65536, buf);
+  int a = 0;
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
+  std::string tmpDir = converter.to_bytes(wstring(buf, retval));
+#else
+  string tmpDir = _PATH_TMP;
+#endif
+  return tmpDir;
+}
+
+inline void HandleTerminate() {
+  std::set_terminate([]() -> void {
+    std::exception_ptr eptr = std::current_exception();
+    if (eptr) {
+      try {
+        std::rethrow_exception(eptr);
+      } catch (const std::exception &e) {
+        STFATAL << "Uncaught c++ exception: " << e.what();
+      }
+    } else {
+      STFATAL << "Uncaught c++ exception (unknown)";
+    }
+  });
+}
+
 }  // namespace et
 
 inline bool operator==(const google::protobuf::MessageLite& msg_a,
@@ -304,19 +332,6 @@ inline bool operator!=(const google::protobuf::MessageLite& msg_a,
                        const google::protobuf::MessageLite& msg_b) {
   return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
          (msg_a.SerializeAsString() != msg_b.SerializeAsString());
-}
-
-inline string GetTempDirectory() {
-#ifdef WIN32
-  WCHAR buf[65536];
-  int retval = GetTempPath(65536, buf);
-  int a = 0;
-  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
-  std::string tmpDir = converter.to_bytes(wstring(buf, retval));
-#else
-  string tmpDir = _PATH_TMP;
-#endif
-  return tmpDir;
 }
 
 #endif
