@@ -25,7 +25,6 @@ void term(int signum) {
 int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
-
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
   options.allow_unrecognised_options();
@@ -70,6 +69,8 @@ int main(int argc, char** argv) {
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
+
+  et::HandleTerminate();
 
   uid_t myuid = getuid();
   if (result.count("x")) {

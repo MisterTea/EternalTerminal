@@ -21,6 +21,8 @@ int main(int argc, char** argv) {
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
 
+  et::HandleTerminate();
+
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
 

@@ -12,6 +12,8 @@ int main(int argc, char **argv) {
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
 
+  et::HandleTerminate();
+
   cxxopts::Options options("etserver",
                            "Remote shell for the busy and impatient");
   try {

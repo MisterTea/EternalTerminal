@@ -25,6 +25,8 @@ int main(int argc, char **argv) {
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);
 
+  et::HandleTerminate();
+
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint endpoint;
   endpoint.set_name(HtmServer::getPipeName());

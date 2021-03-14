@@ -2,10 +2,6 @@ cmake_minimum_required(VERSION 3.0.2)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
-if(NOT WIN32)
-  set(ENV{VCPKG_FORCE_SYSTEM_BINARIES} "true")
-endif()
-
 if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
@@ -61,10 +57,12 @@ else()
         "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
     )
   endif()
+  set(Protobuf_USE_STATIC_LIBS ON)
+  set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
 
 # Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.1.2 LANGUAGES NONE)
+project(EternalTCP VERSION 6.1.4 LANGUAGES NONE)
 
 if(WIN32)
 message(STATUS "Windows detected.  Bumping up cmake version.")
@@ -87,8 +85,6 @@ find_package(OpenSSL REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
-set(Protobuf_USE_STATIC_LIBS ON)
-set(protobuf_MSVC_STATIC_RUNTIME ON)
 find_package(Protobuf REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Unwind)
@@ -227,15 +223,18 @@ else()
       platform_folders
       OpenSSL::SSL
       ZLIB::ZLIB
-      unwind::unwind
       util
       resolv
       atomic
       stdc++fs)
 endif()
 
+IF(Unwind_FOUND)
+  list(INSERT CORE_LIBRARIES 0 unwind::unwind)
+ENDIF()
+
 IF(USE_SENTRY)
-  list(PREPEND CORE_LIBRARIES sentry::sentry)
+  list(INSERT CORE_LIBRARIES 0 sentry::sentry)
 ENDIF()
 
 macro(DECORATE_TARGET TARGET_NAME)

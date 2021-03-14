@@ -17,6 +17,8 @@ int main(int argc, char **argv) {
   defaultConf.setGlobally(el::ConfigurationType::ToFile, "true");
   // el::Loggers::setVerboseLevel(9);
 
+  et::HandleTerminate();
+
   string logDirectoryPattern = GetTempDirectory() + string("et_test_XXXXXXXX");
   string logDirectory = string(mkdtemp(&logDirectoryPattern[0]));
   string logPath = string(logDirectory) + "/log";
