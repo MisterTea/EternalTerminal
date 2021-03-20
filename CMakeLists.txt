@@ -109,7 +109,7 @@ if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   set(NETBSD TRUE)
 endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
-if(FREEBSD OR NETBSD)
+if(FREEBSD OR NETBSD OR DISABLE_SENTRY)
   # Sentry doesn't work on BSD
 else()
   # Enable sentry
