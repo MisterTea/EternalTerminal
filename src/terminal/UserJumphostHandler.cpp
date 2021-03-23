@@ -15,9 +15,10 @@ UserJumphostHandler::UserJumphostHandler(
       dstSocketEndpoint(_dstSocketEndpoint),
       shuttingDown(false) {
   routerFd = routerSocketHandler->connect(routerEndpoint);
+  auto localErrno = errno;
 
   if (routerFd < 0) {
-    if (errno == ECONNREFUSED) {
+    if (localErrno == ECONNREFUSED) {
       CLOG(INFO, "stdout")
           << "Error:  The Eternal Terminal daemon is not running.  Please "
              "(re)start the et daemon on the server."
@@ -25,7 +26,7 @@ UserJumphostHandler::UserJumphostHandler(
     } else {
       CLOG(INFO, "stdout")
           << "Error:  Connection error communicating with et daemon: "
-          << strerror(errno) << "." << endl;
+          << strerror(localErrno) << "." << endl;
     }
     exit(1);
   }

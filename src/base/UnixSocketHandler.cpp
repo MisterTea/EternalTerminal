@@ -88,8 +88,9 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
     w = ::write(fd, ((const char *)buf) + bytesWritten, count - bytesWritten);
 #endif
 #endif
+    auto localErrno = errno;
     if (w < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if (time(NULL) > startTime + 5) {
           // Give up

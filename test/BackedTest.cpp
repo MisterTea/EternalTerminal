@@ -85,8 +85,9 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
   int fd;
   while (true) {
     fd = socketHandler->accept(serverFd);
+    auto localErrno = errno;
     if (fd == -1) {
-      if (errno != EAGAIN) {
+      if (localErrno != EAGAIN) {
         FATAL_FAIL(fd);
       } else {
         std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));

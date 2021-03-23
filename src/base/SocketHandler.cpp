@@ -48,13 +48,14 @@ int SocketHandler::writeAllOrReturn(int fd, const void* buf, size_t count) {
       return -1;
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
+    auto localErrno = errno;
     if (bytesWritten < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         LOG(INFO) << "Got EAGAIN, waiting...";
         // This is fine, just keep retrying at 10hz
         std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
       } else {
-        VLOG(1) << "Failed a call to writeAll: " << strerror(errno);
+        VLOG(1) << "Failed a call to writeAll: " << strerror(localErrno);
         return -1;
       }
     } else if (bytesWritten == 0) {
@@ -78,13 +79,14 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
+    auto localErrno = errno;
     if (bytesWritten < 0) {
-      if (errno == EAGAIN || errno == EWOULDBLOCK) {
+      if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         LOG(INFO) << "Got EAGAIN, waiting...";
         // This is fine, just keep retrying at 10hz
         std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
       } else {
-        LOG(WARNING) << "Failed a call to writeAll: " << strerror(errno);
+        LOG(WARNING) << "Failed a call to writeAll: " << strerror(localErrno);
         throw std::runtime_error("Failed a call to writeAll");
       }
     } else if (bytesWritten == 0) {

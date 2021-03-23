@@ -18,8 +18,8 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
   int result =
       ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
-  if (result < 0 && errno != EINPROGRESS) {
-    auto localErrno = errno;
+  auto localErrno = errno;
+  if (result < 0 && localErrno != EINPROGRESS) {
     VLOG(3) << "Connection result: " << result << " (" << strerror(localErrno)
             << ")";
 #ifdef WIN32
