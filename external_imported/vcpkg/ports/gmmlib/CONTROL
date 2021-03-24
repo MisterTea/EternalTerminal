@@ -1,0 +1,4 @@
+Source: gmmlib
+Version: 20.3.1
+Description: intel's graphics memory management library
+Supports: linux
