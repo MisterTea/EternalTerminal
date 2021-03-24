@@ -1,0 +1,8 @@
+*.sh            eol=lf
+bootstrap       eol=lf
+configure       eol=lf
+*.[1-9]         eol=lf
+
+*.bat           eol=crlf
+*.cmd           eol=crlf
+*.vbs           eol=crlf

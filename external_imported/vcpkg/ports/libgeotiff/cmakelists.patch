@@ -1,0 +1,41 @@
+diff --git a/libgeotiff/bin/CMakeLists.txt b/libgeotiff/bin/CMakeLists.txt
+index 7b12341..b6b1d0c 100644
+--- a/libgeotiff/bin/CMakeLists.txt
++++ b/libgeotiff/bin/CMakeLists.txt
+@@ -22,12 +19,11 @@ MESSAGE(STATUS "Adding GeoTIFF utilities to build")
+ 
+ FOREACH(utility ${GEOTIFF_UTILITIES})
+     ADD_EXECUTABLE(${utility} ${utility}.c ${GETOPT_SOURCE})
+-    TARGET_LINK_LIBRARIES(${utility} xtiff ${GEOTIFF_LIBRARY_TARGET})
++    TARGET_LINK_LIBRARIES(${utility} ${GEOTIFF_LIBRARY_TARGET})
+ ENDFOREACH()
+ 
+ ADD_EXECUTABLE(geotifcp geotifcp.c ${GETOPT_SOURCE})
+ TARGET_LINK_LIBRARIES(geotifcp
+-    xtiff
+     ${GEOTIFF_LIBRARY_TARGET}
+     ${JPEG_LIBRARIES}
+     ${ZLIB_LIBRARIES})
+diff --git a/libgeotiff/cmake/CMakeLists.txt b/libgeotiff/cmake/CMakeLists.txt
+index 47a2b00..3809ba3 100644
+--- a/libgeotiff/cmake/CMakeLists.txt
++++ b/libgeotiff/cmake/CMakeLists.txt
+@@ -6,6 +6,7 @@
+ # ${INSTALL_CMAKE_DIR} and @PROJECT_ROOT_DIR@ is the relative
+ # path to the root from there.  (Note that the whole install tree can
+ # be relocated.)
++if (0)
+ if (NOT WIN32)
+   set (INSTALL_CMAKE_DIR "share/cmake/${PROJECT_NAME}")
+   set (PROJECT_ROOT_DIR "../../..")
+@@ -13,6 +14,10 @@ else ()
+   set (INSTALL_CMAKE_DIR "cmake")
+   set (PROJECT_ROOT_DIR "..")
+ endif ()
++else()
++  set (INSTALL_CMAKE_DIR "share/${PROJECT_NAME}")
++  set (PROJECT_ROOT_DIR "../..")
++endif()
+ 
+ configure_file (project-config.cmake.in project-config.cmake @ONLY)
+ configure_file (project-config-version.cmake.in
