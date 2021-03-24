@@ -125,6 +125,18 @@ void ClientConnection::pollReconnect() {
         } catch (const std::runtime_error& re) {
           LOG(INFO) << "Got failure during reconnect";
           socketHandler->close(newSocketFd);
+        } catch (...) {
+          LOG(ERROR) << "Got an unknown error!";
+          std::exception_ptr eptr = std::current_exception();
+          if (eptr) {
+            try {
+              std::rethrow_exception(eptr);
+            } catch (const std::exception &e) {
+              LOG(ERROR) << "Uncaught c++ exception: " << e.what();
+            }
+          } else {
+            LOG(ERROR) << "Uncaught c++ exception (unknown)";
+          }
         }
       }
     }
