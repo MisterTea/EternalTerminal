@@ -1,0 +1,44 @@
+# GitHub actions workflow.
+# https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
+
+# https://scan.coverity.com/projects/gentoo-pax-utils
+name: Coverity Scan
+
+on:
+  push:
+    branches: [main]
+
+  schedule:
+    # The GH mirroring from Google GoB does not trigger push actions.
+    # Fire it once a week to provide some coverage.
+    - cron: '39 2 * * WED'
+
+  # Allow for manual triggers from the web.
+  workflow_dispatch:
+
+jobs:
+  coverity:
+    runs-on: ubuntu-latest
+    env:
+      CC: clang
+      CXX: clang++
+    steps:
+    - name: Checkout depot_tools
+      run: git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git ../depot_tools
+
+    - name: Checkout breakpad
+      run: |
+        set -xe
+        PATH+=:$PWD/../depot_tools
+        gclient config --unmanaged --name=src https://github.com/${{ github.repository }}
+        gclient sync --no-history --nohooks
+
+    - run: ./configure --disable-silent-rules
+      working-directory: src
+
+    - uses: vapier/coverity-scan-action@v0
+      with:
+        project: google%2Fbreakpad
+        command: make -C src -O -j$(getconf _NPROCESSORS_CONF)
+        email: google-breakpad-dev@googlegroups.com
+        token: ${{ secrets.COVERITY_SCAN_TOKEN }}

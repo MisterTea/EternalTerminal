@@ -1,0 +1,299 @@
+diff -rupN OpenCV-2.3.1/3rdparty/libjasper/CMakeLists.txt OpenCV-2.3.1.cotire/3rdparty/libjasper/CMakeLists.txt
+--- OpenCV-2.3.1/3rdparty/libjasper/CMakeLists.txt	2011-09-12 20:39:55.000000000 +0200
++++ OpenCV-2.3.1.cotire/3rdparty/libjasper/CMakeLists.txt	2012-04-01 11:23:04.000000000 +0200
+@@ -56,3 +56,7 @@ if(NOT BUILD_SHARED_LIBS)
+     install(TARGETS ${the_target}
+ 	    ARCHIVE DESTINATION share/OpenCV/3rdparty/${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/3rdparty/libjpeg/CMakeLists.txt OpenCV-2.3.1.cotire/3rdparty/libjpeg/CMakeLists.txt
+--- OpenCV-2.3.1/3rdparty/libjpeg/CMakeLists.txt	2011-09-12 20:40:15.000000000 +0200
++++ OpenCV-2.3.1.cotire/3rdparty/libjpeg/CMakeLists.txt	2012-04-01 11:23:10.000000000 +0200
+@@ -48,3 +48,7 @@ if(NOT BUILD_SHARED_LIBS)
+     install(TARGETS ${the_target}
+ 	    ARCHIVE DESTINATION share/OpenCV/3rdparty/${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/3rdparty/libpng/CMakeLists.txt OpenCV-2.3.1.cotire/3rdparty/libpng/CMakeLists.txt
+--- OpenCV-2.3.1/3rdparty/libpng/CMakeLists.txt	2011-09-12 20:40:02.000000000 +0200
++++ OpenCV-2.3.1.cotire/3rdparty/libpng/CMakeLists.txt	2012-04-01 11:23:17.000000000 +0200
+@@ -49,3 +49,7 @@ if(NOT BUILD_SHARED_LIBS)
+     install(TARGETS ${the_target}
+ 	    ARCHIVE DESTINATION share/OpenCV/3rdparty/${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/3rdparty/libtiff/CMakeLists.txt OpenCV-2.3.1.cotire/3rdparty/libtiff/CMakeLists.txt
+--- OpenCV-2.3.1/3rdparty/libtiff/CMakeLists.txt	2011-09-12 20:29:15.000000000 +0200
++++ OpenCV-2.3.1.cotire/3rdparty/libtiff/CMakeLists.txt	2012-04-01 11:23:23.000000000 +0200
+@@ -103,3 +103,7 @@ if(NOT BUILD_SHARED_LIBS)
+     install(TARGETS ${the_target}
+ 	    ARCHIVE DESTINATION share/OpenCV/3rdparty/${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/3rdparty/zlib/CMakeLists.txt OpenCV-2.3.1.cotire/3rdparty/zlib/CMakeLists.txt
+--- OpenCV-2.3.1/3rdparty/zlib/CMakeLists.txt	2011-09-12 20:29:21.000000000 +0200
++++ OpenCV-2.3.1.cotire/3rdparty/zlib/CMakeLists.txt	2012-04-01 11:24:36.000000000 +0200
+@@ -40,3 +40,7 @@ if(NOT BUILD_SHARED_LIBS)
+     install(TARGETS ${the_target}
+ 	    ARCHIVE DESTINATION share/OpenCV/3rdparty/${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/CMakeLists.txt OpenCV-2.3.1.cotire/CMakeLists.txt
+--- OpenCV-2.3.1/CMakeLists.txt	2011-09-12 20:45:38.000000000 +0200
++++ OpenCV-2.3.1.cotire/CMakeLists.txt	2012-04-01 14:34:56.000000000 +0200
+@@ -39,6 +39,8 @@ endif(NOT CMAKE_TOOLCHAIN_FILE)
+ cmake_minimum_required(VERSION 2.4)
+ project(OpenCV)
+ 
++include("${CMAKE_SOURCE_DIR}/cotire.cmake")
++
+ set(CMAKE_CONFIGURATION_TYPES "Debug;Release" CACHE STRING "Configs" FORCE)
+ if(DEFINED CMAKE_BUILD_TYPE)
+     set_property( CACHE CMAKE_BUILD_TYPE PROPERTY STRINGS ${CMAKE_CONFIGURATION_TYPES} )
+diff -rupN OpenCV-2.3.1/OpenCVModule.cmake OpenCV-2.3.1.cotire/OpenCVModule.cmake
+--- OpenCV-2.3.1/OpenCVModule.cmake	2011-09-12 20:45:38.000000000 +0200
++++ OpenCV-2.3.1.cotire/OpenCVModule.cmake	2012-04-01 11:26:16.000000000 +0200
+@@ -86,7 +86,7 @@ macro(define_opencv_module name)
+         INSTALL_NAME_DIR lib
+         )
+ 
+-    add_opencv_precompiled_headers(${the_target})
++#    add_opencv_precompiled_headers(${the_target})
+ 
+     # Add the required libraries for linking:
+     target_link_libraries(${the_target} ${OPENCV_LINKER_LIBS} ${IPP_LIBS} ${ARGN})
+@@ -102,6 +102,10 @@ macro(define_opencv_module name)
+             )
+     endif()
+ 
++    if (COMMAND cotire)
++    cotire(${the_target})
++    endif()
++
+     # Dependencies of this target:
+     add_dependencies(${the_target} ${ARGN})
+ 
+@@ -137,7 +141,7 @@ macro(define_opencv_module name)
+ 
+         add_executable(${the_target} ${test_srcs} ${test_hdrs})
+ 
+-        add_opencv_precompiled_headers(${the_target})
++#       add_opencv_precompiled_headers(${the_target})
+ 
+         # Additional target properties
+         set_target_properties(${the_target} PROPERTIES
+@@ -149,6 +153,10 @@ macro(define_opencv_module name)
+             set_target_properties(${the_target} PROPERTIES FOLDER "tests")
+         endif() 
+ 
++        if (COMMAND cotire)
++        cotire(${the_target})
++        endif()
++
+         add_dependencies(${the_target} ${test_deps})
+ 
+         # Add the required libraries for linking:
+diff -rupN OpenCV-2.3.1/modules/androidcamera/CMakeLists.txt OpenCV-2.3.1.cotire/modules/androidcamera/CMakeLists.txt
+--- OpenCV-2.3.1/modules/androidcamera/CMakeLists.txt	2011-09-12 20:42:03.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/androidcamera/CMakeLists.txt	2012-04-01 11:28:54.000000000 +0200
+@@ -52,3 +52,7 @@ if (NOT BUILD_ANDROID_CAMERA_WRAPPER)
+           COMPONENT main)
+   endforeach()
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/modules/androidcamera/camera_wrapper/CMakeLists.txt OpenCV-2.3.1.cotire/modules/androidcamera/camera_wrapper/CMakeLists.txt
+--- OpenCV-2.3.1/modules/androidcamera/camera_wrapper/CMakeLists.txt	2011-09-12 20:42:03.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/androidcamera/camera_wrapper/CMakeLists.txt	2012-04-01 11:20:26.000000000 +0200
+@@ -34,3 +34,7 @@ SET_TARGET_PROPERTIES(${the_target} PROP
+                       )
+ 
+ install(TARGETS ${the_target} LIBRARY DESTINATION ${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/modules/gpu/CMakeLists.txt OpenCV-2.3.1.cotire/modules/gpu/CMakeLists.txt
+--- OpenCV-2.3.1/modules/gpu/CMakeLists.txt	2011-09-12 20:42:20.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/gpu/CMakeLists.txt	2012-04-01 11:41:04.000000000 +0200
+@@ -106,7 +106,7 @@ if (BUILD_SHARED_LIBS)
+ 	endif()
+ endif()
+ 
+-add_opencv_precompiled_headers(${the_target})
++#add_opencv_precompiled_headers(${the_target})
+ 
+ # Additional target properties
+ set_target_properties(${the_target} PROPERTIES
+@@ -156,6 +156,9 @@ install(FILES src/nvidia/NPP_staging/NPP
+ #	DESTINATION ${OPENCV_INCLUDE_PREFIX}/opencv2/${name}/device
+ #	COMPONENT main)
+ 
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+ 
+ ################################################################################################################
+ ################################      GPU Module Tests     #####################################################
+@@ -192,14 +195,17 @@ if(BUILD_TESTS AND EXISTS ${CMAKE_CURREN
+     
+     add_executable(${the_test_target} ${test_srcs} ${test_hdrs} ${nvidia})
+     
+-    add_opencv_precompiled_headers(${the_test_target})
++#    add_opencv_precompiled_headers(${the_test_target})
+     
+     # Additional target properties
+     set_target_properties(${the_test_target} PROPERTIES
+         DEBUG_POSTFIX "${OPENCV_DEBUG_POSTFIX}"
+         RUNTIME_OUTPUT_DIRECTORY "${EXECUTABLE_OUTPUT_PATH}"
+         )
+-	
++	if (COMMAND cotire)
++	cotire(${the_test_target})
++	endif()
++
+ 	if(ENABLE_SOLUTION_FOLDERS)
+ 		set_target_properties(${the_test_target} PROPERTIES FOLDER "tests")
+ 	endif()
+diff -rupN OpenCV-2.3.1/modules/haartraining/CMakeLists.txt OpenCV-2.3.1.cotire/modules/haartraining/CMakeLists.txt
+--- OpenCV-2.3.1/modules/haartraining/CMakeLists.txt	2011-09-12 20:43:56.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/haartraining/CMakeLists.txt	2012-04-01 11:21:27.000000000 +0200
+@@ -45,6 +45,10 @@ set_target_properties(opencv_haartrainin
+     INSTALL_NAME_DIR lib
+     )
+ 
++if (COMMAND cotire)
++cotire(opencv_haartraining_engine)
++endif()
++
+ if(NOT ANDROID)
+ # -----------------------------------------------------------
+ #  haartraining
+diff -rupN OpenCV-2.3.1/modules/highgui/CMakeLists.txt OpenCV-2.3.1.cotire/modules/highgui/CMakeLists.txt
+--- OpenCV-2.3.1/modules/highgui/CMakeLists.txt	2011-09-12 20:41:29.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/highgui/CMakeLists.txt	2012-04-01 12:17:12.000000000 +0200
+@@ -77,6 +77,10 @@ file(GLOB grfmt_srcs src/grfmt*.cpp)
+ set(grfmt_hdrs src/bitstrm.hpp ${grfmt_hdrs})
+ set(grfmt_srcs src/bitstrm.cpp ${grfmt_srcs})
+ 
++if (COMMAND cotire)
++	set_source_files_properties (${grfmt_srcs} PROPERTIES COTIRE_EXCLUDED TRUE)
++endif()
++
+ source_group("Src\\grfmts" FILES ${grfmt_hdrs} ${grfmt_srcs})
+ 
+ set(highgui_srcs
+@@ -209,6 +213,9 @@ if(APPLE)
+     else()
+         set(highgui_srcs ${highgui_srcs} src/cap_qtkit.mm)
+     endif()
++	if (COMMAND cotire)
++		set_source_files_properties (src/window_cocoa.mm src/cap_qtkit.mm PROPERTIES COTIRE_EXCLUDED TRUE)
++	endif()
+ endif(APPLE)
+ 
+ if(WITH_ANDROID_CAMERA)
+@@ -276,7 +283,7 @@ if (BUILD_SHARED_LIBS)
+ 	endif()
+ endif()
+ 
+-add_opencv_precompiled_headers(${the_target})
++#add_opencv_precompiled_headers(${the_target})
+ 
+ # For dynamic link numbering convenions
+ if(NOT ANDROID)
+@@ -307,6 +314,10 @@ if(MSVC)
+     set_target_properties(${the_target} PROPERTIES LINK_FLAGS "/NODEFAULTLIB:atlthunk.lib /NODEFAULTLIB:atlsd.lib /DEBUG")
+ endif(MSVC)
+ 
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
++
+ # Dependencies of this target:
+ add_dependencies(${the_target} opencv_core opencv_imgproc)
+ 
+@@ -397,7 +408,7 @@ if(BUILD_TESTS)
+ 
+   add_executable(${the_target} ${test_srcs} ${test_hdrs})
+ 
+-  add_opencv_precompiled_headers(${the_target})
++#  add_opencv_precompiled_headers(${the_target})
+ 
+   # Additional target properties
+   set_target_properties(${the_target} PROPERTIES
+@@ -409,6 +420,10 @@ if(BUILD_TESTS)
+     set_target_properties(${the_target} PROPERTIES FOLDER "tests")
+   endif()
+ 
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
++
+   add_dependencies(${the_target} ${test_deps})
+ 
+   # Add the required libraries for linking:
+diff -rupN OpenCV-2.3.1/modules/java/CMakeLists.txt OpenCV-2.3.1.cotire/modules/java/CMakeLists.txt
+--- OpenCV-2.3.1/modules/java/CMakeLists.txt	2011-09-12 20:40:26.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/java/CMakeLists.txt	2012-04-01 11:22:49.000000000 +0200
+@@ -163,6 +163,10 @@ set_target_properties(${target} PROPERTI
+ 
+ install(TARGETS ${target} LIBRARY DESTINATION ${OPENCV_LIB_INSTALL_PATH} COMPONENT main)
+ 
++if (COMMAND cotire)
++cotire(${target})
++endif()
++
+ if(ANDROID)
+     target_link_libraries(${target} jnigraphics)
+ 
+diff -rupN OpenCV-2.3.1/modules/python/CMakeLists.txt OpenCV-2.3.1.cotire/modules/python/CMakeLists.txt
+--- OpenCV-2.3.1/modules/python/CMakeLists.txt	2011-09-12 20:40:30.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/python/CMakeLists.txt	2012-04-01 11:23:51.000000000 +0200
+@@ -92,3 +92,7 @@ install(TARGETS ${cvpymodules}
+       ARCHIVE DESTINATION ${CVPY_PATH} COMPONENT main
+       )
+ install(FILES src2/cv.py DESTINATION ${CVPY_PATH} COMPONENT main)
++
++if (COMMAND cotire)
++cotire(${cv2_target})
++endif()
+diff -rupN OpenCV-2.3.1/modules/stitching/CMakeLists.txt OpenCV-2.3.1.cotire/modules/stitching/CMakeLists.txt
+--- OpenCV-2.3.1/modules/stitching/CMakeLists.txt	2011-09-12 20:42:22.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/stitching/CMakeLists.txt	2012-04-01 11:24:09.000000000 +0200
+@@ -38,3 +38,7 @@ endif()	
+ target_link_libraries(${the_target} ${stitching_libs})
+ 
+ install(TARGETS ${the_target} RUNTIME DESTINATION bin COMPONENT main)
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()
+diff -rupN OpenCV-2.3.1/modules/traincascade/CMakeLists.txt OpenCV-2.3.1.cotire/modules/traincascade/CMakeLists.txt
+--- OpenCV-2.3.1/modules/traincascade/CMakeLists.txt	2011-09-12 20:40:17.000000000 +0200
++++ OpenCV-2.3.1.cotire/modules/traincascade/CMakeLists.txt	2012-04-01 11:24:25.000000000 +0200
+@@ -44,3 +44,7 @@ target_link_libraries(${the_target} ${tr
+ if(NOT ANDROID)
+     install(TARGETS ${the_target} RUNTIME DESTINATION bin COMPONENT main)
+ endif()
++
++if (COMMAND cotire)
++cotire(${the_target})
++endif()

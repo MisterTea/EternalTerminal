@@ -1,0 +1,73 @@
+# GitHub actions workflow.
+# https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
+
+name: Build+Test CI
+
+on:
+  push:
+    branches: [main]
+
+  schedule:
+    # The GH mirroring from Google GoB does not trigger push actions.
+    # Fire it every other day to provide some coverage.  This will run ~8 AM PT.
+    - cron: '39 3 */2 * *'
+
+  # Allow for manual triggers from the web.
+  workflow_dispatch:
+
+jobs:
+  autotools:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: ubuntu-latest
+            cc: gcc
+            cxx: g++
+          - os: ubuntu-latest
+            cc: clang
+            cxx: clang++
+          - os: macos-latest
+            cc: clang
+            cxx: clang++
+    runs-on: ${{ matrix.os }}
+    env:
+      CC: ${{ matrix.cc }}
+      CXX: ${{ matrix.cxx }}
+
+    steps:
+    - name: System settings
+      run: |
+        set -x
+        $CC --version
+        $CXX --version
+        getconf _NPROCESSORS_ONLN
+        getconf _NPROCESSORS_CONF
+        true
+
+    - name: Checkout depot_tools
+      run: git clone --depth=1 https://chromium.googlesource.com/chromium/tools/depot_tools.git ../depot_tools
+
+    - name: Checkout breakpad
+      run: |
+        set -xe
+        PATH+=:$PWD/../depot_tools
+        gclient config --unmanaged --name=src https://github.com/${{ github.repository }}
+        gclient sync --no-history --nohooks
+
+    # First build & test in-tree.
+    - run: ./configure --disable-silent-rules
+      working-directory: src
+    - run: make -j$(getconf _NPROCESSORS_CONF)
+      working-directory: src
+    - run: make -j$(getconf _NPROCESSORS_CONF) check VERBOSE=1
+      working-directory: src
+    - run: make -j$(getconf _NPROCESSORS_CONF) distclean
+      working-directory: src
+
+    # Then build & test out-of-tree.
+    - run: mkdir -p src/build/native
+    - run: ../../configure --disable-silent-rules
+      working-directory: src/build/native
+    - run: make -j$(getconf _NPROCESSORS_CONF) distcheck VERBOSE=1
+      working-directory: src/build/native

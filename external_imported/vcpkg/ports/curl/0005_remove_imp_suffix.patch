@@ -1,0 +1,14 @@
+diff --git a/lib/CMakeLists.txt b/lib/CMakeLists.txt
+index 1d71e14..62b7b33 100644
+--- a/lib/CMakeLists.txt
++++ b/lib/CMakeLists.txt
+@@ -128,7 +128,7 @@ if(CURL_HAS_LTO)
+     INTERPROCEDURAL_OPTIMIZATION_RELWITHDEBINFO TRUE)
+ endif()
+ 
+-if(WIN32)
++if(WIN32 AND 0)
+   if(BUILD_SHARED_LIBS)
+     if(MSVC)
+       # Add "_imp" as a suffix before the extension to avoid conflicting with
+       # the statically linked "libcurl.lib"

@@ -1,0 +1,18 @@
+minVersion: 0.23.1
+changelogPolicy: auto
+targets:
+  - name: github
+  - name: registry
+    sdks:
+      github:getsentry/sentry-native:
+  - name: gcs
+    bucket: sentry-sdk-assets
+    paths:
+      - path: /sentry-native/{{version}}/
+        metadata:
+          cacheControl: public, max-age=2592000
+      - path: /sentry-native/latest/
+        metadata:
+          cacheControl: public, max-age=600
+requireNames:
+  - /^sentry-native.zip$/
