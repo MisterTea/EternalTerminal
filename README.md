@@ -44,6 +44,8 @@ git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
+# On ARM or OS/X with apple silicon:
+# export VCPKG_FORCE_SYSTEM_BINARIES=1
 cmake ../
 make && sudo make install
 sudo cp ../etc/et.cfg /etc/
