@@ -182,17 +182,9 @@ vector<int> UnixSocketHandler::getActiveSockets() {
 }
 
 void UnixSocketHandler::initSocket(int fd) {
-#if !defined(MSG_NOSIGNAL) && !defined(WIN32)
-  {
-    // If we don't have MSG_NOSIGNAL, use SO_NOSIGPIPE
-    int val = 1;
-    if (setsockopt(fd, SOL_SOCKET, SO_NOSIGPIPE, (void *)&val, sizeof(val)) ==
-        -1) {
-      // On Debian + ARM processors, this can fail.  if so, just ignore SIGPIPE
-      // globally
-      ::signal(SIGPIPE, SIG_IGN);
-    }
-  }
+#if !defined(WIN32)
+  //ignore SIGPIPE globally
+  ::signal(SIGPIPE, SIG_IGN);
 #endif
   // Also set the accept socket as non-blocking
 #ifdef WIN32
