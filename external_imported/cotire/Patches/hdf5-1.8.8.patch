@@ -1,0 +1,118 @@
+diff -rupN hdf5-1.8.8/CMakeLists.txt hdf5-1.8.8.cotire/CMakeLists.txt
+--- hdf5-1.8.8/CMakeLists.txt	2011-11-07 23:11:41.000000000 +0100
++++ hdf5-1.8.8.cotire/CMakeLists.txt	2012-03-24 17:30:29.000000000 +0100
+@@ -200,6 +200,7 @@ SET (HDF5_PACKAGE_BUGREPORT "help@hdfgro
+ #-----------------------------------------------------------------------------
+ INCLUDE (${HDF5_RESOURCES_DIR}/HDFMacros.cmake)
+ INCLUDE (${HDF5_RESOURCES_DIR}/HDF5Macros.cmake)
++INCLUDE (${HDF5_RESOURCES_DIR}/cotire.cmake)
+ 
+ #-----------------------------------------------------------------------------
+ # Setup output Directories
+diff -rupN hdf5-1.8.8/c++/src/CMakeLists.txt hdf5-1.8.8.cotire/c++/src/CMakeLists.txt
+--- hdf5-1.8.8/c++/src/CMakeLists.txt	2011-11-07 23:11:40.000000000 +0100
++++ hdf5-1.8.8.cotire/c++/src/CMakeLists.txt	2012-03-24 17:29:43.000000000 +0100
+@@ -85,6 +85,9 @@ ADD_LIBRARY (${HDF5_CPP_LIB_TARGET} ${LI
+ TARGET_LINK_LIBRARIES (${HDF5_CPP_LIB_TARGET} ${HDF5_LIB_TARGET})
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_CPP_LIB_TARGET}")
+ H5_SET_LIB_OPTIONS (${HDF5_CPP_LIB_TARGET} ${HDF5_CPP_LIB_NAME} ${LIB_TYPE})
++if (COMMAND cotire)
++cotire(${HDF5_CPP_LIB_TARGET})
++endif()
+ 
+ #-----------------------------------------------------------------------------
+ # Add file(s) to CMake Install 
+diff -rupN hdf5-1.8.8/fortran/src/CMakeLists.txt hdf5-1.8.8.cotire/fortran/src/CMakeLists.txt
+--- hdf5-1.8.8/fortran/src/CMakeLists.txt	2011-11-07 23:11:41.000000000 +0100
++++ hdf5-1.8.8.cotire/fortran/src/CMakeLists.txt	2012-03-24 17:30:02.000000000 +0100
+@@ -118,6 +118,9 @@ ADD_LIBRARY (${HDF5_F90_C_LIB_TARGET} ${
+ TARGET_LINK_LIBRARIES (${HDF5_F90_C_LIB_TARGET} ${HDF5_LIB_TARGET})
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_F90_C_LIB_TARGET}")
+ H5_SET_LIB_OPTIONS (${HDF5_F90_C_LIB_TARGET} ${HDF5_F90_C_LIB_NAME} ${LIB_TYPE})
++if (COMMAND cotire)
++cotire(${HDF5_F90_C_LIB_TARGET})
++endif()
+ 
+ #-----------------------------------------------------------------------------
+ # Fortran 2003 standard
+@@ -221,6 +224,7 @@ SET_TARGET_PROPERTIES (${HDF5_F90_LIB_TA
+ TARGET_LINK_LIBRARIES (${HDF5_F90_LIB_TARGET} ${HDF5_F90_C_LIB_TARGET} ${HDF5_LIB_TARGET})
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_F90_LIB_TARGET}")
+ H5_SET_LIB_OPTIONS (${HDF5_F90_LIB_TARGET} ${HDF5_F90_LIB_NAME} ${LIB_TYPE})
++cotire(${HDF5_F90_LIB_TARGET})
+ 
+ #-----------------------------------------------------------------------------
+ # Add file(s) to CMake Install
+diff -rupN hdf5-1.8.8/hl/c++/src/CMakeLists.txt hdf5-1.8.8.cotire/hl/c++/src/CMakeLists.txt
+--- hdf5-1.8.8/hl/c++/src/CMakeLists.txt	2011-11-07 23:11:39.000000000 +0100
++++ hdf5-1.8.8.cotire/hl/c++/src/CMakeLists.txt	2012-03-24 17:29:52.000000000 +0100
+@@ -18,6 +18,9 @@ TARGET_LINK_LIBRARIES (
+ )
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_HL_CPP_LIB_TARGET}")
+ H5_SET_LIB_OPTIONS (${HDF5_HL_CPP_LIB_TARGET} ${HDF5_HL_CPP_LIB_NAME} ${LIB_TYPE})
++if (COMMAND cotire)
++cotire(${HDF5_HL_CPP_LIB_TARGET})
++endif()
+ 
+ #-----------------------------------------------------------------------------
+ # Add file(s) to CMake Install 
+diff -rupN hdf5-1.8.8/hl/src/CMakeLists.txt hdf5-1.8.8.cotire/hl/src/CMakeLists.txt
+--- hdf5-1.8.8/hl/src/CMakeLists.txt	2011-11-07 23:11:38.000000000 +0100
++++ hdf5-1.8.8.cotire/hl/src/CMakeLists.txt	2012-03-24 17:30:11.000000000 +0100
+@@ -37,6 +37,9 @@ ADD_LIBRARY (${HDF5_HL_LIB_TARGET} ${LIB
+ TARGET_LINK_LIBRARIES (${HDF5_HL_LIB_TARGET} ${HDF5_LIB_TARGET})
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT "${HDF5_LIBRARIES_TO_EXPORT};${HDF5_HL_LIB_TARGET}")
+ H5_SET_LIB_OPTIONS (${HDF5_HL_LIB_TARGET} ${HDF5_HL_LIB_NAME} ${LIB_TYPE})
++if (COMMAND cotire)
++cotire(${HDF5_HL_LIB_TARGET})
++endif()
+ 
+ #-----------------------------------------------------------------------------
+ # Add file(s) to CMake Install 
+diff -rupN hdf5-1.8.8/src/CMakeLists.txt hdf5-1.8.8.cotire/src/CMakeLists.txt
+--- hdf5-1.8.8/src/CMakeLists.txt	2011-11-07 23:11:30.000000000 +0100
++++ hdf5-1.8.8.cotire/src/CMakeLists.txt	2012-03-24 17:29:26.000000000 +0100
+@@ -631,6 +631,16 @@ ADD_LIBRARY (${HDF5_LIB_TARGET} ${LIB_TY
+ TARGET_LINK_LIBRARIES (${HDF5_LIB_TARGET} ${LINK_LIBS})
+ SET_GLOBAL_VARIABLE (HDF5_LIBRARIES_TO_EXPORT ${HDF5_LIB_TARGET})
+ H5_SET_LIB_OPTIONS (${HDF5_LIB_TARGET} ${HDF5_LIB_NAME} ${LIB_TYPE})
++#set_target_properties(${HDF5_LIB_TARGET} PROPERTIES COTIRE_IGNORED_INCLUDE_DIRECTORIES "/Developer/usr;/usr/llvm-gcc-4.2;${CMAKE_SOURCE_DIR};${CMAKE_BINARY_DIR}")
++
++if (COMMAND cotire)
++SET_SOURCE_FILES_PROPERTIES (
++"${HDF5_BINARY_DIR}/H5overflow.h"
++"${HDF5_BINARY_DIR}/H5version.h"
++"${HDF5_BINARY_DIR}/H5Edefin.h"
++PROPERTIES COTIRE_DEPENDENCY FALSE)
++cotire(${HDF5_LIB_TARGET})
++endif()
+ 
+ #-----------------------------------------------------------------------------
+ # Add file(s) to CMake Install
+Binary files hdf5-1.8.8/src/H5public.h.gch and hdf5-1.8.8.cotire/src/H5public.h.gch differ
+diff -rupN hdf5-1.8.8/test/CMakeLists.txt hdf5-1.8.8.cotire/test/CMakeLists.txt
+--- hdf5-1.8.8/test/CMakeLists.txt	2011-11-07 23:11:23.000000000 +0100
++++ hdf5-1.8.8.cotire/test/CMakeLists.txt	2012-03-24 17:30:22.000000000 +0100
+@@ -30,6 +30,9 @@ IF (MINGW)
+ ENDIF (MINGW)
+ TARGET_LINK_LIBRARIES (${HDF5_TEST_LIB_TARGET} ${HDF5_LIB_TARGET})
+ H5_SET_LIB_OPTIONS (${HDF5_TEST_LIB_TARGET} ${HDF5_TEST_LIB_NAME} ${LIB_TYPE})
++if (COMMAND cotire)
++cotire(${HDF5_TEST_LIB_TARGET})
++endif()
+ 
+ # --------------------------------------------------------------------
+ # Copy all the HDF5 files from the test directory into the source directory
+diff -rupN hdf5-1.8.8/tools/lib/CMakeLists.txt hdf5-1.8.8.cotire/tools/lib/CMakeLists.txt
+--- hdf5-1.8.8/tools/lib/CMakeLists.txt	2011-11-07 23:11:35.000000000 +0100
++++ hdf5-1.8.8.cotire/tools/lib/CMakeLists.txt	2012-03-24 17:28:41.000000000 +0100
+@@ -40,6 +40,9 @@ H5_SET_LIB_OPTIONS (
+     HDF5_TOOLS_LIB_NAME_RELEASE
+   HDF5_TOOLS_LIB_NAME_DEBUG
+ )
++if (COMMAND cotire)
++cotire(${HDF5_TOOLS_LIB_TARGET})
++endif()
+ 
+ ##############################################################################
+ ##############################################################################

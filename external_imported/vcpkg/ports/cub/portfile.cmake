@@ -1,0 +1,11 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO NVlabs/cub
+    REF 7cdf6dfc7ed60e4f44d025b84ea8260755f298e6 #v1.12.0
+    SHA512 aff3ba375a33844efdc57f8ba190e8880db6247bc1245340b2fe87f8933d3abfcbc7dcdffffd45cf00db4981cd2e37029061fca7161554a4c7c779a7d414aada
+    HEAD_REF master
+)
+
+file(COPY ${SOURCE_PATH}/cub/ DESTINATION ${CURRENT_PACKAGES_DIR}/include/cub)
+
+configure_file(${SOURCE_PATH}/LICENSE.TXT ${CURRENT_PACKAGES_DIR}/share/${PORT}/copyright COPYONLY)

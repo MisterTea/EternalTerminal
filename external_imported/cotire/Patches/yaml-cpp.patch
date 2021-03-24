@@ -1,0 +1,37 @@
+diff -rupN yaml-cpp/CMakeLists.txt yaml-cpp-cotire/CMakeLists.txt
+--- yaml-cpp/CMakeLists.txt	2012-01-21 09:52:48.000000000 +0100
++++ yaml-cpp-cotire/CMakeLists.txt	2012-03-24 17:14:15.000000000 +0100
+@@ -14,6 +14,7 @@ if(POLICY CMP0015)
+ endif()
+ 
+ include(CheckCXXCompilerFlag)
++include("${CMAKE_SOURCE_DIR}/cotire.cmake")
+ 
+ 
+ ###
+@@ -235,6 +236,7 @@ add_library(yaml-cpp
+ 	${contrib_private_headers}
+ )
+ 
++cotire(yaml-cpp)
+ set_target_properties(yaml-cpp PROPERTIES
+ 	VERSION "${YAML_CPP_VERSION}"
+ 	SOVERSION "${YAML_CPP_VERSION_MAJOR}.${YAML_CPP_VERSION_MINOR}"
+diff -rupN yaml-cpp/test/CMakeLists.txt yaml-cpp-cotire/test/CMakeLists.txt
+--- yaml-cpp/test/CMakeLists.txt	2012-01-21 09:52:48.000000000 +0100
++++ yaml-cpp-cotire/test/CMakeLists.txt	2012-02-19 10:21:36.000000000 +0100
+@@ -13,3 +13,5 @@ add_executable(run-tests
+ target_link_libraries(run-tests yaml-cpp)
+ 
+ add_test(yaml-reader-test run-tests)
++
++cotire(run-tests)
+\ No newline at end of file
+diff -rupN yaml-cpp/util/CMakeLists.txt yaml-cpp-cotire/util/CMakeLists.txt
+--- yaml-cpp/util/CMakeLists.txt	2012-01-21 09:52:48.000000000 +0100
++++ yaml-cpp-cotire/util/CMakeLists.txt	2012-02-19 10:21:54.000000000 +0100
+@@ -1,2 +1,3 @@
+ add_executable(parse parse.cpp)
+ target_link_libraries(parse yaml-cpp)
++cotire(parse)
+\ No newline at end of file

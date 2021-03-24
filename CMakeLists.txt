@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.16.3)
 
-set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
+set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external_imported")
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")

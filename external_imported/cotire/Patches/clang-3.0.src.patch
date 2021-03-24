@@ -1,0 +1,35 @@
+diff -rupN clang-3.0.src/CMakeLists.txt clang-3.0.src.cotire/CMakeLists.txt
+--- clang-3.0.src/CMakeLists.txt	2011-10-06 15:03:08.000000000 +0200
++++ clang-3.0.src.cotire/CMakeLists.txt	2012-03-24 14:04:10.000000000 +0100
+@@ -36,6 +36,7 @@ if( CMAKE_SOURCE_DIR STREQUAL CMAKE_CURR
+   include(TableGen)
+   include("${CLANG_PATH_TO_LLVM_BUILD}/share/llvm/cmake/LLVMConfig.cmake")
+   include(HandleLLVMOptions)
++  include(cotire)
+ 
+   set(PACKAGE_VERSION "${LLVM_PACKAGE_VERSION}")
+ 
+@@ -206,6 +207,11 @@ macro(add_clang_library name)
+     LIBRARY DESTINATION lib${LLVM_LIBDIR_SUFFIX}
+     ARCHIVE DESTINATION lib${LLVM_LIBDIR_SUFFIX})
+   set_target_properties(${name} PROPERTIES FOLDER "Clang libraries")
++  if (COMMAND cotire)
++    if (NOT "${name}" MATCHES "libclang")
++      cotire(${name})
++    endif()
++  endif()
+ endmacro(add_clang_library)
+ 
+ macro(add_clang_executable name)
+diff -rupN clang-3.0.src/tools/libclang/CMakeLists.txt clang-3.0.src.cotire/tools/libclang/CMakeLists.txt
+--- clang-3.0.src/tools/libclang/CMakeLists.txt	2011-10-06 09:00:54.000000000 +0200
++++ clang-3.0.src.cotire/tools/libclang/CMakeLists.txt	2012-03-24 14:05:02.000000000 +0100
+@@ -70,3 +70,8 @@ if( NOT BUILD_SHARED_LIBS AND NOT WIN32 
+     PROPERTIES
+     OUTPUT_NAME "libclang")
+ endif()
++
++if (COMMAND cotire)
++  cotire(libclang)
++  cotire(${LIBCLANG_STATIC_TARGET_NAME})
++endif()

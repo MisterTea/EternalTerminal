@@ -1,0 +1,218 @@
+diff -rupN cmake-2.8.7/CMakeLists.txt cmake-2.8.7.cotire/CMakeLists.txt
+--- cmake-2.8.7/CMakeLists.txt	2011-12-30 17:49:56.000000000 +0100
++++ cmake-2.8.7.cotire/CMakeLists.txt	2012-03-24 14:41:40.000000000 +0100
+@@ -13,6 +13,8 @@ CMAKE_MINIMUM_REQUIRED(VERSION 2.6.3 FAT
+ SET(CMAKE_LEGACY_CYGWIN_WIN32 0) # Remove when CMake >= 2.8.4 is required
+ PROJECT(CMake)
+ 
++include(Modules/cotire.cmake)
++
+ IF(CMAKE_BOOTSTRAP)
+   # Running from bootstrap script.  Set local variable and remove from cache.
+   SET(CMAKE_BOOTSTRAP 1)
+diff -rupN cmake-2.8.7/Source/CMakeLists.txt cmake-2.8.7.cotire/Source/CMakeLists.txt
+--- cmake-2.8.7/Source/CMakeLists.txt	2011-12-30 17:49:56.000000000 +0100
++++ cmake-2.8.7.cotire/Source/CMakeLists.txt	2012-02-24 22:35:58.000000000 +0100
+@@ -364,6 +364,9 @@ TARGET_LINK_LIBRARIES(CMakeLib cmsys
+ IF(APPLE)
+   TARGET_LINK_LIBRARIES(CMakeLib "-framework CoreFoundation")
+ ENDIF(APPLE)
++if (COMMAND cotire)
++cotire(CMakeLib)
++endif()
+ 
+ # On some platforms we need the rpcrt4 library for the VS 7 generators.
+ IF(CMAKE_BUILD_ON_VISUAL_STUDIO OR MINGW)
+@@ -433,6 +436,9 @@ SET(CTEST_SRCS cmCTest.cxx
+ # Build CTestLib
+ ADD_LIBRARY(CTestLib ${CTEST_SRCS})
+ TARGET_LINK_LIBRARIES(CTestLib CMakeLib ${CMAKE_CURL_LIBRARIES} ${CMAKE_XMLRPC_LIBRARIES})
++if (COMMAND cotire)
++cotire(CTestLib)
++endif()
+ 
+ #
+ # Sources for CPack
+@@ -477,6 +483,9 @@ ENDIF(APPLE)
+ # Build CPackLib
+ ADD_LIBRARY(CPackLib ${CPACK_SRCS})
+ TARGET_LINK_LIBRARIES(CPackLib CMakeLib)
++if (COMMAND cotire)
++cotire(CPackLib)
++endif()
+ 
+ IF(APPLE)
+   ADD_EXECUTABLE(cmakexbuild cmakexbuild.cxx)
+@@ -485,11 +494,17 @@ IF(APPLE)
+     CPack/OSXScriptLauncher.cxx)
+   TARGET_LINK_LIBRARIES(OSXScriptLauncher cmsys)
+   TARGET_LINK_LIBRARIES(OSXScriptLauncher "-framework CoreFoundation")
++if (COMMAND cotire)
++cotire(cmakexbuild)
++endif()
+ ENDIF(APPLE)
+ 
+ # Build CMake executable
+ ADD_EXECUTABLE(cmake cmakemain.cxx)
+ TARGET_LINK_LIBRARIES(cmake CMakeLib)
++if (COMMAND cotire)
++cotire(cmake)
++endif()
+ 
+ # Build special executable for running programs on Windows 98
+ IF(WIN32)
+@@ -503,10 +518,16 @@ ENDIF(WIN32)
+ # Build CTest executable
+ ADD_EXECUTABLE(ctest ctest.cxx)
+ TARGET_LINK_LIBRARIES(ctest CTestLib)
++if (COMMAND cotire)
++cotire(ctest)
++endif()
+ 
+ # Build CPack executable
+ ADD_EXECUTABLE(cpack CPack/cpack.cxx)
+ TARGET_LINK_LIBRARIES(cpack CPackLib)
++if (COMMAND cotire)
++cotire(cpack)
++endif()
+ 
+ # Curses GUI
+ IF(BUILD_CursesDialog)
+diff -rupN cmake-2.8.7/Source/CursesDialog/CMakeLists.txt cmake-2.8.7.cotire/Source/CursesDialog/CMakeLists.txt
+--- cmake-2.8.7/Source/CursesDialog/CMakeLists.txt	2011-12-30 17:49:57.000000000 +0100
++++ cmake-2.8.7.cotire/Source/CursesDialog/CMakeLists.txt	2012-02-22 20:41:03.000000000 +0100
+@@ -33,5 +33,7 @@ INCLUDE_DIRECTORIES(${CURSES_INCLUDE_PAT
+ ADD_EXECUTABLE(ccmake ${CURSES_SRCS} )
+ TARGET_LINK_LIBRARIES(ccmake CMakeLib)
+ TARGET_LINK_LIBRARIES(ccmake cmForm)
+-
++if (COMMAND cotire)
++cotire(ccmake)
++endif()
+ INSTALL_TARGETS(/bin ccmake)
+diff -rupN cmake-2.8.7/Source/CursesDialog/form/CMakeLists.txt cmake-2.8.7.cotire/Source/CursesDialog/form/CMakeLists.txt
+--- cmake-2.8.7/Source/CursesDialog/form/CMakeLists.txt	2011-12-30 17:49:57.000000000 +0100
++++ cmake-2.8.7.cotire/Source/CursesDialog/form/CMakeLists.txt	2012-02-24 21:30:47.000000000 +0100
+@@ -64,3 +64,6 @@ TARGET_LINK_LIBRARIES(cmForm ${CURSES_LI
+ IF(CURSES_EXTRA_LIBRARY)
+   TARGET_LINK_LIBRARIES(cmForm ${CURSES_EXTRA_LIBRARY})
+ ENDIF(CURSES_EXTRA_LIBRARY)
++if (COMMAND cotire)
++cotire(cmForm)
++endif()
+diff -rupN cmake-2.8.7/Source/kwsys/CMakeLists.txt cmake-2.8.7.cotire/Source/kwsys/CMakeLists.txt
+--- cmake-2.8.7/Source/kwsys/CMakeLists.txt	2011-12-30 17:49:57.000000000 +0100
++++ cmake-2.8.7.cotire/Source/kwsys/CMakeLists.txt	2012-03-24 15:03:17.000000000 +0100
+@@ -926,6 +926,9 @@ IF(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
+       ADD_LIBRARY(${KWSYS_NAMESPACE}TestDynload MODULE testDynload.c)
+       SET_PROPERTY(TARGET ${KWSYS_NAMESPACE}TestDynload PROPERTY LABELS ${KWSYS_LABELS_LIB})
+       ADD_DEPENDENCIES(${KWSYS_NAMESPACE}TestDynload ${KWSYS_NAMESPACE})
++if (COMMAND cotire)
++cotire(${KWSYS_NAMESPACE}TestDynload)
++endif()
+     ENDIF(KWSYS_USE_DynamicLoader)
+     CREATE_TEST_SOURCELIST(
+       KWSYS_CXX_TEST_SRCS ${KWSYS_NAMESPACE}TestsCxx.cxx
+@@ -934,6 +937,9 @@ IF(KWSYS_STANDALONE OR CMake_SOURCE_DIR)
+     ADD_EXECUTABLE(${KWSYS_NAMESPACE}TestsCxx ${KWSYS_CXX_TEST_SRCS})
+     SET_PROPERTY(TARGET ${KWSYS_NAMESPACE}TestsCxx PROPERTY LABELS ${KWSYS_LABELS_EXE})
+     TARGET_LINK_LIBRARIES(${KWSYS_NAMESPACE}TestsCxx ${KWSYS_NAMESPACE})
++if (COMMAND cotire)
++cotire(${KWSYS_NAMESPACE}TestsCxx)
++endif()
+     SET(TEST_SYSTEMTOOLS_BIN_FILE
+       "${CMAKE_CURRENT_SOURCE_DIR}/testSystemTools.bin")
+     SET(TEST_SYSTEMTOOLS_SRC_FILE
+diff -rupN cmake-2.8.7/Utilities/cmbzip2/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmbzip2/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmbzip2/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmbzip2/CMakeLists.txt	2012-02-22 20:45:26.000000000 +0100
+@@ -2,3 +2,6 @@ project(bzip2)
+ add_definitions(-D_FILE_OFFSET_BITS=64)
+ add_library(cmbzip2
+   blocksort.c huffman.c crctable.c randtable.c compress.c decompress.c bzlib.c)
++if (COMMAND cotire)
++cotire(cmbzip2)
++endif()
+\ No newline at end of file
+diff -rupN cmake-2.8.7/Utilities/cmcompress/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmcompress/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmcompress/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmcompress/CMakeLists.txt	2012-02-22 20:45:29.000000000 +0100
+@@ -3,3 +3,6 @@ PROJECT(CMCompress)
+ ADD_LIBRARY(cmcompress cmcompress.c)
+ 
+ INSTALL(FILES Copyright.txt DESTINATION ${CMake_DOC_DEST}/cmcompress)
++if (COMMAND cotire)
++cotire(cmcompress)
++endif()
+\ No newline at end of file
+diff -rupN cmake-2.8.7/Utilities/cmcurl/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmcurl/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmcurl/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmcurl/CMakeLists.txt	2012-02-22 20:43:57.000000000 +0100
+@@ -706,6 +706,9 @@ IF(CMAKE_BUILD_CURL_SHARED)
+     RUNTIME_OUTPUT_DIRECTORY ${CMake_BIN_DIR})
+   INSTALL_TARGETS(/bin cmcurl)
+ ENDIF(CMAKE_BUILD_CURL_SHARED)
++if (COMMAND cotire)
++cotire(cmcurl)
++endif()
+ 
+ OPTION(CURL_TESTING "Do libCurl testing" OFF)
+ IF(CURL_TESTING)
+diff -rupN cmake-2.8.7/Utilities/cmexpat/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmexpat/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmexpat/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmexpat/CMakeLists.txt	2012-02-22 20:45:40.000000000 +0100
+@@ -32,3 +32,6 @@ CONFIGURE_FILE(${CMEXPAT_SOURCE_DIR}/exp
+ 
+ ADD_LIBRARY(cmexpat ${expat_SRCS})
+ INSTALL(FILES COPYING DESTINATION ${CMake_DOC_DEST}/cmexpat)
++if (COMMAND cotire)
++cotire(cmexpat)
++endif()
+\ No newline at end of file
+diff -rupN cmake-2.8.7/Utilities/cmlibarchive/libarchive/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmlibarchive/libarchive/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmlibarchive/libarchive/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmlibarchive/libarchive/CMakeLists.txt	2012-02-22 20:45:55.000000000 +0100
+@@ -116,6 +116,9 @@ IF(BUILD_ARCHIVE_WITHIN_CMAKE)
+   # and call the library cmlibarchive
+   ADD_LIBRARY(cmlibarchive STATIC ${libarchive_SOURCES} ${include_HEADERS})
+   TARGET_LINK_LIBRARIES(cmlibarchive ${ADDITIONAL_LIBS})
++if (COMMAND cotire)
++cotire(cmlibarchive)
++endif()
+ ELSE()
+   # Libarchive is a shared library
+   ADD_LIBRARY(archive SHARED ${libarchive_SOURCES} ${include_HEADERS})
+@@ -123,7 +126,10 @@ ELSE()
+   SET_TARGET_PROPERTIES(archive PROPERTIES SOVERSION ${SOVERSION})
+   SET_TARGET_PROPERTIES(archive PROPERTIES
+     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR})
+-  
++if (COMMAND cotire)
++cotire(archive)
++endif()
++
+   # archive_static is a static library
+   ADD_LIBRARY(archive_static STATIC ${libarchive_SOURCES} ${include_HEADERS})
+   SET_TARGET_PROPERTIES(archive_static PROPERTIES COMPILE_DEFINITIONS
+@@ -134,6 +140,9 @@ ELSE()
+   IF(NOT WIN32 OR CYGWIN)
+     SET_TARGET_PROPERTIES(archive_static PROPERTIES OUTPUT_NAME archive)
+   ENDIF(NOT WIN32 OR CYGWIN)
++if (COMMAND cotire)
++cotire(archive_static)
++endif()
+   
+   # How to install the libraries
+   INSTALL(TARGETS archive archive_static
+diff -rupN cmake-2.8.7/Utilities/cmzlib/CMakeLists.txt cmake-2.8.7.cotire/Utilities/cmzlib/CMakeLists.txt
+--- cmake-2.8.7/Utilities/cmzlib/CMakeLists.txt	2011-12-30 17:49:58.000000000 +0100
++++ cmake-2.8.7.cotire/Utilities/cmzlib/CMakeLists.txt	2012-02-22 20:42:30.000000000 +0100
+@@ -39,5 +39,7 @@ ENDFOREACH(name)
+ 
+ 
+ ADD_LIBRARY(cmzlib ${ZLIB_SRCS})
+-
++if (COMMAND cmzlib)
++cotire(cmzlib)
++endif()
+ INSTALL(FILES Copyright.txt DESTINATION ${CMake_DOC_DEST}/cmzlib)

@@ -1,0 +1,10 @@
+include("${CMAKE_CURRENT_LIST_DIR}/crashpad-targets.cmake")
+
+if(@CRASHPAD_ZLIB_SYSTEM@)
+    find_package(ZLIB REQUIRED)
+    target_include_directories(crashpad::zlib INTERFACE ${ZLIB_INCLUDE_DIRS})
+    target_compile_definitions(crashpad::zlib INTERFACE ${ZLIB_COMPILE_DEFINITIONS})
+    target_link_libraries(crashpad::zlib INTERFACE ${ZLIB_LIBRARIES})
+endif()
+
+@PACKAGE_INIT@
