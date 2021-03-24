@@ -1,0 +1,52 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 16
+VisualStudioVersion = 16.0.30204.135
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Library Files", "Library Files", "{C1F8A145-78E7-42C6-95D5-23C746C2BC56}"
+	ProjectSection(SolutionItems) = preProject
+		..\ConvertUTF.c = ..\ConvertUTF.c
+		..\ConvertUTF.h = ..\ConvertUTF.h
+		..\SimpleIni.h = ..\SimpleIni.h
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Information Files", "Information Files", "{E40DD170-6D17-49D2-9BB2-8546658F0A37}"
+	ProjectSection(SolutionItems) = preProject
+		..\LICENCE.txt = ..\LICENCE.txt
+		..\README.md = ..\README.md
+	EndProjectSection
+EndProject
+Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Other Files", "Other Files", "{560B512C-6D1C-4E65-83C1-049110E5DEF6}"
+	ProjectSection(SolutionItems) = preProject
+		..\other\.travis.yml = ..\other\.travis.yml
+		..\other\Makefile = ..\other\Makefile
+		..\other\package.cmd = ..\other\package.cmd
+		..\other\simpleini.doxy = ..\other\simpleini.doxy
+	EndProjectSection
+EndProject
+Project("{8BC9CEB8-8B4A-11D0-8D11-00A0C91BC942}") = "tests", "..\tests\tests.vcxproj", "{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|x64 = Debug|x64
+		Debug|x86 = Debug|x86
+		Release|x64 = Release|x64
+		Release|x86 = Release|x86
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Debug|x64.ActiveCfg = Debug|x64
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Debug|x64.Build.0 = Debug|x64
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Debug|x86.ActiveCfg = Debug|Win32
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Debug|x86.Build.0 = Debug|Win32
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Release|x64.ActiveCfg = Release|x64
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Release|x64.Build.0 = Release|x64
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Release|x86.ActiveCfg = Release|Win32
+		{8F30A5DC-B942-4C9A-BA75-91C906FF85FA}.Release|x86.Build.0 = Release|Win32
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {ABD2CECE-EA8B-455B-8AE7-00E499634EC2}
+	EndGlobalSection
+EndGlobal
