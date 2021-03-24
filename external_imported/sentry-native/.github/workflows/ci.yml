@@ -1,0 +1,182 @@
+name: CI
+
+on:
+  push:
+    branches:
+      - master
+      - "release/**"
+  pull_request:
+
+jobs:
+  lint:
+    name: Lint
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v2
+      - run: make style
+
+  build-ios:
+    name: Xcode Build for iOS
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - run: |
+          cmake -B sentry-native-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS
+          xcodebuild build -project sentry-native-xcode/Sentry-Native.xcodeproj -sdk iphonesimulator
+
+  test:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux (gcc 7, 32-bit)
+            os: ubuntu-18.04
+            CC: gcc-7
+            CXX: g++-7
+            TEST_X86: 1
+          - name: Linux (gcc 10)
+            os: ubuntu-20.04
+            CC: gcc-10
+            CXX: g++-10
+            # ERROR_ON_WARNINGS: 1
+            # The GCC analyzer 10.0.1 (as on CI) has an internal compiler error
+            # currently, and is not stable enough to activate.
+            # RUN_ANALYZER: gcc
+          - name: Linux (clang 11 + asan + llvm-cov)
+            os: ubuntu-20.04
+            CC: clang-11
+            CXX: clang++-11
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: asan,llvm-cov
+          - name: Linux (clang 11 + kcov)
+            os: ubuntu-20.04
+            CC: clang-11
+            CXX: clang++-11
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: kcov
+          - name: Linux (code-checker + valgrind)
+            os: ubuntu-20.04
+            RUN_ANALYZER: code-checker,valgrind
+          - name: macOS (xcode llvm)
+            os: macOs-latest
+            ERROR_ON_WARNINGS: 1
+          - name: macOS (clang 11 + asan + llvm-cov)
+            os: macOs-latest
+            CC: clang
+            CXX: clang++
+            ERROR_ON_WARNINGS: 1
+            RUN_ANALYZER: asan,llvm-cov
+          - name: Windows (VS2017, 32bit)
+            os: vs2017-win2016
+            TEST_X86: 1
+          - name: Windows (latest)
+            os: windows-latest
+          # The Android emulator is currently only available on macos, see:
+          # https://docs.microsoft.com/en-us/azure/devops/pipelines/ecosystems/android?view=azure-devops#test-on-the-android-emulator
+          - name: Android (API 16, NDK 19)
+            os: macOs-latest
+            ANDROID_API: 16
+            ANDROID_NDK: 19.2.5345600
+          - name: Android (API 30 NDK 21)
+            os: macOs-latest
+            ANDROID_API: 30
+            ANDROID_NDK: 21.3.6528147
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    env:
+      TEST_X86: ${{ matrix.TEST_X86 }}
+      ERROR_ON_WARNINGS: ${{ matrix.ERROR_ON_WARNINGS }}
+      RUN_ANALYZER: ${{ matrix.RUN_ANALYZER }}
+      ANDROID_API: ${{ matrix.ANDROID_API }}
+      ANDROID_NDK: ${{ matrix.ANDROID_NDK }}
+
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+      - uses: actions/setup-python@v2
+
+      - name: Installing Linux Dependencies
+        if: ${{ runner.os == 'Linux' && !env['TEST_X86'] }}
+        # workaround: https://github.com/actions/virtual-environments/issues/1536#issuecomment-698537248
+        run: |
+          wget -O - https://apt.llvm.org/llvm-snapshot.gpg.key 2>/dev/null | sudo apt-key add -
+          sudo add-apt-repository 'deb http://apt.llvm.org/focal/ llvm-toolchain-focal-11 main' -y
+          sudo apt update
+          sudo apt install cmake clang-11 clang-tools llvm kcov g++-10 valgrind zlib1g-dev libcurl4-openssl-dev
+
+      - name: Installing Linux 32-bit Dependencies
+        if: ${{ runner.os == 'Linux' && env['TEST_X86'] }}
+        run: |
+          sudo dpkg --add-architecture i386
+          sudo apt update
+          sudo apt install cmake gcc-multilib g++-multilib zlib1g-dev:i386 libssl-dev:i386 libcurl4-openssl-dev:i386
+
+      - name: Installing CodeChecker
+        if: ${{ contains(env['RUN_ANALYZER'], 'code-checker') }}
+        run: |
+          sudo apt install clang-tidy curl doxygen gcc-multilib libxml2-dev libxslt1-dev python3-dev python3-virtualenv
+          git clone https://github.com/Ericsson/CodeChecker.git --depth 1 --branch v6.15.0
+          cd CodeChecker
+          BUILD_LOGGER_64_BIT_ONLY=YES make standalone_package
+          echo "$PWD/build/CodeChecker/bin" >> $GITHUB_PATH
+
+      - name: Expose llvm PATH for Mac
+        if: ${{ runner.os == 'macOS' }}
+        run: echo "/usr/local/opt/llvm/bin/" >> $GITHUB_PATH
+
+      - name: Installing Android SDK Dependencies
+        if: ${{ env['ANDROID_API'] }}
+        run: |
+          export ANDROID_IMAGE="system-images;android-$ANDROID_API;google_apis;x86"
+          echo "Downloading ndk;$ANDROID_NDK and $ANDROID_IMAGE"
+          echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install \
+            "ndk;$ANDROID_NDK" "$ANDROID_IMAGE" | \
+            grep -v "\[=" || true # suppress the progress bar, so we get meaningful logs
+
+      - name: Starting Android Simulator
+        if: ${{ env['ANDROID_API'] }}
+        run: bash scripts/start-android.sh
+
+      - name: Test
+        shell: bash
+        run: |
+          pip install --upgrade --requirement tests/requirements.txt
+          [ "${{ matrix.CC }}" ] && export CC="${{ matrix.CC }}"
+          [ "${{ matrix.CXX }}" ] && export CXX="${{ matrix.CXX }}"
+          pytest --capture=no --verbose tests
+
+      - name: "Upload to codecov.io"
+        if: ${{ contains(env['RUN_ANALYZER'], 'cov') }}
+        uses: codecov/codecov-action@v1
+        with:
+          directory: coverage
+
+  archive:
+    name: Create Release Archive
+    runs-on: ubuntu-latest
+    needs: [lint, test]
+    # only run this on pushes, combined with the CI triggers, this will only
+    # run on master or the release branch
+    if: ${{ needs.test.result == 'success' && github.event_name == 'push' }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      - name: Create source archive
+        run: |
+          rm -rf build .c* .e* .git* scripts Makefile external/breakpad/src/tools external/breakpad/src/processor
+          zip -r sentry-native.zip .
+
+      - name: Upload source artifact
+        uses: actions/upload-artifact@v2
+        with:
+          name: ${{ github.sha }}
+          # When downloading artifacts, they are double-zipped:
+          # https://github.com/actions/upload-artifact#zipped-artifact-downloads
+          path: sentry-native.zip

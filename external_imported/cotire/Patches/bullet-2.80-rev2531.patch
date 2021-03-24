@@ -1,0 +1,389 @@
+diff -rupN bullet-2.80-rev2531/CMakeLists.txt bullet-2.80-rev2531.cotire/CMakeLists.txt
+--- bullet-2.80-rev2531/CMakeLists.txt	2012-03-03 04:15:04.000000000 +0100
++++ bullet-2.80-rev2531.cotire/CMakeLists.txt	2012-03-24 20:40:40.000000000 +0100
+@@ -11,6 +11,7 @@ IF(COMMAND cmake_policy)
+    cmake_policy(SET CMP0003 NEW)
+ ENDIF(COMMAND cmake_policy)
+ 
++include("${CMAKE_SOURCE_DIR}/cotire.cmake") 
+ 
+ IF (NOT CMAKE_BUILD_TYPE)
+ # SET(CMAKE_BUILD_TYPE "Debug")
+diff -rupN bullet-2.80-rev2531/Demos/OpenGL/CMakeLists.txt bullet-2.80-rev2531.cotire/Demos/OpenGL/CMakeLists.txt
+--- bullet-2.80-rev2531/Demos/OpenGL/CMakeLists.txt	2011-09-13 03:52:42.000000000 +0200
++++ bullet-2.80-rev2531.cotire/Demos/OpenGL/CMakeLists.txt	2012-03-24 20:35:19.000000000 +0100
+@@ -65,3 +65,7 @@ IF (${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (INSTALL_EXTRA_LIBS)
+ ENDIF (${CMAKE_MAJOR_VERSION}.${CMAKE_MINOR_VERSION} GREATER 2.5)
++
++if (COMMAND cotire)
++	cotire(OpenGLSupport)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/ConvexDecomposition/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/ConvexDecomposition/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/ConvexDecomposition/CMakeLists.txt	2010-09-18 02:24:50.000000000 +0200
++++ bullet-2.80-rev2531.cotire/Extras/ConvexDecomposition/CMakeLists.txt	2012-03-24 20:35:36.000000000 +0100
+@@ -62,3 +62,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_EXTRA_LIBS)
++
++if (COMMAND cotire)
++	cotire(ConvexDecomposition)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/GIMPACTUtils/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/GIMPACTUtils/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/GIMPACTUtils/CMakeLists.txt	2010-09-18 02:24:50.000000000 +0200
++++ bullet-2.80-rev2531.cotire/Extras/GIMPACTUtils/CMakeLists.txt	2012-03-24 20:35:42.000000000 +0100
+@@ -35,3 +35,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_EXTRA_LIBS)
++
++if (COMMAND cotire)
++	cotire(GIMPACTUtils)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/HACD/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/HACD/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/HACD/CMakeLists.txt	2011-07-07 02:28:15.000000000 +0200
++++ bullet-2.80-rev2531.cotire/Extras/HACD/CMakeLists.txt	2012-03-24 20:36:03.000000000 +0100
+@@ -49,3 +49,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_EXTRA_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(HACD)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/Extras/PhysicsEffects/src/base_level/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/base_level/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/PhysicsEffects/src/base_level/CMakeLists.txt	2012-03-05 05:59:58.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/base_level/CMakeLists.txt	2012-03-24 20:36:29.000000000 +0100
+@@ -75,3 +75,7 @@ ADD_LIBRARY(PfxBaseLevel ${PfxBaseLevel_
+ 
+
+ SET_TARGET_PROPERTIES(PfxBaseLevel PROPERTIES VERSION ${BULLET_VERSION})
+
+ SET_TARGET_PROPERTIES(PfxBaseLevel PROPERTIES SOVERSION ${BULLET_VERSION})
+
++
+
++if (COMMAND cotire)
+
++	cotire(PfxBaseLevel)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/Extras/PhysicsEffects/src/low_level/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/low_level/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/PhysicsEffects/src/low_level/CMakeLists.txt	2012-03-05 05:59:58.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/low_level/CMakeLists.txt	2012-03-24 20:36:39.000000000 +0100
+@@ -27,3 +27,7 @@ ADD_LIBRARY(PfxLowLevel ${PfxLowLevel_SR
+ 
+
+ SET_TARGET_PROPERTIES(PfxLowLevel PROPERTIES VERSION ${BULLET_VERSION})
+
+ SET_TARGET_PROPERTIES(PfxLowLevel PROPERTIES SOVERSION ${BULLET_VERSION})
+
++
+
++if (COMMAND cotire)
+
++	cotire(PfxLowLevel)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/Extras/PhysicsEffects/src/util/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/util/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/PhysicsEffects/src/util/CMakeLists.txt	2012-03-05 05:59:58.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/PhysicsEffects/src/util/CMakeLists.txt	2012-03-24 20:36:47.000000000 +0100
+@@ -18,3 +18,7 @@ ADD_LIBRARY(PfxUtil ${PfxUtil_SRCS} ${Pf
+ 
+
+ SET_TARGET_PROPERTIES(PfxUtil PROPERTIES VERSION ${BULLET_VERSION})
+
+ SET_TARGET_PROPERTIES(PfxUtil PROPERTIES SOVERSION ${BULLET_VERSION})
+
++
+
++if (COMMAND cotire)
+
++	cotire(PfxUtil)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/Extras/Serialize/BlenderSerialize/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/Serialize/BlenderSerialize/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/Serialize/BlenderSerialize/CMakeLists.txt	2010-03-06 16:23:36.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/Serialize/BlenderSerialize/CMakeLists.txt	2012-03-24 20:36:55.000000000 +0100
+@@ -5,3 +5,7 @@ ${BULLET_PHYSICS_SOURCE_DIR}/Extras/Seri
+ )
+ 
+ ADD_LIBRARY(BlenderSerialize dna249.cpp dna249-64bit.cpp bBlenderFile.cpp  bBlenderFile.h bMain.cpp bMain.h )
++
++if (COMMAND cotire)
++	cotire(BlenderSerialize)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/Serialize/BulletFileLoader/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/Serialize/BulletFileLoader/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/Serialize/BulletFileLoader/CMakeLists.txt	2012-02-29 05:43:51.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/Serialize/BulletFileLoader/CMakeLists.txt	2012-03-24 20:37:05.000000000 +0100
+@@ -47,3 +47,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+                 ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+         ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_EXTRA_LIBS)
++
++if (COMMAND cotire)
++	cotire(BulletFileLoader)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/Serialize/BulletWorldImporter/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/Serialize/BulletWorldImporter/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/Serialize/BulletWorldImporter/CMakeLists.txt	2012-02-29 05:43:51.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/Serialize/BulletWorldImporter/CMakeLists.txt	2012-03-24 20:37:15.000000000 +0100
+@@ -36,3 +36,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_EXTRA_LIBS)
++
++if (COMMAND cotire)
++	cotire(BulletWorldImporter)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/Serialize/makesdna/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/Serialize/makesdna/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/Serialize/makesdna/CMakeLists.txt	2010-03-06 16:23:36.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/Serialize/makesdna/CMakeLists.txt	2012-03-24 20:37:26.000000000 +0100
+@@ -35,3 +35,7 @@ SET(SRC  ${BULLET_PHYSICS_SOURCE_DIR}/sr
+ ADD_LIBRARY(BulletDNA ${SRC} ${INC_FILES})
+ 
+ MESSAGE(STATUS "Configuring makesdna")
++
++if (COMMAND cotire)
++	cotire(BulletDNA)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/glui/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/glui/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/glui/CMakeLists.txt	2010-03-06 16:23:36.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/glui/CMakeLists.txt	2012-03-24 20:35:51.000000000 +0100
+@@ -64,3 +64,7 @@ arcball.cpp			glui_button.cpp			glui_fil
+ IF (BUILD_SHARED_LIBS)
+   TARGET_LINK_LIBRARIES(GLUI ${GLUT_glut_LIBRARY} ${OPENGL_gl_LIBRARY} ${OPENGL_glu_LIBRARY})
+ ENDIF (BUILD_SHARED_LIBS)
++
++if (COMMAND cotire)
++	cotire(GLUI)
++endif()
+diff -rupN bullet-2.80-rev2531/Extras/iff/CMakeLists.txt bullet-2.80-rev2531.cotire/Extras/iff/CMakeLists.txt
+--- bullet-2.80-rev2531/Extras/iff/CMakeLists.txt	2010-03-06 16:23:36.000000000 +0100
++++ bullet-2.80-rev2531.cotire/Extras/iff/CMakeLists.txt	2012-03-24 20:36:12.000000000 +0100
+@@ -9,3 +9,7 @@ iffw.cpp
+ )
+ 
+ #SUBDIRS( BulletIffConverter )
++
++if (COMMAND cotire)
++	cotire(Iff)
++endif()
+diff -rupN bullet-2.80-rev2531/UnitTests/cppunit/CMakeLists.txt bullet-2.80-rev2531.cotire/UnitTests/cppunit/CMakeLists.txt
+--- bullet-2.80-rev2531/UnitTests/cppunit/CMakeLists.txt	2010-07-24 00:09:57.000000000 +0200
++++ bullet-2.80-rev2531.cotire/UnitTests/cppunit/CMakeLists.txt	2012-03-24 20:39:51.000000000 +0100
+@@ -71,4 +71,8 @@ ADD_LIBRARY(cppunit
+
+ 	src/cppunit/XmlDocument.cpp
+
+ 	src/cppunit/XmlElement.cpp
+
+ 	
+
+-)
+\ No newline at end of file
++)
+
++
+
++if (COMMAND cotire)
+
++	cotire(cppunit)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletCollision/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletCollision/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletCollision/CMakeLists.txt	2012-02-29 06:19:22.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletCollision/CMakeLists.txt	2012-03-24 20:37:38.000000000 +0100
+@@ -277,3 +277,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR}/Bulle
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_LIBS)
++
++if (COMMAND cotire)
++	cotire(BulletCollision)
++endif()
+diff -rupN bullet-2.80-rev2531/src/BulletDynamics/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletDynamics/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletDynamics/CMakeLists.txt	2011-09-15 20:47:13.000000000 +0200
++++ bullet-2.80-rev2531.cotire/src/BulletDynamics/CMakeLists.txt	2012-03-24 20:43:34.000000000 +0100
+@@ -110,3 +110,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR}/Bulle
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_LIBS)
++
++if (COMMAND cotire)
++	cotire(BulletDynamics)
++endif()
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/CMakeLists.txt	2012-02-29 06:19:22.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/CMakeLists.txt	2012-03-24 20:37:58.000000000 +0100
+@@ -121,3 +121,6 @@ PATTERN "*.h"  PATTERN ".svn" EXCLUDE PA
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_LIBS)
+ 
++if (COMMAND cotire)
++	cotire(BulletMultiThreaded)
++endif()
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/DX11/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/DX11/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/DX11/CMakeLists.txt	2011-11-11 20:00:26.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/DX11/CMakeLists.txt	2012-03-24 20:38:09.000000000 +0100
+@@ -81,3 +81,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_DX11)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/AMD/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/AMD/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/AMD/CMakeLists.txt	2011-12-20 19:03:24.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/AMD/CMakeLists.txt	2012-03-24 20:38:22.000000000 +0100
+@@ -60,3 +60,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_OpenCL_AMD)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Apple/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Apple/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Apple/CMakeLists.txt	2011-11-11 20:00:26.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Apple/CMakeLists.txt	2012-03-24 20:38:38.000000000 +0100
+@@ -75,3 +75,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_OpenCL_Apple)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Intel/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Intel/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Intel/CMakeLists.txt	2011-12-20 19:03:24.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/Intel/CMakeLists.txt	2012-03-24 20:38:51.000000000 +0100
+@@ -80,3 +80,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_OpenCL_Intel)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/MiniCL/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/MiniCL/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/MiniCL/CMakeLists.txt	2011-11-11 20:00:26.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/MiniCL/CMakeLists.txt	2012-03-24 20:39:00.000000000 +0100
+@@ -73,3 +73,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_OpenCL_Mini)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/NVidia/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/NVidia/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/NVidia/CMakeLists.txt	2011-12-20 19:03:24.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletMultiThreaded/GpuSoftBodySolvers/OpenCL/NVidia/CMakeLists.txt	2012-03-24 20:39:08.000000000 +0100
+@@ -79,3 +79,7 @@ IF (INSTALL_LIBS)
+
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
++
+
++if (COMMAND cotire)
+
++	cotire(BulletSoftBodySolvers_OpenCL_NVidia)
+
++endif()
+
+diff -rupN bullet-2.80-rev2531/src/BulletSoftBody/CMakeLists.txt bullet-2.80-rev2531.cotire/src/BulletSoftBody/CMakeLists.txt
+--- bullet-2.80-rev2531/src/BulletSoftBody/CMakeLists.txt	2010-12-01 06:55:08.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/BulletSoftBody/CMakeLists.txt	2012-03-24 20:39:20.000000000 +0100
+@@ -63,3 +63,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_LIBS)
++
++if (COMMAND cotire)
++	cotire(BulletSoftBody)
++endif()
+diff -rupN bullet-2.80-rev2531/src/LinearMath/CMakeLists.txt bullet-2.80-rev2531.cotire/src/LinearMath/CMakeLists.txt
+--- bullet-2.80-rev2531/src/LinearMath/CMakeLists.txt	2011-11-11 21:11:03.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/LinearMath/CMakeLists.txt	2012-03-24 20:39:28.000000000 +0100
+@@ -64,3 +64,7 @@ DESTINATION ${INCLUDE_INSTALL_DIR} FILES
+ 		ENDIF (APPLE AND BUILD_SHARED_LIBS AND FRAMEWORK)
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+ ENDIF (INSTALL_LIBS)
++
++if (COMMAND cotire)
++	cotire(LinearMath)
++endif()
+diff -rupN bullet-2.80-rev2531/src/MiniCL/CMakeLists.txt bullet-2.80-rev2531.cotire/src/MiniCL/CMakeLists.txt
+--- bullet-2.80-rev2531/src/MiniCL/CMakeLists.txt	2012-02-29 06:19:22.000000000 +0100
++++ bullet-2.80-rev2531.cotire/src/MiniCL/CMakeLists.txt	2012-03-24 20:39:38.000000000 +0100
+@@ -64,3 +64,6 @@ PATTERN "*.h"  PATTERN ".svn" EXCLUDE PA
+ 	ENDIF (NOT INTERNAL_CREATE_DISTRIBUTABLE_MSVC_PROJECTFILES)
+
+ ENDIF (INSTALL_LIBS)
+
+ 
+
++if (COMMAND cotire)
+
++	cotire(MiniCL)
+
++endif()
+

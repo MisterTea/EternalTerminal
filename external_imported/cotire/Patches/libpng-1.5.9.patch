@@ -1,0 +1,38 @@
+diff -rupN libpng-1.5.9/CMakeLists.txt libpng-1.5.9.cotire/CMakeLists.txt
+--- libpng-1.5.9/CMakeLists.txt	2012-02-18 21:31:14.000000000 +0100
++++ libpng-1.5.9.cotire/CMakeLists.txt	2012-03-24 18:08:54.000000000 +0100
+@@ -9,6 +9,8 @@
+ cmake_minimum_required(VERSION 2.4.4)
+ set(CMAKE_ALLOW_LOOSE_LOOP_CONSTRUCTS true)
+ 
++include("${CMAKE_SOURCE_DIR}/cotire.cmake")
++
+ if(UNIX AND NOT DEFINED CMAKE_BUILD_TYPE)
+   if(CMAKE_MAJOR_VERSION EQUAL 2 AND CMAKE_MINOR_VERSION EQUAL 4)
+     # workaround CMake 2.4.x bug
+@@ -146,6 +148,12 @@ if(PNG_SHARED)
+     set_target_properties(${PNG_LIB_NAME} PROPERTIES IMPORT_PREFIX "lib")
+   endif()
+   target_link_libraries(${PNG_LIB_NAME} ${ZLIB_LIBRARY} ${M_LIBRARY})
++  if (COMMAND cotire)
++    cotire(${PNG_LIB_NAME})
++    if (TARGET ${PNG_LIB_NAME}_unity)
++      target_link_libraries(${PNG_LIB_NAME}_unity ${ZLIB_LIBRARY} ${M_LIBRARY})
++    endif()
++  endif()
+ endif()
+ 
+ if(PNG_STATIC)
+@@ -157,6 +165,12 @@ if(PNG_STATIC)
+     set_target_properties(${PNG_LIB_NAME_STATIC} PROPERTIES PREFIX "lib")
+   endif()
+   target_link_libraries(${PNG_LIB_NAME_STATIC} ${ZLIB_LIBRARY} ${M_LIBRARY})
++  if (COMMAND cotire)
++    cotire(${PNG_LIB_NAME_STATIC})
++    if (TARGET ${PNG_LIB_NAME_STATIC}_unity)
++      target_link_libraries(${PNG_LIB_NAME_STATIC}_unity ${ZLIB_LIBRARY} ${M_LIBRARY})
++    endif()
++  endif()
+ endif()
+ 
+ if(PNG_SHARED AND WIN32)
