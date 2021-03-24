@@ -10,7 +10,7 @@ find_path (Unwind_INCLUDE_DIR NAMES unwind.h libunwind.h DOC "unwind include dir
 find_library (Unwind_LIBRARY NAMES unwind DOC "unwind library")
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
-    set (Unwind_ARCH "arm")
+    set (Unwind_ARCH "unwind-arm")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64")
     set (Unwind_ARCH "unwind-aarch64")
 elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR
