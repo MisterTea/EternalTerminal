@@ -1,0 +1,12 @@
+diff --git a/config_os.h b/config_os.h
+index da27de22..9703f77d 100644
+--- a/config_os.h
++++ b/config_os.h
+@@ -126,6 +126,7 @@
+ #endif
+ 
+ #ifdef CRYPTOPP_WIN32_AVAILABLE
++#include <winapifamily.h>
+ # if !defined(WINAPI_FAMILY)
+ #	define THREAD_TIMER_AVAILABLE
+ # elif defined(WINAPI_FAMILY)

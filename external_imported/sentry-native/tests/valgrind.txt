@@ -1,0 +1,29 @@
+{
+    Checking the ELF Header of readable mapped memory
+    Memcheck:Addr1
+    fun:is_valid_elf_header
+}
+{
+    Reading Debug-Ids from readable mapped memory
+    Memcheck:Addr1
+    ...
+    fun:sentry__procmaps_read_ids_from_elf
+}
+{
+    Reading Debug-Ids from readable mapped memory
+    Memcheck:Addr2
+    ...
+    fun:sentry__procmaps_read_ids_from_elf
+}
+{
+    Reading Debug-Ids from readable mapped memory
+    Memcheck:Addr4
+    ...
+    fun:sentry__procmaps_read_ids_from_elf
+}
+{
+    Reading Debug-Ids from readable mapped memory
+    Memcheck:Addr8
+    ...
+    fun:sentry__procmaps_read_ids_from_elf
+}
