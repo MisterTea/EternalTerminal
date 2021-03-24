@@ -4,7 +4,7 @@ namespace et {
 PipeSocketHandler::PipeSocketHandler() {}
 
 int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
-  lock_guard<std::recursive_mutex> mutexGuard(mutex);
+  lock_guard<std::recursive_mutex> mutexGuard(globalMutex);
 
   string pipePath = endpoint.name();
   sockaddr_un remote;
@@ -91,7 +91,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 }
 
 set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) != pipeServerSockets.end()) {
@@ -118,7 +118,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 }
 
 set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   string pipePath = endpoint.name();
   if (pipeServerSockets.find(pipePath) == pipeServerSockets.end()) {
@@ -129,7 +129,7 @@ set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
 }
 
 void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   string pipePath = endpoint.name();
   auto it = pipeServerSockets.find(pipePath);
