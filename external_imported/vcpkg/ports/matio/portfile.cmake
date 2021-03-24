@@ -1,0 +1,21 @@
+vcpkg_from_github(
+    OUT_SOURCE_PATH SOURCE_PATH
+    REPO tbeu/matio
+    REF ca56394e5672115df1981996ed12524d1d551259 # v1.5.19
+    SHA512 67c239d8aabafaa935775f3b260ba0756c196b0d845ef5116365c9aa6a0b24dae70d92c4e74d5d43ae073ae0744f084f0f58ead864eb77c813d43dbbb3e4ec5e
+    HEAD_REF master
+)
+
+file(COPY ${CMAKE_CURRENT_LIST_DIR}/CMakeLists.txt DESTINATION ${SOURCE_PATH})
+
+vcpkg_configure_cmake(
+    SOURCE_PATH ${SOURCE_PATH}
+    PREFER_NINJA
+    OPTIONS_DEBUG -DDISABLE_INSTALL_HEADERS=ON
+)
+
+vcpkg_install_cmake()
+
+file(INSTALL ${SOURCE_PATH}/COPYING DESTINATION ${CURRENT_PACKAGES_DIR}/share/matio RENAME copyright)
+
+vcpkg_copy_pdbs()

@@ -1,0 +1,4 @@
+Source: simde
+Version: 0.7.0
+Homepage: https://github.com/simd-everywhere/simde
+Description: Implementations of SIMD instruction sets for systems which don't natively support them

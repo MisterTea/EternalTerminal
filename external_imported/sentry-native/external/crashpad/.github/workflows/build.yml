@@ -1,0 +1,33 @@
+name: Build
+
+on:
+  push:
+    branches:
+      - getsentry
+  pull_request:
+
+jobs:
+  build:
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [ubuntu-latest, windows-latest, macos-latest]
+    runs-on: ${{ matrix.platform }}
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - uses: lukka/run-cmake@v2
+        with:
+          cmakeListsOrSettingsJson: "CMakeListsTxtAdvanced"
+          buildWithCMakeArgs: "--parallel"
+
+  build-ios:
+    runs-on: macos-latest
+    steps:
+      - uses: actions/checkout@v2
+        with:
+          submodules: "recursive"
+      - run: |
+          cmake -B crashpad-xcode -GXcode -DCMAKE_SYSTEM_NAME=iOS
+          xcodebuild build -project crashpad-xcode/crashpad.xcodeproj

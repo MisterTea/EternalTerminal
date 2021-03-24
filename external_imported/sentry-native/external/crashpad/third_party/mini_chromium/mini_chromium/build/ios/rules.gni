@@ -1,0 +1,655 @@
+# Copyright 2015 The Chromium Authors. All rights reserved.
+# Use of this source code is governed by a BSD-style license that can be
+# found in the LICENSE file.
+
+import("ios_sdk.gni")
+
+# Constants corresponding to the bundle type identifier for XCTest and XCUITest
+# targets.
+_ios_xcode_xctest_bundle_id = "com.apple.product-type.bundle.unit-test"
+_ios_xcode_xcuitest_bundle_id = "com.apple.product-type.bundle.ui-testing"
+
+template("create_signed_bundle") {
+  assert(defined(invoker.output_name),
+         "output_name must be defined for $target_name")
+  assert(defined(invoker.product_type),
+         "product_type must be defined for $target_name")
+  assert(defined(invoker.bundle_extension),
+         "bundle_extension must be defined for $target_name")
+  assert(defined(invoker.bundle_binary_target) !=
+             defined(invoker.bundle_executable_path),
+         "Only one of bundle_binary_target or bundle_executable_path may be " +
+             "specified for $target_name")
+  if (defined(invoker.xcode_test_application_name)) {
+    assert(
+        invoker.product_type == _ios_xcode_xctest_bundle_id ||
+            invoker.product_type == _ios_xcode_xcuitest_bundle_id,
+        "xcode_test_application_name can be only defined for Xcode unit or " +
+            "ui test target.")
+  }
+
+  if (defined(invoker.bundle_executable_path)) {
+    _bundle_executable_path = invoker.bundle_executable_path
+  } else {
+    _bundle_binary_target = invoker.bundle_binary_target
+    _bundle_binary_output = get_label_info(_bundle_binary_target, "name")
+    if (defined(invoker.bundle_binary_output)) {
+      _bundle_binary_output = invoker.bundle_binary_output
+    }
+    _bundle_executable_path =
+        get_label_info(_bundle_binary_target, "target_out_dir") +
+        "/$_bundle_binary_output"
+  }
+
+  _output_name = invoker.output_name
+  _bundle_gen_dir = root_out_dir
+  _bundle_extension = invoker.bundle_extension
+
+  create_bundle(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "data_deps",
+                             "deps",
+                             "product_type",
+                             "public_configs",
+                             "public_deps",
+                             "testonly",
+                             "visibility",
+                             "xcode_test_application_name",
+                           ])
+    bundle_root_dir = "$_bundle_gen_dir/$_output_name$_bundle_extension"
+    bundle_contents_dir = bundle_root_dir
+    bundle_resources_dir = bundle_contents_dir
+    bundle_executable_dir = bundle_contents_dir
+
+    code_signing_script =
+        "//third_party/mini_chromium/mini_chromium/build/ios/codesign.py"
+    code_signing_sources = [ _bundle_executable_path ]
+    code_signing_outputs = [ "$bundle_executable_dir/$_output_name" ]
+
+    if (ios_enable_code_signing) {
+      code_signing_outputs +=
+          [ "$bundle_contents_dir/_CodeSignature/CodeResources" ]
+    }
+
+    if (defined(invoker.extra_system_frameworks)) {
+      foreach(_framework, invoker.extra_system_frameworks) {
+        code_signing_outputs += [ "$bundle_contents_dir/Frameworks/" +
+                                  get_path_info(_framework, "file") ]
+      }
+    }
+
+    code_signing_args = [
+      "code-sign-bundle",
+      "-t=" + ios_sdk_name,
+      "-i=" + ios_code_signing_identity,
+      "-b=" + rebase_path(_bundle_executable_path, root_build_dir),
+    ]
+    code_signing_args += [ rebase_path(bundle_root_dir, root_build_dir) ]
+    if (!ios_enable_code_signing) {
+      code_signing_args += [ "--disable-code-signature" ]
+    }
+    if (defined(invoker.extra_system_frameworks)) {
+      # All framework in extra_system_frameworks are expected to be
+      # system framework and the path to be already system absolute
+      # so do not use rebase_path here.
+      foreach(_framework, invoker.extra_system_frameworks) {
+        code_signing_args += [ "-F=" + _framework ]
+      }
+    }
+
+    _entitlements_path =
+        "//third_party/mini_chromium/mini_chromium/build/ios/entitlements.plist"
+    code_signing_args +=
+        [ "-e=" + rebase_path(_entitlements_path, root_build_dir) ]
+
+    # Bundle ID should respect rfc1034 and replace _ with -.
+    _xcode_product_bundle_id =
+        string_replace("$ios_app_bundle_id_prefix.googletest.$_output_name",
+                       "_",
+                       "-")
+
+    xcode_extra_attributes = {
+      IPHONEOS_DEPLOYMENT_TARGET = ios_deployment_target
+      CODE_SIGN_STYLE = "Manual"
+      CODE_SIGN_IDENTITY = ""
+      PRODUCT_BUNDLE_IDENTIFIER = _xcode_product_bundle_id
+
+      if (defined(invoker.xcode_extra_attributes)) {
+        forward_variables_from(invoker.xcode_extra_attributes, "*")
+      }
+    }
+
+    if (!defined(public_deps)) {
+      public_deps = []
+    }
+
+    if (defined(invoker.bundle_binary_target)) {
+      public_deps += [ invoker.bundle_binary_target ]
+    }
+
+    if (defined(invoker.bundle_deps)) {
+      if (!defined(deps)) {
+        deps = []
+      }
+      deps += invoker.bundle_deps
+    }
+  }
+}
+
+template("info_plist") {
+  assert(defined(invoker.plist_templates),
+         "A template plist file must be specified for $target_name")
+  assert(defined(invoker.executable_name),
+         "The executable_name must be specified for $target_name")
+
+  _plist_templates = invoker.plist_templates
+  _executable_name = invoker.executable_name
+  _target_name = target_name
+  _output_name = "$target_gen_dir/$_target_name.plist"
+
+  _format = "binary1"
+  _substitutions = [
+    "BUILD_MACHINE_OS_BUILD=$machine_os_build",
+    "EXECUTABLE_NAME=$_executable_name",
+    "GCC_VERSION=com.apple.compilers.llvm.clang.1_0",
+    "PRODUCT_NAME=$_executable_name",
+    "XCODE_BUILD=$xcode_build",
+    "XCODE_VERSION=$xcode_version",
+    "IOS_DEPLOYMENT_TARGET=$ios_deployment_target",
+    "IOS_BUNDLE_ID_PREFIX=$ios_app_bundle_id_prefix",
+    "IOS_PLATFORM_BUILD=$ios_platform_build",
+    "IOS_PLATFORM_NAME=$ios_sdk_name",
+    "IOS_PLATFORM_VERSION=$ios_sdk_version",
+    "IOS_SDK_BUILD=$ios_sdk_build",
+    "IOS_SDK_NAME=$ios_sdk_name$ios_sdk_version",
+    "IOS_SUPPORTED_PLATFORM=$ios_sdk_platform",
+  ]
+  if (defined(invoker.extra_substitutions)) {
+    foreach(_substitution, invoker.extra_substitutions) {
+      _substitutions += [ _substitution ]
+    }
+  }
+
+  _merge_plist_target = _target_name + "_merge_plist"
+  _merged_plist_output_name = "$target_gen_dir/${_target_name}_merged.plist"
+  action(_merge_plist_target) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "deps",
+                           ])
+    script = "//third_party/mini_chromium/mini_chromium/build/ios/plist_util.py"
+
+    sources = _plist_templates
+
+    outputs = [ _merged_plist_output_name ]
+    args = [
+             "merge",
+             "-f=xml1",
+             "-o=" + rebase_path(_merged_plist_output_name, root_build_dir),
+           ] + rebase_path(sources, root_build_dir)
+  }
+
+  action(target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "testonly",
+                             "visibility",
+                           ])
+    script = "//third_party/mini_chromium/mini_chromium/build/ios/plist_util.py"
+    sources = [ _merged_plist_output_name ]
+    outputs = [ _output_name ]
+    args = [
+      "substitute",
+      "-f=" + _format,
+      "-o=" + rebase_path(_output_name, root_build_dir),
+      "-t=" + rebase_path(_merged_plist_output_name, root_build_dir),
+    ]
+    foreach(_substitution, _substitutions) {
+      args += [ "-s=$_substitution" ]
+    }
+    deps = [ ":$_merge_plist_target" ]
+  }
+}
+
+template("ios_app_bundle") {
+  _output_name = target_name
+  _target_name = target_name
+  _plist_templates = []
+  if (defined(invoker.info_plist)) {
+    _plist_templates += [ invoker.info_plist ]
+  }
+  _plist_extra_substitutions = []
+  if (defined(invoker.extra_substitutions)) {
+    _plist_extra_substitutions += invoker.extra_substitutions
+  }
+
+  _executable_sources_target = _target_name + "_executable_sources"
+  _generate_executable_target = _target_name + "_generate_executable"
+  source_set(_executable_sources_target) {
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "bundle_deps",
+                             "extra_system_frameworks",
+                             "visibility",
+                             "plist_templates",
+                             "plist_extra_substitutions",
+                           ])
+    visibility = [ ":$_generate_executable_target" ]
+  }
+
+  executable(_generate_executable_target) {
+    visibility = [ ":$_target_name" ]
+    forward_variables_from(invoker,
+                           "*",
+                           [
+                             "bundle_deps",
+                             "extra_system_frameworks",
+                             "sources",
+                             "visibility",
+                             "plist_templates",
+                             "plist_extra_substitutions",
+                           ])
+    if (!defined(deps)) {
+      deps = []
+    }
+    deps += [ ":$_executable_sources_target" ]
+
+    if (!defined(frameworks)) {
+      frameworks = []
+    }
+    frameworks += [ "UIKit.framework" ]
+
+    if (!defined(ldflags)) {
+      ldflags = []
+    }
+    ldflags += [
+      "-Wl,-rpath,@executable_path/Frameworks",
+      "-Wl,-objc_abi_version,2",
+    ]
+
+    output_name = _output_name
+    output_prefix_override = true
+    output_dir = "$target_out_dir"
+  }
+
+  _generate_info_plist_target = target_name + "_generate_info_plist"
+  _bundle_info_plist_target = target_name + "_bundle_info_plist"
+  info_plist(_generate_info_plist_target) {
+    visibility = [ ":$_bundle_info_plist_target" ]
+    forward_variables_from(invoker, [ "testonly" ])
+    executable_name = _output_name
+    plist_templates = [
+      "//third_party/mini_chromium/mini_chromium/build/ios/BuildInfo.plist",
+      "//third_party/mini_chromium/mini_chromium/build/ios/Application-Info.plist",
+    ]
+    plist_templates += _plist_templates
+    extra_substitutions = _plist_extra_substitutions
+  }
+
+  bundle_data(_bundle_info_plist_target) {
+    visibility = [ ":$_target_name" ]
+    forward_variables_from(invoker, [ "testonly" ])
+    sources = get_target_outputs(":$_generate_info_plist_target")
+    outputs = [ "{{bundle_contents_dir}}/Info.plist" ]
+    public_deps = [ ":$_generate_info_plist_target" ]
+  }
+
+  _bundle_executable_path = get_label_info(":$_generate_executable_target",
+                                           "target_out_dir") + "/$_output_name"
+
+  create_signed_bundle(_target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "bundle_deps",
+                             "data_deps",
+                             "deps",
+                             "extra_system_frameworks",
+                             "public_configs",
+                             "public_deps",
+                             "testonly",
+                             "visibility",
+                           ])
+    output_name = _output_name
+    product_type = "com.apple.product-type.application"
+    bundle_extension = ".app"
+    bundle_executable_path = _bundle_executable_path
+
+    if (!defined(deps)) {
+      deps = []
+    }
+    deps += [
+      ":$_bundle_info_plist_target",
+      ":$_generate_executable_target",
+    ]
+  }
+}
+
+template("ios_xctest_bundle") {
+  assert(defined(invoker.deps), "deps must be defined for $target_name")
+  assert(defined(invoker.product_type),
+         "product_type must be defined for $target_name")
+  assert(invoker.product_type == _ios_xcode_xctest_bundle_id ||
+             invoker.product_type == _ios_xcode_xcuitest_bundle_id,
+         "product_type defined for $target_name is invalid.")
+  assert(defined(invoker.host_target),
+         "host_target must be defined for $target_name")
+  assert(defined(invoker.xcode_test_application_name),
+         "xcode_test_application_name must be defined for $target_name")
+  assert(invoker.xcode_test_application_name != target_name)
+
+  _target_name = target_name
+  _output_name = target_name
+
+  if (defined(invoker.output_name)) {
+    _output_name = invoker.output_name
+  }
+
+  _loadable_module_source = _target_name + "_loadable_module_source"
+  _loadable_module_target = _target_name + "_loadable_module"
+
+  source_set(_loadable_module_source) {
+    forward_variables_from(invoker, [ "deps" ])
+
+    testonly = true
+    visibility = [ ":$_loadable_module_target" ]
+  }
+
+  loadable_module(_loadable_module_target) {
+    testonly = true
+    visibility = [ ":$_target_name" ]
+
+    deps = [ ":$_loadable_module_source" ]
+    configs +=
+        [ "//third_party/mini_chromium/mini_chromium/build/ios:xctest_config" ]
+
+    output_dir = "$target_out_dir"
+    output_name = _output_name
+    output_prefix_override = true
+    output_extension = ""
+  }
+
+  _info_plist_target = _target_name + "_info_plist"
+  _info_plist_bundle = _target_name + "_info_plist_bundle"
+
+  info_plist(_info_plist_target) {
+    testonly = true
+    visibility = [ ":$_info_plist_bundle" ]
+
+    plist_templates = [
+      "//third_party/mini_chromium/mini_chromium/build/ios/Module-Info.plist",
+    ]
+    executable_name = _output_name
+
+    if (defined(invoker.xctest_bundle_principal_class)) {
+      _principal_class = invoker.xctest_bundle_principal_class
+    } else {
+      # Fall back to a reasonable default value.
+      _principal_class = "NSObject"
+    }
+    extra_substitutions = [
+      "XCTEST_BUNDLE_PRINCIPAL_CLASS=${_principal_class}",
+      "MODULE_BUNDLE_ID=googletest.$_output_name",
+    ]
+  }
+
+  bundle_data(_info_plist_bundle) {
+    testonly = true
+    visibility = [ ":$_target_name" ]
+
+    public_deps = [ ":$_info_plist_target" ]
+
+    sources = get_target_outputs(":$_info_plist_target")
+    outputs = [ "{{bundle_contents_dir}}/Info.plist" ]
+  }
+
+  _xctest_bundle = _target_name + "_bundle"
+  create_signed_bundle(_target_name) {
+    forward_variables_from(invoker,
+                           [
+                             "enable_code_signing",
+                             "product_type",
+                             "xcode_test_application_name",
+                           ])
+
+    testonly = true
+    visibility = [ ":$_xctest_bundle" ]
+
+    bundle_extension = ".xctest"
+
+    output_name = _output_name
+    bundle_executable_path = get_label_info(":$_loadable_module_target",
+                                            "target_out_dir") + "/$_output_name"
+
+    # Test files need to be known to Xcode for proper indexing and discovery
+    # of tests function for XCTest, but the compilation is done via ninja and
+    # thus must prevent Xcode from linking object files via this hack.
+    xcode_extra_attributes = {
+      OTHER_LDFLAGS = "-help"
+      ONLY_ACTIVE_ARCH = "YES"
+      DEBUG_INFORMATION_FORMAT = "dwarf"
+
+      # For XCUITest, Xcode requires specifying the host application name via
+      # the TEST_TARGET_NAME attribute.
+      if (invoker.product_type == _ios_xcode_xcuitest_bundle_id) {
+        TEST_TARGET_NAME = invoker.xcode_test_application_name
+      }
+
+      # For XCTest, Xcode requires specifying the host application path via
+      # both BUNDLE_LOADER and TEST_HOST attributes.
+      if (invoker.product_type == _ios_xcode_xctest_bundle_id) {
+        BUNDLE_LOADER = "\$(TEST_HOST)"
+        TEST_HOST =
+            "\$(BUILT_PRODUCTS_DIR)/${invoker.xcode_test_application_name}" +
+            ".app/${invoker.xcode_test_application_name}"
+      }
+    }
+
+    deps = [ ":$_info_plist_bundle" ]
+    public_deps = [ ":$_loadable_module_target" ]
+  }
+
+  bundle_data(_xctest_bundle) {
+    forward_variables_from(invoker, [ "host_target" ])
+
+    testonly = true
+    visibility = [ ":$host_target" ]
+
+    public_deps = [ ":$_target_name" ]
+    sources = [ "$root_out_dir/$_output_name.xctest" ]
+    outputs = [ "{{bundle_contents_dir}}/PlugIns/$_output_name.xctest" ]
+  }
+}
+
+template("ios_xctest_test") {
+  # Invokers must specify their own target for the xctest module.
+  assert(defined(invoker.xctest_module_target),
+         "xctest_module_target is required.")
+
+  _target_name = target_name
+  _output_name = target_name
+
+  _xctest_target = _target_name + "_module"
+  _xctest_output = _output_name + "_module"
+
+  _host_target = _target_name
+  _host_output = _output_name
+
+  _xctest_module_target = invoker.xctest_module_target
+
+  ios_xctest_bundle(_xctest_target) {
+    output_name = _xctest_output
+    product_type = _ios_xcode_xctest_bundle_id
+    host_target = _host_target
+    xcode_test_application_name = _host_output
+
+    deps = [ _xctest_module_target ]
+  }
+
+  ios_app_bundle(_host_target) {
+    forward_variables_from(invoker, "*", [ "testonly" ])
+    testonly = true
+
+    # Xcode needs the following frameworks installed in the application (and
+    # signed) for the XCTest to run, so install them using
+    # extra_system_frameworks.
+    _ios_platform_library = "$ios_sdk_platform_path/Developer/Library"
+    extra_system_frameworks = [
+      "$_ios_platform_library/Frameworks/XCTest.framework",
+      "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework",
+      "$ios_sdk_platform_path/Developer/usr/lib/libXCTestBundleInject.dylib",
+    ]
+
+    _xctest_bundle = _xctest_target + "_bundle"
+    if (!defined(bundle_deps)) {
+      bundle_deps = []
+    }
+    bundle_deps += [ ":$_xctest_bundle" ]
+
+    if (!defined(ldflags)) {
+      ldflags = []
+    }
+    ldflags += [
+      "-Wl,-rpath,@executable_path/Frameworks",
+      "-Wl,-rpath,@loader_path/Frameworks",
+    ]
+  }
+}
+
+template("ios_xcuitest_test_runner_bundle") {
+  assert(defined(invoker.xctest_bundle),
+         "xctest_bundle must be defined for $target_name")
+
+  _target_name = target_name
+  _output_name = target_name
+  if (defined(invoker.output_name)) {
+    _output_name = invoker.output_name
+  }
+
+  _xctrunner_path =
+      "$ios_sdk_platform_path/Developer/Library/Xcode/Agents/XCTRunner.app"
+
+  # When creating the test runner for an XCUITest, the arm64e slice of the binary
+  # must be removed (at least until the app ships with arm64e slice which is not
+  # yet supported by Apple).
+  action("xctest_runner_without_arm64e") {
+    testonly = true
+    script =
+        "//third_party/mini_chromium/mini_chromium/build/ios/strip_arm64e.py"
+    sources = [ "$_xctrunner_path/XCTRunner" ]
+    outputs = [ "$target_out_dir/XCTRunner" ]
+    args = [
+      "--output",
+      rebase_path(outputs[0], root_build_dir),
+      "--input",
+      rebase_path(sources[0], root_build_dir),
+    ]
+  }
+
+  _info_plist_target = _target_name + "_info_plist"
+  _info_plist_bundle = _target_name + "_info_plist_bundle"
+  info_plist(_info_plist_target) {
+    testonly = true
+    visibility = [ ":$_info_plist_bundle" ]
+
+    executable_name = _output_name
+    plist_templates = [
+      "$_xctrunner_path/Info.plist",
+
+      # NOTE: The XCTRunnerAddition+Info.plist must come after the Info.plist
+      # because it overrides the values under "CFBundleIdentifier" and
+      # "CFBundleName".
+      "//third_party/mini_chromium/mini_chromium/build/ios/XCTRunnerAddition+Info.plist",
+    ]
+  }
+
+  bundle_data(_info_plist_bundle) {
+    testonly = true
+    visibility = [ ":$_target_name" ]
+
+    public_deps = [ ":$_info_plist_target" ]
+
+    sources = get_target_outputs(":$_info_plist_target")
+    outputs = [ "{{bundle_contents_dir}}/Info.plist" ]
+  }
+
+  _pkginfo_bundle = _target_name + "_pkginfo_bundle"
+  bundle_data(_pkginfo_bundle) {
+    testonly = true
+    visibility = [ ":$_target_name" ]
+
+    sources = [ "$_xctrunner_path/PkgInfo" ]
+
+    outputs = [ "{{bundle_contents_dir}}/PkgInfo" ]
+  }
+
+  _xctest_bundle = invoker.xctest_bundle
+  create_signed_bundle(_target_name) {
+    testonly = true
+
+    bundle_binary_target = ":xctest_runner_without_arm64e"
+    bundle_binary_output = "XCTRunner"
+    bundle_extension = ".app"
+    product_type = "com.apple.product-type.application"
+
+    output_name = _output_name
+
+    # Xcode needs the following frameworks installed in the application
+    # (and signed) for the XCUITest to run, so install them using
+    # extra_system_frameworks.
+    extra_system_frameworks = [
+      "$ios_sdk_platform_path/Developer/Library/Frameworks/XCTest.framework",
+      "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCTAutomationSupport.framework",
+    ]
+
+    bundle_deps = []
+    if (defined(invoker.bundle_deps)) {
+      bundle_deps += invoker.bundle_deps
+    }
+    bundle_deps += [
+      ":$_info_plist_bundle",
+      ":$_pkginfo_bundle",
+      ":$_xctest_bundle",
+    ]
+  }
+}
+
+template("ios_xcuitest_test") {
+  assert(defined(invoker.deps), "deps must be defined for $target_name")
+  assert(defined(invoker.xcode_test_application_name),
+         "xcode_test_application_name must be defined for $target_name")
+
+  _xcuitest_target = target_name
+  _xcuitest_runner_target = _xcuitest_target + "_runner"
+  _xcuitest_module_target = _xcuitest_target + "_module"
+
+  group(_xcuitest_target) {
+    testonly = true
+
+    deps = [ ":$_xcuitest_runner_target" ]
+  }
+
+  _xcuitest_module_output = _xcuitest_target
+  ios_xctest_bundle(_xcuitest_module_target) {
+    forward_variables_from(invoker,
+                           [
+                             "xcode_test_application_name",
+                             "xctest_bundle_principal_class",
+                           ])
+
+    product_type = _ios_xcode_xcuitest_bundle_id
+    host_target = _xcuitest_runner_target
+    output_name = _xcuitest_module_output
+
+    deps = invoker.deps
+  }
+
+  _xcuitest_runner_output = _xcuitest_target + "-Runner"
+  ios_xcuitest_test_runner_bundle(_xcuitest_runner_target) {
+    output_name = _xcuitest_runner_output
+    xctest_bundle = _xcuitest_module_target + "_bundle"
+    forward_variables_from(invoker, [ "bundle_deps" ])
+  }
+}
