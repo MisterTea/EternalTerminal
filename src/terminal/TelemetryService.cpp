@@ -1,10 +1,7 @@
-// This has to be first
-#include "EtHttpLib.hpp"
-//
+#include "TelemetryService.hpp"
 
 #include "JsonLib.hpp"
 #include "SimpleIni.h"
-#include "TelemetryService.hpp"
 
 #if defined(USE_SENTRY)
 #include "sentry.h"

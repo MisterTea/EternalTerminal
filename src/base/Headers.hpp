@@ -1,6 +1,11 @@
 #ifndef __ET_HEADERS__
 #define __ET_HEADERS__
 
+#define CPPHTTPLIB_ZLIB_SUPPORT (1)
+#define CPPHTTPLIB_OPENSSL_SUPPORT (1)
+// httplib has to come before windows.h
+#include "httplib.h"
+
 #if __FreeBSD__
 #define _WITH_GETLINE
 #endif
@@ -296,7 +301,7 @@ inline void HandleTerminate() {
     if (eptr) {
       try {
         std::rethrow_exception(eptr);
-      } catch (const std::exception &e) {
+      } catch (const std::exception& e) {
         STFATAL << "Uncaught c++ exception: " << e.what();
       }
     } else {
