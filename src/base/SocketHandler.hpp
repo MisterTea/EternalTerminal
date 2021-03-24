@@ -86,31 +86,9 @@ class SocketHandler {
     }
   }
 
-  inline void writeB64(int fd, const char* buf, size_t count) {
-    size_t encodedLength = Base64::EncodedLength(count);
-    string s(encodedLength, '\0');
-    if (!Base64::Encode(buf, count, &s[0], s.length())) {
-      throw runtime_error("b64 decode failed");
-    }
-    writeAllOrThrow(fd, &s[0], s.length(), false);
-  }
-
-  inline void readB64(int fd, char* buf, size_t count) {
-    size_t encodedLength = Base64::EncodedLength(count);
-    string s(encodedLength, '\0');
-    readAll(fd, &s[0], s.length(), false);
-    if (!Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
-      throw runtime_error("b64 decode failed");
-    }
-  }
-
-  inline void readB64EncodedLength(int fd, string* out, size_t encodedLength) {
-    string s(encodedLength, '\0');
-    readAll(fd, &s[0], s.length(), false);
-    if (!Base64::Decode(s, out)) {
-      throw runtime_error("b64 decode failed");
-    }
-  }
+  void writeB64(int fd, const char* buf, size_t count);
+  void readB64(int fd, char* buf, size_t count);
+  void readB64EncodedLength(int fd, string* out, size_t encodedLength);
 
   virtual int connect(const SocketEndpoint& endpoint) = 0;
   virtual set<int> listen(const SocketEndpoint& endpoint) = 0;

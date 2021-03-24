@@ -16,7 +16,7 @@ class MultiplexerState {
 
  public:
   MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
-  json toJson();
+  string toJsonString();
   void appendData(const string& uid, const string& data);
   void newTab(const string& tabId, const string& paneId);
   void newSplit(const string& sourceId, const string& paneId, bool vertical);

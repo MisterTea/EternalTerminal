@@ -1,5 +1,7 @@
 #include "SocketHandler.hpp"
 
+#include "base64.h"
+
 namespace et {
 #define SOCKET_DATA_TRANSFER_TIMEOUT (10)
 
@@ -96,6 +98,32 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
       // Reset the timeout as long as we are writing bytes
       startTime = currentTime;
     }
+  }
+}
+
+void SocketHandler::writeB64(int fd, const char* buf, size_t count) {
+  size_t encodedLength = Base64::EncodedLength(count);
+  string s(encodedLength, '\0');
+  if (!Base64::Encode(buf, count, &s[0], s.length())) {
+    throw runtime_error("b64 decode failed");
+  }
+  writeAllOrThrow(fd, &s[0], s.length(), false);
+}
+
+void SocketHandler::readB64(int fd, char* buf, size_t count) {
+  size_t encodedLength = Base64::EncodedLength(count);
+  string s(encodedLength, '\0');
+  readAll(fd, &s[0], s.length(), false);
+  if (!Base64::Decode((const char*)&s[0], s.length(), buf, count)) {
+    throw runtime_error("b64 decode failed");
+  }
+}
+
+void SocketHandler::readB64EncodedLength(int fd, string* out, size_t encodedLength) {
+  string s(encodedLength, '\0');
+  readAll(fd, &s[0], s.length(), false);
+  if (!Base64::Decode(s, out)) {
+    throw runtime_error("b64 decode failed");
   }
 }
 }  // namespace et

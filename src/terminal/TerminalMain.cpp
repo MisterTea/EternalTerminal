@@ -1,3 +1,5 @@
+#include <cxxopts.hpp>
+
 #include "DaemonCreator.hpp"
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"

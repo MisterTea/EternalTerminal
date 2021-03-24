@@ -1,3 +1,5 @@
+#include <cxxopts.hpp>
+
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
