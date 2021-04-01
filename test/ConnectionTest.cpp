@@ -216,12 +216,13 @@ void readWriteTest(const string& clientId,
     REQUIRE(resultConcat == s);
   }
 
+  clientCollector->finish();
+  clientCollector.reset();
+  clientConnection.reset();
+
   serverConnection->removeClient(serverCollector->getConnection()->getId());
   serverCollector->join();
   serverCollector.reset();
-  clientCollector->join();
-  clientCollector.reset();
-  clientConnection.reset();
 }
 
 void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,

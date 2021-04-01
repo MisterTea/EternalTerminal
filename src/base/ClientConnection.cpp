@@ -94,6 +94,10 @@ void ClientConnection::pollReconnect() {
   while (socketFd == -1) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
+      if (shuttingDown) {
+        LOG(INFO) << "Aborting reconnect loop because shutdown was called";
+        return;
+      }
       LOG_EVERY_N(10, INFO) << "In reconnect loop " << remoteEndpoint << endl;
       int newSocketFd = socketHandler->connect(remoteEndpoint);
       if (newSocketFd != -1) {
@@ -133,7 +137,7 @@ void ClientConnection::pollReconnect() {
           if (eptr) {
             try {
               std::rethrow_exception(eptr);
-            } catch (const std::exception &e) {
+            } catch (const std::exception& e) {
               LOG(ERROR) << "Uncaught c++ exception: " << e.what();
             }
           } else {
