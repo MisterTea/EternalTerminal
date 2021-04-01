@@ -64,7 +64,8 @@ int main(int argc, char** argv) {
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "htm.log", maxlogsize);
+  LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "htm.log",
+                           maxlogsize);
   // Redirect std streams to a file
   LogHandler::stderrToFile(GetTempDirectory() + "htm");
 
@@ -72,6 +73,9 @@ int main(int argc, char** argv) {
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   et::HandleTerminate();
+
+  // Override easylogging handler for sigint
+  ::signal(SIGINT, et::InterruptSignalHandler);
 
   uid_t myuid = getuid();
   if (result.count("x")) {

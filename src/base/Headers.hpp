@@ -310,6 +310,13 @@ inline void HandleTerminate() {
   });
 }
 
+inline void InterruptSignalHandler(int signum) {
+  STERROR << "Got interrupt";
+  CLOG(INFO, "stdout") << endl
+                       << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
+  ::exit(signum);
+}
+
 }  // namespace et
 
 inline bool operator==(const google::protobuf::MessageLite& msg_a,

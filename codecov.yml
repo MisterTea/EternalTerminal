@@ -9,3 +9,8 @@ ignore:
   - "src/terminal/PsuedoUserTerminal.hpp"
   - "src/base/TcpSocketHandler*"
   - "src/base/SubprocessToString*"
+coverage:
+  status:
+    project:
+      default:
+        target: 50%

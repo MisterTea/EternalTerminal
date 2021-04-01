@@ -3,20 +3,10 @@
 INITIALIZE_EASYLOGGINGPP
 
 namespace et {
-void interruptSignalHandler(int signum) {
-  STERROR << "Got interrupt";
-  CLOG(INFO, "stdout") << endl
-                       << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
-  ::exit(signum);
-}
-
 el::Configurations LogHandler::setupLogHandler(int *argc, char ***argv) {
   // easylogging parse verbose arguments, see [Application Arguments]
   // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
   START_EASYLOGGINGPP(*argc, *argv);
-
-  // Override easylogging handler for sigint
-  signal(SIGINT, interruptSignalHandler);
 
   // Easylogging configurations
   el::Configurations defaultConf;

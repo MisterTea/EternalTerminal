@@ -30,14 +30,20 @@ class Collector {
   void run() {
     el::Helpers::setThreadName(threadName);
     auto lastSecond = time(NULL);
-    while (!done) {
+    while (true) {
+      {
+        lock_guard<std::recursive_mutex> guard(collectorMutex);
+        if (done) {
+          break;
+        }
+      }
       if (connection.get() == NULL) {
         STFATAL << "CONNECTION IS NULL";
       }
       if (connection->hasData()) {
         Packet packet;
         bool status = connection->readPacket(&packet);
-        lock_guard<std::mutex> guard(collectorMutex);
+        lock_guard<std::recursive_mutex> guard(collectorMutex);
         if (status) {
           if (packet.getHeader() == HEADER_DONE) {
             fifo.push_back("DONE");
@@ -51,11 +57,12 @@ class Collector {
         }
       }
       if (connection->isShuttingDown()) {
+        lock_guard<std::recursive_mutex> guard(collectorMutex);
         done = true;
       }
       ::usleep(10 * 1000);
       if (lastSecond <= time(NULL) - 5) {
-        lock_guard<std::mutex> guard(collectorMutex);
+        lock_guard<std::recursive_mutex> guard(collectorMutex);
         lastSecond = time(NULL);
         connection->writePacket(Packet(EtPacketType::HEARTBEAT, ""));
       }
@@ -66,18 +73,20 @@ class Collector {
 
   void finish() {
     connection->shutdown();
-    lock_guard<std::mutex> guard(collectorMutex);
-    done = true;
+    {
+      lock_guard<std::recursive_mutex> guard(collectorMutex);
+      done = true;
+    }
     collectorThread->join();
   }
 
   bool hasData() {
-    lock_guard<std::mutex> guard(collectorMutex);
+    lock_guard<std::recursive_mutex> guard(collectorMutex);
     return !fifo.empty();
   }
 
   string pop() {
-    lock_guard<std::mutex> guard(collectorMutex);
+    lock_guard<std::recursive_mutex> guard(collectorMutex);
     if (fifo.empty()) {
       STFATAL << "Tried to pop an empty fifo";
     }
@@ -103,7 +112,7 @@ class Collector {
   shared_ptr<Connection> connection;
   deque<string> fifo;
   shared_ptr<std::thread> collectorThread;
-  std::mutex collectorMutex;
+  std::recursive_mutex collectorMutex;
   string threadName;
   bool done;
 };
@@ -216,12 +225,13 @@ void readWriteTest(const string& clientId,
     REQUIRE(resultConcat == s);
   }
 
+  clientCollector->finish();
+  clientCollector.reset();
+  clientConnection.reset();
+
   serverConnection->removeClient(serverCollector->getConnection()->getId());
   serverCollector->join();
   serverCollector.reset();
-  clientCollector->join();
-  clientCollector.reset();
-  clientConnection.reset();
 }
 
 void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
