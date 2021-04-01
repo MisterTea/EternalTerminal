@@ -13,4 +13,4 @@ coverage:
   status:
     project:
       default:
-        target: 0%
+        target: 50%
