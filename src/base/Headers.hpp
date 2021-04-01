@@ -66,7 +66,6 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <array>
 #include <atomic>
 #include <ctime>
-#include <cxxopts.hpp>
 #include <deque>
 #include <exception>
 #include <fstream>
@@ -92,11 +91,9 @@ using namespace std::experimental;
 
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
-#include "SimpleIni.h"
 #include "ThreadPool.h"
 #include "base64.h"
 #include "easylogging++.h"
-#include "json.hpp"
 #include "sago/platform_folders.h"
 #include "sole.hpp"
 
@@ -130,8 +127,6 @@ typedef int ssize_t;
 #endif
 
 using namespace std;
-
-using json = nlohmann::json;
 
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 6;
@@ -306,7 +301,7 @@ inline void HandleTerminate() {
     if (eptr) {
       try {
         std::rethrow_exception(eptr);
-      } catch (const std::exception &e) {
+      } catch (const std::exception& e) {
         STFATAL << "Uncaught c++ exception: " << e.what();
       }
     } else {

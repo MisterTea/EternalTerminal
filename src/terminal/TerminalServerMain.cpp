@@ -1,6 +1,9 @@
 #include "TelemetryService.hpp"
 #include "TerminalServer.hpp"
 
+#include "SimpleIni.h"
+#include <cxxopts.hpp>
+
 using namespace et;
 namespace google {}
 namespace gflags {}

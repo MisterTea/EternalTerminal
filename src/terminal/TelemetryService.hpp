@@ -2,6 +2,10 @@
 
 #include "Headers.hpp"
 
+namespace httplib {
+  class Client;
+}
+
 namespace et {
 class TelemetryService {
  public:
@@ -40,7 +44,7 @@ class TelemetryService {
   static shared_ptr<TelemetryService> telemetryServiceInstance;
   bool allowed;
   string environment;
-  httplib::Client logHttpClient;
+  unique_ptr<httplib::Client> logHttpClient;
   recursive_mutex logMutex;
   vector<map<string, string>> logBuffer;
   bool shuttingDown;

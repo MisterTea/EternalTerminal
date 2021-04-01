@@ -1,5 +1,6 @@
 #include "MultiplexerState.hpp"
 
+#include "JsonLib.hpp"
 #include "HtmHeaderCodes.hpp"
 
 namespace et {
@@ -64,7 +65,7 @@ MultiplexerState::MultiplexerState(shared_ptr<SocketHandler> _socketHandler)
   }
 }
 
-json MultiplexerState::toJson() {
+string MultiplexerState::toJsonString() {
   json state;
   state["shell"] = string(::getenv("SHELL"));
 
@@ -80,7 +81,7 @@ json MultiplexerState::toJson() {
     state["splits"][it.first] = it.second->toJson();
   }
 
-  return state;
+  return state.dump();
 }
 
 void MultiplexerState::appendData(const string &uid, const string &data) {

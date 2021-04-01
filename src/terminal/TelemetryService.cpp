@@ -1,5 +1,8 @@
 #include "TelemetryService.hpp"
 
+#include "JsonLib.hpp"
+#include "SimpleIni.h"
+
 #if defined(USE_SENTRY)
 #include "sentry.h"
 #endif
@@ -76,7 +79,8 @@ TelemetryService::TelemetryService(const bool _allow,
                                    const string& _environment)
     : allowed(_allow),
       environment(_environment),
-      logHttpClient("https://browser-http-intake.logs.datadoghq.com"),
+      logHttpClient(new httplib::Client(
+          "https://browser-http-intake.logs.datadoghq.com")),
       shuttingDown(false) {
   char* disableTelementry = ::getenv("ET_NO_TELEMETRY");
   if (disableTelementry) {
@@ -119,7 +123,7 @@ TelemetryService::TelemetryService(const bool _allow,
 
 #ifdef USE_SENTRY
     sentry_options_t* options = sentry_options_new();
-    logHttpClient.set_compress(true);
+    logHttpClient->set_compress(true);
 
     // this is an example. for real usage, make sure to set this explicitly to
     // an app specific cache location.
@@ -198,17 +202,17 @@ TelemetryService::TelemetryService(const bool _allow,
             httplib::Headers headers;
             headers.emplace("DD-API-KEY", "e5e757f30a9e567f95b16b7673b09253");
 
-            logHttpClient.set_connection_timeout(0,
-                                                 300000);  // 300 milliseconds
-            logHttpClient.set_read_timeout(1, 0);          // 1 second
-            logHttpClient.set_write_timeout(1, 0);         // 1 second
+            logHttpClient->set_connection_timeout(0,
+                                                  300000);  // 300 milliseconds
+            logHttpClient->set_read_timeout(1, 0);          // 1 second
+            logHttpClient->set_write_timeout(1, 0);         // 1 second
 
             if (shuttingDown) {
               // httplib isn't exit-safe, so we try our best to avoid calling it
               // on shutdown
               break;
             }
-            logHttpClient.Post(
+            logHttpClient->Post(
                 "/v1/input/"
                 "pubfe47c2f8dfb3e8c26eb66ba4a456ec79?ddsource=browser&ddtags="
                 "sdk_version:2.1.1",

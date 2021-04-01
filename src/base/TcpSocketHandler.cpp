@@ -4,7 +4,7 @@ namespace et {
 TcpSocketHandler::TcpSocketHandler() {}
 
 int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
   int sockFd = -1;
   addrinfo *results = NULL;
   addrinfo *p = NULL;
@@ -160,7 +160,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
 }
 
 set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
   if (portServerSockets.find(port) != portServerSockets.end()) {
@@ -246,7 +246,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 }
 
 set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
   if (portServerSockets.find(port) == portServerSockets.end()) {
@@ -257,7 +257,7 @@ set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
 }
 
 void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
-  lock_guard<std::recursive_mutex> guard(mutex);
+  lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
   auto it = portServerSockets.find(port);

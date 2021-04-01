@@ -3,6 +3,7 @@
 #include "HtmHeaderCodes.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
+#include "base64.h"
 
 namespace et {
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
@@ -67,7 +68,7 @@ void HtmServer::run() {
               closeEndpoint();
             }
             if (data[0] == 'd') {
-              string jsonString = state.toJson().dump();
+              string jsonString = state.toJsonString();
               LOG(INFO) << "Current State: " << jsonString;
             }
             break;
@@ -158,7 +159,7 @@ void HtmServer::recover() {
 
   {
     unsigned char header = INIT_STATE;
-    string jsonString = state.toJson().dump();
+    string jsonString = state.toJsonString();
     int32_t length = jsonString.length();
     VLOG(1) << "SENDING INIT: " << jsonString;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
