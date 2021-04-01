@@ -1,5 +1,4 @@
 #include "HtmServer.hpp"
-
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
@@ -18,7 +17,8 @@ int main(int argc, char **argv) {
   el::Loggers::setVerboseLevel(3);
   // default max log file size is 20MB for etserver
   string maxlogsize = "20971520";
-  LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "htmd.log", maxlogsize);
+  LogHandler::setupLogFile(&defaultConf, GetTempDirectory() + "htmd.log",
+                           maxlogsize);
   // Redirect std streams to a file
   LogHandler::stderrToFile(GetTempDirectory() + "htmd");
 
@@ -26,6 +26,9 @@ int main(int argc, char **argv) {
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   et::HandleTerminate();
+
+  // Override easylogging handler for sigint
+  ::signal(SIGINT, et::InterruptSignalHandler);
 
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint endpoint;

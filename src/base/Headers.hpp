@@ -306,13 +306,20 @@ inline void HandleTerminate() {
     if (eptr) {
       try {
         std::rethrow_exception(eptr);
-      } catch (const std::exception &e) {
+      } catch (const std::exception& e) {
         STFATAL << "Uncaught c++ exception: " << e.what();
       }
     } else {
       STFATAL << "Uncaught c++ exception (unknown)";
     }
   });
+}
+
+inline void InterruptSignalHandler(int signum) {
+  STERROR << "Got interrupt";
+  CLOG(INFO, "stdout") << endl
+                       << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
+  ::exit(signum);
 }
 
 }  // namespace et

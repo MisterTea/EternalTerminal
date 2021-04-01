@@ -23,6 +23,9 @@ int main(int argc, char** argv) {
 
   et::HandleTerminate();
 
+  // Override easylogging handler for sigint
+  ::signal(SIGINT, et::InterruptSignalHandler);
+
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
 
