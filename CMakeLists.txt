@@ -123,8 +123,6 @@ set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("${EXTERNAL_DIR}/sentry-native")
 endif()
 
-add_subdirectory("${EXTERNAL_DIR}/PlatformFolders")
-
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
                       ${CMAKE_MODULE_PATH})
 include(cotire)
@@ -207,20 +205,19 @@ add_custom_target(generated-code DEPENDS ${ET_SRCS} ${ET_HDRS}
                                          ${ETERMINAL_SRCS} ${ETERMINAL_HDRS})
 
 if(ANDROID)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util)
 elseif(FREEBSD)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util execinfo)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util execinfo)
 elseif(NETBSD)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv
                      execinfo)
 elseif(WIN32)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
                      dbghelp)
 elseif(APPLE)
-  set(CORE_LIBRARIES platform_folders OpenSSL::SSL ZLIB::ZLIB util resolv)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
 else()
   set(CORE_LIBRARIES
-      platform_folders
       OpenSSL::SSL
       ZLIB::ZLIB
       util
@@ -280,8 +277,11 @@ endif()
 
 add_library(
   et-lib STATIC
+
   ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.h
   ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.cc
+  ${EXTERNAL_DIR}/PlatformFolders/sago/platform_folders.cpp
+
   src/base/BackedReader.hpp
   src/base/BackedReader.cpp
   src/base/BackedWriter.hpp
