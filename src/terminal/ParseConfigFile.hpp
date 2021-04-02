@@ -1076,20 +1076,49 @@ out:
 
 static char *ssh_config_get_token(char **str) {
   char *c;
-  char *r;
+  bool had_equal = false;
+  char *r = NULL;
 
-  c = ssh_config_get_cmd(str);
-
-  for (r = c; *c; c++) {
-    if (isblank(*c) || *c == '=') {
-      *c = '\0';
-      goto out;
-    }
+  /* Ignore leading spaces */
+  for (c = *str; *c; c++) {
+      if (! isblank(*c)) {
+          break;
+      }
   }
 
-out:
-  *str = c + 1;
+  /* If we start with quote, return the whole quoted block */
+  if (*c == '\"') {
+      for (r = ++c; *c; c++) {
+          if (*c == '\"' || *c == '\n') {
+              *c = '\0';
+              c++;
+              break;
+          }
+          /* XXX Unmatched quotes extend to the end of line */
+      }
+  } else {
+      /* Otherwise terminate on space, equal or newline */
+      for (r = c; *c; c++) {
+          if (*c == '\0') {
+              goto out;
+          } else if (isblank(*c) || *c == '=' || *c == '\n') {
+              had_equal = (*c == '=');
+              *c = '\0';
+              c++;
+              break;
+          }
+      }
+  }
 
+  /* Skip any other remaining whitespace */
+  while (isblank(*c) || *c == '\n' || (!had_equal && *c == '=')) {
+      if (*c == '=') {
+          had_equal = true;
+      }
+      c++;
+  }
+out:
+  *str = c;
   return r;
 }
 
