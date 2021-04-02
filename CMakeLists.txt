@@ -62,7 +62,7 @@ else()
 endif()
 
 # Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.1.6 LANGUAGES NONE)
+project(EternalTCP VERSION 6.1.7 LANGUAGES NONE)
 
 if(WIN32)
 message(STATUS "Windows detected.  Bumping up cmake version.")
