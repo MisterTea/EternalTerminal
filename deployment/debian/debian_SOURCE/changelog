@@ -1,3 +1,21 @@
+et (6.1.7-##DISTRO##2) ##DISTRO##; urgency=medium
+
+  * Disable tests
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:54 -0800
+
+et (6.1.7-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.7
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:53 -0800
+
+et (6.1.6-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.6
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Tue, 23 Mar 2021 16:36:53 -0800
+
 et (6.1.5-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.5
