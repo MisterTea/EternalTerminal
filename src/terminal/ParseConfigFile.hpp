@@ -1202,7 +1202,7 @@ static int ssh_config_parse_line(const char *targethost,
   char *s, *x;
   char *keyword;
   char *lowertargethost;
-  size_t len;
+  int len;
   int i;
 
   x = s = strdup(line);
@@ -1212,7 +1212,7 @@ static int ssh_config_parse_line(const char *targethost,
   }
 
   /* Remove trailing spaces */
-  for (len = strlen(s) - 1; len > 0; len--) {
+  for (len = int(strlen(s)) - 1; len > 0; len--) {
     if (!isspace(s[len])) {
       break;
     }
