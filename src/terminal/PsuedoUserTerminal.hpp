@@ -79,7 +79,7 @@ class PsuedoUserTerminal : public UserTerminal {
     // no requirements for any wait(2) on our part.
     //
     signal(SIGCHLD, SIG_DFL);
-    FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "--login", NULL));
+    FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "-l", NULL));
   }
 
   virtual void cleanup() {
