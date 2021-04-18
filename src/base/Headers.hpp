@@ -296,6 +296,13 @@ inline string GetTempDirectory() {
 }
 
 inline void HandleTerminate() {
+  static bool first = true;
+  if (first) {
+    first = false;
+  } else {
+    // If we are recursively terminating, just bail
+    return;
+  }
   std::set_terminate([]() -> void {
     std::exception_ptr eptr = std::current_exception();
     if (eptr) {
