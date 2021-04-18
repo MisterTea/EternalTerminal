@@ -35,8 +35,8 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   }
 
   if (rc != 0) {
-    STERROR << "Error getting address info for " << endpoint << ": " << rc
-            << " (" << gai_strerror(rc) << ")";
+    LOG(INFO) << "Error getting address info for " << endpoint << ": " << rc
+              << " (" << gai_strerror(rc) << ")";
     if (results) {
       freeaddrinfo(results);
     }
