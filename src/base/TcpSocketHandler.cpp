@@ -52,6 +52,18 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       continue;
     }
 
+    // Try set non-blocking flag on the socket to avoid connect from hanging.
+    // If we can't make the socket non-blocking, we'll just wait longer.
+    int flags = 0;
+    if ((flags = fcntl(sockFd, F_GETFL, 0)) >= 0) {
+      if (fcntl(sockFd, F_SETFL, flags | O_NONBLOCK) < 0) {
+        auto localErrno = errno;
+        LOG(INFO) << "Error making socket non blocking: "
+                  << localErrno << " " << strerror(localErrno);
+      }
+    }
+
+    // initiate non-blocking connect (set above via fcntl)
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         errno != EINPROGRESS) {
       auto localErrno = errno;
