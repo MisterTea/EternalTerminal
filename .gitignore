@@ -3,6 +3,7 @@ deps
 out
 .vscode
 *PVS-Studio*
+.dccache
 
 # Public/private keys
 id_rsa*

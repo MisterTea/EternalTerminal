@@ -218,7 +218,7 @@ inline std::vector<std::string> split(const std::string& s, char delim) {
 
 inline bool replace(std::string& str, const std::string& from,
                     const std::string& to) {
-  size_t start_pos = str.find(from);
+  auto start_pos = str.find(from);
   if (start_pos == std::string::npos) return false;
   str.replace(start_pos, from.length(), to);
   return true;
@@ -228,7 +228,7 @@ inline int replaceAll(std::string& str, const std::string& from,
                       const std::string& to) {
   if (from.empty()) return 0;
   int retval = 0;
-  size_t start_pos = 0;
+  auto start_pos = 0;
   while ((start_pos = str.find(from, start_pos)) != std::string::npos) {
     retval++;
     str.replace(start_pos, from.length(), to);
