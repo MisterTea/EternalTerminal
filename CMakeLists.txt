@@ -111,6 +111,8 @@ if(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
   set(NETBSD TRUE)
 endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
+option(DISABLE_SENTRY "Disable Sentry crash logging" OFF)
+
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY)
   # Sentry doesn't work on BSD
 else()

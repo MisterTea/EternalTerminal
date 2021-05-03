@@ -21,6 +21,7 @@ class UnixSocketHandler : public SocketHandler {
   void addToActiveSockets(int fd);
   virtual void initSocket(int fd);
   virtual void initServerSocket(int fd);
+  void setBlocking(int sockFd, bool blocking);
 
   map<int, shared_ptr<recursive_mutex>> activeSocketMutexes;
   recursive_mutex globalMutex;

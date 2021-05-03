@@ -27,7 +27,7 @@ UserTerminalHandler::UserTerminalHandler(
   tui.set_gid(getgid());
 
   if (routerFd < 0) {
-    if (errno == ECONNREFUSED) {
+    if (GetErrno() == ECONNREFUSED) {
       CLOG(INFO, "stdout")
           << "Error:  The Eternal Terminal daemon is not running.  Please "
              "(re)start the et daemon on the server."
@@ -35,7 +35,7 @@ UserTerminalHandler::UserTerminalHandler(
     } else {
       CLOG(INFO, "stdout")
           << "Error:  Connection error communicating with et deamon: "
-          << strerror(errno) << "." << endl;
+          << strerror(GetErrno()) << "." << endl;
     }
     exit(1);
   }

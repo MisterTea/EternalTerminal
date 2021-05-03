@@ -116,7 +116,7 @@ string TerminalHandler::pollUserTerminal() {
 #else
         siginfo_t childInfo;
         int rc = waitid(P_PID, childPid, &childInfo, WEXITED);
-        if (rc < 0 && errno != ECHILD) {
+        if (rc < 0 && GetErrno() != ECHILD) {
           FATAL_FAIL(rc);
         }
 #endif

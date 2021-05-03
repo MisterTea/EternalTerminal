@@ -39,11 +39,11 @@ class FlakySocketHandler : public SocketHandler {
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
     if (enableFlake && millis % 10 == 0) {
-      errno = EPIPE;
+      SetErrno(EPIPE);
       return -1;
     }
     if (enableFlake && millis % 10 == 5) {
-      errno = EAGAIN;
+      SetErrno(EAGAIN);
       return -1;
     }
     return actualSocketHandler->read(fd, buf, count);
@@ -53,11 +53,11 @@ class FlakySocketHandler : public SocketHandler {
                       std::chrono::system_clock::now().time_since_epoch())
                       .count();
     if (enableFlake && millis % 10 == 0) {
-      errno = EPIPE;
+      SetErrno(EPIPE);
       return -1;
     }
     if (enableFlake && millis % 10 == 5) {
-      errno = EAGAIN;
+      SetErrno(EAGAIN);
       return -1;
     }
     return actualSocketHandler->write(fd, buf, count);
@@ -68,7 +68,7 @@ class FlakySocketHandler : public SocketHandler {
 
   int writeAllOrReturn(int fd, const void* buf, size_t count) {
     if (enableFlake && rand() % 30 == 0) {
-      errno = EPIPE;
+      SetErrno(EPIPE);
       return -1;
     }
     return actualSocketHandler->writeAllOrReturn(fd, buf, count);
@@ -76,7 +76,7 @@ class FlakySocketHandler : public SocketHandler {
 
   virtual int accept(int fd) {
     if (enableFlake && rand() % 2 == 0) {
-      errno = EAGAIN;
+      SetErrno(EAGAIN);
       return -1;
     }
     return actualSocketHandler->accept(fd);

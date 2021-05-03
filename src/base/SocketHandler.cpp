@@ -22,11 +22,11 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
       // In EternalTCP, the server needs to explictly tell the client that
       // the session is over.
-      errno = EPIPE;
+      SetErrno(EPIPE);
       bytesRead = -1;
     }
     if (bytesRead < 0) {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         // This is fine, just keep retrying
         LOG(INFO) << "Got EAGAIN, waiting...";
@@ -50,7 +50,7 @@ int SocketHandler::writeAllOrReturn(int fd, const void* buf, size_t count) {
       return -1;
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
-    auto localErrno = errno;
+    auto localErrno = GetErrno();
     if (bytesWritten < 0) {
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         LOG(INFO) << "Got EAGAIN, waiting...";
@@ -81,7 +81,7 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
-    auto localErrno = errno;
+    auto localErrno = GetErrno();
     if (bytesWritten < 0) {
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         LOG(INFO) << "Got EAGAIN, waiting...";
@@ -119,7 +119,8 @@ void SocketHandler::readB64(int fd, char* buf, size_t count) {
   }
 }
 
-void SocketHandler::readB64EncodedLength(int fd, string* out, size_t encodedLength) {
+void SocketHandler::readB64EncodedLength(int fd, string* out,
+                                         size_t encodedLength) {
   string s(encodedLength, '\0');
   readAll(fd, &s[0], s.length(), false);
   if (!Base64::Decode(s, out)) {

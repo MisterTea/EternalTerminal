@@ -158,7 +158,7 @@ int main(int argc, char** argv) {
 
       CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
       if (DaemonCreator::createSessionLeader() == -1) {
-        STFATAL << "Error creating daemon: " << strerror(errno);
+        STFATAL << "Error creating daemon: " << strerror(GetErrno());
       }
       SocketEndpoint routerFifoEndpoint;
       routerFifoEndpoint.set_name(result["serverfifo"].as<string>());
@@ -196,7 +196,7 @@ int main(int argc, char** argv) {
                             idpasskey);
     CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
     if (DaemonCreator::createSessionLeader() == -1) {
-      STFATAL << "Error creating daemon: " << strerror(errno);
+      STFATAL << "Error creating daemon: " << strerror(GetErrno());
     }
     uth.run();
 

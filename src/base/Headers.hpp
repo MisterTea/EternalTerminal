@@ -155,33 +155,71 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
 #endif
 
+inline int GetErrno() {
+#ifdef WIN32
+  auto retval = WSAGetLastError();
+  if (retval >= 10000) {
+    // Do some translation
+    switch (retval) {
+    case WSAEWOULDBLOCK: return EWOULDBLOCK;
+    case WSAEADDRINUSE: return EADDRINUSE;
+    case WSAEINPROGRESS: return EINPROGRESS;
+    default:
+      STFATAL << "Unmapped WSA error: " << retval;
+    }
+  }
+  return retval;
+#else
+  return errno;
+#endif
+}
+
+inline void SetErrno(int e) {
+#ifdef WIN32
+  WSASetLastError(e);
+#else
+  errno = e;
+#endif
+}
+
 #ifdef WIN32
 inline string WindowsErrnoToString() {
   const int BUFSIZE = 4096;
   char buf[BUFSIZE];
-  FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                     FORMAT_MESSAGE_IGNORE_INSERTS,
-                 NULL, WSAGetLastError(),
-                 MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, BUFSIZE, NULL);
-  string s(buf, BUFSIZE);
-  return s;
+  auto charsWritten = FormatMessageA(
+      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+      WSAGetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf,
+      BUFSIZE, NULL);
+  if (charsWritten) {
+    string s(buf, charsWritten + 1);
+    return s;
+  }
+  return "Unknown Error";
 }
 #define FATAL_FAIL(X)                             \
   if (((X) == -1))                                \
     LOG(FATAL) << "Error: (" << WSAGetLastError() \
                << "): " << WindowsErrnoToString();
 
+#define FATAL_FAIL_UNLESS_ZERO(X)                 \
+  if (((X) != 0))                                 \
+    LOG(FATAL) << "Error: (" << WSAGetLastError() \
+               << "): " << WindowsErrnoToString();
+
 #define FATAL_FAIL_UNLESS_EINVAL(X) FATAL_FAIL(X)
 
 #else
-#define FATAL_FAIL(X) \
-  if (((X) == -1)) STFATAL << "Error: (" << errno << "): " << strerror(errno);
+#define FATAL_FAIL(X)                       \
+  if (((X) == -1))                          \
+    STFATAL << "Error: (" << GetErrno() \
+            << "): " << strerror(GetErrno());
 
 // On BSD/OSX we can get EINVAL if the remote side has closed the connection
 // before we have initialized it.
-#define FATAL_FAIL_UNLESS_EINVAL(X)   \
-  if (((X) == -1) && errno != EINVAL) \
-    STFATAL << "Error: (" << errno << "): " << strerror(errno);
+#define FATAL_FAIL_UNLESS_EINVAL(X)            \
+  if (((X) == -1) && GetErrno() != EINVAL) \
+    STFATAL << "Error: (" << GetErrno()    \
+            << "): " << strerror(GetErrno());
 #endif
 
 #ifndef ET_VERSION

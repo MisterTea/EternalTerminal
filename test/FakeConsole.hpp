@@ -25,7 +25,7 @@ class FakeConsole : public Console {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (errno != EAGAIN) {
+        if (GetErrno() != EAGAIN) {
           FATAL_FAIL(fd);
         } else {
           ::usleep(100 * 1000);  // Sleep for client to connect
@@ -126,7 +126,7 @@ class FakeUserTerminal : public UserTerminal {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (errno != EAGAIN) {
+        if (GetErrno() != EAGAIN) {
           FATAL_FAIL(fd);
         } else {
           ::usleep(100 * 1000);  // Sleep for client to connect
