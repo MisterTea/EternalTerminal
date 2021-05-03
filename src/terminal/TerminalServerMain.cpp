@@ -99,7 +99,7 @@ int main(int argc, char **argv) {
         if (!result.count("bindip")) {
           const char *bindIpPtr = ini.GetValue("Networking", "bind_ip", NULL);
           if (bindIpPtr) {
-            bindIp = stoi(bindIpPtr);
+            bindIp = string(bindIpPtr);
           }
         }
 
