@@ -56,8 +56,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
     setBlocking(sockFd, false);
 
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
-        GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK
-      ) {
+        GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK) {
       auto localErrno = GetErrno();
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
@@ -163,11 +162,15 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   memset(&hints, 0, sizeof hints);
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
-  hints.ai_flags = AI_PASSIVE;  // use my IP address
+  hints.ai_flags = AI_PASSIVE;  // use any IP address
+  const char *bindIp = NULL;
+  if (endpoint.has_name()) {
+    bindIp = endpoint.name().c_str();
+  }
 
   std::string portname = std::to_string(port);
 
-  if ((rc = getaddrinfo(NULL, portname.c_str(), &hints, &servinfo)) != 0) {
+  if ((rc = getaddrinfo(bindIp, portname.c_str(), &hints, &servinfo)) != 0) {
     STERROR << "Error getting address info for " << port << ": " << rc << " ("
             << gai_strerror(rc) << ")";
     exit(1);
