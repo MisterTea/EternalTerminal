@@ -85,7 +85,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
   int fd;
   while (true) {
     fd = socketHandler->accept(serverFd);
-    auto localErrno = errno;
+    auto localErrno = GetErrno();
     if (fd == -1) {
       if (localErrno != EAGAIN) {
         FATAL_FAIL(fd);

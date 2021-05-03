@@ -19,7 +19,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   LOG(INFO) << "Listening to id/key FIFO";
   int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
-    if (errno != EAGAIN && errno != EWOULDBLOCK) {
+    if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
       FATAL_FAIL(-1);  // STFATAL with the error
     } else {
       return IdKeyPair({"", ""});  // Nothing to accept this time

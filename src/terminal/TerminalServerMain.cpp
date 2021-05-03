@@ -61,7 +61,7 @@ int main(int argc, char **argv) {
 
     if (result.count("daemon")) {
       if (DaemonCreator::create(true, result["pidfile"].as<string>()) == -1) {
-        STFATAL << "Error creating daemon: " << strerror(errno);
+        STFATAL << "Error creating daemon: " << strerror(GetErrno());
       }
     }
 

@@ -15,7 +15,7 @@ UserJumphostHandler::UserJumphostHandler(
       dstSocketEndpoint(_dstSocketEndpoint),
       shuttingDown(false) {
   routerFd = routerSocketHandler->connect(routerEndpoint);
-  auto localErrno = errno;
+  auto localErrno = GetErrno();
 
   if (routerFd < 0) {
     if (localErrno == ECONNREFUSED) {

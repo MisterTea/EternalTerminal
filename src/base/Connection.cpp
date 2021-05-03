@@ -152,7 +152,7 @@ bool Connection::read(Packet* packet) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   VLOG(4) << "After read get connectionMutex";
   ssize_t messagesRead = reader->read(packet);
-  auto localErrno = errno;
+  auto localErrno = GetErrno();
   if (messagesRead == -1) {
     if (isSkippableError(localErrno)) {
       // Close the socket and invalidate, then return 0 messages
@@ -178,7 +178,7 @@ bool Connection::write(const Packet& packet) {
   }
 
   BackedWriterWriteState bwws = writer->write(packet);
-  auto writeErrno = errno;
+  auto writeErrno = GetErrno();
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     VLOG(4) << "Write skipped";

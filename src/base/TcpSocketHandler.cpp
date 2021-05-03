@@ -46,15 +46,19 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   // loop through all the results and connect to the first we can
   for (p = results; p != NULL; p = p->ai_next) {
     if ((sockFd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       LOG(INFO) << "Error creating socket: " << localErrno << " "
                 << strerror(localErrno);
       continue;
     }
 
+    // Allow non-blocking connect
+    setBlocking(sockFd, false);
+
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
-        errno != EINPROGRESS) {
-      auto localErrno = errno;
+        GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK
+      ) {
+      auto localErrno = GetErrno();
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -62,6 +66,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         LOG(INFO) << "Error connecting: " << localErrno << " "
                   << strerror(localErrno);
       }
+      setBlocking(sockFd, true);
 #ifdef _MSC_VER
       FATAL_FAIL(::closesocket(sockFd));
 #else
@@ -96,23 +101,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         }
         // Make sure that socket becomes blocking once it's attached to a
         // server.
-#ifdef WIN32
-        {
-          u_long iMode = 0;
-          auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
-          if (result != NO_ERROR) {
-            STFATAL << result;
-          }
-        }
-#else
-        {
-          int opts;
-          opts = fcntl(sockFd, F_GETFL);
-          FATAL_FAIL(opts);
-          opts &= (~O_NONBLOCK);
-          FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-        }
-#endif
+        setBlocking(sockFd, true);
         break;  // if we get here, we must have connected successfully
       } else {
         if (p->ai_canonname) {
@@ -122,6 +111,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
           LOG(INFO) << "Error connecting to " << endpoint << ": " << so_error
                     << " " << strerror(so_error);
         }
+        setBlocking(sockFd, true);
 #ifdef _MSC_VER
         FATAL_FAIL(::closesocket(sockFd));
 #else
@@ -131,7 +121,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
         continue;
       }
     } else {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -188,7 +178,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   for (p = servinfo; p != NULL; p = p->ai_next) {
     int sockFd;
     if ((sockFd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       LOG(INFO) << "Error creating socket " << p->ai_family << "/"
                 << p->ai_socktype << "/" << p->ai_protocol << ": " << localErrno
                 << " " << strerror(localErrno);
@@ -207,7 +197,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
       // This most often happens because the port is in use.
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       LOG(WARNING) << "Error binding " << p->ai_family << "/" << p->ai_socktype
                    << "/" << p->ai_protocol << ": " << localErrno << " "
                    << strerror(localErrno);

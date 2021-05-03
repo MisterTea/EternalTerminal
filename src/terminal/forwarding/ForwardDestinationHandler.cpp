@@ -20,7 +20,7 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
   while (socketHandler->hasData(fd)) {
     char buf[1024];
     int bytesRead = socketHandler->read(fd, buf, 1024);
-    auto readErrno = errno;
+    auto readErrno = GetErrno();
     if (bytesRead == -1 && (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
       // Bail for now
       break;

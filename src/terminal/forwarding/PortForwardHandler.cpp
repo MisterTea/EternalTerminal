@@ -112,7 +112,7 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
   if (fd == -1) {
-    pfdresponse.set_error(strerror(errno));
+    pfdresponse.set_error(strerror(GetErrno()));
   } else {
     int socketId = rand();
     int attempts = 0;

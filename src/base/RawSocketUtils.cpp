@@ -10,10 +10,10 @@ void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
     int rc = ::write(fd, buf + bytesWritten, count - bytesWritten);
 #endif
     if (rc < 0) {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         // This is fine, just keep retrying
-        std::this_thread::sleep_for(std::chrono::microseconds(100*1000));
+        std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
         continue;
       }
       STERROR << "Cannot write to raw socket: " << strerror(localErrno);
@@ -38,7 +38,7 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     int rc = ::read(fd, buf + bytesRead, count - bytesRead);
 #endif
     if (rc < 0) {
-      auto localErrno = errno;
+      auto localErrno = GetErrno();
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         // This is fine, just keep retrying
         continue;
