@@ -408,8 +408,8 @@ int match_hostname(const char *host, const char *pattern, unsigned int len) {
 char *ssh_path_expand_tilde(const char *d) {
   char *h = NULL, *r;
   const char *p;
-  size_t ld;
-  size_t lh = 0;
+  int ld;
+  int lh = 0;
 
   if (d[0] != '~') {
     return strdup(d);
@@ -424,7 +424,7 @@ char *ssh_path_expand_tilde(const char *d) {
     STFATAL << "~user/path format not supported on windows";
 #else
     struct passwd *pw;
-    size_t s = p - d;
+    int s = p - d;
     char u[128];
 
     if (s >= sizeof(u)) {
@@ -469,7 +469,7 @@ char *ssh_path_expand_escape(struct Options *options, const char *s) {
   char buf[MAX_BUF_SIZE];
   char *r, *x = NULL;
   const char *p;
-  size_t i, l;
+  int i, l;
 
   r = ssh_path_expand_tilde(s);
   if (r == NULL) {
@@ -1081,41 +1081,41 @@ static char *ssh_config_get_token(char **str) {
 
   /* Ignore leading spaces */
   for (c = *str; *c; c++) {
-      if (! isblank(*c)) {
-          break;
-      }
+    if (!isblank(*c)) {
+      break;
+    }
   }
 
   /* If we start with quote, return the whole quoted block */
   if (*c == '\"') {
-      for (r = ++c; *c; c++) {
-          if (*c == '\"' || *c == '\n') {
-              *c = '\0';
-              c++;
-              break;
-          }
-          /* XXX Unmatched quotes extend to the end of line */
+    for (r = ++c; *c; c++) {
+      if (*c == '\"' || *c == '\n') {
+        *c = '\0';
+        c++;
+        break;
       }
+      /* XXX Unmatched quotes extend to the end of line */
+    }
   } else {
-      /* Otherwise terminate on space, equal or newline */
-      for (r = c; *c; c++) {
-          if (*c == '\0') {
-              goto out;
-          } else if (isblank(*c) || *c == '=' || *c == '\n') {
-              had_equal = (*c == '=');
-              *c = '\0';
-              c++;
-              break;
-          }
+    /* Otherwise terminate on space, equal or newline */
+    for (r = c; *c; c++) {
+      if (*c == '\0') {
+        goto out;
+      } else if (isblank(*c) || *c == '=' || *c == '\n') {
+        had_equal = (*c == '=');
+        *c = '\0';
+        c++;
+        break;
       }
+    }
   }
 
   /* Skip any other remaining whitespace */
   while (isblank(*c) || *c == '\n' || (!had_equal && *c == '=')) {
-      if (*c == '=') {
-          had_equal = true;
-      }
-      c++;
+    if (*c == '=') {
+      had_equal = true;
+    }
+    c++;
   }
 out:
   *str = c;
@@ -1158,7 +1158,7 @@ static int ssh_config_get_yesno(char **str, int notfound) {
   }
 
 #ifdef WIN32
-#define strncasecmp(x,y,z) _strnicmp(x,y,z)
+#define strncasecmp(x, y, z) _strnicmp(x, y, z)
 #endif
   if (strncasecmp(p, "yes", 3) == 0) {
     return 1;
@@ -1172,7 +1172,7 @@ static int ssh_config_get_yesno(char **str, int notfound) {
 static void local_parse_file(const char *targethost, struct Options *options,
                              const char *filename, int *parsing, int seen[]) {
   string line;
-  size_t len = 0;
+  int len = 0;
 
   unsigned int count = 0;
 
@@ -1184,8 +1184,8 @@ static void local_parse_file(const char *targethost, struct Options *options,
 
   while (std::getline(infile, line)) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line.c_str(), count, parsing, seen) <
-        0) {
+    if (ssh_config_parse_line(targethost, options, line.c_str(), count, parsing,
+                              seen) < 0) {
       infile.close();
       return;
     }
@@ -1413,8 +1413,8 @@ static int ssh_config_parse_line(const char *targethost,
 int parse_ssh_config_file(const char *targethost, struct Options *options,
                           string filename) {
   string line;
-  size_t len = 0;
-  ssize_t read = 0;
+  int len = 0;
+  int read = 0;
   unsigned int count = 0;
   int parsing;
   int seen[SOC_END - SOC_UNSUPPORTED] = {0};
@@ -1429,8 +1429,8 @@ int parse_ssh_config_file(const char *targethost, struct Options *options,
 
   while (std::getline(infile, line)) {
     count++;
-    if (ssh_config_parse_line(targethost, options, line.c_str(), count, &parsing,
-                              seen) < 0) {
+    if (ssh_config_parse_line(targethost, options, line.c_str(), count,
+                              &parsing, seen) < 0) {
       infile.close();
       return -1;
     }

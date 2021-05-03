@@ -1,10 +1,9 @@
 #include "TerminalHandler.hpp"
 
+#include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "UserTerminalRouter.hpp"
-
-#include "ETerminal.pb.h"
 
 namespace et {
 TerminalHandler::TerminalHandler() : run(true), bufferLength(0) {}
@@ -16,6 +15,10 @@ void TerminalHandler::start() {
       FATAL_FAIL(pid);
     case 0: {
       passwd* pwd = getpwuid(getuid());
+      if (pwd == NULL) {
+        LOG(FATAL)
+            << "Not able to fork a terminal because getpwuid returns null";
+      }
       chdir(pwd->pw_dir);
       string terminal = string(::getenv("SHELL"));
       setenv("HTM_VERSION", ET_VERSION, 1);

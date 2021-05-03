@@ -28,7 +28,7 @@ string CryptoHandler::encrypt(const string& buffer) {
   string retval(buffer.length() + crypto_secretbox_MACBYTES, '\0');
   SODIUM_FAIL(crypto_secretbox_easy((unsigned char*)&retval[0],
                                     (const unsigned char*)buffer.c_str(),
-                                    buffer.length(), nonce, key) == -1);
+                                    buffer.length(), nonce, key));
   return retval;
 }
 
