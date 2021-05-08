@@ -164,6 +164,9 @@ inline int GetErrno() {
     case WSAEWOULDBLOCK: return EWOULDBLOCK;
     case WSAEADDRINUSE: return EADDRINUSE;
     case WSAEINPROGRESS: return EINPROGRESS;
+    case WSAENOTSOCK: return ENOTSOCK;
+    case WSAECONNRESET: return ECONNRESET;
+    case WSAECONNABORTED: return ECONNABORTED;
     default:
       STFATAL << "Unmapped WSA error: " << retval;
     }

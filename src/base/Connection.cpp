@@ -22,7 +22,7 @@ Connection::~Connection() {
 inline bool isSkippableError(int err_no) {
   return (err_no == EAGAIN || err_no == ECONNRESET || err_no == ETIMEDOUT ||
           err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
-          err_no == ENOTCONN ||
+          err_no == ENOTCONN || err_no == ECONNABORTED ||
           err_no == EBADF  // Bad file descriptor can happen when
                            // there's a race condition between a thread
                            // closing a connection and one
