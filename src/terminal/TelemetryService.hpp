@@ -3,7 +3,7 @@
 #include "Headers.hpp"
 
 namespace httplib {
-  class Client;
+class Client;
 }
 
 namespace et {
@@ -16,7 +16,7 @@ class TelemetryService {
 
   void logToSentry(el::Level level, const std::string& message);
 
-  void logToDatadog(map<string, string> message);
+  void logToDatadog(el::Level level, const string& message);
 
   void logToAll(el::Level level, const std::string& message);
 
@@ -49,6 +49,7 @@ class TelemetryService {
   vector<map<string, string>> logBuffer;
   bool shuttingDown;
   unique_ptr<thread> logSendingThread;
+  sole::uuid telemetryId;
 };
 
 }  // namespace et

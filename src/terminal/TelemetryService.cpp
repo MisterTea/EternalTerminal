@@ -58,9 +58,11 @@ class TelemetryDispatcher : public el::LogDispatchCallback {
       auto logText = data->logMessage()->logger()->logBuilder()->build(
           data->logMessage(),
           data->dispatchAction() == el::base::DispatchAction::NormalLog);
-      if (data->logMessage()->level() == el::Level::Fatal ||
-          data->logMessage()->level() == el::Level::Error) {
+      if (data->logMessage()->level() == el::Level::Fatal) {
         TelemetryService::get()->logToAll(data->logMessage()->level(), logText);
+      } else if (data->logMessage()->level() == el::Level::Error) {
+        TelemetryService::get()->logToDatadog(data->logMessage()->level(),
+                                              logText);
       }
     }
   }
@@ -88,7 +90,7 @@ TelemetryService::TelemetryService(const bool _allow,
   }
   if (allowed) {
     auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
-    auto telemetryId = sole::uuid4();
+    telemetryId = sole::uuid4();
     if (filesystem::exists(telemetryConfigPath)) {
       // Load the config file
       CSimpleIniA ini(true, false, false);
@@ -239,23 +241,25 @@ void TelemetryService::logToSentry(el::Level level, const string& message) {
 #endif
 }
 
-void TelemetryService::logToDatadog(map<string, string> message) {
+void TelemetryService::logToDatadog(el::Level level, const string& message) {
+  map<string, string> messageJson = {
+      {"message", message},        {"level", logLevelToString(level)},
+      {"Enviroment", environment}, {"Application", "Eternal Terminal"},
+      {"Version", ET_VERSION},     {"TelemetryId", telemetryId.str()}};
+
   lock_guard<recursive_mutex> lock(logMutex);
   if (logBuffer.size() > 16 * 1024) {
     // Ignore if the buffer is full
     return;
   }
-  message["Environment"] = environment;
-  message["Application"] = "Eternal Terminal";
-  message["Version"] = ET_VERSION;
-  logBuffer.push_back(message);
+  logBuffer.push_back(messageJson);
 }
 
 void TelemetryService::logToAll(el::Level level, const std::string& message) {
 #ifdef USE_SENTRY
   logToSentry(level, message);
 #endif
-  logToDatadog({{"message", message}, {"level", logLevelToString(level)}});
+  logToDatadog(level, message);
 }
 
 void TelemetryService::shutdown() {
