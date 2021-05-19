@@ -38,14 +38,17 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     gid_t groupid) {
   try {
     if (pfsr.has_source() && sourceName) {
-      throw runtime_error("Do not set a source when forwarding named pipes with environment variables");
+      throw runtime_error(
+          "Do not set a source when forwarding named pipes with environment "
+          "variables");
     }
     SocketEndpoint source;
     if (pfsr.has_source()) {
       source = pfsr.source();
     } else {
       // Make a random file to forward the pipe
-      string sourcePattern = GetTempDirectory() + string("et_forward_sock_XXXXXX");
+      string sourcePattern =
+          GetTempDirectory() + string("et_forward_sock_XXXXXX");
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
       FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
@@ -144,8 +147,8 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         VLOG(1) << "Got data for destination socket: " << pwd.socketid();
         auto it = destinationHandlers.find(pwd.socketid());
         if (it == destinationHandlers.end()) {
-          STERROR << "Got data for a socket id that has already closed: "
-                  << pwd.socketid();
+          LOG(WARNING) << "Got data for a socket id that has already closed: "
+                       << pwd.socketid();
         } else {
           if (pwd.has_closed()) {
             LOG(INFO) << "Port forward socket closed: " << pwd.socketid();

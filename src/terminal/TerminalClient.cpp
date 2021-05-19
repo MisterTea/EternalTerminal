@@ -287,18 +287,20 @@ void TerminalClient::run(const string& command) {
             }
           }
 #else
-          int rc = ::read(consoleFd, b, BUF_SIZE);
-          FATAL_FAIL(rc);
-          if (rc > 0) {
-            // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " " <<
-            // connection->getWriter()->getSequenceNumber();
-            string s(b, rc);
-            et::TerminalBuffer tb;
-            tb.set_buffer(s);
+          if (console) {
+            int rc = ::read(consoleFd, b, BUF_SIZE);
+            FATAL_FAIL(rc);
+            if (rc > 0) {
+              // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " "
+              // << connection->getWriter()->getSequenceNumber();
+              string s(b, rc);
+              et::TerminalBuffer tb;
+              tb.set_buffer(s);
 
-            connection->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-            keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+              connection->writePacket(Packet(
+                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            }
           }
 #endif
         }
