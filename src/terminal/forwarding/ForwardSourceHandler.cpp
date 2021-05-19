@@ -96,7 +96,7 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
 }
 void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
-    STERROR << "Tried to write to a socket that no longer exists!";
+    LOG(INFO) << "Tried to write to a socket that no longer exists!";
     return;
   }
 
