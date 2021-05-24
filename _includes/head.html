@@ -118,4 +118,8 @@
   <link rel="shortcut icon" type="image/png" href="{{ '/img/avatar-icon.png' | prepend: site.baseurl }}" >
 
   {% seo %}
+
+  {% if jekyll.environment == 'production' %}
+  {% include analytics.html %}
+  {% endif %}
 </head>
