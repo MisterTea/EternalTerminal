@@ -164,6 +164,9 @@ endif()
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Enable compile commands export for vscode
+add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
+
 if(WIN32)
   # Enable unicode
   add_definitions(-DUNICODE)

@@ -1,8 +1,8 @@
-#include "TelemetryService.hpp"
-#include "TerminalServer.hpp"
+#include <cxxopts.hpp>
 
 #include "SimpleIni.h"
-#include <cxxopts.hpp>
+#include "TelemetryService.hpp"
+#include "TerminalServer.hpp"
 
 using namespace et;
 namespace google {}
@@ -31,7 +31,9 @@ int main(int argc, char **argv) {
         ("version", "Print version")  //
         ("port", "Port to listen on",
          cxxopts::value<int>()->default_value("0"))  //
-        ("daemon", "Daemonize the server")           //
+        ("bindip", "IP to listen on",
+         cxxopts::value<string>()->default_value(""))  //
+        ("daemon", "Daemonize the server")             //
         ("cfgfile", "Location of the config file",
          cxxopts::value<std::string>()->default_value(""))  //
         ("logtostdout", "log to stdout")                    //
@@ -79,6 +81,7 @@ int main(int argc, char **argv) {
     string maxlogsize = "20971520";
 
     int port = 0;
+    string bindIp = "";
     bool telemetry = true;
     if (result.count("cfgfile")) {
       // Load the config file
@@ -87,9 +90,16 @@ int main(int argc, char **argv) {
       SI_Error rc = ini.LoadFile(cfgfilename.c_str());
       if (rc == 0) {
         if (!result.count("port")) {
-          const char *portString = ini.GetValue("Networking", "Port", NULL);
+          const char *portString = ini.GetValue("Networking", "port", NULL);
           if (portString) {
             port = stoi(portString);
+          }
+        }
+
+        if (!result.count("bindip")) {
+          const char *bindIpPtr = ini.GetValue("Networking", "bind_ip", NULL);
+          if (bindIpPtr) {
+            bindIp = string(bindIpPtr);
           }
         }
 
@@ -136,6 +146,10 @@ int main(int argc, char **argv) {
       port = result["port"].as<int>();
     }
 
+    if (result.count("bindip")) {
+      bindIp = result["bindip"].as<string>();
+    }
+
     if (result.count("telemetry")) {
       telemetry = result["telemetry"].as<bool>();
     }
@@ -169,6 +183,9 @@ int main(int argc, char **argv) {
 
     SocketEndpoint serverEndpoint;
     serverEndpoint.set_port(port);
+    if (bindIp.length()) {
+      serverEndpoint.set_name(bindIp);
+    }
     SocketEndpoint routerFifo;
     routerFifo.set_name(serverFifo);
     TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
