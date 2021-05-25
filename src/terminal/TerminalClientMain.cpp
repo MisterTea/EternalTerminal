@@ -67,6 +67,9 @@ int main(int argc, char** argv) {
          cxxopts::value<int>()->default_value("2022"))  //
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
+        ("macserver",
+         "Set when connecting to an OS/X server.  Sets "
+         "--prefix=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))          //
         ("logtostdout", "Write log to stdout")               //
@@ -242,10 +245,16 @@ int main(int argc, char** argv) {
     if (result.count("ssh-option")) {
       ssh_options = result["ssh-option"].as<std::vector<string>>();
     }
+    string prefix = "";
+    if (result.count("macserver") > 0) {
+      prefix = "/usr/local/bin/etterminal";
+    }
+    if (result.count("prefix")) {
+      prefix = result["prefix"].as<string>();
+    }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["verbose"].as<int>(),
-        result.count("prefix") ? result["prefix"].as<string>() : "", serverFifo,
+        result.count("x") > 0, result["verbose"].as<int>(), prefix, serverFifo,
         ssh_options);
 
     string id = "", passkey = "";
