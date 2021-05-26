@@ -188,7 +188,8 @@ TelemetryService::TelemetryService(const bool _allow,
 
     logSendingThread.reset(new thread([this]() {
       auto nextDumpTime = std::chrono::system_clock::now();
-      while (!shuttingDown) {
+      while (true) {
+        bool lastRun = shuttingDown;
         string payload;
         int logBufferSize;
         {
@@ -197,7 +198,7 @@ TelemetryService::TelemetryService(const bool _allow,
         }
         if (logBufferSize) {
           if (logBufferSize >= 1024 ||
-              nextDumpTime < std::chrono::system_clock::now()) {
+              nextDumpTime < std::chrono::system_clock::now() || lastRun) {
             nextDumpTime =
                 std::chrono::system_clock::now() + chrono::seconds(30);
             {
@@ -213,11 +214,6 @@ TelemetryService::TelemetryService(const bool _allow,
             logHttpClient->set_read_timeout(1, 0);          // 1 second
             logHttpClient->set_write_timeout(1, 0);         // 1 second
 
-            if (shuttingDown) {
-              // httplib isn't exit-safe, so we try our best to avoid calling it
-              // on shutdown
-              break;
-            }
             logHttpClient->Post(
                 "/v1/input/"
                 "pubfe47c2f8dfb3e8c26eb66ba4a456ec79?ddsource=browser&ddtags="
@@ -226,6 +222,10 @@ TelemetryService::TelemetryService(const bool _allow,
           }
         }
         this_thread::sleep_for(chrono::milliseconds(100));
+        if (lastRun) {
+          this_thread::sleep_for(chrono::milliseconds(400));
+          break;
+        }
       }
     }));
   }
