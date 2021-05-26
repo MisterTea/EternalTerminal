@@ -16,9 +16,8 @@ class TelemetryService {
 
   void logToSentry(el::Level level, const std::string& message);
 
-  void logToDatadog(el::Level level, const string& message);
-
-  void logToAll(el::Level level, const std::string& message);
+  void logToDatadog(const string& logText, el::Level logLevel,
+                    const string& filename, const int line);
 
   static void create(bool _allow, const string& databasePath,
                      const string& environment) {

@@ -181,8 +181,8 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
       exit(1);
     }
 
-    TelemetryService::get()->logToAll(el::Level::Info,
-                                      "Connection Established");
+    TelemetryService::get()->logToDatadog("Connection Established",
+                                          el::Level::Info, __FILE__, __LINE__);
     break;
   }
   VLOG(1) << "Client created with id: " << connection->getId();

@@ -287,7 +287,8 @@ int main(int argc, char** argv) {
     if (result.count("ssh-socket")) {
       sshSocket = result["ssh-socket"].as<string>();
     }
-    TelemetryService::get()->logToAll(el::Level::Info, "Session Started");
+    TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
+                                          __FILE__, __LINE__);
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
