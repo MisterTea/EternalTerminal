@@ -17,7 +17,7 @@ Vagrant.configure("2") do |config|
 
   config.vm.provider "virtualbox" do |v|
     v.memory = 4096
-    v.cpus = 4
+    v.cpus = 1
   end
 
   # Disable automatic box update checking. If you disable this, then
@@ -68,6 +68,7 @@ Vagrant.configure("2") do |config|
   config.vm.provision "file", source: "../id_rsa.pub", destination: ".ssh/id_rsa.pub"
   config.vm.provision "file", source: "../id_rsa", destination: ".ssh/id_rsa"
   config.vm.provision "file", source: "../.gnupg", destination: ".gnupg"
+  config.vm.provision "file", source: "../fury.token", destination: "fury.token"
   config.vm.provision "file", source: "build_all_deb.sh", destination: "build_all_deb.sh"
   config.vm.provision "file", source: "debian_SOURCE", destination: "debian_SOURCE"
 
@@ -77,8 +78,8 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", privileged: true, inline: <<-SHELL
   echo "set grub-pc/install_devices /dev/sda" | debconf-communicate
   apt update
-  #DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt -q -y -o "Dpkg::Options::=--force-confdef" -o "Dpkg::Options::=--force-confold" upgrade
-  DEBIAN_FRONTEND=noninteractive apt install -y build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake ninja-build libutempter-dev libunwind-dev debhelper git-lfs python3-distutils cowbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support libcurl4-openssl-dev libssl-dev
+  DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt -q -y -o "Dpkg::Options::=--force-confdef" -o "Dpkg::Options::=--force-confold" upgrade
+  DEBIAN_FRONTEND=noninteractive apt install -y rsync build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake ninja-build libutempter-dev libunwind-dev debhelper git-lfs python3-distutils cowbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support libcurl4-openssl-dev libssl-dev
 SHELL
 
   config.vm.provision "shell", privileged: false, inline: <<-SHELL
@@ -96,9 +97,9 @@ max-cache-ttl 34560000" > ~/.gnupg/gpg-agent.conf
   git clone --branch release git@github.com:MisterTea/EternalTerminal.git
   git clone git@github.com:MisterTea/debian-et.git
   
-  for distro in `distro-info --stable` `distro-info --testing`; do
+  for distro in `distro-info --oldstable` `distro-info --stable` `distro-info --testing`; do
     for ARCH in amd64 armhf armel arm64; do
-      pbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
+      cowbuilder-dist ${distro} ${ARCH} create --debootstrapopts --variant=buildd
     done
 
     aptly repo create -distribution=${distro} -component=main et-${distro}

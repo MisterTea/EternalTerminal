@@ -12,7 +12,7 @@ for distro in `distro-info --stable` `distro-info --testing`; do
     pushd EternalTerminal
     debuild -S
     popd
-    for ARCH in amd64 i386 armhf armel arm64
+    for ARCH in amd64 armhf armel arm64
     do
         cowbuilder-dist ${distro} ${ARCH} update
         cowbuilder-dist ${distro} ${ARCH} build *.dsc

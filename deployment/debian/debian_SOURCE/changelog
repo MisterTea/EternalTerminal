@@ -1,3 +1,9 @@
+et (6.1.8-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * ssh config fixes
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Fri, 28 May 2021 16:36:54 -0800
+
 et (6.1.7-##DISTRO##2) ##DISTRO##; urgency=medium
 
   * Disable tests
