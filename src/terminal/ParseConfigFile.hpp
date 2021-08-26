@@ -1419,9 +1419,15 @@ int parse_ssh_config_file(const char *targethost, struct Options *options,
   int parsing;
   int seen[SOC_END - SOC_UNSUPPORTED] = {0};
 
-  ifstream infile(filename);
+  char *expandedFilename = ssh_path_expand_tilde(filename.c_str());
+  if (!expandedFilename) {
+    LOG(INFO) << filename << " was invalid";
+    return 0;
+  }
+
+  ifstream infile(expandedFilename);
   if (!infile.good()) {
-    LOG(INFO) << filename << "not found";
+    LOG(INFO) << filename << " not found";
     return 0;
   }
 
