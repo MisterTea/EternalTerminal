@@ -55,9 +55,12 @@ class TelemetryDispatcher : public el::LogDispatchCallback {
     if (TelemetryService::exists() &&
         data->dispatchAction() == el::base::DispatchAction::NormalLog &&
         data->logMessage()->logger()->id() != "stdout") {
-      auto logText = data->logMessage()->logger()->logBuilder()->build(
-          data->logMessage(),
-          data->dispatchAction() == el::base::DispatchAction::NormalLog);
+      // Put the message on the fist line to make a better header
+      auto logText =
+          data->logMessage()->message() + "\n" +
+          data->logMessage()->logger()->logBuilder()->build(
+              data->logMessage(),
+              data->dispatchAction() == el::base::DispatchAction::NormalLog);
       if (data->logMessage()->level() == el::Level::Fatal) {
         TelemetryService::get()->logToSentry(data->logMessage()->level(),
                                              logText);
@@ -233,7 +236,7 @@ TelemetryService::TelemetryService(const bool _allow,
 
 TelemetryService::~TelemetryService() {
   if (!shuttingDown) {
-    STERROR << "Destroyed telemetryService without a shutdown";
+    cerr << "Destroyed telemetryService without a shutdown";
   }
 }
 
