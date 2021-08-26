@@ -320,7 +320,10 @@ add_library(
   src/base/WinsockContext.hpp
   src/base/SubprocessToString.hpp
   src/base/SubprocessToString.cpp
-  ${ET_SRCS})
+
+  ${ET_HDRS}
+  ${ET_SRCS}
+)
 add_dependencies(et-lib generated-code)
 decorate_target(et-lib)
 
@@ -348,7 +351,7 @@ add_library(
   src/terminal/TelemetryService.cpp
   ${ETERMINAL_SRCS}
   ${ETERMINAL_HDRS})
-add_dependencies(TerminalCommon generated-code)
+add_dependencies(TerminalCommon generated-code et-lib)
 decorate_target(TerminalCommon)
 
 add_executable(et src/terminal/TerminalClientMain.cpp)
@@ -362,6 +365,7 @@ target_link_libraries(
   ${sodium_LIBRARY_RELEASE}
   ${UTEMPTER_LIBRARIES}
   ${CORE_LIBRARIES})
+add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
 if(WIN32)
@@ -385,6 +389,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
       ${CORE_LIBRARIES})
+  add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
 
   add_executable(etterminal src/terminal/TerminalMain.cpp)
@@ -399,6 +404,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
       ${CORE_LIBRARIES})
+  add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
 
   add_library(
@@ -409,8 +415,9 @@ else(WIN32)
     src/htm/IpcPairEndpoint.cpp
     src/htm/IpcPairServer.cpp
     src/htm/HtmClient.cpp
-    src/htm/HtmServer.cpp)
-  add_dependencies(HtmCommon generated-code)
+    src/htm/HtmServer.cpp
+  )
+  add_dependencies(HtmCommon generated-code et-lib)
   decorate_target(HtmCommon)
 
   add_executable(htm src/htm/HtmClientMain.cpp)
@@ -444,7 +451,11 @@ else(WIN32)
   enable_testing()
 
   file(GLOB TEST_SRCS test/*Test.cpp)
-  add_executable(et-test ${TEST_SRCS} test/Main.cpp)
+  add_executable(
+  et-test
+  ${TEST_SRCS}
+  test/Main.cpp
+  )
   add_dependencies(et-test TerminalCommon et-lib)
   target_link_libraries(
     et-test
