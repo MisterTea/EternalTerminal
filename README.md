@@ -39,7 +39,7 @@ sudo apt-get install et
 Install and build from source:
 
 ```
-sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git
+sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git libcurl-dev
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
@@ -104,7 +104,7 @@ Install dependencies:
 
   ```
   sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
-  	protobuf-compiler cmake gflags-devel
+  	protobuf-compiler cmake gflags-devel libcurl-devel
   ```
 
 * Gentoo:
@@ -209,7 +209,7 @@ Grab the deps and then follow this process:
 Debian/Ubuntu Dependencies:
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git
+	libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git libcurl-dev
 ```
 
 Source and setup:
@@ -230,7 +230,7 @@ Install dependencies:
 ```
 sudo yum install epel-release
 sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
-     protobuf-compiler gflags-devel protobuf-lite-devel
+     protobuf-compiler gflags-devel protobuf-lite-devel libcurl-devel
 ```
 
 Install scl dependencies
