@@ -14,10 +14,19 @@ Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%
 
 ### macOS
 
-The easiest way to install is using Homebrew:
+The easiest way to install (Catalina and Big Sur) is using Homebrew:
 
 ```
 brew install MisterTea/et/et
+```
+
+Or on Mojave, the latest Homebrew version that works is 6.0.13 (no Telemetry):
+
+```
+brew tap-new tmp/et         
+brew tap mistertea/et                                                                                                                                       
+brew extract --version 6.0.13 mistertea/homebrew-et/et tmp/et
+brew install et@6.0.13   
 ```
 
 Alternatively, a package is available in MacPorts:
@@ -39,13 +48,13 @@ sudo apt-get install et
 Install and build from source:
 
 ```
-sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git libcurl-dev
+sudo apt install build-essential ninja-build libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git libcurl-dev
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
-# On ARM or OS/X with apple silicon:
-# export VCPKG_FORCE_SYSTEM_BINARIES=1
+# For ARM (including OS/X with apple silicon):
+if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make && sudo make install
 sudo cp ../etc/et.cfg /etc/
@@ -190,7 +199,7 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ### macOS
 
-To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
+To build Eternal Terminal on Mac (Catalina or Big Sur only), the easiest way is to grab dependencies with Homebrew:
 
 ```
 brew install --only-dependencies MisterTea/et/et
@@ -198,6 +207,8 @@ git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
+# Make it work on Apple Silicon:
+if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make
 ```
@@ -209,7 +220,7 @@ Grab the deps and then follow this process:
 Debian/Ubuntu Dependencies:
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git libcurl-dev
+	libprotobuf-dev protobuf-compiler build-essential ninja-build cmake libgflags-dev libutempter-dev git libcurl-dev
 ```
 
 Source and setup:
