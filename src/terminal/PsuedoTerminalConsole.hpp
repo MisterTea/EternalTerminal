@@ -13,7 +13,7 @@ class PsuedoTerminalConsole : public Console {
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
     GetConsoleMode(hstdin, &inputMode);
     auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    GetConsoleMode(hstdin, &outputMode);
+    GetConsoleMode(hstdout, &outputMode);
 #else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
@@ -26,7 +26,9 @@ class PsuedoTerminalConsole : public Console {
   virtual void setup() {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
-    SetConsoleMode(hstdin, 0);
+    SetConsoleMode(hstdin, ENABLE_VIRTUAL_TERMINAL_INPUT);
+    //auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    //SetConsoleMode(hstdout, 0/*ENABLE_VIRTUAL_TERMINAL_PROCESSING*/);
 #else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
@@ -41,7 +43,7 @@ class PsuedoTerminalConsole : public Console {
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
     SetConsoleMode(hstdin, inputMode);
     auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    SetConsoleMode(hstdin, outputMode);
+    SetConsoleMode(hstdout, outputMode);
 #else
     tcsetattr(0, TCSANOW, &terminal_backup);
 #endif
