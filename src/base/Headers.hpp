@@ -82,11 +82,13 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_set>
 #include <vector>
 
+#ifndef NO_TELEMETRY
 #if __has_include(<filesystem>)
 #include <filesystem>
 #else
 #include <experimental/filesystem>
 using namespace std::experimental;
+#endif
 #endif
 
 #include "ET.pb.h"
@@ -161,14 +163,20 @@ inline int GetErrno() {
   if (retval >= 10000) {
     // Do some translation
     switch (retval) {
-    case WSAEWOULDBLOCK: return EWOULDBLOCK;
-    case WSAEADDRINUSE: return EADDRINUSE;
-    case WSAEINPROGRESS: return EINPROGRESS;
-    case WSAENOTSOCK: return ENOTSOCK;
-    case WSAECONNRESET: return ECONNRESET;
-    case WSAECONNABORTED: return ECONNABORTED;
-    default:
-      STFATAL << "Unmapped WSA error: " << retval;
+      case WSAEWOULDBLOCK:
+        return EWOULDBLOCK;
+      case WSAEADDRINUSE:
+        return EADDRINUSE;
+      case WSAEINPROGRESS:
+        return EINPROGRESS;
+      case WSAENOTSOCK:
+        return ENOTSOCK;
+      case WSAECONNRESET:
+        return ECONNRESET;
+      case WSAECONNABORTED:
+        return ECONNABORTED;
+      default:
+        STFATAL << "Unmapped WSA error: " << retval;
     }
   }
   return retval;
@@ -212,17 +220,15 @@ inline string WindowsErrnoToString() {
 #define FATAL_FAIL_UNLESS_EINVAL(X) FATAL_FAIL(X)
 
 #else
-#define FATAL_FAIL(X)                       \
-  if (((X) == -1))                          \
-    STFATAL << "Error: (" << GetErrno() \
-            << "): " << strerror(GetErrno());
+#define FATAL_FAIL(X) \
+  if (((X) == -1))    \
+    STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
 
 // On BSD/OSX we can get EINVAL if the remote side has closed the connection
 // before we have initialized it.
-#define FATAL_FAIL_UNLESS_EINVAL(X)            \
+#define FATAL_FAIL_UNLESS_EINVAL(X)        \
   if (((X) == -1) && GetErrno() != EINVAL) \
-    STFATAL << "Error: (" << GetErrno()    \
-            << "): " << strerror(GetErrno());
+    STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
 #endif
 
 #ifndef ET_VERSION

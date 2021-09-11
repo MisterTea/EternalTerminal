@@ -91,6 +91,10 @@ TelemetryService::TelemetryService(const bool _allow,
       logHttpClient(new httplib::Client(
           "https://browser-http-intake.logs.datadoghq.com")),
       shuttingDown(false) {
+#ifdef NO_TELEMETRY
+  allowed = false;
+  return;
+#else
   char* disableTelementry = ::getenv("ET_NO_TELEMETRY");
   if (disableTelementry) {
     allowed = false;
@@ -232,6 +236,7 @@ TelemetryService::TelemetryService(const bool _allow,
       }
     }));
   }
+#endif
 }
 
 TelemetryService::~TelemetryService() {
