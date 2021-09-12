@@ -36,22 +36,8 @@ sudo apt-get update
 sudo apt-get install et
 ```
 
-Install and build from source:
+Or see "Debian/Ubuntu" below to install and build from source (e.g., for ARM).
 
-```
-sudo apt install build-essential libgflags-dev libprotobuf-dev protobuf-compiler libsodium-dev cmake git libcurl-dev
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
-cd EternalTerminal
-mkdir build
-cd build
-# On ARM or OS/X with apple silicon:
-# export VCPKG_FORCE_SYSTEM_BINARIES=1
-cmake ../
-make && sudo make install
-sudo cp ../etc/et.cfg /etc/
-```
-
-Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 
 ### Debian
 
@@ -186,7 +172,7 @@ et dev (etserver running on port 2022 on both hostname and jumphost)
 et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 ```
 
-## Building from source
+## Building from Source
 
 ### macOS
 
@@ -198,31 +184,49 @@ git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
+# Make it work on Apple Silicon:
+if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
-make
+make && sudo make install
+```
+
+To run an `et` server for testing, run `./etserver`.  To run an `et`
+server daemon persistently across reboots:
+
+```
+sudo cp ../init/launchd/homebrew.mxcl.et.plist /Library/LaunchDaemons
+sudo launchctl load -w /Library/LaunchDaemons/homebrew.mxcl.et.plist
 ```
 
 ### Debian/Ubuntu
 
-Grab the deps and then follow this process:
+Grab the deps and then follow this process.
 
 Debian/Ubuntu Dependencies:
+
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler cmake libgflags-dev libutempter-dev cmake git libcurl-dev
+	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl-dev \
+    build-essential ninja-build cmake git zip
 ```
 
-Source and setup:
+Fetch source, build and install:
 
 ```
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
+# For ARM (including OS/X with apple silicon):
+if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make
 sudo make install
+sudo cp ../etc/et.cfg /etc/
 ```
+
+Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
+
 
 ### CentOS 7
 
