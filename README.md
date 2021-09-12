@@ -20,6 +20,23 @@ The easiest way to install is using Homebrew:
 brew install MisterTea/et/et
 ```
 
+Then if you want a daemon to launch `etserver` on every boot:
+
+On m1 (Apple Silicon) Macs:
+
+```
+sudo sed 's:/usr/local/bin/etserver:/opt/homebrew/bin/etserver' ../init/launchd/homebrew.mxcl.et.plist >/Library/LaunchDaemons/homebrew.mxcl.et.plist
+sudo launchctl load -w /Library/LaunchDaemons/homebrew.mxcl.et.plist
+```
+
+On x86 Macs:
+
+```
+sudo cp ../init/launchd/homebrew.mxcl.et.plist /Library/LaunchDaemons/homebrew.mxcl.et.plist
+sudo launchctl load -w /Library/LaunchDaemons/homebrew.mxcl.et.plist
+```
+
+
 Alternatively, a package is available in MacPorts:
 
 ```
