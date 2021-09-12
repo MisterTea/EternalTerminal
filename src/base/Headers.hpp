@@ -83,11 +83,19 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <vector>
 
 #ifndef NO_TELEMETRY
-#if __has_include(<filesystem>)
+#if __has_include(<boost/filesystem.hpp>)
+#pragma message "Using boost filesystem"
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#elif __has_include(<filesystem>)
 #include <filesystem>
-#else
+using namespace filesystem as fs;
+#elif __has_include(<experimental/filesystem>)
+#pragma message "Using std::experimental::filesystem"
 #include <experimental/filesystem>
-using namespace std::experimental;
+using namespace std::experimental as fs;
+#else
+#pragma message "No filesystem library found."
 #endif
 #endif
 
