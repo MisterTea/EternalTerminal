@@ -102,7 +102,7 @@ TelemetryService::TelemetryService(const bool _allow,
   if (allowed) {
     auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
     telemetryId = sole::uuid4();
-    if (filesystem::exists(telemetryConfigPath)) {
+    if (fs::exists(telemetryConfigPath)) {
       // Load the config file
       CSimpleIniA ini(true, false, false);
       SI_Error rc = ini.LoadFile(telemetryConfigPath.c_str());
@@ -118,7 +118,7 @@ TelemetryService::TelemetryService(const bool _allow,
       }
     } else {
       // Ensure directory exists
-      filesystem::create_directories(sago::getConfigHome() + "/et");
+      fs::create_directories(sago::getConfigHome() + "/et");
 
       // Create ini
       CSimpleIniA ini(true, false, false);
