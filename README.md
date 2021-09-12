@@ -20,15 +20,6 @@ The easiest way to install (Catalina and Big Sur) is using Homebrew:
 brew install MisterTea/et/et
 ```
 
-Or on Mojave, the latest Homebrew version that works is 6.0.13 (no Telemetry):
-
-```
-brew tap-new tmp/et         
-brew tap mistertea/et                                                                                                                                       
-brew extract --version 6.0.13 mistertea/homebrew-et/et tmp/et
-brew install et@6.0.13   
-```
-
 Alternatively, a package is available in MacPorts:
 
 ```
@@ -199,7 +190,7 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ### macOS
 
-To build Eternal Terminal on Mac (Catalina or Big Sur only), the easiest way is to grab dependencies with Homebrew:
+To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
 
 ```
 brew install --only-dependencies MisterTea/et/et
