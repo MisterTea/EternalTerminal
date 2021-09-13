@@ -10,7 +10,6 @@ IpcPairServer::IpcPairServer(shared_ptr<SocketHandler> _socketHandler,
 IpcPairServer::~IpcPairServer() { ::close(serverFd); }
 
 void IpcPairServer::pollAccept() {
-  LOG(INFO) << "Listening to id/key FIFO";
   int fd = socketHandler->accept(serverFd);
   if (fd < 0) {
     // Nothing to accept

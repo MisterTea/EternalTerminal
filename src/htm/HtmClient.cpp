@@ -40,14 +40,25 @@ void HtmClient::run() {
     }
 
     if (FD_ISSET(endpointFd, &rfd)) {
-      VLOG(1) << endpointFd << " -> STDOUT";
       int rc = socketHandler->read(endpointFd, buf, BUF_SIZE);
+      VLOG(1) << endpointFd << " -> STDOUT (" << rc << ")";
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
       }
       if (rc == 0) {
-        throw std::runtime_error("htmd has closed abruptly.");
+        LOG(INFO) << "htmd has closed";
+        endpointFd = -1;
+        return;
       }
+
+      // HACK: In the future we should use heartbeats to detect a dead server.
+      // For now, just listen for session end.
+      if (rc == 1 && buf[0] == SESSION_END) {
+        LOG(INFO) << "htmd has closed";
+        endpointFd = -1;
+        return;
+      }
+
       RawSocketUtils::writeAll(STDOUT_FILENO, buf, rc);
     }
   }

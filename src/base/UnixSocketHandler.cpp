@@ -116,7 +116,6 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
 }
 
 int UnixSocketHandler::accept(int sockFd) {
-  VLOG(3) << "Got mutex when sockethandler accept " << sockFd;
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
@@ -134,9 +133,9 @@ int UnixSocketHandler::accept(int sockFd) {
   }
 
   lock_guard<std::recursive_mutex> guard(globalMutex);
-  VLOG(3) << "Socket " << sockFd
-          << " accepted, returned client_sock: " << client_sock;
   if (client_sock >= 0) {
+    VLOG(3) << "Socket " << sockFd
+            << " accepted, returned client_sock: " << client_sock;
     addToActiveSockets(client_sock);
     lock_guard<recursive_mutex> guard(
         *(activeSocketMutexes.find(client_sock)->second));
@@ -184,7 +183,7 @@ vector<int> UnixSocketHandler::getActiveSockets() {
 
 void UnixSocketHandler::initSocket(int fd) {
 #if !defined(WIN32)
-  //ignore SIGPIPE globally
+  // ignore SIGPIPE globally
   ::signal(SIGPIPE, SIG_IGN);
 #endif
   // Also set the accept socket as non-blocking
@@ -202,27 +201,26 @@ void UnixSocketHandler::initServerSocket(int fd) {
 }
 
 void UnixSocketHandler::setBlocking(int sockFd, bool blocking) {
-  #ifdef WIN32
-    {
-      u_long iMode = u_long(!blocking);
-      auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
-      if (result != NO_ERROR) {
-        STFATAL << result;
-      }
+#ifdef WIN32
+  {
+    u_long iMode = u_long(!blocking);
+    auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
+    if (result != NO_ERROR) {
+      STFATAL << result;
     }
-  #else
-    {
-      int opts;
-      opts = fcntl(sockFd, F_GETFL);
-      FATAL_FAIL(opts);
-      if (blocking) {
-        opts &= (~O_NONBLOCK);
-      }
-      else {
-        opts |= O_NONBLOCK;
-      }
-      FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
+  }
+#else
+  {
+    int opts;
+    opts = fcntl(sockFd, F_GETFL);
+    FATAL_FAIL(opts);
+    if (blocking) {
+      opts &= (~O_NONBLOCK);
+    } else {
+      opts |= O_NONBLOCK;
     }
-  #endif
+    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
+  }
+#endif
 }
 }  // namespace et
