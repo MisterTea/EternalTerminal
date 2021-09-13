@@ -2,6 +2,23 @@
 
 #include "Headers.hpp"
 
+#ifndef NO_TELEMETRY
+#if __has_include(<boost/filesystem.hpp>)
+#pragma message "Using boost::filesystem"
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#elif __has_include(<filesystem>)
+#include <filesystem>
+namespace fs = filesystem;
+#elif __has_include(<experimental/filesystem>)
+#pragma message "Using std::experimental::filesystem"
+#include <experimental/filesystem>
+namespace fs = std::experimental;
+#else
+#pragma message "No filesystem library found."
+#endif
+#endif
+
 namespace httplib {
 class Client;
 }
