@@ -82,6 +82,22 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_set>
 #include <vector>
 
+
+// Need to check for Boost first because Mojave *has* std::filesystem,
+// but won't let you use it.
+#if __has_include(<boost/filesystem.hpp>)
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#elif __has_include(<filesystem>)
+#include <filesystem>
+namespace fs = std::filesystem;
+#elif __has_include(<experimental/filesystem>)
+#include <experimental/filesystem>
+namespace fs = std::experimental;
+#else
+#pragma message "No filesystem library found."
+#endif
+
 #include "ET.pb.h"
 #include "ETerminal.pb.h"
 #include "ThreadPool.h"

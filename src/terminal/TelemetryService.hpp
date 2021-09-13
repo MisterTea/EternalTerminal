@@ -2,21 +2,6 @@
 
 #include "Headers.hpp"
 
-#ifndef NO_TELEMETRY
-#if __has_include(<boost/filesystem.hpp>)
-#include <boost/filesystem.hpp>
-namespace fs = boost::filesystem;
-#elif __has_include(<filesystem>)
-#include <filesystem>
-namespace fs = filesystem;
-#elif __has_include(<experimental/filesystem>)
-#include <experimental/filesystem>
-namespace fs = std::experimental;
-#else
-#pragma message "No filesystem library found (which Telemetry needs)."
-#endif
-#endif
-
 namespace httplib {
 class Client;
 }
