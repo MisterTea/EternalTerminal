@@ -2,7 +2,6 @@
 #define __IPC_PAIR_ENDPOINT_H__
 
 #include "Headers.hpp"
-
 #include "HtmHeaderCodes.hpp"
 #include "SocketHandler.hpp"
 
@@ -13,6 +12,7 @@ class IpcPairEndpoint {
   virtual ~IpcPairEndpoint();
   inline int getEndpointFd() { return endpointFd; }
   virtual void closeEndpoint() {
+    LOG(INFO) << "SENDING SESSION END";
     unsigned char header = SESSION_END;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->close(endpointFd);

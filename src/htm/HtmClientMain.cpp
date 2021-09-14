@@ -1,3 +1,5 @@
+#include <cxxopts.hpp>
+
 #include "DaemonCreator.hpp"
 #include "HtmClient.hpp"
 #include "HtmServer.hpp"
@@ -7,7 +9,6 @@
 #include "PipeSocketHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "SubprocessToString.hpp"
-#include <cxxopts.hpp>
 
 using namespace et;
 

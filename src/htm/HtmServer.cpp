@@ -37,26 +37,26 @@ void HtmServer::run() {
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (FD_ISSET(endpointFd, &rfd)) {
-        STERROR << "READING FROM STDIN";
+        LOG(INFO) << "READING FROM STDIN";
         socketHandler->readAll(endpointFd, (char *)&header, 1, false);
-        STERROR << "Got message header: " << int(header);
+        LOG(INFO) << "Got message header: " << int(header);
         int32_t length;
         socketHandler->readB64(endpointFd, (char *)&length, 4);
-        STERROR << "READ LENGTH: " << length;
+        LOG(INFO) << "READ LENGTH: " << length;
         switch (header) {
           case INSERT_KEYS: {
             string uid = string(UUID_LENGTH, '0');
             socketHandler->readAll(endpointFd, &uid[0], uid.length(), false);
             length -= uid.length();
-            STERROR << "READING FROM " << uid << ":" << length;
+            LOG(INFO) << "READING FROM " << uid << ":" << length;
             string data;
             socketHandler->readB64EncodedLength(endpointFd, &data, length);
-            STERROR << "READ FROM " << uid << ":" << data << " " << length;
+            LOG(INFO) << "READ FROM " << uid << ":" << data << " " << length;
             state.appendData(uid, data);
             break;
           }
           case INSERT_DEBUG_KEYS: {
-            STERROR << "READING DEBUG: " << length;
+            LOG(INFO) << "READING DEBUG: " << length;
             string data(length, '\0');
             socketHandler->readAll(endpointFd, &data[0], length, false);
             if (data[0] == 'x') {
@@ -65,6 +65,7 @@ void HtmServer::run() {
             }
             if (data[0] == 27) {
               // escape key pressed, disconnect
+              LOG(INFO) << "CLOSING ENDPOINT";
               closeEndpoint();
             }
             if (data[0] == 'd') {
@@ -124,7 +125,9 @@ void HtmServer::run() {
         }
       }
 
-      state.update(endpointFd);
+      if (endpointFd > 0) {
+        state.update(endpointFd);
+      }
     } catch (std::runtime_error &re) {
       STERROR << re.what();
       closeEndpoint();
@@ -153,19 +156,19 @@ void HtmServer::recover() {
   std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
 
   // Send the state
-  STERROR << "Starting terminal";
+  LOG(INFO) << "Starting terminal";
 
   sendDebug("Initializing HTM, please wait...\n\r");
 
   {
     unsigned char header = INIT_STATE;
     string jsonString = state.toJsonString();
-    int32_t length = jsonString.length();
+    int32_t length = Base64::EncodedLength(jsonString);
     VLOG(1) << "SENDING INIT: " << jsonString;
+    VLOG(1) << "SENDING INIT: " << length;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->writeB64(endpointFd, (const char *)&length, 4);
-    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
-                                   jsonString.length(), false);
+    socketHandler->writeB64(endpointFd, &jsonString[0], jsonString.length());
   }
 
   state.sendTerminalBuffers(endpointFd);
