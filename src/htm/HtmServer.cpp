@@ -156,19 +156,19 @@ void HtmServer::recover() {
   std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
 
   // Send the state
-  STERROR << "Starting terminal";
+  LOG(INFO) << "Starting terminal";
 
   sendDebug("Initializing HTM, please wait...\n\r");
 
   {
     unsigned char header = INIT_STATE;
     string jsonString = state.toJsonString();
-    int32_t length = jsonString.length();
+    int32_t length = Base64::EncodedLength(jsonString);
     VLOG(1) << "SENDING INIT: " << jsonString;
+    VLOG(1) << "SENDING INIT: " << length;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->writeB64(endpointFd, (const char *)&length, 4);
-    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
-                                   jsonString.length(), false);
+    socketHandler->writeB64(endpointFd, &jsonString[0], jsonString.length());
   }
 
   state.sendTerminalBuffers(endpointFd);
