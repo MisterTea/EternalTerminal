@@ -3,7 +3,7 @@ set -x
 
 wget `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tarball_url' | sed 's/"//g'` -O `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g' | sed 's/et-v/et_/g' | sed 's/$/.orig.tar.gz/g'`
 
-for distro in `distro-info --stable` `distro-info --testing`; do
+for distro in `distro-info --oldstable` `distro-info --stable` `distro-info --testing`; do
     rm -Rf EternalTerminal/debian
     cp -Rf debian_SOURCE EternalTerminal/debian
     sed -i "s/##DISTRO##/${distro}/g" EternalTerminal/debian/changelog
