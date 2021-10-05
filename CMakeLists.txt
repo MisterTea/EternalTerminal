@@ -218,6 +218,12 @@ else()
   set(UTEMPTER_LIBRARIES "")
 endif()
 
+IF(NOT APPLE AND NOT WIN32)
+  if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
+    SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
+  endif()
+ENDIF()
+
 protobuf_generate_cpp(ET_SRCS ET_HDRS proto/ET.proto)
 set_source_files_properties(${ET_SRCS} ${ET_HDRS} PROPERTIES GENERATED TRUE)
 protobuf_generate_cpp(ETERMINAL_SRCS ETERMINAL_HDRS proto/ETerminal.proto)
