@@ -10,36 +10,36 @@ else()
 
   # Set the triplet
   if(WIN32)
-    set(VCPKG_TARGET_TRIPLET "x64-windows-static")
+    set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "VCPKG Triplet")
   elseif(APPLE)
     execute_process(
       COMMAND uname -m
       COMMAND tr -d '\n'
-      OUTPUT_VARIABLE ARCHITECTURE)
-    message(STATUS "Architecture: ${ARCHITECTURE}")
-    if(${ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
-      set(VCPKG_TARGET_TRIPLET "arm64-osx")
+      OUTPUT_VARIABLE VCPKG_ARCHITECTURE)
+    message(STATUS "Architecture: ${VCPKG_ARCHITECTURE}")
+    if(${VCPKG_ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
+      set(VCPKG_TARGET_TRIPLET "arm64-osx" CACHE STRING "VCPKG Triplet")
     else()
-      set(VCPKG_TARGET_TRIPLET "x64-osx")
+      set(VCPKG_TARGET_TRIPLET "x64-osx" CACHE STRING "VCPKG Triplet")
     endif()
   else()
     execute_process(
       COMMAND uname -m
       COMMAND tr -d '\n'
-      OUTPUT_VARIABLE ARCHITECTURE)
-    message(STATUS "Architecture: ${ARCHITECTURE}")
-    if(${ARCHITECTURE} STREQUAL "x86_64")
-      set(VCPKG_TARGET_TRIPLET "x64-linux")
-    elseif(${ARCHITECTURE} STREQUAL "x86_86")
-      set(VCPKG_TARGET_TRIPLET "x86-linux")
-    elseif(${ARCHITECTURE} STREQUAL "aarch64")
-      set(VCPKG_TARGET_TRIPLET "arm64-linux")
-    elseif(${ARCHITECTURE} STREQUAL "arm64")
-      set(VCPKG_TARGET_TRIPLET "arm64-linux")
-    elseif(${ARCHITECTURE} MATCHES "arm.*")
-      set(VCPKG_TARGET_TRIPLET "arm-linux")
+      OUTPUT_VARIABLE VCPKG_ARCHITECTURE)
+    message(STATUS "Architecture: ${VCPKG_ARCHITECTURE}")
+    if(${VCPKG_ARCHITECTURE} STREQUAL "x86_64")
+      set(VCPKG_TARGET_TRIPLET "x64-linux" CACHE STRING "VCPKG Triplet")
+    elseif(${VCPKG_ARCHITECTURE} STREQUAL "x86_86")
+      set(VCPKG_TARGET_TRIPLET "x86-linux" CACHE STRING "VCPKG Triplet")
+    elseif(${VCPKG_ARCHITECTURE} STREQUAL "aarch64")
+      set(VCPKG_TARGET_TRIPLET "arm64-linux" CACHE STRING "VCPKG Triplet")
+    elseif(${VCPKG_ARCHITECTURE} STREQUAL "arm64")
+      set(VCPKG_TARGET_TRIPLET "arm64-linux" CACHE STRING "VCPKG Triplet")
+    elseif(${VCPKG_ARCHITECTURE} MATCHES "arm.*")
+      set(VCPKG_TARGET_TRIPLET "arm-linux" CACHE STRING "VCPKG Triplet")
     else()
-      set(VCPKG_TARGET_TRIPLET "${ARCHITECTURE}-linux")
+      set(VCPKG_TARGET_TRIPLET "${VCPKG_ARCHITECTURE}-linux" CACHE STRING "VCPKG Triplet")
     endif()
   endif()
 
@@ -62,6 +62,8 @@ else()
   set(Protobuf_USE_STATIC_LIBS ON)
   set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
+
+message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
 # Don't specify languages yet in case we need to bump the cmake version
 project(EternalTCP VERSION 6.1.8 LANGUAGES NONE)
