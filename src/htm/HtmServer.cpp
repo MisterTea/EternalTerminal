@@ -163,12 +163,12 @@ void HtmServer::recover() {
   {
     unsigned char header = INIT_STATE;
     string jsonString = state.toJsonString();
-    int32_t length = Base64::EncodedLength(jsonString);
+    int32_t length = jsonString.length();
     VLOG(1) << "SENDING INIT: " << jsonString;
     VLOG(1) << "SENDING INIT: " << length;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->writeB64(endpointFd, (const char *)&length, 4);
-    socketHandler->writeB64(endpointFd, &jsonString[0], jsonString.length());
+    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0], jsonString.length(), false);
   }
 
   state.sendTerminalBuffers(endpointFd);
