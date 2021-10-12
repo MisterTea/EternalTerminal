@@ -25,7 +25,7 @@ Then if you want a daemon to launch `etserver` on every boot:
 On m1 (Apple Silicon) Macs:
 
 ```
-sudo sed 's:/usr/local/bin/etserver:/opt/homebrew/bin/etserver' ../init/launchd/homebrew.mxcl.et.plist >/Library/LaunchDaemons/homebrew.mxcl.et.plist
+sudo sed 's:/usr/local/bin/etserver:/opt/homebrew/bin/etserver:g' ../init/launchd/homebrew.mxcl.et.plist | sudo tee /Library/LaunchDaemons/homebrew.mxcl.et.plist
 sudo launchctl load -w /Library/LaunchDaemons/homebrew.mxcl.et.plist
 ```
 

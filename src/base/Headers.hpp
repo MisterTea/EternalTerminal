@@ -82,12 +82,31 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_set>
 #include <vector>
 
-#ifndef NO_TELEMETRY
+
+// Need to check for Boost first because Mojave *has* std::filesystem,
+// but won't let you use it.
+#if __APPLE__
+#if __has_include(<boost/filesystem.hpp>)
+#include <boost/filesystem.hpp>
+namespace fs = boost::filesystem;
+#else
+#include <filesystem>
+namespace fs = std::filesystem;
+#endif
+#else
+// For non-Apple systems, prefer std::filesystem
+// Otherwise, older versions of boost cause failures.
 #if __has_include(<filesystem>)
 #include <filesystem>
-#else
+namespace fs = std::filesystem;
+#elif __has_include(<experimental/filesystem>)
 #include <experimental/filesystem>
-using namespace std::experimental;
+namespace fs = std::experimental;
+#elif __has_include(<boost/filesystem>)
+#include <boost/filesystem>
+namespace fs = boost::filesystem
+#else
+#pragma message "No filesystem library found."
 #endif
 #endif
 

@@ -55,6 +55,13 @@ else()
         "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
     )
   else()
+    # Make BoostConfig.cmake able to check its inputs
+    cmake_policy(SET CMP0057 NEW)
+    # Honor the visibility properties for all target types, including
+    # object libraries and static libraries.
+    cmake_policy(SET CMP0063 NEW)
+    # Don't ignore <PackageName>_ROOT variables
+    cmake_policy(SET CMP0074 NEW)
     set(Protobuf_PROTOC_EXECUTABLE
         "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
     )
@@ -115,10 +122,13 @@ endif(CMAKE_SYSTEM_NAME MATCHES "NetBSD")
 
 option(DISABLE_SENTRY "Disable Sentry crash logging" OFF)
 option(DISABLE_TELEMETRY "Disable all crash logging" OFF)
+
 IF(APPLE)
-IF(CMAKE_HOST_SYSTEM_VERSION VERSION_LESS "19.0.0")
-SET(DISABLE_TELEMETRY ON)
-ENDIF()
+  # Proxy test for Mojave? (Clang that doesn't have std::filesystem)
+  IF(CMAKE_HOST_SYSTEM_VERSION VERSION_LESS "19.0.0")
+    # So use Boost's version
+    find_package(Boost 1.76 COMPONENTS filesystem REQUIRED)
+  ENDIF()
 ENDIF(APPLE)
 
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY OR DISABLE_TELEMETRY)
@@ -218,6 +228,11 @@ else()
   set(UTEMPTER_LIBRARIES "")
 endif()
 
+if(NOT Boost_FOUND)
+  set(Boost_INCLUDE_DIR "")
+  set(Boost_LIBRARIES "")
+endif()
+
 IF(NOT APPLE AND NOT WIN32)
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
@@ -297,6 +312,7 @@ include_directories(
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
+  ${Boost_INCLUDE_DIR}
   ${OPENSSL_INCLUDE_DIR})
 
 if(NOT ANDROID)
@@ -385,6 +401,7 @@ target_link_libraries(
   ${PROTOBUF_LIBS}
   ${sodium_LIBRARY_RELEASE}
   ${UTEMPTER_LIBRARIES}
+  ${Boost_LIBRARIES}
   ${CORE_LIBRARIES})
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
@@ -409,6 +426,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
   add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
@@ -424,6 +442,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
@@ -452,6 +471,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
   decorate_target(htm)
 
@@ -466,6 +486,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
   decorate_target(htmd)
 
@@ -487,6 +508,7 @@ else(WIN32)
     ${sodium_LIBRARY_RELEASE}
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
   add_test(et-test et-test)
   decorate_target(et-test)
