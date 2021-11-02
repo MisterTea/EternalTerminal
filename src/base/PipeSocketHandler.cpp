@@ -13,7 +13,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   FATAL_FAIL(sockFd);
   initSocket(sockFd);
   remote.sun_family = AF_UNIX;
-  strcpy(remote.sun_path, pipePath.c_str());
+  strncpy(remote.sun_path, pipePath.c_str(), 108);
 
   VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
   int result =
@@ -104,7 +104,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   FATAL_FAIL(fd);
   initServerSocket(fd);
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
-  strcpy(local.sun_path, pipePath.c_str());
+  strncpy(local.sun_path, pipePath.c_str(), 108);
   unlink(local.sun_path);
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));

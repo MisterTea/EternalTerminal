@@ -16,6 +16,7 @@ UserTerminalRouter::UserTerminalRouter(
 }
 
 IdKeyPair UserTerminalRouter::acceptNewConnection() {
+  lock_guard<recursive_mutex> guard(routerMutex);
   LOG(INFO) << "Listening to id/key FIFO";
   int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
@@ -49,6 +50,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
 }
 
 TerminalUserInfo UserTerminalRouter::getInfoForId(const string &id) {
+  lock_guard<recursive_mutex> guard(routerMutex);
   auto it = idInfoMap.find(id);
   if (it == idInfoMap.end()) {
     STFATAL << " Tried to read from an id that no longer exists";

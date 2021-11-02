@@ -48,6 +48,10 @@ string LogHandler::stderrToFile(const string &pathPrefix) {
   string current_time(buffer);
   string stderrFilename = pathPrefix + "_stderr_" + current_time;
   FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
+  fs::permissions(
+      stderrFilename,
+      fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
+      fs::perm_options::replace);
   if (!stderr_stream) {
     STFATAL << "Invalid filename " << stderrFilename;
   }
