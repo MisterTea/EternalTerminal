@@ -2,7 +2,6 @@
 #define __ET_USER_TERMINAL_ROUTER__
 
 #include "Headers.hpp"
-
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
 
@@ -24,6 +23,7 @@ class UserTerminalRouter {
   int serverFd;
   unordered_map<string, TerminalUserInfo> idInfoMap;
   shared_ptr<PipeSocketHandler> socketHandler;
+  recursive_mutex routerMutex;
 };
 }  // namespace et
 

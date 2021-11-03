@@ -12,7 +12,7 @@
 	url = https://github.com/progschj/ThreadPool.git
 [submodule "external/easyloggingpp"]
 	path = external/easyloggingpp
-	url = https://github.com/zuhd-org/easyloggingpp.git
+	url = https://github.com/MisterTea/easyloggingpp.git
 [submodule "external/sanitizers-cmake"]
 	path = external/sanitizers-cmake
 	url = https://github.com/arsenm/sanitizers-cmake.git

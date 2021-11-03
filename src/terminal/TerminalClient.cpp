@@ -14,7 +14,7 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
           sourceDestination[1].find_first_not_of("0123456789-") !=
               string::npos) {
         PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_name(sourceDestination[0]);
+        pfsr.set_environmentvariable(sourceDestination[0]);
         pfsr.mutable_destination()->set_name(sourceDestination[1]);
         pfsrs.push_back(pfsr);
       } else if (sourceDestination[0].find('-') != string::npos &&
