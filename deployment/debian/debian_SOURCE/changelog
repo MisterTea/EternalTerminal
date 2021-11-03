@@ -1,3 +1,9 @@
+et (6.1.9-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * Security, Compatibility, and bug fixes
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Wed, 3 Nov 2021 16:36:54 -0800
+
 et (6.1.8-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * ssh config fixes
