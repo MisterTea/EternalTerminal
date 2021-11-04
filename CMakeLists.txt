@@ -526,7 +526,7 @@ else(WIN32)
     DESTINATION "bin")
 endif()
 
-set(CPACK_PACKAGE_NAME "Eternal Terminal")
+set(CPACK_PACKAGE_NAME "EternalTerminal")
 set(CPACK_PACKAGE_VENDOR "https://github.com/MisterTea/EternalTerminal")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
     "Remote terminal for the busy and impatient")
@@ -536,6 +536,9 @@ set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(CPACK_PACKAGE_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 set(CPACK_PACKAGE_INSTALL_DIRECTORY "EternalTerminal")
 set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
+
+SET(CPACK_GENERATOR "STGZ;TGZ;TZ;DEB")
+SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
 
 # This must always be last!
 include(CPack)

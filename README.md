@@ -237,8 +237,8 @@ cd build
 # For ARM (including OS/X with apple silicon):
 if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
-make
-sudo make install
+make package
+sudo dpkg --install *.deb
 sudo cp ../etc/et.cfg /etc/
 ```
 
