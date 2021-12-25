@@ -98,7 +98,8 @@ void readWriteTest(const string& clientId,
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false, "", "", false, ""));
+      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION));
   thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
   sleep(3);
 

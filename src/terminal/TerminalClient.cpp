@@ -66,8 +66,9 @@ TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
                                const string& tunnels,
                                const string& reverseTunnels,
                                bool forwardSshAgent,
-                               const string& identityAgent)
-    : console(_console), shuttingDown(false) {
+                               const string& identityAgent,
+                               int _keepaliveDuration)
+  : console(_console), shuttingDown(false), keepaliveDuration(_keepaliveDuration) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
@@ -204,7 +205,7 @@ void TerminalClient::run(const string& command) {
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
-  time_t keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+  time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
 
   if (command.length()) {
@@ -283,7 +284,7 @@ void TerminalClient::run(const string& command) {
 
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+              keepaliveTime = time(NULL) + keepaliveDuration;
             }
           }
 #else
@@ -299,7 +300,7 @@ void TerminalClient::run(const string& command) {
 
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-              keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+              keepaliveTime = time(NULL) + keepaliveDuration;
             }
           }
 #endif
@@ -320,7 +321,7 @@ void TerminalClient::run(const string& command) {
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST ||
               packetType ==
                   et::TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE) {
-            keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+            keepaliveTime = time(NULL) + keepaliveDuration;
             VLOG(4) << "Got PF packet type " << packetType;
             portForwardHandler->handlePacket(packet, connection);
             continue;
@@ -336,7 +337,7 @@ void TerminalClient::run(const string& command) {
                 // VLOG(5) << "Got message: " << s;
                 // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
                 // connection->getReader()->getSequenceNumber();
-                keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+                keepaliveTime = time(NULL) + keepaliveDuration;
                 console->write(s);
               }
               break;
@@ -354,7 +355,7 @@ void TerminalClient::run(const string& command) {
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
-        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + keepaliveDuration;
         if (waitingOnKeepalive) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
           connection->closeSocketAndMaybeReconnect();
@@ -391,13 +392,13 @@ void TerminalClient::run(const string& command) {
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
                    protoToString(pfr)));
         VLOG(4) << "send PF request";
-        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + keepaliveDuration;
       }
       for (auto& pwd : dataToSend) {
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
         VLOG(4) << "send PF data";
-        keepaliveTime = time(NULL) + CLIENT_KEEP_ALIVE_DURATION;
+        keepaliveTime = time(NULL) + keepaliveDuration;
       }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();

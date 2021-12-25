@@ -161,8 +161,8 @@ const string SYSTEM_SSH_CONFIG_PATH = "/etc/ssh/ssh_config";
 const string USER_SSH_CONFIG_PATH = "/.ssh/config";
 
 // Keepalive configs
-const int CLIENT_KEEP_ALIVE_DURATION = 5;
-// This should be at least double the value of CLIENT_KEEP_ALIVE_DURATION to
+const int MAX_CLIENT_KEEP_ALIVE_DURATION = 5;
+// This should be at least double the value of MAX_CLIENT_KEEP_ALIVE_DURATION to
 // allow enough time.
 const int SERVER_KEEP_ALIVE_DURATION = 11;
 

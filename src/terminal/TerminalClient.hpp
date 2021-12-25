@@ -24,7 +24,7 @@ class TerminalClient {
                  const string& passkey, shared_ptr<Console> _console,
                  bool jumphost, const string& tunnels,
                  const string& reverseTunnels, bool forwardSshAgent,
-                 const string& identityAgent);
+                 const string& identityAgent, int _keepaliveDuration);
   virtual ~TerminalClient();
   void run(const string& command);
   void shutdown() {
@@ -38,6 +38,7 @@ class TerminalClient {
   shared_ptr<PortForwardHandler> portForwardHandler;
   bool shuttingDown;
   recursive_mutex shutdownMutex;
+  int keepaliveDuration;
 };
 
 }  // namespace et
