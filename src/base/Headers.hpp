@@ -82,10 +82,9 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <unordered_set>
 #include <vector>
 
-
 // Need to check for Boost first because Mojave *has* std::filesystem,
 // but won't let you use it.
-#if __APPLE__
+#if defined(__APPLE__) && MAC_OS_X_VERSION_MIN_REQUIRED < MAC_OS_X_VERSION_10_15
 #if __has_include(<boost/filesystem.hpp>)
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
