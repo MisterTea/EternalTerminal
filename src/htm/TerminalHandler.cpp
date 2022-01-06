@@ -9,12 +9,66 @@ namespace et {
 TerminalHandler::TerminalHandler() : run(true), bufferLength(0) {}
 
 void TerminalHandler::start() {
+#ifdef WIN32
+
+  FATAL_FAIL_IF_ZERO(CreatePipe(&inputReadSide, &inputWriteSide, NULL, 0));
+  FATAL_FAIL_IF_ZERO(CreatePipe(&outputReadSide, &outputWriteSide, NULL, 0));
+
+  COORD c = {80, 24};
+  FATAL_FAIL_UNLESS_S_OK(
+      CreatePseudoConsole(c, inputReadSide, outputWriteSide, 0, &hPC));
+
+  // Prepare Startup Information structure
+  STARTUPINFOEX si;
+  ZeroMemory(&si, sizeof(si));
+  si.StartupInfo.cb = sizeof(STARTUPINFOEX);
+
+  // Discover the size required for the list
+  size_t bytesRequired;
+  InitializeProcThreadAttributeList(NULL, 1, 0, &bytesRequired);
+
+  // Allocate memory to represent the list
+  si.lpAttributeList = (PPROC_THREAD_ATTRIBUTE_LIST)HeapAlloc(GetProcessHeap(),
+                                                              0, bytesRequired);
+  FATAL_FAIL_IF_ZERO(si.lpAttributeList);
+
+  // Initialize the list memory location
+  FATAL_FAIL_IF_ZERO(InitializeProcThreadAttributeList(si.lpAttributeList, 1, 0,
+                                                       &bytesRequired));
+
+  // Set the pseudoconsole information into the list
+  FATAL_FAIL_IF_ZERO(UpdateProcThreadAttribute(
+      si.lpAttributeList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, hPC,
+      sizeof(hPC), NULL, NULL));
+
+  PCWSTR childApplication = L"C:\\windows\\system32\\cmd.exe";
+
+  // Create mutable text string for CreateProcessW command line string.
+  const size_t charsRequired =
+      wcslen(childApplication) + 1;  // +1 null terminator
+  PWSTR cmdLineMutable =
+      (PWSTR)HeapAlloc(GetProcessHeap(), 0, sizeof(wchar_t) * charsRequired);
+
+  FATAL_FAIL_IF_ZERO(cmdLineMutable);
+
+  wcscpy_s(cmdLineMutable, charsRequired, childApplication);
+
+  PROCESS_INFORMATION pi;
+  ZeroMemory(&pi, sizeof(pi));
+
+  // Call CreateProcess
+  FATAL_FAIL_IF_ZERO(CreateProcessW(NULL, cmdLineMutable, NULL, NULL, FALSE,
+                                    EXTENDED_STARTUPINFO_PRESENT, NULL, NULL,
+                                    &si.StartupInfo, &pi));
+
+  readThread.reset(new thread(&TerminalHandler::beginRead, this));
+#else
   pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
   switch (pid) {
     case -1:
       FATAL_FAIL(pid);
     case 0: {
-      passwd* pwd = getpwuid(getuid());
+      passwd *pwd = getpwuid(getuid());
       if (pwd == NULL) {
         LOG(FATAL)
             << "Not able to fork a terminal because getpwuid returns null";
@@ -40,7 +94,24 @@ void TerminalHandler::start() {
       break;
     }
   }
+#endif
 }
+
+#define BUF_SIZE (16 * 1024)
+
+#ifdef WIN32
+void TerminalHandler::beginRead() {
+  char b[BUF_SIZE];
+  while (run) {
+    DWORD bytesRead;
+    FATAL_FAIL_IF_ZERO(ReadFile(outputReadSide, b, BUF_SIZE, &bytesRead, NULL));
+    if (bytesRead > 0) {
+      scoped_lock<mutex> lock(readBufferMutex);
+      readBuffer.append(b, bytesRead);
+    }
+  }
+}
+#endif
 
 #define MAX_BUFFER_LINES (1024)
 #define MAX_BUFFER_CHARS (128 * MAX_BUFFER_LINES)
@@ -49,9 +120,22 @@ string TerminalHandler::pollUserTerminal() {
   if (!run) {
     return string();
   }
-
-#define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
+
+#ifdef WIN32
+  scoped_lock<mutex> lock(readBufferMutex);
+  if (readBuffer.empty()) {
+    return string();
+  }
+  if (readBuffer.size() > BUF_SIZE) {
+    memcpy(b, readBuffer.c_str(), BUF_SIZE);
+    readBuffer.erase(0, BUF_SIZE);
+  } else {
+    memcpy(b, readBuffer.c_str(), readBuffer.size());
+    readBuffer.clear();
+  }
+  return b;
+#else
 
   // Data structures needed for select() and
   // non-blocking I/O.
@@ -79,7 +163,7 @@ string TerminalHandler::pollUserTerminal() {
       if (rc > 0) {
         string newChars(b, rc);
         vector<string> tokens = split(newChars, '\n');
-        for (auto& it : tokens) {
+        for (auto &it : tokens) {
           bufferLength += it.length();
         }
         if (buffer.empty()) {
@@ -127,7 +211,7 @@ string TerminalHandler::pollUserTerminal() {
         return string();
       }
     }
-  } catch (const std::exception& ex) {
+  } catch (const std::exception &ex) {
     LOG(INFO) << ex.what();
     run = false;
 #ifdef WITH_UTEMPTER
@@ -136,23 +220,45 @@ string TerminalHandler::pollUserTerminal() {
   }
 
   return string();
+#endif
 }
 
-void TerminalHandler::appendData(const string& data) {
+void TerminalHandler::appendData(const string &data) {
+#ifdef WIN32
+  RawSocketUtils::writeAll(inputWriteSide, &data[0], data.length());
+#else
   RawSocketUtils::writeAll(masterFd, &data[0], data.length());
+#endif
 }
 
 void TerminalHandler::updateTerminalSize(int col, int row) {
+#ifdef WIN32
+  // Retrieve width and height dimensions of display in
+  // characters using theoretical height/width functions
+  // that can retrieve the properties from the display
+  // attached to the event.
+  COORD size;
+  size.X = col;
+  size.Y = row;
+
+  // Call pseudoconsole API to inform buffer dimension update
+  ResizePseudoConsole(hPC, size);
+#else
   winsize tmpwin;
   tmpwin.ws_row = row;
   tmpwin.ws_col = col;
   tmpwin.ws_xpixel = 0;
   tmpwin.ws_ypixel = 0;
   ioctl(masterFd, TIOCSWINSZ, &tmpwin);
+#endif
 }
 
 void TerminalHandler::stop() {
+#ifdef WIN32
+  ClosePseudoConsole(hPC);
+#else
   kill(childPid, SIGKILL);
+#endif
   run = false;
 }
 

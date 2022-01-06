@@ -1,6 +1,27 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
+#ifdef WIN32
+void RawSocketUtils::writeAll(HANDLE fd, const char* buf, size_t count) {
+  size_t bytesWritten = 0;
+  do {
+    DWORD newBytesWritten;
+    FATAL_FAIL_IF_ZERO(WriteFile(fd, buf + bytesWritten, count - bytesWritten,
+                                 &newBytesWritten, NULL));
+    bytesWritten += newBytesWritten;
+  } while (bytesWritten != count);
+}
+
+void RawSocketUtils::readAll(HANDLE fd, char* buf, size_t count) {
+  size_t bytesRead = 0;
+  do {
+    DWORD newBytesRead;
+    FATAL_FAIL_IF_ZERO(
+        ReadFile(fd, buf + bytesRead, count - bytesRead, &newBytesRead, NULL));
+    bytesRead += newBytesRead;
+  } while (bytesRead != count);
+}
+#else
 void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
   size_t bytesWritten = 0;
   do {
@@ -52,4 +73,5 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     bytesRead += rc;
   } while (bytesRead != count);
 }
+#endif
 }  // namespace et

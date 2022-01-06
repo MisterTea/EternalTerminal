@@ -27,8 +27,41 @@ void HtmClient::run() {
     tv.tv_usec = 10000;
     select(max(STDIN_FILENO, endpointFd) + 1, &rfd, NULL, NULL, &tv);
 
-    if (FD_ISSET(STDIN_FILENO, &rfd)) {
+#ifdef WIN32
+    DWORD numberOfEvents;
+    FATAL_FAIL_IF_ZERO(GetNumberOfConsoleInputEvents(
+        GetStdHandle(STD_INPUT_HANDLE), &numberOfEvents));
+#endif
+    if (FD_ISSET(STDIN_FILENO, &rfd)
+#ifdef WIN32
+        && numberOfEvents
+#endif
+    ) {
       VLOG(1) << "STDIN -> " << endpointFd;
+#ifdef WIN32
+      DWORD events;
+      INPUT_RECORD buffer[128];
+      HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+      PeekConsoleInput(handle, buffer, 128, &events);
+      if (events > 0) {
+        ReadConsoleInput(handle, buffer, 128, &events);
+        string s;
+        for (int keyEvent = 0; keyEvent < events; keyEvent++) {
+          if (buffer[keyEvent].EventType == KEY_EVENT &&
+              buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+            char charPressed =
+                ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+            if (charPressed) {
+              s += charPressed;
+            }
+          }
+        }
+        if (s.length()) {
+          socketHandler->writeAllOrThrow(endpointFd, s.c_str(), s.length(),
+                                         false);
+        }
+      }
+#else
       int rc = ::read(STDIN_FILENO, buf, BUF_SIZE);
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
@@ -37,6 +70,7 @@ void HtmClient::run() {
         throw std::runtime_error("stdin has closed abruptly.");
       }
       socketHandler->writeAllOrThrow(endpointFd, buf, rc, false);
+#endif
     }
 
     if (FD_ISSET(endpointFd, &rfd)) {
@@ -59,7 +93,11 @@ void HtmClient::run() {
         return;
       }
 
+#ifdef WIN32
+      RawSocketUtils::writeAll(GetStdHandle(STD_OUTPUT_HANDLE), buf, rc);
+#else
       RawSocketUtils::writeAll(STDOUT_FILENO, buf, rc);
+#endif
     }
   }
 }

@@ -23,6 +23,10 @@
 #include <Ws2tcpip.h>
 #include <afunix.h>
 #include <signal.h>
+#include <tchar.h>
+#include <tlhelp32.h>
+#include <windows.h>
+#include <winerror.h>
 
 #include <codecvt>
 inline int close(int fd) { return ::closesocket(fd); }
@@ -175,6 +179,8 @@ inline int GetErrno() {
         return ECONNRESET;
       case WSAECONNABORTED:
         return ECONNABORTED;
+      case WSAECONNREFUSED:
+        return ECONNREFUSED;
       default:
         STFATAL << "Unmapped WSA error: " << retval;
     }
@@ -194,7 +200,7 @@ inline void SetErrno(int e) {
 }
 
 #ifdef WIN32
-inline string WindowsErrnoToString() {
+inline string WinsockErrnoToString() {
   const int BUFSIZE = 4096;
   char buf[BUFSIZE];
   auto charsWritten = FormatMessageA(
@@ -207,17 +213,56 @@ inline string WindowsErrnoToString() {
   }
   return "Unknown Error";
 }
+
+inline string WinErrnoToString() {
+  const int BUFSIZE = 4096;
+  char buf[BUFSIZE];
+  auto charsWritten = FormatMessageA(
+      FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS, NULL,
+      GetLastError(), MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT), buf, BUFSIZE,
+      NULL);
+  if (charsWritten) {
+    string s(buf, charsWritten + 1);
+    return s;
+  }
+  return "Unknown Error";
+}
+
 #define FATAL_FAIL(X)                             \
   if (((X) == -1))                                \
     LOG(FATAL) << "Error: (" << WSAGetLastError() \
-               << "): " << WindowsErrnoToString();
+               << "): " << WinsockErrnoToString();
 
 #define FATAL_FAIL_UNLESS_ZERO(X)                 \
   if (((X) != 0))                                 \
     LOG(FATAL) << "Error: (" << WSAGetLastError() \
-               << "): " << WindowsErrnoToString();
+               << "): " << WinsockErrnoToString();
+
+template <class Type>
+inline void FATAL_FAIL_IF_ZERO(Type X) {
+  if (!X) {
+    STFATAL << "Error: (" << GetLastError() << "): " << WinErrnoToString();
+  }
+}
 
 #define FATAL_FAIL_UNLESS_EINVAL(X) FATAL_FAIL(X)
+
+inline void FATAL_FAIL_UNLESS_S_OK(HRESULT X) {
+  if (X != S_OK) {
+    LPVOID lpMsgBuf;
+    LPVOID lpDisplayBuf;
+
+    FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                      FORMAT_MESSAGE_IGNORE_INSERTS,
+                  NULL, X, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                  (LPTSTR)&lpMsgBuf, 0, NULL);
+
+    STFATAL << "Error (" << X << "): " << ((LPCTSTR)lpMsgBuf);
+  }
+}
+
+#define STDIN_FILENO fileno(stdin)
+#define STDOUT_FILENO fileno(stdout)
 
 #else
 #define FATAL_FAIL(X) \
@@ -236,8 +281,8 @@ inline string WindowsErrnoToString() {
 #endif
 
 namespace et {
-inline std::ostream& operator<<(std::ostream& os,
-                                const et::SocketEndpoint& se) {
+inline std::ostream &operator<<(std::ostream &os,
+                                const et::SocketEndpoint &se) {
   if (se.has_name()) {
     os << se.name();
   }
@@ -248,7 +293,7 @@ inline std::ostream& operator<<(std::ostream& os,
 }
 
 template <typename Out>
-inline void split(const std::string& s, char delim, Out result) {
+inline void split(const std::string &s, char delim, Out result) {
   std::stringstream ss;
   ss.str(s);
   std::string item;
@@ -257,22 +302,22 @@ inline void split(const std::string& s, char delim, Out result) {
   }
 }
 
-inline std::vector<std::string> split(const std::string& s, char delim) {
+inline std::vector<std::string> split(const std::string &s, char delim) {
   std::vector<std::string> elems;
   split(s, delim, std::back_inserter(elems));
   return elems;
 }
 
-inline bool replace(std::string& str, const std::string& from,
-                    const std::string& to) {
+inline bool replace(std::string &str, const std::string &from,
+                    const std::string &to) {
   auto start_pos = str.find(from);
   if (start_pos == std::string::npos) return false;
   str.replace(start_pos, from.length(), to);
   return true;
 }
 
-inline int replaceAll(std::string& str, const std::string& from,
-                      const std::string& to) {
+inline int replaceAll(std::string &str, const std::string &from,
+                      const std::string &to) {
   if (from.empty()) return 0;
   int retval = 0;
   auto start_pos = 0;
@@ -286,7 +331,7 @@ inline int replaceAll(std::string& str, const std::string& from,
 }
 
 template <typename T>
-inline T stringToProto(const string& s) {
+inline T stringToProto(const string &s) {
   T t;
   if (!t.ParseFromString(s)) {
     STFATAL << "Error parsing string to proto: " << s.length() << " " << s;
@@ -295,7 +340,7 @@ inline T stringToProto(const string& s) {
 }
 
 template <typename T>
-inline string protoToString(const T& t) {
+inline string protoToString(const T &t) {
   string s;
   if (!t.SerializeToString(&s)) {
     STFATAL << "Error serializing proto to string";
@@ -334,7 +379,7 @@ inline string GetTempDirectory() {
   WCHAR buf[65536];
   int retval = GetTempPath(65536, buf);
   int a = 0;
-  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
+  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
   std::string tmpDir = converter.to_bytes(wstring(buf, retval));
 #else
   string tmpDir = _PATH_TMP;
@@ -355,7 +400,7 @@ inline void HandleTerminate() {
     if (eptr) {
       try {
         std::rethrow_exception(eptr);
-      } catch (const std::exception& e) {
+      } catch (const std::exception &e) {
         STFATAL << "Uncaught c++ exception: " << e.what();
       }
     } else {
@@ -371,16 +416,30 @@ inline void InterruptSignalHandler(int signum) {
   ::exit(signum);
 }
 
+inline string GetOsUserName() {
+#ifdef WIN32
+  char buffer[UNLEN + 1] = {0};
+  DWORD buffer_len = UNLEN + 1;
+  if (!::GetUserNameA(buffer, &buffer_len)) {
+    // error handling
+  }
+
+  return string(buffer, buffer_len);
+#else
+  auto uid = getuid();
+  return to_string(uid);
+#endif
+}
 }  // namespace et
 
-inline bool operator==(const google::protobuf::MessageLite& msg_a,
-                       const google::protobuf::MessageLite& msg_b) {
+inline bool operator==(const google::protobuf::MessageLite &msg_a,
+                       const google::protobuf::MessageLite &msg_b) {
   return (msg_a.GetTypeName() == msg_b.GetTypeName()) &&
          (msg_a.SerializeAsString() == msg_b.SerializeAsString());
 }
 
-inline bool operator!=(const google::protobuf::MessageLite& msg_a,
-                       const google::protobuf::MessageLite& msg_b) {
+inline bool operator!=(const google::protobuf::MessageLite &msg_a,
+                       const google::protobuf::MessageLite &msg_b) {
   return (msg_a.GetTypeName() != msg_b.GetTypeName()) ||
          (msg_a.SerializeAsString() != msg_b.SerializeAsString());
 }

@@ -16,8 +16,27 @@ class TerminalHandler {
   const deque<string> &getBuffer() { return buffer; }
 
  protected:
+#ifdef WIN32
+  // - Close these after CreateProcess of child application with pseudoconsole
+  // object.
+  HANDLE inputReadSide, outputWriteSide;
+
+  // - Hold onto these and use them for communication with the child through the
+  // pseudoconsole.
+  HANDLE outputReadSide, inputWriteSide;
+
+  HPCON hPC;
+
+  unique_ptr<std::thread> readThread;
+
+  mutex readBufferMutex;
+  string readBuffer;
+
+  void beginRead();
+#else
   int masterFd;
   int childPid;
+#endif
   bool run;
   deque<string> buffer;
   int64_t bufferLength;

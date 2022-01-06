@@ -116,9 +116,14 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
 }
 
 int UnixSocketHandler::accept(int sockFd) {
+#ifdef WIN32
+  // TODO: We use this for pipe sockets but the other one for network sockets
+  int client_sock = int(::accept(sockFd, NULL, NULL));
+#else
   sockaddr_in client;
   socklen_t c = sizeof(sockaddr_in);
   int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
+#endif
   auto acceptErrno = GetErrno();
   while (true) {
     {
@@ -137,9 +142,14 @@ int UnixSocketHandler::accept(int sockFd) {
     VLOG(3) << "Socket " << sockFd
             << " accepted, returned client_sock: " << client_sock;
     addToActiveSockets(client_sock);
-    lock_guard<recursive_mutex> guard(
-        *(activeSocketMutexes.find(client_sock)->second));
+    if (activeSocketMutexes.find(client_sock) == activeSocketMutexes.end()) {
+      STFATAL << "Could not find mutex for socket: " << client_sock;
+    }
+    auto m = activeSocketMutexes.find(client_sock)->second;
+    lock_guard<recursive_mutex> guard(*m);
+#ifndef WIN32
     initSocket(client_sock);
+#endif
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
   } else if (acceptErrno != EAGAIN && acceptErrno != EWOULDBLOCK) {

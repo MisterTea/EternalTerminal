@@ -11,7 +11,9 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   FATAL_FAIL(sockFd);
+#ifndef WIN32
   initSocket(sockFd);
+#endif
   remote.sun_family = AF_UNIX;
   strcpy(remote.sun_path, pipePath.c_str());
 
@@ -98,11 +100,19 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
     throw runtime_error("Tried to listen twice on the same path");
   }
 
-  sockaddr_un local;
+  sockaddr_un local = { 0 };
 
-  int fd = socket(AF_UNIX, SOCK_STREAM, 0);
+  auto fd = socket(AF_UNIX, SOCK_STREAM, 0);
+#ifdef WIN32
+  FATAL_FAIL_UNLESS_ZERO(fd == INVALID_SOCKET);
+#else
   FATAL_FAIL(fd);
+#endif
+
+#ifndef WIN32
   initServerSocket(fd);
+#endif
+
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
   strcpy(local.sun_path, pipePath.c_str());
   unlink(local.sun_path);
@@ -113,7 +123,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   FATAL_FAIL(::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR));
 #endif
 
-  pipeServerSockets[pipePath] = set<int>({fd});
+  pipeServerSockets[pipePath] = set<int>({int(fd)});
   return pipeServerSockets[pipePath];
 }
 

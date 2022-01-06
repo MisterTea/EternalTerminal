@@ -389,6 +389,47 @@ target_link_libraries(
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
+add_library(
+  HtmCommon STATIC
+  src/htm/TerminalHandler.cpp
+  src/htm/MultiplexerState.cpp
+  src/htm/IpcPairClient.cpp
+  src/htm/IpcPairEndpoint.cpp
+  src/htm/IpcPairServer.cpp
+  src/htm/HtmClient.cpp
+  src/htm/HtmServer.cpp
+)
+add_dependencies(HtmCommon generated-code et-lib)
+decorate_target(HtmCommon)
+
+add_executable(htm src/htm/HtmClientMain.cpp)
+target_link_libraries(
+  htm
+  LINK_PUBLIC
+  HtmCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES})
+decorate_target(htm)
+
+add_executable(htmd src/htm/HtmServerMain.cpp)
+target_link_libraries(
+  htmd
+  LINK_PUBLIC
+  HtmCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+    ${CORE_LIBRARIES})
+decorate_target(htmd)
+
 if(WIN32)
   install(
     TARGETS et
@@ -427,47 +468,6 @@ else(WIN32)
       ${CORE_LIBRARIES})
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
-
-  add_library(
-    HtmCommon STATIC
-    src/htm/TerminalHandler.cpp
-    src/htm/MultiplexerState.cpp
-    src/htm/IpcPairClient.cpp
-    src/htm/IpcPairEndpoint.cpp
-    src/htm/IpcPairServer.cpp
-    src/htm/HtmClient.cpp
-    src/htm/HtmServer.cpp
-  )
-  add_dependencies(HtmCommon generated-code et-lib)
-  decorate_target(HtmCommon)
-
-  add_executable(htm src/htm/HtmClientMain.cpp)
-  target_link_libraries(
-    htm
-    LINK_PUBLIC
-    HtmCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-      ${CORE_LIBRARIES})
-  decorate_target(htm)
-
-  add_executable(htmd src/htm/HtmServerMain.cpp)
-  target_link_libraries(
-    htmd
-    LINK_PUBLIC
-    HtmCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-      ${CORE_LIBRARIES})
-  decorate_target(htmd)
 
   enable_testing()
 

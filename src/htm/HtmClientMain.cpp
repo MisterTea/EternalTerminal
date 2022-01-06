@@ -9,9 +9,33 @@
 #include "PipeSocketHandler.hpp"
 #include "RawSocketUtils.hpp"
 #include "SubprocessToString.hpp"
+#include "WinsockContext.hpp"
 
 using namespace et;
 
+#ifdef WIN32
+bool IsProcessRunning(const TCHAR* const executableName) {
+  PROCESSENTRY32 entry;
+  entry.dwSize = sizeof(PROCESSENTRY32);
+
+  const auto snapshot = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, NULL);
+
+  if (!Process32First(snapshot, &entry)) {
+    CloseHandle(snapshot);
+    return false;
+  }
+
+  do {
+    if (!_tcsicmp(entry.szExeFile, executableName)) {
+      CloseHandle(snapshot);
+      return true;
+    }
+  } while (Process32Next(snapshot, &entry));
+
+  CloseHandle(snapshot);
+  return false;
+}
+#else
 termios terminal_backup;
 
 void term(int signum) {
@@ -23,8 +47,10 @@ void term(int signum) {
   tcsetattr(0, TCSANOW, &terminal_backup);
   exit(1);
 }
+#endif
 
 int main(int argc, char** argv) {
+  WinsockContext winsockContext;
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
   // Parse command line arguments
@@ -47,17 +73,31 @@ int main(int argc, char** argv) {
   setvbuf(stdout, NULL, _IONBF, 0);  // turn off buffering
 
   // Turn on raw terminal mode
+#ifdef WIN32
+  DWORD inputMode;
+  DWORD outputMode;
+  auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
+  GetConsoleMode(hstdin, &inputMode);
+  auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+  GetConsoleMode(hstdout, &outputMode);
+
+  SetConsoleMode(hstdin, ENABLE_VIRTUAL_TERMINAL_INPUT);
+#else
   termios terminal_local;
   tcgetattr(0, &terminal_local);
   memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
   cfmakeraw(&terminal_local);
-  tcsetattr(0, TCSANOW, &terminal_local);
+  tcsetattr(STDOUT_FILENO, TCSANOW, &terminal_local);
+#endif
 
   // Catch sigterm and send exit control code
+#ifdef WIN32
+#else
   struct sigaction action;
   memset(&action, 0, sizeof(struct sigaction));
   action.sa_handler = term;
   sigaction(SIGTERM, &action, NULL);
+#endif
 
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -78,26 +118,41 @@ int main(int argc, char** argv) {
   // Override easylogging handler for sigint
   ::signal(SIGINT, et::InterruptSignalHandler);
 
+#ifdef WIN32
+  auto username = GetOsUserName();
+  string taskKillCommand = "taskkill /U " + username + " htmd.exe";
+  system(taskKillCommand.c_str());
+#else
   uid_t myuid = getuid();
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
     // Kill previous htm daemon
-    string command =
+    string taskKillCommand =
         string("pkill -x -U ") + to_string(myuid) + string(" htmd");
-    system(command.c_str());
+    system(taskKillCommand.c_str());
   }
+#endif
 
   // Check if daemon exists
-  string command = string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
+#ifdef WIN32
+  bool daemonExists = IsProcessRunning(_TEXT("htmd.exe"));
+#else
+  string command = string("pgrep -x -U ") + GetOsUserName() + string(" htmd");
   string pgrepOutput = SystemToStr(command.c_str());
+  bool daemonExists = pgrepOutput.length() > 0;
+#endif
 
-  if (pgrepOutput.length() == 0) {
+  if (!daemonExists) {
     // Fork to create the daemon
+#ifdef WIN32
+    system("start E:\\github\\EternalTerminal\\msvc_build\\Debug\\htmd.exe");
+#else
     int result = DaemonCreator::create(false, "");
     if (result == DaemonCreator::CHILD) {
       // This means we are the daemon
       exit(system("htmd"));
     }
+#endif
   }
 
   // This means we are the client to the daemon
@@ -112,9 +167,19 @@ int main(int argc, char** argv) {
   char buf[] = {
       0x1b, 0x5b, '$', '$', '$', 'q',
   };
+#ifdef WIN32
+  RawSocketUtils::writeAll(GetStdHandle(STD_OUTPUT_HANDLE), buf, sizeof(buf));
+#else
   RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+#endif
   fflush(stdout);
+
+#ifdef WIN32
+  SetConsoleMode(hstdin, inputMode);
+  SetConsoleMode(hstdout, outputMode);
+#else
   tcsetattr(0, TCSANOW, &terminal_backup);
+#endif
 
   return 0;
 }
