@@ -1,5 +1,6 @@
 #include <cxxopts.hpp>
 
+#include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PsuedoTerminalConsole.hpp"
@@ -72,6 +73,8 @@ int main(int argc, char** argv) {
          "--prefix=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))          //
+        ("k,keepalive", "Client keepalive duration in seconds",
+         cxxopts::value<int>())          //
         ("logtostdout", "Write log to stdout")               //
         ("silent", "Disable logging")                        //
         ("N,no-terminal", "Do not create a terminal")        //
@@ -157,6 +160,12 @@ int main(int argc, char** argv) {
     string jumphost =
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
     string host_alias = destinationHost;
+    int keepaliveDuration = result.count("keepalive") ? result["keepalive"].as<int>() : MAX_CLIENT_KEEP_ALIVE_DURATION;
+    if (keepaliveDuration < 1 || keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
+      CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and " << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds" << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
+      exit(0);
+    }
 
     Options sshConfigOptions = {
         NULL,  // username
@@ -293,7 +302,7 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
         is_jumphost, result.count("t") ? result["t"].as<string>() : "",
         result.count("r") ? result["r"].as<string>() : "", forwardAgent,
-        sshSocket);
+        sshSocket, keepaliveDuration);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
   } catch (cxxopts::OptionException& oe) {
