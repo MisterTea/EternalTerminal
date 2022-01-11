@@ -143,8 +143,8 @@ TelemetryService::TelemetryService(const bool _allow,
     sentry_options_set_database_path(options, databasePath.c_str());
     sentry_options_set_dsn(
         options,
-        "https://51ec60d489224f1da2b63c912a5c7fad@o496602.ingest.sentry.io/"
-        "5574732");
+        "https://46412bae7f0244d5abf84e17fdaf71d2@o496602.ingest.sentry.io/"
+        "6143885");
     sentry_options_set_symbolize_stacktraces(options, true);
     sentry_options_set_release(options, "EternalTerminal@" ET_VERSION);
     sentry_options_set_environment(options, environment.c_str());
