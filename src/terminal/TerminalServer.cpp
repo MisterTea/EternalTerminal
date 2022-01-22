@@ -274,7 +274,7 @@ void TerminalServer::runTerminal(
           tb.set_buffer(s);
           serverClientState->writePacket(
               Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-        } else if (rc == 0 || errno != EAGAIN) {
+        } else {
           LOG(INFO) << "Terminal session ended";
           run = false;
           break;
