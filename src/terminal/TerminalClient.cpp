@@ -211,7 +211,7 @@ void TerminalClient::run(const string& command) {
   if (command.length()) {
     LOG(INFO) << "Got command: " << command;
     et::TerminalBuffer tb;
-    tb.set_buffer(command + "; exit\n");
+    tb.set_buffer(command + "\n");
 
     connection->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
