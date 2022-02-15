@@ -35,7 +35,7 @@ sudo apt install et
 
 # Other Linux/Unix
 
-Check out the README for instructions: https://github.com/MisterTea/EternalTerminal
+Check out the [README](https://github.com/MisterTea/EternalTerminal) for instructions.
 
 # Windows
 
