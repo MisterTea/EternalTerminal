@@ -76,8 +76,8 @@ class TelemetryDispatcher : public el::LogDispatchCallback {
 };
 
 void shutdownTelemetry() {
-  cerr << "Shutting down sentry" << endl;
   if (TelemetryService::exists()) {
+    cerr << "Shutting down sentry" << endl;
     auto ts = TelemetryService::get();
     ts->shutdown();
   }
