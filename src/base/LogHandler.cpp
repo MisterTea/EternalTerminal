@@ -50,8 +50,7 @@ string LogHandler::stderrToFile(const string &pathPrefix) {
   FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
   fs::permissions(
       stderrFilename,
-      fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
-      fs::perm_options::replace);
+      fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read);
   if (!stderr_stream) {
     STFATAL << "Invalid filename " << stderrFilename;
   }
