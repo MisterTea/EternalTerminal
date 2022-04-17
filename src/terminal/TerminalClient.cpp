@@ -220,6 +220,8 @@ void TerminalClient::run(const string& command) {
   TerminalInfo lastTerminalInfo;
 
   if (!console.get()) {
+    // NOTE: ../../scripts/ssh-et relies on the wording of this message, so if
+    // you change it please update it as well.
     CLOG(INFO, "stdout") << "ET running, feel free to background..." << endl;
   }
 
