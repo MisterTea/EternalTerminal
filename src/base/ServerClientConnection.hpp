@@ -1,9 +1,8 @@
 #ifndef __ET_SERVER_CLIENT_CONNECTION__
 #define __ET_SERVER_CLIENT_CONNECTION__
 
-#include "Headers.hpp"
-
 #include "Connection.hpp"
+#include "Headers.hpp"
 
 namespace et {
 class ServerClientConnection : public Connection {
@@ -15,6 +14,8 @@ class ServerClientConnection : public Connection {
   virtual ~ServerClientConnection();
 
   bool recoverClient(int newSocketFd);
+
+  bool verifyPasskey(const string& targetKey);
 
  protected:
 };

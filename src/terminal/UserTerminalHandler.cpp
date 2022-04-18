@@ -34,7 +34,7 @@ UserTerminalHandler::UserTerminalHandler(
           << endl;
     } else {
       CLOG(INFO, "stdout")
-          << "Error:  Connection error communicating with et deamon: "
+          << "Error:  Connection error communicating with et daemon: "
           << strerror(GetErrno()) << "." << endl;
     }
     exit(1);

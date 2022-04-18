@@ -1,6 +1,8 @@
 #ifndef __ET_USER_TERMINAL_ROUTER__
 #define __ET_USER_TERMINAL_ROUTER__
 
+#include <optional>
+
 #include "Headers.hpp"
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
@@ -14,7 +16,10 @@ class UserTerminalRouter {
                      const SocketEndpoint& _routerEndpoint);
   inline int getServerFd() { return serverFd; }
   IdKeyPair acceptNewConnection();
-  TerminalUserInfo getInfoForId(const string& id);
+
+  std::optional<TerminalUserInfo> tryGetInfoForConnection(
+      const shared_ptr<ServerClientConnection>& serverClientState);
+
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;
   }
