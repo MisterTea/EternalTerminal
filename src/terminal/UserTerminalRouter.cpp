@@ -42,7 +42,9 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     idInfoMap[tui.id()] = tui;
     return IdKeyPair({tui.id(), tui.passkey()});
   } catch (const std::runtime_error &re) {
-    STFATAL << "Router can't talk to terminal: " << re.what();
+    LOG(ERROR) << "Router can't talk to terminal: " << re.what();
+    socketHandler->close(terminalFd);
+    return IdKeyPair({"", ""});
   }
 
   STFATAL << "Should never get here";
