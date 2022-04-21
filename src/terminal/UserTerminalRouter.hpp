@@ -8,7 +8,6 @@
 #include "ServerConnection.hpp"
 
 namespace et {
-const string ROUTER_FIFO_NAME = GetTempDirectory() + "etserver.idpasskey.fifo";
 
 class UserTerminalRouter {
  public:
