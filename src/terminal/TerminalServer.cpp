@@ -35,8 +35,10 @@ void TerminalServer::run() {
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
 
-  TelemetryService::get()->logToDatadog("Server started", el::Level::Info,
-                                        __FILE__, __LINE__);
+  if (TelemetryService::exists()) {
+    TelemetryService::get()->logToDatadog("Server started", el::Level::Info,
+                                          __FILE__, __LINE__);
+  }
 
   while (true) {
     {
