@@ -251,6 +251,12 @@ inline string WindowsErrnoToString() {
 #define FATAL_FAIL_UNLESS_EINVAL(X)        \
   if (((X) == -1) && GetErrno() != EINVAL) \
     STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
+
+// On FreeBSD we can get EAGAIN on close if the descriptor is being
+// selected.
+#define FATAL_FAIL_UNLESS_EAGAIN(X)        \
+  if (((X) == -1) && GetErrno() != EAGAIN) \
+    STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
 #endif
 
 #ifndef ET_VERSION
