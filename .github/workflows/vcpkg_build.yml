@@ -24,7 +24,26 @@ jobs:
 
     steps:
       - name: Install Dependencies (Linux)
-        run: sudo apt-get update && sudo apt-get install curl zip unzip tar cmake ninja-build libutempter-dev libunwind-dev libcurl4-openssl-dev
+        run: |
+          sudo apt-get update && \
+            sudo apt-get install --no-install-recommends \
+                libboost-dev \
+                libsodium-dev \
+                libncurses5-dev \
+                libprotobuf-dev \
+                protobuf-compiler \
+                libgflags-dev \
+                libutempter-dev \
+                build-essential \
+                ninja-build \
+                libcurl4-openssl-dev \
+                curl \
+                zip \
+                unzip \
+                tar \
+                cmake \
+                libutempter-dev \
+                libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
         run: choco install ninja
