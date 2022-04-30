@@ -93,11 +93,14 @@ int main(int argc, char** argv) {
 
       FD_SET(STDIN_FILENO, &readfds);
 
-      int res = select(1, &readfds, NULL, NULL, &timeout);
-      if (res < 0) {
-        FATAL_FAIL(res);
-      }
-      if (res == 0) {
+      int selectResult = 0;
+      do {
+        // Repeatedly calls when interrupted, up to the timeout.
+        selectResult = select(1, &readfds, NULL, NULL, &timeout);
+      } while (selectResult < 0 && errno == EINTR);
+
+      FATAL_FAIL(selectResult);
+      if (selectResult == 0) {
         CLOG(INFO, "stdout")
             << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
                "this information on stdin\n";
