@@ -1,5 +1,6 @@
 #include <cxxopts.hpp>
 
+#include "ServerFifoPath.hpp"
 #include "SimpleIni.h"
 #include "TelemetryService.hpp"
 #include "TerminalServer.hpp"
@@ -43,8 +44,8 @@ int main(int argc, char **argv) {
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"), "LEVEL")  //
         ("serverfifo",
-         "If set, listens on the matching fifo name",                     //
-         cxxopts::value<std::string>()->default_value(ROUTER_FIFO_NAME))  //
+         "If set, listens on the matching fifo name",       //
+         cxxopts::value<std::string>()->default_value(""))  //
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>())  //
@@ -75,7 +76,7 @@ int main(int argc, char **argv) {
       LogHandler::stderrToFile(GetTempDirectory() + "etserver");
     }
 
-    string serverFifo = ROUTER_FIFO_NAME;
+    ServerFifoPath serverFifo;
 
     // default max log file size is 20MB for etserver
     string maxlogsize = "20971520";
@@ -112,11 +113,11 @@ int main(int argc, char **argv) {
           el::Loggers::setVerboseLevel(atoi(vlevel));
         }
 
-        {
-          const char *fifoName =
-              ini.GetValue("Debug", "serverfifo", ROUTER_FIFO_NAME.c_str());
-          if (fifoName) {
-            serverFifo = string(fifoName);
+        const char *fifoName = ini.GetValue("Debug", "serverfifo", NULL);
+        if (fifoName) {
+          const string fifoNameStr(fifoName);
+          if (!fifoNameStr.empty()) {
+            serverFifo.setPathOverride(fifoNameStr);
           }
         }
 
@@ -138,8 +139,8 @@ int main(int argc, char **argv) {
     }
 
     if (result.count("serverfifo") &&
-        result["serverfifo"].as<string>() != ROUTER_FIFO_NAME) {
-      serverFifo = result["serverfifo"].as<string>();
+        !result["serverfifo"].as<string>().empty()) {
+      serverFifo.setPathOverride(result["serverfifo"].as<string>());
     }
 
     if (result.count("port")) {
@@ -175,6 +176,8 @@ int main(int argc, char **argv) {
     TelemetryService::create(
         telemetry, GetTempDirectory() + "/.sentry-native-etserver", "Server");
 
+    serverFifo.createDirectoriesIfRequired();
+
     std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
     std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
         new PipeSocketHandler());
@@ -187,7 +190,7 @@ int main(int argc, char **argv) {
       serverEndpoint.set_name(bindIp);
     }
     SocketEndpoint routerFifo;
-    routerFifo.set_name(serverFifo);
+    routerFifo.set_name(serverFifo.getPathForCreation());
     TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
                                   pipeSocketHandler, routerFifo);
     terminalServer.run();

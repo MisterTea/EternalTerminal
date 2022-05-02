@@ -2,34 +2,21 @@
 #include "UserJumphostHandler.hpp"
 
 #include "ETerminal.pb.h"
+#include "ServerFifoPath.hpp"
 
 namespace et {
 UserJumphostHandler::UserJumphostHandler(
     shared_ptr<SocketHandler> _jumpClientSocketHandler,
     const string &_idpasskey, const SocketEndpoint &_dstSocketEndpoint,
     shared_ptr<SocketHandler> _routerSocketHandler,
-    const SocketEndpoint &routerEndpoint)
+    const optional<SocketEndpoint> routerEndpoint)
     : routerSocketHandler(_routerSocketHandler),
       jumpClientSocketHandler(_jumpClientSocketHandler),
       idpasskey(_idpasskey),
       dstSocketEndpoint(_dstSocketEndpoint),
       shuttingDown(false) {
-  routerFd = routerSocketHandler->connect(routerEndpoint);
-  auto localErrno = GetErrno();
-
-  if (routerFd < 0) {
-    if (localErrno == ECONNREFUSED) {
-      CLOG(INFO, "stdout")
-          << "Error:  The Eternal Terminal daemon is not running.  Please "
-             "(re)start the et daemon on the server."
-          << endl;
-    } else {
-      CLOG(INFO, "stdout")
-          << "Error:  Connection error communicating with et daemon: "
-          << strerror(localErrno) << "." << endl;
-    }
-    exit(1);
-  }
+  routerFd =
+      ServerFifoPath::detectAndConnect(routerEndpoint, routerSocketHandler);
 }
 
 void UserJumphostHandler::run() {

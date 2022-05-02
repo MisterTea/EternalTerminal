@@ -99,8 +99,16 @@ void TerminalServer::runJumpHost(
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
-  int terminalFd =
-      terminalRouter->getInfoForId(serverClientState->getId()).fd();
+  int terminalFd = -1;
+  if (auto maybeUserInfo =
+          terminalRouter->tryGetInfoForConnection(serverClientState)) {
+    terminalFd = maybeUserInfo->fd();
+  } else {
+    LOG(ERROR) << "Jumphost failed to bind to terminal router";
+    serverClientState->closeSocket();
+    return;
+  }
+
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
@@ -181,7 +189,16 @@ void TerminalServer::runJumpHost(
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
     const InitialPayload &payload) {
-  auto userInfo = terminalRouter->getInfoForId(serverClientState->getId());
+  auto maybeUserInfo =
+      terminalRouter->tryGetInfoForConnection(serverClientState);
+  if (!maybeUserInfo) {
+    LOG(ERROR) << "Terminal client failed to bind to terminal router";
+    serverClientState->closeSocket();
+    return;
+  }
+
+  const auto userInfo = std::move(maybeUserInfo.value());
+
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());

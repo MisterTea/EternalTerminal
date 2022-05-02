@@ -1,12 +1,13 @@
 #ifndef __ET_USER_TERMINAL_ROUTER__
 #define __ET_USER_TERMINAL_ROUTER__
 
+#include <optional>
+
 #include "Headers.hpp"
 #include "PipeSocketHandler.hpp"
 #include "ServerConnection.hpp"
 
 namespace et {
-const string ROUTER_FIFO_NAME = GetTempDirectory() + "etserver.idpasskey.fifo";
 
 class UserTerminalRouter {
  public:
@@ -14,7 +15,10 @@ class UserTerminalRouter {
                      const SocketEndpoint& _routerEndpoint);
   inline int getServerFd() { return serverFd; }
   IdKeyPair acceptNewConnection();
-  TerminalUserInfo getInfoForId(const string& id);
+
+  std::optional<TerminalUserInfo> tryGetInfoForConnection(
+      const shared_ptr<ServerClientConnection>& serverClientState);
+
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;
   }

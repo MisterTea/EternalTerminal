@@ -10,7 +10,7 @@ class UserJumphostHandler {
                       const string &_idpasskey,
                       const SocketEndpoint &_dstSocketEndpoint,
                       shared_ptr<SocketHandler> routerSocketHandler,
-                      const SocketEndpoint &routerEndpoint);
+                      const optional<SocketEndpoint> routerEndpoint);
 
   void run();
   void shutdown() {

@@ -11,7 +11,7 @@ class UserTerminalHandler {
  public:
   UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
                       shared_ptr<UserTerminal> _term, bool noratelimit,
-                      const SocketEndpoint &_routerEndpoint,
+                      const optional<SocketEndpoint> _routerEndpoint,
                       const string &idPasskey);
   void run();
   void shutdown() {
@@ -24,7 +24,6 @@ class UserTerminalHandler {
   shared_ptr<SocketHandler> socketHandler;
   shared_ptr<UserTerminal> term;
   bool noratelimit;
-  SocketEndpoint routerEndpoint;
   bool shuttingDown;
   recursive_mutex shutdownMutex;
 

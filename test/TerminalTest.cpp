@@ -1,3 +1,5 @@
+#include <atomic>
+
 #include "FakeConsole.hpp"
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
@@ -81,6 +83,7 @@ TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
 }
 
 const string CRYPTO_KEY = "12345678901234567890123456789012";
+const string CRYPTO_KEY2 = "98765432109876543210987654321098";
 
 void readWriteTest(const string& clientId,
                    shared_ptr<PipeSocketHandler> routerSocketHandler,
@@ -135,7 +138,97 @@ void readWriteTest(const string& clientId,
   uth.reset();
 }
 
-TEST_CASE("EndToEndTest", "[EndToEndTest]") {
+class LogInterceptHandler : public el::LogDispatchCallback {
+ public:
+  void handle(const el::LogDispatchData* data) {
+    const std::string& message = data->logMessage()->message();
+
+    std::function<void()> callback;
+    {
+      lock_guard<mutex> lock(classMutex);
+
+      if (!wasHit && message.size() >= interceptPrefix.size() &&
+          message.substr(0, interceptPrefix.size()) == interceptPrefix) {
+        wasHit = true;
+        callback = std::move(interceptCallback);
+      }
+    }
+
+    if (callback) {
+      callback();
+    }
+  }
+
+  void setIntercept(string prefix, std::function<void()> callback) {
+    lock_guard<mutex> lock(classMutex);
+    wasHit = false;
+    interceptPrefix = prefix;
+    interceptCallback = callback;
+  }
+
+ private:
+  mutex classMutex;
+  // Default to true to disable the matcher until setIntercept is called.
+  bool wasHit = true;
+  string interceptPrefix;
+  std::function<void()> interceptCallback;
+};
+
+class EndToEndTestFixture {
+ public:
+  EndToEndTestFixture() {
+    el::Helpers::installLogDispatchCallback<LogInterceptHandler>(
+        "LogInterceptHandler");
+
+    srand(1);
+    clientSocketHandler.reset(new PipeSocketHandler());
+    clientPipeSocketHandler.reset(new PipeSocketHandler());
+    serverSocketHandler.reset(new PipeSocketHandler());
+    routerSocketHandler.reset(new PipeSocketHandler());
+    el::Helpers::setThreadName("Main");
+    consoleSocketHandler.reset(new PipeSocketHandler());
+    fakeConsole.reset(new FakeConsole(consoleSocketHandler));
+
+    userTerminalSocketHandler.reset(new PipeSocketHandler());
+    fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
+
+    string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
+    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+
+    routerPipePath = string(pipeDirectory) + "/pipe_router";
+    routerEndpoint.set_name(routerPipePath);
+
+    serverPipePath = string(pipeDirectory) + "/pipe_server";
+    serverEndpoint.set_name(serverPipePath);
+
+    server = shared_ptr<TerminalServer>(
+        new TerminalServer(serverSocketHandler, serverEndpoint,
+                           routerSocketHandler, routerEndpoint));
+    serverThread = thread([this]() { server->run(); });
+    sleep(1);
+  }
+
+  ~EndToEndTestFixture() {
+    server->shutdown();
+    serverThread.join();
+
+    consoleSocketHandler.reset();
+    userTerminalSocketHandler.reset();
+    serverSocketHandler.reset();
+    clientSocketHandler.reset();
+    clientPipeSocketHandler.reset();
+    routerSocketHandler.reset();
+    FATAL_FAIL(::remove(routerPipePath.c_str()));
+    FATAL_FAIL(::remove(serverPipePath.c_str()));
+    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+
+    el::Helpers::uninstallLogDispatchCallback<LogInterceptHandler>(
+        "LogInterceptHandler");
+  }
+
+ protected:
+  LogInterceptHandler logInterceptHandler;
+
   shared_ptr<PipeSocketHandler> consoleSocketHandler;
   shared_ptr<PipeSocketHandler> userTerminalSocketHandler;
   shared_ptr<PipeSocketHandler> routerSocketHandler;
@@ -144,57 +237,162 @@ TEST_CASE("EndToEndTest", "[EndToEndTest]") {
   shared_ptr<SocketHandler> clientSocketHandler;
   shared_ptr<SocketHandler> clientPipeSocketHandler;
 
+  string pipeDirectory;
+
   SocketEndpoint serverEndpoint;
+  string serverPipePath;
+
+  SocketEndpoint routerEndpoint;
+  string routerPipePath;
 
   shared_ptr<FakeConsole> fakeConsole;
   shared_ptr<FakeUserTerminal> fakeUserTerminal;
 
-  string pipeDirectory;
+  shared_ptr<TerminalServer> server;
+  thread serverThread;
 
-  srand(1);
-  clientSocketHandler.reset(new PipeSocketHandler());
-  clientPipeSocketHandler.reset(new PipeSocketHandler());
-  serverSocketHandler.reset(new PipeSocketHandler());
-  routerSocketHandler.reset(new PipeSocketHandler());
-  el::Helpers::setThreadName("Main");
-  consoleSocketHandler.reset(new PipeSocketHandler());
-  fakeConsole.reset(new FakeConsole(consoleSocketHandler));
+ private:
+  bool wasShutdown = false;
+};
 
-  userTerminalSocketHandler.reset(new PipeSocketHandler());
-  fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
-  fakeUserTerminal->setup(-1);
-
-  string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-  pipeDirectory = string(mkdtemp(&tmpPath[0]));
-
-  string routerPipePath = string(pipeDirectory) + "/pipe_router";
-  SocketEndpoint routerEndpoint;
-  routerEndpoint.set_name(routerPipePath);
-
-  string serverPipePath = string(pipeDirectory) + "/pipe_server";
-  serverEndpoint.set_name(serverPipePath);
-
-  auto server = shared_ptr<TerminalServer>(
-      new TerminalServer(serverSocketHandler, serverEndpoint,
-                         routerSocketHandler, routerEndpoint));
-  thread t_server([server]() { server->run(); });
-  sleep(1);
-
+TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest", "[EndToEndTest]") {
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
                 serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
                 fakeConsole, routerEndpoint);
-  server->shutdown();
-  t_server.join();
+}
 
-  consoleSocketHandler.reset();
-  userTerminalSocketHandler.reset();
-  serverSocketHandler.reset();
-  clientSocketHandler.reset();
-  clientPipeSocketHandler.reset();
-  routerSocketHandler.reset();
-  FATAL_FAIL(::remove(routerPipePath.c_str()));
-  FATAL_FAIL(::remove(serverPipePath.c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+void simultaneousTerminalConnectionTest(
+    const string& clientId, const string& simultaneousTerminalPasskey,
+    LogInterceptHandler& logInterceptHandler,
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<PipeSocketHandler> userTerminalSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    shared_ptr<FakeConsole> fakeConsole, const SocketEndpoint& routerEndpoint) {
+  struct SimultaneousTerminalState {
+    const string& clientId;
+    const string& passkey;
+    shared_ptr<PipeSocketHandler> routerSocketHandler;
+    shared_ptr<PipeSocketHandler> userTerminalSocketHandler;
+    shared_ptr<FakeUserTerminal> fakeUserTerminal;
+    const SocketEndpoint& routerEndpoint;
+
+    shared_ptr<UserTerminalHandler> handler;
+    thread handlerThread;
+
+    SimultaneousTerminalState(
+        const string& _clientId, const string& _passkey,
+        shared_ptr<PipeSocketHandler> _routerSocketHandler,
+        shared_ptr<PipeSocketHandler> _userTerminalSocketHandler,
+        shared_ptr<FakeUserTerminal> _fakeUserTerminal,
+        const SocketEndpoint& _routerEndpoint)
+        : clientId(_clientId),
+          passkey(_passkey),
+          routerSocketHandler(_routerSocketHandler),
+          userTerminalSocketHandler(_userTerminalSocketHandler),
+          fakeUserTerminal(_fakeUserTerminal),
+          routerEndpoint(_routerEndpoint) {}
+
+    // Move-only.
+    SimultaneousTerminalState(const SimultaneousTerminalState&) = delete;
+    SimultaneousTerminalState(SimultaneousTerminalState&&) = default;
+
+    void start() {
+      handler.reset(
+          new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                                  routerEndpoint, clientId + "/" + passkey));
+      handlerThread = thread([this]() { CHECK_THROWS(handler->run()); });
+    }
+
+    ~SimultaneousTerminalState() {
+      if (handler) {
+        handler->shutdown();
+        if (handlerThread.joinable()) {
+          handlerThread.join();
+        }
+      }
+    }
+  };
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+
+  constexpr int kNumSimultaneousTerminals = 4;
+  std::vector<SimultaneousTerminalState> otherTerminals;
+  for (int i = 0; i < kNumSimultaneousTerminals; ++i) {
+    otherTerminals.emplace_back(clientId, simultaneousTerminalPasskey,
+                                routerSocketHandler, userTerminalSocketHandler,
+                                fakeUserTerminal, routerEndpoint);
+  }
+
+  logInterceptHandler.setIntercept("Got client with id: ", [&otherTerminals]() {
+    // Try to create more terminals while the main terminal is connecting.
+    // NOTE: There must be no logging within this handler,
+    for (auto& terminal : otherTerminals) {
+      terminal.start();
+    }
+  });
+
+  thread uthThread([uth]() { REQUIRE_NOTHROW(uth->run()); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
+      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION));
+  thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
+  sleep(3);
+
+  const string s("test");
+  thread typeKeysThread([s, fakeConsole]() {
+    for (int a = 0; a < s.size(); a++) {
+      VLOG(1) << "Writing packet " << a;
+      fakeConsole->simulateKeystrokes(string(1, s[a]));
+    }
+  });
+
+  string resultConcat;
+  string result;
+  for (int a = 0; a < s.size(); a++) {
+    result = fakeUserTerminal->getKeystrokes(1);
+    resultConcat = resultConcat.append(result);
+    LOG(INFO) << "ON MESSAGE " << a;
+  }
+  typeKeysThread.join();
+
+  REQUIRE(resultConcat == s);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
+
+  otherTerminals.clear();
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
+                 "[EndToEndTest]") {
+  SECTION("Valid passkey") {
+    simultaneousTerminalConnectionTest(
+        "1234567890123456", CRYPTO_KEY, logInterceptHandler,
+        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
+        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
+        fakeConsole, routerEndpoint);
+  }
+
+  SECTION("Different passkey") {
+    simultaneousTerminalConnectionTest(
+        "1234567890123456", CRYPTO_KEY2, logInterceptHandler,
+        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
+        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
+        fakeConsole, routerEndpoint);
+  }
 }
 
 // TODO: Multiple clients
