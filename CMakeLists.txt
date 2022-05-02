@@ -144,9 +144,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_TELEMETRY")
 endif()
 
 if(USE_SENTRY)
+if(DISABLE_VCPKG)
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("${EXTERNAL_DIR}/sentry-native")
+include_directories(
+  ${EXTERNAL_DIR}/sentry-native/include
+)
+else()
+find_package(sentry CONFIG REQUIRED)
+endif()
 endif()
 
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
@@ -316,7 +323,6 @@ include_directories(
   ${EXTERNAL_DIR}/Catch2/single_include
   ${EXTERNAL_DIR}/cxxopts/include
   ${EXTERNAL_DIR}/msgpack-c/include
-  ${EXTERNAL_DIR}/sentry-native/include
   ${EXTERNAL_DIR}/json/single_include/nlohmann
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
