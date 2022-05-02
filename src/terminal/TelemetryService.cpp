@@ -158,9 +158,6 @@ TelemetryService::TelemetryService(const bool _allow,
     sentry_set_user(user);
 
     vector<int> signalsToCatch = {
-#ifdef SIGINT
-        SIGINT,
-#endif
 #ifdef SIGILL
         SIGILL,
 #endif
@@ -183,6 +180,16 @@ TelemetryService::TelemetryService(const bool _allow,
     for (auto it : signalsToCatch) {
       signal(it, sentryShutdownHandler);
     }
+
+#ifdef SIGINT
+    signal(SIGINT, [](int i) {
+      shutdownTelemetry();
+      // Normally this is installed in TerminalServerMain, TerminalClientMain,
+      // and TerminalMain, but we need to forward the call since Sentry
+      // overrides it.  This is important to handle SIGINT from Ctrl-C.
+      et::InterruptSignalHandler(i);
+    });
+#endif
 #endif
     atexit([] { shutdownTelemetry(); });
 

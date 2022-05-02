@@ -59,7 +59,15 @@ void TerminalServer::run() {
 
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+
+    const int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+    if (numFdsSet < 0 && errno == EINTR) {
+      // If EINTR was returned, then the syscall was interrupted by a signal.
+      // This is not an error, but can be a signal that the program is being
+      // shutdown, so restart the loop to check for the halt condition.
+      continue;
+    }
+
     FATAL_FAIL(numFdsSet);
     if (numFdsSet == 0) {
       continue;
