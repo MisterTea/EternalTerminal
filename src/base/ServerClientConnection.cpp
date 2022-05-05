@@ -33,4 +33,19 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
   return recover(newSocketFd);
 }
+
+bool ServerClientConnection::verifyPasskey(const string& targetKey) {
+  // Do a string comparison without revealing timing information if an early
+  // character mismatches, always loop through the entire string.
+  const size_t commonSize =
+      key.size() < targetKey.size() ? key.size() : targetKey.size();
+
+  bool matchFailed = key.size() != targetKey.size();
+  for (size_t i = 0; i < commonSize; ++i) {
+    matchFailed |= key[i] != targetKey[i];
+  }
+
+  return !matchFailed;
+}
+
 }  // namespace et

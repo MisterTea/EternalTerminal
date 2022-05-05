@@ -39,6 +39,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   el::Helpers::setThreadName("server-clientHandler");
 
   string clientId;
+  bool createdClientConnection = false;
   try {
     et::ConnectRequest request =
         socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
@@ -64,14 +65,24 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       }
     }
     clientId = request.clientid();
-    LOG(INFO) << "Got client with id: " << clientId;
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
+
     {
       lock_guard<std::recursive_mutex> guard(classMutex);
+
+      // Log within the mutex, so that we can guarantee that this client id wins
+      // the lock when this message appears.
+      LOG(INFO) << "Got client with id: " << clientId;
+
       clientKeyExistsNow = clientKeyExists(clientId);
       if (clientConnectionExists(clientId)) {
         serverClientState = getClientConnection(clientId);
+      } else if (clientKeyExistsNow) {
+        createdClientConnection = true;
+        serverClientState.reset(new ServerClientConnection(
+            socketHandler, clientId, clientSocketFd, clientKeys.at(clientId)));
+        clientConnections.insert(std::make_pair(clientId, serverClientState));
       }
     }
     if (!clientKeyExistsNow) {
@@ -85,7 +96,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->writeProto(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
-    } else if (serverClientState.get() == NULL) {
+    } else if (createdClientConnection) {
       et::ConnectResponse response;
       response.set_status(NEW_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
@@ -95,9 +106,6 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 
       {
         lock_guard<std::recursive_mutex> guard(classMutex);
-        serverClientState.reset(new ServerClientConnection(
-            socketHandler, clientId, clientSocketFd, clientKeys.at(clientId)));
-        clientConnections.insert(std::make_pair(clientId, serverClientState));
 
         if (!newClient(serverClientState)) {
           VLOG(1) << "newClient failed";
@@ -117,9 +125,15 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   } catch (const runtime_error& err) {
     // Comm failed, close the connection
     LOG(WARNING) << "Error handling new client: " << err.what();
+    if (createdClientConnection) {
+      destroyPartialConnection(clientId);
+    }
     socketHandler->close(clientSocketFd);
-  } catch (const std::exception &e) {
+  } catch (const std::exception& e) {
     LOG(ERROR) << "Got an unexpected error handling new client: " << e.what();
+    if (createdClientConnection) {
+      destroyPartialConnection(clientId);
+    }
     socketHandler->close(clientSocketFd);
   }
 }
@@ -138,4 +152,15 @@ bool ServerConnection::removeClient(const string& id) {
   clientConnections.erase(id);
   return true;
 }
+
+void ServerConnection::destroyPartialConnection(const string& clientId) {
+  lock_guard<std::recursive_mutex> guard(classMutex);
+  const auto it = clientConnections.find(clientId);
+  if (it == clientConnections.end()) {
+    return;
+  }
+  it->second->shutdown();
+  clientConnections.erase(it);
+}
+
 }  // namespace et

@@ -35,8 +35,10 @@ void TerminalServer::run() {
   maxCoreFd = max(maxCoreFd, terminalRouter->getServerFd());
   numCoreFds++;
 
-  TelemetryService::get()->logToDatadog("Server started", el::Level::Info,
-                                        __FILE__, __LINE__);
+  if (TelemetryService::exists()) {
+    TelemetryService::get()->logToDatadog("Server started", el::Level::Info,
+                                          __FILE__, __LINE__);
+  }
 
   while (true) {
     {
@@ -57,7 +59,15 @@ void TerminalServer::run() {
 
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+
+    const int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
+    if (numFdsSet < 0 && errno == EINTR) {
+      // If EINTR was returned, then the syscall was interrupted by a signal.
+      // This is not an error, but can be a signal that the program is being
+      // shutdown, so restart the loop to check for the halt condition.
+      continue;
+    }
+
     FATAL_FAIL(numFdsSet);
     if (numFdsSet == 0) {
       continue;
@@ -97,8 +107,16 @@ void TerminalServer::runJumpHost(
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
-  int terminalFd =
-      terminalRouter->getInfoForId(serverClientState->getId()).fd();
+  int terminalFd = -1;
+  if (auto maybeUserInfo =
+          terminalRouter->tryGetInfoForConnection(serverClientState)) {
+    terminalFd = maybeUserInfo->fd();
+  } else {
+    LOG(ERROR) << "Jumphost failed to bind to terminal router";
+    serverClientState->closeSocket();
+    return;
+  }
+
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
 
@@ -179,7 +197,16 @@ void TerminalServer::runJumpHost(
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
     const InitialPayload &payload) {
-  auto userInfo = terminalRouter->getInfoForId(serverClientState->getId());
+  auto maybeUserInfo =
+      terminalRouter->tryGetInfoForConnection(serverClientState);
+  if (!maybeUserInfo) {
+    LOG(ERROR) << "Terminal client failed to bind to terminal router";
+    serverClientState->closeSocket();
+    return;
+  }
+
+  const auto userInfo = std::move(maybeUserInfo.value());
+
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());

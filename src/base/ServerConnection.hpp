@@ -57,6 +57,8 @@ class ServerConnection {
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 
  protected:
+  void destroyPartialConnection(const string& clientId);
+
   shared_ptr<SocketHandler> socketHandler;
   SocketEndpoint serverEndpoint;
   std::unordered_map<string, string> clientKeys;

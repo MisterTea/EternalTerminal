@@ -168,7 +168,11 @@ void UnixSocketHandler::close(int fd) {
 #ifdef _MSC_VER
   FATAL_FAIL_UNLESS_ZERO(::closesocket(fd));
 #else
+#ifdef __FreeBSD__
+  FATAL_FAIL_UNLESS_EAGAIN(::close(fd));
+#else
   FATAL_FAIL(::close(fd));
+#endif
 #endif
   activeSocketMutexes.erase(it);
 }

@@ -251,6 +251,12 @@ inline string WindowsErrnoToString() {
 #define FATAL_FAIL_UNLESS_EINVAL(X)        \
   if (((X) == -1) && GetErrno() != EINVAL) \
     STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
+
+// On FreeBSD we can get EAGAIN on close if the descriptor is being
+// selected.
+#define FATAL_FAIL_UNLESS_EAGAIN(X)        \
+  if (((X) == -1) && GetErrno() != EAGAIN) \
+    STFATAL << "Error: (" << GetErrno() << "): " << strerror(GetErrno());
 #endif
 
 #ifndef ET_VERSION
@@ -325,6 +331,12 @@ inline string protoToString(const T& t) {
   return s;
 }
 
+/**
+ * Wait on a fd to have data available.
+ *
+ * @return true if the fd has data, or false if the timeout (of 1 second) is
+ *   reached or if the call is interrupted by a syscall.
+ */
 inline bool waitOnSocketData(int fd) {
   fd_set fdset;
   FD_ZERO(&fdset);
@@ -333,8 +345,17 @@ inline bool waitOnSocketData(int fd) {
   tv.tv_sec = 1;
   tv.tv_usec = 0;
   VLOG(4) << "Before selecting sockFd";
-  FATAL_FAIL(select(fd + 1, &fdset, NULL, NULL, &tv));
-  return FD_ISSET(fd, &fdset);
+  const int selectResult = select(fd + 1, &fdset, NULL, NULL, &tv);
+  if (selectResult < 0) {
+    if (errno == EINTR) {
+      // Interrupted by the signal, the caller will retry.
+      return false;
+    } else {
+      FATAL_FAIL(selectResult);
+    }
+  } else {
+    return FD_ISSET(fd, &fdset);
+  }
 }
 
 inline string genRandomAlphaNum(int len) {

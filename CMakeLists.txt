@@ -144,9 +144,16 @@ set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_TELEMETRY")
 endif()
 
 if(USE_SENTRY)
+if(DISABLE_VCPKG)
 set(SENTRY_BUILD_RUNTIMESTATIC ON)
 set(BUILD_SHARED_LIBS OFF)
 add_subdirectory("${EXTERNAL_DIR}/sentry-native")
+include_directories(
+  ${EXTERNAL_DIR}/sentry-native/include
+)
+else()
+find_package(sentry CONFIG REQUIRED)
+endif()
 endif()
 
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
@@ -157,6 +164,7 @@ if(POLICY CMP0058)
 endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
+option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
@@ -288,6 +296,26 @@ macro(DECORATE_TARGET TARGET_NAME)
   endif()
 endmacro()
 
+macro(DECORATE_FUZZER TARGET_NAME)
+  add_sanitizers(${TARGET_NAME})
+
+  if(FUZZING)
+    # ASAN must also be enabled to build fuzzers.
+    if(NOT SANITIZE_ADDRESS)
+      message(FATAL_ERROR "Fuzzing requires SANITIZE_ADDRESS=ON to detect memory errors.")
+    endif()
+
+    if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
+      set_property(TARGET ${TARGET_NAME} APPEND_STRING
+          PROPERTY COMPILE_FLAGS " -fsanitize=fuzzer")
+      set_property(TARGET ${TARGET_NAME} APPEND_STRING
+          PROPERTY LINK_FLAGS " -fsanitize=fuzzer")
+    else()
+      message(FATAL_ERROR "Currently fuzzing is only supported with Clang.")
+    endif()
+  endif()
+endmacro()
+
 include_directories(
   ${EXTERNAL_DIR}/easyloggingpp/src
   ${EXTERNAL_DIR}/ThreadPool
@@ -295,7 +323,6 @@ include_directories(
   ${EXTERNAL_DIR}/Catch2/single_include
   ${EXTERNAL_DIR}/cxxopts/include
   ${EXTERNAL_DIR}/msgpack-c/include
-  ${EXTERNAL_DIR}/sentry-native/include
   ${EXTERNAL_DIR}/json/single_include/nlohmann
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
@@ -378,6 +405,8 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/ServerFifoPath.hpp
+  src/terminal/ServerFifoPath.cpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
@@ -512,6 +541,46 @@ else(WIN32)
       ${CORE_LIBRARIES})
   add_test(et-test et-test)
   decorate_target(et-test)
+
+  if(FUZZING)
+    add_executable(
+    TerminalServerFuzzer
+    test/TerminalServerFuzzer.cpp
+    test/FuzzableTerminalServer.hpp
+    )
+    add_dependencies(TerminalServerFuzzer TerminalCommon et-lib)
+    target_link_libraries(
+      TerminalServerFuzzer
+      TerminalCommon
+      et-lib
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PROTOBUF_LIBS}
+      ${sodium_LIBRARY_RELEASE}
+      ${SELINUX_LIBRARIES}
+      ${UTEMPTER_LIBRARIES}
+      ${Boost_LIBRARIES}
+        ${CORE_LIBRARIES})
+    decorate_fuzzer(TerminalServerFuzzer)
+
+    add_executable(
+    TerminalServerRouterFuzzer
+    test/TerminalServerRouterFuzzer.cpp
+    test/FuzzableTerminalServer.hpp
+    )
+    add_dependencies(TerminalServerRouterFuzzer TerminalCommon et-lib)
+    target_link_libraries(
+      TerminalServerRouterFuzzer
+      TerminalCommon
+      et-lib
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PROTOBUF_LIBS}
+      ${sodium_LIBRARY_RELEASE}
+      ${SELINUX_LIBRARIES}
+      ${UTEMPTER_LIBRARIES}
+      ${Boost_LIBRARIES}
+        ${CORE_LIBRARIES})
+    decorate_fuzzer(TerminalServerRouterFuzzer)
+  endif(FUZZING)
 
   install(
     TARGETS etserver etterminal et htm htmd

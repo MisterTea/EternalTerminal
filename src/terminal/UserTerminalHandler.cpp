@@ -4,19 +4,18 @@
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
+#include "ServerFifoPath.hpp"
 #include "UserTerminalRouter.hpp"
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
-    bool _noratelimit, const SocketEndpoint &_routerEndpoint,
+    bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,
     const string &idPasskey)
     : socketHandler(_socketHandler),
       term(_term),
       noratelimit(_noratelimit),
-      routerEndpoint(_routerEndpoint),
       shuttingDown(false) {
-  routerFd = socketHandler->connect(routerEndpoint);
   auto idpasskey_splited = split(idPasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
@@ -26,19 +25,7 @@ UserTerminalHandler::UserTerminalHandler(
   tui.set_uid(getuid());
   tui.set_gid(getgid());
 
-  if (routerFd < 0) {
-    if (GetErrno() == ECONNREFUSED) {
-      CLOG(INFO, "stdout")
-          << "Error:  The Eternal Terminal daemon is not running.  Please "
-             "(re)start the et daemon on the server."
-          << endl;
-    } else {
-      CLOG(INFO, "stdout")
-          << "Error:  Connection error communicating with et deamon: "
-          << strerror(GetErrno()) << "." << endl;
-    }
-    exit(1);
-  }
+  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
 
   try {
     socketHandler->writePacket(

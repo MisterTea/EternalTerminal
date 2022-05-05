@@ -18,7 +18,7 @@ UserTerminalRouter::UserTerminalRouter(
 IdKeyPair UserTerminalRouter::acceptNewConnection() {
   lock_guard<recursive_mutex> guard(routerMutex);
   LOG(INFO) << "Listening to id/key FIFO";
-  int terminalFd = socketHandler->accept(serverFd);
+  const int terminalFd = socketHandler->accept(serverFd);
   if (terminalFd < 0) {
     if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
       FATAL_FAIL(-1);  // STFATAL with the error
@@ -39,23 +39,44 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
-    idInfoMap[tui.id()] = tui;
+
+    const bool inserted =
+        idInfoMap.insert(std::make_pair(tui.id(), tui)).second;
+    if (!inserted) {
+      LOG(ERROR) << "Rejecting duplicate terminal connection for " << tui.id();
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
+    }
+
     return IdKeyPair({tui.id(), tui.passkey()});
   } catch (const std::runtime_error &re) {
-    STFATAL << "Router can't talk to terminal: " << re.what();
+    LOG(ERROR) << "Router can't talk to terminal: " << re.what();
+    socketHandler->close(terminalFd);
+    return IdKeyPair({"", ""});
   }
 
   STFATAL << "Should never get here";
   return IdKeyPair({"", ""});
 }
 
-TerminalUserInfo UserTerminalRouter::getInfoForId(const string &id) {
+std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
+    const shared_ptr<ServerClientConnection> &serverClientState) {
   lock_guard<recursive_mutex> guard(routerMutex);
-  auto it = idInfoMap.find(id);
+  auto it = idInfoMap.find(serverClientState->getId());
   if (it == idInfoMap.end()) {
     STFATAL << " Tried to read from an id that no longer exists";
   }
+
+  // While both the id and passkey are randomly generated, do an extra
+  // verification that the passkey matches to ensure that this is the intended
+  // serverClientState.
+  if (!serverClientState->verifyPasskey(it->second.passkey())) {
+    LOG(ERROR) << "Failed to verify passkey for client id: " << it->second.id();
+    return std::nullopt;
+  }
+
   return it->second;
 }
+
 }  // namespace et
 #endif

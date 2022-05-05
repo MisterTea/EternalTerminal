@@ -5,6 +5,7 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PsuedoUserTerminal.hpp"
+#include "ServerFifoPath.hpp"
 #include "TcpSocketHandler.hpp"
 #include "UserJumphostHandler.hpp"
 #include "UserTerminalHandler.hpp"
@@ -55,8 +56,8 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")       //
         ("serverfifo",
          "If set, connects to the etserver instance listening on the matching "
-         "fifo name",                                                     //
-         cxxopts::value<std::string>()->default_value(ROUTER_FIFO_NAME))  //
+         "fifo name",                                       //
+         cxxopts::value<std::string>()->default_value(""))  //
         ;
 
     options.parse_positional({"host", "positional"});
@@ -79,6 +80,11 @@ int main(int argc, char** argv) {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
+    ServerFifoPath serverFifo;
+    if (!result["serverfifo"].as<string>().empty()) {
+      serverFifo.setPathOverride(result["serverfifo"].as<string>());
+    }
+
     shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
     shared_ptr<PsuedoUserTerminal> term(new PsuedoUserTerminal());
 
@@ -93,11 +99,14 @@ int main(int argc, char** argv) {
 
       FD_SET(STDIN_FILENO, &readfds);
 
-      int res = select(1, &readfds, NULL, NULL, &timeout);
-      if (res < 0) {
-        FATAL_FAIL(res);
-      }
-      if (res == 0) {
+      int selectResult = 0;
+      do {
+        // Repeatedly calls when interrupted, up to the timeout.
+        selectResult = select(1, &readfds, NULL, NULL, &timeout);
+      } while (selectResult < 0 && errno == EINTR);
+
+      FATAL_FAIL(selectResult);
+      if (selectResult == 0) {
         CLOG(INFO, "stdout")
             << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
                "this information on stdin\n";
@@ -160,15 +169,13 @@ int main(int argc, char** argv) {
       if (DaemonCreator::createSessionLeader() == -1) {
         STFATAL << "Error creating daemon: " << strerror(GetErrno());
       }
-      SocketEndpoint routerFifoEndpoint;
-      routerFifoEndpoint.set_name(result["serverfifo"].as<string>());
       SocketEndpoint destinationEndpoint;
       destinationEndpoint.set_name(result["dsthost"].as<string>());
       destinationEndpoint.set_port(result["dstport"].as<int>());
       shared_ptr<SocketHandler> jumpClientSocketHandler(new TcpSocketHandler());
       UserJumphostHandler ujh(jumpClientSocketHandler, idpasskey,
                               destinationEndpoint, ipcSocketHandler,
-                              routerFifoEndpoint);
+                              serverFifo.getEndpointForConnect());
       ujh.run();
 
       // Uninstall log rotation callback
@@ -190,10 +197,8 @@ int main(int argc, char** argv) {
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    SocketEndpoint routerEndpoint;
-    routerEndpoint.set_name(result["serverfifo"].as<string>());
-    UserTerminalHandler uth(ipcSocketHandler, term, true, routerEndpoint,
-                            idpasskey);
+    UserTerminalHandler uth(ipcSocketHandler, term, true,
+                            serverFifo.getEndpointForConnect(), idpasskey);
     CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
     if (DaemonCreator::createSessionLeader() == -1) {
       STFATAL << "Error creating daemon: " << strerror(GetErrno());

@@ -13,7 +13,7 @@ jobs:
       - checkout
       - run:
           name: Set up ssh & known_hosts
-          command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+          command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
@@ -54,7 +54,7 @@ jobs:
       - checkout
       - run:
           name: Set up ssh & known_hosts
-          command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+          command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
