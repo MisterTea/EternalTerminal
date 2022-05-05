@@ -1,3 +1,21 @@
+et (6.2.0-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.0
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Wed, 4 May 2022 10:36:54 -0800
+
+et (6.1.11-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * Build fixes for later versions of gcc
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Mon, 11 Jan 2022 10:36:54 -0800
+
+et (6.1.10-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * Fixes for macos
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Mon, 10 Jan 2022 16:36:54 -0800
+
 et (6.1.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * Security, Compatibility, and bug fixes
