@@ -37,15 +37,16 @@
 #ifndef PROCESSOR_FAST_SOURCE_LINE_RESOLVER_TYPES_H__
 #define PROCESSOR_FAST_SOURCE_LINE_RESOLVER_TYPES_H__
 
-#include "contained_range_map.h"
-#include "google_breakpad/processor/fast_source_line_resolver.h"
-#include "processor/source_line_resolver_base_types.h"
-
+#include <cstdint>
 #include <map>
 #include <string>
 
+#include "google_breakpad/processor/fast_source_line_resolver.h"
 #include "google_breakpad/processor/stack_frame.h"
 #include "processor/cfi_frame_info.h"
+#include "processor/contained_range_map.h"
+#include "processor/simple_serializer-inl.h"
+#include "processor/source_line_resolver_base_types.h"
 #include "processor/static_address_map-inl.h"
 #include "processor/static_contained_range_map-inl.h"
 #include "processor/static_map.h"
@@ -88,7 +89,7 @@ public SourceLineResolverBase::Function {
     DESERIALIZE(raw, address);
     DESERIALIZE(raw, size);
     DESERIALIZE(raw, parameter_size);
-    DESERIALIZE(raw, is_multiple);
+    raw = SimpleSerializer<bool>::Read(raw, &is_multiple);
     int32_t inline_size;
     DESERIALIZE(raw, inline_size);
     inlines = StaticContainedRangeMap<MemAddr, char>(raw);
@@ -152,7 +153,7 @@ public SourceLineResolverBase::PublicSymbol {
     raw += name_size;
     DESERIALIZE(raw, address);
     DESERIALIZE(raw, parameter_size);
-    DESERIALIZE(raw, is_multiple);
+    raw = SimpleSerializer<bool>::Read(raw, &is_multiple);
   }
 };
 

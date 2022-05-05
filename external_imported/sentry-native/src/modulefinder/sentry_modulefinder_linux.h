@@ -27,7 +27,13 @@ typedef struct {
     uint64_t offset_in_inode;
     uint64_t mappings_inode;
     uint8_t num_mappings;
+    bool is_mmapped;
 } sentry_module_t;
+
+typedef struct {
+    void *ptr;
+    size_t len;
+} sentry_mmap_t;
 
 #ifdef SENTRY_UNITTEST
 bool sentry__procmaps_read_ids_from_elf(

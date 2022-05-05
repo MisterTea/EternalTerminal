@@ -1,6 +1,5 @@
 #include "sentry_path.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 static void
 init_consenting_sentry(void)

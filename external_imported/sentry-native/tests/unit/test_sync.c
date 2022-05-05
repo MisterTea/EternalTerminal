@@ -131,3 +131,23 @@ SENTRY_TEST(task_queue)
     // was instructed to shut down
     TEST_CHECK(executed_after_shutdown);
 }
+
+SENTRY_TEST(bgworker_flush)
+{
+    sentry_bgworker_t *bgw = sentry__bgworker_new(NULL, NULL);
+    sentry__bgworker_submit(bgw, sleep_task, NULL, NULL);
+
+    sentry__bgworker_start(bgw);
+
+    // first flush times out
+    int flush = sentry__bgworker_flush(bgw, 500);
+    TEST_CHECK_INT_EQUAL(flush, 1);
+
+    // second flush succeeds
+    flush = sentry__bgworker_flush(bgw, 1000);
+    TEST_CHECK_INT_EQUAL(flush, 0);
+
+    int shutdown = sentry__bgworker_shutdown(bgw, 500);
+    TEST_CHECK_INT_EQUAL(shutdown, 0);
+    sentry__bgworker_decref(bgw);
+}

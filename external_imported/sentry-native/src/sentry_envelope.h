@@ -37,6 +37,12 @@ sentry_envelope_item_t *sentry__envelope_add_event(
     sentry_envelope_t *envelope, sentry_value_t event);
 
 /**
+ * Add a transaction to this envelope.
+ */
+sentry_envelope_item_t *sentry__envelope_add_transaction(
+    sentry_envelope_t *envelope, sentry_value_t transaction);
+
+/**
  * Add a session to this envelope.
  */
 sentry_envelope_item_t *sentry__envelope_add_session(

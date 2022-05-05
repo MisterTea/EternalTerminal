@@ -49,7 +49,7 @@ typedef struct sentry_dsn_s {
     char *path;
     char *secret_key;
     char *public_key;
-    uint64_t project_id;
+    char *project_id;
     int port;
     long refcount;
     bool is_valid;

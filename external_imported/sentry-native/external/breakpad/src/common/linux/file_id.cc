@@ -49,6 +49,7 @@
 #include "third_party/lss/linux_syscall_support.h"
 
 namespace google_breakpad {
+namespace elf {
 
 // Used in a few places for backwards-compatibility.
 const size_t kMDGUIDSize = sizeof(MDGUID);
@@ -198,4 +199,5 @@ string FileID::ConvertIdentifierToString(
   return bytes_to_hex_string(&identifier[0], identifier.size());
 }
 
+}  // elf
 }  // namespace google_breakpad

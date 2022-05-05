@@ -17,9 +17,9 @@ namespace base {
 namespace {
 
 ThreadRefType GetCurrentThreadRef() {
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   return GetCurrentThreadId();
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
   return pthread_self();
 #endif
 }

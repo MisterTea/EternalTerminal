@@ -34,11 +34,11 @@ enum : LoggingDestination {
 
   LOG_TO_ALL = LOG_TO_FILE | LOG_TO_SYSTEM_DEBUG_LOG | LOG_TO_STDERR,
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
   LOG_DEFAULT = LOG_TO_FILE,
-#elif defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_FUCHSIA)
   LOG_DEFAULT = LOG_TO_SYSTEM_DEBUG_LOG,
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
   LOG_DEFAULT = LOG_TO_SYSTEM_DEBUG_LOG | LOG_TO_STDERR,
 #endif
 };
@@ -84,12 +84,12 @@ static inline int GetVlogLevel(const char*) {
   return std::numeric_limits<int>::max();
 }
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 // This is just ::GetLastError, but out-of-line to avoid including windows.h in
 // such a widely used place.
 unsigned long GetLastSystemErrorCode();
 std::string SystemErrorCodeToString(unsigned long error_code);
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
 static inline int GetLastSystemErrorCode() {
   return errno;
 }
@@ -130,7 +130,7 @@ class LogMessageVoidify {
   void operator&(const std::ostream&) const {}
 };
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 class Win32ErrorLogMessage : public LogMessage {
  public:
   Win32ErrorLogMessage(const char* function,
@@ -147,7 +147,7 @@ class Win32ErrorLogMessage : public LogMessage {
  private:
   unsigned long err_;
 };
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
 class ErrnoLogMessage : public LogMessage {
  public:
   ErrnoLogMessage(const char* function,
@@ -206,7 +206,7 @@ class ErrnoLogMessage : public LogMessage {
 #define COMPACT_GOOGLE_LOG_DFATAL \
     COMPACT_GOOGLE_LOG_EX_DFATAL(LogMessage)
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 
 // wingdi.h defines ERROR 0. We don't want to include windows.h here, and we
 // want to allow "LOG(ERROR)", which will expand to LOG_0.
@@ -222,7 +222,7 @@ namespace logging {
 const LogSeverity LOG_0 = LOG_ERROR;
 }  // namespace logging
 
-#endif  // OS_WIN
+#endif  // BUILDFLAG(IS_WIN)
 
 #define LAZY_STREAM(stream, condition) \
     !(condition) ? (void) 0 : ::logging::LogMessageVoidify() & (stream)
@@ -237,14 +237,14 @@ const LogSeverity LOG_0 = LOG_ERROR;
     logging::LogMessage(FUNCTION_SIGNATURE, __FILE__, __LINE__, \
                         -verbose_level).stream()
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #define PLOG_STREAM(severity) COMPACT_GOOGLE_LOG_EX_ ## severity( \
     Win32ErrorLogMessage, ::logging::GetLastSystemErrorCode()).stream()
 #define VPLOG_STREAM(verbose_level)                                       \
     logging::Win32ErrorLogMessage(FUNCTION_SIGNATURE, __FILE__, __LINE__, \
                                   -verbose_level,                         \
                                   ::logging::GetLastSystemErrorCode()).stream()
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
 #define PLOG_STREAM(severity) COMPACT_GOOGLE_LOG_EX_ ## severity( \
     ErrnoLogMessage, ::logging::GetLastSystemErrorCode()).stream()
 #define VPLOG_STREAM(verbose_level) \

@@ -132,10 +132,9 @@ StackFrame* StackwalkerPPC::GetCallerFrame(const CallStack* stack,
   frame->trust = StackFrame::FRAME_TRUST_FP;
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
-  if (TerminateWalk(instruction,
-                    stack_pointer,
-                    last_frame->context.gpr[1],
-                    stack->frames()->size() == 1)) {
+  if (TerminateWalk(instruction, stack_pointer, last_frame->context.gpr[1],
+                    /*first_unwind=*/last_frame->trust ==
+                        StackFrame::FRAME_TRUST_CONTEXT)) {
     return NULL;
   }
 

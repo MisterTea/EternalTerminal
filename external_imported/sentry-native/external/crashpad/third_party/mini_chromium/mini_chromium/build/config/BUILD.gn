@@ -153,7 +153,7 @@ config("default") {
     ]
 
     cflags_c = [ "-std=c11" ]
-    cflags_cc = [ "-std=c++14" ]
+    cflags_cc = [ "-std=c++17" ]
     cflags_objc = cflags_c
     cflags_objcc = cflags_cc
 
@@ -225,10 +225,10 @@ config("default") {
 
   if (mini_chromium_is_ios) {
     if (ios_deployment_target != "") {
-      if (current_cpu == "x64") {
+      if (target_environment == "simulator") {
         common_flags +=
             [ "-mios-simulator-version-min=" + ios_deployment_target ]
-      } else if (current_cpu == "arm64") {
+      } else if (target_environment == "device") {
         common_flags += [ "-mios-version-min=" + ios_deployment_target ]
       }
     }
@@ -253,6 +253,11 @@ config("default") {
       "/wd4351",  # New behavior: elements of array will be default initialized.
       "/wd4577",  # 'noexcept' used with no exception handling mode specified.
       "/wd4996",  # 'X' was declared deprecated.
+    ]
+
+    cflags_cc = [
+      "/std:c++17",
+      "/Zc:__cplusplus",
     ]
 
     ldflags += [ "/DEBUG" ]
@@ -665,7 +670,7 @@ if (mini_chromium_is_win) {
       tool("cxx") {
         depfile = "{{output}}.d"
         pdbname = "{{target_out_dir}}/{{label_name}}_cc.pdb"
-        command = "ninja -t msvc -e $env -- $cxx /nologo /showIncludes {{defines}} {{include_dirs}} {{cflags}} {{cflags_c}}${extra_cflags}${extra_cflags_cc} /c {{source}} /Fo{{output}} /Fd\"$pdbname\""
+        command = "ninja -t msvc -e $env -- $cxx /nologo /showIncludes {{defines}} {{include_dirs}} {{cflags}} {{cflags_cc}}${extra_cflags}${extra_cflags_cc} /c {{source}} /Fo{{output}} /Fd\"$pdbname\""
         depsformat = "msvc"
         description = "CXX {{output}}"
         outputs =

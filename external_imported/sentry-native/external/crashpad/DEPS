@@ -28,18 +28,18 @@ deps = {
       '9e121212d42be62a7cce38072f925f8398d11e49',
   'crashpad/third_party/edo/edo': {
       'url': Var('chromium_git') + '/external/github.com/google/eDistantObject.git@' +
-      '6ffbf833173f53fcd06ecf08670a95cc01c01f72',
+      '727e556705278598fce683522beedbb9946bfda0',
       'condition': 'checkout_ios',
   },
   'crashpad/third_party/googletest/googletest':
       Var('chromium_git') + '/external/github.com/google/googletest@' +
-      '11da093e0477185dbd78abaaa9f99db15be498d0',
+      'af29db7ec28d6df1c7f0f745186884091e602e07',
   'crashpad/third_party/lss/lss':
       Var('chromium_git') + '/linux-syscall-support.git@' +
-      '7bde79cc274d06451bf65ae82c012a5d3e476b5a',
+      'e1e7b0ad8ee99a875b272c8e33e308472e897660',
   'crashpad/third_party/mini_chromium/mini_chromium':
       Var('chromium_git') + '/chromium/mini_chromium@' +
-      '0e22eed71eec97dacbe80822a14c5cd0b580d793',
+      '5654edb4225bcad13901155c819febb5748e502b',
   'crashpad/third_party/libfuzzer/src':
       Var('chromium_git') + '/chromium/llvm-project/compiler-rt/lib/fuzzer.git@' +
       'fda403cf93ecb8792cb1d061564d89a6553ca020',
@@ -106,7 +106,7 @@ deps = {
     'packages': [
       {
         'package': 'chrome_internal/third_party/sdk/windows',
-        'version': 'uploaded:2018-06-13'
+        'version': 'uploaded:2021-04-28'
       },
     ],
     'condition': 'checkout_win and pull_win_toolchain',
@@ -169,7 +169,7 @@ hooks = [
     'pattern': '.',
     'condition': 'run_setup_ios_gn and checkout_ios',
     'action': [
-        'python',
+        'python3',
         'crashpad/build/ios/setup_ios_gn.py'
     ],
   },

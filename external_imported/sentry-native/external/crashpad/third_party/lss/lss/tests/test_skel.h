@@ -44,9 +44,11 @@
 #include <assert.h>
 #include <fcntl.h>
 #include <sched.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include <sys/mman.h>
 #include <sys/prctl.h>
 #include <sys/stat.h>
@@ -56,6 +58,8 @@
 #include <linux/capability.h>
 
 #include "linux_syscall_support.h"
+
+#define SKIP_TEST_EXIT_STATUS 77
 
 void assert_buffers_eq_len(const void *buf1, const void *buf2, size_t len) {
   const uint8_t *u8_1 = (const uint8_t *)buf1;

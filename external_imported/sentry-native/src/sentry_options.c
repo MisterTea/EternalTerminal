@@ -51,9 +51,9 @@ sentry_options_new(void)
     opts->sample_rate = 1.0;
     opts->refcount = 1;
     opts->shutdown_timeout = SENTRY_DEFAULT_SHUTDOWN_TIMEOUT;
-
     opts->traces_sample_rate = 0.0;
     opts->max_spans = 0;
+
     return opts;
 }
 
@@ -411,6 +411,10 @@ sentry_options_set_traces_sample_rate(
         sample_rate = 1.0;
     }
     opts->traces_sample_rate = sample_rate;
+
+    if (sample_rate > 0 && opts->max_spans == 0) {
+        opts->max_spans = SENTRY_SPANS_MAX;
+    }
 }
 
 /**

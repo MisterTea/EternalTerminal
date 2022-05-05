@@ -1,10 +1,8 @@
-#!/usr/bin/env python
-
 # Copyright 2017 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
-import _winreg
+import winreg
 import os
 import re
 import subprocess
@@ -12,7 +10,7 @@ import sys
 
 
 def _RegistryGetValue(key, value):
-  """Use the _winreg module to obtain the value of a registry key.
+  """Use the winreg module to obtain the value of a registry key.
 
   Args:
     key: The registry key.
@@ -23,8 +21,8 @@ def _RegistryGetValue(key, value):
   try:
     root, subkey = key.split('\\', 1)
     assert root == 'HKLM'  # Only need HKLM for now.
-    with _winreg.OpenKey(_winreg.HKEY_LOCAL_MACHINE, subkey) as hkey:
-      return _winreg.QueryValueEx(hkey, value)[0]
+    with winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, subkey) as hkey:
+      return winreg.QueryValueEx(hkey, value)[0]
   except WindowsError:
     return None
 
@@ -44,6 +42,7 @@ def _ExtractImportantEnvironment(output_of_set):
       )
   env = {}
   for line in output_of_set.splitlines():
+    line = line.decode("utf-8")
     for envvar in envvars_to_save:
       if re.match(envvar + '=', line.lower()):
         var, setting = line.split('=', 1)
@@ -62,7 +61,7 @@ def _FormatAsEnvironmentBlock(envvar_dict):
   CreateProcess() documentation for more details."""
   block = ''
   nul = '\0'
-  for key, value in envvar_dict.iteritems():
+  for key, value in envvar_dict.items():
     block += key + '=' + value + nul
   block += nul
   return block
@@ -99,7 +98,7 @@ def _GenerateEnvironmentFiles(install_dir, out_dir, script_path):
     env_block = _FormatAsEnvironmentBlock(env)
     basename = 'environment.' + arch
     with open(os.path.join(out_dir, basename), 'wb') as f:
-      f.write(env_block)
+      f.write(env_block.encode())
     result.append(basename)
   return result
 
@@ -139,10 +138,11 @@ class WinTool(object):
     link = subprocess.Popen(args, env=env, shell=True, stdout=subprocess.PIPE)
     out, _ = link.communicate()
     for line in out.splitlines():
+      line = line.decode("utf-8")
       if (not line.startswith('   Creating library ') and
           not line.startswith('Generating code') and
           not line.startswith('Finished generating code')):
-        print line
+        print(line)
     return link.returncode
 
   def ExecAsmWrapper(self, arch, *args):
@@ -152,24 +152,32 @@ class WinTool(object):
                              stdout=subprocess.PIPE, stderr=subprocess.STDOUT)
     out, _ = popen.communicate()
     for line in out.splitlines():
+      line = line.decode("utf-8")
       if (not line.startswith('Copyright (C) Microsoft Corporation') and
           not line.startswith('Microsoft (R) Macro Assembler') and
           not line.startswith(' Assembling: ') and
           line):
-        print line
+        print(line)
     return popen.returncode
 
   def ExecGetVisualStudioData(self, outdir, toolchain_path):
-    setenv_path = os.path.join('win_sdk', 'bin', 'SetEnv.cmd')
+    setenv_paths = [
+      # cipd packaged SDKs from 10.0.19041.0 onwards.
+      os.path.join('Windows Kits', '10', 'bin', 'SetEnv.cmd'),
+      # cipd packaged SDKs prior to 10.0.19041.0.
+      os.path.join('win_sdk', 'bin', 'SetEnv.cmd'),
+    ]
 
     def explicit():
-      if os.path.exists(os.path.join(toolchain_path, setenv_path)):
-        return toolchain_path, setenv_path
+      for setenv_path in setenv_paths:
+        if os.path.exists(os.path.join(toolchain_path, setenv_path)):
+          return toolchain_path, setenv_path
 
     def env():
       from_env = os.environ.get('VSINSTALLDIR')
-      if from_env and os.path.exists(os.path.join(from_env, setenv_path)):
-        return from_env, setenv_path
+      for setenv_path in setenv_paths:
+        if from_env and os.path.exists(os.path.join(from_env, setenv_path)):
+          return from_env, setenv_path
 
     def autodetect():
       # Try vswhere, which will find VS2017.2+. Note that earlier VS2017s will
@@ -180,7 +188,7 @@ class WinTool(object):
         installation_path = subprocess.check_output(
             [vswhere_path, '-latest', '-property', 'installationPath']).strip()
         if installation_path:
-          return (installation_path,
+          return (installation_path.decode("utf-8"),
                   os.path.join('VC', 'Auxiliary', 'Build', 'vcvarsall.bat'))
 
       # Otherwise, try VS2015.
@@ -203,11 +211,13 @@ class WinTool(object):
 
     x86_file, x64_file, arm64_file = _GenerateEnvironmentFiles(
         install_dir, outdir, script_path)
+    # gn is unhappy with trailing backslashes.
+    install_dir = install_dir.rstrip('\\')
     result = '''install_dir = "%s"
 x86_environment_file = "%s"
 x64_environment_file = "%s"
 arm64_environment_file = "%s"''' % (install_dir, x86_file, x64_file, arm64_file)
-    print result
+    print(result)
     return 0
 
   def ExecStamp(self, path):

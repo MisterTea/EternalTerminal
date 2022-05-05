@@ -50,6 +50,8 @@
 #include "breakpad_googletest_includes.h"
 
 using namespace google_breakpad;
+using google_breakpad::elf::FileID;
+using google_breakpad::elf::kDefaultBuildIdSize;
 using google_breakpad::synth_elf::ELF;
 using google_breakpad::synth_elf::Notes;
 using google_breakpad::test_assembler::kLittleEndian;

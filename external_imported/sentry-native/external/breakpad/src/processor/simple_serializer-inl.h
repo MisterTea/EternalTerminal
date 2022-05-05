@@ -38,14 +38,15 @@
 #ifndef PROCESSOR_SIMPLE_SERIALIZER_INL_H__
 #define PROCESSOR_SIMPLE_SERIALIZER_INL_H__
 
-#include <string>
-
 #include "processor/simple_serializer.h"
-#include "map_serializers-inl.h"
+
+#include <cstdint>
+#include <string>
 
 #include "google_breakpad/processor/basic_source_line_resolver.h"
 #include "processor/basic_source_line_resolver_types.h"
 #include "processor/linked_ptr.h"
+#include "processor/map_serializers-inl.h"
 #include "processor/windows_frame_info.h"
 
 namespace google_breakpad {
@@ -140,12 +141,14 @@ class SimpleSerializer<BasicSourceLineResolver::PublicSymbol> {
   static size_t SizeOf(const PublicSymbol& pubsymbol) {
     return SimpleSerializer<string>::SizeOf(pubsymbol.name)
          + SimpleSerializer<MemAddr>::SizeOf(pubsymbol.address)
-         + SimpleSerializer<int32_t>::SizeOf(pubsymbol.parameter_size);
+         + SimpleSerializer<int32_t>::SizeOf(pubsymbol.parameter_size)
+         + SimpleSerializer<bool>::SizeOf(pubsymbol.is_multiple);
   }
   static char* Write(const PublicSymbol& pubsymbol, char* dest) {
     dest = SimpleSerializer<string>::Write(pubsymbol.name, dest);
     dest = SimpleSerializer<MemAddr>::Write(pubsymbol.address, dest);
     dest = SimpleSerializer<int32_t>::Write(pubsymbol.parameter_size, dest);
+    dest = SimpleSerializer<bool>::Write(pubsymbol.is_multiple, dest);
     return dest;
   }
 };

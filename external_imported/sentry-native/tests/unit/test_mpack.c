@@ -1,7 +1,6 @@
 #include "sentry_path.h"
 #include "sentry_scope.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 SENTRY_TEST(mpack_removed_tags)
 {

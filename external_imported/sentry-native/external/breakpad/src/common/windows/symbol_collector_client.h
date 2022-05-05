@@ -64,6 +64,7 @@ namespace google_breakpad {
     static bool CreateUploadUrl(
         wstring& api_url,
         wstring& api_key,
+        int* timeout_ms,
         UploadUrlResponse *uploadUrlResponse);
 
     // Notify the API that symbol file upload is finished and its contents
@@ -71,6 +72,7 @@ namespace google_breakpad {
     static CompleteUploadResult CompleteUpload(
         wstring& api_url,
         wstring& api_key,
+        int* timeout_ms,
         const wstring& upload_key,
         const wstring& debug_file,
         const wstring& debug_id);
@@ -80,6 +82,7 @@ namespace google_breakpad {
     static SymbolStatus CheckSymbolStatus(
         wstring& api_url,
         wstring& api_key,
+        int* timeout_ms,
         const wstring& debug_file,
         const wstring& debug_id);
   };

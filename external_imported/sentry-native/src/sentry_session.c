@@ -215,35 +215,39 @@ sentry_start_session(void)
 {
     sentry_end_session();
     SENTRY_WITH_SCOPE (scope) {
-        SENTRY_WITH_OPTIONS_MUT (options) {
+        sentry_options_t *options = sentry__options_lock();
+        if (options) {
             options->session = sentry__session_new();
             if (options->session) {
                 sentry__session_sync_user(options->session, scope->user);
                 sentry__run_write_session(options->run, options->session);
             }
         }
+        sentry__options_unlock();
     }
 }
 
 void
 sentry__record_errors_on_current_session(uint32_t error_count)
 {
-    SENTRY_WITH_OPTIONS_MUT (options) {
-        if (options->session) {
-            options->session->errors += error_count;
-        }
+    sentry_options_t *options = sentry__options_lock();
+    if (options && options->session) {
+        options->session->errors += error_count;
     }
+    sentry__options_unlock();
 }
 
 static sentry_session_t *
 sentry__end_session_internal(void)
 {
     sentry_session_t *session = NULL;
-    SENTRY_WITH_OPTIONS_MUT (options) {
+    sentry_options_t *options = sentry__options_lock();
+    if (options) {
         session = options->session;
         options->session = NULL;
         sentry__run_clear_session(options->run);
     }
+    sentry__options_unlock();
 
     if (session && session->status == SENTRY_SESSION_STATUS_OK) {
         session->status = SENTRY_SESSION_STATUS_EXITED;

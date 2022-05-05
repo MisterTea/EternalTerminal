@@ -28,12 +28,12 @@
 #include "util/file/file_io.h"
 #include "util/misc/capture_context.h"
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #include "base/mac/scoped_mach_port.h"
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 #include <windows.h>
 #include "util/win/scoped_handle.h"
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 #include <signal.h>
 #include <ucontext.h>
 #endif
@@ -125,7 +125,8 @@ class CrashpadClient {
                     bool asynchronous_start,
                     const std::vector<base::FilePath>& attachments = {});
 
-#if defined(OS_ANDROID) || defined(OS_LINUX) || defined(OS_CHROMEOS) || DOXYGEN
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
+    DOXYGEN
   //! \brief Retrieve the socket and process ID for the handler.
   //!
   //! `StartHandler()` must have successfully been called before calling this
@@ -170,9 +171,10 @@ class CrashpadClient {
   //!
   //! \return `true` on success. Otherwise `false` with a message logged.
   static bool InitializeSignalStackForThread();
-#endif  // OS_ANDROID || OS_LINUX || OS_CHROMEOS || DOXYGEN
+#endif  // BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) ||
+        // BUILDFLAG(IS_CHROMEOS) || DOXYGEN
 
-#if defined(OS_ANDROID) || DOXYGEN
+#if BUILDFLAG(IS_ANDROID) || DOXYGEN
   //! \brief Installs a signal handler to execute `/system/bin/app_process` and
   //!     load a Java class in response to a crash.
   //!
@@ -339,9 +341,10 @@ class CrashpadClient {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       int socket);
-#endif  // OS_ANDROID || DOXYGEN
+#endif  // BUILDFLAG(IS_ANDROID) || DOXYGEN
 
-#if defined(OS_LINUX) || defined(OS_ANDROID) || defined(OS_CHROMEOS) || DOXYGEN
+#if BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_CHROMEOS) || \
+    DOXYGEN
   //! \brief Installs a signal handler to launch a handler process in reponse to
   //!     a crash.
   //!
@@ -418,7 +421,7 @@ class CrashpadClient {
   //!     CaptureContext() or similar.
   static void DumpWithoutCrash(NativeCPUContext* context);
 
-  //! \brief Disables any installed crash handler, including any
+  //! \brief Disables any installed crash handler, not including any
   //!     FirstChanceHandler and crashes the current process.
   //!
   //! \param[in] message A message to be logged before crashing.
@@ -454,9 +457,10 @@ class CrashpadClient {
   //!
   //! \param[in] unhandled_signals The set of unhandled signals
   void SetUnhandledSignals(const std::set<int>& unhandled_signals);
-#endif  // OS_LINUX || OS_ANDROID || OS_CHROMEOS || DOXYGEN
+#endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_ANDROID) ||
+        // BUILDFLAG(IS_CHROMEOS) || DOXYGEN
 
-#if defined(OS_IOS) || DOXYGEN
+#if BUILDFLAG(IS_IOS) || DOXYGEN
   //! \brief Configures the process to direct its crashes to the iOS in-process
   //! Crashpad handler.
   //!
@@ -554,9 +558,21 @@ class CrashpadClient {
   static void DumpWithoutCrashAndDeferProcessingAtPath(
       NativeCPUContext* context,
       const base::FilePath path);
+
+  //! \brief Unregister the Crashpad client. Intended to be used by tests so
+  //!     multiple Crashpad clients can be started and stopped. Not expected to
+  //!     be used in a shipping application.
+  static void ResetForTesting();
+
+  //! \brief Inject a callback into Mach handling. Intended to be used by
+  //!     tests to trigger a reentrant exception.
+  static void SetMachExceptionCallbackForTesting(void (*callback)());
+
+  //! \brief Returns the thread id of the Mach exception thread, used by tests.
+  static uint64_t GetThreadIdForTesting();
 #endif
 
-#if defined(OS_APPLE) || DOXYGEN
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
   //! \brief Sets the process’ crash handler to a Mach service registered with
   //!     the bootstrap server.
   //!
@@ -606,7 +622,7 @@ class CrashpadClient {
   base::mac::ScopedMachSendRight GetHandlerMachPort() const;
 #endif
 
-#if defined(OS_WIN) || DOXYGEN
+#if BUILDFLAG(IS_WIN) || DOXYGEN
   //! \brief The type for custom handlers installed by clients.
   using FirstChanceHandlerWin = bool (*)(EXCEPTION_POINTERS*);
 
@@ -714,20 +730,9 @@ class CrashpadClient {
   static bool DumpAndCrashTargetProcess(HANDLE process,
                                         HANDLE blame_thread,
                                         DWORD exception_code);
-
-  enum : uint32_t {
-    //! \brief The exception code (roughly "Client called") used when
-    //!     DumpAndCrashTargetProcess() triggers an exception in a target
-    //!     process.
-    //!
-    //! \note This value does not have any bits of the top nibble set, to avoid
-    //!     confusion with real exception codes which tend to have those bits
-    //!     set.
-    kTriggeredExceptionCode = 0xcca11ed,
-  };
 #endif
 
-#if defined(OS_APPLE) || DOXYGEN
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
   //! \brief Configures the process to direct its crashes to the default handler
   //!     for the operating system.
   //!
@@ -761,14 +766,14 @@ class CrashpadClient {
 #endif
 
  private:
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   base::mac::ScopedMachSendRight exception_port_;
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   std::wstring ipc_pipe_;
   ScopedKernelHANDLE handler_start_thread_;
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS) || defined(OS_ANDROID)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
   std::set<int> unhandled_signals_;
-#endif  // OS_APPLE
+#endif  // BUILDFLAG(IS_APPLE)
 };
 
 }  // namespace crashpad

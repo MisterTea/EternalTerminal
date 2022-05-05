@@ -1,6 +1,5 @@
 #include "sentry_slice.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 SENTRY_TEST(slice)
 {

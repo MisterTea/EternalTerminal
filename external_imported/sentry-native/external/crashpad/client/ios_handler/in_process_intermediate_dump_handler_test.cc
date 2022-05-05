@@ -16,7 +16,8 @@
 
 #include <sys/utsname.h>
 
-#include "base/cxx17_backports.h"
+#include <iterator>
+
 #include "base/files/file_path.h"
 #include "build/build_config.h"
 #include "client/annotation.h"
@@ -74,7 +75,7 @@ class InProcessIntermediateDumpHandlerTest : public testing::Test {
         mach_thread_self(),
         kSimulatedException,
         code,
-        base::size(code),
+        std::size(code),
         MACHINE_THREAD_STATE,
         reinterpret_cast<ConstThreadState>(&cpu_context),
         MACHINE_THREAD_STATE_COUNT);
@@ -103,12 +104,18 @@ TEST_F(InProcessIntermediateDumpHandlerTest, TestSystem) {
   EXPECT_STREQ(system->CPUVendor().c_str(), "GenuineIntel");
 #elif defined(ARCH_CPU_ARM64)
   EXPECT_EQ(system->GetCPUArchitecture(), kCPUArchitectureARM64);
-  utsname uts;
-  ASSERT_EQ(uname(&uts), 0);
-  EXPECT_STREQ(system->MachineDescription().c_str(), uts.machine);
 #else
 #error Port to your CPU architecture
 #endif
+#if TARGET_OS_SIMULATOR
+  EXPECT_EQ(system->MachineDescription().substr(0, 13),
+            std::string("iOS Simulator"));
+#elif TARGET_OS_IPHONE
+  utsname uts;
+  ASSERT_EQ(uname(&uts), 0);
+  EXPECT_STREQ(system->MachineDescription().c_str(), uts.machine);
+#endif
+
   EXPECT_EQ(system->GetOperatingSystem(), SystemSnapshot::kOperatingSystemIOS);
 }
 

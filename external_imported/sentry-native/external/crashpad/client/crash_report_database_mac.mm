@@ -14,9 +14,9 @@
 
 #include "client/crash_report_database.h"
 
+#import <Foundation/Foundation.h>
 #include <errno.h>
 #include <fcntl.h>
-#import <Foundation/Foundation.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <sys/stat.h>
@@ -25,8 +25,9 @@
 #include <unistd.h>
 #include <uuid/uuid.h>
 
-#include "base/cxx17_backports.h"
-#include "base/ignore_result.h"
+#include <iterator>
+#include <tuple>
+
 #include "base/logging.h"
 #include "base/mac/scoped_nsautorelease_pool.h"
 #include "base/posix/eintr_wrapper.h"
@@ -41,6 +42,10 @@
 #include "util/mac/xattr.h"
 #include "util/misc/initialization_state_dcheck.h"
 #include "util/misc/metrics.h"
+
+#if BUILDFLAG(IS_IOS)
+#include "util/ios/scoped_background_task.h"
+#endif  // BUILDFLAG(IS_IOS)
 
 namespace crashpad {
 
@@ -181,6 +186,10 @@ class CrashReportDatabaseMac : public CrashReportDatabase {
     //! \brief Stores the flock of the file for the duration of
     //!     GetReportForUploading() and RecordUploadAttempt().
     base::ScopedFD lock_fd;
+#if BUILDFLAG(IS_IOS)
+    //! \brief Obtain a background task assertion while a flock is in use.
+    internal::ScopedBackgroundTask ios_background_task{"UploadReportMac"};
+#endif  // BUILDFLAG(IS_IOS)
   };
 
   //! \brief Locates a crash report in the database by UUID.
@@ -281,7 +290,7 @@ bool CrashReportDatabaseMac::Initialize(bool may_create) {
   }
 
   // Create the three processing directories for the database.
-  for (size_t i = 0; i < base::size(kReportDirectories); ++i) {
+  for (size_t i = 0; i < std::size(kReportDirectories); ++i) {
     if (!CreateOrEnsureDirectoryExists(base_dir_.Append(kReportDirectories[i])))
       return false;
   }
@@ -385,14 +394,14 @@ CrashReportDatabaseMac::FinishedWritingCrashReport(
     PLOG(ERROR) << "rename " << path.value() << " to " << new_path.value();
     return kFileSystemError;
   }
-  ignore_result(report->file_remover_.release());
+  std::ignore = report->file_remover_.release();
 
   // Close all the attachments and disarm their removers too.
   for (auto& writer : report->attachment_writers_) {
     writer->Close();
   }
   for (auto& remover : report->attachment_removers_) {
-    ignore_result(remover.release());
+    std::ignore = remover.release();
   }
 
   Metrics::CrashReportPending(Metrics::PendingReportReason::kNewlyCreated);

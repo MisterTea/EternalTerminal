@@ -15,13 +15,13 @@
 #include "snapshot/win/exception_snapshot_win.h"
 
 #include "base/logging.h"
-#include "client/crashpad_client.h"
 #include "snapshot/capture_memory.h"
 #include "snapshot/memory_snapshot.h"
 #include "snapshot/memory_snapshot_generic.h"
 #include "snapshot/win/capture_memory_delegate_win.h"
 #include "snapshot/win/cpu_context_win.h"
 #include "snapshot/win/process_reader_win.h"
+#include "util/win/exception_codes.h"
 #include "util/win/nt_internals.h"
 
 namespace crashpad {
@@ -84,7 +84,8 @@ ExceptionSnapshotWin::~ExceptionSnapshotWin() {
 bool ExceptionSnapshotWin::Initialize(
     ProcessReaderWin* process_reader,
     DWORD thread_id,
-    WinVMAddress exception_pointers_address) {
+    WinVMAddress exception_pointers_address,
+    uint32_t* gather_indirectly_referenced_memory_cap) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
 
   const ProcessReaderWin::Thread* thread = nullptr;
@@ -132,7 +133,10 @@ bool ExceptionSnapshotWin::Initialize(
 #endif
 
   CaptureMemoryDelegateWin capture_memory_delegate(
-      process_reader, *thread, &extra_memory_, nullptr);
+      process_reader,
+      *thread,
+      &extra_memory_,
+      gather_indirectly_referenced_memory_cap);
   CaptureMemory::PointedToByContext(context_, &capture_memory_delegate);
 
   INITIALIZATION_STATE_SET_VALID(initialized_);
@@ -211,7 +215,7 @@ bool ExceptionSnapshotWin::InitializeFromExceptionPointers(
   }
 
   const bool triggered_by_client =
-      first_record.ExceptionCode == CrashpadClient::kTriggeredExceptionCode &&
+      first_record.ExceptionCode == ExceptionCodes::kTriggeredExceptionCode &&
       first_record.NumberParameters == 2;
   if (triggered_by_client)
     process_reader->DecrementThreadSuspendCounts(exception_thread_id);

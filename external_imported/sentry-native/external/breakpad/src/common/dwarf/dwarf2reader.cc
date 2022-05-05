@@ -1793,7 +1793,7 @@ bool RangeListReader::ReadRanges(enum DwarfForm form, uint64_t data) {
     }
   } else if (form == DW_FORM_rnglistx) {
     offset_array_ = cu_info_->ranges_base_;
-    uint64_t index_offset = reader_->AddressSize() * data;
+    uint64_t index_offset = reader_->OffsetSize() * data;
     uint64_t range_list_offset =
         reader_->ReadOffset(cu_info_->buffer_ + offset_array_ + index_offset);
 

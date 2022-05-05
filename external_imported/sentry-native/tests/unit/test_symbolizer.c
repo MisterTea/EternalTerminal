@@ -1,6 +1,5 @@
 #include "sentry_symbolizer.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 TEST_VISIBLE void
 test_function(void)

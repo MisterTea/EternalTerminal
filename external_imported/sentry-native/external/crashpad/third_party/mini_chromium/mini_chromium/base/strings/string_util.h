@@ -7,6 +7,7 @@
 
 #include "base/compiler_specific.h"
 #include "base/logging.h"
+#include "build/build_config.h"
 
 namespace base {
 
@@ -18,9 +19,9 @@ size_t wcslcpy(wchar_t* dst, const wchar_t* src, size_t dst_size);
 
 }  // namespace base
 
-#if defined(OS_WIN)
+#if BUILDFLAG(IS_WIN)
 #include "base/strings/string_util_win.h"
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
 #include "base/strings/string_util_posix.h"
 #endif
 

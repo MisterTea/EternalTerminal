@@ -1,7 +1,7 @@
 # GitHub actions workflow.
 # https://docs.github.com/en/actions/learn-github-actions/workflow-syntax-for-github-actions
 
-# https://scan.coverity.com/projects/gentoo-pax-utils
+# https://scan.coverity.com/projects/google-breakpad
 name: Coverity Scan
 
 on:
@@ -36,9 +36,8 @@ jobs:
     - run: ./configure --disable-silent-rules
       working-directory: src
 
-    - uses: vapier/coverity-scan-action@v0
+    - uses: vapier/coverity-scan-action@v1
       with:
-        project: google%2Fbreakpad
         command: make -C src -O -j$(getconf _NPROCESSORS_CONF)
-        email: google-breakpad-dev@googlegroups.com
+        email: ${{ secrets.COVERITY_SCAN_EMAIL }}
         token: ${{ secrets.COVERITY_SCAN_TOKEN }}

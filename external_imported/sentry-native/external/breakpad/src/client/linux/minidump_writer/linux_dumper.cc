@@ -53,6 +53,8 @@
 #include "google_breakpad/common/minidump_exception_linux.h"
 #include "third_party/lss/linux_syscall_support.h"
 
+using google_breakpad::elf::FileID;
+
 #if defined(__ANDROID__)
 
 // Android packed relocations definitions are not yet available from the

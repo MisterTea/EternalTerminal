@@ -128,6 +128,7 @@ bool BasicSourceLineResolver::Module::LoadMapFromMemory(
   linked_ptr<Function> cur_func;
   int line_number = 0;
   int num_errors = 0;
+  int inline_num_errors = 0;
   char* save_ptr;
 
   // If the length is 0, we can still pretend we have a symbol file. This is
@@ -208,12 +209,13 @@ bool BasicSourceLineResolver::Module::LoadMapFromMemory(
     } else if (strncmp(buffer, "INLINE ", 7) == 0) {
       linked_ptr<Inline> in = ParseInline(buffer);
       if (!in.get())
-        LogParseError("ParseInline failed", line_number, &num_errors);
+        LogParseError("ParseInline failed", line_number, &inline_num_errors);
       else
         cur_func->AppendInline(in);
     } else if (strncmp(buffer, "INLINE_ORIGIN ", 14) == 0) {
       if (!ParseInlineOrigin(buffer)) {
-        LogParseError("ParseInlineOrigin failed", line_number, &num_errors);
+        LogParseError("ParseInlineOrigin failed", line_number,
+                      &inline_num_errors);
       }
     } else {
       if (!cur_func.get()) {
@@ -317,6 +319,7 @@ void BasicSourceLineResolver::Module::LookupAddress(
       address >= function_base && address - function_base < function_size) {
     frame->function_name = func->name;
     frame->function_base = frame->module->base_address() + function_base;
+    frame->is_multiple = func->is_multiple;
 
     linked_ptr<Line> line;
     MemAddr line_base;
@@ -339,6 +342,7 @@ void BasicSourceLineResolver::Module::LookupAddress(
              (!func.get() || public_address > function_base)) {
     frame->function_name = public_symbol->name;
     frame->function_base = frame->module->base_address() + public_address;
+    frame->is_multiple = public_symbol->is_multiple;
   }
 }
 

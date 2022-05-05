@@ -108,6 +108,13 @@ sentry__winhttp_transport_start(
 }
 
 static int
+sentry__winhttp_transport_flush(uint64_t timeout, void *transport_state)
+{
+    sentry_bgworker_t *bgworker = (sentry_bgworker_t *)transport_state;
+    return sentry__bgworker_shutdown(bgworker, timeout);
+}
+
+static int
 sentry__winhttp_transport_shutdown(uint64_t timeout, void *transport_state)
 {
     sentry_bgworker_t *bgworker = (sentry_bgworker_t *)transport_state;
@@ -234,6 +241,10 @@ sentry__winhttp_send_task(void *_envelope, void *_state)
         // lets just assume we won’t have headers > 2k
         wchar_t buf[2048];
         DWORD buf_size = sizeof(buf);
+
+        DWORD status_code = 0;
+        DWORD status_code_size = sizeof(status_code);
+
         if (WinHttpQueryHeaders(state->request, WINHTTP_QUERY_CUSTOM,
                 L"x-sentry-rate-limits", buf, &buf_size,
                 WINHTTP_NO_HEADER_INDEX)) {
@@ -251,6 +262,12 @@ sentry__winhttp_send_task(void *_envelope, void *_state)
                     state->ratelimiter, h);
                 sentry_free(h);
             }
+        } else if (WinHttpQueryHeaders(state->request,
+                       WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER,
+                       WINHTTP_HEADER_NAME_BY_INDEX, &status_code,
+                       &status_code_size, WINHTTP_NO_HEADER_INDEX)
+            && status_code == 429) {
+            sentry__rate_limiter_update_from_429(state->ratelimiter);
         }
     } else {
         SENTRY_DEBUGF(
@@ -322,6 +339,7 @@ sentry__transport_new_default(void)
         transport, (void (*)(void *))sentry__bgworker_decref);
     sentry_transport_set_startup_func(
         transport, sentry__winhttp_transport_start);
+    sentry_transport_set_flush_func(transport, sentry__winhttp_transport_flush);
     sentry_transport_set_shutdown_func(
         transport, sentry__winhttp_transport_shutdown);
     sentry__transport_set_dump_func(transport, sentry__winhttp_dump_queue);

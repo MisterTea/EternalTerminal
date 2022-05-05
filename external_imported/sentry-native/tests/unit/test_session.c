@@ -2,7 +2,6 @@
 #include "sentry_session.h"
 #include "sentry_testsupport.h"
 #include "sentry_value.h"
-#include <sentry.h>
 
 static void
 send_envelope(const sentry_envelope_t *envelope, void *data)

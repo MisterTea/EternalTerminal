@@ -40,12 +40,14 @@
 #include "google_breakpad/processor/fast_source_line_resolver.h"
 #include "processor/fast_source_line_resolver_types.h"
 
+#include <cassert>
 #include <map>
 #include <string>
 #include <utility>
 
 #include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
+#include "processor/logging.h"
 #include "processor/module_factory.h"
 #include "processor/simple_serializer-inl.h"
 
@@ -83,15 +85,16 @@ void FastSourceLineResolver::Module::LookupAddress(
   if (functions_.RetrieveNearestRange(address, func_ptr,
                                       &function_base, &function_size) &&
       address >= function_base && address - function_base < function_size) {
-    func.get()->CopyFrom(func_ptr);
+    func->CopyFrom(func_ptr);
     frame->function_name = func->name;
     frame->function_base = frame->module->base_address() + function_base;
+    frame->is_multiple = func->is_multiple;
 
     scoped_ptr<Line> line(new Line);
     const Line* line_ptr = 0;
     MemAddr line_base;
     if (func->lines.RetrieveRange(address, line_ptr, &line_base, NULL)) {
-      line.get()->CopyFrom(line_ptr);
+      line->CopyFrom(line_ptr);
       FileMap::iterator it = files_.find(line->source_file_id);
       if (it != files_.end()) {
         frame->source_file_name =
@@ -107,9 +110,10 @@ void FastSourceLineResolver::Module::LookupAddress(
   } else if (public_symbols_.Retrieve(address,
                                       public_symbol_ptr, &public_address) &&
              (!func_ptr || public_address > function_base)) {
-    public_symbol.get()->CopyFrom(public_symbol_ptr);
+    public_symbol->CopyFrom(public_symbol_ptr);
     frame->function_name = public_symbol->name;
     frame->function_base = frame->module->base_address() + public_address;
+    frame->is_multiple = public_symbol->is_multiple;
   }
 }
 
@@ -125,13 +129,13 @@ void FastSourceLineResolver::Module::ConstructInlineFrames(
 
   for (const char* inline_ptr : inline_ptrs) {
     scoped_ptr<Inline> in(new Inline);
-    in.get()->CopyFrom(inline_ptr);
+    in->CopyFrom(inline_ptr);
     unique_ptr<StackFrame> new_frame =
         unique_ptr<StackFrame>(new StackFrame(*frame));
     auto origin_iter = inline_origins_.find(in->origin_id);
     if (origin_iter != inline_origins_.end()) {
       scoped_ptr<InlineOrigin> origin(new InlineOrigin);
-      origin.get()->CopyFrom(origin_iter.GetValuePtr());
+      origin->CopyFrom(origin_iter.GetValuePtr());
       new_frame->function_name = origin->name;
     } else {
       new_frame->function_name = "<name omitted>";
@@ -234,6 +238,19 @@ bool FastSourceLineResolver::Module::LoadMapFromMemory(
   for (int i = 1; i < kNumberMaps_; ++i) {
     offsets[i] = offsets[i - 1] + map_sizes[i - 1];
   }
+  unsigned int expected_size = sizeof(bool) + offsets[kNumberMaps_ - 1] +
+                               map_sizes[kNumberMaps_ - 1] + 1;
+  if (expected_size != memory_buffer_size &&
+      // Allow for having an extra null terminator.
+      expected_size != memory_buffer_size - 1) {
+    // This could either be a random corruption or the serialization format was
+    // changed without updating the version in kSerializedBreakpadFileExtension.
+    BPLOG(ERROR) << "Memory buffer is either corrupt or an unsupported version"
+                 << ", expected size: " << expected_size
+                 << ", actual size: " << memory_buffer_size;
+    return false;
+  }
+  BPLOG(INFO) << "Memory buffer size looks good, size: " << memory_buffer_size;
 
   // Use pointers to construct Static*Map data members in Module:
   int map_id = 0;
@@ -242,9 +259,10 @@ bool FastSourceLineResolver::Module::LoadMapFromMemory(
       StaticRangeMap<MemAddr, Function>(mem_buffer + offsets[map_id++]);
   public_symbols_ =
       StaticAddressMap<MemAddr, PublicSymbol>(mem_buffer + offsets[map_id++]);
-  for (int i = 0; i < WindowsFrameInfo::STACK_INFO_LAST; ++i)
+  for (int i = 0; i < WindowsFrameInfo::STACK_INFO_LAST; ++i) {
     windows_frame_info_[i] =
         StaticContainedRangeMap<MemAddr, char>(mem_buffer + offsets[map_id++]);
+  }
 
   cfi_initial_rules_ =
       StaticRangeMap<MemAddr, char>(mem_buffer + offsets[map_id++]);
@@ -286,7 +304,7 @@ WindowsFrameInfo* FastSourceLineResolver::Module::FindWindowsFrameInfo(
   if (functions_.RetrieveNearestRange(address, function_ptr,
                                       &function_base, &function_size) &&
       address >= function_base && address - function_base < function_size) {
-    function.get()->CopyFrom(function_ptr);
+    function->CopyFrom(function_ptr);
     result->parameter_size = function->parameter_size;
     result->valid |= WindowsFrameInfo::VALID_PARAMETER_SIZE;
     return result.release();
@@ -299,7 +317,7 @@ WindowsFrameInfo* FastSourceLineResolver::Module::FindWindowsFrameInfo(
   MemAddr public_address;
   if (public_symbols_.Retrieve(address, public_symbol_ptr, &public_address) &&
       (!function_ptr || public_address > function_base)) {
-    public_symbol.get()->CopyFrom(public_symbol_ptr);
+    public_symbol->CopyFrom(public_symbol_ptr);
     result->parameter_size = public_symbol->parameter_size;
   }
 

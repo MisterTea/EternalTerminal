@@ -32,6 +32,13 @@ int sentry__transport_startup(
     sentry_transport_t *transport, const sentry_options_t *options);
 
 /**
+ * Instructs the transport to flush its queue.
+ *
+ * Returns 0 on success.
+ */
+int sentry__transport_flush(sentry_transport_t *transport, uint64_t timeout);
+
+/**
  * Instructs the transport to shut down.
  *
  * Returns 0 on success.

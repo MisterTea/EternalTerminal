@@ -16,14 +16,14 @@ namespace base {
 
 namespace internal {
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 struct ScopedFDCloseTraits {
   static int InvalidValue() {
     return -1;
   }
   static void Free(int fd);
 };
-#endif  // OS_POSIX
+#endif  // BUILDFLAG(IS_POSIX)
 
 struct ScopedFILECloser {
   void operator()(FILE* file) const;
@@ -31,9 +31,9 @@ struct ScopedFILECloser {
 
 }  // namespace internal
 
-#if defined(OS_POSIX)
+#if BUILDFLAG(IS_POSIX)
 typedef ScopedGeneric<int, internal::ScopedFDCloseTraits> ScopedFD;
-#endif  // OS_POSIX
+#endif  // BUILDFLAG(IS_POSIX)
 typedef std::unique_ptr<FILE, internal::ScopedFILECloser> ScopedFILE;
 
 }  // namespace base

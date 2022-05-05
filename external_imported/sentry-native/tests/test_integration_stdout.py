@@ -42,6 +42,28 @@ def test_capture_stdout(cmake):
     assert_event(envelope)
 
 
+def test_sdk_name_override(cmake):
+    sdk_name = "cUsToM.SDK"
+    tmp_path = cmake(
+        ["sentry_example"],
+        {
+            "SENTRY_BACKEND": "none",
+            "SENTRY_TRANSPORT": "none",
+            "SENTRY_SDK_NAME": sdk_name,
+        },
+    )
+
+    output = check_output(
+        tmp_path,
+        "sentry_example",
+        ["stdout", "capture-event"],
+    )
+    envelope = Envelope.deserialize(output)
+
+    assert_meta(envelope, sdk_override=sdk_name)
+    assert_event(envelope)
+
+
 @pytest.mark.skipif(not has_files, reason="test needs a local filesystem")
 def test_multi_process(cmake):
     # NOTE: It would have been nice to do *everything* in a unicode-named

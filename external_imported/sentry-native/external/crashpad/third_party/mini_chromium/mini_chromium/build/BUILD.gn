@@ -12,13 +12,14 @@ import("./platform.gni")
 config("mini_chromium_config") {
   include_dirs = [
     "..",
-    root_gen_dir
+    root_gen_dir,
   ]
 }
 
 source_set("build") {
   sources = [ "build_config.h" ]
   public_configs = [ ":mini_chromium_config" ]
+  public_deps = [ ":buildflag_header_h" ]
 }
 
 source_set("buildflag_header_h") {

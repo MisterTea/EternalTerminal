@@ -254,9 +254,6 @@ struct DwarfCUToModule::CUContext {
 
   // A map of function pointers to the its forward specification DIE's offset.
   map<Module::Function*, uint64_t> spec_function_offsets;
-
-  // From file index to vector of subprogram's offset in this CU.
-  map<uint64_t, vector<uint64_t>> inline_origins;
 };
 
 // Information about the context of a particular DIE. This is for
@@ -561,7 +558,8 @@ class DwarfCUToModule::InlineHandler : public GenericDIEHandler {
   DwarfForm high_pc_form_;     // DW_AT_high_pc can be length or address.
   DwarfForm ranges_form_;      // DW_FORM_sec_offset or DW_FORM_rnglistx
   uint64_t ranges_data_;       // DW_AT_ranges
-  int call_site_line_;
+  int call_site_line_;         // DW_AT_call_line
+  int call_site_file_id_;      // DW_AT_call_file
   int inline_nest_level_;
   // A vector of inlines in the same nest level. It's owned by its parent
   // function/inline. At Finish(), add this inline into the vector.
@@ -588,6 +586,9 @@ void DwarfCUToModule::InlineHandler::ProcessAttributeUnsigned(
       break;
     case DW_AT_call_line:
       call_site_line_ = data;
+      break;
+    case DW_AT_call_file:
+      call_site_file_id_ = data;
       break;
     default:
       GenericDIEHandler::ProcessAttributeUnsigned(attr, form, data);
@@ -652,6 +653,11 @@ void DwarfCUToModule::InlineHandler::Finish() {
     }
   }
 
+  // Ignore DW_TAG_inlined_subroutine with empty range.
+  if (ranges.empty()) {
+    return;
+  }
+
   // Every DW_TAG_inlined_subroutine should have a DW_AT_abstract_origin.
   assert(specification_offset_ != 0);
 
@@ -661,8 +667,8 @@ void DwarfCUToModule::InlineHandler::Finish() {
       cu_context_->file_context->module_->inline_origin_map
           .GetOrCreateInlineOrigin(specification_offset_, name_);
   unique_ptr<Module::Inline> in(
-      new Module::Inline(origin, ranges, call_site_line_, inline_nest_level_,
-                         std::move(child_inlines_)));
+      new Module::Inline(origin, ranges, call_site_line_, call_site_file_id_,
+                         inline_nest_level_, std::move(child_inlines_)));
   inlines_.push_back(std::move(in));
 }
 
@@ -679,7 +685,6 @@ class DwarfCUToModule::FuncHandler: public GenericDIEHandler {
         high_pc_form_(DW_FORM_addr),
         ranges_form_(DW_FORM_sec_offset),
         ranges_data_(0),
-        decl_file_data_(UINT64_MAX),
         inline_(false),
         handle_inline_(handle_inline) {}
 
@@ -700,9 +705,7 @@ class DwarfCUToModule::FuncHandler: public GenericDIEHandler {
   uint64_t low_pc_, high_pc_; // DW_AT_low_pc, DW_AT_high_pc
   DwarfForm high_pc_form_; // DW_AT_high_pc can be length or address.
   DwarfForm ranges_form_; // DW_FORM_sec_offset or DW_FORM_rnglistx
-  uint64_t ranges_data_; // DW_AT_ranges
-  // DW_AT_decl_file, value of UINT64_MAX means undefined.
-  uint64_t decl_file_data_;
+  uint64_t ranges_data_;  // DW_AT_ranges
   bool inline_;
   vector<unique_ptr<Module::Inline>> child_inlines_;
   bool handle_inline_;
@@ -726,9 +729,6 @@ void DwarfCUToModule::FuncHandler::ProcessAttributeUnsigned(
     case DW_AT_ranges:
       ranges_data_ = data;
       ranges_form_ = form;
-      break;
-    case DW_AT_decl_file:
-      decl_file_data_ = data;
       break;
     default:
       GenericDIEHandler::ProcessAttributeUnsigned(attr, form, data);
@@ -857,8 +857,7 @@ void DwarfCUToModule::FuncHandler::Finish() {
 
   // Only keep track of DW_TAG_subprogram which have the attributes we are
   // interested.
-  if (handle_inline_ &&
-      (!empty_range || inline_ || decl_file_data_ != UINT64_MAX)) {
+  if (handle_inline_ && (!empty_range || inline_)) {
     StringView name = name_.empty() ? name_omitted : name_;
     uint64_t offset =
         specification_offset_ != 0 ? specification_offset_ : offset_;
@@ -866,8 +865,6 @@ void DwarfCUToModule::FuncHandler::Finish() {
                                                                        offset);
     cu_context_->file_context->module_->inline_origin_map
         .GetOrCreateInlineOrigin(offset_, name);
-    if (decl_file_data_ != UINT64_MAX)
-      cu_context_->inline_origins[decl_file_data_].push_back(offset_);
   }
 }
 
@@ -875,10 +872,12 @@ void DwarfCUToModule::FuncHandler::Finish() {
 // component to their names: namespaces, classes, etc.
 class DwarfCUToModule::NamedScopeHandler: public GenericDIEHandler {
  public:
-  NamedScopeHandler(CUContext* cu_context, DIEContext* parent_context,
-                    uint64_t offset, bool handle_inline)
-      : GenericDIEHandler(cu_context, parent_context, offset), 
-        handle_inline_(handle_inline) { }
+  NamedScopeHandler(CUContext* cu_context,
+                    DIEContext* parent_context,
+                    uint64_t offset,
+                    bool handle_inline)
+      : GenericDIEHandler(cu_context, parent_context, offset),
+        handle_inline_(handle_inline) {}
   bool EndAttributes();
   DIEHandler* FindChildHandler(uint64_t offset, enum DwarfTag tag);
 
@@ -1450,10 +1449,12 @@ void DwarfCUToModule::AssignLinesToFunctions() {
 }
 
 void DwarfCUToModule::AssignFilesToInlines() {
-  for (auto iter : files_) {
-    cu_context_->file_context->module_->inline_origin_map
-        .AssignFilesToInlineOrigins(cu_context_->inline_origins[iter.first],
-                                    iter.second);
+  // Assign File* to Inlines inside this CU.
+  auto assignFile = [this](unique_ptr<Module::Inline>& in) {
+    in->call_site_file = files_[in->call_site_file_id];
+  };
+  for (auto func : cu_context_->functions) {
+    Module::Inline::InlineDFS(func->inlines, assignFile);
   }
 }
 

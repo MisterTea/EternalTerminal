@@ -33,7 +33,14 @@ restrictions, these may appear in any order.
 *   A `FILE` record gives a source file name, and assigns it a number by which
     other records can refer to it.
 
+*   An `INLINE_ORIGIN` record holds an inline function name for `INLINE` records
+    to refer to.
+
 *   A `FUNC` record describes a function present in the source code.
+
+*   An `INLINE` record describes the inline function's nest level, call site
+    line and call site source file to which the given ranges of machine code
+    should be attributed.
 
 *   A line record indicates to which source file and line a given range of
     machine code should be attributed. The line is attributed to the function
@@ -62,16 +69,25 @@ for _name_.
 
 *   The _operatingsystem_ field names the operating system on which the
     executable or shared library was intended to run. This field should have one
-    of the following values: | **Value** | **Meaning** |
-    |:----------|:--------------------| | Linux | Linux | | mac | Macintosh OSX
-    | | windows | Microsoft Windows |
+    of the following values:
+
+    | **Value** | **Meaning** |
+    |:----------|:--------------------|
+    | Linux | Linux |
+    | mac | Macintosh OSX |
+    | windows | Microsoft Windows |
 
 *   The _architecture_ field indicates what processor architecture the
     executable or shared library contains machine code for. This field should
-    have one of the following values: | **Value** | **Instruction Set
-    Architecture** | |:----------|:---------------------------------| | x86 |
-    Intel IA-32 | | x86\_64 | AMD64/Intel 64 | | ppc | 32-bit PowerPC | | ppc64
-    | 64-bit PowerPC | | unknown | unknown |
+    have one of the following values:
+
+    | **Value** | **Instruction Set Architecture** |
+    |:----------|:---------------------------------|
+    | x86 | Intel IA-32 |
+    | x86\_64 | AMD64/Intel 64 |
+    | ppc | 32-bit PowerPC |
+    | ppc64 | 64-bit PowerPC |
+    | unknown | unknown |
 
 *   The _id_ field is a sequence of hexadecimal digits that identifies the exact
     executable or library whose contents the symbol file describes. The way in
@@ -95,6 +111,22 @@ A `FILE` record provides the name of a source file, and assigns it a number
 which other records (line records, in particular) can use to refer to that file
 name. The _number_ field is a decimal number. The _name_ field is the name of
 the file; it may contain spaces.
+
+# `INLINE_ORIGIN` records
+
+An `INLINE_ORIGIN` record holds an inline function name for `INLINE` records to
+refer to. It has the form:
+
+> `INLINE_ORIGIN` _number_ _name_
+
+For example: `INLINE_ORIGIN 2 nsQueryInterfaceWithError::operator()(nsID const&,
+void**) const
+`
+
+An `INLINE_ORIGIN` record provides the name of an inline function, and assigns
+it a number which other records (`INLINE` records, in particular) can use to
+refer to that function name. The _number_ field is a decimal number. The _name_
+field is the name of the inline function; it may contain spaces.
 
 # `FUNC` records
 
@@ -126,6 +158,49 @@ records, to step from the called function's frame to the caller's frame.
 The _name_ field is the name of the function. In languages that use linker
 symbol name mangling like C++, this should be the source language name (the
 "unmangled" form). This field may contain spaces.
+
+# `INLINE` records
+
+An `INLINE` record describes the inline function's nest level, call site line
+and call site source file to which the given ranges of machine code should be
+attributed. It has the form:
+
+> `INLINE` _inline_nest_level_ _call_site_line_ _call_site_file_num_
+> _origin_num_ [_address_ _size_]+
+
+For example: `INLINE 0 10 3 4 d30 2a fa1 b
+`
+
+The _inline_nest_level_ field is a decimal number that means it's inlined at the
+function described by a previous `INLINE` record which has _inline_nest_level_
+one less than its. In the example below, first and third `INLINE` records have
+_inline_nest_level_ 0, which means they are inlined inside the function
+described by the `FUNC` record. The second `INLINE` record has
+_inline_nest_level_ 1 means that it's inlined at the inline function described
+by first `INLINE` record.
+```
+FUNC ...
+INLINE 0 ...
+INLINE 1 ...
+INLINE 0 ...
+```
+
+The _call_site_line_ and _call_site_file_num_ fields are decimal numbers
+indicating where this inline function being called at.
+
+The _origin_num_ field refers to an `INLINE_ORIGIN` record that has the name
+of the inline function.
+
+The _address_ and _size_ fields are hexadecimal numbers indicating the start
+address and length in bytes of the machine code. The address is relative to the
+module's load address. There could be more than one [_address_ _size_] range
+pair, since inline functions could have discontinuous address ranges. The ranges
+of an `INLINE` record are always inside the ranges described by its parent
+record (a `FUNC` record or an `INLINE` record).
+
+The `INLINE` record is assumed to belong to the function described by the last
+preceding `FUNC` record. `INLINE` records may not appear before the first `FUNC`
+record.
 
 # Line records
 
@@ -396,14 +471,14 @@ func+22:     pc = *sp; sp += 4       ; pop return address and jump to it
 
 The following table would describe the function above:
 
-**code address** | **.cfa** | **r0 (on Google Code)** | **r1 (on Google Code)** | ... | **.ra**
-:--------------- | :------- | :---------------------- | :---------------------- | :-- | :-------
-func+0           | sp       |                         |                         |     | `cfa[0]`
-func+1           | sp+16    |                         |                         |     | `cfa[0]`
-func+2           | sp+16    | `cfa[-4]`               |                         |     | `cfa[0]`
-func+11          | sp+20    | `cfa[-4]`               |                         |     | `cfa[0]`
-func+21          | sp+20    |                         |                         |     | `cfa[0]`
-func+22          | sp       |                         |                         |     | `cfa[0]`
+| **code address** | **.cfa** | **r0 (on Google Code)** | **r1 (on Google Code)** | ... | **.ra**  |
+|:-----------------|:---------|:------------------------|:------------------------|:----|:---------|
+| func+0           | sp       |                         |                         |     | `cfa[0]` |
+| func+1           | sp+16    |                         |                         |     | `cfa[0]` |
+| func+2           | sp+16    | `cfa[-4]`               |                         |     | `cfa[0]` |
+| func+11          | sp+20    | `cfa[-4]`               |                         |     | `cfa[0]` |
+| func+21          | sp+20    |                         |                         |     | `cfa[0]` |
+| func+22          | sp       |                         |                         |     | `cfa[0]` |
 
 Some things to note here:
 
@@ -438,14 +513,14 @@ To save space, the most common type of CFI record only mentions the table
 entries at which changes take place. So for the above, the CFI data would only
 actually mention the non-blank entries here:
 
-**insn** | **cfa** | **r0 (on Google Code)** | **r1 (on Google Code)** | ... | **ra**
-:------- | :------ | :---------------------- | :---------------------- | :-- | :-------
-func+0   | sp      |                         |                         |     | `cfa[0]`
-func+1   | sp+16   |                         |                         |     |
-func+2   |         | `cfa[-4]`               |                         |     |
-func+11  | sp+20   |                         |                         |     |
-func+21  |         | r0 (on Google Code)     |                         |     |
-func+22  | sp      |                         |                         |     |
+| **insn** | **cfa** | **r0 (on Google Code)** | **r1 (on Google Code)** | ... | **ra**   |
+|:---------|:--------|:------------------------|:------------------------|:----|:---------|
+| func+0   | sp      |                         |                         |     | `cfa[0]` |
+| func+1   | sp+16   |                         |                         |     |          |
+| func+2   |         | `cfa[-4]`               |                         |     |          |
+| func+11  | sp+20   |                         |                         |     |          |
+| func+21  |         | r0 (on Google Code)     |                         |     |          |
+| func+22  | sp      |                         |                         |     |          |
 
 A `STACK CFI INIT` record indicates that, at the machine instruction at
 _address_, belonging to some function, the value that _register<sub>n</sub>_ had

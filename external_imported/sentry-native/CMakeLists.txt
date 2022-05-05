@@ -30,7 +30,7 @@ if(NOT CMAKE_C_STANDARD)
 endif()
 
 if(NOT CMAKE_CXX_STANDARD)
-  set(CMAKE_CXX_STANDARD 14)
+  set(CMAKE_CXX_STANDARD 17)
 endif()
 
 include(GNUInstallDirs)
@@ -151,9 +151,12 @@ if(SENTRY_BACKEND_CRASHPAD AND ANDROID)
 	message(FATAL_ERROR "The Crashpad backend is not currently supported on Android")
 endif()
 
+set(SENTRY_SDK_NAME "" CACHE STRING "The SDK name to report when sending events.")
+
 message(STATUS "SENTRY_TRANSPORT=${SENTRY_TRANSPORT}")
 message(STATUS "SENTRY_BACKEND=${SENTRY_BACKEND}")
 message(STATUS "SENTRY_LIBRARY_TYPE=${SENTRY_LIBRARY_TYPE}")
+message(STATUS "SENTRY_SDK_NAME=${SENTRY_SDK_NAME}")
 
 if(ANDROID)
 	set(SENTRY_WITH_LIBUNWINDSTACK TRUE)
@@ -221,6 +224,10 @@ target_sources(sentry PRIVATE "${PROJECT_SOURCE_DIR}/include/sentry.h")
 add_library(sentry::sentry ALIAS sentry)
 add_subdirectory(src)
 
+if (NOT SENTRY_SDK_NAME STREQUAL "")
+	target_compile_definitions(sentry PRIVATE SENTRY_SDK_NAME="${SENTRY_SDK_NAME}")
+endif()
+
 # we do not need this on android, only linux
 if(LINUX)
 	target_sources(sentry PRIVATE
@@ -233,7 +240,7 @@ set_target_properties(sentry PROPERTIES PUBLIC_HEADER "include/sentry.h")
 
 if(DEFINED SENTRY_FOLDER)
 	set_target_properties(sentry PROPERTIES FOLDER ${SENTRY_FOLDER})
-endif()	
+endif()
 
 # check size type
 include(CheckTypeSize)
@@ -384,7 +391,7 @@ if(SENTRY_LINK_PTHREAD)
 endif()
 
 # apply platform libraries to sentry library
-if(SENTRY_LIBRARY_TYPE STREQUAL "static")
+if(SENTRY_LIBRARY_TYPE STREQUAL "STATIC")
     target_link_libraries(sentry PUBLIC ${_SENTRY_PLATFORM_LIBS})
 else()
     target_link_libraries(sentry PRIVATE ${_SENTRY_PLATFORM_LIBS})
@@ -457,7 +464,7 @@ if(SENTRY_BACKEND_CRASHPAD)
 			set_target_properties(crashpad_util PROPERTIES FOLDER ${SENTRY_FOLDER})
 			set_target_properties(crashpad_zlib PROPERTIES FOLDER ${SENTRY_FOLDER})
 			set_target_properties(mini_chromium PROPERTIES FOLDER ${SENTRY_FOLDER})
-		endif()	
+		endif()
 
 		target_link_libraries(sentry PRIVATE
 			$<BUILD_INTERFACE:crashpad::client>
@@ -490,8 +497,8 @@ elseif(SENTRY_BACKEND_BREAKPAD)
 
 		if(DEFINED SENTRY_FOLDER)
 			set_target_properties(breakpad_client PROPERTIES FOLDER ${SENTRY_FOLDER})
-		endif()	
-		
+		endif()
+
 		if(NOT SENTRY_BUILD_SHARED_LIBS)
 			sentry_install(TARGETS breakpad_client EXPORT sentry
 				LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
@@ -570,7 +577,7 @@ if(SENTRY_BUILD_EXAMPLES)
 
 	if(DEFINED SENTRY_FOLDER)
 		set_target_properties(sentry_example PROPERTIES FOLDER ${SENTRY_FOLDER})
-	endif()	
+	endif()
 
 	add_test(NAME sentry_example COMMAND sentry_example)
 endif()

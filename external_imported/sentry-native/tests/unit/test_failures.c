@@ -1,6 +1,5 @@
 #include "sentry_core.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 static int
 transport_startup_fail(

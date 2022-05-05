@@ -260,6 +260,8 @@ handle_ucontext(const sentry_ucontext_t *uctx)
 
         sentry_envelope_t *envelope
             = sentry__prepare_event(options, event, NULL);
+        // TODO(tracing): Revisit when investigating transaction flushing during
+        // hard crashes.
 
         sentry_session_t *session = sentry__end_current_session_with_status(
             SENTRY_SESSION_STATUS_CRASHED);

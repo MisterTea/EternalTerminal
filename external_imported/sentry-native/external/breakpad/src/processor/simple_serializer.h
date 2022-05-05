@@ -38,6 +38,8 @@
 #ifndef PROCESSOR_SIMPLE_SERIALIZER_H__
 #define PROCESSOR_SIMPLE_SERIALIZER_H__
 
+#include <stddef.h>
+
 #include "google_breakpad/common/breakpad_types.h"
 
 namespace google_breakpad {

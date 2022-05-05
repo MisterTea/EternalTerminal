@@ -42,3 +42,15 @@ def test_rate_limits(cmake, httpserver):
     )
     run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
     assert len(httpserver.log) == 2
+
+
+def test_only_429(cmake, httpserver):
+    tmp_path = cmake(["sentry_example"], {"SENTRY_BACKEND": "none"})
+
+    env = dict(os.environ, SENTRY_DSN=make_dsn(httpserver))
+
+    httpserver.expect_oneshot_request("/api/123456/envelope/").respond_with_data(
+        "OK", 429
+    )
+    run(tmp_path, "sentry_example", ["log", "capture-multiple"], check=True, env=env)
+    assert len(httpserver.log) == 1

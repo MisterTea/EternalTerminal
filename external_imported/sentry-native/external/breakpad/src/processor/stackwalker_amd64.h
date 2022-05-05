@@ -90,6 +90,11 @@ class StackwalkerAMD64 : public Stackwalker {
   // of the returned frame. Return NULL on failure.
   StackFrameAMD64* GetCallerByStackScan(const vector<StackFrame*>& frames);
 
+  // Trying to simulate a return. The caller takes ownership of the returned
+  // frame. Return NULL on failure.
+  StackFrameAMD64* GetCallerBySimulatingReturn(
+      const vector<StackFrame*>& frames);
+
   // Stores the CPU context corresponding to the innermost stack frame to
   // be returned by GetContextFrame.
   const MDRawContextAMD64* context_;
