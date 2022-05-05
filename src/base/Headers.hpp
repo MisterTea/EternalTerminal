@@ -353,9 +353,8 @@ inline bool waitOnSocketData(int fd) {
     } else {
       FATAL_FAIL(selectResult);
     }
-  } else {
-    return FD_ISSET(fd, &fdset);
   }
+  return FD_ISSET(fd, &fdset);
 }
 
 inline string genRandomAlphaNum(int len) {
