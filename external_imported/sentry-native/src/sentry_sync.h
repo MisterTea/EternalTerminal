@@ -395,6 +395,12 @@ void sentry__bgworker_decref(sentry_bgworker_t *bgw);
 int sentry__bgworker_start(sentry_bgworker_t *bgw);
 
 /**
+ * This will try to flush the background worker thread queue, with a `timeout`.
+ * Returns 0 on success.
+ */
+int sentry__bgworker_flush(sentry_bgworker_t *bgw, uint64_t timeout);
+
+/**
  * This will try to shut down the background worker thread, with a `timeout`.
  * Returns 0 on success.
  */

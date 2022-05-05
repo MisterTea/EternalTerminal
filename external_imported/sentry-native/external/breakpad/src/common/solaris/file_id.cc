@@ -128,10 +128,6 @@ static bool FindElfTextSection(int fd, const void* elf_base,
   return false;
 }
 
-FileID::FileID(const char* path) {
-  strcpy(path_, path);
-}
-
 class AutoCloser {
  public:
   AutoCloser(int fd) : fd_(fd) {}
@@ -139,6 +135,12 @@ class AutoCloser {
  private:
   int fd_;
 };
+
+namespace elf {
+
+FileID::FileID(const char* path) {
+  strcpy(path_, path);
+}
 
 bool FileID::ElfFileIdentifier(unsigned char identifier[16]) {
   int fd = 0;
@@ -194,4 +196,5 @@ bool FileID::ConvertIdentifierToString(const unsigned char identifier[16],
   return true;
 }
 
+}  // elf
 }  // namespace google_breakpad

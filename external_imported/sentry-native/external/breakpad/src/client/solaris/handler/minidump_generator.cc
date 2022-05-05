@@ -47,6 +47,7 @@
 namespace {
 
 using namespace google_breakpad;
+using namespace google_breakpad::elf::FileID;
 
 // Argument for the writer function.
 struct WriterArgument {

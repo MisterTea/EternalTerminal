@@ -221,6 +221,35 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByFramePointerRecovery(
   return NULL;
 }
 
+StackFrameAMD64* StackwalkerAMD64::GetCallerBySimulatingReturn(
+    const vector<StackFrame*>& frames) {
+  assert(frames.back()->trust == StackFrame::FRAME_TRUST_CONTEXT);
+  StackFrameAMD64* last_frame = static_cast<StackFrameAMD64*>(frames.back());
+  uint64_t last_rsp = last_frame->context.rsp;
+  uint64_t caller_rip_address, caller_rip;
+  int searchwords = 1;
+  if (!ScanForReturnAddress(last_rsp, &caller_rip_address, &caller_rip,
+                            searchwords)) {
+    // No plausible return address at the top of the stack. Unable to simulate
+    // a return.
+    return NULL;
+  }
+
+  // Create a new stack frame (ownership will be transferred to the caller)
+  // and fill it in.
+  StackFrameAMD64* frame = new StackFrameAMD64();
+
+  frame->trust = StackFrame::FRAME_TRUST_LEAF;
+  frame->context = last_frame->context;
+  frame->context.rip = caller_rip;
+  // The caller's %rsp is directly underneath the return address pushed by
+  // the call.
+  frame->context.rsp = caller_rip_address + 8;
+  frame->context_validity = last_frame->context_validity;
+
+  return frame;
+}
+
 StackFrameAMD64* StackwalkerAMD64::GetCallerByStackScan(
     const vector<StackFrame*>& frames) {
   StackFrameAMD64* last_frame = static_cast<StackFrameAMD64*>(frames.back());
@@ -228,7 +257,8 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByStackScan(
   uint64_t caller_rip_address, caller_rip;
 
   if (!ScanForReturnAddress(last_rsp, &caller_rip_address, &caller_rip,
-                            frames.size() == 1 /* is_context_frame */)) {
+                            /*is_context_frame=*/last_frame->trust ==
+                                StackFrame::FRAME_TRUST_CONTEXT)) {
     // No plausible return address was found.
     return NULL;
   }
@@ -282,14 +312,28 @@ StackFrame* StackwalkerAMD64::GetCallerFrame(const CallStack* stack,
   StackFrameAMD64* last_frame = static_cast<StackFrameAMD64*>(frames.back());
   scoped_ptr<StackFrameAMD64> new_frame;
 
-  // If we have DWARF CFI information, use it.
+  // If we have CFI information, use it.
   scoped_ptr<CFIFrameInfo> cfi_frame_info(
       frame_symbolizer_->FindCFIFrameInfo(last_frame));
   if (cfi_frame_info.get())
     new_frame.reset(GetCallerByCFIFrameInfo(frames, cfi_frame_info.get()));
 
+  // If CFI was not available and this is a Windows x64 stack, check whether
+  // this is a leaf function which doesn't touch any callee-saved registers.
+  // According to https://reviews.llvm.org/D24748, LLVM doesn't generate unwind
+  // info for such functions. According to MSDN, leaf functions can be unwound
+  // simply by simulating a return.
+  if (!new_frame.get() &&
+      last_frame->trust == StackFrame::FRAME_TRUST_CONTEXT &&
+      system_info_->os_short == "windows") {
+    new_frame.reset(GetCallerBySimulatingReturn(frames));
+  }
+
   // If CFI was not available or failed, try using frame pointer recovery.
-  if (!new_frame.get()) {
+  // Never try to use frame pointer unwinding on Windows x64 stack. MSVC never
+  // generates code that works with frame pointer chasing, and LLVM does the
+  // same. Stack scanning would be better.
+  if (!new_frame.get() && system_info_->os_short != "windows") {
     new_frame.reset(GetCallerByFramePointerRecovery(frames));
   }
 
@@ -314,7 +358,9 @@ StackFrame* StackwalkerAMD64::GetCallerFrame(const CallStack* stack,
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
   if (TerminateWalk(new_frame->context.rip, new_frame->context.rsp,
-                    last_frame->context.rsp, frames.size() == 1)) {
+                    last_frame->context.rsp,
+                    /*first_unwind=*/last_frame->trust ==
+                        StackFrame::FRAME_TRUST_CONTEXT)) {
     return NULL;
   }
 

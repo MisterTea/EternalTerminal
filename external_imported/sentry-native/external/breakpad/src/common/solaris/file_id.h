@@ -37,6 +37,7 @@
 #include <limits.h>
 
 namespace google_breakpad {
+namespace elf {
 
 class FileID {
  public:
@@ -61,6 +62,7 @@ class FileID {
   char path_[PATH_MAX];
 };
 
+}  // elf
 }  // namespace google_breakpad
 
 #endif  // COMMON_SOLARIS_FILE_ID_H__

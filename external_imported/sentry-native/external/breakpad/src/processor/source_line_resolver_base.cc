@@ -42,10 +42,10 @@
 #include <utility>
 
 #include "google_breakpad/processor/source_line_resolver_base.h"
-#include "processor/source_line_resolver_base_types.h"
+#include "processor/logging.h"
 #include "processor/module_factory.h"
+#include "processor/source_line_resolver_base_types.h"
 
-using std::map;
 using std::make_pair;
 
 namespace google_breakpad {
@@ -168,7 +168,9 @@ bool SourceLineResolverBase::LoadModule(const CodeModule* module,
   if (!ReadSymbolFile(map_file, &memory_buffer, &memory_buffer_size))
     return false;
 
-  BPLOG(INFO) << "Read symbol file " << map_file << " succeeded";
+  BPLOG(INFO) << "Read symbol file " << map_file << " succeeded. "
+              << "module = " << module->code_file()
+              << ", memory_buffer_size = " << memory_buffer_size;
 
   bool load_result = LoadModuleUsingMemoryBuffer(module, memory_buffer,
                                                  memory_buffer_size);
@@ -185,6 +187,9 @@ bool SourceLineResolverBase::LoadModule(const CodeModule* module,
 
 bool SourceLineResolverBase::LoadModuleUsingMapBuffer(
     const CodeModule* module, const string& map_buffer) {
+  BPLOG(INFO) << "SourceLineResolverBase::LoadModuleUsingMapBuffer(module = "
+              << module->code_file()
+              << ", map_buffer.size() = " << map_buffer.size() << ")";
   if (module == NULL)
     return false;
 
@@ -234,7 +239,7 @@ bool SourceLineResolverBase::LoadModuleUsingMemoryBuffer(
   }
 
   BPLOG(INFO) << "Loading symbols for module " << module->code_file()
-             << " from memory buffer";
+              << " from memory buffer, size: " << memory_buffer_size;
 
   Module* basic_module = module_factory_->CreateModule(module->code_file());
 

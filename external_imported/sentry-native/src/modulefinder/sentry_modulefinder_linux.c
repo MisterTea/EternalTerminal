@@ -13,6 +13,8 @@
 #include <elf.h>
 #include <fcntl.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <sys/stat.h>
 #include <sys/syscall.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -40,6 +42,50 @@ static sentry_mutex_t g_mutex = SENTRY__MUTEX_INIT;
 static sentry_value_t g_modules = { 0 };
 
 static sentry_slice_t LINUX_GATE = { "linux-gate.so", 13 };
+
+bool
+sentry__mmap_file(sentry_mmap_t *rv, const char *path)
+{
+    int fd = open(path, O_RDONLY);
+    if (fd < 0) {
+        goto fail;
+    }
+
+    struct stat sb;
+    if (stat(path, &sb) != 0 || !S_ISREG(sb.st_mode)) {
+        goto fail;
+    }
+
+    rv->len = sb.st_size;
+    if (rv->len == 0) {
+        goto fail;
+    }
+
+    rv->ptr = mmap(NULL, rv->len, PROT_READ, MAP_PRIVATE, fd, 0);
+    if (rv->ptr == MAP_FAILED) {
+        goto fail;
+    }
+
+    close(fd);
+
+    return true;
+
+fail:
+    if (fd > 0) {
+        close(fd);
+    }
+    rv->ptr = NULL;
+    rv->len = 0;
+    return false;
+}
+
+void
+sentry__mmap_close(sentry_mmap_t *m)
+{
+    munmap(m->ptr, m->len);
+    m->ptr = NULL;
+    m->len = 0;
+}
 
 /**
  * Checks that `start_offset` + `size` is a valid contiguous mapping in the
@@ -87,14 +133,17 @@ read_safely(void *dst, void *src, size_t size)
     ssize_t nread = process_vm_readv(pid, local, 1, remote, 1, 0);
     bool rv = nread == (ssize_t)size;
 
-    // The syscall is only available in Linux 3.2, meaning Android 17.
-    // If that is the case, just fall back to an unsafe memcpy.
-#if defined(__ANDROID_API__) && __ANDROID_API__ < 17
-    if (!rv && errno == EINVAL) {
+    // The syscall can fail with `EPERM` if we lack permissions for this syscall
+    // (which is the case when running in Docker for example,
+    // See https://github.com/getsentry/sentry-native/issues/578).
+    // Also, the syscall is only available in Linux 3.2, meaning Android 17.
+    // In that case we get an `EINVAL`.
+    //
+    // In either of these cases, just fall back to an unsafe `memcpy`.
+    if (!rv && (errno == EPERM || errno == EINVAL)) {
         memcpy(dst, src, size);
         rv = true;
     }
-#endif
     return rv;
 }
 
@@ -108,6 +157,10 @@ sentry__module_read_safely(void *dst, const sentry_module_t *module,
     void *src = sentry__module_get_addr(module, start_offset, size);
     if (!src) {
         return false;
+    }
+    if (module->is_mmapped) {
+        memcpy(dst, src, (size_t)size);
+        return true;
     }
     return read_safely(dst, src, (size_t)size);
 }
@@ -315,15 +368,15 @@ get_code_id_from_text_fallback(const sentry_module_t *module)
             elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,
             sizeof(Elf64_Shdr)));
 
-        const char *names = sentry__module_get_addr(
-            module, strheader.sh_offset, strheader.sh_entsize);
-        ENSURE(names);
         for (int i = 0; i < elf.e_shnum; i++) {
             Elf64_Shdr header;
             ENSURE(sentry__module_read_safely(&header, module,
                 elf.e_shoff + elf.e_shentsize * i, sizeof(Elf64_Shdr)));
 
-            const char *name = names + header.sh_name;
+            char name[6];
+            ENSURE(sentry__module_read_safely(name, module,
+                strheader.sh_offset + header.sh_name, sizeof(name)));
+            name[5] = '\0';
             if (header.sh_type == SHT_PROGBITS && strcmp(name, ".text") == 0) {
                 text = sentry__module_get_addr(
                     module, header.sh_offset, header.sh_size);
@@ -341,15 +394,15 @@ get_code_id_from_text_fallback(const sentry_module_t *module)
             elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,
             sizeof(Elf32_Shdr)));
 
-        const char *names = sentry__module_get_addr(
-            module, strheader.sh_offset, strheader.sh_entsize);
-        ENSURE(names);
         for (int i = 0; i < elf.e_shnum; i++) {
             Elf32_Shdr header;
             ENSURE(sentry__module_read_safely(&header, module,
                 elf.e_shoff + elf.e_shentsize * i, sizeof(Elf32_Shdr)));
 
-            const char *name = names + header.sh_name;
+            char name[6];
+            ENSURE(sentry__module_read_safely(name, module,
+                strheader.sh_offset + header.sh_name, sizeof(name)));
+            name[5] = '\0';
             if (header.sh_type == SHT_PROGBITS && strcmp(name, ".text") == 0) {
                 text = sentry__module_get_addr(
                     module, header.sh_offset, header.sh_size);
@@ -419,13 +472,46 @@ sentry__procmaps_module_to_value(const sentry_module_t *module)
     const sentry_mapped_region_t *first_mapping = &module->mappings[0];
     const sentry_mapped_region_t *last_mapping
         = &module->mappings[module->num_mappings - 1];
+    uint64_t module_size
+        = last_mapping->addr + last_mapping->size - first_mapping->addr;
+
     sentry_value_set_by_key(
         mod_val, "image_addr", sentry__value_new_addr(first_mapping->addr));
-    sentry_value_set_by_key(mod_val, "image_size",
-        sentry_value_new_int32(
-            last_mapping->addr + last_mapping->size - first_mapping->addr));
+    sentry_value_set_by_key(
+        mod_val, "image_size", sentry_value_new_int32(module_size));
 
-    sentry__procmaps_read_ids_from_elf(mod_val, module);
+    // At least on the android API-16, x86 simulator, the linker apparently
+    // does not load the complete file into memory. Or at least, the section
+    // headers which are located at the end of the file are not loaded, and
+    // we would be poking into invalid memory. To be safe, we mmap the
+    // complete file from disk, so we have the on-disk layout, and are
+    // independent of how the runtime linker would load or re-order any
+    // sections. The exception here is the linux-gate, which is not an
+    // actual file on disk, so we actually poke at its memory.
+    if (sentry__slice_eq(module->file, LINUX_GATE)) {
+        sentry__procmaps_read_ids_from_elf(mod_val, module);
+    } else {
+        char *filename = sentry__slice_to_owned(module->file);
+        sentry_mmap_t mm;
+        if (!sentry__mmap_file(&mm, filename)) {
+            sentry_free(filename);
+            sentry_value_decref(mod_val);
+            return sentry_value_new_null();
+        }
+        sentry_free(filename);
+
+        sentry_module_t mmapped_module;
+        memset(&mmapped_module, 0, sizeof(sentry_module_t));
+        mmapped_module.is_mmapped = true;
+        mmapped_module.num_mappings = 1;
+        mmapped_module.mappings[0].addr
+            = (uint64_t)mm.ptr + module->offset_in_inode;
+        mmapped_module.mappings[0].size = mm.len - module->offset_in_inode;
+
+        sentry__procmaps_read_ids_from_elf(mod_val, &mmapped_module);
+
+        sentry__mmap_close(&mm);
+    }
 
     return mod_val;
 }

@@ -2,7 +2,6 @@
 #include "sentry_testsupport.h"
 #include "sentry_utils.h"
 #include "sentry_value.h"
-#include <sentry.h>
 
 #ifdef SENTRY_PLATFORM_UNIX
 #    include "sentry_unix_pageallocator.h"
@@ -72,7 +71,7 @@ SENTRY_TEST(url_parsing_invalid)
 SENTRY_TEST(dsn_parsing_complete)
 {
     sentry_dsn_t *dsn = sentry__dsn_new(
-        "http://username:password@example.com/foo/bar/42?x=y#z");
+        "http://username:password@example.com/foo/bar/42%21?x=y#z");
     TEST_CHECK(!!dsn);
     if (!dsn) {
         return;
@@ -84,10 +83,10 @@ SENTRY_TEST(dsn_parsing_complete)
     TEST_CHECK_STRING_EQUAL(dsn->public_key, "username");
     TEST_CHECK_STRING_EQUAL(dsn->secret_key, "password");
     TEST_CHECK_STRING_EQUAL(dsn->path, "/foo/bar");
-    TEST_CHECK_INT_EQUAL((int)dsn->project_id, 42);
+    TEST_CHECK_STRING_EQUAL(dsn->project_id, "42%21");
     sentry__dsn_decref(dsn);
 
-    dsn = sentry__dsn_new("https://username@example.com/42");
+    dsn = sentry__dsn_new("https://username@example.com/42%21");
     TEST_CHECK(!!dsn);
     if (!dsn) {
         return;
@@ -98,22 +97,24 @@ SENTRY_TEST(dsn_parsing_complete)
     TEST_CHECK_STRING_EQUAL(dsn->public_key, "username");
     TEST_CHECK(!dsn->secret_key);
     TEST_CHECK_STRING_EQUAL(dsn->path, "");
-    TEST_CHECK_INT_EQUAL((int)dsn->project_id, 42);
+    TEST_CHECK_STRING_EQUAL(dsn->project_id, "42%21");
+    sentry__dsn_decref(dsn);
+
+    dsn = sentry__dsn_new("https://username@example.com/pathone/pathtwo/42%21");
+    TEST_CHECK(!!dsn);
+    if (!dsn) {
+        return;
+    }
+    TEST_CHECK(dsn->is_valid);
+    TEST_CHECK_STRING_EQUAL(dsn->path, "/pathone/pathtwo");
+    TEST_CHECK_STRING_EQUAL(dsn->project_id, "42%21");
     sentry__dsn_decref(dsn);
 }
 
 SENTRY_TEST(dsn_parsing_invalid)
 {
-    sentry_dsn_t *dsn
-        = sentry__dsn_new("http://username:password@example.com/foo/bar?x=y#z");
-    TEST_CHECK(!!dsn);
-    if (dsn) {
-        TEST_CHECK(!dsn->is_valid);
-        sentry__dsn_decref(dsn);
-    }
-
-    dsn = sentry__dsn_new("=https://foo@bar.ingest.sentry.io/"
-                          "1234567");
+    sentry_dsn_t *dsn = sentry__dsn_new("=https://foo@bar.ingest.sentry.io/"
+                                        "1234567");
     TEST_CHECK(!!dsn);
     if (dsn) {
         TEST_CHECK(!dsn->is_valid);

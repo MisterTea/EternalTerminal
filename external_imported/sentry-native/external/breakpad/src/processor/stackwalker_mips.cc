@@ -276,7 +276,8 @@ StackFrame* StackwalkerMIPS::GetCallerFrame(const CallStack* stack,
   if (TerminateWalk(new_frame->context.epc,
                     new_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP],
                     last_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP],
-                    frames.size() == 1)) {
+                    /*first_unwind=*/last_frame->trust ==
+                        StackFrame::FRAME_TRUST_CONTEXT)) {
     return NULL;
   }
 

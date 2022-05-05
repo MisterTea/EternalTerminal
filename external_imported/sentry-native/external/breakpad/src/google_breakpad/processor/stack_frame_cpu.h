@@ -251,7 +251,10 @@ struct StackFrameARM : public StackFrame {
 
   // Return the ContextValidity flag for register rN.
   static ContextValidity RegisterValidFlag(int n) {
-    return ContextValidity(1 << n);
+    if (0 <= n && n <= 15) {
+      return ContextValidity(1 << n);
+    }
+    return CONTEXT_VALID_NONE;
   }
 
   // Register state.  This is only fully valid for the topmost frame in a

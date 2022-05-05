@@ -83,6 +83,14 @@ sentry__rate_limiter_update_from_http_retry_after(
 }
 
 bool
+sentry__rate_limiter_update_from_429(sentry_rate_limiter_t *rl)
+{
+    rl->disabled_until[SENTRY_RL_CATEGORY_ANY]
+        = sentry__monotonic_time() + 60 * 1000;
+    return true;
+}
+
+bool
 sentry__rate_limiter_is_disabled(const sentry_rate_limiter_t *rl, int category)
 {
     uint64_t now = sentry__monotonic_time();

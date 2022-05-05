@@ -41,6 +41,7 @@
 #include "common/using_std_string.h"
 
 namespace google_breakpad {
+namespace elf {
 
 // GNU binutils' ld defaults to 'sha1', which is 160 bits == 20 bytes,
 // so this is enough to fit that, which most binaries will use.
@@ -83,6 +84,7 @@ class FileID {
   string path_;
 };
 
+}  // namespace elf
 }  // namespace google_breakpad
 
 #endif  // COMMON_LINUX_FILE_ID_H__

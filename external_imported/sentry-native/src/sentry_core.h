@@ -5,6 +5,7 @@
 #include "sentry_logger.h"
 
 #define SENTRY_BREADCRUMBS_MAX 100
+#define SENTRY_SPANS_MAX 1000
 
 #if defined(__GNUC__) && (__GNUC__ >= 4)
 #    define MUST_USE __attribute__((warn_unused_result))
@@ -29,7 +30,14 @@
 bool sentry__should_skip_upload(void);
 
 /**
- * Convert the given event into an envelope.
+ * Given a well-formed event, returns whether an event is a transaction or not.
+ * Defaults to false, which will also be returned if the event is malformed.
+ */
+bool sentry__event_is_transaction(sentry_value_t event);
+
+/**
+ * Convert the given event into an envelope. This assumes that the event
+ * being passed in is not a transaction.
  *
  * More specifically, it will do the following things:
  * - sample the event, possibly discarding it,
@@ -44,6 +52,29 @@ bool sentry__should_skip_upload(void);
  */
 sentry_envelope_t *sentry__prepare_event(const sentry_options_t *options,
     sentry_value_t event, sentry_uuid_t *event_id);
+
+/**
+ * Sends a sentry event, regardless of its type.
+ */
+sentry_uuid_t sentry__capture_event(sentry_value_t event);
+
+/**
+ * Convert the given transaction into an envelope. This assumes that the
+ * event being passed in is a transaction.
+ *
+ * It will do the following things:
+ * - discard the transaction if it is unsampled
+ * - apply the scope to the transaction
+ * - add the transaction to a new envelope
+ * - add any attachments to the envelope
+ *
+ * The function will ensure the transaction has a UUID and write it into the
+ * `event_id` out-parameter. This takes ownership of the transaction, which
+ * means that the caller no longer needs to call `sentry_value_decref` on the
+ * transaction.
+ */
+sentry_envelope_t *sentry__prepare_transaction(const sentry_options_t *options,
+    sentry_value_t transaction, sentry_uuid_t *event_id);
 
 /**
  * This function will submit the `envelope` to the given `transport`, first
@@ -84,8 +115,10 @@ void sentry__options_unlock(void);
     for (const sentry_options_t *Options = sentry__options_getref(); Options;  \
          sentry_options_free((sentry_options_t *)Options), Options = NULL)
 
-#define SENTRY_WITH_OPTIONS_MUT(Options)                                       \
-    for (sentry_options_t *Options = sentry__options_lock(); Options;          \
-         sentry__options_unlock(), Options = NULL)
+// these for now are only needed outside of core for tests
+#ifdef SENTRY_UNITTEST
+bool sentry__roll_dice(double probability);
+bool sentry__should_send_transaction(sentry_value_t tx_cxt);
+#endif
 
 #endif

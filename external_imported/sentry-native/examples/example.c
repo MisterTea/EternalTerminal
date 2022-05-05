@@ -93,6 +93,14 @@ main(int argc, char **argv)
             options, sentry_transport_new(print_envelope));
     }
 
+    if (has_arg(argc, argv, "capture-transaction")) {
+        sentry_options_set_traces_sample_rate(options, 1.0);
+    }
+
+    if (has_arg(argc, argv, "child-spans")) {
+        sentry_options_set_max_spans(options, 5);
+    }
+
     sentry_init(options);
 
     if (!has_arg(argc, argv, "no-setup")) {
@@ -206,6 +214,41 @@ main(int argc, char **argv)
         sentry_event_add_exception(event, exc);
 
         sentry_capture_event(event);
+    }
+
+    if (has_arg(argc, argv, "capture-transaction")) {
+        sentry_transaction_context_t *tx_ctx
+            = sentry_transaction_context_new("little.teapot",
+                "Short and stout here is my handle and here is my spout");
+
+        if (has_arg(argc, argv, "unsample-tx")) {
+            sentry_transaction_context_set_sampled(tx_ctx, 0);
+        }
+        sentry_transaction_t *tx
+            = sentry_transaction_start(tx_ctx, sentry_value_new_null());
+
+        if (has_arg(argc, argv, "error-status")) {
+            sentry_transaction_set_status(
+                tx, SENTRY_SPAN_STATUS_INTERNAL_ERROR);
+        }
+
+        if (has_arg(argc, argv, "child-spans")) {
+            sentry_span_t *child
+                = sentry_transaction_start_child(tx, "littler.teapot", NULL);
+            sentry_span_t *grandchild
+                = sentry_span_start_child(child, "littlest.teapot", NULL);
+
+            if (has_arg(argc, argv, "error-status")) {
+                sentry_span_set_status(child, SENTRY_SPAN_STATUS_NOT_FOUND);
+                sentry_span_set_status(
+                    grandchild, SENTRY_SPAN_STATUS_ALREADY_EXISTS);
+            }
+
+            sentry_span_finish(grandchild);
+            sentry_span_finish(child);
+        }
+
+        sentry_transaction_finish(tx);
     }
 
     // make sure everything flushes

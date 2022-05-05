@@ -24,8 +24,6 @@ afl-fuzz -i fuzzing-examples -o fuzzing-results -- fuzzing/sentry_fuzz_json @@
 #    define _CRT_SECURE_NO_WARNINGS
 #endif
 
-#include "sentry.h"
-
 #include <assert.h>
 #include <string.h>
 

@@ -91,13 +91,13 @@ set(BREAKPAD_SOURCES_CLIENT_APPLE
     breakpad/src/client/mac/handler/breakpad_nlist_64.h
     breakpad/src/client/mac/handler/dynamic_images.cc
     breakpad/src/client/mac/handler/dynamic_images.h
-    breakpad/src/client/mac/handler/exception_handler.cc
-    breakpad/src/client/mac/handler/exception_handler.h
     breakpad/src/client/mac/handler/minidump_generator.cc
     breakpad/src/client/mac/handler/minidump_generator.h
 )
 
 set(BREAKPAD_SOURCES_CLIENT_MAC
+    breakpad/src/client/mac/handler/exception_handler.cc
+    breakpad/src/client/mac/handler/exception_handler.h
     breakpad/src/client/mac/crash_generation/crash_generation_client.cc
     breakpad/src/client/mac/crash_generation/crash_generation_client.h
 )

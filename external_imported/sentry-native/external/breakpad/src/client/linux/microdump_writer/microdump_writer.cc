@@ -49,8 +49,8 @@
 namespace {
 
 using google_breakpad::auto_wasteful_vector;
+using google_breakpad::elf::kDefaultBuildIdSize;
 using google_breakpad::ExceptionHandler;
-using google_breakpad::kDefaultBuildIdSize;
 using google_breakpad::LinuxDumper;
 using google_breakpad::LinuxPtraceDumper;
 using google_breakpad::MappingInfo;

@@ -12,14 +12,17 @@ build: build/Makefile
 	@cmake --build build --parallel
 .PHONY: build
 
-build/sentry_test_unit: build
-	@cmake --build build --target sentry_test_unit --parallel
-
 test: update-test-discovery test-integration
 .PHONY: test
 
-test-unit: update-test-discovery build/sentry_test_unit
-	./build/sentry_test_unit
+test-unit: update-test-discovery CMakeLists.txt
+	@mkdir -p unit-build
+	@cd unit-build; cmake \
+		-DCMAKE_RUNTIME_OUTPUT_DIRECTORY=$(PWD)/unit-build \
+		-DSENTRY_BACKEND=none \
+		..
+	@cmake --build unit-build --target sentry_test_unit --parallel
+	./unit-build/sentry_test_unit
 .PHONY: test-unit
 
 test-integration: setup-venv

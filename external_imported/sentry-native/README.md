@@ -58,8 +58,8 @@ The SDK currently supports and is tested on the following OS/Compiler variations
 - 64bit Linux with GCC 9
 - 64bit Linux with clang 9
 - 32bit Linux with GCC 7 (cross compiled from 64bit host)
-- 64bit Windows with MSVC 2019
-- 32bit Windows with MSVC 2017
+- 32bit Windows with MSVC 2019
+- 64bit Windows with MSVC 2022
 - macOS Catalina with most recent Compiler toolchain
 - Android API29 built by NDK21 toolchain
 - Android API16 built by NDK19 toolchain
@@ -264,12 +264,16 @@ Legend:
 
 - `SENTRY_FOLDER` (Default: not defined):
   Sets the sentry-native projects folder name for generators which support project hierarchy (like Microsoft Visual Studio).
-  To use this feature you need to enable hierarchy via [`USE_FOLDERS` property](https://cmake.org/cmake/help/latest/prop_gbl/USE_FOLDERS.html) 
+  To use this feature you need to enable hierarchy via [`USE_FOLDERS` property](https://cmake.org/cmake/help/latest/prop_gbl/USE_FOLDERS.html)
 
 - `CRASHPAD_ENABLE_STACKTRACE` (Default: OFF):
   This enables client-side stackwalking when using the crashpad backend. Stack unwinding will happen on the client's machine
   and the result will be submitted to Sentry attached to the generated minidump.
   Note that this feature is still experimental.
+
+- `SENTRY_SDK_NAME` (Default: sentry.native or sentry.native.android):
+  Sets the SDK name that should be included in the reported events. If you're overriding this, make sure to also define
+  the same value using `target_compile_definitions()` on your own targets that include `sentry.h`.
 
 ### Build Targets
 

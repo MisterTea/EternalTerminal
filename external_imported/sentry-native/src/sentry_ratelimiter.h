@@ -35,6 +35,12 @@ bool sentry__rate_limiter_update_from_http_retry_after(
     sentry_rate_limiter_t *rl, const char *retry_after);
 
 /**
+ * This will update the rate limiters internal state based on receiving a 429
+ * status code.
+ */
+bool sentry__rate_limiter_update_from_429(sentry_rate_limiter_t *rl);
+
+/**
  * This will return `true` if the specified `category` is currently rate
  * limited.
  */

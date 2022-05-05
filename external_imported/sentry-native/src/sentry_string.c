@@ -39,49 +39,6 @@ sentry__stringbuilder_reserve(sentry_stringbuilder_t *sb, size_t len)
     return &sb->buf[sb->len];
 }
 
-static int
-append(sentry_stringbuilder_t *sb, const char *s, size_t len)
-{
-    char *buf = sentry__stringbuilder_reserve(sb, len + 1);
-    if (!buf) {
-        return 1;
-    }
-    memcpy(buf, s, len);
-    sb->len += len;
-
-    // make sure we're always zero terminated
-    sb->buf[sb->len] = '\0';
-
-    return 0;
-}
-
-int
-sentry__stringbuilder_append(sentry_stringbuilder_t *sb, const char *s)
-{
-    return append(sb, s, strlen(s));
-}
-
-int
-sentry__stringbuilder_append_buf(
-    sentry_stringbuilder_t *sb, const char *s, size_t len)
-{
-    return append(sb, s, len);
-}
-
-int
-sentry__stringbuilder_append_char(sentry_stringbuilder_t *sb, char c)
-{
-    return append(sb, &c, 1);
-}
-
-int
-sentry__stringbuilder_append_char32(sentry_stringbuilder_t *sb, uint32_t c)
-{
-    char buf[4];
-    size_t len = sentry__unichar_to_utf8(c, buf);
-    return sentry__stringbuilder_append_buf(sb, buf, len);
-}
-
 char *
 sentry_stringbuilder_take_string(sentry_stringbuilder_t *sb)
 {
@@ -119,24 +76,6 @@ void
 sentry__stringbuilder_set_len(sentry_stringbuilder_t *sb, size_t len)
 {
     sb->len = len;
-}
-
-char *
-sentry__string_clone(const char *str)
-{
-    return str ? sentry__string_clonen(str, strlen(str)) : NULL;
-}
-
-char *
-sentry__string_clonen(const char *str, size_t n)
-{
-    size_t len = n + 1;
-    char *rv = sentry_malloc(len);
-    if (rv) {
-        memcpy(rv, str, n);
-        rv[n] = 0;
-    }
-    return rv;
 }
 
 #ifdef SENTRY_PLATFORM_WINDOWS

@@ -492,7 +492,7 @@ bool WriteModuleInfo(int fd, GElf_Half arch, const std::string& obj_file) {
   }
 
   unsigned char identifier[16];
-  google_breakpad::FileID file_id(obj_file.c_str());
+  google_breakpad::elf::FileID file_id(obj_file.c_str());
   if (file_id.ElfFileIdentifier(identifier)) {
     char identifier_str[40];
     file_id.ConvertIdentifierToString(identifier,

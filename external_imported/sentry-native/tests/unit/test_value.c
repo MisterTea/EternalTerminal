@@ -3,7 +3,6 @@
 #include "sentry_value.h"
 #include <locale.h>
 #include <math.h>
-#include <sentry.h>
 
 SENTRY_TEST(value_null)
 {
@@ -227,6 +226,62 @@ SENTRY_TEST(value_object)
     sentry_value_freeze(val);
     TEST_CHECK(sentry_value_is_frozen(val));
     sentry_value_decref(val);
+}
+
+SENTRY_TEST(value_object_merge)
+{
+    sentry_value_t dst = sentry_value_new_object();
+    sentry_value_set_by_key(dst, "a", sentry_value_new_int32(1));
+    sentry_value_set_by_key(dst, "b", sentry_value_new_int32(2));
+
+    sentry_value_t src = sentry_value_new_object();
+    sentry_value_set_by_key(src, "b", sentry_value_new_int32(20));
+    sentry_value_set_by_key(src, "c", sentry_value_new_int32(30));
+
+    int rv = sentry__value_merge_objects(dst, src);
+    TEST_CHECK_INT_EQUAL(rv, 0);
+    sentry_value_decref(src);
+
+    sentry_value_t a = sentry_value_get_by_key(dst, "a");
+    sentry_value_t b = sentry_value_get_by_key(dst, "b");
+    sentry_value_t c = sentry_value_get_by_key(dst, "c");
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(a), 1);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(b), 20);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(c), 30);
+
+    sentry_value_decref(dst);
+}
+
+SENTRY_TEST(value_object_merge_nested)
+{
+    sentry_value_t dst = sentry_value_new_object();
+    sentry_value_set_by_key(dst, "a", sentry_value_new_int32(1));
+    sentry_value_t dst_nested = sentry_value_new_object();
+    sentry_value_set_by_key(dst_nested, "ba", sentry_value_new_int32(1));
+    sentry_value_set_by_key(dst_nested, "bb", sentry_value_new_int32(2));
+    sentry_value_set_by_key(dst, "b", dst_nested);
+
+    sentry_value_t src = sentry_value_new_object();
+    sentry_value_t src_nested = sentry_value_new_object();
+    sentry_value_set_by_key(src_nested, "bb", sentry_value_new_int32(20));
+    sentry_value_set_by_key(src_nested, "bc", sentry_value_new_int32(30));
+    sentry_value_set_by_key(src, "b", src_nested);
+
+    int rv = sentry__value_merge_objects(dst, src);
+    TEST_CHECK_INT_EQUAL(rv, 0);
+    sentry_value_decref(src);
+
+    sentry_value_t a = sentry_value_get_by_key(dst, "a");
+    sentry_value_t nested = sentry_value_get_by_key(dst, "b");
+    sentry_value_t ba = sentry_value_get_by_key(nested, "ba");
+    sentry_value_t bb = sentry_value_get_by_key(nested, "bb");
+    sentry_value_t bc = sentry_value_get_by_key(nested, "bc");
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(a), 1);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(ba), 1);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(bb), 20);
+    TEST_CHECK_INT_EQUAL(sentry_value_as_int32(bc), 30);
+
+    sentry_value_decref(dst);
 }
 
 SENTRY_TEST(value_freezing)

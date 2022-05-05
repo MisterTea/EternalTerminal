@@ -1,10 +1,9 @@
-#!/usr/bin/env python
-
 # Copyright 2016 The Chromium Authors. All rights reserved.
 # Use of this source code is governed by a BSD-style license that can be
 # found in the LICENSE file.
 
 import argparse
+import codecs
 import plistlib
 import os
 import re
@@ -13,6 +12,10 @@ import sys
 import tempfile
 import shlex
 
+if sys.version_info.major < 3:
+  basestring_compat = basestring
+else:
+  basestring_compat = str
 
 # Xcode substitutes variables like ${PRODUCT_NAME} or $(PRODUCT_NAME) when
 # compiling Info.plist. It also supports supports modifiers like :identifier
@@ -48,6 +51,7 @@ def InterpolateString(value, substitutions):
     value in |substitutions|. Raises SubstitutionError if a variable has no
     substitution.
   """
+
   def repl(match):
     variable = match.group('id')
     if variable not in substitutions:
@@ -63,6 +67,7 @@ def InterpolateString(value, substitutions):
       return INVALID_CHARACTER_REGEXP.sub('-', substitutions[variable])
     else:
       return substitutions[variable]
+
   for substitution_regexp in SUBSTITUTION_REGEXP_LIST:
     value = substitution_regexp.sub(repl, value)
   return value
@@ -81,40 +86,49 @@ def Interpolate(value, substitutions):
     substitution.
   """
   if isinstance(value, dict):
-      return {k: Interpolate(v, substitutions) for k, v in value.iteritems()}
+    return {k: Interpolate(v, substitutions) for k, v in value.items()}
   if isinstance(value, list):
     return [Interpolate(v, substitutions) for v in value]
-  if isinstance(value, str):
+  if isinstance(value, basestring_compat):
     return InterpolateString(value, substitutions)
   return value
 
 
 def LoadPList(path):
   """Loads Plist at |path| and returns it as a dictionary."""
-  fd, name = tempfile.mkstemp()
-  try:
-    subprocess.check_call(['plutil', '-convert', 'xml1', '-o', name, path])
-    with os.fdopen(fd, 'r') as f:
-      return plistlib.readPlist(f)
-  finally:
-    os.unlink(name)
+  if sys.version_info.major == 2:
+    fd, name = tempfile.mkstemp()
+    try:
+      subprocess.check_call(['plutil', '-convert', 'xml1', '-o', name, path])
+      with os.fdopen(fd, 'rb') as f:
+        return plistlib.readPlist(f)
+    finally:
+      os.unlink(name)
+  else:
+    with open(path, 'rb') as f:
+      return plistlib.load(f)
 
 
 def SavePList(path, format, data):
   """Saves |data| as a Plist to |path| in the specified |format|."""
-  fd, name = tempfile.mkstemp()
-  try:
-    # "plutil" does not replace the destination file but update it in place,
-    # so if more than one hardlink points to destination all of them will be
-    # modified. This is not what is expected, so delete destination file if
-    # it does exist.
-    if os.path.exists(path):
-      os.unlink(path)
-    with os.fdopen(fd, 'w') as f:
-      plistlib.writePlist(data, f)
-    subprocess.check_call(['plutil', '-convert', format, '-o', path, name])
-  finally:
-    os.unlink(name)
+  # The below does not replace the destination file but update it in place,
+  # so if more than one hardlink points to destination all of them will be
+  # modified. This is not what is expected, so delete destination file if
+  # it does exist.
+  if os.path.exists(path):
+    os.unlink(path)
+  if sys.version_info.major == 2:
+    fd, name = tempfile.mkstemp()
+    try:
+      with os.fdopen(fd, 'wb') as f:
+        plistlib.writePlist(data, f)
+      subprocess.check_call(['plutil', '-convert', format, '-o', path, name])
+    finally:
+      os.unlink(name)
+  else:
+    with open(path, 'wb') as f:
+      plist_format = {'binary1': plistlib.FMT_BINARY, 'xml1': plistlib.FMT_XML}
+      plistlib.dump(data, f, fmt=plist_format[format])
 
 
 def MergePList(plist1, plist2):
@@ -135,7 +149,7 @@ def MergePList(plist1, plist2):
     are concatenated.
   """
   result = plist1.copy()
-  for key, value in plist2.iteritems():
+  for key, value in plist2.items():
     if isinstance(value, dict):
       old_value = result.get(key)
       if isinstance(old_value, dict):
@@ -164,15 +178,20 @@ class MergeAction(Action):
 
   @staticmethod
   def _Register(parser):
+    parser.add_argument('-o',
+                        '--output',
+                        required=True,
+                        help='path to the output plist file')
+    parser.add_argument('-f',
+                        '--format',
+                        required=True,
+                        choices=('xml1', 'binary1'),
+                        help='format of the plist file to generate')
     parser.add_argument(
-        '-o', '--output', required=True,
-        help='path to the output plist file')
-    parser.add_argument(
-        '-f', '--format', required=True, choices=('xml1', 'binary1', 'json'),
-        help='format of the plist file to generate')
-    parser.add_argument(
-          'path', nargs="+",
-          help='path to plist files to merge')
+        '-x',
+        '--xcode-version',
+        help='version of Xcode, ignored (can be used to force rebuild)')
+    parser.add_argument('path', nargs="+", help='path to plist files to merge')
 
   @staticmethod
   def _Execute(args):
@@ -190,18 +209,28 @@ class SubstituteAction(Action):
 
   @staticmethod
   def _Register(parser):
+    parser.add_argument('-o',
+                        '--output',
+                        required=True,
+                        help='path to the output plist file')
+    parser.add_argument('-t',
+                        '--template',
+                        required=True,
+                        help='path to the template file')
+    parser.add_argument('-s',
+                        '--substitution',
+                        action='append',
+                        default=[],
+                        help='substitution rule in the format key=value')
+    parser.add_argument('-f',
+                        '--format',
+                        required=True,
+                        choices=('xml1', 'binary1'),
+                        help='format of the plist file to generate')
     parser.add_argument(
-        '-o', '--output', required=True,
-        help='path to the output plist file')
-    parser.add_argument(
-        '-t', '--template', required=True,
-        help='path to the template file')
-    parser.add_argument(
-        '-s', '--substitution', action='append', default=[],
-        help='substitution rule in the format key=value')
-    parser.add_argument(
-        '-f', '--format', required=True, choices=('xml1', 'binary1', 'json'),
-        help='format of the plist file to generate')
+        '-x',
+        '--xcode-version',
+        help='version of Xcode, ignored (can be used to force rebuild)')
 
   @staticmethod
   def _Execute(args):
@@ -214,6 +243,10 @@ class SubstituteAction(Action):
 
 
 def Main():
+  # Cache this codec so that plistlib can find it. See
+  # https://crbug.com/1005190#c2 for more details.
+  codecs.lookup('utf-8')
+
   parser = argparse.ArgumentParser(description='manipulate plist files')
   subparsers = parser.add_subparsers()
 
@@ -225,4 +258,8 @@ def Main():
 
 
 if __name__ == '__main__':
+  # TODO(https://crbug.com/941669): Temporary workaround until all scripts use
+  # python3 by default.
+  if sys.version_info[0] < 3:
+    os.execvp('python3', ['python3'] + sys.argv)
   sys.exit(Main())

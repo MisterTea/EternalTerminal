@@ -1,7 +1,6 @@
 #include "sentry_ratelimiter.h"
 #include "sentry_testsupport.h"
 #include "sentry_utils.h"
-#include <sentry.h>
 
 SENTRY_TEST(rate_limit_parsing)
 {

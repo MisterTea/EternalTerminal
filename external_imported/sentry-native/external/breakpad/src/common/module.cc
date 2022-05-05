@@ -97,17 +97,6 @@ void Module::InlineOriginMap::SetReference(uint64_t offset,
   references_[offset] = specification_offset;
 }
 
-void Module::InlineOriginMap::AssignFilesToInlineOrigins(
-    const vector<uint64_t>& inline_origin_offsets,
-    Module::File* file) {
-  for (uint64_t offset : inline_origin_offsets)
-    if (references_.find(offset) != references_.end()) {
-      auto origin = inline_origins_.find(references_[offset]);
-      if (origin != inline_origins_.end())
-        origin->second->file = file;
-    }
-}
-
 Module::Module(const string& name, const string& os,
                const string& architecture, const string& id,
                const string& code_id /* = "" */) :
@@ -276,13 +265,19 @@ void Module::AssignSourceIds(
          line_it != func->lines.end(); ++line_it)
       line_it->file->source_id = 0;
   }
-  // Also mark all files cited by inline functions by setting each one's source
+
+  // Also mark all files cited by inline callsite by setting each one's source
   // id to zero.
-  for (InlineOrigin* origin : inline_origins)
+  auto markInlineFiles = [](unique_ptr<Inline>& in) {
     // There are some artificial inline functions which don't belong to
     // any file. Those will have file id -1.
-    if (origin->file)
-      origin->file->source_id = 0;
+    if (in->call_site_file) {
+      in->call_site_file->source_id = 0;
+    }
+  };
+  for (auto func : functions_) {
+    Inline::InlineDFS(func->inlines, markInlineFiles);
+  }
 
   // Finally, assign source ids to those files that have been marked.
   // We could have just assigned source id numbers while traversing
@@ -293,15 +288,6 @@ void Module::AssignSourceIds(
        file_it != files_.end(); ++file_it) {
     if (!file_it->second->source_id)
       file_it->second->source_id = next_source_id++;
-  }
-}
-
-static void InlineDFS(
-    vector<unique_ptr<Module::Inline>>& inlines,
-    std::function<void(unique_ptr<Module::Inline>&)> const& forEach) {
-  for (unique_ptr<Module::Inline>& in : inlines) {
-    forEach(in);
-    InlineDFS(in->child_inlines, forEach);
   }
 }
 
@@ -317,7 +303,7 @@ void Module::CreateInlineOrigins(
       in->origin = *it;
   };
   for (Function* func : functions_)
-    InlineDFS(func->inlines, addInlineOrigins);
+    Module::Inline::InlineDFS(func->inlines, addInlineOrigins);
   int next_id = 0;
   for (InlineOrigin* origin : inline_origins) {
     origin->id = next_id++;
@@ -381,8 +367,7 @@ bool Module::Write(std::ostream& stream, SymbolData symbol_data) {
     }
     // Write out inline origins.
     for (InlineOrigin* origin : inline_origins) {
-      stream << "INLINE_ORIGIN " << origin->id << " " << origin->getFileID()
-             << " " << origin->name << "\n";
+      stream << "INLINE_ORIGIN " << origin->id << " " << origin->name << "\n";
       if (!stream.good())
         return ReportError();
     }
@@ -407,12 +392,12 @@ bool Module::Write(std::ostream& stream, SymbolData symbol_data) {
         auto write_inline = [&](unique_ptr<Inline>& in) {
           stream << "INLINE ";
           stream << in->inline_nest_level << " " << in->call_site_line << " "
-                 << in->origin->id << hex;
+                 << in->getCallSiteFileID() << " " << in->origin->id << hex;
           for (const Range& r : in->ranges)
             stream << " " << (r.address - load_address_) << " " << r.size;
           stream << dec << "\n";
         };
-        InlineDFS(func->inlines, write_inline);
+        Module::Inline::InlineDFS(func->inlines, write_inline);
         if (!stream.good())
           return ReportError();
 

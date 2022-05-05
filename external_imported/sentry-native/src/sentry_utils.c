@@ -218,8 +218,7 @@ sentry__dsn_new(const char *raw_dsn)
     sentry_url_t url;
     memset(&url, 0, sizeof(sentry_url_t));
     size_t path_len;
-    char *tmp;
-    char *end;
+    char *project_id;
 
     sentry_dsn_t *dsn = SENTRY_MAKE(sentry_dsn_t);
     if (!dsn) {
@@ -255,16 +254,14 @@ sentry__dsn_new(const char *raw_dsn)
         path_len--;
     }
 
-    tmp = strrchr(url.path, '/');
-    if (!tmp) {
+    project_id = strrchr(url.path, '/');
+    if (!project_id || strlen(project_id + 1) == 0) {
         goto exit;
     }
 
-    dsn->project_id = (uint64_t)strtoll(tmp + 1, &end, 10);
-    if (end != tmp + strlen(tmp)) {
-        goto exit;
-    }
-    *tmp = 0;
+    dsn->project_id = sentry__string_clone(project_id + 1);
+    *project_id = 0;
+
     dsn->path = url.path;
     url.path = NULL;
 
@@ -299,6 +296,7 @@ sentry__dsn_decref(sentry_dsn_t *dsn)
         sentry_free(dsn->path);
         sentry_free(dsn->public_key);
         sentry_free(dsn->secret_key);
+        sentry_free(dsn->project_id);
         sentry_free(dsn);
     }
 }
@@ -329,7 +327,7 @@ init_string_builder_for_url(sentry_stringbuilder_t *sb, const sentry_dsn_t *dsn)
     sentry__stringbuilder_append_int64(sb, (int64_t)dsn->port);
     sentry__stringbuilder_append(sb, dsn->path);
     sentry__stringbuilder_append(sb, "/api/");
-    sentry__stringbuilder_append_int64(sb, (int64_t)dsn->project_id);
+    sentry__stringbuilder_append(sb, dsn->project_id);
 }
 
 char *

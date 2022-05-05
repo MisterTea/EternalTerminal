@@ -2,7 +2,7 @@
 #include "sentry_path.h"
 #include "sentry_testsupport.h"
 #include "sentry_value.h"
-#include <sentry.h>
+
 #include <string.h>
 
 static void

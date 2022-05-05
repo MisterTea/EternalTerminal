@@ -6,7 +6,7 @@ declare_args() {
   # The minimum runtime iOS version that built products are expected to run
   # on.  If empty, the toolchain will choose its own default, typically the
   # most recent OS version.
-  ios_deployment_target = "12.0"
+  ios_deployment_target = "14.0"
 
   # SDK path to use. When empty this will use the default SDK based on the
   # value of use_ios_simulator.
@@ -21,9 +21,24 @@ declare_args() {
   ios_enable_code_signing = true
   ios_code_signing_identity = ""
   ios_code_signing_identity_description = "Apple Development"
+
+  # Configure the environment for which to build. Could be either "device",
+  # "simulator" or "catalyst". If unspecified, then it will be assumed to be
+  # "simulator" if the target_cpu is "x68" or "x64", "device" otherwise. The
+  # default is only there for compatibility reasons and will be removed (see
+  # crbug.com/1138425 for more details).
+  target_environment = ""
 }
 
-use_ios_simulator = current_cpu == "x86" || current_cpu == "x64"
+if (target_environment == "") {
+  if (current_cpu == "x86" || current_cpu == "x64") {
+    target_environment = "simulator"
+  } else {
+    target_environment = "device"
+  }
+}
+
+use_ios_simulator = target_environment == "simulator"
 
 if (ios_sdk_path == "") {
   # Compute default target.

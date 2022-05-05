@@ -61,13 +61,7 @@ class CheckedNumeric {
   // and is within the range supported by the destination type. Returns true if
   // successful and false otherwise.
   template <typename Dst>
-#if defined(__clang__) || defined(__GNUC__)
-  __attribute__((warn_unused_result))
-#elif defined(_MSC_VER)
-  _Check_return_
-#endif
-  constexpr bool
-  AssignIfValid(Dst* result) const {
+  [[nodiscard]] constexpr bool AssignIfValid(Dst* result) const {
     return BASE_NUMERICS_LIKELY(IsValid<Dst>())
                ? ((*result = static_cast<Dst>(state_.value())), true)
                : false;

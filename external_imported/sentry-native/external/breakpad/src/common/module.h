@@ -38,6 +38,7 @@
 #ifndef COMMON_LINUX_MODULE_H__
 #define COMMON_LINUX_MODULE_H__
 
+#include <functional>
 #include <iostream>
 #include <limits>
 #include <map>
@@ -131,7 +132,7 @@ class Module {
   };
 
   struct InlineOrigin {
-    explicit InlineOrigin(StringView name): id(-1), name(name), file(nullptr) {}
+    explicit InlineOrigin(StringView name) : id(-1), name(name) {}
 
     // A unique id for each InlineOrigin object. INLINE records use the id to
     // refer to its INLINE_ORIGIN record.
@@ -150,11 +151,14 @@ class Module {
     Inline(InlineOrigin* origin,
            const vector<Range>& ranges,
            int call_site_line,
+           int call_site_file_id,
            int inline_nest_level,
            vector<std::unique_ptr<Inline>> child_inlines)
         : origin(origin),
           ranges(ranges),
           call_site_line(call_site_line),
+          call_site_file_id(call_site_file_id),
+          call_site_file(nullptr),
           inline_nest_level(inline_nest_level),
           child_inlines(std::move(child_inlines)) {}
 
@@ -165,10 +169,29 @@ class Module {
 
     int call_site_line;
 
+    // The id is only meanful inside a CU. It's only used for looking up real
+    // File* after scanning a CU.
+    int call_site_file_id;
+
+    File* call_site_file;
+
     int inline_nest_level;
 
     // A list of inlines which are children of this inline.
     vector<std::unique_ptr<Inline>> child_inlines;
+
+    int getCallSiteFileID() const {
+      return call_site_file ? call_site_file->source_id : -1;
+    }
+
+    static void InlineDFS(
+        vector<std::unique_ptr<Module::Inline>>& inlines,
+        std::function<void(std::unique_ptr<Module::Inline>&)> const& forEach) {
+      for (std::unique_ptr<Module::Inline>& in : inlines) {
+        forEach(in);
+        InlineDFS(in->child_inlines, forEach);
+      }
+    }
   };
 
   typedef map<uint64_t, InlineOrigin*> InlineOriginByOffset;
@@ -182,9 +205,7 @@ class Module {
     // value of its DW_AT_specification or equals to offset if
     // DW_AT_specification doesn't exist in that DIE.
     void SetReference(uint64_t offset, uint64_t specification_offset);
-    void AssignFilesToInlineOrigins(
-        const vector<uint64_t>& inline_origin_offsets,
-        File* file);
+
     ~InlineOriginMap() {
       for (const auto& iter : inline_origins_) {
         delete iter.second;
@@ -261,10 +282,8 @@ class Module {
   };
 
   struct InlineOriginCompare {
-    bool operator() (const InlineOrigin* lhs, const InlineOrigin* rhs) const {
-      if (lhs->getFileID() == rhs->getFileID())
-        return lhs->name < rhs->name;
-      return lhs->getFileID() < rhs->getFileID();
+    bool operator()(const InlineOrigin* lhs, const InlineOrigin* rhs) const {
+      return lhs->name < rhs->name;
     }
   };
 

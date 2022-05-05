@@ -9,9 +9,9 @@
 
 #include "base/strings/stringprintf.h"
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 #include <servers/bootstrap.h>
-#endif  // !OS_IOS
+#endif  // !BUILDFLAG(IS_IOS)
 
 namespace {
 
@@ -44,7 +44,7 @@ MachLogMessage::~MachLogMessage() {
            << FormatMachErrorNumber(mach_err_);
 }
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 
 BootstrapLogMessage::BootstrapLogMessage(const char* function,
                                          const char* file_path,
@@ -84,6 +84,6 @@ BootstrapLogMessage::~BootstrapLogMessage() {
   }
 }
 
-#endif  // !OS_IOS
+#endif  // !BUILDFLAG(IS_IOS)
 
 }  // namespace logging

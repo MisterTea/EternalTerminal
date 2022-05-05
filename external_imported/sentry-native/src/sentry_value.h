@@ -90,6 +90,22 @@ int sentry__value_append_bounded(
     sentry_value_t value, sentry_value_t v, size_t max);
 
 /**
+ * Deep-merges object src into dst.
+ *
+ * For each key-value pair in the src object the same key in the dst object
+ * will be set to the value from src.  If both the dst value and the src value
+ * are objects themselves they are stepped into recursively instead of
+ * overriding the entire dst object.
+ *
+ * If src is null nothing needs to be merged and this is handled gracefully,
+ * otherwise if dst is any other type than an object or src is neither an
+ * object nor null an error is returned.
+ *
+ * Returns 0 on success.
+ */
+int sentry__value_merge_objects(sentry_value_t dst, sentry_value_t src);
+
+/**
  * Parse the given JSON string into a new Value.
  */
 sentry_value_t sentry__value_from_json(const char *buf, size_t buflen);
@@ -102,4 +118,7 @@ typedef struct sentry_jsonwriter_s sentry_jsonwriter_t;
 void sentry__jsonwriter_write_value(
     sentry_jsonwriter_t *jw, sentry_value_t value);
 
+sentry_value_t sentry__value_new_span_uuid(const sentry_uuid_t *uuid);
+
+sentry_value_t sentry__value_new_internal_uuid(const sentry_uuid_t *uuid);
 #endif

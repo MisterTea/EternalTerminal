@@ -38,7 +38,7 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_WIN) && defined(ARCH_CPU_64_BITS)
+#if BUILDFLAG(IS_WIN) && defined(ARCH_CPU_64_BITS)
 // windows.h #defines this (only on x64). This causes problems because the
 // public API also uses MemoryBarrier at the public name for this fence. So, on
 // X64, undef it, and call its documented
@@ -54,9 +54,7 @@ typedef int32_t Atomic32;
 #ifdef ARCH_CPU_64_BITS
 // We need to be able to go between Atomic64 and AtomicWord implicitly.  This
 // means Atomic64 and AtomicWord should be the same type on 64-bit.
-#if defined(__ILP32__) || defined(OS_NACL)
-// NaCl's intptr_t is not actually 64-bits on 64-bit!
-// http://code.google.com/p/nativeclient/issues/detail?id=1162
+#if defined(__ILP32__)
 typedef int64_t Atomic64;
 #else
 typedef intptr_t Atomic64;
@@ -173,7 +171,7 @@ extern struct AtomicOps_x86CPUFeatureStruct AtomicOps_Internalx86CPUFeatures;
 
 // On some platforms we need additional declarations to make
 // AtomicWord compatible with our other Atomic* types.
-#if defined(OS_APPLE) || defined(OS_OPENBSD)
+#if BUILDFLAG(IS_APPLE)
 #include "base/atomicops_internals_atomicword_compat.h"
 #endif
 

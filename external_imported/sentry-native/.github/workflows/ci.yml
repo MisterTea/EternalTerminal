@@ -62,18 +62,21 @@ jobs:
           - name: macOS (xcode llvm)
             os: macOs-latest
             ERROR_ON_WARNINGS: 1
+            SYSTEM_VERSION_COMPAT: 0
           - name: macOS (xcode llvm + universal)
             os: macOs-latest
             ERROR_ON_WARNINGS: 1
+            SYSTEM_VERSION_COMPAT: 0
             CMAKE_DEFINES: -DCMAKE_OSX_ARCHITECTURES=arm64;x86_64
           - name: macOS (clang 11 + asan + llvm-cov)
             os: macOs-latest
             CC: clang
             CXX: clang++
             ERROR_ON_WARNINGS: 1
+            SYSTEM_VERSION_COMPAT: 0
             RUN_ANALYZER: asan,llvm-cov
-          - name: Windows (VS2017, 32bit)
-            os: vs2017-win2016
+          - name: Windows (VS2019)
+            os: windows-2019
             TEST_X86: 1
           - name: Windows (latest)
             os: windows-latest
@@ -98,6 +101,7 @@ jobs:
       ANDROID_API: ${{ matrix.ANDROID_API }}
       ANDROID_NDK: ${{ matrix.ANDROID_NDK }}
       CMAKE_DEFINES: ${{ matrix.CMAKE_DEFINES }}
+      SYSTEM_VERSION_COMPAT: ${{ matrix.SYSTEM_VERSION_COMPAT }}
 
     steps:
       - uses: actions/checkout@v2

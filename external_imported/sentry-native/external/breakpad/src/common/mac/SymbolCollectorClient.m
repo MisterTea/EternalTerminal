@@ -190,18 +190,22 @@
                                  withUploadKey:(NSString*)uploadKey
                                  withDebugFile:(NSString*)debugFile
                                    withDebugID:(NSString*)debugID
-                                      withType:(NSString*)type {
+                                      withType:(NSString*)type
+                               withProductName:(NSString*)productName {
   NSURL* URL = [NSURL
       URLWithString:[NSString
                         stringWithFormat:@"%@/v1/uploads/%@:complete?key=%@",
                                          APIURL, uploadKey, APIKey]];
 
-  NSDictionary* symbolIdDictionary =
-      [NSDictionary dictionaryWithObjectsAndKeys:debugFile, @"debug_file",
-                                                 debugID, @"debug_id", nil];
-  NSDictionary* jsonDictionary = [NSDictionary
-      dictionaryWithObjectsAndKeys:symbolIdDictionary, @"symbol_id", type,
-                                   @"symbol_upload_type", nil];
+  NSMutableDictionary* jsonDictionary = [@{
+    @"symbol_id" : @{@"debug_file" : debugFile, @"debug_id" : debugID},
+    @"symbol_upload_type" : type, @"use_async_processing" : @"true"
+  } mutableCopy];
+
+  if (productName != nil) {
+    jsonDictionary[@"metadata"] = @{@"product_name": productName};
+  }
+
   NSError* error = nil;
   NSData* jsonData =
       [NSJSONSerialization dataWithJSONObject:jsonDictionary

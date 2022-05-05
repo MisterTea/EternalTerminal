@@ -22,25 +22,55 @@ typedef struct sentry_stringbuilder_s {
 void sentry__stringbuilder_init(sentry_stringbuilder_t *sb);
 
 /**
- * Appends a zero terminated string to the builder.
+ * Resizes the stringbuilder buffer to make sure there is at least `len` bytes
+ * available at the end, and returns a pointer *to the reservation*.
  */
-int sentry__stringbuilder_append(sentry_stringbuilder_t *sb, const char *s);
+char *sentry__stringbuilder_reserve(sentry_stringbuilder_t *sb, size_t len);
 
 /**
  * Appends a sized buffer.
  */
-int sentry__stringbuilder_append_buf(
-    sentry_stringbuilder_t *sb, const char *s, size_t len);
+static inline int
+sentry__stringbuilder_append_buf(
+    sentry_stringbuilder_t *sb, const char *s, size_t len)
+{
+    size_t needed = sb->len + len + 1;
+    char *buf = sb->buf;
+    if (!sb->buf || needed > sb->allocated) {
+        buf = sentry__stringbuilder_reserve(sb, len + 1);
+        if (!buf) {
+            return 1;
+        }
+    } else {
+        buf = buf + sb->len;
+    }
+
+    memcpy(buf, s, len);
+    sb->len += len;
+
+    // make sure we're always zero terminated
+    sb->buf[sb->len] = '\0';
+
+    return 0;
+}
+
+/**
+ * Appends a zero terminated string to the builder.
+ */
+static inline int
+sentry__stringbuilder_append(sentry_stringbuilder_t *sb, const char *s)
+{
+    return sentry__stringbuilder_append_buf(sb, s, strlen(s));
+}
 
 /**
  * Appends a single character.
  */
-int sentry__stringbuilder_append_char(sentry_stringbuilder_t *sb, char c);
-
-/**
- * Appends a utf-32 character.
- */
-int sentry__stringbuilder_append_char32(sentry_stringbuilder_t *sb, uint32_t c);
+static inline int
+sentry__stringbuilder_append_char(sentry_stringbuilder_t *sb, char c)
+{
+    return sentry__stringbuilder_append_buf(sb, &c, 1);
+}
 
 /**
  * Appends an int64 value.
@@ -74,26 +104,34 @@ void sentry__stringbuilder_cleanup(sentry_stringbuilder_t *sb);
 size_t sentry__stringbuilder_len(const sentry_stringbuilder_t *sb);
 
 /**
- * Resizes the stringbuilder buffer to make sure there is at least `len` bytes
- * available at the end, and returns a pointer *to the reservation*.
- */
-char *sentry__stringbuilder_reserve(sentry_stringbuilder_t *sb, size_t len);
-
-/**
  * Sets the number of used bytes in the string builder, to be used together with
  * `sentry__stringbuilder_reserve` to avoid copying from an intermediate buffer.
  */
 void sentry__stringbuilder_set_len(sentry_stringbuilder_t *sb, size_t len);
 
 /**
- * Duplicates a zero terminated string.
- */
-char *sentry__string_clone(const char *str);
-
-/**
  * Duplicates a zero terminated string with a length limit.
  */
-char *sentry__string_clonen(const char *str, size_t n);
+static inline char *
+sentry__string_clonen(const char *str, size_t n)
+{
+    size_t len = n + 1;
+    char *rv = (char *)sentry_malloc(len);
+    if (rv) {
+        memcpy(rv, str, n);
+        rv[n] = 0;
+    }
+    return rv;
+}
+
+/**
+ * Duplicates a zero terminated string.
+ */
+static inline char *
+sentry__string_clone(const char *str)
+{
+    return str ? sentry__string_clonen(str, strlen(str)) : NULL;
+}
 
 /**
  * Converts a string to lowercase.

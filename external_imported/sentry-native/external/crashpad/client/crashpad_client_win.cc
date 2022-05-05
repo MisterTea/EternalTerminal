@@ -36,6 +36,7 @@
 #include "util/win/command_line.h"
 #include "util/win/context_wrappers.h"
 #include "util/win/critical_section_with_debug_info.h"
+#include "util/win/exception_codes.h"
 #include "util/win/get_function.h"
 #include "util/win/handle.h"
 #include "util/win/initial_client_data.h"
@@ -69,7 +70,18 @@ HANDLE g_non_crash_dump_done = INVALID_HANDLE_VALUE;
 CrashpadClient::FirstChanceHandlerWin first_chance_handler_ = nullptr;
 
 // Guards multiple simultaneous calls to DumpWithoutCrash(). This is leaked.
-base::Lock* g_non_crash_dump_lock;
+base::Lock* g_non_crash_dump_lock = nullptr;
+
+class CrashDumpAutoReleaser {
+ public:
+  ~CrashDumpAutoReleaser() {
+    if (g_non_crash_dump_lock) {
+      delete g_non_crash_dump_lock;
+      g_non_crash_dump_lock = nullptr;
+    }
+  }
+};
+static CrashDumpAutoReleaser gAutoReleaser;
 
 // Where we store a pointer to the context information when taking a non-crash
 // dump.
@@ -394,8 +406,7 @@ bool StartHandlerProcess(
   }
   for (const base::FilePath& attachment : data->attachments) {
     AppendCommandLineArgument(
-        FormatArgumentString("attachment", attachment.value()),
-        &command_line);
+        FormatArgumentString("attachment", attachment.value()), &command_line);
   }
 
   ScopedKernelHANDLE this_process(
@@ -932,7 +943,7 @@ bool CrashpadClient::DumpAndCrashTargetProcess(HANDLE process,
 
     // ecx = kTriggeredExceptionCode for dwExceptionCode.
     data_to_write.push_back(0xb9);
-    AddUint32(&data_to_write, kTriggeredExceptionCode);
+    AddUint32(&data_to_write, ExceptionCodes::kTriggeredExceptionCode);
 
     // jmp to RaiseException() via rax.
     data_to_write.push_back(0x48);  // mov rax, imm.

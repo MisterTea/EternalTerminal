@@ -1,6 +1,5 @@
 #include "sentry_path.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 #ifdef SENTRY_PLATFORM_LINUX
 #    include "modulefinder/sentry_modulefinder_linux.h"

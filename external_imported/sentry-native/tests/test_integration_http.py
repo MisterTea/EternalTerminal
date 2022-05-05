@@ -1,9 +1,11 @@
+import time
 import pytest
 import subprocess
 import sys
 import os
 import time
 import itertools
+import uuid
 import json
 from . import make_dsn, check_output, run, Envelope
 from .conditions import has_http, has_breakpad, has_files
@@ -21,7 +23,7 @@ from .assertions import (
 
 pytestmark = pytest.mark.skipif(not has_http, reason="tests need http")
 
-auth_header = "Sentry sentry_key=uiaeosnrtdy, sentry_version=7, sentry_client=sentry.native/0.4.13"
+auth_header = "Sentry sentry_key=uiaeosnrtdy, sentry_version=7, sentry_client=sentry.native/0.4.17"
 
 
 def test_capture_http(cmake, httpserver):
@@ -413,3 +415,60 @@ def test_shutdown_timeout(cmake, httpserver):
     run(tmp_path, "sentry_example", ["log", "no-setup"], check=True, env=env)
 
     assert len(httpserver.log) == 10
+
+
+def test_transaction_only(cmake, httpserver):
+    tmp_path = cmake(["sentry_example"], {"SENTRY_BACKEND": "none"})
+
+    httpserver.expect_oneshot_request(
+        "/api/123456/envelope/",
+        headers={"x-sentry-auth": auth_header},
+    ).respond_with_data("OK")
+    env = dict(os.environ, SENTRY_DSN=make_dsn(httpserver), SENTRY_RELEASE="🤮🚀")
+
+    run(
+        tmp_path,
+        "sentry_example",
+        ["log", "capture-transaction"],
+        check=True,
+        env=env,
+    )
+
+    assert len(httpserver.log) == 1
+    output = httpserver.log[0][0].get_data()
+    envelope = Envelope.deserialize(output)
+
+    # Show what the envelope looks like if the test fails.
+    envelope.print_verbose()
+
+    # The transaction is overwritten.
+    assert_meta(envelope, transaction="little.teapot")
+
+    # Extract the one-and-only-item
+    (event,) = envelope.items
+
+    assert event.headers["type"] == "transaction"
+    json = event.payload.json
+
+    # See https://develop.sentry.dev/sdk/performance/trace-context/#trace-context
+    trace_context = json["contexts"]["trace"]
+
+    assert (
+        trace_context["op"] == "Short and stout here is my handle and here is my spout"
+    )
+
+    assert trace_context["trace_id"]
+    trace_id = uuid.UUID(hex=trace_context["trace_id"])
+    assert trace_id
+
+    # TODO: currently missing
+    # assert trace_context['public_key']
+
+    assert trace_context["span_id"]
+    assert trace_context["status"] == "ok"
+
+    RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
+    start_timestamp = time.strptime(json["start_timestamp"], RFC3339_FORMAT)
+    assert start_timestamp
+    timestamp = time.strptime(json["timestamp"], RFC3339_FORMAT)
+    assert timestamp >= start_timestamp

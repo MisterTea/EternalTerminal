@@ -63,5 +63,7 @@ int main(int argc, char *argv[]) {
 #endif
   assert(st.st_size == offset + len);
 
+  sys_unlink(filename);
+
   return 0;
 }

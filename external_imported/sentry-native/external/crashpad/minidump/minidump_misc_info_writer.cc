@@ -14,10 +14,10 @@
 
 #include "minidump/minidump_misc_info_writer.h"
 
+#include <iterator>
 #include <limits>
 
 #include "base/check_op.h"
-#include "base/cxx17_backports.h"
 #include "base/logging.h"
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/stringprintf.h"
@@ -31,9 +31,9 @@
 #include "util/numeric/in_range_cast.h"
 #include "util/numeric/safe_assignment.h"
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 #include <Availability.h>
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
 #include <android/api-level.h>
 #endif
 
@@ -67,7 +67,7 @@ std::string BuildString(const SystemSnapshot* system_snapshot) {
   return machine_description;
 }
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
 // Converts the value of the __MAC_OS_X_VERSION_MIN_REQUIRED or
 // __MAC_OS_X_VERSION_MAX_ALLOWED macro from <Availability.h> to a number
 // identifying the macOS version that it represents, in the same format used by
@@ -93,7 +93,7 @@ int AvailabilityVersionToMacOSVersionNumber(int availability) {
 
   return availability;
 }
-#endif  // OS_MAC
+#endif  // BUILDFLAG(IS_MAC)
 
 }  // namespace
 
@@ -107,17 +107,17 @@ std::string MinidumpMiscInfoDebugBuildString() {
   // Caution: the minidump file format only has room for 39 UTF-16 code units
   // plus a UTF-16 NUL terminator. Don’t let strings get longer than this, or
   // they will be truncated and a message will be logged.
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   static constexpr char kOS[] = "mac";
-#elif defined(OS_IOS)
+#elif BUILDFLAG(IS_IOS)
   static constexpr char kOS[] = "ios";
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
   static constexpr char kOS[] = "android";
-#elif defined(OS_LINUX) || defined(OS_CHROMEOS)
+#elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS)
   static constexpr char kOS[] = "linux";
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   static constexpr char kOS[] = "win";
-#elif defined(OS_FUCHSIA)
+#elif BUILDFLAG(IS_FUCHSIA)
   static constexpr char kOS[] = "fuchsia";
 #else
 #error define kOS for this operating system
@@ -145,12 +145,12 @@ std::string MinidumpMiscInfoDebugBuildString() {
                                                       PACKAGE_VERSION,
                                                       kOS);
 
-#if defined(OS_MAC)
+#if BUILDFLAG(IS_MAC)
   debug_build_string += base::StringPrintf(
       ",%d,%d",
       AvailabilityVersionToMacOSVersionNumber(__MAC_OS_X_VERSION_MIN_REQUIRED),
       AvailabilityVersionToMacOSVersionNumber(__MAC_OS_X_VERSION_MAX_ALLOWED));
-#elif defined(OS_ANDROID)
+#elif BUILDFLAG(IS_ANDROID)
   debug_build_string += base::StringPrintf(",%d", __ANDROID_API__);
 #endif
 
@@ -311,7 +311,7 @@ void MinidumpMiscInfoWriter::SetTimeZone(uint32_t time_zone_id,
 
   internal::MinidumpWriterUtil::AssignUTF8ToUTF16(
       AsU16CStr(misc_info_.TimeZone.StandardName),
-      base::size(misc_info_.TimeZone.StandardName),
+      std::size(misc_info_.TimeZone.StandardName),
       standard_name);
 
   misc_info_.TimeZone.StandardDate = standard_date;
@@ -319,7 +319,7 @@ void MinidumpMiscInfoWriter::SetTimeZone(uint32_t time_zone_id,
 
   internal::MinidumpWriterUtil::AssignUTF8ToUTF16(
       AsU16CStr(misc_info_.TimeZone.DaylightName),
-      base::size(misc_info_.TimeZone.DaylightName),
+      std::size(misc_info_.TimeZone.DaylightName),
       daylight_name);
 
   misc_info_.TimeZone.DaylightDate = daylight_date;
@@ -337,11 +337,11 @@ void MinidumpMiscInfoWriter::SetBuildString(
 
   internal::MinidumpWriterUtil::AssignUTF8ToUTF16(
       AsU16CStr(misc_info_.BuildString),
-      base::size(misc_info_.BuildString),
+      std::size(misc_info_.BuildString),
       build_string);
   internal::MinidumpWriterUtil::AssignUTF8ToUTF16(
       AsU16CStr(misc_info_.DbgBldStr),
-      base::size(misc_info_.DbgBldStr),
+      std::size(misc_info_.DbgBldStr),
       debug_build_string);
 }
 

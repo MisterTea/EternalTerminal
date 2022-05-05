@@ -7,9 +7,9 @@
 
 #include "build/build_config.h"
 
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
 #include <libkern/OSByteOrder.h>
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 #include <stdlib.h>
 #else
 #include <byteswap.h>
@@ -18,9 +18,9 @@
 namespace base {
 
 inline uint16_t ByteSwap(uint16_t x) {
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   return OSSwapInt16(x);
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   return _byteswap_ushort(x);
 #else
   return bswap_16(x);
@@ -28,9 +28,9 @@ inline uint16_t ByteSwap(uint16_t x) {
 }
 
 inline uint32_t ByteSwap(uint32_t x) {
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   return OSSwapInt32(x);
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   return _byteswap_ulong(x);
 #else
   return bswap_32(x);
@@ -38,9 +38,9 @@ inline uint32_t ByteSwap(uint32_t x) {
 }
 
 inline uint64_t ByteSwap(uint64_t x) {
-#if defined(OS_APPLE)
+#if BUILDFLAG(IS_APPLE)
   return OSSwapInt64(x);
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   return _byteswap_uint64(x);
 #else
   return bswap_64(x);

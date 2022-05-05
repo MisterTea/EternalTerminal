@@ -24,6 +24,7 @@
 #include "util/linux/traits.h"
 #include "util/misc/reinterpret_bytes.h"
 #include "util/numeric/safe_assignment.h"
+#include "util/posix/signals.h"
 
 namespace crashpad {
 namespace internal {
@@ -326,10 +327,12 @@ bool ExceptionSnapshotLinux::ReadContext<ContextTraits64>(
 
 #endif  // ARCH_CPU_X86_FAMILY
 
-bool ExceptionSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
-                                        LinuxVMAddress siginfo_address,
-                                        LinuxVMAddress context_address,
-                                        pid_t thread_id) {
+bool ExceptionSnapshotLinux::Initialize(
+    ProcessReaderLinux* process_reader,
+    LinuxVMAddress siginfo_address,
+    LinuxVMAddress context_address,
+    pid_t thread_id,
+    uint32_t* gather_indirectly_referenced_memory_cap) {
   INITIALIZATION_STATE_SET_INITIALIZING(initialized_);
 
   thread_id_ = thread_id;
@@ -359,7 +362,10 @@ bool ExceptionSnapshotLinux::Initialize(ProcessReaderLinux* process_reader,
   }
 
   CaptureMemoryDelegateLinux capture_memory_delegate(
-      process_reader, thread, &extra_memory_, nullptr);
+      process_reader,
+      thread,
+      &extra_memory_,
+      gather_indirectly_referenced_memory_cap);
   CaptureMemory::PointedToByContext(context_, &capture_memory_delegate);
 
   INITIALIZATION_STATE_SET_VALID(initialized_);
@@ -438,6 +444,9 @@ bool ExceptionSnapshotLinux::ReadSiginfo(ProcessReaderLinux* reader,
       PUSH_CODE(siginfo.pid);
       PUSH_CODE(siginfo.uid);
       PUSH_CODE(siginfo.sigval.sigval);
+      break;
+
+    case Signals::kSimulatedSigno:
       break;
 
     default:

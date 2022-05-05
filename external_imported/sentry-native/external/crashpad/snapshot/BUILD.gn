@@ -254,7 +254,6 @@ crashpad_static_library("snapshot") {
   ]
 
   if (crashpad_is_win) {
-    deps += [ "../client" ]
     cflags = [ "/wd4201" ]  # nonstandard extension used : nameless struct/union
     libs = [ "powrprof.lib" ]
   }
@@ -364,6 +363,7 @@ source_set("snapshot_test") {
 
   if (crashpad_is_ios) {
     sources += [
+      "ios/memory_snapshot_ios_intermediate_dump_test.cc",
       "ios/process_snapshot_ios_intermediate_dump_test.cc",
       "mac/cpu_context_mac_test.cc",
     ]
@@ -440,10 +440,6 @@ source_set("snapshot_test") {
     "../third_party/googletest:googletest",
     "../util",
   ]
-
-  if (crashpad_is_win) {
-    deps += [ "../client" ]
-  }
 
   if (crashpad_is_ios) {
     deps += [

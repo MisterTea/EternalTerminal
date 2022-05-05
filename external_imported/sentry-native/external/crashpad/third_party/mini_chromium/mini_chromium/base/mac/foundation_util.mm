@@ -4,7 +4,7 @@
 
 #include "base/mac/foundation_util.h"
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 extern "C" {
 CFTypeID SecACLGetTypeID();
 CFTypeID SecTrustedApplicationGetTypeID();
@@ -105,7 +105,7 @@ CF_CAST_DEFN(CGColor)
 CF_CAST_DEFN(CTFont)
 CF_CAST_DEFN(CTRun)
 
-#if !defined(OS_IOS)
+#if !BUILDFLAG(IS_IOS)
 CF_CAST_DEFN(SecACL)
 CF_CAST_DEFN(SecTrustedApplication)
 #endif

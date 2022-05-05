@@ -7,15 +7,12 @@
 
 #include <stddef.h>
 
-#include "base/compiler_specific.h"
-
 namespace base {
 
 // Special allocator function for callers that want to check for OOM.
 // On success, *result will contain a pointer that should be dallocated with
 // free().
-WARN_UNUSED_RESULT bool UncheckedMalloc(size_t size,
-                                        void** result);
+[[nodiscard]] bool UncheckedMalloc(size_t size, void** result);
 
 }  // namespace base
 

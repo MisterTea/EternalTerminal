@@ -57,20 +57,29 @@ class DumpSymbols {
   DumpSymbols(SymbolData symbol_data, bool handle_inter_cu_refs)
       : symbol_data_(symbol_data),
         handle_inter_cu_refs_(handle_inter_cu_refs),
-        input_pathname_(),
         object_filename_(),
         contents_(),
+        size_(0),
+        from_disk_(false),
         object_files_(),
         selected_object_file_(),
-        selected_object_name_() { }
+        selected_object_name_() {}
   ~DumpSymbols() {
   }
 
   // Prepare to read debugging information from |filename|. |filename| may be
-  // the name of a universal binary, a Mach-O file, or a dSYM bundle
-  // containing either of the above. On success, return true; if there is a
-  // problem reading |filename|, report it and return false.
+  // the name of a fat file, a Mach-O file, or a dSYM bundle containing either
+  // of the above. On success, return true; if there is a problem reading
+  // |filename|, report it and return false.
   bool Read(const std::string& filename);
+
+  // Prepare to read debugging information from |contents|. |contents| is
+  // expected to be the data obtained from reading a fat file, or a Mach-O file.
+  // |filename| is used to determine the object filename in the generated
+  // output; there will not be an attempt to open this file as the data
+  // is already expected to be in memory. On success, return true; if there is a
+  // problem reading |contents|, report it and return false.
+  bool ReadData(uint8_t* contents, size_t size, const std::string& filename);
 
   // If this dumper's file includes an object file for |cpu_type| and
   // |cpu_subtype|, then select that object file for dumping, and return
@@ -162,18 +171,21 @@ class DumpSymbols {
   // Whether to handle references between compilation units.
   const bool handle_inter_cu_refs_;
 
-  // The name of the file or bundle whose symbols this will dump.
-  // This is the path given to Read, for use in error messages.
-  std::string input_pathname_;
-
   // The name of the file this DumpSymbols will actually read debugging
-  // information from. Normally, this is the same as input_pathname_, but if
-  // filename refers to a dSYM bundle, then this is the resource file
-  // within that bundle.
+  // information from. If the filename passed to Read refers to a dSYM bundle,
+  // then this is the resource file within that bundle.
   std::string object_filename_;
 
   // The complete contents of object_filename_, mapped into memory.
   scoped_array<uint8_t> contents_;
+
+  // The size of contents_.
+  size_t size_;
+
+  // Indicates which entry point to DumpSymbols was used, i.e. Read vs ReadData.
+  // This is used to indicate that downstream code paths can/should also read
+  // from disk or not.
+  bool from_disk_;
 
   // A vector of SuperFatArch structures describing the object files
   // object_filename_ contains. If object_filename_ refers to a fat binary,

@@ -35,6 +35,7 @@
 #include <ImageHlp.h>
 
 #include <functional>
+#include <memory>
 
 #include "common/windows/string_utils-inl.h"
 #include "common/windows/guid_string.h"
@@ -42,15 +43,19 @@
 namespace {
 
 /*
- * Not defined in WinNT.h for some reason. Definitions taken from:
- * http://uninformed.org/index.cgi?v=4&a=1&p=13
+ * Not defined in WinNT.h prior to SDK 10.0.20348.0 for some reason.
+ * Definitions taken from: http://uninformed.org/index.cgi?v=4&a=1&p=13
  *
  */
 typedef unsigned char UBYTE;
 
-#if !defined(_WIN64)
+#if !defined(UNW_FLAG_EHANDLER)
 #define UNW_FLAG_EHANDLER  0x01
+#endif
+#if !defined(UNW_FLAG_UHANDLER)
 #define UNW_FLAG_UHANDLER  0x02
+#endif
+#if !defined(UNW_FLAG_CHAININFO)
 #define UNW_FLAG_CHAININFO 0x04
 #endif
 

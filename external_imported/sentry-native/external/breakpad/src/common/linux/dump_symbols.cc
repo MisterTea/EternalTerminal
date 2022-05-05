@@ -87,11 +87,11 @@ using google_breakpad::DwarfRangeListHandler;
 using google_breakpad::ElfClass;
 using google_breakpad::ElfClass32;
 using google_breakpad::ElfClass64;
-using google_breakpad::FileID;
+using google_breakpad::elf::FileID;
 using google_breakpad::FindElfSectionByName;
 using google_breakpad::GetOffset;
 using google_breakpad::IsValidElf;
-using google_breakpad::kDefaultBuildIdSize;
+using google_breakpad::elf::kDefaultBuildIdSize;
 using google_breakpad::Module;
 using google_breakpad::PageAllocator;
 #ifndef NO_STABS_SUPPORT

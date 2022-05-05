@@ -3,7 +3,6 @@
 #include "sentry_transport.h"
 #include "sentry_utils.h"
 #include "sentry_value.h"
-#include <sentry.h>
 
 SENTRY_TEST(basic_http_request_preparation_for_event)
 {
@@ -26,6 +25,38 @@ SENTRY_TEST(basic_http_request_preparation_for_event)
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}\n"
         "{\"type\":\"event\",\"length\":51}\n"
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}");
+    sentry__prepared_http_request_free(req);
+    sentry_envelope_free(envelope);
+
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(basic_http_request_preparation_for_transaction)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.invalid/42");
+
+    sentry_uuid_t event_id
+        = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
+    sentry_envelope_t *envelope = sentry__envelope_new();
+    sentry_value_t transaction = sentry_value_new_object();
+    sentry_value_set_by_key(
+        transaction, "event_id", sentry__value_new_uuid(&event_id));
+    sentry_value_set_by_key(
+        transaction, "type", sentry_value_new_string("transaction"));
+    sentry__envelope_add_transaction(envelope, transaction);
+
+    sentry_prepared_http_request_t *req
+        = sentry__prepare_http_request(envelope, dsn, NULL);
+    TEST_CHECK_STRING_EQUAL(req->method, "POST");
+    TEST_CHECK_STRING_EQUAL(
+        req->url, "https://sentry.invalid:443/api/42/envelope/");
+    TEST_CHECK_STRING_EQUAL(req->body,
+        "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\",\"sent_at\":"
+        "\"2021-12-16T05:53:59.343Z\"}\n"
+        "{\"type\":\"transaction\",\"length\":72}\n"
+        "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\",\"type\":"
+        "\"transaction\"}");
+
     sentry__prepared_http_request_free(req);
     sentry_envelope_free(envelope);
 

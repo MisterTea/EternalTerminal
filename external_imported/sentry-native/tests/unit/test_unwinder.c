@@ -1,6 +1,5 @@
 #include "sentry_symbolizer.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 #define MAX_FRAMES 128
 

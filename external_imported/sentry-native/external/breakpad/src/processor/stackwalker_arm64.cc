@@ -181,7 +181,8 @@ StackFrameARM64* StackwalkerARM64::GetCallerByStackScan(
   uint64_t caller_sp, caller_pc;
 
   if (!ScanForReturnAddress(last_sp, &caller_sp, &caller_pc,
-                            frames.size() == 1 /* is_context_frame */)) {
+                            /*is_context_frame=*/last_frame->trust ==
+                                StackFrame::FRAME_TRUST_CONTEXT)) {
     // No plausible return address was found.
     return NULL;
   }
@@ -320,7 +321,8 @@ StackFrame* StackwalkerARM64::GetCallerFrame(const CallStack* stack,
   if (TerminateWalk(frame->context.iregs[MD_CONTEXT_ARM64_REG_PC],
                     frame->context.iregs[MD_CONTEXT_ARM64_REG_SP],
                     last_frame->context.iregs[MD_CONTEXT_ARM64_REG_SP],
-                    frames.size() == 1)) {
+                    /*first_unwind=*/last_frame->trust ==
+                        StackFrame::FRAME_TRUST_CONTEXT)) {
     return NULL;
   }
 

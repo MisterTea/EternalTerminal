@@ -3,7 +3,7 @@ INFO CODE_ID FFFFFFFF module1.exe
 FILE 1 file1_1.cc
 FILE 2 file1_2.cc
 FILE 3 file1_3.cc
-FUNC 1000 c 0 Function1_1
+FUNC m 1000 c 0 Function1_1
 1000 4 44 1
 1004 4 45 1
 1008 4 46 1
@@ -14,7 +14,7 @@ FUNC 1200 100 8 Function1_3
 FUNC 1300 100 c Function1_4
 FUNC 2000 0 0 Test_Zero_Size_Function_Is_Ignored
 2000 4 88 2
-PUBLIC 2800 0 PublicSymbol
+PUBLIC m 2800 0 PublicSymbol
 FUNC 3000 7000 42 LargeFunction
 3000 7000 4098359 3
 STACK WIN 4 1000 c 1 0 0 0 0 0 1 $eip 4 + ^ = $esp $ebp 8 + = $ebp $ebp ^ =

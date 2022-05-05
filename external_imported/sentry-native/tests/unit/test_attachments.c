@@ -2,7 +2,6 @@
 #include "sentry_path.h"
 #include "sentry_string.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 typedef struct {
     uint64_t called;

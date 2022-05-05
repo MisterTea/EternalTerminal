@@ -1,7 +1,6 @@
 #include "sentry_core.h"
 #include "sentry_logger.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
 
 typedef struct {
     uint64_t called;

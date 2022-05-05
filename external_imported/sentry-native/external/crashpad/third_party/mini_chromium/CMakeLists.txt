@@ -24,7 +24,6 @@ mc_append_sources(
     files/scoped_file.cc
     files/scoped_file.h
     format_macros.h
-    ignore_result.h
     logging.cc
     logging.h
     memory/free_deleter.h

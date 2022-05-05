@@ -96,7 +96,8 @@ typedef NS_ENUM(NSInteger, SymbolStatus) {
                                  withUploadKey:(NSString*)uploadKey
                                  withDebugFile:(NSString*)debugFile
                                    withDebugID:(NSString*)debugID
-                                      withType:(NSString*)type;
+                                      withType:(NSString*)type
+                               withProductName:(NSString*)productName;
 
 @end
 

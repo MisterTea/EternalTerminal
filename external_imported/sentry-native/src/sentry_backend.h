@@ -25,6 +25,7 @@ struct sentry_backend_s {
         const sentry_options_t *options);
     void (*user_consent_changed_func)(sentry_backend_t *);
     uint64_t (*get_last_crash_func)(sentry_backend_t *);
+    void (*prune_database_func)(sentry_backend_t *);
     void *data;
     bool can_capture_after_shutdown;
 };

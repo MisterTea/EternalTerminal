@@ -15,12 +15,12 @@
 #include "base/logging.h"
 #include "build/build_config.h"
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
 #include <zircon/syscalls.h>
 #include "base/fuchsia/fuchsia_logging.h"
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
 #include "base/posix/eintr_wrapper.h"
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
 #include <windows.h>
 
 // #define needed to link in RtlGenRandom(), a.k.a. SystemFunction036.  See the
@@ -30,9 +30,9 @@
 #include <NTSecAPI.h>
 #undef SystemFunction036
 
-#endif  // OS_WIN
+#endif  // BUILDFLAG(IS_WIN)
 
-#if defined(OS_POSIX) && !defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_FUCHSIA)
 
 namespace {
 
@@ -49,7 +49,7 @@ int GetUrandomFD() {
 
 }  // namespace
 
-#endif  // OS_POSIX && !OS_FUCHSIA
+#endif  // BUILDFLAG(IS_POSIX) && !BUILDFLAG(IS_FUCHSIA)
 
 namespace base {
 
@@ -109,13 +109,13 @@ void RandBytes(void* output, size_t output_length) {
     return;
   }
 
-#if defined(OS_FUCHSIA)
+#if BUILDFLAG(IS_FUCHSIA)
   zx_cprng_draw(output, output_length);
-#elif defined(OS_POSIX)
+#elif BUILDFLAG(IS_POSIX)
   int fd = GetUrandomFD();
   bool success = ReadFromFD(fd, static_cast<char*>(output), output_length);
   CHECK(success);
-#elif defined(OS_WIN)
+#elif BUILDFLAG(IS_WIN)
   char* output_ptr = static_cast<char*>(output);
   while (output_length > 0) {
     const ULONG output_bytes_this_pass = static_cast<ULONG>(std::min(

@@ -101,13 +101,49 @@ write_str(sentry_jsonwriter_t *jw, const char *str)
     sentry__stringbuilder_append(jw->sb, str);
 }
 
+// The Lookup table and algorithm below are adapted from:
+// https://github.com/serde-rs/json/blob/977975ee650829a1f3c232cd5f641a7011bdce1d/src/ser.rs#L2079-L2145
+
+// Lookup table of escape sequences. `0` means no need to escape, and `1` means
+// that escaping is needed.
+static unsigned char needs_escaping[256] = {
+    // 1  2  3  4  5  6  7  8  9  A  B  C  D  E  F
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 0
+    1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, // 1
+    0, 0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 2
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 3
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 4
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 1, 0, 0, 0, // 5
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 6
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 7
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 8
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // 9
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // A
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // B
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // C
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // D
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // E
+    0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0, // F
+};
+
 static void
 write_json_str(sentry_jsonwriter_t *jw, const char *str)
 {
     // using unsigned here because utf-8 is > 127 :-)
     const unsigned char *ptr = (const unsigned char *)str;
     write_char(jw, '"');
+
+    const unsigned char *start = ptr;
     for (; *ptr; ptr++) {
+        if (!needs_escaping[*ptr]) {
+            continue;
+        }
+
+        size_t len = ptr - start;
+        if (len) {
+            sentry__stringbuilder_append_buf(jw->sb, (const char *)start, len);
+        }
+
         switch (*ptr) {
         case '\\':
             write_str(jw, "\\\\");
@@ -142,7 +178,15 @@ write_json_str(sentry_jsonwriter_t *jw, const char *str)
                 write_char(jw, *ptr);
             }
         }
+
+        start = ptr + 1;
     }
+
+    size_t len = ptr - start;
+    if (len) {
+        sentry__stringbuilder_append_buf(jw->sb, (const char *)start, len);
+    }
+
     write_char(jw, '"');
 }
 

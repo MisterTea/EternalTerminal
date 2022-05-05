@@ -1,6 +1,6 @@
 #include "sentry_core.h"
 #include "sentry_testsupport.h"
-#include <sentry.h>
+
 #include <sentry_sync.h>
 
 static void
@@ -94,4 +94,31 @@ SENTRY_TEST(concurrent_init)
     // lose events.
     TEST_CHECK(called >= THREADS_NUM * 1);
     TEST_CHECK(called <= THREADS_NUM * 3);
+}
+
+SENTRY_THREAD_FN
+thread_breadcrumb(void *UNUSED(arg))
+{
+    sentry_value_t breadcrumb = sentry_value_new_breadcrumb("foo", "bar");
+    sentry_add_breadcrumb(breadcrumb);
+
+    return 0;
+}
+
+SENTRY_TEST(concurrent_uninit)
+{
+    sentry_value_t user = sentry_value_new_object();
+    sentry_set_user(user);
+
+    sentry_threadid_t thread;
+    sentry__thread_init(&thread);
+    sentry__thread_spawn(&thread, &thread_breadcrumb, NULL);
+
+    sentry_value_t breadcrumb = sentry_value_new_breadcrumb("foo", "bar");
+    sentry_add_breadcrumb(breadcrumb);
+
+    sentry__thread_join(thread);
+    sentry__thread_free(&thread);
+
+    sentry_close();
 }

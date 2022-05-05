@@ -141,6 +141,9 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
     bool stack_scan_allowed) {
   StackFrame::FrameTrust trust = StackFrame::FRAME_TRUST_NONE;
 
+  // The last frame can never be inline. A sequence of inline frames always
+  // finishes with a conventional frame.
+  assert(frames.back()->trust != StackFrame::FRAME_TRUST_INLINE);
   StackFrameX86* last_frame = static_cast<StackFrameX86*>(frames.back());
 
   // Save the stack walking info we found, in case we need it later to
@@ -187,9 +190,15 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
 
   uint32_t last_frame_callee_parameter_size = 0;
   int frames_already_walked = frames.size();
-  if (frames_already_walked >= 2) {
+  for (int last_frame_callee_id = frames_already_walked - 2;
+       last_frame_callee_id >= 0; last_frame_callee_id--) {
+    // Searching for a real callee frame. Skipping inline frames since they
+    // cannot be downcasted to StackFrameX86.
+    if (frames[last_frame_callee_id]->trust == StackFrame::FRAME_TRUST_INLINE) {
+      continue;
+    }
     const StackFrameX86* last_frame_callee
-        = static_cast<StackFrameX86*>(frames[frames_already_walked - 2]);
+        = static_cast<StackFrameX86*>(frames[last_frame_callee_id]);
     WindowsFrameInfo* last_frame_callee_info
         = last_frame_callee->windows_frame_info;
     if (last_frame_callee_info &&
@@ -385,9 +394,10 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
     // frame pointer.
     uint32_t location_start = last_frame->context.esp;
     uint32_t location, eip;
-    if (!stack_scan_allowed
-        || !ScanForReturnAddress(location_start, &location, &eip,
-                                 frames.size() == 1 /* is_context_frame */)) {
+    if (!stack_scan_allowed ||
+        !ScanForReturnAddress(location_start, &location, &eip,
+                              /*is_context_frame=*/last_frame->trust ==
+                                  StackFrame::FRAME_TRUST_CONTEXT)) {
       // if we can't find an instruction pointer even with stack scanning,
       // give up.
       return NULL;
@@ -429,9 +439,10 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
       // looking one 32-bit word above that location.
       uint32_t location_start = dictionary[".raSearchStart"] + 4;
       uint32_t location;
-      if (stack_scan_allowed
-          && ScanForReturnAddress(location_start, &location, &eip,
-                                  frames.size() == 1 /* is_context_frame */)) {
+      if (stack_scan_allowed &&
+          ScanForReturnAddress(location_start, &location, &eip,
+                               /*is_context_frame=*/last_frame->trust ==
+                                   StackFrame::FRAME_TRUST_CONTEXT)) {
         // This is a better return address that what program string
         // evaluation found.  Use it, and set %esp to the location above the
         // one where the return address was found.
@@ -516,6 +527,9 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
 StackFrameX86* StackwalkerX86::GetCallerByCFIFrameInfo(
     const vector<StackFrame*>& frames,
     CFIFrameInfo* cfi_frame_info) {
+  // The last frame can never be inline. A sequence of inline frames always
+  // finishes with a conventional frame.
+  assert(frames.back()->trust != StackFrame::FRAME_TRUST_INLINE);
   StackFrameX86* last_frame = static_cast<StackFrameX86*>(frames.back());
   last_frame->cfi_frame_info = cfi_frame_info;
 
@@ -542,6 +556,9 @@ StackFrameX86* StackwalkerX86::GetCallerByEBPAtBase(
     const vector<StackFrame*>& frames,
     bool stack_scan_allowed) {
   StackFrame::FrameTrust trust;
+  // The last frame can never be inline. A sequence of inline frames always
+  // finishes with a conventional frame.
+  assert(frames.back()->trust != StackFrame::FRAME_TRUST_INLINE);
   StackFrameX86* last_frame = static_cast<StackFrameX86*>(frames.back());
   uint32_t last_esp = last_frame->context.esp;
   uint32_t last_ebp = last_frame->context.ebp;
@@ -581,9 +598,10 @@ StackFrameX86* StackwalkerX86::GetCallerByEBPAtBase(
     // return address. This can happen if last_frame is executing code
     // for a module for which we don't have symbols, and that module
     // is compiled without a frame pointer.
-    if (!stack_scan_allowed
-        || !ScanForReturnAddress(last_esp, &caller_esp, &caller_eip,
-                                 frames.size() == 1 /* is_context_frame */)) {
+    if (!stack_scan_allowed ||
+        !ScanForReturnAddress(last_esp, &caller_esp, &caller_eip,
+                              /*is_context_frame=*/last_frame->trust ==
+                                  StackFrame::FRAME_TRUST_CONTEXT)) {
       // if we can't find an instruction pointer even with stack scanning,
       // give up.
       return NULL;
@@ -634,6 +652,9 @@ StackFrame* StackwalkerX86::GetCallerFrame(const CallStack* stack,
 
   const vector<StackFrame*>& frames = *stack->frames();
   StackFrameX86* last_frame = static_cast<StackFrameX86*>(frames.back());
+  // The last frame can never be inline. A sequence of inline frames always
+  // finishes with a conventional frame.
+  assert(last_frame->trust != StackFrame::FRAME_TRUST_INLINE);
   scoped_ptr<StackFrameX86> new_frame;
 
   // If the resolver has Windows stack walking information, use that.
@@ -660,10 +681,10 @@ StackFrame* StackwalkerX86::GetCallerFrame(const CallStack* stack,
     return NULL;
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
-  if (TerminateWalk(new_frame->context.eip,
-                    new_frame->context.esp,
+  if (TerminateWalk(new_frame->context.eip, new_frame->context.esp,
                     last_frame->context.esp,
-                    frames.size() == 1)) {
+                    /*first_unwind=*/last_frame->trust ==
+                        StackFrame::FRAME_TRUST_CONTEXT)) {
     return NULL;
   }
 
