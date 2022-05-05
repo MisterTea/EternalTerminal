@@ -73,6 +73,7 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <locale>
 #include <memory>
 #include <mutex>
+#include <optional>
 #include <set>
 #include <sstream>
 #include <streambuf>
@@ -88,7 +89,8 @@ inline int close(int fd) { return ::closesocket(fd); }
 #include <Availability.h>
 #endif
 
-#if defined(__APPLE__) && __MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_15
+#if defined(__APPLE__) && \
+    __MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_15
 #if __has_include(<boost/filesystem.hpp>)
 #include <boost/filesystem.hpp>
 namespace fs = boost::filesystem;
@@ -353,9 +355,8 @@ inline bool waitOnSocketData(int fd) {
     } else {
       FATAL_FAIL(selectResult);
     }
-  } else {
-    return FD_ISSET(fd, &fdset);
   }
+  return FD_ISSET(fd, &fdset);
 }
 
 inline string genRandomAlphaNum(int len) {
