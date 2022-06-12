@@ -165,7 +165,7 @@ You can specify a jumphost and the port et is running on jumphost using `-jumpho
 et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
 et hostname:8888 -jumphost jump_hostname -jport 9999
 ```
-Additional arguments that et accept are port forwarding pairs with option `-t="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accept are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide ssh config file.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
