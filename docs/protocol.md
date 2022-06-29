@@ -79,7 +79,103 @@ Based on this, a CatchupBuffer protobufs are swapped, containing the missing enc
 
 ## Port Forwarding
 
+Port forwarding is supported in Eternal Terminal using the same connection that transmits the terminal updates.  Both forward (server port exposed on client) and reverse forwarding (client port exposed on server) are supported.
+
+### Forward Port Forwarding
+
 ![Simple Connection with Port Forwarding](images/port_forwarding.png)
+
+Forward port forwarding listens to a port on the client, and forwards connections to it to the server, which "tunnels" the connection to the server's port. It is activated by passing either a `-t` (or `--tunnel`) parameter to `et`, and providing a source and destination port or range.
+
+The port range is in the form of `source:destination` or `srcStart-srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the client, and `destination` is the port on the server.  Multiple ports may be forwarded by specifying a comma-separated list.
+
+| Command | Description |
+| ------- | ----------- |
+| `et -x -t 8080:8080 user@myhost` | Forwards connections to port 8080 on the client to 8080 on the server. |
+| `et -x -t 2222:22 user@myhost` | Forwards connections to port 2222 on the client to port 22 on the server. |
+| `et -x -t 8080:8080,2222:22 user@myhost` | Forwards connections to both 8080 and 2022 on the client to port 8080 and 22 on the server (respectively). |
+| `et -x -t 8080-8089:8080-8089 user@myhost` | Forwards connections to port 8080-8089 (inclusive) on the client to the server. |
+
+```mermaid
+sequenceDiagram
+    participant user
+    participant et
+    participant etserver
+    participant destination
+
+    user->>et: Connect to port
+    et->>etserver: PortForwardDestinationRequest
+    etserver->>destination: Open tcp connection
+    etserver->>et: PortForwardDestinationResponse
+
+    loop Transmit
+      user->>et: TCP traffic
+      et->>etserver: PortForwardData
+      etserver->>destination: TCP traffic
+    end
+
+    loop Receive
+      destination->>etserver: TCP traffic
+      etserver->>et: PortForwardData
+      et->>user: TCP traffic
+    end
+```
+
+To establish port forwarding:
+- `et` first parses port ranges, translating each of them to a PortForwardSourceRequest.
+- A ForwardSourceHandler is created for each request by calling `PortForwardHandler::createSource`.
+- The ForwardSourceHandler starts listening on the client port for connections.
+- In the TerminalClient run loop, `PortForwardHandler::update` is called, and within this function any pending connections to the client port are accepted.
+- When a connection is accepted on the client, it sends a `PORT_FORWARD_DESTINATION_REQUEST` (with a PortForwardDestinationRequest) packet to the server.
+- `PortForwardHandler::update` also reads any data on active connections, and returns a vector of `PortForwardData` to send to the server as well.
+- Upon receiving the `PORT_FORWARD_DESTINATION_REQUEST`, the server forwards the packet to `PortForwardHandler::handlePacket`, where it calls `createDestination` to open a connection to the destination port on the server.
+- The server then returns a `PORT_FORWARD_DESTINATION_RESPONSE` (PortForwardDestinationResponse) containing the **client fd**, **socket id**, or an error message.
+- When the client receives this response, it saves the fd to socket id mapping so it can tag packets to the server.
+- Once the response has been saved, forwarded data received from `PORT_FORWARD_DATA` (PortForwardData) packets is mapped to the matching socket and forwarded, and outputs read from the client's port are forwarded to the server by generating `PORT_FORWARD_DATA` messages as well.
+
+### Reverse Port Forwarding
+
+Reverse port forwarding is available by providing the `-r` or `--reversetunnel` parameter, and accepts the same port range parameter as forward tunnels. These are in the form of `source:destination` or `srcStart-srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the *server*, and `destination` is the port on the `client`.  Multiple ports may be forwarded by specifying a comma-separated list.
+
+It's also possible to forward Unix sockets, by using the syntax of `ENV_VAR_NAME:/var/run/example.sock`, which will create a temporary file on the server and forward it to `/var/run/example.sock` on the client.  It will then set the temporary file path to the provided environment variable, `ENV_VAR_NAME` in this case.
+
+| Command | Description |
+| ------- | ----------- |
+| `et -x -r 8080:8080 user@myhost` | Forwards connections to port 8080 on the server to 8080 on the client. |
+| `et -x -r 22:2222 user@myhost` | Forwards connections to port 22 on the server to port 2222 on the client. |
+| `et -x -r 5037:5037 user@myhost` | Forwards connections to both 5037 (adb) from the server to the client, enabling adb to be used from the server to a locally-connected device. |
+| `et -x -r 5037:5037,8080:8080 user@myhost` | Forwards connections from the server to client on port 5037 (adb) and port 8080. |
+| `et -x -r ENV_VAR_NAME:/var/run/example.sock user@myhost` | Creates a socket in the temp dir on the server, sets its path to `ENV_VAR_NAME`, and forwards connections to `/var/run/example.sock` on the client. |
+
+```mermaid
+sequenceDiagram
+    participant destination
+    participant et
+    participant etserver
+    participant user as Server-side user
+
+    et->>etserver: Login with reversetunnels in InitialPayload
+    Note right of etserver: Listen to ports
+    user->>etserver: Connect to port
+    etserver->>et: PortForwardDestinationRequest
+    et->>destination: Open tcp connection
+    et->>etserver: PortForwardDestinationResponse
+
+    loop Transmit and receive
+      user-->etserver: TCP traffic
+      etserver-->>et: PortForwardData
+      et-->destination: TCP traffic
+      et-->>etserver: PortForwardData
+    end
+```
+
+For reverse tunnels, connections are initiated from the server side by:
+- `et` parses the port forwarding parameter and builds a list of PortForwardSourceRequest.
+- `et` uses this to populate the `reversetunnels` field of the InitialPayload.
+- `etserver` creates a ForwardSourceHandler for each port in the request, to start listening to the requested ports on server.
+- When `etserver` receives a connection on the port, it sends a `PORT_FORWARD_DESTINATION_REQUEST` (with a PortForwardDestinationRequest) to the client.
+- The client responds with `PORT_FORWARD_DESTINATION_RESPONSE` (PortForwardDestinationResponse), essentially mirroring the flow of forward tunnels.
+- Data is exchanged in the same way as forward tunnels, by wrapping traffic in `PORT_FORWARD_DATA` (PortForwardData) packets.
 
 ## Jumphosts
 
@@ -87,7 +183,7 @@ Based on this, a CatchupBuffer protobufs are swapped, containing the missing enc
 
 **et** may optionally connect to the destination server through a jumphost, enabling it to reach destinations that are not directly accessible.  This is enabled by passing the `--jumphost` parameter or specified in the SSH config files.
 
-When a jumphost is enabled, **et** launches two `etterminal` processes, one on the jumphost and another on the desination.  On the jumphost, `etterminal` is launched with the `--jump` parameter which configures it to launch in jumphost mode.
+When a jumphost is enabled, **et** launches two `etterminal` processes, one on the jumphost and another on the destination.  On the jumphost, `etterminal` is launched with the `--jump` parameter which configures it to launch in jumphost mode.
 
 When the `etterminal` jumphost launches, a UserJumphostHandler is created which connects to **etserver** the same way as a terminal: by sending a UserTerminalInfo packet.
 
@@ -107,9 +203,9 @@ From the router fifo, packets may be sent to either forward input to the termina
 
 ## Jumphost Run Loop
 
-The jumphost run loop is within [`UserJumphostHandler::run`](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/UserJumphostHandler.cpp#L124), and runs within the `etterminal` process on the jumphost, ater the connection has been started and the InitialResponse has been received.
+The jumphost run loop is within [`UserJumphostHandler::run`](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/UserJumphostHandler.cpp#L124), and runs within the `etterminal` process on the jumphost, after the connection has been started and the InitialResponse has been received.
 
 In the run-loop, UserJumpHostHandler acts as a proxy between the destination server and the jumphost `etserver`:
 - It reads packets from the local `etserver` over the fifo, and forwards them to the destination server.
 - It reads reads packets from the destination server, and forwards them to the local `etserver` fifo.
-- If the user disconnects from the jumphost, it close the connection to the destination server.
+- If the user disconnects from the jumphost, it closes the connection to the destination server.
