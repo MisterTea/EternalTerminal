@@ -26,6 +26,8 @@ sequenceDiagram
     Note right of etserver: Match client id with terminal
     etserver->>et: ConnectResponse
 
+    et->>etserver: InitialPayload
+
     et->>etserver: TerminalBuffer input (encrypted)
     etserver-->etterminal: terminal in/out
     etserver->>et: TerminalBuffer output (encrypted)
@@ -64,6 +66,8 @@ After the terminal launches, **et** connects to the **etserver** over the Eterna
 The **client-id** is looked up in the ServerConnection `clientKeys` map, and if it is found a ServerClientConnection is created, which contains the BackedReader and BackedWriter used for EternalTCP buffering.
 
 A ConnectResponse is returned with a status of either `INVALID_KEY`, `NEW_CLIENT`, or `RETURNING_CLIENT` based on the results of the `clientKeys` lookup.  If there's an error the socket is then closed.
+
+The client then sends an `INITIAL_PAYLOAD` (with an InitialPayload), which contains port forwarding information or the jumphost flag.
 
 ## Reconnection
 
