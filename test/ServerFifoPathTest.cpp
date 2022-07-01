@@ -25,6 +25,8 @@ struct FileInfo {
   }
 };
 
+bool IsRoot() { return ::geteuid() == 0; }
+
 int RemoveDirectory(const char* path) {
   // Use posix file tree walk to traverse the directory and remove the contents.
   return nftw(
@@ -101,6 +103,11 @@ class TestEnvironment {
 }  // namespace
 
 TEST_CASE("Creation", "[ServerFifoPath]") {
+  if (IsRoot()) {
+    WARN("Test running as root: Skipping test");
+    return;
+  }
+
   TestEnvironment env;
 
   const string homeDir = env.createTempDir();
@@ -206,6 +213,11 @@ TEST_CASE("Creation", "[ServerFifoPath]") {
 }
 
 TEST_CASE("Override", "[ServerFifoPath]") {
+  if (IsRoot()) {
+    WARN("Test running as root: Skipping test");
+    return;
+  }
+
   TestEnvironment env;
 
   const string homeDir = env.createTempDir();
