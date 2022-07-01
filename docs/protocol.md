@@ -22,11 +22,11 @@ sequenceDiagram
     etterminal->>etserver: TerminalUserInfo (client id, passkey)
     etterminal->>et: client id and passkey
 
-    et->>etserver: ConnectRequest (client id, version)
-    Note right of etserver: Match client id with terminal
-    etserver->>et: ConnectResponse
+    loop
+      etserver->>etserver: Wait for client connect<br>(see Client Connection)
+    end
 
-    et->>etserver: InitialPayload
+    etserver->>etterminal: TermInit
 
     et->>etserver: TerminalBuffer input (encrypted)
     etserver-->etterminal: terminal in/out
@@ -61,15 +61,52 @@ Once etterminal launches:
 
 ## Client Connection
 
+```mermaid
+sequenceDiagram
+    participant et
+    participant etserver
+    participant etterminal
+    
+    et->>etserver: ConnectRequest (client id, version)
+    Note right of etserver: Match client id with terminal
+    etserver->>et: ConnectResponse
+
+    et->>etserver: InitialPayload
+    etserver->>et: InitialResponse
+
+    Note left of et: Connection complete
+
+    et->>etserver: TerminalBuffer input (encrypted)
+    etserver-->etterminal: terminal in/out
+    etserver->>et: TerminalBuffer output (encrypted)
+```
+
 After the terminal launches, **et** connects to the **etserver** over the EternalTerminal port (defaults to 2022), and sends a [ConnectRequest](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ET.proto#L12-L15) message containing the **client-id** and protocol version.  Note that this since encryption is client-specific, this client-id is sent unencrypted.
 
 The **client-id** is looked up in the ServerConnection `clientKeys` map, and if it is found a ServerClientConnection is created, which contains the BackedReader and BackedWriter used for EternalTCP buffering.
 
 A ConnectResponse is returned with a status of either `INVALID_KEY`, `NEW_CLIENT`, or `RETURNING_CLIENT` based on the results of the `clientKeys` lookup.  If there's an error the socket is then closed.
 
-The client then sends an `INITIAL_PAYLOAD` (with an InitialPayload), which contains port forwarding information or the jumphost flag.
+The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L60-L63)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L65-L67)).  If there's an error during connect, the InitialResponse will contain an error string.
 
 ## Reconnection
+
+```mermaid
+sequenceDiagram
+    participant et
+    participant etserver
+    participant etterminal
+    
+    et->>etserver: ConnectRequest (client id, version)
+    Note right of etserver: Match client id with terminal
+    etserver->>et: ConnectResponse (RETURNING_CLIENT)
+
+    et->>etserver: SequenceHeader
+    etserver->>et: SequenceHeader
+
+    et->>etserver: CatchupBuffer (w/ encrypted packets)
+    etserver->>et: CatchupBuffer (w/ encrypted packets)
+```
 
 One of the core features of EternalTerminal is handling reconnections, in a way that is seamless to the user: If the previous connection gets interrupted, a new connection is established and continues where the previous connection left off.
 
