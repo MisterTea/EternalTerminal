@@ -61,17 +61,15 @@ class TestEnvironment {
   }
 
   void setEnv(const char* name, const string& value) {
-    if (!savedEnvs.count(name)) {
-      const char* previousValue = ::getenv(name);
-      if (previousValue) {
-        savedEnvs[name] = string(previousValue);
-      } else {
-        savedEnvs[name] = std::nullopt;
-      }
-    }
+    backupEnv(name);
 
     const int replace = 1;  // non-zero to replace.
     ::setenv(name, value.c_str(), replace);
+  }
+
+  void unsetEnv(const char* name) {
+    backupEnv(name);
+    ::unsetenv(name);
   }
 
   ~TestEnvironment() {
@@ -96,6 +94,17 @@ class TestEnvironment {
   }
 
  private:
+  void backupEnv(const char* name) {
+    if (!savedEnvs.count(name)) {
+      const char* previousValue = ::getenv(name);
+      if (previousValue) {
+        savedEnvs[name] = string(previousValue);
+      } else {
+        savedEnvs[name] = std::nullopt;
+      }
+    }
+  }
+
   vector<string> temporaryDirs;
   map<string, optional<string>> savedEnvs;
 };
@@ -113,6 +122,7 @@ TEST_CASE("Creation", "[ServerFifoPath]") {
   const string homeDir = env.createTempDir();
   env.setEnv("HOME", homeDir.c_str());
   INFO("homeDir = " << homeDir);
+  env.unsetEnv("XDG_RUNTIME_DIR");
 
   const string expectedFifoPath =
       homeDir + "/.local/share/etserver/etserver.idpasskey.fifo";
@@ -222,6 +232,7 @@ TEST_CASE("Override", "[ServerFifoPath]") {
 
   const string homeDir = env.createTempDir();
   env.setEnv("HOME", homeDir.c_str());
+  env.unsetEnv("XDG_RUNTIME_DIR");
 
   const string expectedFifoPath =
       homeDir + "/.local/share/etserver/etserver.idpasskey.fifo";
