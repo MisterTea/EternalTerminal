@@ -127,14 +127,16 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     LOG(WARNING) << "Error handling new client: " << err.what();
     if (createdClientConnection) {
       destroyPartialConnection(clientId);
+    } else {
+      socketHandler->close(clientSocketFd);
     }
-    socketHandler->close(clientSocketFd);
   } catch (const std::exception& e) {
     LOG(ERROR) << "Got an unexpected error handling new client: " << e.what();
     if (createdClientConnection) {
       destroyPartialConnection(clientId);
+    } else {
+      socketHandler->close(clientSocketFd);
     }
-    socketHandler->close(clientSocketFd);
   }
 }
 
