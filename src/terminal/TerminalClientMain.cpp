@@ -144,18 +144,29 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
-    string arg = result["host"].as<std::string>();
-    if (arg.find('@') != string::npos) {
-      int i = arg.find('@');
-      username = arg.substr(0, i);
-      arg = arg.substr(i + 1);
+    string host_arg = result["host"].as<std::string>();
+    if (host_arg.find('@') != string::npos) {
+      int i = host_arg.find('@');
+      username = host_arg.substr(0, i);
+      host_arg = host_arg.substr(i + 1);
     }
-    if (arg.find(':') != string::npos) {
-      int i = arg.find(':');
-      destinationPort = stoi(arg.substr(i + 1));
-      arg = arg.substr(0, i);
+
+    if (host_arg.find(':') != string::npos) {
+      int colon_count = std::count(host_arg.begin(), host_arg.end(), ':');
+      if (colon_count == 1 || colon_count == 8) {
+        // ipv4 or hostname or ipv6 with port specified
+        int port_colon_pos = host_arg.rfind(':');
+        destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
+        host_arg = host_arg.substr(0, port_colon_pos);
+      } else if (colon_count == 7) {
+        // ipv6 without port specified
+      } else {
+        CLOG(INFO, "stdout") << "Invalid host positional arg: "
+          << result["host"].as<std::string>() << endl;
+        exit(1);
+      }
     }
-    destinationHost = arg;
+    destinationHost = host_arg;
 
     string jumphost =
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
