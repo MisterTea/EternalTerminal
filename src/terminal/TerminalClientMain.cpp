@@ -51,7 +51,8 @@ int main(int argc, char** argv) {
          cxxopts::value<int>()->default_value("2022"))  //
         ("c,command", "Run command on connect",
          cxxopts::value<std::string>())  //
-        ("prefix", "Add prefix when launching etterminal on server side",
+        ("terminal-path", "Path to etterminal on server side. "
+         "Use if etterminal is not on the system path.",
          cxxopts::value<std::string>())  //
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
@@ -69,8 +70,8 @@ int main(int argc, char** argv) {
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("macserver",
-         "Set when connecting to an OS/X server.  Sets "
-         "--prefix=/usr/local/bin/etterminal")  //
+         "Set when connecting to an macOS server.  Sets "
+         "--terminal-path=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))          //
         ("k,keepalive", "Client keepalive duration in seconds",
@@ -265,17 +266,17 @@ int main(int argc, char** argv) {
     if (result.count("ssh-option")) {
       ssh_options = result["ssh-option"].as<std::vector<string>>();
     }
-    string prefix = "";
+    string etterminal_path = "";
     if (result.count("macserver") > 0) {
-      prefix = "/usr/local/bin/etterminal";
+      etterminal_path = "/usr/local/bin/etterminal";
     }
-    if (result.count("prefix")) {
-      prefix = result["prefix"].as<string>();
+    if (result.count("etterminal_path")) {
+      etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["verbose"].as<int>(), prefix, serverFifo,
-        ssh_options);
+        result.count("x") > 0, result["verbose"].as<int>(), etterminal_path,
+        serverFifo, ssh_options);
 
     string id = "", passkey = "";
     // Trim whitespace
