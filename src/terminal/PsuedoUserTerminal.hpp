@@ -31,14 +31,15 @@ class PsuedoUserTerminal : public UserTerminal {
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
+        break;
       case 0: {
         close(routerFd);
         runTerminal();
+        // only get here if execl fails so a break is not needed since we exit
         exit(0);
       }
       default: {
         // parent
-        break;
       }
     }
 

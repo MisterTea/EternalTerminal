@@ -13,12 +13,6 @@
 
 using namespace et;
 
-void setDaemonLogFile(string idpasskey, string daemonType) {
-  string first_idpass_chars = idpasskey.substr(0, 10);
-  string logFile = string(GetTempDirectory() + "etterminal_") + daemonType +
-                   "_" + first_idpass_chars;
-}
-
 int main(int argc, char** argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -30,20 +24,20 @@ int main(int argc, char** argv) {
   ::signal(SIGINT, et::InterruptSignalHandler);
 
   // Parse command line arguments
-  cxxopts::Options options("et", "Remote shell for the busy and impatient");
+  cxxopts::Options options("etterminal", "User terminal for Eternal Terminal.");
 
   try {
-    options.positional_help("[user@]hostname[:port]").show_positional_help();
     options.allow_unrecognised_options();
 
     options.add_options()         //
         ("h,help", "Print help")  //
         ("idpasskey",
-         "If set, uses IPC to send a client id/key to the server daemon",
+         "If set, uses IPC to send a client id/key to the server daemon. "
+         "Alternatively, pass in via stdin.",
          cxxopts::value<std::string>()->default_value(""))  //
         ("idpasskeyfile",
          "If set, uses IPC to send a client id/key to the server daemon from a "
-         "file",
+         "file. Alternatively, pass in via stdin.",
          cxxopts::value<std::string>()->default_value(""))  //
         ("jump",
          "If set, forward all packets between client and dst terminal")  //
@@ -51,6 +45,7 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>()->default_value(""))  //
         ("dstport", "Must be set if jump is set to true",
          cxxopts::value<int>()->default_value("2022"))  //
+        // Not used by etterminal but easylogging uses this flag under the hood
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))  //
         ("logtostdout", "Write log to stdout")       //
@@ -59,8 +54,6 @@ int main(int argc, char** argv) {
          "fifo name",                                       //
          cxxopts::value<std::string>()->default_value(""))  //
         ;
-
-    options.parse_positional({"host", "positional"});
 
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
@@ -151,8 +144,6 @@ int main(int argc, char** argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     if (result.count("jump")) {
-      setDaemonLogFile(idpasskey, "jumphost");
-
       // etserver with --jump cannot write to the default log file(root)
       LogHandler::setupLogFile(
           &defaultConf,
@@ -182,8 +173,6 @@ int main(int argc, char** argv) {
       el::Helpers::uninstallPreRollOutCallback();
       return 0;
     }
-
-    setDaemonLogFile(idpasskey, "terminal");
 
     // etserver with --idpasskey cannot write to the default log file(root)
     LogHandler::setupLogFile(
