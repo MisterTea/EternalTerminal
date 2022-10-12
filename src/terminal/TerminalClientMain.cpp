@@ -51,7 +51,8 @@ int main(int argc, char** argv) {
          cxxopts::value<int>()->default_value("2022"))  //
         ("c,command", "Run command on connect",
          cxxopts::value<std::string>())  //
-        ("prefix", "Add prefix when launching etterminal on server side",
+        ("terminal-path", "Path to etterminal on server side. "
+         "Use if etterminal is not on the system path.",
          cxxopts::value<std::string>())  //
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
@@ -69,8 +70,8 @@ int main(int argc, char** argv) {
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("macserver",
-         "Set when connecting to an OS/X server.  Sets "
-         "--prefix=/usr/local/bin/etterminal")  //
+         "Set when connecting to an macOS server.  Sets "
+         "--terminal-path=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))          //
         ("k,keepalive", "Client keepalive duration in seconds",
@@ -144,18 +145,29 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
-    string arg = result["host"].as<std::string>();
-    if (arg.find('@') != string::npos) {
-      int i = arg.find('@');
-      username = arg.substr(0, i);
-      arg = arg.substr(i + 1);
+    string host_arg = result["host"].as<std::string>();
+    if (host_arg.find('@') != string::npos) {
+      int i = host_arg.find('@');
+      username = host_arg.substr(0, i);
+      host_arg = host_arg.substr(i + 1);
     }
-    if (arg.find(':') != string::npos) {
-      int i = arg.find(':');
-      destinationPort = stoi(arg.substr(i + 1));
-      arg = arg.substr(0, i);
+
+    if (host_arg.find(':') != string::npos) {
+      int colon_count = std::count(host_arg.begin(), host_arg.end(), ':');
+      if (colon_count == 1 || colon_count == 8) {
+        // ipv4 or hostname or ipv6 with port specified
+        int port_colon_pos = host_arg.rfind(':');
+        destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
+        host_arg = host_arg.substr(0, port_colon_pos);
+      } else if (colon_count == 7) {
+        // ipv6 without port specified
+      } else {
+        CLOG(INFO, "stdout") << "Invalid host positional arg: "
+          << result["host"].as<std::string>() << endl;
+        exit(1);
+      }
     }
-    destinationHost = arg;
+    destinationHost = host_arg;
 
     string jumphost =
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
@@ -254,17 +266,17 @@ int main(int argc, char** argv) {
     if (result.count("ssh-option")) {
       ssh_options = result["ssh-option"].as<std::vector<string>>();
     }
-    string prefix = "";
+    string etterminal_path = "";
     if (result.count("macserver") > 0) {
-      prefix = "/usr/local/bin/etterminal";
+      etterminal_path = "/usr/local/bin/etterminal";
     }
-    if (result.count("prefix")) {
-      prefix = result["prefix"].as<string>();
+    if (result.count("etterminal_path")) {
+      etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["verbose"].as<int>(), prefix, serverFifo,
-        ssh_options);
+        result.count("x") > 0, result["verbose"].as<int>(), etterminal_path,
+        serverFifo, ssh_options);
 
     string id = "", passkey = "";
     // Trim whitespace

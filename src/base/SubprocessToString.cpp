@@ -2,7 +2,7 @@
 
 namespace et {
 #ifdef WIN32
-#define BUFSIZE 4096 
+#define BUFSIZE 4096
 
   void ErrorExit(PTSTR);
 
@@ -14,13 +14,13 @@ namespace et {
     HANDLE g_hChildStd_OUT_Wr = NULL;
 
 
-    // Set the bInheritHandle flag so pipe handles are inherited. 
+    // Set the bInheritHandle flag so pipe handles are inherited.
 
     saAttr.nLength = sizeof(SECURITY_ATTRIBUTES);
     saAttr.bInheritHandle = TRUE;
     saAttr.lpSecurityDescriptor = NULL;
 
-    // Create a pipe for the child process's STDOUT. 
+    // Create a pipe for the child process's STDOUT.
 
     if (!CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &saAttr, 0))
       ErrorExit(TEXT("StdoutRd CreatePipe"));
@@ -30,12 +30,12 @@ namespace et {
     if (!SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
       ErrorExit(TEXT("Stdout SetHandleInformation"));
 
-    // Create a pipe for the child process's STDIN. 
+    // Create a pipe for the child process's STDIN.
 
     if (!CreatePipe(&g_hChildStd_IN_Rd, &g_hChildStd_IN_Wr, &saAttr, 0))
       ErrorExit(TEXT("Stdin CreatePipe"));
 
-    // Ensure the write handle to the pipe for STDIN is not inherited. 
+    // Ensure the write handle to the pipe for STDIN is not inherited.
 
     if (!SetHandleInformation(g_hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0))
       ErrorExit(TEXT("Stdin SetHandleInformation"));
@@ -50,11 +50,11 @@ namespace et {
     STARTUPINFO siStartInfo;
     BOOL bSuccess = FALSE;
 
-    // Set up members of the PROCESS_INFORMATION structure. 
+    // Set up members of the PROCESS_INFORMATION structure.
 
     ZeroMemory(&piProcInfo, sizeof(PROCESS_INFORMATION));
 
-    // Set up members of the STARTUPINFO structure. 
+    // Set up members of the STARTUPINFO structure.
     // This structure specifies the STDIN and STDOUT handles for redirection.
 
     ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
@@ -64,30 +64,30 @@ namespace et {
     siStartInfo.hStdInput = g_hChildStd_IN_Rd;
     siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
 
-    // Create the child process. 
+    // Create the child process.
 
     std::wstring_convert<std::codecvt_utf8_utf16<wchar_t>> converter;
     std::wstring wide = converter.from_bytes(localCommand);
 
     bSuccess = CreateProcess(NULL,
-      &(wide[0]),     // command line 
-      NULL,          // process security attributes 
-      NULL,          // primary thread security attributes 
-      TRUE,          // handles are inherited 
-      0,             // creation flags 
-      NULL,          // use parent's environment 
-      NULL,          // use parent's current directory 
-      &siStartInfo,  // STARTUPINFO pointer 
-      &piProcInfo);  // receives PROCESS_INFORMATION 
+      &(wide[0]),     // command line
+      NULL,          // process security attributes
+      NULL,          // primary thread security attributes
+      TRUE,          // handles are inherited
+      0,             // creation flags
+      NULL,          // use parent's environment
+      NULL,          // use parent's current directory
+      &siStartInfo,  // STARTUPINFO pointer
+      &piProcInfo);  // receives PROCESS_INFORMATION
 
-   // If an error occurs, exit the application. 
+   // If an error occurs, exit the application.
     if (!bSuccess)
       ErrorExit(TEXT("CreateProcess"));
     else
     {
       // Close handles to the child process and its primary thread.
       // Some applications might keep these handles to monitor the status
-      // of the child process, for example. 
+      // of the child process, for example.
 
       CloseHandle(piProcInfo.hProcess);
       CloseHandle(piProcInfo.hThread);
@@ -99,10 +99,10 @@ namespace et {
       CloseHandle(g_hChildStd_IN_Rd);
     }
 
-    // Read from pipe that is the standard output for child process. 
+    // Read from pipe that is the standard output for child process.
     // Read output from the child process's pipe for STDOUT
-    // and write to the parent process's pipe for STDOUT. 
-    // Stop when there is no more data. 
+    // and write to the parent process's pipe for STDOUT.
+    // Stop when there is no more data.
     DWORD dwRead, dwWritten;
     CHAR chBuf[BUFSIZE];
     bSuccess = FALSE;
@@ -117,20 +117,20 @@ namespace et {
       childOutput += string((const char*)chBuf, (size_t)dwRead);
     }
 
-    // The remaining open handles are cleaned up when this process terminates. 
-    // To avoid resource leaks in a larger application, close handles explicitly. 
+    // The remaining open handles are cleaned up when this process terminates.
+    // To avoid resource leaks in a larger application, close handles explicitly.
 
     return childOutput;
   }
 
-#include <windows.h> 
+#include <windows.h>
 #include <tchar.h>
-#include <stdio.h> 
+#include <stdio.h>
 #include <strsafe.h>
 
   void ErrorExit(PTSTR lpszFunction)
 
-    // Format a readable error message, display a message box, 
+    // Format a readable error message, display a message box,
     // and exit from the application.
   {
     LPVOID lpMsgBuf;
@@ -169,9 +169,9 @@ namespace et {
     }
 
     pid_t pid = fork();
-    if (!pid) {
-      // start etserver daemon on dst.
-      dup2(link_client[1], 1);
+    if (pid == 0) {
+      // child process
+      dup2(link_client[1], STDOUT_FILENO);
       close(link_client[0]);
       close(link_client[1]);
 
@@ -181,21 +181,17 @@ namespace et {
         argsArray[a + 1] = strdup(args[a].c_str());
       }
       argsArray[args.size() + 1] = NULL;
-      // run the command in interactive mode
       execvp(command.c_str(), argsArray);
 
-      LOG(INFO) << "execl error";
+      LOG(INFO) << "execvp error";
       for (int a = 0; a <= args.size(); a++) {
         free(argsArray[a]);
       }
       delete[] argsArray;
       exit(1);
     }
-    else if (pid < 0) {
-      LOG(INFO) << "Failed to fork";
-      exit(1);
-    }
-    else {
+    else if (pid > 0) {
+      // parent process
       close(link_client[1]);
       wait(NULL);
       string sshBuffer;
@@ -207,6 +203,10 @@ namespace et {
         sshBuffer += string(buf_client, nbytes);
       }
       return sshBuffer;
+    }
+    else {
+      LOG(INFO) << "Failed to fork";
+      exit(1);
     }
   }
 #endif
