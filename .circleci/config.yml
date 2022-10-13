@@ -39,6 +39,12 @@ jobs:
           name: Connect new -> old (ipv6 with port in host)
           command: build/et -c "ls" 0:0:0:0:0:0:0:1:2022 --logtostdout --verbose=9
       - run:
+          name: Connect new -> old (ipv6 abbreviated)
+          command: build/et -c "ls" ::1 --logtostdout --verbose=9
+      - run:
+          name: Connect new -> old (ipv6 abbreviated with port arg)
+          command: build/et -c "ls" ::1 --port 2022 --logtostdout --verbose=9
+      - run:
           name: Kill server
           command: sudo pkill etserver
       - run:
