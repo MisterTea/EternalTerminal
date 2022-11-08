@@ -97,16 +97,19 @@ int main(int argc, char** argv) {
          cxxopts::value<std::vector<std::string>>());
 
     options.parse_positional({"host"});
-
     auto result = options.parse(argc, argv);
+
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
+
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
       exit(0);
     }
+
+    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
     if (result.count("logtostdout")) {
       defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");

@@ -61,6 +61,8 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
+    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
+
     if (result.count("logtostdout")) {
       defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
     } else {

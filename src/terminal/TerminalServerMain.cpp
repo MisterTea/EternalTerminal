@@ -62,6 +62,8 @@ int main(int argc, char **argv) {
       exit(0);
     }
 
+    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
+
     if (result.count("daemon")) {
       if (DaemonCreator::create(true, result["pidfile"].as<string>()) == -1) {
         STFATAL << "Error creating daemon: " << strerror(GetErrno());
