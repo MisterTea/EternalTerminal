@@ -284,7 +284,7 @@ sudo sed -ie "s|ExecStart=[^[:space:]]*[[:space:]]|ExecStart=$(which etserver) |
 
 Alternativelly, open the file /etc/systemd/system/et.service in an editor and correct the `ExectStart=...` line to point to the correct path of the `etserver` binary.
 
-	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+	 ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg
 
 Reload systemd configs:
 
