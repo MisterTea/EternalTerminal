@@ -114,7 +114,7 @@ Install dependencies:
 
   ```
   sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
-  	dev-libs/protobuf dev-util/cmake dev-cpp/gflag
+  	dev-libs/protobuf dev-util/cmake dev-cpp/gflags
   ```
 
 Download and install from source:
