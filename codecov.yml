@@ -7,6 +7,7 @@ ignore:
   - "src/terminal/TelemetryService*"
   - "src/terminal/PsuedoTerminalConsole.hpp"
   - "src/terminal/PsuedoUserTerminal.hpp"
+  - "src/terminal/*Main.cpp"
   - "src/base/TcpSocketHandler*"
   - "src/base/SubprocessToString*"
 coverage:

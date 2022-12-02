@@ -6,6 +6,7 @@
 #include "PsuedoTerminalConsole.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
+#include "TunnelUtils.hpp"
 #include "WinsockContext.hpp"
 
 using namespace et;
@@ -20,6 +21,12 @@ bool ping(SocketEndpoint socketEndpoint,
   }
   clientSocketHandler->close(socketFd);
   return true;
+}
+
+void handleParseException(std::exception& e, cxxopts::Options& options) {
+  CLOG(INFO, "stdout") << "Exception: " << e.what() << "\n" << endl;
+  CLOG(INFO, "stdout") << options.help({}) << endl;
+  exit(1);
 }
 
 int main(int argc, char** argv) {
@@ -340,17 +347,21 @@ int main(int argc, char** argv) {
     }
     TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
                                           __FILE__, __LINE__);
-    TerminalClient terminalClient(
-        clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
-        is_jumphost, result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "", forwardAgent,
-        sshSocket, keepaliveDuration);
+    string tunnel_arg =
+        result.count("tunnel") ? result["tunnel"].as<string>() : "";
+    string r_tunnel_arg = result.count("reversetunnel")
+                              ? result["reversetunnel"].as<string>()
+                              : "";
+    TerminalClient terminalClient(clientSocket, clientPipeSocket,
+                                  socketEndpoint, id, passkey, console,
+                                  is_jumphost, tunnel_arg, r_tunnel_arg,
+                                  forwardAgent, sshSocket, keepaliveDuration);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
+  } catch (TunnelParseException& tpe) {
+    handleParseException(tpe, options);
   } catch (cxxopts::OptionException& oe) {
-    CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
-    CLOG(INFO, "stdout") << options.help({}) << endl;
-    exit(1);
+    handleParseException(oe, options);
   }
 
 #ifdef WIN32
