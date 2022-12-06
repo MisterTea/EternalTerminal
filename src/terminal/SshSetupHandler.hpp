@@ -11,7 +11,7 @@ class SshSetupHandler {
                          const string &jumphost, int jport, bool kill,
                          int vlevel, const string &etterminal_path,
                          const string &serverFifo,
-                         const std::vector<std::string>& ssh_options);
+                         const std::vector<std::string> &ssh_options);
   static const string ETTERMINAL_BIN;
 };
 }  // namespace et

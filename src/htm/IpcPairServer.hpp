@@ -2,7 +2,6 @@
 #define __IPC_PAIR_SERVER_H__
 
 #include "Headers.hpp"
-
 #include "IpcPairEndpoint.hpp"
 
 namespace et {

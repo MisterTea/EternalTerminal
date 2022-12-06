@@ -2,9 +2,9 @@
  * libssh */
 #pragma once
 #include "Headers.hpp"
-//#include <netdb.h>
-//#include <string.h>
-//#include <unistd.h>
+// #include <netdb.h>
+// #include <string.h>
+// #include <unistd.h>
 
 #include <fstream>
 #include <iostream>
@@ -12,13 +12,13 @@
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
-//#include <arpa/inet.h>
+// #include <arpa/inet.h>
 #include <ctype.h>
 #include <errno.h>
 #include <limits.h>
-//#include <netinet/in.h>
-//#include <pwd.h>
-//#include <sys/socket.h>
+// #include <netinet/in.h>
+// #include <pwd.h>
+// #include <sys/socket.h>
 #include <sys/types.h>
 #if __FreeBSD__
 #define _WITH_GETLINE

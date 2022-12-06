@@ -168,7 +168,8 @@ void HtmServer::recover() {
     VLOG(1) << "SENDING INIT: " << length;
     socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
     socketHandler->writeB64(endpointFd, (const char *)&length, 4);
-    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0], jsonString.length(), false);
+    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
+                                   jsonString.length(), false);
   }
 
   state.sendTerminalBuffers(endpointFd);

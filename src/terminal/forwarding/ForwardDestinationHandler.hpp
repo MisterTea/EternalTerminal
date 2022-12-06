@@ -1,11 +1,9 @@
 #ifndef __PORT_FORWARD_DESTINATION_HANDLER_H__
 #define __PORT_FORWARD_DESTINATION_HANDLER_H__
 
-#include "Headers.hpp"
-
-#include "SocketHandler.hpp"
-
 #include "ETerminal.pb.h"
+#include "Headers.hpp"
+#include "SocketHandler.hpp"
 
 namespace et {
 class ForwardDestinationHandler {

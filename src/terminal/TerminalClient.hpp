@@ -4,6 +4,7 @@
 #include "ClientConnection.hpp"
 #include "Console.hpp"
 #include "CryptoHandler.hpp"
+#include "ETerminal.pb.h"
 #include "ForwardSourceHandler.hpp"
 #include "Headers.hpp"
 #include "LogHandler.hpp"
@@ -12,8 +13,6 @@
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
 #include "TcpSocketHandler.hpp"
-
-#include "ETerminal.pb.h"
 
 namespace et {
 class TerminalClient {

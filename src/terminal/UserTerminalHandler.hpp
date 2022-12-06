@@ -2,7 +2,6 @@
 #define __ET_USER_TERMINAL_HANDLER__
 
 #include "Headers.hpp"
-
 #include "SocketHandler.hpp"
 #include "UserTerminal.hpp"
 

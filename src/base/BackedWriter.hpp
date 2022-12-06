@@ -1,9 +1,8 @@
 #ifndef __ET_BACKED_WRITER__
 #define __ET_BACKED_WRITER__
 
-#include "Headers.hpp"
-
 #include "CryptoHandler.hpp"
+#include "Headers.hpp"
 #include "Packet.hpp"
 #include "SocketHandler.hpp"
 

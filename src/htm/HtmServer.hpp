@@ -2,7 +2,6 @@
 #define __HTM_SERVER_H__
 
 #include "Headers.hpp"
-
 #include "IpcPairServer.hpp"
 #include "MultiplexerState.hpp"
 

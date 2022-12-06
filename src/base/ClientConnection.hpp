@@ -1,9 +1,8 @@
 #ifndef __ET_CLIENT_CONNECTION__
 #define __ET_CLIENT_CONNECTION__
 
-#include "Headers.hpp"
-
 #include "Connection.hpp"
+#include "Headers.hpp"
 
 namespace et {
 extern const int NULL_CLIENT_ID;

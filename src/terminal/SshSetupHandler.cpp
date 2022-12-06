@@ -9,8 +9,9 @@ string genCommand(const string& passkey, const string& id,
                   const string& clientTerm, const string& user, bool kill,
                   const string& etterminal_path, const string& options) {
   string ssh_script_prefix;
-  string etterminal_bin =
-      etterminal_path.empty() ? SshSetupHandler::ETTERMINAL_BIN : etterminal_path;
+  string etterminal_bin = etterminal_path.empty()
+                              ? SshSetupHandler::ETTERMINAL_BIN
+                              : etterminal_path;
 
   string command = "echo '" + id + "/" + passkey + "_" + clientTerm + "' | " +
                    etterminal_bin + " " + options;
@@ -55,11 +56,11 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     SSH_USER_PREFIX += user + "@";
   }
 
-  std::vector<std::string> ssh_args ;
+  std::vector<std::string> ssh_args;
   if (!jumphost.empty()) {
     ssh_args = {
-      "-J",
-      SSH_USER_PREFIX + jumphost,
+        "-J",
+        SSH_USER_PREFIX + jumphost,
     };
   }
 
