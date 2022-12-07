@@ -2,7 +2,6 @@
 #define __IPC_PAIR_CLIENT_H__
 
 #include "Headers.hpp"
-
 #include "IpcPairEndpoint.hpp"
 #include "SocketHandler.hpp"
 

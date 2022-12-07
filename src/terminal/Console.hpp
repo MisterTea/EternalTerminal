@@ -1,9 +1,8 @@
 #ifndef __CONSOLE_HPP__
 #define __CONSOLE_HPP__
 
-#include "Headers.hpp"
-
 #include "ETerminal.pb.h"
+#include "Headers.hpp"
 #include "RawSocketUtils.hpp"
 
 namespace et {

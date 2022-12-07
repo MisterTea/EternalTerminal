@@ -1,10 +1,9 @@
 #ifndef __ET_CONNECTION__
 #define __ET_CONNECTION__
 
-#include "Headers.hpp"
-
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
+#include "Headers.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {

@@ -2,7 +2,6 @@
 #define __HTM_CLIENT_H__
 
 #include "Headers.hpp"
-
 #include "IpcPairClient.hpp"
 
 namespace et {

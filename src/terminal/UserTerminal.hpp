@@ -1,9 +1,8 @@
 #ifndef __USER_TERMINAL_HPP__
 #define __USER_TERMINAL_HPP__
 
-#include "Headers.hpp"
-
 #include "ETerminal.pb.h"
+#include "Headers.hpp"
 
 namespace et {
 class UserTerminal {

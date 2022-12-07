@@ -58,17 +58,16 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
   return pfsrs;
 }
 
-TerminalClient::TerminalClient(shared_ptr<SocketHandler> _socketHandler,
-                               shared_ptr<SocketHandler> _pipeSocketHandler,
-                               const SocketEndpoint& _socketEndpoint,
-                               const string& id, const string& passkey,
-                               shared_ptr<Console> _console, bool jumphost,
-                               const string& tunnels,
-                               const string& reverseTunnels,
-                               bool forwardSshAgent,
-                               const string& identityAgent,
-                               int _keepaliveDuration)
-  : console(_console), shuttingDown(false), keepaliveDuration(_keepaliveDuration) {
+TerminalClient::TerminalClient(
+    shared_ptr<SocketHandler> _socketHandler,
+    shared_ptr<SocketHandler> _pipeSocketHandler,
+    const SocketEndpoint& _socketEndpoint, const string& id,
+    const string& passkey, shared_ptr<Console> _console, bool jumphost,
+    const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
+    const string& identityAgent, int _keepaliveDuration)
+    : console(_console),
+      shuttingDown(false),
+      keepaliveDuration(_keepaliveDuration) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;

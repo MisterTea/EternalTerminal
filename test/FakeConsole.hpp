@@ -140,7 +140,8 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
-    string tmpPath = GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
+    string tmpPath =
+        GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
     SocketEndpoint endpoint;

@@ -40,59 +40,60 @@ int main(int argc, char** argv) {
   try {
     options.allow_unrecognised_options();
     options.positional_help("");
-    options.custom_help("[OPTION...] [user@]host[:port]\n\n"
-        "  Note that 'host' can be a hostname or ipv4 address with or without a port\n"
-        "  or an ipv6 address. If the ipv6 address is abbreviated with :: then it must\n"
-        "  be specfied without a port (use -p,--port)."
-    );
+    options.custom_help(
+        "[OPTION...] [user@]host[:port]\n\n"
+        "  Note that 'host' can be a hostname or ipv4 address with or without "
+        "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
+        ":: then it must\n  be specfied without a port (use -p,--port).");
 
-    options.add_options()
-        ("h,help", "Print help")
-        ("version", "Print version")
-        ("u,username", "Username")
+    options.add_options()             //
+        ("h,help", "Print help")      //
+        ("version", "Print version")  //
+        ("u,username", "Username")    //
         ("host", "Remote host name",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("p,port", "Remote machine etserver port",
-         cxxopts::value<int>()->default_value("2022"))
+         cxxopts::value<int>()->default_value("2022"))  //
         ("c,command", "Run command on connect",
-         cxxopts::value<std::string>())
-        ("terminal-path", "Path to etterminal on server side. "
+         cxxopts::value<std::string>())  //
+        ("terminal-path",
+         "Path to etterminal on server side. "
          "Use if etterminal is not on the system path.",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
          "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
          "10080:80,10443:443, 10090-10092:8000-8002)",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("r,reversetunnel",
          "Reverse Tunnel: Array of source:destination ports or "
          "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("jumphost", "jumphost between localhost and destination",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("jport", "Jumphost machine port",
-         cxxopts::value<int>()->default_value("2022"))
+         cxxopts::value<int>()->default_value("2022"))  //
         ("x,kill-other-sessions",
-         "kill all old sessions belonging to the user")
+         "kill all old sessions belonging to the user")  //
         ("macserver",
          "Set when connecting to an macOS server.  Sets "
-         "--terminal-path=/usr/local/bin/etterminal")
+         "--terminal-path=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
-         cxxopts::value<int>()->default_value("0"))
+         cxxopts::value<int>()->default_value("0"))  //
         ("k,keepalive", "Client keepalive duration in seconds",
-         cxxopts::value<int>())
-        ("logtostdout", "Write log to stdout")
-        ("silent", "Disable logging")
-        ("N,no-terminal", "Do not create a terminal")
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")
+         cxxopts::value<int>())                              //
+        ("logtostdout", "Write log to stdout")               //
+        ("silent", "Disable logging")                        //
+        ("N,no-terminal", "Do not create a terminal")        //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
-         cxxopts::value<std::string>())
+         cxxopts::value<std::string>())  //
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
-         cxxopts::value<bool>()->default_value("true"))
+         cxxopts::value<bool>()->default_value("true"))  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",
-         cxxopts::value<std::string>()->default_value(""))
+         cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
          cxxopts::value<std::vector<std::string>>());
 
@@ -169,7 +170,7 @@ int main(int argc, char** argv) {
         host_arg = host_arg.substr(0, port_colon_pos);
       } else {
         // maybe ipv6 (colon_count >= 2)
-        if(host_arg.find("::") != string::npos) {
+        if (host_arg.find("::") != string::npos) {
           // ipv6 with double colon zero abbreviation and no port
           // leave host_arg as is
         } else {
@@ -182,7 +183,7 @@ int main(int argc, char** argv) {
             host_arg = host_arg.substr(0, port_colon_pos);
           } else {
             CLOG(INFO, "stdout") << "Invalid host positional arg: "
-              << result["host"].as<std::string>() << endl;
+                                 << result["host"].as<std::string>() << endl;
             exit(1);
           }
         }
@@ -196,9 +197,14 @@ int main(int argc, char** argv) {
 
     string jumphost =
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
-    int keepaliveDuration = result.count("keepalive") ? result["keepalive"].as<int>() : MAX_CLIENT_KEEP_ALIVE_DURATION;
-    if (keepaliveDuration < 1 || keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
-      CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and " << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds" << endl;
+    int keepaliveDuration = result.count("keepalive")
+                                ? result["keepalive"].as<int>()
+                                : MAX_CLIENT_KEEP_ALIVE_DURATION;
+    if (keepaliveDuration < 1 ||
+        keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
+      CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and "
+                           << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds"
+                           << endl;
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }

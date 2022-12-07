@@ -1,9 +1,9 @@
 #ifndef __ET_CRYPTO_HANDLER__
 #define __ET_CRYPTO_HANDLER__
 
-#include "Headers.hpp"
-
 #include <sodium.h>
+
+#include "Headers.hpp"
 
 namespace et {
 
