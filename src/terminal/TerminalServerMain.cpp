@@ -85,7 +85,7 @@ int main(int argc, char **argv) {
 
     int port = 0;
     string bindIp = "";
-    bool telemetry = true;
+    bool telemetry = false;
     if (result.count("cfgfile")) {
       // Load the config file
       CSimpleIniA ini(true, false, false);
@@ -106,7 +106,7 @@ int main(int argc, char **argv) {
           }
         }
 
-        telemetry = bool(stoi(ini.GetValue("Debug", "Telemetry", "1")));
+        telemetry = ini.GetBoolValue("Debug", "telemetry", false);
         // read verbose level (prioritize command line option over cfgfile)
         const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
         if (result.count("verbose")) {
