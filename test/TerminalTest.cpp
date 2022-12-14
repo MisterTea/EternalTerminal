@@ -4,6 +4,7 @@
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
+#include "TunnelUtils.hpp"
 
 namespace et {
 TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
@@ -254,6 +255,41 @@ class EndToEndTestFixture {
  private:
   bool wasShutdown = false;
 };
+
+TEST_CASE("InvalidTunnelArgParsing", "[InvalidTunnelArgParsing]") {
+  REQUIRE_THROWS_WITH(
+      parseRangesToRequests("6010"),
+      Catch::Matchers::Contains("must have source and destination"));
+  REQUIRE_THROWS_WITH(parseRangesToRequests("6010-6012:7000"),
+                      Catch::Matchers::Contains("must be a range"));
+  REQUIRE_THROWS_WITH(parseRangesToRequests("6010:7000-7010"),
+                      Catch::Matchers::Contains("must be a range"));
+  REQUIRE_THROWS_WITH(parseRangesToRequests("6010-6012:7000-8000"),
+                      Catch::Matchers::Contains("must have same length"));
+}
+
+TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
+  // Plain port1:port2 forward
+  auto pfsrs_single = parseRangesToRequests("6010:7010");
+  REQUIRE(pfsrs_single.size() == 1);
+  REQUIRE(pfsrs_single[0].has_source());
+  REQUIRE(pfsrs_single[0].has_destination());
+  REQUIRE((pfsrs_single[0].source().has_port() &&
+           pfsrs_single[0].source().port() == 6010));
+  REQUIRE((pfsrs_single[0].destination().has_port() &&
+           pfsrs_single[0].destination().port() == 7010));
+
+  // range src_port1-src_port2:dest_port1-dest_port2 forward
+  auto pfsrs_ranges = parseRangesToRequests("6010-6013:7010-7013");
+  REQUIRE(pfsrs_ranges.size() == 4);
+
+  // named pipe forward
+  auto pfsrs_named = parseRangesToRequests("envvar:/tmp/destination");
+  REQUIRE(pfsrs_named.size() == 1);
+  REQUIRE(!pfsrs_named[0].has_source());
+  REQUIRE(pfsrs_named[0].has_destination());
+  REQUIRE(pfsrs_named[0].has_environmentvariable());
+}
 
 TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest", "[EndToEndTest]") {
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
