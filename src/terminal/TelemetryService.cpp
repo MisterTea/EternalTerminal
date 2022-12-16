@@ -135,6 +135,7 @@ TelemetryService::TelemetryService(const bool _allow,
     }
 
 #ifdef USE_SENTRY
+    cerr << "Setting up and starting sentry" << endl;
     sentry_options_t* options = sentry_options_new();
     logHttpClient->set_compress(true);
 
@@ -170,9 +171,6 @@ TelemetryService::TelemetryService(const bool _allow,
 #ifdef SIGSEGV
         SIGSEGV,
 #endif
-#ifdef SIGTERM
-        SIGTERM,
-#endif
 #ifdef SIGKILL
         SIGKILL,
 #endif
@@ -181,10 +179,18 @@ TelemetryService::TelemetryService(const bool _allow,
       signal(it, sentryShutdownHandler);
     }
 
+#ifdef SIGTERM
+    signal(SIGTERM, [](int i) {
+      // In addition to exiting like the default SIGTERM handler would do,
+      // let's shutdown sentry telemetry
+      shutdownTelemetry();
+      et::TerminateSignalHandler(i);
+    });
+#endif
 #ifdef SIGINT
     signal(SIGINT, [](int i) {
       shutdownTelemetry();
-      // Normally this is installed in TerminalServerMain, TerminalClientMain,
+      // Normally this is configured in TerminalServerMain, TerminalClientMain,
       // and TerminalMain, but we need to forward the call since Sentry
       // overrides it.  This is important to handle SIGINT from Ctrl-C.
       et::InterruptSignalHandler(i);

@@ -8,6 +8,7 @@ ignore:
   - "src/terminal/PsuedoTerminalConsole.hpp"
   - "src/terminal/PsuedoUserTerminal.hpp"
   - "src/terminal/*Main.cpp"
+  - "src/base/Headers.hpp"
   - "src/base/TcpSocketHandler*"
   - "src/base/SubprocessToString*"
 coverage:
