@@ -70,14 +70,6 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-      // Redirect std streams to a file
-      LogHandler::stderrToFile(GetTempDirectory() + "etserver");
-    }
-
     ServerFifoPath serverFifo;
 
     // default max log file size is 20MB for etserver
@@ -165,9 +157,10 @@ int main(int argc, char **argv) {
     }
 
     // Set log file for etserver process here.
-    LogHandler::setupLogFile(&defaultConf,
-                             GetTempDirectory() + "etserver-%datetime.log",
-                             maxlogsize);
+    LogHandler::setupLogFiles(&defaultConf, GetTempDirectory(), "etserver",
+                              result.count("logtostdout"),
+                              !result.count("logtostdout"),
+                              true /* appendPid */, maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

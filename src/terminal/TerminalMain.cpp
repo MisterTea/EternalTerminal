@@ -63,15 +63,6 @@ int main(int argc, char** argv) {
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-    }
-
-    // default max log file size is 20MB for etserver
-    string maxlogsize = "20971520";
-
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
@@ -147,10 +138,9 @@ int main(int argc, char** argv) {
     string username = string(ssh_get_local_username());
     if (result.count("jump")) {
       // etserver with --jump cannot write to the default log file(root)
-      LogHandler::setupLogFile(
-          &defaultConf,
-          GetTempDirectory() + "etjump-" + username + "-" + id + ".log",
-          maxlogsize);
+      LogHandler::setupLogFiles(&defaultConf, GetTempDirectory(),
+                                ("etjump-" + username + "-" + id),
+                                result.count("logtostdout"), false);
       // Reconfigure default logger to apply settings above
       el::Loggers::reconfigureLogger("default", defaultConf);
       // set thread name
@@ -177,10 +167,10 @@ int main(int argc, char** argv) {
     }
 
     // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::setupLogFile(
-        &defaultConf,
-        GetTempDirectory() + "etterminal-" + username + "-" + id + ".log",
-        maxlogsize);
+    LogHandler::setupLogFiles(&defaultConf, GetTempDirectory(),
+                              ("etterminal-" + username + "-" + id),
+                              result.count("logtostdout"), false);
+
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

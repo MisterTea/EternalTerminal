@@ -119,21 +119,14 @@ int main(int argc, char** argv) {
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-      // Redirect std streams to a file
-      LogHandler::stderrToFile((tmpDir + "/etclient"));
-    }
-
     // silent Flag, since etclient doesn't read /etc/et.cfg file
     if (result.count("silent")) {
       defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
     }
 
-    LogHandler::setupLogFile(
-        &defaultConf, (tmpDir + "/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
+    LogHandler::setupLogFiles(&defaultConf, tmpDir, "etclient",
+                              result.count("logtostdout"),
+                              !result.count("logtostdout"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name
