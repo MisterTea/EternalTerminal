@@ -35,9 +35,8 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
   timeinfo = localtime(&rawtime);
   strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
   string current_time(buffer);
-  string logFilename = path + "/" + filenamePrefix + "-" + current_time;
-  string stderrFilename =
-      path + "/" + filenamePrefix + "-stderr-" + current_time;
+  string logFilename = filenamePrefix + "-" + current_time;
+  string stderrFilename = filenamePrefix + "-stderr-" + current_time;
   if (appendPid) {
     string pid = std::to_string(getpid());
     logFilename.append("_" + pid);
@@ -45,11 +44,11 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
   }
   logFilename.append(".log");
   stderrFilename.append(".log");
-  createLogFile(logFilename.c_str());
+  string fullFname = createLogFile(path, logFilename);
 
   // Enable strict log file size check
   el::Loggers::addFlag(el::LoggingFlag::StrictLogFileSizeCheck);
-  defaultConf->setGlobally(el::ConfigurationType::Filename, logFilename);
+  defaultConf->setGlobally(el::ConfigurationType::Filename, fullFname);
   defaultConf->setGlobally(el::ConfigurationType::ToFile, "true");
   defaultConf->setGlobally(el::ConfigurationType::MaxLogFileSize, maxlogsize);
 
@@ -60,7 +59,7 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
   }
 
   if (redirectStderrToFile) {
-    stderrToFile(stderrFilename);
+    stderrToFile(path, stderrFilename);
   }
 }
 
@@ -82,18 +81,28 @@ void LogHandler::setupStdoutLogger() {
   el::Loggers::reconfigureLogger(stdoutLogger, stdoutConf);
 }
 
-void LogHandler::createLogFile(const string &filename) {
+string LogHandler::createLogFile(const string &path, const string &filename) {
+  string fullFname = path + "/" + filename;
+  try {
+    fs::create_directories(path);
+  } catch (const fs::filesystem_error &fse) {
+    CLOG(ERROR, "stdout") << "Cannot create logfile directory: " << fse.what()
+                          << endl;
+    exit(1);
+  }
 #ifdef WIN32
   // O_NOFOLLOW does not exist on windows
-  FATAL_FAIL(::open(filename.c_str(), O_EXCL | O_CREAT, 0600));
+  FATAL_FAIL(::open(fullFname.c_str(), O_EXCL | O_CREAT, 0600));
 #else
-  FATAL_FAIL(::open(filename.c_str(), O_NOFOLLOW | O_EXCL | O_CREAT, 0600));
+  FATAL_FAIL(::open(fullFname.c_str(), O_NOFOLLOW | O_EXCL | O_CREAT, 0600));
 #endif
+  return fullFname;
 }
 
-void LogHandler::stderrToFile(const string &stderrFilename) {
-  createLogFile(stderrFilename.c_str());
-  FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
+void LogHandler::stderrToFile(const string &path,
+                              const string &stderrFilename) {
+  string fullFname = createLogFile(path, stderrFilename);
+  FILE *stderr_stream = freopen(fullFname.c_str(), "w", stderr);
   if (!stderr_stream) {
     STFATAL << "Invalid filename " << stderrFilename;
   }

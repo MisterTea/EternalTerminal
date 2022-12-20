@@ -48,7 +48,9 @@ int main(int argc, char** argv) {
         // Not used by etterminal but easylogging uses this flag under the hood
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))  //
-        ("logtostdout", "Write log to stdout")       //
+        ("l,logdir", "Base directory for log files.",
+         cxxopts::value<std::string>()->default_value(GetTempDirectory()))  //
+        ("logtostdout", "Write log to stdout")                              //
         ("serverfifo",
          "If set, connects to the etserver instance listening on the matching "
          "fifo name",                                       //
@@ -138,7 +140,7 @@ int main(int argc, char** argv) {
     string username = string(ssh_get_local_username());
     if (result.count("jump")) {
       // etserver with --jump cannot write to the default log file(root)
-      LogHandler::setupLogFiles(&defaultConf, GetTempDirectory(),
+      LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
                                 ("etjump-" + username + "-" + id),
                                 result.count("logtostdout"), false);
       // Reconfigure default logger to apply settings above
@@ -167,7 +169,7 @@ int main(int argc, char** argv) {
     }
 
     // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::setupLogFiles(&defaultConf, GetTempDirectory(),
+    LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
                               ("etterminal-" + username + "-" + id),
                               result.count("logtostdout"), false);
 

@@ -17,8 +17,8 @@ class LogHandler {
   static void setupStdoutLogger();
 
  private:
-  static void stderrToFile(const string &stderrFilename);
-  static void createLogFile(const string &filename);
+  static void stderrToFile(const string &path, const string &stderrFilename);
+  static string createLogFile(const string &path, const string &filename);
 };
 }  // namespace et
 #endif  // __ET_LOG_HANDLER__
