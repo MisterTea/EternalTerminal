@@ -4,8 +4,9 @@ INITIALIZE_EASYLOGGINGPP
 
 namespace et {
 el::Configurations LogHandler::setupLogHandler(int *argc, char ***argv) {
-  // easylogging parse verbose arguments, see [Application Arguments]
+  // easylogging parses verbose arguments, see [Application Arguments]
   // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
+  // but it is non-intuitive so we explicitly set verbosity based on cxxopts
   START_EASYLOGGINGPP(*argc, *argv);
 
   // Easylogging configurations
@@ -23,40 +24,49 @@ el::Configurations LogHandler::setupLogHandler(int *argc, char ***argv) {
   return defaultConf;
 }
 
-void LogHandler::setupLogFile(el::Configurations *defaultConf, string filename,
-                              string maxlogsize) {
+void LogHandler::setupLogFiles(el::Configurations *defaultConf,
+                               const string &path, const string &filenamePrefix,
+                               bool logToStdout, bool redirectStderrToFile,
+                               bool appendPid, string maxlogsize) {
+  time_t rawtime;
+  struct tm *timeinfo;
+  char buffer[80];
+  time(&rawtime);
+  timeinfo = localtime(&rawtime);
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
+  string current_time(buffer);
+  string logFilename = filenamePrefix + "-" + current_time;
+  string stderrFilename = filenamePrefix + "-stderr-" + current_time;
+  if (appendPid) {
+    string pid = std::to_string(getpid());
+    logFilename.append("_" + pid);
+    stderrFilename.append("_" + pid);
+  }
+  logFilename.append(".log");
+  stderrFilename.append(".log");
+  string fullFname = createLogFile(path, logFilename);
+
   // Enable strict log file size check
   el::Loggers::addFlag(el::LoggingFlag::StrictLogFileSizeCheck);
-  defaultConf->setGlobally(el::ConfigurationType::Filename, filename);
+  defaultConf->setGlobally(el::ConfigurationType::Filename, fullFname);
   defaultConf->setGlobally(el::ConfigurationType::ToFile, "true");
   defaultConf->setGlobally(el::ConfigurationType::MaxLogFileSize, maxlogsize);
+
+  if (logToStdout) {
+    defaultConf->setGlobally(el::ConfigurationType::ToStandardOutput, "true");
+  } else {
+    defaultConf->setGlobally(el::ConfigurationType::ToStandardOutput, "false");
+  }
+
+  if (redirectStderrToFile) {
+    stderrToFile(path, stderrFilename);
+  }
 }
 
 void LogHandler::rolloutHandler(const char *filename, std::size_t size) {
   // SHOULD NOT LOG ANYTHING HERE BECAUSE LOG FILE IS CLOSED!
   // REMOVE OLD LOG
   remove(filename);
-}
-
-string LogHandler::stderrToFile(const string &pathPrefix) {
-  time_t rawtime;
-  struct tm *timeinfo;
-  char buffer[80];
-  time(&rawtime);
-  timeinfo = localtime(&rawtime);
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%I-%M", timeinfo);
-  string current_time(buffer);
-  string stderrFilename = pathPrefix + "_stderr_" + current_time;
-  FILE *stderr_stream = freopen(stderrFilename.c_str(), "w", stderr);
-  fs::permissions(
-      stderrFilename,
-      fs::perms::owner_read | fs::perms::owner_write | fs::perms::group_read,
-      fs::perm_options::replace);
-  if (!stderr_stream) {
-    STFATAL << "Invalid filename " << stderrFilename;
-  }
-  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
-  return stderrFilename;
 }
 
 void LogHandler::setupStdoutLogger() {
@@ -70,4 +80,33 @@ void LogHandler::setupStdoutLogger() {
   stdoutConf.setGlobally(el::ConfigurationType::ToFile, "false");
   el::Loggers::reconfigureLogger(stdoutLogger, stdoutConf);
 }
+
+string LogHandler::createLogFile(const string &path, const string &filename) {
+  string fullFname = path + "/" + filename;
+  try {
+    fs::create_directories(path);
+  } catch (const fs::filesystem_error &fse) {
+    CLOG(ERROR, "stdout") << "Cannot create logfile directory: " << fse.what()
+                          << endl;
+    exit(1);
+  }
+#ifdef WIN32
+  // O_NOFOLLOW does not exist on windows
+  FATAL_FAIL(::open(fullFname.c_str(), O_EXCL | O_CREAT, 0600));
+#else
+  FATAL_FAIL(::open(fullFname.c_str(), O_NOFOLLOW | O_EXCL | O_CREAT, 0600));
+#endif
+  return fullFname;
+}
+
+void LogHandler::stderrToFile(const string &path,
+                              const string &stderrFilename) {
+  string fullFname = createLogFile(path, stderrFilename);
+  FILE *stderr_stream = freopen(fullFname.c_str(), "w", stderr);
+  if (!stderr_stream) {
+    STFATAL << "Invalid filename " << stderrFilename;
+  }
+  setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+}
+
 }  // namespace et

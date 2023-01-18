@@ -88,11 +88,13 @@ int main(int argc, char** argv) {
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))  //
         ("k,keepalive", "Client keepalive duration in seconds",
-         cxxopts::value<int>())                              //
-        ("logtostdout", "Write log to stdout")               //
-        ("silent", "Disable logging")                        //
-        ("N,no-terminal", "Do not create a terminal")        //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
+         cxxopts::value<int>())  //
+        ("l,logdir", "Base directory for log files.",
+         cxxopts::value<std::string>()->default_value(tmpDir))  //
+        ("logtostdout", "Write log to stdout")                  //
+        ("silent", "Disable logging")                           //
+        ("N,no-terminal", "Do not create a terminal")           //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("telemetry",
@@ -119,21 +121,14 @@ int main(int argc, char** argv) {
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-      // Redirect std streams to a file
-      LogHandler::stderrToFile((tmpDir + "/etclient"));
-    }
-
     // silent Flag, since etclient doesn't read /etc/et.cfg file
     if (result.count("silent")) {
       defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
     }
 
-    LogHandler::setupLogFile(
-        &defaultConf, (tmpDir + "/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
+    LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
+                              "etclient", result.count("logtostdout"),
+                              !result.count("logtostdout"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

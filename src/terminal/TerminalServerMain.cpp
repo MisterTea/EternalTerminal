@@ -37,7 +37,9 @@ int main(int argc, char **argv) {
         ("daemon", "Daemonize the server")             //
         ("cfgfile", "Location of the config file",
          cxxopts::value<std::string>()->default_value(""))  //
-        ("logtostdout", "log to stdout")                    //
+        ("l,logdir", "Base directory for log files.",
+         cxxopts::value<std::string>())   //
+        ("logtostdout", "log to stdout")  //
         ("pidfile", "Location of the pid file",
          cxxopts::value<std::string>()->default_value(
              "/var/run/etserver.pid"))  //
@@ -70,14 +72,6 @@ int main(int argc, char **argv) {
       }
     }
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-      // Redirect std streams to a file
-      LogHandler::stderrToFile(GetTempDirectory() + "etserver");
-    }
-
     ServerFifoPath serverFifo;
 
     // default max log file size is 20MB for etserver
@@ -86,6 +80,7 @@ int main(int argc, char **argv) {
     int port = 0;
     string bindIp = "";
     bool telemetry = false;
+    string logDirectory = GetTempDirectory();
     if (result.count("cfgfile")) {
       // Load the config file
       CSimpleIniA ini(true, false, false);
@@ -128,6 +123,7 @@ int main(int argc, char **argv) {
         if (silent && atoi(silent) != 0) {
           defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
         }
+
         // read log file size limit
         const char *logsize = ini.GetValue("Debug", "logsize", NULL);
         if (logsize && atoi(logsize) != 0) {
@@ -135,6 +131,11 @@ int main(int argc, char **argv) {
           maxlogsize = string(logsize);
         }
 
+        // log file directory (TODO path validation and trailing slash cleanup)
+        const char *logdir = ini.GetValue("Debug", "logdirectory", NULL);
+        if (logdir) {
+          logDirectory = string(logdir);
+        }
       } else {
         STFATAL << "Invalid config file: " << cfgfilename;
       }
@@ -157,6 +158,10 @@ int main(int argc, char **argv) {
       telemetry = result["telemetry"].as<bool>();
     }
 
+    if (result.count("logdir")) {
+      logDirectory = result["logdir"].as<string>();
+    }
+
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
@@ -165,9 +170,9 @@ int main(int argc, char **argv) {
     }
 
     // Set log file for etserver process here.
-    LogHandler::setupLogFile(&defaultConf,
-                             GetTempDirectory() + "etserver-%datetime.log",
-                             maxlogsize);
+    LogHandler::setupLogFiles(
+        &defaultConf, logDirectory, "etserver", result.count("logtostdout"),
+        !result.count("logtostdout"), true /* appendPid */, maxlogsize);
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

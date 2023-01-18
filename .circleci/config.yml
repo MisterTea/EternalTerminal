@@ -53,6 +53,10 @@ jobs:
       - run:
           name: Kill server
           command: sudo pkill etserver
+      - run:
+          name: Debug info/logs if failed
+          when: always
+          command: ls -la /tmp/et*; sudo awk 'FNR==1 {print "XXXXXX", FILENAME, "XXXXXX"}{print}' /tmp/et*.log
 
   connect_with_jumphost:
     machine:
@@ -84,6 +88,10 @@ jobs:
       - run:
           name: Kill servers
           command: sudo pkill etserver
+      - run:
+          name: Debug info/logs if failed
+          when: always
+          command: ls -la /tmp/et*; sudo awk 'FNR==1 {print "XXXXXX", FILENAME, "XXXXXX"}{print}' /tmp/et*.log
 
 workflows:
   version: 2
