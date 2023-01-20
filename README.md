@@ -10,6 +10,11 @@ Circle: [![CircleCI](https://circleci.com/gh/MisterTea/EternalTerminal/tree/mast
 
 Linux: ![Linux CI](https://github.com/MisterTea/EternalTerminal/workflows/Linux%20CI/badge.svg?branch=master)
 
+## Packaging status
+
+[![Packaging
+status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg)](https://repology.org/project/eternalterminal/versions)
+
 ## Installing
 
 ### macOS
