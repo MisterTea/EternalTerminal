@@ -13,12 +13,6 @@
 
 using namespace et;
 
-void setDaemonLogFile(string idpasskey, string daemonType) {
-  string first_idpass_chars = idpasskey.substr(0, 10);
-  string logFile = string(GetTempDirectory() + "etterminal_") + daemonType +
-                   "_" + first_idpass_chars;
-}
-
 int main(int argc, char** argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -30,20 +24,20 @@ int main(int argc, char** argv) {
   ::signal(SIGINT, et::InterruptSignalHandler);
 
   // Parse command line arguments
-  cxxopts::Options options("et", "Remote shell for the busy and impatient");
+  cxxopts::Options options("etterminal", "User terminal for Eternal Terminal.");
 
   try {
-    options.positional_help("[user@]hostname[:port]").show_positional_help();
     options.allow_unrecognised_options();
 
     options.add_options()         //
         ("h,help", "Print help")  //
         ("idpasskey",
-         "If set, uses IPC to send a client id/key to the server daemon",
+         "If set, uses IPC to send a client id/key to the server daemon. "
+         "Alternatively, pass in via stdin.",
          cxxopts::value<std::string>()->default_value(""))  //
         ("idpasskeyfile",
          "If set, uses IPC to send a client id/key to the server daemon from a "
-         "file",
+         "file. Alternatively, pass in via stdin.",
          cxxopts::value<std::string>()->default_value(""))  //
         ("jump",
          "If set, forward all packets between client and dst terminal")  //
@@ -51,16 +45,17 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>()->default_value(""))  //
         ("dstport", "Must be set if jump is set to true",
          cxxopts::value<int>()->default_value("2022"))  //
+        // Not used by etterminal but easylogging uses this flag under the hood
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"))  //
-        ("logtostdout", "Write log to stdout")       //
+        ("l,logdir", "Base directory for log files.",
+         cxxopts::value<std::string>()->default_value(GetTempDirectory()))  //
+        ("logtostdout", "Write log to stdout")                              //
         ("serverfifo",
          "If set, connects to the etserver instance listening on the matching "
          "fifo name",                                       //
          cxxopts::value<std::string>()->default_value(""))  //
         ;
-
-    options.parse_positional({"host", "positional"});
 
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
@@ -68,14 +63,7 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-    }
-
-    // default max log file size is 20MB for etserver
-    string maxlogsize = "20971520";
+    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
@@ -151,13 +139,10 @@ int main(int argc, char** argv) {
     string id = split(idpasskey, '/')[0];
     string username = string(ssh_get_local_username());
     if (result.count("jump")) {
-      setDaemonLogFile(idpasskey, "jumphost");
-
       // etserver with --jump cannot write to the default log file(root)
-      LogHandler::setupLogFile(
-          &defaultConf,
-          GetTempDirectory() + "etjump-" + username + "-" + id + ".log",
-          maxlogsize);
+      LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
+                                ("etjump-" + username + "-" + id),
+                                result.count("logtostdout"), false);
       // Reconfigure default logger to apply settings above
       el::Loggers::reconfigureLogger("default", defaultConf);
       // set thread name
@@ -183,13 +168,11 @@ int main(int argc, char** argv) {
       return 0;
     }
 
-    setDaemonLogFile(idpasskey, "terminal");
-
     // etserver with --idpasskey cannot write to the default log file(root)
-    LogHandler::setupLogFile(
-        &defaultConf,
-        GetTempDirectory() + "etterminal-" + username + "-" + id + ".log",
-        maxlogsize);
+    LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
+                              ("etterminal-" + username + "-" + id),
+                              result.count("logtostdout"), false);
+
     // Reconfigure default logger to apply settings above
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name

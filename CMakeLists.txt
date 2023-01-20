@@ -384,6 +384,8 @@ add_library(
   src/base/WinsockContext.hpp
   src/base/SubprocessToString.hpp
   src/base/SubprocessToString.cpp
+  src/base/TunnelUtils.hpp
+  src/base/TunnelUtils.cpp
 
   ${ET_HDRS}
   ${ET_SRCS}

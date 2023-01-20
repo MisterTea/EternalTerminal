@@ -409,9 +409,16 @@ inline void HandleTerminate() {
 }
 
 inline void InterruptSignalHandler(int signum) {
-  STERROR << "Got interrupt";
   CLOG(INFO, "stdout") << endl
-                       << "Got interrupt (perhaps ctrl+c?).  Exiting." << endl;
+                       << "Got interrupt (perhaps ctrl+c?): " << signum
+                       << ".  Exiting." << endl;
+  ::exit(signum);
+}
+
+inline void TerminateSignalHandler(int signum) {
+  CLOG(INFO, "stdout") << endl
+                       << "Got terminate signal: " << signum << ".  Exiting."
+                       << endl;
   ::exit(signum);
 }
 

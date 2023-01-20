@@ -3,21 +3,26 @@
 #include "SubprocessToString.hpp"
 
 namespace et {
+const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
+
 string genCommand(const string& passkey, const string& id,
                   const string& clientTerm, const string& user, bool kill,
-                  const string& command_prefix, const string& options) {
-  string SSH_SCRIPT_PREFIX;
+                  const string& etterminal_path, const string& options) {
+  string ssh_script_prefix;
+  string etterminal_bin = etterminal_path.empty()
+                              ? SshSetupHandler::ETTERMINAL_BIN
+                              : etterminal_path;
 
-  string COMMAND = "echo '" + id + "/" + passkey + "_" + clientTerm + "\n' | " +
-                   command_prefix + " etterminal " + options;
+  string command = "echo '" + id + "/" + passkey + "_" + clientTerm + "' | " +
+                   etterminal_bin + " " + options;
 
   // Kill old ET sessions of the user
   if (kill) {
-    SSH_SCRIPT_PREFIX =
-        "pkill etterminal -u " + user + "; sleep 0.5; " + SSH_SCRIPT_PREFIX;
+    ssh_script_prefix =
+        "pkill etterminal -u " + user + "; sleep 0.5; " + ssh_script_prefix;
   }
 
-  return SSH_SCRIPT_PREFIX + COMMAND;
+  return ssh_script_prefix + command;
 }
 
 string SshSetupHandler::SetupSsh(const string& user, const string& host,
@@ -51,11 +56,11 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     SSH_USER_PREFIX += user + "@";
   }
 
-  std::vector<std::string> ssh_args ;
+  std::vector<std::string> ssh_args;
   if (!jumphost.empty()) {
     ssh_args = {
-      "-J",
-      SSH_USER_PREFIX + jumphost,
+        "-J",
+        SSH_USER_PREFIX + jumphost,
     };
   }
 

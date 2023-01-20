@@ -26,9 +26,13 @@ message ConnectResponse {
   optional string error = 2;
 }
 
-message SequenceHeader { optional int32 sequenceNumber = 1; }
+message SequenceHeader {
+  optional int32 sequenceNumber = 1;
+}
 
-message CatchupBuffer { repeated bytes buffer = 1; }
+message CatchupBuffer {
+  repeated bytes buffer = 1;
+}
 
 message SocketEndpoint {
   optional string name = 1;

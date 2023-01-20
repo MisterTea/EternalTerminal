@@ -6,6 +6,7 @@
 #include "PsuedoTerminalConsole.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
+#include "TunnelUtils.hpp"
 #include "WinsockContext.hpp"
 
 using namespace et;
@@ -20,6 +21,12 @@ bool ping(SocketEndpoint socketEndpoint,
   }
   clientSocketHandler->close(socketFd);
   return true;
+}
+
+void handleParseException(std::exception& e, cxxopts::Options& options) {
+  CLOG(INFO, "stdout") << "Exception: " << e.what() << "\n" << endl;
+  CLOG(INFO, "stdout") << options.help({}) << endl;
+  exit(1);
 }
 
 int main(int argc, char** argv) {
@@ -38,8 +45,13 @@ int main(int argc, char** argv) {
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
   try {
-    options.positional_help("[user@]hostname[:port]").show_positional_help();
     options.allow_unrecognised_options();
+    options.positional_help("");
+    options.custom_help(
+        "[OPTION...] [user@]host[:port]\n\n"
+        "  Note that 'host' can be a hostname or ipv4 address with or without "
+        "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
+        ":: then it must\n  be specfied without a port (use -p,--port).");
 
     options.add_options()             //
         ("h,help", "Print help")      //
@@ -47,11 +59,13 @@ int main(int argc, char** argv) {
         ("u,username", "Username")    //
         ("host", "Remote host name",
          cxxopts::value<std::string>())  //
-        ("p,port", "Remote machine port",
+        ("p,port", "Remote machine etserver port",
          cxxopts::value<int>()->default_value("2022"))  //
         ("c,command", "Run command on connect",
          cxxopts::value<std::string>())  //
-        ("prefix", "Add prefix when launching etterminal on server side",
+        ("terminal-path",
+         "Path to etterminal on server side. "
+         "Use if etterminal is not on the system path.",
          cxxopts::value<std::string>())  //
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
@@ -69,54 +83,52 @@ int main(int argc, char** argv) {
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("macserver",
-         "Set when connecting to an OS/X server.  Sets "
-         "--prefix=/usr/local/bin/etterminal")  //
+         "Set when connecting to an macOS server.  Sets "
+         "--terminal-path=/usr/local/bin/etterminal")  //
         ("v,verbose", "Enable verbose logging",
-         cxxopts::value<int>()->default_value("0"))          //
+         cxxopts::value<int>()->default_value("0"))  //
         ("k,keepalive", "Client keepalive duration in seconds",
-         cxxopts::value<int>())          //
-        ("logtostdout", "Write log to stdout")               //
-        ("silent", "Disable logging")                        //
-        ("N,no-terminal", "Do not create a terminal")        //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
+         cxxopts::value<int>())  //
+        ("l,logdir", "Base directory for log files.",
+         cxxopts::value<std::string>()->default_value(tmpDir))  //
+        ("logtostdout", "Write log to stdout")                  //
+        ("silent", "Disable logging")                           //
+        ("N,no-terminal", "Do not create a terminal")           //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
         ("serverfifo",
-         "If set, communicate to etserver on the matching fifo name",  //
-         cxxopts::value<std::string>()->default_value(""))             //
+         "If set, communicate to etserver on the matching fifo name",
+         cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
          cxxopts::value<std::vector<std::string>>());
 
-    options.parse_positional({"host", "positional"});
-
+    options.parse_positional({"host"});
     auto result = options.parse(argc, argv);
+
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
+
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
       exit(0);
     }
 
-    if (result.count("logtostdout")) {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "true");
-    } else {
-      defaultConf.setGlobally(el::ConfigurationType::ToStandardOutput, "false");
-      // Redirect std streams to a file
-      LogHandler::stderrToFile((tmpDir + "/etclient"));
-    }
+    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
 
     // silent Flag, since etclient doesn't read /etc/et.cfg file
     if (result.count("silent")) {
       defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
     }
 
-    LogHandler::setupLogFile(
-        &defaultConf, (tmpDir + "/etclient-%datetime{%Y-%M-%d_%H_%m_%s}.log"));
+    LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
+                              "etclient", result.count("logtostdout"),
+                              !result.count("logtostdout"));
 
     el::Loggers::reconfigureLogger("default", defaultConf);
     // set thread name
@@ -144,25 +156,57 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
-    string arg = result["host"].as<std::string>();
-    if (arg.find('@') != string::npos) {
-      int i = arg.find('@');
-      username = arg.substr(0, i);
-      arg = arg.substr(i + 1);
+    string host_arg = result["host"].as<std::string>();
+    if (host_arg.find('@') != string::npos) {
+      int i = host_arg.find('@');
+      username = host_arg.substr(0, i);
+      host_arg = host_arg.substr(i + 1);
     }
-    if (arg.find(':') != string::npos) {
-      int i = arg.find(':');
-      destinationPort = stoi(arg.substr(i + 1));
-      arg = arg.substr(0, i);
+
+    if (host_arg.find(':') != string::npos) {
+      int colon_count = std::count(host_arg.begin(), host_arg.end(), ':');
+      if (colon_count == 1) {
+        // ipv4 or hostname with port specified
+        int port_colon_pos = host_arg.rfind(':');
+        destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
+        host_arg = host_arg.substr(0, port_colon_pos);
+      } else {
+        // maybe ipv6 (colon_count >= 2)
+        if (host_arg.find("::") != string::npos) {
+          // ipv6 with double colon zero abbreviation and no port
+          // leave host_arg as is
+        } else {
+          if (colon_count == 7) {
+            // ipv6, fully expanded, without port
+          } else if (colon_count == 8) {
+            // ipv6, fully expanded, with port
+            int port_colon_pos = host_arg.rfind(':');
+            destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
+            host_arg = host_arg.substr(0, port_colon_pos);
+          } else {
+            CLOG(INFO, "stdout") << "Invalid host positional arg: "
+                                 << result["host"].as<std::string>() << endl;
+            exit(1);
+          }
+        }
+      }
     }
-    destinationHost = arg;
+    destinationHost = host_arg;
+    // host_alias is used for the initiating ssh call, if sshd runs on a port
+    // other than 22, either configure your .ssh/config with an alias with an
+    // overridden port or pass --ssh-option Port=<sshd_port>
+    string host_alias = destinationHost;
 
     string jumphost =
         result.count("jumphost") ? result["jumphost"].as<string>() : "";
-    string host_alias = destinationHost;
-    int keepaliveDuration = result.count("keepalive") ? result["keepalive"].as<int>() : MAX_CLIENT_KEEP_ALIVE_DURATION;
-    if (keepaliveDuration < 1 || keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
-      CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and " << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds" << endl;
+    int keepaliveDuration = result.count("keepalive")
+                                ? result["keepalive"].as<int>()
+                                : MAX_CLIENT_KEEP_ALIVE_DURATION;
+    if (keepaliveDuration < 1 ||
+        keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
+      CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and "
+                           << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds"
+                           << endl;
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(0);
     }
@@ -254,17 +298,17 @@ int main(int argc, char** argv) {
     if (result.count("ssh-option")) {
       ssh_options = result["ssh-option"].as<std::vector<string>>();
     }
-    string prefix = "";
+    string etterminal_path = "";
     if (result.count("macserver") > 0) {
-      prefix = "/usr/local/bin/etterminal";
+      etterminal_path = "/usr/local/bin/etterminal";
     }
-    if (result.count("prefix")) {
-      prefix = result["prefix"].as<string>();
+    if (result.count("etterminal_path")) {
+      etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["verbose"].as<int>(), prefix, serverFifo,
-        ssh_options);
+        result.count("x") > 0, result["verbose"].as<int>(), etterminal_path,
+        serverFifo, ssh_options);
 
     string id = "", passkey = "";
     // Trim whitespace
@@ -298,17 +342,21 @@ int main(int argc, char** argv) {
     }
     TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
                                           __FILE__, __LINE__);
-    TerminalClient terminalClient(
-        clientSocket, clientPipeSocket, socketEndpoint, id, passkey, console,
-        is_jumphost, result.count("t") ? result["t"].as<string>() : "",
-        result.count("r") ? result["r"].as<string>() : "", forwardAgent,
-        sshSocket, keepaliveDuration);
+    string tunnel_arg =
+        result.count("tunnel") ? result["tunnel"].as<string>() : "";
+    string r_tunnel_arg = result.count("reversetunnel")
+                              ? result["reversetunnel"].as<string>()
+                              : "";
+    TerminalClient terminalClient(clientSocket, clientPipeSocket,
+                                  socketEndpoint, id, passkey, console,
+                                  is_jumphost, tunnel_arg, r_tunnel_arg,
+                                  forwardAgent, sshSocket, keepaliveDuration);
     terminalClient.run(result.count("command") ? result["command"].as<string>()
                                                : "");
+  } catch (TunnelParseException& tpe) {
+    handleParseException(tpe, options);
   } catch (cxxopts::OptionException& oe) {
-    CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
-    CLOG(INFO, "stdout") << options.help({}) << endl;
-    exit(1);
+    handleParseException(oe, options);
   }
 
 #ifdef WIN32

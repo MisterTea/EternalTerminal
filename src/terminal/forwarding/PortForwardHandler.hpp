@@ -1,9 +1,8 @@
 #ifndef __PORT_FORWARD_HANDLER_H__
 #define __PORT_FORWARD_HANDLER_H__
 
-#include "ETerminal.pb.h"
-
 #include "Connection.hpp"
+#include "ETerminal.pb.h"
 #include "ForwardDestinationHandler.hpp"
 #include "ForwardSourceHandler.hpp"
 #include "SocketHandler.hpp"

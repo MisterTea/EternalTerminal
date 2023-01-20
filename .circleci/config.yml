@@ -13,7 +13,8 @@ jobs:
       - checkout
       - run:
           name: Set up ssh & known_hosts
-          command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
+          command: sudo sed -i -e 's/#ListenAddress/ListenAddress/' /etc/ssh/sshd_config; sudo sed -i -e 's/AddressFamily inet/AddressFamily any/' /etc/ssh/sshd_config; sudo /etc/init.d/ssh restart; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls; ssh -o "StrictHostKeyChecking no" 0:0:0:0:0:0:0:1 ls
+
       - run:
           name: Init submodules
           command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
@@ -32,6 +33,18 @@ jobs:
           name: Connect new -> old
           command: sudo ../root_version/build/etserver --daemon; sudo cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --verbose=9
       - run:
+          name: Connect new -> old (ipv6)
+          command: build/et -c "ls" 0:0:0:0:0:0:0:1 --logtostdout --verbose=9
+      - run:
+          name: Connect new -> old (ipv6 with port in host)
+          command: build/et -c "ls" 0:0:0:0:0:0:0:1:2022 --logtostdout --verbose=9
+      - run:
+          name: Connect new -> old (ipv6 abbreviated)
+          command: build/et -c "ls" ::1 --logtostdout --verbose=9
+      - run:
+          name: Connect new -> old (ipv6 abbreviated with port arg)
+          command: build/et -c "ls" ::1 --port 2022 --logtostdout --verbose=9
+      - run:
           name: Kill server
           command: sudo pkill etserver
       - run:
@@ -40,6 +53,10 @@ jobs:
       - run:
           name: Kill server
           command: sudo pkill etserver
+      - run:
+          name: Debug info/logs if failed
+          when: always
+          command: ls -la /tmp/et*; sudo awk 'FNR==1 {print "XXXXXX", FILENAME, "XXXXXX"}{print}' /tmp/et*.log
 
   connect_with_jumphost:
     machine:
@@ -71,6 +88,10 @@ jobs:
       - run:
           name: Kill servers
           command: sudo pkill etserver
+      - run:
+          name: Debug info/logs if failed
+          when: always
+          command: ls -la /tmp/et*; sudo awk 'FNR==1 {print "XXXXXX", FILENAME, "XXXXXX"}{print}' /tmp/et*.log
 
 workflows:
   version: 2

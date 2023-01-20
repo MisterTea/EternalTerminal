@@ -9,9 +9,10 @@ class SshSetupHandler {
   static string SetupSsh(const string &user, const string &host,
                          const string &host_alias, int port,
                          const string &jumphost, int jport, bool kill,
-                         int vlevel, const string &cmd_prefix,
+                         int vlevel, const string &etterminal_path,
                          const string &serverFifo,
-                         const std::vector<std::string>& ssh_options);
+                         const std::vector<std::string> &ssh_options);
+  static const string ETTERMINAL_BIN;
 };
 }  // namespace et
 #endif  // __ET_SSH_SETUP_HANDLER__

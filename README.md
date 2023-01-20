@@ -62,7 +62,7 @@ For debian, use our deb repo. For buster:
 
 ```
 echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ buster main" | sudo tee -a /etc/apt/sources.list.d/et.list
-curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo apt-key add -
+curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg | sudo tee /etc/apt/trusted.gpg.d/et.gpg >/dev/null
 sudo apt update
 sudo apt install et
 ```
@@ -114,7 +114,7 @@ Install dependencies:
 
   ```
   sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
-  	dev-libs/protobuf dev-util/cmake dev-cpp/gflag
+  	dev-libs/protobuf dev-util/cmake dev-cpp/gflags
   ```
 
 Download and install from source:
@@ -165,7 +165,7 @@ You can specify a jumphost and the port et is running on jumphost using `-jumpho
 et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
 et hostname:8888 -jumphost jump_hostname -jport 9999
 ```
-Additional arguments that et accept are port forwarding pairs with option `-t="18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accept are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide ssh config file.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
@@ -284,7 +284,7 @@ sudo sed -ie "s|ExecStart=[^[:space:]]*[[:space:]]|ExecStart=$(which etserver) |
 
 Alternativelly, open the file /etc/systemd/system/et.service in an editor and correct the `ExectStart=...` line to point to the correct path of the `etserver` binary.
 
-	 ExecStart=/usr/local/bin/etserver --daemon --cfgfile=/etc/et.cfg
+	 ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg
 
 Reload systemd configs:
 
