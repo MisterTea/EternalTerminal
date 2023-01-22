@@ -165,6 +165,7 @@ endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
+option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
@@ -521,30 +522,33 @@ else(WIN32)
       ${CORE_LIBRARIES})
   decorate_target(htmd)
 
-  enable_testing()
+  if(BUILD_TESTING)
+    enable_testing()
 
-  file(GLOB TEST_SRCS test/*Test.cpp)
-  add_executable(
-  et-test
-  ${TEST_SRCS}
-  test/Main.cpp
-  )
-  add_dependencies(et-test TerminalCommon et-lib)
-  target_link_libraries(
+    file(GLOB TEST_SRCS test/*Test.cpp)
+    add_executable(
     et-test
-    TerminalCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    ${Boost_LIBRARIES}
-      ${CORE_LIBRARIES})
-  add_test(et-test et-test)
-  decorate_target(et-test)
+    ${TEST_SRCS}
+    test/Main.cpp
+    )
 
-  if(FUZZING)
+    add_dependencies(et-test TerminalCommon et-lib)
+    target_link_libraries(
+      et-test
+      TerminalCommon
+      et-lib
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PROTOBUF_LIBS}
+      ${sodium_LIBRARY_RELEASE}
+      ${SELINUX_LIBRARIES}
+      ${UTEMPTER_LIBRARIES}
+      ${Boost_LIBRARIES}
+        ${CORE_LIBRARIES})
+    add_test(et-test et-test)
+    decorate_target(et-test)
+  endif()
+
+  if(BUILD_TESTING AND FUZZING)
     add_executable(
     TerminalServerFuzzer
     test/TerminalServerFuzzer.cpp
@@ -582,7 +586,7 @@ else(WIN32)
       ${Boost_LIBRARIES}
         ${CORE_LIBRARIES})
     decorate_fuzzer(TerminalServerRouterFuzzer)
-  endif(FUZZING)
+  endif(BUILD_TESTING AND FUZZING)
 
   install(
     TARGETS etserver etterminal et htm htmd
