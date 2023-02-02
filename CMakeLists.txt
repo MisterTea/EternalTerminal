@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.0.2)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
+option(USE_SYSTEM_LIBS "Prefer to use system libraries" OFF)
+
+if(USE_SYSTEM_LIBS)
+  set(DISABLE_VCPKG ON)
+endif()
+
 if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
@@ -99,6 +105,68 @@ find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Unwind)
+
+if(USE_SYSTEM_LIBS)
+  find_package(cxxopts 3.0.0)
+  if(cxxopts_FOUND)
+    message(STATUS "Found cxxopts (${cxxopts_VERSION})")
+    list(INSERT CORE_LIBRARIES 0 cxxopts::cxxopts)
+  else()
+    message(STATUS "No suitable system cxxopts found, using bundled library")
+    include_directories(${EXTERNAL_DIR}/cxxopts/include)
+  endif()
+
+  find_package(msgpack 3.3.0)
+  if(msgpack_FOUND)
+    message(STATUS "Found msgpack (${msgpack_VERSION})")
+    list(INSERT CORE_LIBRARIES 0 msgpackc-cxx::msgpackc-cxx)
+  else()
+    message(STATUS "No suitable system msgpack found, using bundled library")
+    include_directories(${EXTERNAL_DIR}/msgpack-c/include)
+  endif()
+
+  find_package(nlohmann_json 3.10.0)
+  if(nlohmann_json_FOUND)
+    list(INSERT CORE_LIBRARIES 0 nlohmann_json::nlohmann_json)
+  else()
+    message(STATUS "No suitable system json-c++ found, using bundled library")
+    include_directories(${EXTERNAL_DIR}/json/include)
+  endif()
+
+  find_package(simpleini 4.18)
+  if(simpleini_FOUND)
+    list(INSERT CORE_LIBRARIES 0 simpleini::simpleini)
+  else()
+    message(STATUS "No suitable system simpleini found, using bundled library")
+    include_directories(${EXTERNAL_DIR}/simpleini)
+  endif()
+
+  if(BUILD_TESTING)
+    find_package(Catch2 2.13.7)
+    if(Catch2_FOUND)
+      message(STATUS "Found catch2 (${Catch2_VERSION})")
+      list(INSERT CORE_LIBRARIES 0 Catch2::Catch2)
+    else()
+      message(STATUS "No suitable system catch2 found, using bundled library")
+      include_directories(${EXTERNAL_DIR}/Catch2/single_include)
+    endif()
+  endif()
+
+  find_package(httplib 0.8.0)
+  if(httplib_FOUND)
+    list(INSERT CORE_LIBRARIES 0 httplib::httplib)
+  else()
+    message(STATUS "No suitable system httplib found, using bundled library")
+    include_directories(${EXTERNAL_DIR}/cpp-httplib)
+  endif()
+else()
+  include_directories(${EXTERNAL_DIR}/cxxopts/include
+    ${EXTERNAL_DIR}/msgpack-c/include
+    ${EXTERNAL_DIR}/json/include
+    ${EXTERNAL_DIR}/simpleini
+    ${EXTERNAL_DIR}/Catch2/single_include
+    ${EXTERNAL_DIR}/cpp-httplib)
+endif()
 
 # Optional packages
 find_package(UTempter)
@@ -321,14 +389,8 @@ include_directories(
   ${EXTERNAL_DIR}/easyloggingpp/src
   ${EXTERNAL_DIR}/ThreadPool
   ${EXTERNAL_DIR}/PlatformFolders
-  ${EXTERNAL_DIR}/Catch2/single_include
-  ${EXTERNAL_DIR}/cxxopts/include
-  ${EXTERNAL_DIR}/msgpack-c/include
-  ${EXTERNAL_DIR}/json/single_include/nlohmann
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
-  ${EXTERNAL_DIR}/simpleini
-  ${EXTERNAL_DIR}/cpp-httplib
   src/base
   src/terminal
   src/terminal/forwarding
