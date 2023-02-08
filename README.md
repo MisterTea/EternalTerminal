@@ -219,7 +219,7 @@ enabled in CMake:
 
 * [cxxopts](https://github.com/jarro2783/cxxopts) *>=3.0.0*
 
-* [msgpack-cxx](https://github.com/msgpack/msgpack-c/tree/cpp_master) *>=3.3.0*
+* [msgpack-cxx](https://github.com/msgpack/msgpack-c/tree/cpp_master) *>=4.1.1*
 
 * [json-c++](https://github.com/nlohmann/json) *>=3.10.0*
 

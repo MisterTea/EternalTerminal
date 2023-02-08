@@ -116,7 +116,7 @@ if(USE_SYSTEM_LIBS)
     include_directories(${EXTERNAL_DIR}/cxxopts/include)
   endif()
 
-  find_package(msgpack 3.3.0)
+  find_package(msgpack 4.1.1)
   if(msgpack_FOUND)
     message(STATUS "Found msgpack (${msgpack_VERSION})")
     list(INSERT CORE_LIBRARIES 0 msgpackc-cxx::msgpackc-cxx)
