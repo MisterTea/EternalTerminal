@@ -25,7 +25,7 @@ class TerminalClient {
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration);
   virtual ~TerminalClient();
-  void run(const string& command);
+  void run(const string& command, const bool noexit);
   void shutdown() {
     lock_guard<recursive_mutex> guard(shutdownMutex);
     shuttingDown = true;
