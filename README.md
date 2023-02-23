@@ -196,6 +196,40 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ## Building from Source
 
+### Dependencies
+
+* [OpenSSL](https://www.openssl.org)
+
+* [Sodium](https://libsodium.org)
+
+* [Protobuf](https://github.com/protocolbuffers/protobuf)
+
+* [zlib](https://zlib.net)
+
+* Unwind (optional)
+
+* [Sentry](https://github.com/getsentry/sentry-native) (optional)
+
+* [SELinux](https://github.com/SELinuxProject/selinux) (Linux only) (optional)
+
+* [UTempter](https://github.com/altlinux/libutempter) (optional)
+
+The following libraries are required if the `USE_SYSTEM_LIBS` option is
+enabled in CMake:
+
+* [cxxopts](https://github.com/jarro2783/cxxopts) *>=3.0.0*
+
+* [msgpack-cxx](https://github.com/msgpack/msgpack-c/tree/cpp_master) *>=4.1.1*
+
+* [json-c++](https://github.com/nlohmann/json) *>=3.10.0*
+
+* [simpleini](https://github.com/brofield/simpleini) *>=4.18*
+
+* [Catch2](https://github.com/catchorg/Catch2) *>=2.13.7*
+  (with `BUILD_TESTING` enabled)
+
+* [cpp-httplib](https://github.com/yhirose/cpp-httplib) *>=0.8.0*
+
 ### macOS
 
 To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
@@ -227,9 +261,10 @@ Grab the deps and then follow this process.
 Debian/Ubuntu Dependencies:
 
 ```
-sudo apt install libboost-dev libsodium-dev libncurses5-dev \
+sudo apt install libboost-dev libsodium-dev libncurses5-dev libcxxopts3-dev \
 	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl-dev \
-    build-essential ninja-build cmake git zip
+	libsimpleini-dev nlohmann-json3-dev msgpack-cxx-dev catch2 build-essential \
+	ninja-build cmake git zip
 ```
 
 Fetch source, build and install:
