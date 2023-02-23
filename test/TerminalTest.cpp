@@ -104,7 +104,8 @@ void readWriteTest(const string& clientId,
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
       CRYPTO_KEY, fakeConsole, false, "", "", false, "",
       MAX_CLIENT_KEEP_ALIVE_DURATION));
-  thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
 
   string s(1024, '\0');
@@ -379,7 +380,8 @@ void simultaneousTerminalConnectionTest(
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
       CRYPTO_KEY, fakeConsole, false, "", "", false, "",
       MAX_CLIENT_KEEP_ALIVE_DURATION));
-  thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
 
   const string s("test");
