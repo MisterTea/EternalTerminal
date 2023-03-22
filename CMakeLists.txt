@@ -6,7 +6,7 @@ if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
-      "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
+    "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
 
   # Set the triplet
   if(WIN32)
@@ -17,6 +17,7 @@ else()
       COMMAND tr -d '\n'
       OUTPUT_VARIABLE VCPKG_ARCHITECTURE)
     message(STATUS "Architecture: ${VCPKG_ARCHITECTURE}")
+
     if(${VCPKG_ARCHITECTURE} STREQUAL "arm64") # Apple Silicon
       set(VCPKG_TARGET_TRIPLET "arm64-osx" CACHE STRING "VCPKG Triplet")
     else()
@@ -28,6 +29,7 @@ else()
       COMMAND tr -d '\n'
       OUTPUT_VARIABLE VCPKG_ARCHITECTURE)
     message(STATUS "Architecture: ${VCPKG_ARCHITECTURE}")
+
     if(${VCPKG_ARCHITECTURE} STREQUAL "x86_64")
       set(VCPKG_TARGET_TRIPLET "x64-linux" CACHE STRING "VCPKG Triplet")
     elseif(${VCPKG_ARCHITECTURE} STREQUAL "x86_86")
@@ -46,26 +48,29 @@ else()
   # Some hacks to fix vcpkg
   if(WIN32)
     set(Protobuf_PROTOC_EXECUTABLE
-        "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
     )
     set(ZLIB_LIBRARY_RELEASE
-        "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
+      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
     )
     set(ZLIB_LIBRARY_DEBUG
-        "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
+      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
     )
   else()
     # Make BoostConfig.cmake able to check its inputs
     cmake_policy(SET CMP0057 NEW)
+
     # Honor the visibility properties for all target types, including
     # object libraries and static libraries.
     cmake_policy(SET CMP0063 NEW)
+
     # Don't ignore <PackageName>_ROOT variables
     cmake_policy(SET CMP0074 NEW)
     set(Protobuf_PROTOC_EXECUTABLE
-        "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
     )
   endif()
+
   set(Protobuf_USE_STATIC_LIBS ON)
   set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
@@ -76,9 +81,10 @@ message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 project(EternalTCP VERSION 6.2.4 LANGUAGES NONE)
 
 if(WIN32)
-message(STATUS "Windows detected.  Bumping up cmake version.")
-# Hack to force a higher minimum version on windows
-cmake_minimum_required(VERSION 3.15.0)
+  message(STATUS "Windows detected.  Bumping up cmake version.")
+
+  # Hack to force a higher minimum version on windows
+  cmake_minimum_required(VERSION 3.15.0)
 endif()
 
 enable_language(C)
@@ -89,7 +95,7 @@ include(CMakeFindDependencyMacro)
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake"
-                      ${CMAKE_MODULE_PATH})
+  ${CMAKE_MODULE_PATH})
 
 # Required packages
 find_package(OpenSSL REQUIRED)
@@ -99,9 +105,16 @@ find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
 find_package(ZLIB REQUIRED)
 find_package(Unwind)
+find_package(Catch2 CONFIG REQUIRED)
+find_package(httplib CONFIG REQUIRED)
+find_package(cxxopts CONFIG REQUIRED)
+find_package(msgpack CONFIG REQUIRED)
+find_package(nlohmann_json CONFIG REQUIRED)
+find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
 
 # Optional packages
 find_package(UTempter)
+
 if(LINUX)
   find_package(SELinux)
 endif()
@@ -132,7 +145,7 @@ IF(APPLE)
 ENDIF(APPLE)
 
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY OR DISABLE_TELEMETRY)
-  # Sentry doesn't work on BSD
+# Sentry doesn't work on BSD
 else()
   # Enable sentry
   set(USE_SENTRY TRUE)
@@ -140,25 +153,26 @@ else()
 endif()
 
 if(DISABLE_TELEMETRY)
-set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_TELEMETRY")
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DNO_TELEMETRY")
 endif()
 
 if(USE_SENTRY)
-if(DISABLE_VCPKG)
-set(SENTRY_BUILD_RUNTIMESTATIC ON)
-set(BUILD_SHARED_LIBS OFF)
-add_subdirectory("${EXTERNAL_DIR}/sentry-native")
-include_directories(
-  ${EXTERNAL_DIR}/sentry-native/include
-)
-else()
-find_package(sentry CONFIG REQUIRED)
-endif()
+  if(DISABLE_VCPKG)
+    set(SENTRY_BUILD_RUNTIMESTATIC ON)
+    set(BUILD_SHARED_LIBS OFF)
+    add_subdirectory("${EXTERNAL_DIR}/sentry-native")
+    include_directories(
+      ${EXTERNAL_DIR}/sentry-native/include
+    )
+  else()
+    find_package(sentry CONFIG REQUIRED)
+  endif()
 endif()
 
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
-                      ${CMAKE_MODULE_PATH})
+  ${CMAKE_MODULE_PATH})
 include(cotire)
+
 if(POLICY CMP0058)
   cmake_policy(SET CMP0058 NEW) # Needed for cotire
 endif()
@@ -169,11 +183,13 @@ option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
+
 # For easylogging, disable default log file, enable crash log, ensure thread
 # safe, and catch c++ exceptions
 set(CMAKE_CXX_FLAGS
-    "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_STRICT_PERMISSIONS -DSENTRY_BUILD_STATIC"
+  "${CMAKE_CXX_FLAGS} -DELPP_NO_DEFAULT_LOG_FILE -DELPP_FEATURE_CRASH_LOG -DELPP_THREAD_SAFE -DELPP_STRICT_PERMISSIONS -DSENTRY_BUILD_STATIC"
 )
+
 IF(WIN32)
   SET(CMAKE_CXX_FLAGS "-DSODIUM_STATIC")
 ENDIF(WIN32)
@@ -185,7 +201,7 @@ endif(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 
 if(DISABLE_CRASH_LOG)
   set(CMAKE_CXX_FLAGS
-      "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
+    "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
 endif(DISABLE_CRASH_LOG)
 
 if(UNIX)
@@ -208,7 +224,8 @@ if(WIN32)
 endif()
 
 option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite"
-       OFF)
+  OFF)
+
 if(FULL_PROTOBUF)
   if(WIN32)
     set(PROTOBUF_LIBS protobuf::libprotobuf)
@@ -252,9 +269,9 @@ protobuf_generate_cpp(ET_SRCS ET_HDRS proto/ET.proto)
 set_source_files_properties(${ET_SRCS} ${ET_HDRS} PROPERTIES GENERATED TRUE)
 protobuf_generate_cpp(ETERMINAL_SRCS ETERMINAL_HDRS proto/ETerminal.proto)
 set_source_files_properties(${ETERMINAL_SRCS} ${ETERMINAL_HDRS}
-                            PROPERTIES GENERATED TRUE)
+  PROPERTIES GENERATED TRUE)
 add_custom_target(generated-code DEPENDS ${ET_SRCS} ${ET_HDRS}
-                                         ${ETERMINAL_SRCS} ${ETERMINAL_HDRS})
+  ${ETERMINAL_SRCS} ${ETERMINAL_HDRS})
 
 if(ANDROID)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util)
@@ -262,20 +279,26 @@ elseif(FREEBSD)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util execinfo)
 elseif(NETBSD)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv
-                     execinfo)
+    execinfo)
 elseif(WIN32)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
-                     dbghelp)
+    dbghelp)
 elseif(APPLE)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
 else()
   set(CORE_LIBRARIES
-      OpenSSL::SSL
-      ZLIB::ZLIB
-      util
-      resolv
-      atomic
-      stdc++fs)
+    httplib::httplib
+    cxxopts::cxxopts
+    nlohmann_json::nlohmann_json
+    sago::platform_folders
+    OpenSSL::SSL
+    OpenSSL::Crypto
+    ZLIB::ZLIB
+    util
+    resolv
+    atomic
+    stdc++fs
+  )
 endif()
 
 IF(Unwind_FOUND)
@@ -289,9 +312,10 @@ ENDIF()
 macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
   set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT
-                                                  "src/base/Headers.hpp")
+    "src/base/Headers.hpp")
+
   if(CMAKE_CROSSCOMPILING)
-    # Doesn't work when cross-compiling
+  # Doesn't work when cross-compiling
   else()
     cotire(${TARGET_NAME})
   endif()
@@ -308,9 +332,9 @@ macro(DECORATE_FUZZER TARGET_NAME)
 
     if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
       set_property(TARGET ${TARGET_NAME} APPEND_STRING
-          PROPERTY COMPILE_FLAGS " -fsanitize=fuzzer")
+        PROPERTY COMPILE_FLAGS " -fsanitize=fuzzer")
       set_property(TARGET ${TARGET_NAME} APPEND_STRING
-          PROPERTY LINK_FLAGS " -fsanitize=fuzzer")
+        PROPERTY LINK_FLAGS " -fsanitize=fuzzer")
     else()
       message(FATAL_ERROR "Currently fuzzing is only supported with Clang.")
     endif()
@@ -318,17 +342,9 @@ macro(DECORATE_FUZZER TARGET_NAME)
 endmacro()
 
 include_directories(
-  ${EXTERNAL_DIR}/easyloggingpp/src
   ${EXTERNAL_DIR}/ThreadPool
-  ${EXTERNAL_DIR}/PlatformFolders
-  ${EXTERNAL_DIR}/Catch2/single_include
-  ${EXTERNAL_DIR}/cxxopts/include
-  ${EXTERNAL_DIR}/msgpack-c/include
-  ${EXTERNAL_DIR}/json/single_include/nlohmann
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
-  ${EXTERNAL_DIR}/simpleini
-  ${EXTERNAL_DIR}/cpp-httplib
   src/base
   src/terminal
   src/terminal/forwarding
@@ -341,7 +357,9 @@ include_directories(
   ${SELINUX_INCLUDE_DIR}
   ${UTEMPTER_INCLUDE_DIR}
   ${Boost_INCLUDE_DIR}
-  ${OPENSSL_INCLUDE_DIR})
+  ${OPENSSL_INCLUDE_DIR}
+  ${SIMPLEINI_INCLUDE_DIRS}
+)
 
 if(NOT ANDROID)
   include_directories(${EXTERNAL_DIR}/UniversalStacktrace/ust)
@@ -459,7 +477,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
     ${Boost_LIBRARIES}
-      ${CORE_LIBRARIES})
+    ${CORE_LIBRARIES})
   add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
 
@@ -475,7 +493,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
     ${Boost_LIBRARIES}
-      ${CORE_LIBRARIES})
+    ${CORE_LIBRARIES})
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
 
@@ -504,7 +522,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
     ${Boost_LIBRARIES}
-      ${CORE_LIBRARIES})
+    ${CORE_LIBRARIES})
   decorate_target(htm)
 
   add_executable(htmd src/htm/HtmServerMain.cpp)
@@ -519,7 +537,7 @@ else(WIN32)
     ${SELINUX_LIBRARIES}
     ${UTEMPTER_LIBRARIES}
     ${Boost_LIBRARIES}
-      ${CORE_LIBRARIES})
+    ${CORE_LIBRARIES})
   decorate_target(htmd)
 
   if(BUILD_TESTING)
@@ -527,9 +545,9 @@ else(WIN32)
 
     file(GLOB TEST_SRCS test/*Test.cpp)
     add_executable(
-    et-test
-    ${TEST_SRCS}
-    test/Main.cpp
+      et-test
+      ${TEST_SRCS}
+      test/Main.cpp
     )
 
     add_dependencies(et-test TerminalCommon et-lib)
@@ -543,16 +561,16 @@ else(WIN32)
       ${SELINUX_LIBRARIES}
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
-        ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
     add_test(et-test et-test)
     decorate_target(et-test)
   endif()
 
   if(BUILD_TESTING AND FUZZING)
     add_executable(
-    TerminalServerFuzzer
-    test/TerminalServerFuzzer.cpp
-    test/FuzzableTerminalServer.hpp
+      TerminalServerFuzzer
+      test/TerminalServerFuzzer.cpp
+      test/FuzzableTerminalServer.hpp
     )
     add_dependencies(TerminalServerFuzzer TerminalCommon et-lib)
     target_link_libraries(
@@ -565,13 +583,13 @@ else(WIN32)
       ${SELINUX_LIBRARIES}
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
-        ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
     decorate_fuzzer(TerminalServerFuzzer)
 
     add_executable(
-    TerminalServerRouterFuzzer
-    test/TerminalServerRouterFuzzer.cpp
-    test/FuzzableTerminalServer.hpp
+      TerminalServerRouterFuzzer
+      test/TerminalServerRouterFuzzer.cpp
+      test/FuzzableTerminalServer.hpp
     )
     add_dependencies(TerminalServerRouterFuzzer TerminalCommon et-lib)
     target_link_libraries(
@@ -584,27 +602,27 @@ else(WIN32)
       ${SELINUX_LIBRARIES}
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
-        ${CORE_LIBRARIES})
+      ${CORE_LIBRARIES})
     decorate_fuzzer(TerminalServerRouterFuzzer)
   endif(BUILD_TESTING AND FUZZING)
 
   install(
     TARGETS etserver etterminal et htm htmd
     PERMISSIONS
-      OWNER_EXECUTE
-      OWNER_WRITE
-      OWNER_READ
-      GROUP_EXECUTE
-      GROUP_READ
-      WORLD_EXECUTE
-      WORLD_READ
+    OWNER_EXECUTE
+    OWNER_WRITE
+    OWNER_READ
+    GROUP_EXECUTE
+    GROUP_READ
+    WORLD_EXECUTE
+    WORLD_READ
     DESTINATION "bin")
 endif()
 
 set(CPACK_PACKAGE_NAME "EternalTerminal")
 set(CPACK_PACKAGE_VENDOR "https://github.com/MisterTea/EternalTerminal")
 set(CPACK_PACKAGE_DESCRIPTION_SUMMARY
-    "Remote terminal for the busy and impatient")
+  "Remote terminal for the busy and impatient")
 set(CPACK_PACKAGE_VERSION ${PROJECT_VERSION})
 set(CPACK_PACKAGE_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(CPACK_PACKAGE_VERSION_MINOR ${PROJECT_VERSION_MINOR})
