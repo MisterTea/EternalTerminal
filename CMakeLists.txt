@@ -290,7 +290,6 @@ else()
     httplib::httplib
     cxxopts::cxxopts
     nlohmann_json::nlohmann_json
-    sago::platform_folders
     OpenSSL::SSL
     OpenSSL::Crypto
     ZLIB::ZLIB
@@ -342,6 +341,8 @@ macro(DECORATE_FUZZER TARGET_NAME)
 endmacro()
 
 include_directories(
+  ${EXTERNAL_DIR}/easyloggingpp/src
+  ${EXTERNAL_DIR}/PlatformFolders
   ${EXTERNAL_DIR}/ThreadPool
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
@@ -555,6 +556,7 @@ else(WIN32)
       et-test
       TerminalCommon
       et-lib
+      Catch2::Catch2WithMain
       ${CMAKE_THREAD_LIBS_INIT}
       ${PROTOBUF_LIBS}
       ${sodium_LIBRARY_RELEASE}

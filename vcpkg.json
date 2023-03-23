@@ -12,7 +12,6 @@
     "platform-folders",
     "cpp-httplib",
     "cxxopts",
-    "easyloggingpp",
     "msgpack",
     "catch2"
   ]
