@@ -14,7 +14,7 @@ jobs:
       matrix:
         os: [ubuntu-latest, macos-latest, windows-2019]
         include:
-        - os: windows-latest
+        - os: windows-2019
           extension: .exe
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
@@ -47,7 +47,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
         run: choco install ninja
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2019'
       - name: Install Dependencies (macOS)
         run: brew install ninja cmake
         if: matrix.os == 'macos-latest'
