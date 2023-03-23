@@ -265,8 +265,9 @@ TEST_CASE("InvalidTunnelArgParsing", "[InvalidTunnelArgParsing]") {
                       Catch::Matchers::ContainsSubstring("must be a range"));
   REQUIRE_THROWS_WITH(parseRangesToRequests("6010:7000-7010"),
                       Catch::Matchers::ContainsSubstring("must be a range"));
-  REQUIRE_THROWS_WITH(parseRangesToRequests("6010-6012:7000-8000"),
-                      Catch::Matchers::ContainsSubstring("must have same length"));
+  REQUIRE_THROWS_WITH(
+      parseRangesToRequests("6010-6012:7000-8000"),
+      Catch::Matchers::ContainsSubstring("must have same length"));
 }
 
 TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
