@@ -12,7 +12,6 @@
     "platform-folders",
     "cpp-httplib",
     "cxxopts",
-    "msgpack",
     "catch2"
   ]
 }
