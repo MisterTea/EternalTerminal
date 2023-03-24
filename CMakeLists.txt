@@ -108,7 +108,6 @@ find_package(Unwind)
 find_package(Catch2 CONFIG REQUIRED)
 find_package(httplib CONFIG REQUIRED)
 find_package(cxxopts CONFIG REQUIRED)
-find_package(msgpack CONFIG REQUIRED)
 find_package(nlohmann_json CONFIG REQUIRED)
 find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
 
