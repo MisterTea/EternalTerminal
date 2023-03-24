@@ -8,12 +8,6 @@ else()
   set(CMAKE_TOOLCHAIN_FILE
     "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
     
-  if(CMAKE_BUILD_TYPE MATCHES "Rel")
-    set(VCPKG_BUILD_TYPE release)
-  else()
-    set(VCPKG_BUILD_TYPE debug)
-  endif()
-
   # Set the triplet
   if(WIN32)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "VCPKG Triplet")

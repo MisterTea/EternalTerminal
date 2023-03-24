@@ -12,10 +12,6 @@
     "platform-folders",
     "cpp-httplib",
     "cxxopts",
-<<<<<<< HEAD
-=======
-    "msgpack",
->>>>>>> 9591f39e8 (put some vcpkg back in because of compatibility)
     "catch2"
   ]
 }
