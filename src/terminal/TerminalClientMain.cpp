@@ -358,7 +358,7 @@ int main(int argc, char** argv) {
         result.count("noexit"));
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
-  } catch (cxxopts::OptionException& oe) {
+  } catch (cxxopts::exceptions::exception& oe) {
     handleParseException(oe, options);
   }
 

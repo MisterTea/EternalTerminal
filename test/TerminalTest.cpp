@@ -260,13 +260,14 @@ class EndToEndTestFixture {
 TEST_CASE("InvalidTunnelArgParsing", "[InvalidTunnelArgParsing]") {
   REQUIRE_THROWS_WITH(
       parseRangesToRequests("6010"),
-      Catch::Matchers::Contains("must have source and destination"));
+      Catch::Matchers::ContainsSubstring("must have source and destination"));
   REQUIRE_THROWS_WITH(parseRangesToRequests("6010-6012:7000"),
-                      Catch::Matchers::Contains("must be a range"));
+                      Catch::Matchers::ContainsSubstring("must be a range"));
   REQUIRE_THROWS_WITH(parseRangesToRequests("6010:7000-7010"),
-                      Catch::Matchers::Contains("must be a range"));
-  REQUIRE_THROWS_WITH(parseRangesToRequests("6010-6012:7000-8000"),
-                      Catch::Matchers::Contains("must have same length"));
+                      Catch::Matchers::ContainsSubstring("must be a range"));
+  REQUIRE_THROWS_WITH(
+      parseRangesToRequests("6010-6012:7000-8000"),
+      Catch::Matchers::ContainsSubstring("must have same length"));
 }
 
 TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
