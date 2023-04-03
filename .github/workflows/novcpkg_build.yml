@@ -1,0 +1,63 @@
+name: NoVcpkg Build
+on:
+  push:
+    branches:
+      - master
+  pull_request:
+
+jobs:
+  build_novcpkg:
+    name: build-novcpkg-${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: true
+      matrix:
+        os: [ubuntu-latest, macos-latest]
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+
+    steps:
+      - name: Install Dependencies (Linux)
+        run: |
+          sudo apt-get update && \
+            sudo apt-get install --no-install-recommends \
+                libboost-dev \
+                libsodium-dev \
+                libncurses5-dev \
+                libprotobuf-dev \
+                protobuf-compiler \
+                libgflags-dev \
+                libutempter-dev \
+                build-essential \
+                ninja-build \
+                libcurl4-openssl-dev \
+                curl \
+                zip \
+                unzip \
+                tar \
+                cmake \
+                libutempter-dev \
+                libunwind-dev
+        if: matrix.os == 'ubuntu-latest'
+      - name: Install Dependencies (macOS)
+        run: brew install ninja cmake
+        if: matrix.os == 'macos-latest'
+
+      - uses: actions/checkout@v2
+        with:
+          submodules: recursive
+
+      # Run CMake to generate Ninja project files.
+      - name: Install dependencies and generate project files
+        run: |
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON
+      # Build the whole project with Ninja (which is spawn by CMake).
+      - name: Build
+        run: |
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+      
+      - uses: actions/upload-artifact@v2
+        with:
+          name: et-client-${{matrix.os}}
+          path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}
