@@ -256,13 +256,14 @@ Install dependencies:
 ```
 sudo yum install epel-release
 sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
-     protobuf-compiler gflags-devel protobuf-lite-devel libcurl-devel
+     protobuf-compiler gflags-devel protobuf-lite-devel libcurl-devel \
+     perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-deve
 ```
 
 Install scl dependencies
 ```
 sudo yum install centos-release-scl
-sudo yum install devtoolset-8
+sudo yum install devtoolset-11 devtoolset-11-libatomic-devel rh-git227
 ```
 
 Download and install from source ([see #238 for details](https://github.com/MisterTea/EternalTerminal/issues/238)):
@@ -271,8 +272,8 @@ git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
-scl enable devtoolset-8 'cmake3 ../'
-scl enable devtoolset-8 'make && sudo make install'
+scl enable devtoolset-11 rh-git227 'cmake3 ../'
+scl enable devtoolset-11 'make && sudo make install'
 sudo cp ../systemctl/et.service /etc/systemd/system/
 sudo cp ../etc/et.cfg /etc/
 ```
