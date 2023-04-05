@@ -41,7 +41,7 @@ jobs:
                 libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (macOS)
-        run: brew install ninja cmake pkg-config curl openssl protobuf libsodium && export OPENSSL_ROOT_DIR=`brew --prefix openssl`
+        run: brew install ninja cmake pkg-config curl openssl protobuf libsodium
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v2
@@ -49,9 +49,14 @@ jobs:
           submodules: recursive
 
       # Run CMake to generate Ninja project files.
-      - name: Install dependencies and generate project files
+      - name: Install dependencies and generate project files (mac)
+        run: |
+          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+        if: matrix.os == 'macos-latest'
+      - name: Install dependencies and generate project files (linux)
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+        if: matrix.os != 'macos-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
