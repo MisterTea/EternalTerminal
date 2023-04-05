@@ -108,13 +108,13 @@ find_package(Unwind)
 
 if(DISABLE_VCPKG)
 add_subdirectory(external/Catch2)
-add_subdirectory(external/cxxopts)
 add_subdirectory(external/cpp-httplib)
 add_subdirectory(external/json)
 include_directories(
   ${EXTERNAL_DIR}/cpp-httplib
   ${EXTERNAL_DIR}/simpleini
   ${EXTERNAL_DIR}/json/include
+  ${EXTERNAL_DIR}/cxxopts/include
 )
 else()
 find_package(Catch2 CONFIG REQUIRED)
