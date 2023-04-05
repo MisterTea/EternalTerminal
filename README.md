@@ -316,3 +316,5 @@ If you have any problems with installation or usage, please [file an issue on gi
 
 - Jason Gauci: https://github.com/MisterTea
 - Ailing Zhang: https://github.com/ailzhang
+- James Short: https://github.com/jshort
+ 
