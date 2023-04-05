@@ -115,6 +115,7 @@ include_directories(
   ${EXTERNAL_DIR}/cpp-httplib
   ${EXTERNAL_DIR}/simpleini
   ${EXTERNAL_DIR}/json/include
+  ${EXTERNAL_DIR}/cxxopts/include
 )
 else()
 find_package(Catch2 CONFIG REQUIRED)
