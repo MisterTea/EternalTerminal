@@ -41,7 +41,7 @@ jobs:
                 libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (macOS)
-        run: brew install ninja cmake pkg-config curl openssl protobuf libsodium
+        run: brew update && brew install ninja cmake pkg-config curl openssl protobuf libsodium
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v2

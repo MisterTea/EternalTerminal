@@ -49,7 +49,7 @@ jobs:
         run: choco install ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew install ninja cmake
+        run: brew update && brew install ninja cmake
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v2
