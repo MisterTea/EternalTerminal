@@ -32,7 +32,7 @@ curl -sS https://mistertea.github.io/debian-et/et.gpg | sudo apt-key add -
 sudo apt update
 sudo apt install et
 ```
-See [the repo source](https://github.com/MisterTea/debian-et/tree/master/debian-source/dists) for a list of the other supposed Debian versions.
+See [the repo source](https://github.com/MisterTea/debian-et/tree/master/debian-source/dists) for a list of the other supported Debian versions.
 
 # Other Linux/Unix
 
