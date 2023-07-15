@@ -7,7 +7,7 @@ on:
 
 jobs:
   build_vcpkg:
-    name: build-vcpkg-${{ matrix.os }}
+    name: build-vcpkg-${{ matrix.os }}-${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
