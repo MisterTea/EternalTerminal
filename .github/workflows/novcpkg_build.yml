@@ -7,12 +7,18 @@ on:
 
 jobs:
   build_novcpkg:
-    name: build-novcpkg-${{ matrix.os }}
+    name: build-novcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
+        gcc: [11, 12, 13]
+        exclude:
+          - os: macos-latest
+            gcc: 11
+          - os: macos-latest
+            gcc: 12
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
@@ -54,9 +60,12 @@ jobs:
           OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'macos-latest'
       - name: Install dependencies and generate project files (linux)
+        env:
+            CC: gcc-${{ matrix.gcc }}
+            CXX: g++-${{ matrix.gcc }}
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
-        if: matrix.os != 'macos-latest'
+        if: matrix.os == 'ubuntu-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
