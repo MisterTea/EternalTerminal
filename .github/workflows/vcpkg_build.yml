@@ -17,6 +17,15 @@ jobs:
         include:
         - os: windows-latest
           extension: .exe
+        exclude:
+          - os: macos-latest
+            gcc: 11
+          - os: macos-latest
+            gcc: 12
+          - os: windows-latest
+            gcc: 11
+          - os: windows-latest
+            gcc: 12
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
