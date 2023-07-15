@@ -4,6 +4,7 @@ out
 .vscode
 *PVS-Studio*
 .dccache
+/*build/
 
 # Public/private keys
 id_rsa*
