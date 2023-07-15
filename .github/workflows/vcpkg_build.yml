@@ -83,6 +83,7 @@ jobs:
         env:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
+        if: matrix.os == 'ubuntu-latest'
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
       # Build the whole project with Ninja (which is spawn by CMake).
