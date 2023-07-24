@@ -236,8 +236,7 @@ if(WIN32)
   add_definitions(-D_UNICODE)
 endif()
 
-option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite"
-  OFF)
+option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" ON)
 
 if(FULL_PROTOBUF)
   if(WIN32)
