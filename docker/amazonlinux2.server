@@ -1,0 +1,47 @@
+FROM amazonlinux:2 as base
+
+WORKDIR /
+
+RUN yum install -y \
+    boost-devel \
+    cmake3 \
+    gcc \
+    gcc-c++ \
+    git \
+    kernel-devel \
+    libatomic \
+    libunwind-devel \
+    libutempter-devel \
+    make \
+    ncurses-devel \
+    perl \
+    perl-Data-Dumper \
+    perl-IPC-Cmd \
+    protobuf-compiler \
+    protobuf-devel \
+    protobuf-lite-devel \
+    tar \
+    unzip \
+    zip
+RUN git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+RUN mkdir -p EternalTerminal/build && cd $_ && \
+    cmake3 .. && \
+    make -j && make install
+
+FROM amazonlinux:2
+
+RUN yum install -y \
+    libatomic \
+    libunwind \
+    openssh-server \
+    protobuf-lite
+
+COPY --from=base /usr/bin/etserver /usr/bin/etterminal /usr/bin/htm /usr/bin/htmd  /usr/bin/
+COPY --from=base /EternalTerminal/etc/et.cfg /etc/et.cfg
+COPY --chmod=755 container-entrypoint /bin/container-entrypoint
+
+EXPOSE 2022 2222
+
+ENTRYPOINT ["/bin/container-entrypoint", "server"]
+
+CMD ["--cfgfile=/etc/et.cfg"]
