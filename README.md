@@ -257,7 +257,7 @@ Install dependencies:
 sudo yum install epel-release
 sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
      protobuf-compiler gflags-devel protobuf-lite-devel libcurl-devel \
-     perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-deve
+     perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-devel
 ```
 
 Install scl dependencies
