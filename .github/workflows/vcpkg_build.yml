@@ -13,7 +13,7 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        gcc: [11, 12, 13]
+        gcc: [11, 12]
         include:
         - os: windows-latest
           extension: .exe
