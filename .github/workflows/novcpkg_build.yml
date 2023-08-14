@@ -66,10 +66,13 @@ jobs:
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies and generate project files (windows)
+        run: |
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+        if: matrix.os == 'windows-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
-          mkdir -p "${{ env.CMAKE_BUILD_DIR }}"
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
       
       - uses: actions/upload-artifact@v2
