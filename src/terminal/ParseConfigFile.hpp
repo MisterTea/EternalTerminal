@@ -1391,7 +1391,7 @@ static int ssh_config_parse_line(const char *targethost,
       if (p && *parsing) {
         char *filename = ssh_path_expand_tilde(p);
         if (filename) {
-          ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, p);
+          ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, filename);
         }
         SAFE_FREE(filename);
       }
