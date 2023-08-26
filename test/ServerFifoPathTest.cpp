@@ -1,6 +1,5 @@
 #include <ftw.h>
 
-#include <filesystem>
 #include <optional>
 
 #include "ServerFifoPath.hpp"

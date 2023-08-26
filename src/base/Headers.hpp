@@ -107,7 +107,7 @@ namespace fs = std::filesystem;
 namespace fs = std::filesystem;
 #elif __has_include(<experimental/filesystem>)
 #include <experimental/filesystem>
-namespace fs = std::experimental;
+namespace fs = std::experimental::filesystem;
 #elif __has_include(<boost/filesystem>)
 #include <boost/filesystem>
 namespace fs = boost::filesystem
