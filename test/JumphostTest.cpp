@@ -36,7 +36,8 @@ void readWriteTest(const string& clientId,
       clientSocketHandler, clientPipeSocketHandler, jumphostEndpoint, clientId,
       CRYPTO_KEY, fakeConsole, true, "", "", false, "",
       MAX_CLIENT_KEEP_ALIVE_DURATION));
-  thread terminalClientThread([terminalClient]() { terminalClient->run(""); });
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
 
   string s(1024, '\0');

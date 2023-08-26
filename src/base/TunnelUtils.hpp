@@ -1,7 +1,7 @@
 #ifndef __ET_TUNNEL_UTILS__
 #define __ET_TUNNEL_UTILS__
 
-#include "ETerminal.pb.h"
+#include "Headers.hpp"
 
 namespace et {
 

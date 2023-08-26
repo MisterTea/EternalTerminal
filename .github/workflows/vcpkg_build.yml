@@ -7,15 +7,25 @@ on:
 
 jobs:
   build_vcpkg:
-    name: build-vcpkg-${{ matrix.os }}
+    name: build-vcpkg-${{ matrix.os }}-${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
     strategy:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
+        gcc: [11, 12]
         include:
         - os: windows-latest
           extension: .exe
+        exclude:
+          - os: macos-latest
+            gcc: 11
+          - os: macos-latest
+            gcc: 12
+          - os: windows-latest
+            gcc: 11
+          - os: windows-latest
+            gcc: 12
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
@@ -49,7 +59,7 @@ jobs:
         run: choco install ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew install ninja cmake
+        run: brew update && brew install ninja cmake
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v2
@@ -78,9 +88,24 @@ jobs:
       # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
       - uses: ilammy/msvc-dev-cmd@v1
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
-      - name: Install dependencies and generate project files
+      - name: Install dependencies and generate project files (linux)
+        env:
+          CC: gcc-${{ matrix.gcc }}
+          CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        if: matrix.os == 'ubuntu-latest'
+      - name: Install dependencies and generate project files (mac)
+        env:
+          CC: gcc-${{ matrix.gcc }}
+          CXX: g++-${{ matrix.gcc }}
+        run: |
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        if: matrix.os == 'macos-latest'
+      - name: Install dependencies and generate project files (windows)
+        run: |
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+        if: matrix.os == 'windows-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |

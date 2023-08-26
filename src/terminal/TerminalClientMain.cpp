@@ -61,8 +61,10 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>())  //
         ("p,port", "Remote machine etserver port",
          cxxopts::value<int>()->default_value("2022"))  //
-        ("c,command", "Run command on connect",
+        ("c,command", "Run command on connect and exit after command is run",
          cxxopts::value<std::string>())  //
+        ("e,noexit",
+         "Used together with -c to not exit after command is run")  //
         ("terminal-path",
          "Path to etterminal on server side. "
          "Use if etterminal is not on the system path.",
@@ -351,11 +353,12 @@ int main(int argc, char** argv) {
                                   socketEndpoint, id, passkey, console,
                                   is_jumphost, tunnel_arg, r_tunnel_arg,
                                   forwardAgent, sshSocket, keepaliveDuration);
-    terminalClient.run(result.count("command") ? result["command"].as<string>()
-                                               : "");
+    terminalClient.run(
+        result.count("command") ? result["command"].as<string>() : "",
+        result.count("noexit"));
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
-  } catch (cxxopts::OptionException& oe) {
+  } catch (cxxopts::exceptions::exception& oe) {
     handleParseException(oe, options);
   }
 

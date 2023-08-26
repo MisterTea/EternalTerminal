@@ -142,7 +142,7 @@ TerminalClient::~TerminalClient() {
   connection.reset();
 }
 
-void TerminalClient::run(const string& command) {
+void TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->setup();
   }
@@ -157,7 +157,10 @@ void TerminalClient::run(const string& command) {
   if (command.length()) {
     LOG(INFO) << "Got command: " << command;
     et::TerminalBuffer tb;
-    tb.set_buffer(command + "; exit\n");
+    if (noexit)
+      tb.set_buffer(command + "\n");
+    else
+      tb.set_buffer(command + "; exit\n");
 
     connection->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));

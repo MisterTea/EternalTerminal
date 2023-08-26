@@ -1,5 +1,17 @@
 {
   "name": "eternal-terminal",
   "version-string": "6.0.13",
-  "dependencies": ["zlib", "openssl", "protobuf", "libsodium", "sentry-native"]
+  "dependencies": [
+    "zlib",
+    "openssl",
+    "protobuf",
+    "libsodium",
+    "sentry-native",
+    "nlohmann-json",
+    "simpleini",
+    "platform-folders",
+    "cpp-httplib",
+    "cxxopts",
+    "catch2"
+  ]
 }

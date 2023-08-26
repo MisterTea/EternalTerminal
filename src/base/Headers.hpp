@@ -1,8 +1,9 @@
 #ifndef __ET_HEADERS__
 #define __ET_HEADERS__
 
-#define CPPHTTPLIB_ZLIB_SUPPORT (1)
+#ifndef CPPHTTPLIB_OPENSSL_SUPPORT
 #define CPPHTTPLIB_OPENSSL_SUPPORT (1)
+#endif
 // httplib has to come before windows.h
 #include "httplib.h"
 

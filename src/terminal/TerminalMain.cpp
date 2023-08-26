@@ -188,7 +188,7 @@ int main(int argc, char** argv) {
     }
     uth.run();
 
-  } catch (cxxopts::OptionException& oe) {
+  } catch (cxxopts::exceptions::exception& oe) {
     CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
     CLOG(INFO, "stdout") << options.help({}) << endl;
     exit(1);

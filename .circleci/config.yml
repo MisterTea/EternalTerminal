@@ -23,7 +23,7 @@ jobs:
           command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
           name: Build the root version of the project
-          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; cd build; cmake ../; make -j4
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; git submodule update --init --recursive; cd build; cmake ../; make -j4
           no_output_timeout: 60m
       - run:
           name: Build the project
@@ -31,7 +31,7 @@ jobs:
           no_output_timeout: 60m
       - run:
           name: Connect new -> old
-          command: sudo ../root_version/build/etserver --daemon; sudo cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 1; build/et -c "ls" localhost --logtostdout --verbose=9
+          command: sudo ../root_version/build/etserver --daemon; sudo cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 3; build/et -c "ls" localhost --logtostdout --verbose=9
       - run:
           name: Connect new -> old (ipv6)
           command: build/et -c "ls" 0:0:0:0:0:0:0:1 --logtostdout --verbose=9
@@ -49,7 +49,7 @@ jobs:
           command: sudo pkill etserver
       - run:
           name: Connect old -> new
-          command: export TERM=xterm-256color; sudo build/etserver --daemon; sudo cp build/etterminal /usr/bin/etterminal; sleep 1; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
+          command: export TERM=xterm-256color; sudo build/etserver --daemon; sudo cp build/etterminal /usr/bin/etterminal; sleep 3; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
       - run:
           name: Kill server
           command: sudo pkill etserver
@@ -84,7 +84,7 @@ jobs:
           no_output_timeout: 60m
       - run:
           name: Start Servers
-          command: sudo build/etserver --daemon; sudo build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
+          command: sudo build/etserver --daemon; sudo build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; sleep 3; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
       - run:
           name: Kill servers
           command: sudo pkill etserver
