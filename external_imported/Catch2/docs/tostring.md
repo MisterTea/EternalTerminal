@@ -64,14 +64,14 @@ namespace Catch {
 By default all exceptions deriving from `std::exception` will be translated to strings by calling the `what()` method. For exception types that do not derive from `std::exception` - or if `what()` does not return a suitable string - use `CATCH_TRANSLATE_EXCEPTION`. This defines a function that takes your exception type, by reference, and returns a string. It can appear anywhere in the code - it doesn't have to be in the same translation unit. For example:
 
 ```cpp
-CATCH_TRANSLATE_EXCEPTION( MyType& ex ) {
+CATCH_TRANSLATE_EXCEPTION( MyType const& ex ) {
     return ex.message();
 }
 ```
 
 ## Enums
 
-> Introduced in Catch 2.8.0.
+> Introduced in Catch2 2.8.0.
 
 Enums that already have a `<<` overload for `std::ostream` will convert to strings as expected.
 If you only need to convert enums to strings for test reporting purposes you can provide a `StringMaker` specialisations as any other type.
@@ -110,7 +110,7 @@ TEST_CASE() {
 
 ## Floating point precision
 
-> [Introduced](https://github.com/catchorg/Catch2/issues/1614) in Catch 2.8.0.
+> [Introduced](https://github.com/catchorg/Catch2/issues/1614) in Catch2 2.8.0.
 
 Catch provides a built-in `StringMaker` specialization for both `float`
 and `double`. By default, it uses what we think is a reasonable precision,

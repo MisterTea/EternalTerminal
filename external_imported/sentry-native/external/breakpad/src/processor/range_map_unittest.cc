@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -43,11 +42,10 @@
 
 namespace {
 
-
+using google_breakpad::AddIgnoringOverflow;
 using google_breakpad::linked_ptr;
-using google_breakpad::scoped_ptr;
 using google_breakpad::RangeMap;
-
+using google_breakpad::scoped_ptr;
 
 // A CountedObject holds an int.  A global (not thread safe!) count of
 // allocated CountedObjects is maintained to help test memory management.
@@ -148,10 +146,10 @@ static bool RetrieveTest(TestMap* range_map, const RangeTest* range_test) {
     }
 
     for (AddressType offset = low_offset; offset <= high_offset; ++offset) {
-      AddressType address =
-          offset +
-          (!side ? range_test->address :
-                   range_test->address + range_test->size - 1);
+      AddressType address = AddIgnoringOverflow(
+          offset, (!side ? range_test->address
+                         : AddIgnoringOverflow(range_test->address,
+                                               range_test->size - 1)));
 
       bool expected_result = false;  // This is correct for tests not stored.
       if (range_test->expect_storable) {

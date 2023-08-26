@@ -19,6 +19,12 @@
 
 #include <functional>
 
+#ifdef SENTRY_REMOVED
+#if defined(__BIONIC__)
+#include <bionic/pac.h>
+#endif
+#endif // SENTRY_REMOVED
+
 #include <unwindstack/Elf.h>
 #include <unwindstack/MachineArm64.h>
 #include <unwindstack/MapInfo.h>
@@ -47,22 +53,39 @@ uint64_t RegsArm64::sp() {
   return regs_[ARM64_REG_SP];
 }
 
-void RegsArm64::set_pc(uint64_t pc) {
+static uint64_t strip_pac(uint64_t pc, uint64_t mask) {
   // If the target is aarch64 then the return address may have been
   // signed using the Armv8.3-A Pointer Authentication extension. The
   // original return address can be restored by stripping out the
   // authentication code using a mask or xpaclri. xpaclri is a NOP on
   // pre-Armv8.3-A architectures.
+  if (mask) {
+    pc &= ~mask;
+  } else {
+#ifdef SENTRY_REMOVED
+#if defined(__BIONIC__)
+    pc = __bionic_clear_pac_bits(pc);
+#endif
+#endif // SENTRY_REMOVED
+  }
+  return pc;
+}
+
+void RegsArm64::set_pc(uint64_t pc) {
   if ((0 != pc) && IsRASigned()) {
-    if (pac_mask_) {
-      pc &= ~pac_mask_;
-    }
+    pc = strip_pac(pc, pac_mask_);
   }
   regs_[ARM64_REG_PC] = pc;
 }
 
 void RegsArm64::set_sp(uint64_t sp) {
   regs_[ARM64_REG_SP] = sp;
+}
+
+void RegsArm64::fallback_pc() {
+  // As a last resort, try stripping the PC of the pointer
+  // authentication code.
+  regs_[ARM64_REG_PC] = strip_pac(regs_[ARM64_REG_PC], pac_mask_);
 }
 
 bool RegsArm64::SetPcFromReturnAddress(Memory*) {

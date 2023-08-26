@@ -122,7 +122,7 @@ The example can be run manually with a variety of commands to test different
 scenarios. Additionally, it will use the `SENTRY_DSN` env-variable, and can thus
 also be used to capture events/crashes directly to sentry.
 
-The example currently supports the following commends:
+The example currently supports the following commands:
 
 - `capture-event`: Captures an event.
 - `crash`: Triggers a crash to be captured.
@@ -139,3 +139,13 @@ The example currently supports the following commends:
 - `capture-multiple`: Captures a number of events.
 - `sleep`: Introduces a 10 second sleep.
 - `add-stacktrace`: Adds the current thread stacktrace to the captured event.
+- `disable-backend`: Disables the build-configured crash-handler backend.
+- `before-send`: Installs a `before_send()` callback that retains the event.
+- `discarding-before-send`: Installs a `before_send()` callback that discards the event.
+- `on-crash`: Installs an `on_crash()` callback that retains the crash event. 
+- `discarding-on-crash`: Installs an `on_crash()` callback that discards the crash event.
+
+Only on Windows using crashpad with its WER handler module: 
+
+- `fastfail`: Crashes the application using the `__fastfail` intrinsic directly, thus by-passing SEH.
+- `stack-buffer-overrun`: Triggers the Windows Control Flow Guard, which also fast fails and in turn by-passes SEH.

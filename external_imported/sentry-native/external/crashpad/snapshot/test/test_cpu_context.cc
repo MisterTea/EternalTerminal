@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -161,6 +161,9 @@ void InitializeCPUContextX86_64(CPUContext* context, uint32_t seed) {
   context->x86_64->dr5 = value++;
   context->x86_64->dr6 = value++;
   context->x86_64->dr7 = value++;
+
+  // Make sure this is sensible. When supplied the size/state come from the OS.
+  memset(&context->x86_64->xstate, 0, sizeof(context->x86_64->xstate));
 }
 
 void InitializeCPUContextARM(CPUContext* context, uint32_t seed) {

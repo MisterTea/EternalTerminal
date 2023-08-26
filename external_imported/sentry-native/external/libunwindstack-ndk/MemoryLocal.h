@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MEMORY_LOCAL_H
-#define _LIBUNWINDSTACK_MEMORY_LOCAL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -28,12 +27,8 @@ class MemoryLocal : public Memory {
   MemoryLocal() = default;
   virtual ~MemoryLocal() = default;
 
-  bool IsLocal() const override { return true; }
-
   size_t Read(uint64_t addr, void* dst, size_t size) override;
   long ReadTag(uint64_t addr) override;
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MEMORY_LOCAL_H

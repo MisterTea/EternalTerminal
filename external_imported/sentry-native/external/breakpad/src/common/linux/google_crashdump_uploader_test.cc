@@ -1,5 +1,4 @@
-// Copyright (c) 2009, Google Inc.
-// All rights reserved.
+// Copyright 2009 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -59,21 +58,12 @@ class GoogleCrashdumpUploaderTest : public ::testing::Test {
 };
 
 TEST_F(GoogleCrashdumpUploaderTest, InitFailsCausesUploadFailure) {
-  MockLibcurlWrapper m;
-  EXPECT_CALL(m, Init()).Times(1).WillOnce(Return(false));
-  GoogleCrashdumpUploader *uploader = new GoogleCrashdumpUploader("foobar",
-                                                                  "1.0",
-                                                                  "AAA-BBB",
-                                                                  "",
-                                                                  "",
-                                                                  "test@test.com",
-                                                                  "none",
-                                                                  "/tmp/foo.dmp",
-                                                                  "http://foo.com",
-                                                                  "",
-                                                                  "",
-                                                                  &m);
-  ASSERT_FALSE(uploader->Upload(NULL, NULL, NULL));
+  std::unique_ptr<MockLibcurlWrapper> m{new MockLibcurlWrapper()};
+  EXPECT_CALL(*m, Init()).Times(1).WillOnce(Return(false));
+  GoogleCrashdumpUploader uploader("foobar", "1.0", "AAA-BBB", "", "",
+                                   "test@test.com", "none", "/tmp/foo.dmp",
+                                   "http://foo.com", "", "", std::move(m));
+  ASSERT_FALSE(uploader.Upload(NULL, NULL, NULL));
 }
 
 TEST_F(GoogleCrashdumpUploaderTest, TestSendRequestHappensWithValidParameters) {
@@ -83,44 +73,27 @@ TEST_F(GoogleCrashdumpUploaderTest, TestSendRequestHappensWithValidParameters) {
   ASSERT_NE(fd, -1);
   close(fd);
 
-  MockLibcurlWrapper m;
-  EXPECT_CALL(m, Init()).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(m, AddFile(tempfn, _)).WillOnce(Return(true));
-  EXPECT_CALL(m,
-              SendRequest("http://foo.com",_,_,_,_)).Times(1).WillOnce(Return(true));
-  GoogleCrashdumpUploader *uploader = new GoogleCrashdumpUploader("foobar",
-                                                                  "1.0",
-                                                                  "AAA-BBB",
-                                                                  "",
-                                                                  "",
-                                                                  "test@test.com",
-                                                                  "none",
-                                                                  tempfn,
-                                                                  "http://foo.com",
-                                                                  "",
-                                                                  "",
-                                                                  &m);
-  ASSERT_TRUE(uploader->Upload(NULL, NULL, NULL));
+  std::unique_ptr<MockLibcurlWrapper> m{new MockLibcurlWrapper()};
+  EXPECT_CALL(*m, Init()).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(*m, AddFile(tempfn, _)).WillOnce(Return(true));
+  EXPECT_CALL(*m, SendRequest("http://foo.com", _, _, _, _))
+      .Times(1)
+      .WillOnce(Return(true));
+  GoogleCrashdumpUploader uploader("foobar", "1.0", "AAA-BBB", "", "",
+                                   "test@test.com", "none", tempfn,
+                                   "http://foo.com", "", "", std::move(m));
+  ASSERT_TRUE(uploader.Upload(NULL, NULL, NULL));
 }
 
 
 TEST_F(GoogleCrashdumpUploaderTest, InvalidPathname) {
-  MockLibcurlWrapper m;
-  EXPECT_CALL(m, Init()).Times(1).WillOnce(Return(true));
-  EXPECT_CALL(m, SendRequest(_,_,_,_,_)).Times(0);
-  GoogleCrashdumpUploader *uploader = new GoogleCrashdumpUploader("foobar",
-                                                                  "1.0",
-                                                                  "AAA-BBB",
-                                                                  "",
-                                                                  "",
-                                                                  "test@test.com",
-                                                                  "none",
-                                                                  "/tmp/foo.dmp",
-                                                                  "http://foo.com",
-                                                                  "",
-                                                                  "",
-                                                                  &m);
-  ASSERT_FALSE(uploader->Upload(NULL, NULL, NULL));
+  std::unique_ptr<MockLibcurlWrapper> m{new MockLibcurlWrapper()};
+  EXPECT_CALL(*m, Init()).Times(1).WillOnce(Return(true));
+  EXPECT_CALL(*m, SendRequest(_,_,_,_,_)).Times(0);
+  GoogleCrashdumpUploader uploader("foobar", "1.0", "AAA-BBB", "", "",
+                                   "test@test.com", "none", "/tmp/foo.dmp",
+                                   "http://foo.com", "", "", std::move(m));
+  ASSERT_FALSE(uploader.Upload(NULL, NULL, NULL));
 }
 
 TEST_F(GoogleCrashdumpUploaderTest, TestRequiredParametersMustBePresent) {

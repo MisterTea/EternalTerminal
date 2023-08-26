@@ -26,8 +26,8 @@ class BuilderSettings(object):
         """ Set Catch2 repository to be used on upload.
             The upload server address could be customized by env var
             CONAN_UPLOAD. If not defined, the method will check the branch name.
-            Only master or CONAN_STABLE_BRANCH_PATTERN will be accepted.
-            The master branch will be pushed to testing channel, because it does
+            Only devel or CONAN_STABLE_BRANCH_PATTERN will be accepted.
+            The devel branch will be pushed to testing channel, because it does
             not match the stable pattern. Otherwise it will upload to stable
             channel.
         """
@@ -49,7 +49,7 @@ class BuilderSettings(object):
     def reference(self):
         """ Read project version from branch create Conan reference
         """
-        return os.getenv("CONAN_REFERENCE", "Catch2/{}".format(self._version))
+        return os.getenv("CONAN_REFERENCE", "catch2/{}".format(self._version))
 
     @property
     def channel(self):
@@ -85,7 +85,7 @@ if __name__ == "__main__":
         reference=settings.reference,
         channel=settings.channel,
         upload=settings.upload,
-        upload_only_when_stable=settings.upload_only_when_stable,
+        upload_only_when_stable=False,
         stable_branch_pattern=settings.stable_branch_pattern,
         login_username=settings.login_username,
         username=settings.username,

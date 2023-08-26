@@ -13,7 +13,7 @@
 #    define THREAD_FUNCTION_API
 #endif
 
-#if defined(__MINGW32__) && !defined(__MINGW64__)
+#if defined(__MINGW32__) && !defined(__MINGW64__) && !defined(__clang__)
 #    define UNSIGNED_MINGW unsigned
 #else
 #    define UNSIGNED_MINGW

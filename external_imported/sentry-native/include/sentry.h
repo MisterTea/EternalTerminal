@@ -30,7 +30,7 @@ extern "C" {
 #        define SENTRY_SDK_NAME "sentry.native"
 #    endif
 #endif
-#define SENTRY_SDK_VERSION "0.4.17"
+#define SENTRY_SDK_VERSION "0.6.0"
 #define SENTRY_SDK_USER_AGENT SENTRY_SDK_NAME "/" SENTRY_SDK_VERSION
 
 /* common platform detection */
@@ -409,14 +409,25 @@ SENTRY_EXPERIMENTAL_API sentry_value_t sentry_value_new_thread(
  *
  * See https://develop.sentry.dev/sdk/event-payloads/stacktrace/
  *
- * The returned object needs to be attached to either an exception
- * event, or a thread object.
+ * The returned object must be attached to either an exception or thread
+ * object.
  *
  * If `ips` is NULL the current stack trace is captured, otherwise `len`
  * stack trace instruction pointers are attached to the event.
  */
 SENTRY_EXPERIMENTAL_API sentry_value_t sentry_value_new_stacktrace(
     void **ips, size_t len);
+
+/**
+ * Sets the Stack Trace conforming to the Stack Trace Interface in a value.
+ *
+ * The value argument must be either an exception or thread object.
+ *
+ * If `ips` is NULL the current stack trace is captured, otherwise `len` stack
+ * trace instruction pointers are attached to the event.
+ */
+SENTRY_EXPERIMENTAL_API void sentry_value_set_stacktrace(
+    sentry_value_t value, void **ips, size_t len);
 
 /**
  * Adds an Exception to an Event value.
@@ -709,6 +720,20 @@ SENTRY_API void sentry_transport_free(sentry_transport_t *transport);
 SENTRY_API sentry_transport_t *sentry_new_function_transport(
     void (*func)(const sentry_envelope_t *envelope, void *data), void *data);
 
+/**
+ * This represents an interface for user-defined backends.
+ *
+ * Backends are responsible to handle crashes. They are maintained at runtime
+ * via various life-cycle hooks from the sentry-core.
+ *
+ * At this point none of those interfaces are exposed in the API including
+ * creation and destruction. The main use-case of the backend in the API at this
+ * point is to disable it via `sentry_options_set_backend` at runtime before it
+ * is initialized.
+ */
+struct sentry_backend_s;
+typedef struct sentry_backend_s sentry_backend_t;
+
 /* -- Options APIs -- */
 
 /**
@@ -745,11 +770,28 @@ SENTRY_API void sentry_options_set_transport(
  * call `sentry_value_decref` on the provided event, and return a
  * `sentry_value_new_null()` instead.
  *
+ * If you have set an `on_crash` callback (independent of whether it discards or
+ * retains the event), `before_send` will no longer be invoked for crash-events,
+ * which allows you to better distinguish between crashes and all other events
+ * in client-side pre-processing.
+ *
  * This function may be invoked inside of a signal handler and must be safe for
  * that purpose, see https://man7.org/linux/man-pages/man7/signal-safety.7.html.
  * On Windows, it may be called from inside of a `UnhandledExceptionFilter`, see
  * the documentation on SEH (structured exception handling) for more information
  * https://docs.microsoft.com/en-us/windows/win32/debug/structured-exception-handling
+ *
+ * Up to version 0.4.18 the `before_send` callback wasn't invoked in case the
+ * event sampling discarded an event. In the current implementation the
+ * `before_send` callback is invoked even if the event sampling discards the
+ * event, following the cross-SDK session filter order:
+ *
+ * https://develop.sentry.dev/sdk/sessions/#filter-order
+ *
+ * On Windows the crashpad backend can capture fast-fail crashes which by-pass
+ * SEH. Since the `before_send` is called by a local exception-handler, it will
+ * not be invoked when such a crash happened, even though a minidump will be
+ * sent.
  */
 typedef sentry_value_t (*sentry_event_function_t)(
     sentry_value_t event, void *hint, void *closure);
@@ -761,6 +803,64 @@ typedef sentry_value_t (*sentry_event_function_t)(
  */
 SENTRY_API void sentry_options_set_before_send(
     sentry_options_t *opts, sentry_event_function_t func, void *data);
+
+/**
+ * Type of the `on_crash` callback.
+ *
+ * The `on_crash` callback replaces the `before_send` callback for crash events.
+ * The interface is analogous to `before_send` in that the callback takes
+ * ownership of the `event`, and should usually return that same event. In case
+ * the event should be discarded, the callback needs to call
+ * `sentry_value_decref` on the provided event, and return a
+ * `sentry_value_new_null()` instead.
+ *
+ * Only the `inproc` backend currently fills the passed-in event with useful
+ * data and processes any modifications to the return value. Since both
+ * `breakpad` and `crashpad` use minidumps to capture the crash state, the
+ * passed-in event is empty when using these backends, and they ignore any
+ * changes to the return value.
+ *
+ * If you set this callback in the options, it prevents a concurrently enabled
+ * `before_send` callback from being invoked in the crash case. This allows for
+ * better differentiation between crashes and other events and gradual migration
+ * from existing `before_send` implementations:
+ *
+ *  - if you have a `before_send` implementation and do not define an `on_crash`
+ *    callback your application will receive both normal and crash events as
+ *    before
+ *  - if you have a `before_send` implementation but only want to handle normal
+ *    events with it, then you can define an `on_crash` callback that returns
+ *    the passed-in event and does nothing else
+ *  - if you are not interested in normal events, but only want to act on
+ *    crashes (within the limits mentioned below), then only define an
+ *    `on_crash` callback with the option to filter (on all backends) or enrich
+ *    (only inproc) the crash event
+ *
+ * This function may be invoked inside of a signal handler and must be safe for
+ * that purpose, see https://man7.org/linux/man-pages/man7/signal-safety.7.html.
+ * On Windows, it may be called from inside of a `UnhandledExceptionFilter`, see
+ * the documentation on SEH (structured exception handling) for more information
+ * https://docs.microsoft.com/en-us/windows/win32/debug/structured-exception-handling
+ *
+ * Platform-specific behavior:
+ *
+ *  - does not work with crashpad on macOS.
+ *  - for breakpad on Linux the `uctx` parameter is always NULL.
+ *  - on Windows the crashpad backend can capture fast-fail crashes which
+ * by-pass SEH. Since `on_crash` is called by a local exception-handler, it will
+ * not be invoked when such a crash happened, even though a minidump will be
+ * sent.
+ */
+typedef sentry_value_t (*sentry_crash_function_t)(
+    const sentry_ucontext_t *uctx, sentry_value_t event, void *closure);
+
+/**
+ * Sets the `on_crash` callback.
+ *
+ * See the `sentry_crash_function_t` typedef above for more information.
+ */
+SENTRY_API void sentry_options_set_on_crash(
+    sentry_options_t *opts, sentry_crash_function_t func, void *data);
 
 /**
  * Sets the DSN.
@@ -776,6 +876,19 @@ SENTRY_API const char *sentry_options_get_dsn(const sentry_options_t *opts);
  * Sets the sample rate, which should be a double between `0.0` and `1.0`.
  * Sentry will randomly discard any event that is captured using
  * `sentry_capture_event` when a sample rate < 1 is set.
+ *
+ * The sampling happens at the end of the event processing according to the
+ * following order:
+ *
+ * https://develop.sentry.dev/sdk/sessions/#filter-order
+ *
+ * Only items 3. to 6. are currently applicable to sentry-native. This means
+ * each processing step is executed even if the sampling discards the event
+ * before sending it to the backend. This is particularly relevant to users of
+ * the `before_send` callback.
+ *
+ * The above is in contrast to versions up to 0.4.18 where the sampling happened
+ * at the beginning of the processing/filter sequence.
  */
 SENTRY_API void sentry_options_set_sample_rate(
     sentry_options_t *opts, double sample_rate);
@@ -1050,6 +1163,16 @@ SENTRY_API void sentry_options_set_shutdown_timeout(
  */
 SENTRY_API uint64_t sentry_options_get_shutdown_timeout(sentry_options_t *opts);
 
+/**
+ * Sets a user-defined backend.
+ *
+ * Since creation and destruction of backends is not exposed in the API, this
+ * can only be used to set the backend to `NULL`, which disables the backend in
+ * the initialization.
+ */
+SENTRY_API void sentry_options_set_backend(
+    sentry_options_t *opts, sentry_backend_t *backend);
+
 /* -- Global APIs -- */
 
 /**
@@ -1224,16 +1347,6 @@ SENTRY_API void sentry_set_transaction(const char *transaction);
 SENTRY_API void sentry_set_level(sentry_level_t level);
 
 /**
- * Starts a new session.
- */
-SENTRY_API void sentry_start_session(void);
-
-/**
- * Ends a session.
- */
-SENTRY_API void sentry_end_session(void);
-
-/**
  * Sets the maximum number of spans that can be attached to a
  * transaction.
  */
@@ -1260,6 +1373,31 @@ SENTRY_EXPERIMENTAL_API void sentry_options_set_traces_sample_rate(
  */
 SENTRY_EXPERIMENTAL_API double sentry_options_get_traces_sample_rate(
     sentry_options_t *opts);
+
+/* -- Session APIs -- */
+
+typedef enum {
+    SENTRY_SESSION_STATUS_OK,
+    SENTRY_SESSION_STATUS_CRASHED,
+    SENTRY_SESSION_STATUS_ABNORMAL,
+    SENTRY_SESSION_STATUS_EXITED,
+} sentry_session_status_t;
+
+/**
+ * Starts a new session.
+ */
+SENTRY_API void sentry_start_session(void);
+
+/**
+ * Ends a session.
+ */
+SENTRY_API void sentry_end_session(void);
+
+/**
+ * Ends a session with an explicit `status` code.
+ */
+SENTRY_EXPERIMENTAL_API void sentry_end_session_with_status(
+    sentry_session_status_t status);
 
 /* -- Performance Monitoring/Tracing APIs -- */
 
@@ -1723,7 +1861,7 @@ SENTRY_EXPERIMENTAL_API void sentry_transaction_iter_headers(
  *   0 = no crash recognized
  *  -1 = sentry_init() hasn't been called yet
  */
-SENTRY_EXPERIMENTAL_API int sentry_get_crashed_last_run();
+SENTRY_EXPERIMENTAL_API int sentry_get_crashed_last_run(void);
 
 /**
  * Clear the status of the "crashed-last-run". You should explicitly call
@@ -1737,7 +1875,22 @@ SENTRY_EXPERIMENTAL_API int sentry_get_crashed_last_run();
  *
  * Returns 0 on success, 1 on error.
  */
-SENTRY_EXPERIMENTAL_API int sentry_clear_crashed_last_run();
+SENTRY_EXPERIMENTAL_API int sentry_clear_crashed_last_run(void);
+
+/**
+ * Sentry SDK version.
+ */
+SENTRY_EXPERIMENTAL_API const char *sentry_sdk_version(void);
+
+/**
+ * Sentry SDK name.
+ */
+SENTRY_EXPERIMENTAL_API const char *sentry_sdk_name(void);
+
+/**
+ * Sentry SDK User-Agent.
+ */
+SENTRY_EXPERIMENTAL_API const char *sentry_sdk_user_agent(void);
 
 #ifdef __cplusplus
 }

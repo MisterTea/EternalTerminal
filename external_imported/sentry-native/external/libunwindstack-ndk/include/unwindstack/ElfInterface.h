@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_ELF_INTERFACE_H
-#define _LIBUNWINDSTACK_ELF_INTERFACE_H
+#pragma once
 
 #include <elf.h>
 #include <stdint.h>
@@ -27,6 +26,7 @@
 
 #include <unwindstack/DwarfSection.h>
 #include <unwindstack/Error.h>
+#include <unwindstack/SharedString.h>
 
 namespace unwindstack {
 
@@ -78,7 +78,7 @@ class ElfInterface {
 
   virtual std::string GetSoname() = 0;
 
-  virtual bool GetFunctionName(uint64_t addr, std::string* name, uint64_t* offset) = 0;
+  virtual bool GetFunctionName(uint64_t addr, SharedString* name, uint64_t* offset) = 0;
 
   virtual bool GetGlobalVariable(const std::string& name, uint64_t* memory_address) = 0;
 
@@ -89,7 +89,9 @@ class ElfInterface {
 
   virtual bool IsValidPc(uint64_t pc);
 
-  Memory* CreateGnuDebugdataMemory();
+  bool GetTextRange(uint64_t* addr, uint64_t* size);
+
+  std::unique_ptr<Memory> CreateGnuDebugdataMemory();
 
   Memory* memory() { return memory_; }
 
@@ -163,6 +165,9 @@ class ElfInterface {
   uint64_t gnu_build_id_offset_ = 0;
   uint64_t gnu_build_id_size_ = 0;
 
+  uint64_t text_addr_ = 0;
+  uint64_t text_size_ = 0;
+
   uint8_t soname_type_ = SONAME_UNKNOWN;
   std::string soname_;
 
@@ -197,7 +202,7 @@ class ElfInterfaceImpl : public ElfInterface {
 
   std::string GetSoname() override;
 
-  bool GetFunctionName(uint64_t addr, std::string* name, uint64_t* func_offset) override;
+  bool GetFunctionName(uint64_t addr, SharedString* name, uint64_t* func_offset) override;
 
   bool GetGlobalVariable(const std::string& name, uint64_t* memory_address) override;
 
@@ -219,5 +224,3 @@ using ElfInterface32 = ElfInterfaceImpl<ElfTypes32>;
 using ElfInterface64 = ElfInterfaceImpl<ElfTypes64>;
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_ELF_INTERFACE_H

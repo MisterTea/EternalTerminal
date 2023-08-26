@@ -1,7 +1,6 @@
 // -*- mode: c++ -*-
 
-// Copyright (c) 2011, Google Inc.
-// All rights reserved.
+// Copyright 2011 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -13,7 +12,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -121,6 +120,7 @@ vector<string> list_directory(const string& directory) {
 namespace google_breakpad {
 
 bool DumpSymbols::Read(const string& filename) {
+  selected_object_file_ = nullptr;
   struct stat st;
   if (stat(filename.c_str(), &st) == -1) {
     fprintf(stderr, "Could not access object file %s: %s\n",
@@ -268,7 +268,8 @@ SuperFatArch* DumpSymbols::FindBestMatchForArchitecture(
         return &object_files_[i];
     }
     assert(best_match == NULL);
-    return NULL;
+    // Fall through since NXFindBestFatArch can't find arm slices on x86_64
+    // macOS 13. See FB11955188.
   }
 
   // Check for an exact match with cpu_type and cpu_subtype.
@@ -276,7 +277,8 @@ SuperFatArch* DumpSymbols::FindBestMatchForArchitecture(
        it != object_files_.end();
        ++it) {
     if (static_cast<cpu_type_t>(it->cputype) == cpu_type &&
-        static_cast<cpu_subtype_t>(it->cpusubtype) == cpu_subtype)
+        (static_cast<cpu_subtype_t>(it->cpusubtype) & ~CPU_SUBTYPE_MASK) ==
+            (cpu_subtype & ~CPU_SUBTYPE_MASK))
       return &*it;
   }
 
@@ -285,8 +287,11 @@ SuperFatArch* DumpSymbols::FindBestMatchForArchitecture(
   // NXFindBestFatArch, located at
   // http://web.mit.edu/darwin/src/modules/cctools/libmacho/arch.c.
   fprintf(stderr, "Failed to find an exact match for an object file with cpu "
-      "type: %d and cpu subtype: %d. Furthermore, at least one object file is "
-      "larger than 2**32.\n", cpu_type, cpu_subtype);
+      "type: %d and cpu subtype: %d.\n", cpu_type, cpu_subtype);
+  if (!can_convert_to_fat_arch) {
+    fprintf(stderr, "Furthermore, at least one object file is larger "
+        "than 2**32.\n");
+  }
   return NULL;
 }
 
@@ -413,6 +418,13 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
       google_breakpad::BreakpadGetArchInfoFromCpuType(
           selected_object_file_->cputype, selected_object_file_->cpusubtype);
 
+  // In certain cases, it is possible that architecture info can't be reliably
+  // determined, e.g. new architectures that breakpad is unware of. In that
+  // case, avoid crashing and return false instead.
+  if (selected_arch_info == NULL) {
+    return false;
+  }
+
   const char* selected_arch_name = selected_arch_info->name;
   if (strcmp(selected_arch_name, "i386") == 0)
     selected_arch_name = "x86";
@@ -434,10 +446,8 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
     return false;
 
   // Create a module to hold the debugging information.
-  module.reset(new Module(module_name,
-                          "mac",
-                          selected_arch_name,
-                          identifier));
+  module.reset(new Module(module_name, "mac", selected_arch_name, identifier,
+                          "", enable_multiple_));
   return true;
 }
 
@@ -671,18 +681,6 @@ bool DumpSymbols::ReadSymbolData(Module** out_module) {
   *out_module = module.release();
 
   return true;
-}
-
-bool DumpSymbols::WriteSymbolFile(std::ostream& stream) {
-  Module* module = NULL;
-
-  if (ReadSymbolData(&module) && module) {
-    bool res = module->Write(stream, symbol_data_);
-    delete module;
-    return res;
-  }
-
-  return false;
 }
 
 // Read the selected object file's debugging information, and write out the

@@ -1,5 +1,4 @@
-// Copyright (c) 2006, Google Inc.
-// All rights reserved.
+// Copyright 2006 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -783,6 +782,41 @@ TEST_F(MinidumpProcessorTest, TestXStateAmd64ContextMinidump) {
   // TODO: verify cetumsr and cetussp once these are supported by
   // breakpad.
 }
+
+TEST_F(MinidumpProcessorTest, TestFastFailException) {
+  // This tests if we can understand fastfail exception subcodes.
+  // Dump is captured from a toy executable and is readable by windbg.
+  MinidumpProcessor processor(nullptr, nullptr /*&supplier, &resolver*/);
+
+  string minidump_file = GetTestDataPath()
+                         + "tiny-exe-fastfail.dmp";
+
+  ProcessState state;
+  ASSERT_EQ(processor.Process(minidump_file, &state),
+            google_breakpad::PROCESS_OK);
+  ASSERT_TRUE(state.crashed());
+  ASSERT_EQ(state.threads()->size(), size_t(4));
+  ASSERT_EQ(state.crash_reason(), "FAST_FAIL_FATAL_APP_EXIT");
+}
+
+#ifdef __linux__
+TEST_F(MinidumpProcessorTest, TestNonCanonicalAddress) {
+  // This tests if we can correctly fixup non-canonical address GPF fault
+  // addresses.
+  // Dump is captured from a toy executable and is readable by windbg.
+  MinidumpProcessor processor(nullptr, nullptr /*&supplier, &resolver*/);
+  processor.set_enable_objdump(true);
+
+  string minidump_file = GetTestDataPath()
+                         + "write_av_non_canonical.dmp";
+
+  ProcessState state;
+  ASSERT_EQ(processor.Process(minidump_file, &state),
+            google_breakpad::PROCESS_OK);
+  ASSERT_TRUE(state.crashed());
+  ASSERT_EQ(state.crash_address(), 0xfefefefefefefefeU);
+}
+#endif // __linux__
 
 }  // namespace
 

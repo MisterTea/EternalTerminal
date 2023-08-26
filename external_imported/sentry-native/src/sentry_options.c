@@ -33,6 +33,9 @@ sentry_options_new(void)
     opts->release = sentry__string_clone(getenv("SENTRY_RELEASE"));
     opts->environment = sentry__string_clone(getenv("SENTRY_ENVIRONMENT"));
 #endif
+    if (!opts->environment) {
+        opts->environment = sentry__string_clone("production");
+    }
     opts->max_breadcrumbs = SENTRY_BREADCRUMBS_MAX;
     opts->user_consent = SENTRY_USER_CONSENT_UNKNOWN;
     opts->auto_session_tracking = true;
@@ -117,6 +120,14 @@ sentry_options_set_before_send(
 {
     opts->before_send_func = func;
     opts->before_send_data = data;
+}
+
+void
+sentry_options_set_on_crash(
+    sentry_options_t *opts, sentry_crash_function_t func, void *data)
+{
+    opts->on_crash_func = func;
+    opts->on_crash_data = data;
 }
 
 void
@@ -424,4 +435,11 @@ double
 sentry_options_get_traces_sample_rate(sentry_options_t *opts)
 {
     return opts->traces_sample_rate;
+}
+
+void
+sentry_options_set_backend(sentry_options_t *opts, sentry_backend_t *backend)
+{
+    sentry__backend_free(opts->backend);
+    opts->backend = backend;
 }

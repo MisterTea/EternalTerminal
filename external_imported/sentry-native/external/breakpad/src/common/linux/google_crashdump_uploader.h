@@ -1,5 +1,4 @@
-// Copyright (c) 2009, Google Inc.
-// All rights reserved.
+// Copyright 2009 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -31,11 +30,11 @@
 #ifndef COMMON_LINUX_GOOGLE_CRASHDUMP_UPLOADER_H_
 #define COMMON_LINUX_GOOGLE_CRASHDUMP_UPLOADER_H_
 
-#include <string>
 #include <map>
+#include <memory>
+#include <string>
 
 #include "common/linux/libcurl_wrapper.h"
-#include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 
 namespace google_breakpad {
@@ -65,7 +64,7 @@ class GoogleCrashdumpUploader {
                           const string& crash_server,
                           const string& proxy_host,
                           const string& proxy_userpassword,
-                          LibcurlWrapper* http_layer);
+                          std::unique_ptr<LibcurlWrapper> http_layer);
 
   void Init(const string& product,
             const string& version,
@@ -78,7 +77,7 @@ class GoogleCrashdumpUploader {
             const string& crash_server,
             const string& proxy_host,
             const string& proxy_userpassword,
-            LibcurlWrapper* http_layer);
+            std::unique_ptr<LibcurlWrapper> http_layer);
   bool Upload(int* http_status_code,
               string* http_response_header,
               string* http_response_body);
@@ -86,7 +85,7 @@ class GoogleCrashdumpUploader {
  private:
   bool CheckRequiredParametersArePresent();
 
-  scoped_ptr<LibcurlWrapper> http_layer_;
+  std::unique_ptr<LibcurlWrapper> http_layer_;
   string product_;
   string version_;
   string guid_;

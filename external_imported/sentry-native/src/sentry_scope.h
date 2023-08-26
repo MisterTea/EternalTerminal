@@ -68,7 +68,7 @@ void sentry__scope_cleanup(void);
  * This function must be called while holding the scope lock, and it will be
  * unlocked internally.
  */
-void sentry__scope_flush_unlock();
+void sentry__scope_flush_unlock(void);
 
 /**
  * This will merge the requested data which is in the given `scope` to the given
@@ -98,5 +98,5 @@ void sentry__scope_apply_to_event(const sentry_scope_t *scope,
 
 // this is only used in unit tests
 #ifdef SENTRY_UNITTEST
-sentry_value_t sentry__scope_get_span_or_transaction();
+sentry_value_t sentry__scope_get_span_or_transaction(void);
 #endif

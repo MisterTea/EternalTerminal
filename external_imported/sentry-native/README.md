@@ -1,8 +1,11 @@
 <p align="center">
-  <a href="https://sentry.io" target="_blank" align="center">
-    <img src="https://sentry-brand.storage.googleapis.com/sentry-logo-black.png" width="280">
+  <a href="https://sentry.io/?utm_source=github&utm_medium=logo" target="_blank">
+    <picture>
+      <source srcset="https://sentry-brand.storage.googleapis.com/sentry-logo-white.png" media="(prefers-color-scheme: dark)" />
+      <source srcset="https://sentry-brand.storage.googleapis.com/sentry-logo-black.png" media="(prefers-color-scheme: light), (prefers-color-scheme: no-preference)" />
+      <img src="https://sentry-brand.storage.googleapis.com/sentry-logo-black.png" alt="Sentry" width="280">
+    </picture>
   </a>
-  <br />
 </p>
 
 # Official Sentry SDK for C/C++ <!-- omit in toc -->
@@ -312,8 +315,14 @@ Other important configuration options include:
 
 - The crashpad backend on macOS currently has no support for notifying the crashing
   process, and can thus not properly terminate sessions or call the registered
-  `before_send` hook. It will also lose any events that have been queued for
+  `before_send` or `on_crash` hook. It will also lose any events that have been queued for
   sending at time of crash.
+- The Crashpad backend on Windows supports fast-fail crashes, which bypass SEH (Structured
+  Exception Handling) primarily for security reasons. `sentry-native` registers a WER (Windows Error
+  Reporting) module, which signals the `crashpad_handler` to send a minidump when a fast-fail crash occurs
+  But since this process bypasses SEH, the application local exception handler is no longer invoked, which
+  also means that for these kinds of crashes, `before_send` and `on_crash` will not be invoked before
+  sending the minidump and thus have no effect.
 
 ## Development
 

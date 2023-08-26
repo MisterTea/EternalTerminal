@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -36,7 +36,7 @@
 #include "util/mach/notify_server.h"
 #include "util/misc/clock.h"
 #include "util/misc/implicit_cast.h"
-#include "util/posix/double_fork_and_exec.h"
+#include "util/posix/spawn_subprocess.h"
 
 namespace crashpad {
 
@@ -353,7 +353,7 @@ class HandlerStarter final : public NotifyServer::DefaultInterface {
     // this parent process, which was probably using the exception server now
     // being restarted. The handler can’t monitor itself for its own crashes via
     // this interface.
-    if (!DoubleForkAndExec(
+    if (!SpawnSubprocess(
             argv,
             nullptr,
             server_write_fd.get(),

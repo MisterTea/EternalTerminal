@@ -25,11 +25,18 @@ if(CRASHPAD_ZLIB_SYSTEM)
     find_package(ZLIB REQUIRED)
 endif()
 
+
 if(LINUX OR ANDROID)
     find_package(OpenSSL)
     if(OPENSSL_FOUND)
         set(CRASHPAD_USE_BORINGSSL ON)
     endif()
+endif()
+
+if (NOT (ANDROID OR FUCHSIA))
+    add_compile_definitions(CRASHPAD_FLOCK_ALWAYS_SUPPORTED=1)
+else()
+    add_compile_definitions(CRASHPAD_FLOCK_ALWAYS_SUPPORTED=0)
 endif()
 
 include(GNUInstallDirs)
@@ -52,7 +59,22 @@ endfunction()
 
 if(WIN32)
     enable_language(ASM_MASM)
+
     if(MINGW)
+        find_program(JWASM_FOUND jwasm)
+        if (JWASM_FOUND)
+            set(CMAKE_ASM_MASM_COMPILER ${JWASM_FOUND})
+            execute_process(COMMAND ${CMAKE_C_COMPILER} --version OUTPUT_VARIABLE COMPILER_VERSION_OUTPUT)
+            if (COMPILER_VERSION_OUTPUT)
+                if (COMPILER_VERSION_OUTPUT MATCHES "x86_64")
+                    set(JWASM_FLAGS -win64)
+                else()
+                    set(JWASM_FLAGS -coff)
+                endif()
+            endif()
+           set(CMAKE_ASM_MASM_FLAGS ${CMAKE_ASM_MASM_FLAGS} ${JWASM_FLAGS})
+        endif(JWASM_FOUND)
+
         if(NOT CMAKE_ASM_MASM_COMPILER OR CMAKE_ASM_MASM_COMPILER STREQUAL "ml" OR CMAKE_ASM_MASM_COMPILER STREQUAL "ml64")
             message(WARNING "No custom ASM_MASM compiler defined via 'CMAKE_ASM_MASM_COMPILER'. Trying to use UASM...")
             set(CMAKE_ASM_MASM_COMPILER "uasm")
@@ -60,7 +82,7 @@ if(WIN32)
         if(NOT CMAKE_ASM_MASM_FLAGS)
             set(CMAKE_ASM_MASM_FLAGS "-win64 -10") #use default compatibility flags
         endif()
-    endif()
+   endif(MINGW)
 else()
     enable_language(ASM)
 endif()
@@ -77,7 +99,7 @@ target_compile_definitions(crashpad_interface INTERFACE
     CRASHPAD_LSS_SOURCE_EMBEDDED
 )
 
-if(MSVC)
+if(WIN32)
     target_compile_definitions(crashpad_interface INTERFACE
         NOMINMAX
         UNICODE
@@ -86,6 +108,8 @@ if(MSVC)
         _HAS_EXCEPTIONS=0
         _UNICODE
     )
+endif()
+if(MSVC)
     string(REGEX REPLACE "/[Ww][0123]" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
     string(REGEX REPLACE "/[Ww][0123]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     target_compile_options(crashpad_interface INTERFACE
@@ -100,10 +124,24 @@ if(MSVC)
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4577> # 'noexcept' used with no exception handling mode specified.
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4996> # 'X' was declared deprecated.
     )
+
+    # WER support is only available starting from Win10 build 10941
+    if("${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}" VERSION_LESS 10.0.19041)
+        message(STATUS "WER support disabled. Needs target platform >= 10.0.19041 (actual: ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})")
+    else()
+        SET(CRASHPAD_WER_ENABLED TRUE)
+        SET(CRASHPAD_WER_ENABLED TRUE PARENT_SCOPE)
+        message(STATUS "WER support enabled")
+    endif()
 elseif(MINGW)
     # redirect to wmain
     # FIXME: cmake 3.13 added target_link_options
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode")
+    if(CRASHPAD_WER_ENABLED)
+        message(STATUS "WER support enabled")
+    else()
+        message(STATUS "WER support disabled. Define CRASHPAD_WER_ENABLED = TRUE to enable.")
+    endif()
 endif()
 add_library(crashpad::interface ALIAS crashpad_interface)
 

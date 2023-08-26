@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -71,6 +71,13 @@ void MachOImageAnnotationsReader::ReadCrashReporterClientAnnotations(
   const process_types::section* crash_info_section =
       image_reader_->GetSectionByName(
           SEG_DATA, "__crash_info", &crash_info_address);
+
+  if (!crash_info_section) {
+    // On macOS 13, under some circumstances, `__crash_info` ends up in the
+    // `__DATA_DIRTY` segment. This is known to happen for `dyld`.
+    crash_info_section = image_reader_->GetSectionByName(
+        "__DATA_DIRTY", "__crash_info", &crash_info_address);
+  }
   if (!crash_info_section) {
     return;
   }

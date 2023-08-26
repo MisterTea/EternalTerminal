@@ -1,4 +1,4 @@
-// Copyright 2020 The Crashpad Authors. All rights reserved.
+// Copyright 2020 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -147,7 +147,7 @@ static void SetNSExceptionAnnotations(NSException* exception,
 
   @try {
     reason = base::SysNSStringToUTF8(exception.reason);
-    static StringAnnotation<512> reasonKey("exceptionReason");
+    static StringAnnotation<1024> reasonKey("exceptionReason");
     reasonKey.Set(reason);
   } @catch (id reason_exception) {
     LOG(ERROR) << "Unable to read uncaught Objective-C exception reason.";
@@ -155,7 +155,7 @@ static void SetNSExceptionAnnotations(NSException* exception,
 
   @try {
     if (exception.userInfo) {
-      static StringAnnotation<512> userInfoKey("exceptionUserInfo");
+      static StringAnnotation<1024> userInfoKey("exceptionUserInfo");
       userInfoKey.Set(base::SysNSStringToUTF8(
           [NSString stringWithFormat:@"%@", exception.userInfo]));
     }
@@ -294,7 +294,7 @@ static __attribute__((noinline)) id HANDLE_UNCAUGHT_NSEXCEPTION(
   SetNSExceptionAnnotations(exception, name, reason);
   LOG(WARNING) << "Handling Objective-C exception name: " << name
                << " reason: " << reason << " with sinkhole: " << sinkhole;
-  NativeCPUContext cpu_context;
+  NativeCPUContext cpu_context{};
   CaptureContext(&cpu_context);
 
   ExceptionPreprocessorState* preprocessor_state =

@@ -29,8 +29,6 @@ set(UNWINDSTACK_SOURCES
     ${UNWINDSTACK_ROOT}/ArmExidx.cpp
     ${UNWINDSTACK_ROOT}/ArmExidx.h
     ${UNWINDSTACK_ROOT}/Check.h
-    #${UNWINDSTACK_ROOT}/DexFile.cpp
-    #${UNWINDSTACK_ROOT}/DexFile.h
     ${UNWINDSTACK_ROOT}/DexFiles.cpp
     ${UNWINDSTACK_ROOT}/DwarfCfa.cpp
     ${UNWINDSTACK_ROOT}/DwarfCfa.h
@@ -49,8 +47,9 @@ set(UNWINDSTACK_SOURCES
     ${UNWINDSTACK_ROOT}/ElfInterfaceArm.h
     ${UNWINDSTACK_ROOT}/Global.cpp
     ${UNWINDSTACK_ROOT}/JitDebug.cpp
-    ${UNWINDSTACK_ROOT}/LocalUnwinder.cpp
-    ${UNWINDSTACK_ROOT}/Log.cpp
+    ${UNWINDSTACK_ROOT}/GlobalDebugImpl.h
+    ${UNWINDSTACK_ROOT}/LogAndroid.cpp
+    ${UNWINDSTACK_ROOT}/LogStdout.cpp
     ${UNWINDSTACK_ROOT}/MapInfo.cpp
     ${UNWINDSTACK_ROOT}/Maps.cpp
     ${UNWINDSTACK_ROOT}/Memory.cpp

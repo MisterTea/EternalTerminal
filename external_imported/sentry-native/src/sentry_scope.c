@@ -118,7 +118,7 @@ sentry__scope_unlock(void)
 }
 
 void
-sentry__scope_flush_unlock()
+sentry__scope_flush_unlock(void)
 {
     sentry__scope_unlock();
     SENTRY_WITH_OPTIONS (options) {
@@ -245,7 +245,7 @@ sentry__get_span_or_transaction(const sentry_scope_t *scope)
 
 #ifdef SENTRY_UNITTEST
 sentry_value_t
-sentry__scope_get_span_or_transaction()
+sentry__scope_get_span_or_transaction(void)
 {
     SENTRY_WITH_SCOPE (scope) {
         return sentry__get_span_or_transaction(scope);

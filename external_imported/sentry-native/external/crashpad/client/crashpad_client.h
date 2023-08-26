@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -15,6 +15,7 @@
 #ifndef CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 #define CRASHPAD_CLIENT_CRASHPAD_CLIENT_H_
 
+#include <functional>
 #include <map>
 #include <set>
 #include <string>
@@ -36,6 +37,10 @@
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
 #include <signal.h>
 #include <ucontext.h>
+#endif
+
+#if BUILDFLAG(IS_IOS)
+#include "client/upload_behavior_ios.h"
 #endif
 
 namespace crashpad {
@@ -461,6 +466,17 @@ class CrashpadClient {
         // BUILDFLAG(IS_CHROMEOS) || DOXYGEN
 
 #if BUILDFLAG(IS_IOS) || DOXYGEN
+  //! \brief Observation callback invoked each time this object finishes
+  //!     processing and attempting to upload on-disk crash reports (whether or
+  //!     not the uploads succeeded).
+  //!
+  //! This callback is copied into this object. Any references or pointers
+  //! inside must outlive this object.
+  //!
+  //! The callback might be invoked on a background thread, so clients must
+  //! synchronize appropriately.
+  using ProcessPendingReportsObservationCallback = std::function<void()>;
+
   //! \brief Configures the process to direct its crashes to the iOS in-process
   //! Crashpad handler.
   //!
@@ -469,11 +485,16 @@ class CrashpadClient {
   //! \param[in] database The path to a Crashpad database.
   //! \param[in] url The URL of an upload server.
   //! \param[in] annotations Process annotations to set in each crash report.
+  //! \param[in] callback Optional callback invoked zero or more times
+  //!     on a background thread each time the handler finishes
+  //!     processing and attempting to upload on-disk crash reports.
+  //!     If this callback is empty, it is not invoked.
   //! \return `true` on success, `false` on failure with a message logged.
   static bool StartCrashpadInProcessHandler(
       const base::FilePath& database,
       const std::string& url,
-      const std::map<std::string, std::string>& annotations);
+      const std::map<std::string, std::string>& annotations,
+      ProcessPendingReportsObservationCallback callback);
 
   //! \brief Requests that the handler convert intermediate dumps into
   //!     minidumps and trigger an upload if possible.
@@ -514,7 +535,12 @@ class CrashpadClient {
   //! on another thread. This method does not block.
   //!
   //! A handler must have already been installed before calling this method.
-  static void StartProcessingPendingReports();
+  //!
+  //! \param[in] upload_behavior Controls when the upload thread will run and
+  //!     process pending reports. By default, only uploads pending reports
+  //!     when the application is active.
+  static void StartProcessingPendingReports(
+      UploadBehavior upload_behavior = UploadBehavior::kUploadWhenAppIsActive);
 
   //! \brief Requests that the handler capture an intermediate dump even though
   //!     there hasn't been a crash. The intermediate dump will be converted
@@ -689,6 +715,21 @@ class CrashpadClient {
   //! \return `true` if the hander startup succeeded, `false` otherwise, and an
   //!     error message will have been logged.
   bool WaitForHandlerStart(unsigned int timeout_ms);
+
+  //! \brief Register a DLL using WerRegisterExceptionModule().
+  //!
+  //! This method should only be called after a successful call to
+  //! SetHandlerIPCPipe() or StartHandler(). The registration is valid for the
+  //! lifetime of this object.
+  //!
+  //! \param[in] full_path The full path to the DLL that will be registered.
+  //!     The DLL path should also be set in an appropriate
+  //!     `Windows Error Reporting` registry key.
+  //!
+  //! \return `true` if the DLL was registered. Note: Windows just stashes the
+  //!     path somewhere so this returns `true` even if the DLL is not yet
+  //!     set in an appropriate registry key, or does not exist.
+  bool RegisterWerModule(const std::wstring& full_path);
 
   //! \brief Requests that the handler capture a dump even though there hasn't
   //!     been a crash.

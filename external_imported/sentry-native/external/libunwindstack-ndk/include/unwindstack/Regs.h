@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_REGS_H
-#define _LIBUNWINDSTACK_REGS_H
+#pragma once
 
 #include <stdint.h>
 #include <unistd.h>
@@ -25,6 +24,7 @@
 #include <vector>
 
 #include <unwindstack/Arch.h>
+#include <unwindstack/Error.h>
 
 namespace unwindstack {
 
@@ -65,6 +65,8 @@ class Regs {
   uint64_t dex_pc() { return dex_pc_; }
   void set_dex_pc(uint64_t dex_pc) { dex_pc_ = dex_pc; }
 
+  virtual void fallback_pc() {}
+
   virtual void ResetPseudoRegisters() {}
   virtual bool SetPseudoRegister(uint16_t, uint64_t) { return false; }
   virtual bool GetPseudoRegister(uint16_t, uint64_t*) { return false; }
@@ -80,7 +82,8 @@ class Regs {
   virtual Regs* Clone() = 0;
 
   static ArchEnum CurrentArch();
-  static Regs* RemoteGet(pid_t pid);
+  static ArchEnum RemoteGetArch(pid_t pid, ErrorCode* error_code = nullptr);
+  static Regs* RemoteGet(pid_t pid, ErrorCode* error_code = nullptr);
   static Regs* CreateFromUcontext(ArchEnum arch, void* ucontext);
   static Regs* CreateFromLocal();
 
@@ -114,5 +117,3 @@ class RegsImpl : public Regs {
 uint64_t GetPcAdjustment(uint64_t rel_pc, Elf* elf, ArchEnum arch);
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_REGS_H

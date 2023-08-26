@@ -2,7 +2,8 @@
 // Shows how to use table to run a test many times with different inputs. Lifted from examples on
 // issue #850.
 
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
 #include <string>
 
 struct TestSubject {
@@ -43,11 +44,11 @@ TEST_CASE("Table allows pre-computed test inputs and outputs", "[example][genera
 
 /* Possible simplifications where less legacy toolchain support is needed:
  *
- * - With libstdc++6 or newer, the make_tuple() calls can be omitted
+ * - With libstdc++6 or newer, the make_tuple() calls can be ommitted
  * (technically C++17 but does not require -std in GCC/Clang). See
  *   https://stackoverflow.com/questions/12436586/tuple-vector-and-initializer-list
  *
- * - In C++17 mode std::tie() and the preceeding variable delcarations can be
+ * - In C++17 mode std::tie() and the preceding variable delcarations can be
  * replaced by structured bindings: auto [test_input, expected] = GENERATE(
  * table<std::string, size_t>({ ...
  */

@@ -1251,7 +1251,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 8B3102D411F0D60300FCF3E4 /* BreakpadDebug.xcconfig */;
 			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				HEADER_SEARCH_PATHS = (
 					../../..,
 					../../../common/mac/include/,
@@ -1264,7 +1264,7 @@
 			isa = XCBuildConfiguration;
 			baseConfigurationReference = 8B3102D511F0D60300FCF3E4 /* BreakpadRelease.xcconfig */;
 			buildSettings = {
-				CLANG_CXX_LANGUAGE_STANDARD = "c++0x";
+				CLANG_CXX_LANGUAGE_STANDARD = "c++17";
 				HEADER_SEARCH_PATHS = (
 					../../..,
 					../../../common/mac/include/,

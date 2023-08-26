@@ -21,12 +21,6 @@
 #include <string>
 #include <utility>
 
-#ifdef WITH_DEBUG_FRAME
-#include <7zCrc.h>
-#include <Xz.h>
-#include <XzCrc64.h>
-#endif
-
 #include <unwindstack/DwarfError.h>
 #include <unwindstack/DwarfSection.h>
 #include <unwindstack/ElfInterface.h>
@@ -39,6 +33,9 @@
 #include "DwarfEhFrame.h"
 #include "DwarfEhFrameWithHdr.h"
 #include "MemoryBuffer.h"
+#ifdef WITH_DEBUG_FRAME
+#include "MemoryXz.h"
+#endif
 #include "Symbols.h"
 
 namespace unwindstack {
@@ -73,82 +70,29 @@ bool ElfInterface::IsValidPc(uint64_t pc) {
   return false;
 }
 
+bool ElfInterface::GetTextRange(uint64_t* addr, uint64_t* size) {
+  if (text_size_ != 0) {
+    *addr = text_addr_;
+    *size = text_size_;
+    return true;
+  }
+  return false;
+}
+
 #ifdef WITH_DEBUG_FRAME
-Memory* ElfInterface::CreateGnuDebugdataMemory() {
+std::unique_ptr<Memory> ElfInterface::CreateGnuDebugdataMemory() {
   if (gnu_debugdata_offset_ == 0 || gnu_debugdata_size_ == 0) {
     return nullptr;
   }
 
-  // TODO: Only call these initialization functions once.
-  CrcGenerateTable();
-  Crc64GenerateTable();
-
-  // Verify the request is not larger than the max size_t value.
-  if (gnu_debugdata_size_ > SIZE_MAX) {
+  auto decompressed =
+      std::make_unique<MemoryXz>(memory_, gnu_debugdata_offset_, gnu_debugdata_size_, GetSoname());
+  if (!decompressed || !decompressed->Init()) {
+    gnu_debugdata_offset_ = 0;
+    gnu_debugdata_size_ = 0;
     return nullptr;
   }
-  size_t initial_buffer_size;
-  if (__builtin_mul_overflow(5, gnu_debugdata_size_, &initial_buffer_size)) {
-    return nullptr;
-  }
-
-  size_t buffer_increment;
-  if (__builtin_mul_overflow(2, gnu_debugdata_size_, &buffer_increment)) {
-    return nullptr;
-  }
-
-  std::unique_ptr<uint8_t[]> src(new (std::nothrow) uint8_t[gnu_debugdata_size_]);
-  if (src.get() == nullptr) {
-    return nullptr;
-  }
-
-  std::unique_ptr<MemoryBuffer> dst(new MemoryBuffer);
-  if (!dst->Resize(initial_buffer_size)) {
-    return nullptr;
-  }
-
-  if (!memory_->ReadFully(gnu_debugdata_offset_, src.get(), gnu_debugdata_size_)) {
-    return nullptr;
-  }
-
-  ISzAlloc alloc;
-  CXzUnpacker state;
-  alloc.Alloc = [](ISzAllocPtr, size_t size) { return malloc(size); };
-  alloc.Free = [](ISzAllocPtr, void* ptr) { return free(ptr); };
-  XzUnpacker_Construct(&state, &alloc);
-
-  int return_val;
-  size_t src_offset = 0;
-  size_t dst_offset = 0;
-  ECoderStatus status;
-  do {
-    size_t src_remaining = gnu_debugdata_size_ - src_offset;
-    size_t dst_remaining = dst->Size() - dst_offset;
-    if (dst_remaining < buffer_increment) {
-      size_t new_size;
-      if (__builtin_add_overflow(dst->Size(), buffer_increment, &new_size) ||
-          !dst->Resize(new_size)) {
-        XzUnpacker_Free(&state);
-        return nullptr;
-      }
-      dst_remaining += buffer_increment;
-    }
-    return_val = XzUnpacker_Code(&state, dst->GetPtr(dst_offset), &dst_remaining, &src[src_offset],
-                                 &src_remaining, true, CODER_FINISH_ANY, &status);
-    src_offset += src_remaining;
-    dst_offset += dst_remaining;
-  } while (return_val == SZ_OK && status == CODER_STATUS_NOT_FINISHED);
-  XzUnpacker_Free(&state);
-  if (return_val != SZ_OK || !XzUnpacker_IsStreamWasFinished(&state)) {
-    return nullptr;
-  }
-
-  // Shrink back down to the exact size.
-  if (!dst->Resize(dst_offset)) {
-    return nullptr;
-  }
-
-  return dst.release();
+  return decompressed;
 }
 #endif
 
@@ -374,7 +318,7 @@ void ElfInterfaceImpl<ElfTypes>::ReadSectionHeaders(const EhdrType& ehdr) {
       }
       symbols_.push_back(new Symbols(shdr.sh_offset, shdr.sh_size, shdr.sh_entsize,
                                      str_shdr.sh_offset, str_shdr.sh_size));
-    } else if (shdr.sh_type == SHT_PROGBITS && sec_size != 0) {
+    } else if ((shdr.sh_type == SHT_PROGBITS || shdr.sh_type == SHT_NOBITS) && sec_size != 0) {
       // Look for the .debug_frame and .gnu_debugdata.
       if (shdr.sh_name < sec_size) {
         std::string name;
@@ -402,6 +346,9 @@ void ElfInterfaceImpl<ElfTypes>::ReadSectionHeaders(const EhdrType& ehdr) {
               data_vaddr_start_ = 0;
               data_vaddr_end_ = 0;
             }
+          } else if (name == ".text") {
+            text_addr_ = shdr.sh_addr;
+            text_size_ = shdr.sh_size;
           }
         }
       }
@@ -478,7 +425,7 @@ std::string ElfInterfaceImpl<ElfTypes>::GetSoname() {
 }
 
 template <typename ElfTypes>
-bool ElfInterfaceImpl<ElfTypes>::GetFunctionName(uint64_t addr, std::string* name,
+bool ElfInterfaceImpl<ElfTypes>::GetFunctionName(uint64_t addr, SharedString* name,
                                                  uint64_t* func_offset) {
   if (symbols_.empty()) {
     return false;

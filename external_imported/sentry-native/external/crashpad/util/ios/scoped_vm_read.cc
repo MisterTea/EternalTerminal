@@ -1,4 +1,4 @@
-// Copyright 2021 The Crashpad Authors. All rights reserved.
+// Copyright 2021 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,42 +20,50 @@ namespace crashpad {
 namespace internal {
 
 ScopedVMReadInternal::ScopedVMReadInternal()
-    : data_(0), vm_read_data_(0), vm_read_data_count_(0) {}
+    : data_(0), region_start_(0), region_size_(0) {}
 
 ScopedVMReadInternal::~ScopedVMReadInternal() {
-  if (data_) {
-    kern_return_t kr =
-        vm_deallocate(mach_task_self(), vm_read_data_, vm_read_data_count_);
-    if (kr != KERN_SUCCESS)
-      CRASHPAD_RAW_LOG_ERROR(kr, "vm_deallocate");
-  }
+  Reset();
 }
 
 bool ScopedVMReadInternal::Read(const void* data, const size_t data_length) {
-  if (data_) {
-    kern_return_t kr =
-        vm_deallocate(mach_task_self(), vm_read_data_, vm_read_data_count_);
-    if (kr != KERN_SUCCESS)
-      CRASHPAD_RAW_LOG_ERROR(kr, "vm_deallocate");
-    data_ = 0;
-  }
+  Reset();
+
   vm_address_t data_address = reinterpret_cast<vm_address_t>(data);
   vm_address_t page_region_address = trunc_page(data_address);
   vm_size_t page_region_size =
       round_page(data_address - page_region_address + data_length);
+  if (page_region_size < data_length) {
+    CRASHPAD_RAW_LOG("ScopedVMRead data_length overflow");
+    return false;
+  }
   kern_return_t kr = vm_read(mach_task_self(),
                              page_region_address,
                              page_region_size,
-                             &vm_read_data_,
-                             &vm_read_data_count_);
+                             &region_start_,
+                             &region_size_);
 
-  if (kr == KERN_SUCCESS) {
-    data_ = vm_read_data_ + (data_address - page_region_address);
-    return true;
-  } else {
+  if (kr != KERN_SUCCESS) {
     // It's expected that this will sometimes fail. Don't log here.
     return false;
   }
+
+  data_ = region_start_ + (data_address - page_region_address);
+  return true;
+}
+
+void ScopedVMReadInternal::Reset() {
+  if (!region_start_) {
+    return;
+  }
+  kern_return_t kr =
+      vm_deallocate(mach_task_self(), region_start_, region_size_);
+  if (kr != KERN_SUCCESS) {
+    CRASHPAD_RAW_LOG_ERROR(kr, "vm_deallocate");
+  }
+  region_start_ = 0;
+  region_size_ = 0;
+  data_ = 0;
 }
 
 }  // namespace internal

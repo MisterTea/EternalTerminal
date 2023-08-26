@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -92,6 +92,11 @@ enum MinidumpStreamType : uint32_t {
   //!
   //! \sa MemoryInfoListStream
   kMinidumpStreamTypeMemoryInfoList = MemoryInfoListStream,
+
+  //! \brief The stream type for MINIDUMP_THREAD_NAME_LIST.
+  //!
+  //! \sa ThreadNamesStream
+  kMinidumpStreamTypeThreadNameList = ThreadNamesStream,
 
   //! \brief The last reserved minidump stream.
   //!
@@ -447,8 +452,9 @@ struct ALIGNAS(4) PACKED MinidumpCrashpadInfo {
         report_id(),
         client_id(),
         simple_annotations(),
-        module_list() {
-    }
+        module_list(),
+        reserved(),
+        address_mask() {}
 
   //! \brief The structure’s currently-defined version number.
   //!
@@ -502,6 +508,28 @@ struct ALIGNAS(4) PACKED MinidumpCrashpadInfo {
   //!
   //! This field is present when #version is at least `1`.
   MINIDUMP_LOCATION_DESCRIPTOR module_list;
+
+  //! \brief This field is always `0`.
+  uint32_t reserved;
+
+  //! \brief A mask indicating the range of valid addresses for a pointer.
+  //!
+  //! ARM64 supports MTE, TBI and PAC masking, generally in the upper bits of
+  //! a pointer. This mask can be used by LLDB to mimic ptrauth_strip and strip
+  //! the pointer authentication codes. To recover `pointer` in userland on
+  //! Darwin, `pointer & (~mask)`. In the case of code running in high memory,
+  //! where bit 55 is set (indicating that all of the high bits should be set
+  //! to 1), `pointer | mask`. See ABIMacOSX_arm64::FixAddress for more details
+  //! here:
+  //! https://github.com/llvm/llvm-project/blob/001d18664f8bcf63af64f10688809f7681dfbf0b/lldb/source/Plugins/ABI/AArch64/ABIMacOSX_arm64.cpp#L817-L830
+  //!
+  //! If the platform does not support pointer authentication, or the range of
+  //! valid addressees for a pointer was inaccessible, this field will be 0 and
+  //! should be ignored.
+  //!
+  //! This field is present when #version is at least `1`, if the size of the
+  //! structure is large enough to accommodate it.
+  uint64_t address_mask;
 };
 
 #if defined(COMPILER_MSVC)

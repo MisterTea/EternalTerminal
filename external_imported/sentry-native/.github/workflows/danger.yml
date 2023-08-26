@@ -1,0 +1,9 @@
+name: Danger
+
+on:
+  pull_request:
+    types: [opened, synchronize, reopened, edited, ready_for_review]
+
+jobs:
+  danger:
+    uses: getsentry/github-workflows/.github/workflows/danger.yml@v2

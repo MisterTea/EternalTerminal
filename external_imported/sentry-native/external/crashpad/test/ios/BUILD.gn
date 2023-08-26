@@ -1,4 +1,4 @@
-# Copyright 2020 The Crashpad Authors. All rights reserved.
+# Copyright 2020 The Crashpad Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -70,6 +70,7 @@ source_set("xcuitests") {
   deps = [
     "../../build:ios_enable_arc",
     "../../build:ios_xctest",
+    "../../client:common",
     "../../test/ios/host:app_shared_sources",
     "../../third_party/edo",
     "../../util",

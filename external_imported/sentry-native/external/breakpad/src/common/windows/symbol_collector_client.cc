@@ -70,16 +70,32 @@ namespace google_breakpad {
       int* timeout_ms,
       const wstring& upload_key,
       const wstring& debug_file,
-      const wstring& debug_id) {
+      const wstring& debug_id,
+      const wstring& type,
+      const wstring& product_name) {
     wstring url = api_url +
         L"/v1/uploads/" + upload_key + L":complete"
         L"?key=" + api_key;
     wstring body =
         L"{ symbol_id: {"
-        L"debug_file: \"" + debug_file + L"\", "
-        L"debug_id: \"" + debug_id + L"\" "
-        L"}, "
-        L"use_async_processing: true }";
+        L"debug_file: \"" +
+        debug_file +
+        L"\", "
+        L"debug_id: \"" +
+        debug_id +
+        L"\" "
+        L"}, ";
+    if (!product_name.empty()) {
+      body +=
+          L"metadata: {"
+          L"product_name: \"" +
+          product_name +
+          L"\""
+          L"},";
+    }
+    body += L"symbol_upload_type: \"" + type +
+            L"\", "
+            L"use_async_processing: true }";
     wstring response;
     int response_code;
 

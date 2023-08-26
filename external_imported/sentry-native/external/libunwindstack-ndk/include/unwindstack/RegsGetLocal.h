@@ -26,8 +26,7 @@
  * SUCH DAMAGE.
  */
 
-#ifndef _LIBUNWINDSTACK_REGS_GET_LOCAL_H
-#define _LIBUNWINDSTACK_REGS_GET_LOCAL_H
+#pragma once
 
 namespace unwindstack {
 
@@ -81,6 +80,51 @@ inline __attribute__((__always_inline__)) void AsmGetRegs(void* reg_data) {
       : "x12", "x13", "memory");
 }
 
+#ifdef SENTRY_REMOVED
+
+inline __attribute__((__always_inline__)) void AsmGetRegs(void* reg_data) {
+  asm volatile(
+      "1:\n"
+      "sd ra, 8(%[base])\n"
+      "sd sp, 16(%[base])\n"
+      "sd gp, 24(%[base])\n"
+      "sd tp, 32(%[base])\n"
+      "sd t0, 40(%[base])\n"
+      "sd t1, 48(%[base])\n"
+      "sd t2, 56(%[base])\n"
+      "sd s0, 64(%[base])\n"
+      "sd s1, 72(%[base])\n"
+      "sd a0, 80(%[base])\n"
+      "sd a1, 88(%[base])\n"
+      "sd a2, 96(%[base])\n"
+      "sd a3, 104(%[base])\n"
+      "sd a4, 112(%[base])\n"
+      "sd a5, 120(%[base])\n"
+      "sd a6, 128(%[base])\n"
+      "sd a7, 136(%[base])\n"
+      "sd s2, 144(%[base])\n"
+      "sd s3, 152(%[base])\n"
+      "sd s4, 160(%[base])\n"
+      "sd s5, 168(%[base])\n"
+      "sd s6, 176(%[base])\n"
+      "sd s7, 184(%[base])\n"
+      "sd s8, 192(%[base])\n"
+      "sd s9, 200(%[base])\n"
+      "sd s10, 208(%[base])\n"
+      "sd s11, 216(%[base])\n"
+      "sd t3, 224(%[base])\n"
+      "sd t4, 232(%[base])\n"
+      "sd t5, 240(%[base])\n"
+      "sd t6, 248(%[base])\n"
+      "la t1, 1b\n"
+      "sd t1, 0(%[base])\n"
+      : [base] "+r"(reg_data)
+      :
+      : "t1", "memory");
+}
+
+#endif // SENTRY_REMOVED
+
 #elif defined(__i386__) || defined(__x86_64__)
 
 extern "C" void AsmGetRegs(void* regs);
@@ -91,7 +135,4 @@ inline __attribute__((__always_inline__)) void RegsGetLocal(Regs* regs) {
   AsmGetRegs(regs->RawData());
 }
 
-
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_REGS_GET_LOCAL_H

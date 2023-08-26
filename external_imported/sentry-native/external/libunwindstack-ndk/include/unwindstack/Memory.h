@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MEMORY_H
-#define _LIBUNWINDSTACK_MEMORY_H
+#pragma once
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -26,6 +25,8 @@
 
 namespace unwindstack {
 
+class MemoryCacheBase;
+
 class Memory {
  public:
   Memory() = default;
@@ -33,15 +34,20 @@ class Memory {
 
   static std::shared_ptr<Memory> CreateProcessMemory(pid_t pid);
   static std::shared_ptr<Memory> CreateProcessMemoryCached(pid_t pid);
+  static std::shared_ptr<Memory> CreateProcessMemoryThreadCached(pid_t pid);
   static std::shared_ptr<Memory> CreateOfflineMemory(const uint8_t* data, uint64_t start,
                                                      uint64_t end);
-  static std::unique_ptr<Memory> CreateFileMemory(const std::string& path, uint64_t offset);
+  static std::unique_ptr<Memory> CreateFileMemory(const std::string& path, uint64_t offset,
+                                                  uint64_t size = UINT64_MAX);
+
+  virtual MemoryCacheBase* AsMemoryCacheBase() { return nullptr; }
 
   virtual bool ReadString(uint64_t addr, std::string* dst, size_t max_read);
 
   virtual void Clear() {}
 
-  virtual bool IsLocal() const { return false; }
+  // Get pointer to directly access the data for buffers that support it.
+  virtual uint8_t* GetPtr(size_t /*addr*/ = 0) { return nullptr; }
 
   virtual size_t Read(uint64_t addr, void* dst, size_t size) = 0;
   virtual long ReadTag(uint64_t) { return -1; }
@@ -58,5 +64,3 @@ class Memory {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MEMORY_H

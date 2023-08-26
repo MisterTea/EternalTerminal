@@ -120,12 +120,11 @@ SENTRY_TEST(procmaps_parser)
 #endif
 }
 
-SENTRY_TEST(buildid_fallback)
+#ifdef SENTRY_PLATFORM_LINUX
+static void
+parse_elf_and_check_code_and_build_id(const char *rel_elf_path,
+    const char *expected_code_id, const char *expected_debug_id)
 {
-    // skipping this on android because it does not have access to the fixtures
-#if !defined(SENTRY_PLATFORM_LINUX) || defined(SENTRY_PLATFORM_ANDROID)
-    SKIP_TEST();
-#else
     sentry_path_t *path = sentry__path_from_str(__FILE__);
     sentry_path_t *dir = sentry__path_dir(path);
     sentry__path_free(path);
@@ -135,72 +134,55 @@ SENTRY_TEST(buildid_fallback)
     size_t *file_size = &module.mappings[0].size;
     char **buf = (char **)&module.mappings[0].addr;
 
-    sentry_value_t with_id_val = sentry_value_new_object();
-    sentry_path_t *with_id_path
-        = sentry__path_join_str(dir, "../fixtures/with-buildid.so");
-    *buf = sentry__path_read_to_buffer(with_id_path, file_size);
-    sentry__path_free(with_id_path);
+    sentry_value_t value = sentry_value_new_object();
+    sentry_path_t *elf_path = sentry__path_join_str(dir, rel_elf_path);
+    *buf = sentry__path_read_to_buffer(elf_path, file_size);
+    sentry__path_free(elf_path);
 
-    TEST_CHECK(sentry__procmaps_read_ids_from_elf(with_id_val, &module));
+    TEST_CHECK(sentry__procmaps_read_ids_from_elf(value, &module));
     sentry_free(*buf);
-
-    TEST_CHECK_STRING_EQUAL(
-        sentry_value_as_string(sentry_value_get_by_key(with_id_val, "code_id")),
-        "1c304742f114215453a8a777f6cdb3a2b8505e11");
-    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
-                                with_id_val, "debug_id")),
-        "4247301c-14f1-5421-53a8-a777f6cdb3a2");
-    sentry_value_decref(with_id_val);
-
-    sentry_value_t x86_exe_val = sentry_value_new_object();
-    sentry_path_t *x86_exe_path
-        = sentry__path_join_str(dir, "../fixtures/sentry_example");
-    *buf = sentry__path_read_to_buffer(x86_exe_path, file_size);
-    sentry__path_free(x86_exe_path);
-
-    TEST_CHECK(sentry__procmaps_read_ids_from_elf(x86_exe_val, &module));
-    sentry_free(*buf);
-
-    TEST_CHECK_STRING_EQUAL(
-        sentry_value_as_string(sentry_value_get_by_key(x86_exe_val, "code_id")),
-        "b4c24a6cc995c17fb18a65184a65863cfc01c673");
-    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
-                                x86_exe_val, "debug_id")),
-        "6c4ac2b4-95c9-7fc1-b18a-65184a65863c");
-    sentry_value_decref(x86_exe_val);
-
-    sentry_value_t without_id_val = sentry_value_new_object();
-    sentry_path_t *without_id_path
-        = sentry__path_join_str(dir, "../fixtures/without-buildid.so");
-    *buf = sentry__path_read_to_buffer(without_id_path, file_size);
-    sentry__path_free(without_id_path);
-
-    TEST_CHECK(sentry__procmaps_read_ids_from_elf(without_id_val, &module));
-    sentry_free(*buf);
-
-    TEST_CHECK(sentry_value_is_null(
-        sentry_value_get_by_key(without_id_val, "code_id")));
-    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
-                                without_id_val, "debug_id")),
-        "29271919-a2ef-129d-9aac-be85a0948d9c");
-    sentry_value_decref(without_id_val);
-
-    sentry_value_t x86_lib_val = sentry_value_new_object();
-    sentry_path_t *x86_lib_path
-        = sentry__path_join_str(dir, "../fixtures/libstdc++.so");
-    *buf = sentry__path_read_to_buffer(x86_lib_path, file_size);
-    sentry__path_free(x86_lib_path);
-
-    TEST_CHECK(sentry__procmaps_read_ids_from_elf(x86_lib_val, &module));
-    sentry_free(*buf);
-
-    TEST_CHECK(
-        sentry_value_is_null(sentry_value_get_by_key(x86_lib_val, "code_id")));
-    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(sentry_value_get_by_key(
-                                x86_lib_val, "debug_id")),
-        "7fa824da-38f1-b87c-04df-718fda64990c");
-    sentry_value_decref(x86_lib_val);
-
     sentry__path_free(dir);
+
+    if (expected_code_id) {
+        TEST_CHECK_STRING_EQUAL(
+            sentry_value_as_string(sentry_value_get_by_key(value, "code_id")),
+            expected_code_id);
+    } else {
+        TEST_CHECK(
+            sentry_value_is_null(sentry_value_get_by_key(value, "code_id")));
+    }
+
+    // The debug-id should always be non-NULL
+    TEST_CHECK_STRING_EQUAL(
+        sentry_value_as_string(sentry_value_get_by_key(value, "debug_id")),
+        expected_debug_id);
+
+    sentry_value_decref(value);
+}
+#endif
+
+SENTRY_TEST(build_id_parser)
+{
+    // skipping this on android because it does not have access to the fixtures
+#if !defined(SENTRY_PLATFORM_LINUX) || defined(SENTRY_PLATFORM_ANDROID)
+    SKIP_TEST();
+#else
+    parse_elf_and_check_code_and_build_id("../fixtures/with-buildid.so",
+        "1c304742f114215453a8a777f6cdb3a2b8505e11",
+        "4247301c-14f1-5421-53a8-a777f6cdb3a2");
+
+    parse_elf_and_check_code_and_build_id("../fixtures/without-buildid-phdr.so",
+        "1c304742f114215453a8a777f6cdb3a2b8505e11",
+        "4247301c-14f1-5421-53a8-a777f6cdb3a2");
+
+    parse_elf_and_check_code_and_build_id("../fixtures/sentry_example",
+        "b4c24a6cc995c17fb18a65184a65863cfc01c673",
+        "6c4ac2b4-95c9-7fc1-b18a-65184a65863c");
+
+    parse_elf_and_check_code_and_build_id("../fixtures/without-buildid.so",
+        NULL, "29271919-a2ef-129d-9aac-be85a0948d9c");
+
+    parse_elf_and_check_code_and_build_id("../fixtures/libstdc++.so", NULL,
+        "7fa824da-38f1-b87c-04df-718fda64990c");
 #endif
 }

@@ -1,5 +1,4 @@
-// Copyright (c) 2010, Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -48,6 +47,7 @@ namespace {
 
 using google_breakpad::Minidump;
 using google_breakpad::MinidumpContext;
+using google_breakpad::MinidumpCrashpadInfo;
 using google_breakpad::MinidumpException;
 using google_breakpad::MinidumpMemoryInfo;
 using google_breakpad::MinidumpMemoryInfoList;
@@ -129,6 +129,42 @@ TEST_F(MinidumpTest, TestMinidumpFromStream) {
   ASSERT_NE(header, (MDRawHeader*)NULL);
   ASSERT_EQ(header->signature, uint32_t(MD_HEADER_SIGNATURE));
   //TODO: add more checks here
+}
+
+TEST_F(MinidumpTest, TestMinidumpWithCrashpadAnnotations) {
+  string crashpad_minidump_file =
+      string(getenv("srcdir") ? getenv("srcdir") : ".") +
+      "/src/processor/testdata/minidump_crashpad_annotation.dmp";
+
+  Minidump minidump(crashpad_minidump_file);
+  ASSERT_EQ(minidump.path(), crashpad_minidump_file);
+  ASSERT_TRUE(minidump.Read());
+
+  MinidumpCrashpadInfo* crashpad_info = minidump.GetCrashpadInfo();
+  ASSERT_TRUE(crashpad_info != NULL);
+
+  const std::vector<std::vector<MinidumpCrashpadInfo::AnnotationObject>>*
+      annotation_objects_list =
+          crashpad_info->GetModuleCrashpadInfoAnnotationObjects();
+  ASSERT_EQ(2U, annotation_objects_list->size());
+
+  std::vector<MinidumpCrashpadInfo::AnnotationObject> annotation_objects =
+      annotation_objects_list->at(0);
+  ASSERT_EQ(5U, annotation_objects.size());
+
+  std::vector<std::string> annotation_names;
+  for (size_t i = 0; i < annotation_objects.size(); i++) {
+    MinidumpCrashpadInfo::AnnotationObject annotation_object =
+        annotation_objects.at(i);
+    annotation_names.push_back(annotation_object.name);
+    ASSERT_TRUE(annotation_object.type > 0);
+    ASSERT_TRUE(annotation_object.value.size() > 0);
+  }
+
+  std::vector<std::string> expected_strings{
+      "exceptionReason", "exceptionName", "firstexception_bt", "firstexception",
+      "CounterAnnotation"};
+  ASSERT_EQ(annotation_names, expected_strings);
 }
 
 TEST(Dump, ReadBackEmpty) {

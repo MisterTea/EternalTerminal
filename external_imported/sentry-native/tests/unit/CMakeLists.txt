@@ -24,6 +24,7 @@ add_executable(sentry_test_unit
 	test_envelopes.c
 	test_failures.c
 	test_fuzzfailures.c
+	test_info.c
 	test_logger.c
 	test_modulefinder.c
 	test_mpack.c
@@ -53,6 +54,7 @@ target_link_libraries(sentry_test_unit PRIVATE
 	${SENTRY_LINK_LIBRARIES}
 	${SENTRY_INTERFACE_LINK_LIBRARIES}
 	"$<$<PLATFORM_ID:Linux>:rt>"
+	"$<$<OR:$<PLATFORM_ID:Linux>,$<PLATFORM_ID:Android>>:-Wl,-E,--build-id=sha1>"
 )
 
 if(MINGW)

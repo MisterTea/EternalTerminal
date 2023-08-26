@@ -1,5 +1,4 @@
-// Copyright (c) 2010, Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -254,8 +253,9 @@ TEST_F(Scope, RegsLackRA) {
   cfi.SetCFARule("42740329");
   cfi.SetRARule("27045204");
   cfi.SetRegisterRule("$r1", ".ra");
-  ASSERT_FALSE(cfi.FindCallerRegs<uint64_t>(registers, memory,
-                                             &caller_registers));
+  ASSERT_TRUE(cfi.FindCallerRegs<uint64_t>(registers, memory,
+                                           &caller_registers));
+  ASSERT_EQ(caller_registers.end(), caller_registers.find("$r1"));
 }
 
 // Register rules can see the current frame's register values.
@@ -439,6 +439,7 @@ TEST_F(ParseHandler, RegisterRules) {
   handler.RARule("reg-for-ra");
   handler.RegisterRule("reg1", "reg-for-reg1");
   handler.RegisterRule("reg2", "reg-for-reg2");
+  handler.RegisterRule("reg3", "reg3");
   registers["reg-for-cfa"] = 0x268a9a4a3821a797ULL;
   registers["reg-for-ra"] = 0x6301b475b8b91c02ULL;
   registers["reg-for-reg1"] = 0x06cde8e2ff062481ULL;
@@ -449,6 +450,7 @@ TEST_F(ParseHandler, RegisterRules) {
   ASSERT_EQ(0x6301b475b8b91c02ULL, caller_registers[".ra"]);
   ASSERT_EQ(0x06cde8e2ff062481ULL, caller_registers["reg1"]);
   ASSERT_EQ(0xff0c4f76403173e2ULL, caller_registers["reg2"]);
+  ASSERT_EQ(caller_registers.end(), caller_registers.find("reg3"));
 }
 
 struct SimpleCFIWalkerFixture {

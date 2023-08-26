@@ -122,3 +122,29 @@ if(NOT IOS)
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
     )
 endif()
+
+if(CRASHPAD_WER_ENABLED)
+    add_library(crashpad_wer SHARED
+        win/wer/crashpad_wer.cc
+        win/wer/crashpad_wer.h
+        win/wer/crashpad_wer.def
+        win/wer/crashpad_wer_main.cc
+        ../util/misc/address_types.h
+        ../util/win/address_types.h
+        ../util/win/registration_protocol_win.h
+    )
+
+    target_link_libraries(crashpad_wer
+        PRIVATE
+            $<BUILD_INTERFACE:crashpad_interface>
+            $<BUILD_INTERFACE:crashpad_compat>
+    )
+
+    set_property(TARGET crashpad_wer PROPERTY EXPORT_NAME crashpad_wer)
+    set_property(TARGET crashpad_wer PROPERTY PREFIX "") # ensure MINGW doesn't prefix "lib" to dll name
+    add_library(crashpad::wer ALIAS crashpad_wer)
+
+    install(TARGETS crashpad_wer EXPORT crashpad_export
+        RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"
+    )
+endif()

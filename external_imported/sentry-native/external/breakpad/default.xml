@@ -20,11 +20,6 @@
            revision='refs/heads/main'
            remote='chromium' />
 
-  <project path='src/src/tools/gyp'
-           name='external/gyp/'
-           revision='324dd166b7c0b39d513026fa52d6280ac6d56770'
-           remote='chromium' />
-
   <project path='src/src/testing'
            name='google/googletest.git'
            revision='refs/tags/release-1.11.0'
@@ -32,7 +27,7 @@
 
   <project path='src/src/third_party/lss'
            name='linux-syscall-support/'
-           revision='e1e7b0ad8ee99a875b272c8e33e308472e897660'
+           revision='9719c1e1e676814c456b55f5f070eabad6709d31'
            remote='chromium' />
 
   <project path='src/src/third_party/protobuf/protobuf'

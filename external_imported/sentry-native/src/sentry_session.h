@@ -8,13 +8,6 @@
 
 struct sentry_jsonwriter_s;
 
-typedef enum {
-    SENTRY_SESSION_STATUS_OK,
-    SENTRY_SESSION_STATUS_CRASHED,
-    SENTRY_SESSION_STATUS_ABNORMAL,
-    SENTRY_SESSION_STATUS_EXITED,
-} sentry_session_status_t;
-
 /**
  * This represents a session, with the number of errors, a status and other
  * metadata.

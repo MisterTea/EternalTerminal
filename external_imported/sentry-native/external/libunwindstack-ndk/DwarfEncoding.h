@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_DWARF_ENCODING_H
-#define _LIBUNWINDSTACK_DWARF_ENCODING_H
+#pragma once
 
 #include <stdint.h>
 
@@ -47,5 +46,3 @@ enum DwarfEncoding : uint8_t {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_DWARF_ENCODING_H

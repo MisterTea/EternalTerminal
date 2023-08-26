@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_ERROR_H
-#define _LIBUNWINDSTACK_ERROR_H
+#pragma once
 
 #include <stdint.h>
 
@@ -41,6 +40,11 @@ enum ErrorCode : uint8_t {
                                 // not exist.
   ERROR_THREAD_TIMEOUT,         // Timeout trying to unwind a local thread.
   ERROR_SYSTEM_CALL,            // System call failed while unwinding.
+  ERROR_BAD_ARCH,               // Arch invalid (none, or mismatched).
+  ERROR_MAPS_PARSE,             // Failed to parse maps data.
+  ERROR_INVALID_PARAMETER,      // Invalid parameter passed to function.
+  ERROR_PTRACE_CALL,            // Ptrace call failed while unwinding.
+  ERROR_MAX = ERROR_INVALID_PARAMETER,
 };
 
 static inline const char* GetErrorCodeString(ErrorCode error) {
@@ -67,6 +71,14 @@ static inline const char* GetErrorCodeString(ErrorCode error) {
       return "Thread Timeout";
     case ERROR_SYSTEM_CALL:
       return "System Call Failed";
+    case ERROR_BAD_ARCH:
+      return "Invalid arch detected";
+    case ERROR_MAPS_PARSE:
+      return "Failed to parse maps";
+    case ERROR_INVALID_PARAMETER:
+      return "Invalid parameter";
+    case ERROR_PTRACE_CALL:
+      return "Ptrace Call Failed";
   }
 }
 
@@ -77,5 +89,3 @@ struct ErrorData {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_ERROR_H

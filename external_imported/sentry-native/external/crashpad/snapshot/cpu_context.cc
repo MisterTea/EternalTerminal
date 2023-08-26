@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -189,6 +189,35 @@ uint64_t CPUContext::StackPointer() const {
     default:
       NOTREACHED();
       return ~0ull;
+  }
+}
+
+uint64_t CPUContext::ShadowStackPointer() const {
+  switch (architecture) {
+    case kCPUArchitectureX86:
+    case kCPUArchitectureARM:
+    case kCPUArchitectureARM64:
+      NOTREACHED();
+      return 0;
+    case kCPUArchitectureX86_64:
+      return x86_64->xstate.cet_u.ssp;
+    default:
+      NOTREACHED();
+      return ~0ull;
+  }
+}
+
+bool CPUContext::HasShadowStack() const {
+  switch (architecture) {
+    case kCPUArchitectureX86:
+    case kCPUArchitectureARM:
+    case kCPUArchitectureARM64:
+      return false;
+    case kCPUArchitectureX86_64:
+      return x86_64->xstate.cet_u.cetmsr != 0;
+    default:
+      NOTREACHED();
+      return false;
   }
 }
 

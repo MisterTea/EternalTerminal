@@ -1,5 +1,4 @@
-// Copyright (c) 2011 Google Inc.
-// All rights reserved.
+// Copyright 2011 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -92,7 +91,7 @@ TYPED_TEST(DumpSymbols, Invalid) {
   Elf32_Ehdr header;
   memset(&header, 0, sizeof(header));
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false);
   EXPECT_FALSE(ReadSymbolDataInternal(reinterpret_cast<uint8_t*>(&header),
                                       "foo",
                                       "Linux",
@@ -129,7 +128,7 @@ TYPED_TEST(DumpSymbols, SimplePublic) {
   this->GetElfContents(elf);
 
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false);
   EXPECT_TRUE(ReadSymbolDataInternal(this->elfdata,
                                      "foo",
                                      "Linux",
@@ -186,7 +185,7 @@ TYPED_TEST(DumpSymbols, SimpleBuildID) {
   this->GetElfContents(elf);
 
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false);
   EXPECT_TRUE(ReadSymbolDataInternal(this->elfdata,
                                      "foo",
                                      "Linux",

@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -23,6 +23,7 @@
 #include "minidump/minidump_extensions.h"
 #include "snapshot/memory_map_region_snapshot.h"
 #include "snapshot/minidump/minidump_simple_string_dictionary_reader.h"
+#include "snapshot/minidump/minidump_string_reader.h"
 #include "util/file/file_io.h"
 
 namespace crashpad {
@@ -265,7 +266,10 @@ bool ProcessSnapshotMinidump::InitializeCrashpadInfo() {
     return true;
   }
 
-  if (stream_it->second->DataSize < sizeof(crashpad_info_)) {
+  constexpr size_t crashpad_info_min_size =
+      offsetof(decltype(crashpad_info_), reserved);
+  size_t remaining_data_size = stream_it->second->DataSize;
+  if (remaining_data_size < crashpad_info_min_size) {
     LOG(ERROR) << "crashpad_info size mismatch";
     return false;
   }
@@ -274,8 +278,33 @@ bool ProcessSnapshotMinidump::InitializeCrashpadInfo() {
     return false;
   }
 
-  if (!file_reader_->ReadExactly(&crashpad_info_, sizeof(crashpad_info_))) {
+  if (!file_reader_->ReadExactly(&crashpad_info_, crashpad_info_min_size)) {
     return false;
+  }
+  remaining_data_size -= crashpad_info_min_size;
+
+  // Read `reserved` if available.
+  size_t crashpad_reserved_size = sizeof(crashpad_info_.reserved);
+  if (remaining_data_size >= crashpad_reserved_size) {
+    if (!file_reader_->ReadExactly(&crashpad_info_.reserved,
+                                   crashpad_reserved_size)) {
+      return false;
+    }
+    remaining_data_size -= crashpad_reserved_size;
+  } else {
+    crashpad_info_.reserved = 0;
+  }
+
+  // Read `address_mask` if available.
+  size_t crashpad_address_mask_size = sizeof(crashpad_info_.address_mask);
+  if (remaining_data_size >= crashpad_address_mask_size) {
+    if (!file_reader_->ReadExactly(&crashpad_info_.address_mask,
+                                   crashpad_address_mask_size)) {
+      return false;
+    }
+    remaining_data_size -= crashpad_address_mask_size;
+  } else {
+    crashpad_info_.address_mask = 0;
   }
 
   if (crashpad_info_.version != MinidumpCrashpadInfo::kVersion) {
@@ -576,16 +605,75 @@ bool ProcessSnapshotMinidump::InitializeThreads() {
     return false;
   }
 
+  if (!InitializeThreadNames()) {
+    return false;
+  }
+
   for (uint32_t thread_index = 0; thread_index < thread_count; ++thread_index) {
     const RVA thread_rva = stream_it->second->Rva + sizeof(thread_count) +
                            thread_index * sizeof(MINIDUMP_THREAD);
 
     auto thread = std::make_unique<internal::ThreadSnapshotMinidump>();
-    if (!thread->Initialize(file_reader_, thread_rva, arch_)) {
+    if (!thread->Initialize(file_reader_, thread_rva, arch_, thread_names_)) {
       return false;
     }
 
     threads_.push_back(std::move(thread));
+  }
+
+  return true;
+}
+
+bool ProcessSnapshotMinidump::InitializeThreadNames() {
+  const auto& stream_it = stream_map_.find(kMinidumpStreamTypeThreadNameList);
+  if (stream_it == stream_map_.end()) {
+    return true;
+  }
+
+  if (stream_it->second->DataSize < sizeof(MINIDUMP_THREAD_NAME_LIST)) {
+    LOG(ERROR) << "thread_name_list size mismatch";
+    return false;
+  }
+
+  if (!file_reader_->SeekSet(stream_it->second->Rva)) {
+    return false;
+  }
+
+  uint32_t thread_name_count;
+  if (!file_reader_->ReadExactly(&thread_name_count,
+                                 sizeof(thread_name_count))) {
+    return false;
+  }
+
+  if (sizeof(MINIDUMP_THREAD_NAME_LIST) +
+          thread_name_count * sizeof(MINIDUMP_THREAD_NAME) !=
+      stream_it->second->DataSize) {
+    LOG(ERROR) << "thread_name_list size mismatch";
+    return false;
+  }
+
+  for (uint32_t thread_name_index = 0; thread_name_index < thread_name_count;
+       ++thread_name_index) {
+    const RVA thread_name_rva =
+        stream_it->second->Rva + sizeof(thread_name_count) +
+        thread_name_index * sizeof(MINIDUMP_THREAD_NAME);
+    if (!file_reader_->SeekSet(thread_name_rva)) {
+      return false;
+    }
+    MINIDUMP_THREAD_NAME minidump_thread_name;
+    if (!file_reader_->ReadExactly(&minidump_thread_name,
+                                   sizeof(minidump_thread_name))) {
+      return false;
+    }
+    std::string name;
+    if (!internal::ReadMinidumpUTF16String(
+            file_reader_, minidump_thread_name.RvaOfThreadName, &name)) {
+      return false;
+    }
+
+    // See https://gcc.gnu.org/bugzilla/show_bug.cgi?id=36566
+    const uint32_t thread_id = minidump_thread_name.ThreadId;
+    thread_names_.emplace(thread_id, std::move(name));
   }
 
   return true;

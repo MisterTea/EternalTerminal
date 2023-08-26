@@ -6,7 +6,7 @@ from .cmake import CMake
 
 
 def enumerate_unittests():
-    regexp = re.compile("XX\((.*?)\)")
+    regexp = re.compile(r"XX\((.*?)\)")
     # TODO: actually generate the `tests.inc` file with python
     curdir = os.path.dirname(os.path.realpath(__file__))
     with open(os.path.join(curdir, "unit/tests.inc"), "r") as testsfile:
@@ -28,3 +28,18 @@ def cmake(tmp_path_factory):
     yield cmake.compile
 
     cmake.destroy()
+
+
+def pytest_addoption(parser):
+    parser.addoption(
+        "--with_crashpad_wer",
+        action="store_true",
+        help="Enables tests for the crashpad WER module on Windows",
+    )
+
+
+def pytest_runtest_setup(item):
+    if "with_crashpad_wer" in item.keywords and not item.config.getoption(
+        "--with_crashpad_wer"
+    ):
+        pytest.skip("need --with_crashpad_wer to run this test")

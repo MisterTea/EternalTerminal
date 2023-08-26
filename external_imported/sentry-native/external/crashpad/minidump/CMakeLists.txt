@@ -38,6 +38,8 @@ add_library(crashpad_minidump STATIC
     minidump_system_info_writer.h
     minidump_thread_id_map.cc
     minidump_thread_id_map.h
+    minidump_thread_name_list_writer.cc
+    minidump_thread_name_list_writer.h
     minidump_thread_writer.cc
     minidump_thread_writer.h
     minidump_unloaded_module_writer.cc

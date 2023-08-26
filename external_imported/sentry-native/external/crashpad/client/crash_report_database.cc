@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -28,12 +28,13 @@ namespace {
 constexpr base::FilePath::CharType kAttachmentsDirectory[] =
     FILE_PATH_LITERAL("attachments");
 
-bool AttachmentNameIsOK(const std::string& name) {
-  for (const char c : name) {
-    if (c != '_' && c != '-' && c != '.' && !isalnum(c))
-      return false;
-  }
-  return true;
+std::string FixAttachmentName(std::string name) {
+  std::replace_if(name.begin(), name.end(), [&](char c) 
+  { 
+      return c != '_' && c != '-' && c != '.' && !isalnum(c);
+  }, '_');
+  
+  return name;
 }
 }  // namespace
 
@@ -94,19 +95,15 @@ FileReaderInterface* CrashReportDatabase::NewReport::Reader() {
 
 FileWriter* CrashReportDatabase::NewReport::AddAttachment(
     const std::string& name) {
-  if (!AttachmentNameIsOK(name)) {
-    LOG(ERROR) << "invalid name for attachment " << name;
-    return nullptr;
-  }
   base::FilePath report_attachments_dir = database_->AttachmentsPath(uuid_);
   if (!LoggingCreateDirectory(
           report_attachments_dir, FilePermissions::kOwnerOnly, true)) {
     return nullptr;
   }
 #if BUILDFLAG(IS_WIN)
-  const std::wstring name_string = base::UTF8ToWide(name);
+  const std::wstring name_string = base::UTF8ToWide(FixAttachmentName(name));
 #else
-  const std::string name_string = name;
+  const std::string name_string = FixAttachmentName(name);
 #endif
   base::FilePath attachment_path = report_attachments_dir.Append(name_string);
   auto writer = std::make_unique<FileWriter>();

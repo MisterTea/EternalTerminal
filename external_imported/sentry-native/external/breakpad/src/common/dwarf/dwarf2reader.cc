@@ -1,4 +1,4 @@
-// Copyright (c) 2010 Google Inc. All Rights Reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -10,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -37,6 +37,7 @@
 #include <stdio.h>
 #include <string.h>
 
+#include <algorithm>
 #include <map>
 #include <memory>
 #include <stack>
@@ -129,10 +130,13 @@ void CompilationUnit::ReadAbbrevs() {
   const uint64_t abbrev_length = iter->second.second - header_.abbrev_offset;
 #endif
 
+  uint64_t highest_number = 0;
+
   while (1) {
     CompilationUnit::Abbrev abbrev;
     size_t len;
     const uint64_t number = reader_->ReadUnsignedLEB128(abbrevptr, &len);
+    highest_number = std::max(highest_number, number);
 
     if (number == 0)
       break;
@@ -170,9 +174,17 @@ void CompilationUnit::ReadAbbrevs() {
                            value);
       abbrev.attributes.push_back(abbrev_attr);
     }
-    assert(abbrev.number == abbrevs_->size());
     abbrevs_->push_back(abbrev);
   }
+
+  // Account of cases where entries are out of order.
+  std::sort(abbrevs_->begin(), abbrevs_->end(),
+    [](const CompilationUnit::Abbrev& lhs, const CompilationUnit::Abbrev& rhs) {
+      return lhs.number < rhs.number;
+  });
+
+  // Ensure that there are no missing sections.
+  assert(abbrevs_->size() == highest_number + 1);
 }
 
 // Skips a single DIE's attributes.
@@ -915,7 +927,7 @@ void CompilationUnit::ProcessDIEs() {
     lengthstart += 4;
 
   std::stack<uint64_t> die_stack;
-  
+
   while (dieptr < (lengthstart + header_.length)) {
     // We give the user the absolute offset from the beginning of
     // debug_info, since they need it to deal with ref_addr forms.
@@ -941,8 +953,23 @@ void CompilationUnit::ProcessDIEs() {
     const enum DwarfTag tag = abbrev.tag;
     if (!handler_->StartDIE(absolute_offset, tag)) {
       dieptr = SkipDIE(dieptr, abbrev);
+      if (!dieptr) {
+        fprintf(stderr,
+                "An error happens when skipping a DIE's attributes at offset "
+                "0x%" PRIx64
+                ". Stopped processing following DIEs in this CU.\n",
+                absolute_offset);
+        exit(1);
+      }
     } else {
       dieptr = ProcessDIE(absolute_offset, dieptr, abbrev);
+      if (!dieptr) {
+        fprintf(stderr,
+                "An error happens when processing a DIE at offset 0x%" PRIx64
+                ". Stopped processing following DIEs in this CU.\n",
+                absolute_offset);
+        exit(1);
+      }
     }
 
     if (abbrev.has_children) {
@@ -1706,7 +1733,7 @@ bool LineInfo::ProcessOneOpcode(ByteReader* reader,
           oplen += templen;
 
           if (handler) {
-            handler->DefineFile(filename, -1, static_cast<uint32_t>(dirindex), 
+            handler->DefineFile(filename, -1, static_cast<uint32_t>(dirindex),
                                 mod_time, filelength);
           }
         }
@@ -1768,7 +1795,7 @@ void LineInfo::ReadLines() {
                           pending_file_num, pending_line_num,
                           pending_column_num);
       if (lsm.end_sequence) {
-        lsm.Reset(header_.default_is_stmt);      
+        lsm.Reset(header_.default_is_stmt);
         have_pending_line = false;
       } else {
         pending_address = lsm.address;
@@ -2255,7 +2282,7 @@ class CallFrameInfo::State {
   // report the problem to reporter_ and return false.
   bool InterpretFDE(const FDE& fde);
 
- private:  
+ private:
   // The operands of a CFI instruction, for ParseOperands.
   struct Operands {
     unsigned register_number;  // A register number.
@@ -2516,19 +2543,19 @@ bool CallFrameInfo::State::DoInstruction() {
       if (!ParseOperands("1", &ops)) return false;
       address_ += ops.offset * cie->code_alignment_factor;
       break;
-      
+
     // Advance the address.
     case DW_CFA_advance_loc2:
       if (!ParseOperands("2", &ops)) return false;
       address_ += ops.offset * cie->code_alignment_factor;
       break;
-      
+
     // Advance the address.
     case DW_CFA_advance_loc4:
       if (!ParseOperands("4", &ops)) return false;
       address_ += ops.offset * cie->code_alignment_factor;
       break;
-      
+
     // Advance the address.
     case DW_CFA_MIPS_advance_loc8:
       if (!ParseOperands("8", &ops)) return false;
@@ -2709,23 +2736,32 @@ bool CallFrameInfo::State::DoInstruction() {
     case DW_CFA_nop:
       break;
 
-    // A SPARC register window save: Registers 8 through 15 (%o0-%o7)
-    // are saved in registers 24 through 31 (%i0-%i7), and registers
-    // 16 through 31 (%l0-%l7 and %i0-%i7) are saved at CFA offsets
-    // (0-15 * the register size). The register numbers must be
-    // hard-coded. A GNU extension, and not a pretty one.
+    // case DW_CFA_AARCH64_negate_ra_state
     case DW_CFA_GNU_window_save: {
-      // Save %o0-%o7 in %i0-%i7.
-      for (int i = 8; i < 16; i++)
-        if (!DoRule(i, new RegisterRule(i + 16)))
-          return false;
-      // Save %l0-%l7 and %i0-%i7 at the CFA.
-      for (int i = 16; i < 32; i++)
-        // Assume that the byte reader's address size is the same as
-        // the architecture's register size. !@#%*^ hilarious.
-        if (!DoRule(i, new OffsetRule(Handler::kCFARegister,
-                                      (i - 16) * reader_->AddressSize())))
-          return false;
+      if (handler_->Architecture() == "arm64") {
+        // Indicates that the return address, x30 has been signed.
+        // Breakpad will speculatively remove pointer-authentication codes when
+        // interpreting return addresses, regardless of this bit.
+      } else if (handler_->Architecture() == "sparc" ||
+                 handler_->Architecture() == "sparcv9") {
+        // A SPARC register window save: Registers 8 through 15 (%o0-%o7)
+        // are saved in registers 24 through 31 (%i0-%i7), and registers
+        // 16 through 31 (%l0-%l7 and %i0-%i7) are saved at CFA offsets
+        // (0-15 * the register size). The register numbers must be
+        // hard-coded. A GNU extension, and not a pretty one.
+
+        // Save %o0-%o7 in %i0-%i7.
+        for (int i = 8; i < 16; i++)
+          if (!DoRule(i, new RegisterRule(i + 16)))
+            return false;
+        // Save %l0-%l7 and %i0-%i7 at the CFA.
+        for (int i = 16; i < 32; i++)
+          // Assume that the byte reader's address size is the same as
+          // the architecture's register size. !@#%*^ hilarious.
+          if (!DoRule(i, new OffsetRule(Handler::kCFARegister,
+                                        (i - 16) * reader_->AddressSize())))
+            return false;
+      }
       break;
     }
 
@@ -2829,7 +2865,7 @@ bool CallFrameInfo::ReadEntryPrologue(const uint8_t* cursor, Entry* entry) {
   // Validate the length.
   if (length > size_t(buffer_end - cursor))
     return ReportIncomplete(entry);
- 
+
   // The length is the number of bytes after the initial length field;
   // we have that position handy at this point, so compute the end
   // now. (If we're parsing 64-bit-offset DWARF on a 32-bit machine,
@@ -2871,7 +2907,7 @@ bool CallFrameInfo::ReadEntryPrologue(const uint8_t* cursor, Entry* entry) {
 
   // Now advance cursor past the id.
    cursor += offset_size;
- 
+
   // The fields specific to this kind of entry start here.
   entry->fields = cursor;
 
@@ -3099,7 +3135,7 @@ bool CallFrameInfo::ReadFDEFields(FDE* fde) {
     if (size_t(fde->end - cursor) < size + data_size)
       return ReportIncomplete(fde);
     cursor += size;
-    
+
     // In the abstract, we should walk the augmentation string, and extract
     // items from the FDE's augmentation data as we encounter augmentation
     // string characters that specify their presence: the ordering of items
@@ -3137,7 +3173,7 @@ bool CallFrameInfo::ReadFDEFields(FDE* fde) {
 
   return true;
 }
-  
+
 bool CallFrameInfo::Start() {
   const uint8_t* buffer_end = buffer_ + buffer_length_;
   const uint8_t* cursor;
@@ -3194,7 +3230,7 @@ bool CallFrameInfo::Start() {
       reporter_->CIEPointerOutOfRange(fde.offset, fde.id);
       continue;
     }
-      
+
     CIE cie;
 
     // Parse this FDE's CIE header.
@@ -3233,7 +3269,7 @@ bool CallFrameInfo::Start() {
       ok = true;
       continue;
     }
-                         
+
     if (cie.has_z_augmentation) {
       // Report the personality routine address, if we have one.
       if (cie.has_z_personality) {

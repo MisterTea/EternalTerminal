@@ -1,7 +1,6 @@
 #include "sentry_core.h"
 #include "sentry_database.h"
 #include "sentry_testsupport.h"
-#include "sentry_utils.h"
 
 static void
 send_envelope_test_basic(const sentry_envelope_t *envelope, void *data)
@@ -63,14 +62,20 @@ SENTRY_TEST(basic_function_transport)
     TEST_CHECK_INT_EQUAL(called, 2);
 }
 
+static void
+counting_transport_func(const sentry_envelope_t *UNUSED(envelope), void *data)
+{
+    uint64_t *called = data;
+    *called += 1;
+}
+
 static sentry_value_t
 before_send(sentry_value_t event, void *UNUSED(hint), void *data)
 {
     uint64_t *called = data;
     *called += 1;
 
-    sentry_value_decref(event);
-    return sentry_value_new_null();
+    return event;
 }
 
 SENTRY_TEST(sampling_before_send)
@@ -82,7 +87,7 @@ SENTRY_TEST(sampling_before_send)
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
     sentry_options_set_transport(options,
         sentry_new_function_transport(
-            send_envelope_test_basic, &called_transport));
+            counting_transport_func, &called_transport));
     sentry_options_set_before_send(options, before_send, &called_beforesend);
     sentry_options_set_sample_rate(options, 0.75);
     sentry_init(options);
@@ -94,9 +99,46 @@ SENTRY_TEST(sampling_before_send)
 
     sentry_close();
 
+    // The behavior here has changed with version 0.4.19:
+    // the documentation (https://develop.sentry.dev/sdk/sessions/#filter-order)
+    // requires that the sampling-rate filter for all SDKs is executed last.
+    // This means the `before_send` callback will be invoked every time and only
+    // the actual transport will be randomly sampled.
+    TEST_CHECK(called_transport > 50 && called_transport < 100);
+    TEST_CHECK_INT_EQUAL(called_beforesend, 100);
+}
+
+static sentry_value_t
+discarding_before_send(sentry_value_t event, void *UNUSED(hint), void *data)
+{
+    uint64_t *called = data;
+    *called += 1;
+
+    sentry_value_decref(event);
+    return sentry_value_new_null();
+}
+
+SENTRY_TEST(discarding_before_send)
+{
+    uint64_t called_beforesend = 0;
+    uint64_t called_transport = 0;
+
+    sentry_options_t *options = sentry_options_new();
+    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    sentry_options_set_transport(options,
+        sentry_new_function_transport(
+            counting_transport_func, &called_transport));
+    sentry_options_set_before_send(
+        options, discarding_before_send, &called_beforesend);
+    sentry_init(options);
+
+    sentry_capture_event(
+        sentry_value_new_message_event(SENTRY_LEVEL_INFO, NULL, "foo"));
+
+    sentry_close();
+
     TEST_CHECK_INT_EQUAL(called_transport, 0);
-    // well, its random after all
-    TEST_CHECK(called_beforesend > 50 && called_beforesend < 100);
+    TEST_CHECK_INT_EQUAL(called_beforesend, 1);
 }
 
 SENTRY_TEST(crash_marker)

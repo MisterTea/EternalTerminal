@@ -3,15 +3,12 @@
 
 ## Already available
 
-- Catch main: [Catch-provided main](../examples/000-CatchMain.cpp)
 - Test Case: [Single-file](../examples/010-TestCase.cpp)
 - Test Case: [Multiple-file 1](../examples/020-TestCase-1.cpp), [2](../examples/020-TestCase-2.cpp)
 - Assertion: [REQUIRE, CHECK](../examples/030-Asn-Require-Check.cpp)
 - Fixture: [Sections](../examples/100-Fix-Section.cpp)
 - Fixture: [Class-based fixtures](../examples/110-Fix-ClassFixture.cpp)
 - BDD: [SCENARIO, GIVEN, WHEN, THEN](../examples/120-Bdd-ScenarioGivenWhenThen.cpp)
-- Report: [Catch-provided main](../examples/200-Rpt-CatchMain.cpp)
-- Report: [TeamCity reporter](../examples/207-Rpt-TeamCityReporter.cpp)
 - Listener: [Listeners](../examples/210-Evt-EventListeners.cpp)
 - Configuration: [Provide your own output streams](../examples/231-Cfg-OutputStreams.cpp)
 - Generators: [Create your own generator](../examples/300-Gen-OwnGenerator.cpp)

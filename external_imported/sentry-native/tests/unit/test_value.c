@@ -546,3 +546,21 @@ SENTRY_TEST(value_collections_leak)
     TEST_CHECK_INT_EQUAL(sentry_value_refcount(obj), 1);
     sentry_value_decref(obj);
 }
+
+SENTRY_TEST(value_set_stacktrace)
+{
+    sentry_value_t exc
+        = sentry_value_new_exception("std::out_of_range", "vector");
+    sentry_value_set_stacktrace(exc, NULL, 0);
+
+    sentry_value_t stacktrace = sentry_value_get_by_key(exc, "stacktrace");
+    TEST_CHECK(!sentry_value_is_null(stacktrace));
+    TEST_CHECK(SENTRY_VALUE_TYPE_OBJECT == sentry_value_get_type(stacktrace));
+
+    sentry_value_t frames = sentry_value_get_by_key(stacktrace, "frames");
+    TEST_CHECK(!sentry_value_is_null(frames));
+    TEST_CHECK(SENTRY_VALUE_TYPE_LIST == sentry_value_get_type(frames));
+    TEST_CHECK(0 < sentry_value_get_length(frames));
+
+    sentry_value_decref(exc);
+}

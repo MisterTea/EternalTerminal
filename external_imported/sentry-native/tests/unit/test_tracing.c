@@ -773,7 +773,7 @@ SENTRY_TEST(distributed_headers)
         sentry_value_get_by_key(dist_tx->inner, "sampled")));
 
     sentry__transaction_decref(dist_tx);
-    sentry__span_free(child);
+    sentry__span_decref(child);
     sentry__transaction_decref(tx);
 
     // check sampled flag
@@ -801,7 +801,7 @@ SENTRY_TEST(distributed_headers)
         sentry_value_get_by_key(dist_tx->inner, "sampled")));
 
     sentry__transaction_decref(dist_tx);
-    sentry__span_free(child);
+    sentry__span_decref(child);
     sentry__transaction_decref(tx);
 
     sentry_close();

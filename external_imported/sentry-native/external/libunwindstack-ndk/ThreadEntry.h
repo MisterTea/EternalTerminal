@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_THREAD_ENTRY_H
-#define _LIBUNWINDSTACK_THREAD_ENTRY_H
+#pragma once
 
 #include <pthread.h>
 #include <sys/types.h>
@@ -71,8 +70,8 @@ class ThreadEntry {
 
   static std::mutex entries_mutex_;
   static std::map<pid_t, ThreadEntry*> entries_;
+
+  static const char* GetWaitTypeName(WaitType type);
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_THREAD_ENTRY_H

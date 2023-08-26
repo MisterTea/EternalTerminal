@@ -43,16 +43,32 @@ sentry__unwind_stack_dbghelp(
     memset(&stack_frame, 0, sizeof(stack_frame));
 
     size_t size = 0;
-#if defined(_WIN64)
+#if defined(_M_X64)
     int machine_type = IMAGE_FILE_MACHINE_AMD64;
     stack_frame.AddrPC.Offset = ctx.Rip;
     stack_frame.AddrFrame.Offset = ctx.Rbp;
     stack_frame.AddrStack.Offset = ctx.Rsp;
-#else
+#elif defined(_M_IX86)
     int machine_type = IMAGE_FILE_MACHINE_I386;
     stack_frame.AddrPC.Offset = ctx.Eip;
     stack_frame.AddrFrame.Offset = ctx.Ebp;
     stack_frame.AddrStack.Offset = ctx.Esp;
+#elif defined(_M_ARM64)
+    int machine_type = IMAGE_FILE_MACHINE_ARM64;
+    stack_frame.AddrPC.Offset = ctx.Pc;
+#    if defined(NONAMELESSUNION)
+    stack_frame.AddrFrame.Offset = ctx.DUMMYUNIONNAME.DUMMYSTRUCTNAME.Fp;
+#    else
+    stack_frame.AddrFrame.Offset = ctx.Fp;
+#    endif
+    stack_frame.AddrStack.Offset = ctx.Sp;
+#elif defined(_M_ARM)
+    int machine_type = IMAGE_FILE_MACHINE_ARM;
+    stack_frame.AddrPC.Offset = ctx.Pc;
+    stack_frame.AddrFrame.Offset = ctx.R11;
+    stack_frame.AddrStack.Offset = ctx.Sp;
+#else
+#    error "Platform not supported!"
 #endif
     stack_frame.AddrPC.Mode = AddrModeFlat;
     stack_frame.AddrFrame.Mode = AddrModeFlat;

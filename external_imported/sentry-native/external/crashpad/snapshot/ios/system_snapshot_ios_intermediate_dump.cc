@@ -1,4 +1,4 @@
-// Copyright 2020 The Crashpad Authors. All rights reserved.
+// Copyright 2020 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ SystemSnapshotIOSIntermediateDump::SystemSnapshotIOSIntermediateDump()
       daylight_offset_seconds_(0),
       standard_name_(),
       daylight_name_(),
+      address_mask_(0),
       initialized_() {}
 
 SystemSnapshotIOSIntermediateDump::~SystemSnapshotIOSIntermediateDump() {}
@@ -96,6 +97,8 @@ void SystemSnapshotIOSIntermediateDump::Initialize(
   } else {
     dst_status_ = SystemSnapshot::kDoesNotObserveDaylightSavingTime;
   }
+
+  GetDataValueFromMap(system_data, Key::kAddressMask, &address_mask_);
 
   vm_size_t page_size;
   if (GetDataValueFromMap(system_data, Key::kPageSize, &page_size)) {
@@ -239,6 +242,11 @@ void SystemSnapshotIOSIntermediateDump::TimeZone(
   *daylight_offset_seconds = daylight_offset_seconds_;
   standard_name->assign(standard_name_);
   daylight_name->assign(daylight_name_);
+}
+
+uint64_t SystemSnapshotIOSIntermediateDump::AddressMask() const {
+  INITIALIZATION_STATE_DCHECK_VALID(initialized_);
+  return address_mask_;
 }
 
 }  // namespace internal

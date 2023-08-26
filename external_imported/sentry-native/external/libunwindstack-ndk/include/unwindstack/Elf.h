@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_ELF_H
-#define _LIBUNWINDSTACK_ELF_H
+#pragma once
 
 #include <stddef.h>
 
@@ -28,15 +27,22 @@
 #include <unwindstack/Arch.h>
 #include <unwindstack/ElfInterface.h>
 #include <unwindstack/Memory.h>
+#include <unwindstack/SharedString.h>
 
 #if !defined(EM_AARCH64)
 #define EM_AARCH64 183
 #endif
 
+#ifdef SENTRY_REMOVED
+#if !defined(EM_RISCV)
+#define EM_RISCV 243
+#endif
+#endif // SENTRY_REMOVED
+
 namespace unwindstack {
 
 // Forward declaration.
-struct MapInfo;
+class MapInfo;
 class Regs;
 
 class Elf {
@@ -52,11 +58,11 @@ class Elf {
 
   std::string GetSoname();
 
-  bool GetFunctionName(uint64_t addr, std::string* name, uint64_t* func_offset);
+  bool GetFunctionName(uint64_t addr, SharedString* name, uint64_t* func_offset);
 
   bool GetGlobalVariableOffset(const std::string& name, uint64_t* memory_offset);
 
-  uint64_t GetRelPc(uint64_t pc, const MapInfo* map_info);
+  uint64_t GetRelPc(uint64_t pc, MapInfo* map_info);
 
   bool StepIfSignalHandler(uint64_t rel_pc, Regs* regs, Memory* process_memory);
 
@@ -67,9 +73,13 @@ class Elf {
 
   std::string GetBuildID();
 
+  std::string GetPrintableBuildID();
+
   int64_t GetLoadBias() { return load_bias_; }
 
   bool IsValidPc(uint64_t pc);
+
+  bool GetTextRange(uint64_t* addr, uint64_t* size);
 
   void GetLastError(ErrorData* data);
   ErrorCode GetLastErrorCode();
@@ -97,14 +107,20 @@ class Elf {
 
   static std::string GetBuildID(Memory* memory);
 
+  // Caching cannot be enabled/disabled while unwinding. It is assumed
+  // that once enabled, it remains enabled while all unwinds are running.
+  // If the state of the caching changes while unwinding is occurring,
+  // it could cause crashes.
   static void SetCachingEnabled(bool enable);
+
   static bool CachingEnabled() { return cache_enabled_; }
 
   static void CacheLock();
   static void CacheUnlock();
   static void CacheAdd(MapInfo* info);
   static bool CacheGet(MapInfo* info);
-  static bool CacheAfterCreateMemory(MapInfo* info);
+
+  static std::string GetPrintableBuildID(std::string& build_id);
 
  protected:
   bool valid_ = false;
@@ -121,10 +137,9 @@ class Elf {
   std::unique_ptr<ElfInterface> gnu_debugdata_interface_;
 
   static bool cache_enabled_;
-  static std::unordered_map<std::string, std::pair<std::shared_ptr<Elf>, bool>>* cache_;
+  static std::unordered_map<std::string, std::unordered_map<uint64_t, std::shared_ptr<Elf>>>*
+      cache_;
   static std::mutex* cache_lock_;
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_ELF_H

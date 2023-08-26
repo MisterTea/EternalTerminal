@@ -23,6 +23,54 @@
 #    define sleep_s(SECONDS) sleep(SECONDS)
 #endif
 
+static sentry_value_t
+before_send_callback(sentry_value_t event, void *hint, void *closure)
+{
+    (void)hint;
+    (void)closure;
+
+    // make our mark on the event
+    sentry_value_set_by_key(
+        event, "adapted_by", sentry_value_new_string("before_send"));
+
+    // tell the backend to proceed with the event
+    return event;
+}
+
+static sentry_value_t
+discarding_before_send_callback(sentry_value_t event, void *hint, void *closure)
+{
+    (void)hint;
+    (void)closure;
+
+    // discard event and signal backend to stop further processing
+    sentry_value_decref(event);
+    return sentry_value_new_null();
+}
+
+static sentry_value_t
+discarding_on_crash_callback(
+    const sentry_ucontext_t *uctx, sentry_value_t event, void *closure)
+{
+    (void)uctx;
+    (void)closure;
+
+    // discard event and signal backend to stop further processing
+    sentry_value_decref(event);
+    return sentry_value_new_null();
+}
+
+static sentry_value_t
+on_crash_callback(
+    const sentry_ucontext_t *uctx, sentry_value_t event, void *closure)
+{
+    (void)uctx;
+    (void)closure;
+
+    // tell the backend to retain the event
+    return event;
+}
+
 static void
 print_envelope(sentry_envelope_t *envelope, void *unused_state)
 {
@@ -45,6 +93,53 @@ has_arg(int argc, char **argv, const char *arg)
     return false;
 }
 
+#ifdef CRASHPAD_WER_ENABLED
+int
+call_rffe_many_times()
+{
+    RaiseFailFastException(NULL, NULL, 0);
+    RaiseFailFastException(NULL, NULL, 0);
+    RaiseFailFastException(NULL, NULL, 0);
+    RaiseFailFastException(NULL, NULL, 0);
+    return 1;
+}
+
+typedef int (*crash_func)();
+
+void
+indirect_call(crash_func func)
+{
+    // This code always generates CFG guards.
+    func();
+}
+
+static void
+trigger_stack_buffer_overrun()
+{
+    // Call into the middle of the Crashy function.
+    crash_func func = (crash_func)((uintptr_t)(call_rffe_many_times) + 16);
+    __try {
+        // Generates a STATUS_STACK_BUFFER_OVERRUN exception if CFG triggers.
+        indirect_call(func);
+    } __except (EXCEPTION_EXECUTE_HANDLER) {
+        // CFG fast fail should never be caught.
+        printf(
+            "If you see me, then CFG wasn't enabled (compile with /guard:cf)");
+    }
+    // Should only reach here if CFG is disabled.
+    abort();
+}
+
+static void
+trigger_fastfail_crash()
+{
+    // this bypasses WINDOWS SEH and will only be caught with the crashpad WER
+    // module enabled
+    __fastfail(77);
+}
+
+#endif // CRASHPAD_WER_ENABLED
+
 #ifdef SENTRY_PLATFORM_AIX
 // AIX has a null page mapped to the bottom of memory, which means null derefs
 // don't segfault. try dereferencing the top of memory instead; the top nibble
@@ -64,6 +159,10 @@ int
 main(int argc, char **argv)
 {
     sentry_options_t *options = sentry_options_new();
+
+    if (has_arg(argc, argv, "disable-backend")) {
+        sentry_options_set_backend(options, NULL);
+    }
 
     // this is an example. for real usage, make sure to set this explicitly to
     // an app specific cache location.
@@ -99,6 +198,24 @@ main(int argc, char **argv)
 
     if (has_arg(argc, argv, "child-spans")) {
         sentry_options_set_max_spans(options, 5);
+    }
+
+    if (has_arg(argc, argv, "before-send")) {
+        sentry_options_set_before_send(options, before_send_callback, NULL);
+    }
+
+    if (has_arg(argc, argv, "discarding-before-send")) {
+        sentry_options_set_before_send(
+            options, discarding_before_send_callback, NULL);
+    }
+
+    if (has_arg(argc, argv, "on-crash")) {
+        sentry_options_set_on_crash(options, on_crash_callback, NULL);
+    }
+
+    if (has_arg(argc, argv, "discarding-on-crash")) {
+        sentry_options_set_on_crash(
+            options, discarding_on_crash_callback, NULL);
     }
 
     sentry_init(options);
@@ -180,6 +297,14 @@ main(int argc, char **argv)
     if (has_arg(argc, argv, "crash")) {
         trigger_crash();
     }
+#ifdef CRASHPAD_WER_ENABLED
+    if (has_arg(argc, argv, "fastfail")) {
+        trigger_fastfail_crash();
+    }
+    if (has_arg(argc, argv, "stack-buffer-overrun")) {
+        trigger_stack_buffer_overrun();
+    }
+#endif
     if (has_arg(argc, argv, "assert")) {
         assert(0);
     }
@@ -207,8 +332,7 @@ main(int argc, char **argv)
         sentry_value_t exc = sentry_value_new_exception(
             "ParseIntError", "invalid digit found in string");
         if (has_arg(argc, argv, "add-stacktrace")) {
-            sentry_value_t stacktrace = sentry_value_new_stacktrace(NULL, 0);
-            sentry_value_set_by_key(exc, "stacktrace", stacktrace);
+            sentry_value_set_stacktrace(exc, NULL, 0);
         }
         sentry_value_t event = sentry_value_new_event();
         sentry_event_add_exception(event, exc);

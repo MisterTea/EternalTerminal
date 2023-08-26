@@ -1,5 +1,4 @@
-# Copyright (c) 2012, Google Inc.
-# All rights reserved.
+# Copyright 2012 Google LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 # copyright notice, this list of conditions and the following disclaimer
 # in the documentation and/or other materials provided with the
 # distribution.
-#     * Neither the name of Google Inc. nor the names of its
+#     * Neither the name of Google LLC nor the names of its
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -80,6 +79,7 @@ LOCAL_SRC_FILES := \
     src/client/linux/minidump_writer/linux_dumper.cc \
     src/client/linux/minidump_writer/linux_ptrace_dumper.cc \
     src/client/linux/minidump_writer/minidump_writer.cc \
+    src/client/linux/minidump_writer/pe_file.cc \
     src/client/minidump_file_writer.cc \
     src/common/convert_UTF.cc \
     src/common/md5.cc \

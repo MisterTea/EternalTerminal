@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -249,6 +249,47 @@ TEST(ProcessSnapshotMinidump, ClientID) {
       static_cast<RVA>(string_file.SeekGet());
   EXPECT_TRUE(string_file.Write(&crashpad_info, sizeof(crashpad_info)));
   crashpad_info_directory.Location.DataSize = sizeof(crashpad_info);
+
+  header.StreamDirectoryRva = static_cast<RVA>(string_file.SeekGet());
+  EXPECT_TRUE(string_file.Write(&crashpad_info_directory,
+                                sizeof(crashpad_info_directory)));
+
+  header.Signature = MINIDUMP_SIGNATURE;
+  header.Version = MINIDUMP_VERSION;
+  header.NumberOfStreams = 1;
+  EXPECT_TRUE(string_file.SeekSet(0));
+  EXPECT_TRUE(string_file.Write(&header, sizeof(header)));
+
+  ProcessSnapshotMinidump process_snapshot;
+  EXPECT_TRUE(process_snapshot.Initialize(&string_file));
+
+  UUID actual_client_id;
+  process_snapshot.ClientID(&actual_client_id);
+  EXPECT_EQ(actual_client_id, client_id);
+
+  EXPECT_TRUE(process_snapshot.AnnotationsSimpleMap().empty());
+}
+
+TEST(ProcessSnapshotMinidump, ReadOldCrashpadInfo) {
+  StringFile string_file;
+
+  MINIDUMP_HEADER header = {};
+  EXPECT_TRUE(string_file.Write(&header, sizeof(header)));
+
+  UUID client_id;
+  ASSERT_TRUE(
+      client_id.InitializeFromString("0001f4a9-d00d-5155-0a55-c0ffeec0ffee"));
+
+  MinidumpCrashpadInfo crashpad_info = {};
+  crashpad_info.version = MinidumpCrashpadInfo::kVersion;
+  crashpad_info.client_id = client_id;
+
+  MINIDUMP_DIRECTORY crashpad_info_directory = {};
+  crashpad_info_directory.StreamType = kMinidumpStreamTypeCrashpadInfo;
+  crashpad_info_directory.Location.Rva =
+      static_cast<RVA>(string_file.SeekGet());
+  EXPECT_TRUE(string_file.Write(&crashpad_info, sizeof(crashpad_info) - 8));
+  crashpad_info_directory.Location.DataSize = sizeof(crashpad_info) - 8;
 
   header.StreamDirectoryRva = static_cast<RVA>(string_file.SeekGet());
   EXPECT_TRUE(string_file.Write(&crashpad_info_directory,
@@ -725,6 +766,104 @@ TEST(ProcessSnapshotMinidump, Threads) {
     EXPECT_EQ(thread->ThreadID(), thread_id);
     EXPECT_EQ(thread->ThreadSpecificDataAddress(), 24UL);
     thread_id++;
+  }
+}
+
+TEST(ProcessSnapshotMinidump, ThreadsWithNames) {
+  StringFile string_file;
+
+  MINIDUMP_HEADER header = {};
+  EXPECT_TRUE(string_file.Write(&header, sizeof(header)));
+
+  constexpr uint32_t kMinidumpThreadCount = 4;
+  constexpr uint32_t kBaseThreadId = 42;
+
+  const std::string thread_names[kMinidumpThreadCount] = {
+      "ariadne",
+      "theseus",
+      "pasiphae",
+      "minos",
+  };
+
+  RVA64 thread_name_rva64s[kMinidumpThreadCount];
+  for (uint32_t i = 0; i < kMinidumpThreadCount; i++) {
+    thread_name_rva64s[i] = static_cast<RVA64>(string_file.SeekGet());
+    auto name16 = base::UTF8ToUTF16(thread_names[i]);
+    uint32_t size =
+        base::checked_cast<uint32_t>(sizeof(name16[0]) * name16.size());
+    EXPECT_TRUE(string_file.Write(&size, sizeof(size)));
+    EXPECT_TRUE(string_file.Write(&name16[0], size));
+  }
+
+  MINIDUMP_DIRECTORY minidump_thread_list_directory = {};
+  minidump_thread_list_directory.StreamType = kMinidumpStreamTypeThreadList;
+  minidump_thread_list_directory.Location.DataSize =
+      sizeof(MINIDUMP_THREAD_LIST) +
+      kMinidumpThreadCount * sizeof(MINIDUMP_THREAD);
+  minidump_thread_list_directory.Location.Rva =
+      static_cast<RVA>(string_file.SeekGet());
+
+  // Fields in MINIDUMP_THREAD_LIST.
+  EXPECT_TRUE(
+      string_file.Write(&kMinidumpThreadCount, sizeof(kMinidumpThreadCount)));
+  for (uint32_t minidump_thread_index = 0;
+       minidump_thread_index < kMinidumpThreadCount;
+       ++minidump_thread_index) {
+    MINIDUMP_THREAD minidump_thread = {};
+    minidump_thread.ThreadId = kBaseThreadId + minidump_thread_index;
+    EXPECT_TRUE(string_file.Write(&minidump_thread, sizeof(minidump_thread)));
+  }
+
+  header.StreamDirectoryRva = static_cast<RVA>(string_file.SeekGet());
+  EXPECT_TRUE(string_file.Write(&minidump_thread_list_directory,
+                                sizeof(minidump_thread_list_directory)));
+
+  MINIDUMP_DIRECTORY minidump_thread_name_list_directory = {};
+  minidump_thread_name_list_directory.StreamType =
+      kMinidumpStreamTypeThreadNameList;
+  minidump_thread_name_list_directory.Location.DataSize =
+      sizeof(MINIDUMP_THREAD_NAME_LIST) +
+      kMinidumpThreadCount * sizeof(MINIDUMP_THREAD_NAME);
+  minidump_thread_name_list_directory.Location.Rva =
+      static_cast<RVA>(string_file.SeekGet());
+
+  // Fields in MINIDUMP_THREAD_NAME_LIST.
+  EXPECT_TRUE(
+      string_file.Write(&kMinidumpThreadCount, sizeof(kMinidumpThreadCount)));
+  for (uint32_t minidump_thread_index = 0;
+       minidump_thread_index < kMinidumpThreadCount;
+       ++minidump_thread_index) {
+    MINIDUMP_THREAD_NAME minidump_thread_name = {0, 0};
+    minidump_thread_name.ThreadId = kBaseThreadId + minidump_thread_index;
+    minidump_thread_name.RvaOfThreadName =
+        thread_name_rva64s[minidump_thread_index];
+    EXPECT_TRUE(
+        string_file.Write(&minidump_thread_name, sizeof(minidump_thread_name)));
+  }
+
+  header.StreamDirectoryRva = static_cast<RVA>(string_file.SeekGet());
+  ASSERT_TRUE(string_file.Write(&minidump_thread_list_directory,
+                                sizeof(minidump_thread_list_directory)));
+  ASSERT_TRUE(string_file.Write(&minidump_thread_name_list_directory,
+                                sizeof(minidump_thread_name_list_directory)));
+
+  header.Signature = MINIDUMP_SIGNATURE;
+  header.Version = MINIDUMP_VERSION;
+  header.NumberOfStreams = 2;
+  EXPECT_TRUE(string_file.SeekSet(0));
+  EXPECT_TRUE(string_file.Write(&header, sizeof(header)));
+
+  ProcessSnapshotMinidump process_snapshot;
+  EXPECT_TRUE(process_snapshot.Initialize(&string_file));
+
+  std::vector<const ThreadSnapshot*> threads = process_snapshot.Threads();
+  ASSERT_EQ(threads.size(), kMinidumpThreadCount);
+
+  size_t idx = 0;
+  for (const auto& thread : threads) {
+    EXPECT_EQ(thread->ThreadID(), kBaseThreadId + idx);
+    EXPECT_EQ(thread->ThreadName(), thread_names[idx]);
+    idx++;
   }
 }
 

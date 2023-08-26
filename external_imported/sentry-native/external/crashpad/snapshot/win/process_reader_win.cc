@@ -1,4 +1,4 @@
-// Copyright 2015 The Crashpad Authors. All rights reserved.
+// Copyright 2015 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -22,13 +22,18 @@
 
 #include <memory>
 
+#include "base/notreached.h"
 #include "base/numerics/safe_conversions.h"
+#include "base/strings/utf_string_conversions.h"
+#include "snapshot/win/cpu_context_win.h"
 #include "util/misc/capture_context.h"
 #include "util/misc/time.h"
+#include "util/win/get_function.h"
 #include "util/win/nt_internals.h"
 #include "util/win/ntstatus_logging.h"
 #include "util/win/process_structs.h"
 #include "util/win/scoped_handle.h"
+#include "util/win/scoped_local_alloc.h"
 
 namespace crashpad {
 
@@ -146,22 +151,20 @@ void DoStackWalk(ProcessReaderWin::Thread* thread,
   stack_frame.AddrStack.Mode = AddrModeFlat;
 
   int machine_type = IMAGE_FILE_MACHINE_I386;
-  LPVOID ctx = NULL;
+  CONTEXT ctx;
 #if defined(ARCH_CPU_X86)
-  const CONTEXT* ctx_ = &thread->context.native;
-  stack_frame.AddrPC.Offset = ctx_->Eip;
-  stack_frame.AddrFrame.Offset = ctx_->Ebp;
-  stack_frame.AddrStack.Offset = ctx_->Esp;
-  ctx = (LPVOID)ctx_;
+  ctx = *thread->context.context<CONTEXT>();
+  stack_frame.AddrPC.Offset = ctx.Eip;
+  stack_frame.AddrFrame.Offset = ctx.Ebp;
+  stack_frame.AddrStack.Offset = ctx.Esp;
 #elif defined(ARCH_CPU_X86_64)
   // if (!is_64_reading_32) {
   machine_type = IMAGE_FILE_MACHINE_AMD64;
 
-  const CONTEXT* ctx_ = &thread->context.native;
-  stack_frame.AddrPC.Offset = ctx_->Rip;
-  stack_frame.AddrFrame.Offset = ctx_->Rbp;
-  stack_frame.AddrStack.Offset = ctx_->Rsp;
-  ctx = (LPVOID)ctx_;
+  ctx = *thread->context.context<CONTEXT>();
+  stack_frame.AddrPC.Offset = ctx.Rip;
+  stack_frame.AddrFrame.Offset = ctx.Rbp;
+  stack_frame.AddrStack.Offset = ctx.Rsp;
   // } else {
   //   const WOW64_CONTEXT* ctx_ = &thread->context.wow64;
   //   stack_frame.AddrPC.Offset = ctx_->Eip;
@@ -171,7 +174,7 @@ void DoStackWalk(ProcessReaderWin::Thread* thread,
   // }
 
 // TODO: we dont support this right away, maybe in the future
-//#elif defined(ARCH_CPU_ARM64)
+// #elif defined(ARCH_CPU_ARM64)
 //  machine_type = IMAGE_FILE_MACHINE_ARM64;
 #else
 #error Unsupported Windows Arch
@@ -187,7 +190,7 @@ void DoStackWalk(ProcessReaderWin::Thread* thread,
                      process,
                      thread_handle,
                      &stack_frame,
-                     ctx,
+                     &ctx,
                      NULL,
                      SymFunctionTableAccess64,
                      SymGetModuleBase64,
@@ -227,7 +230,7 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
     DCHECK(suspension_state == ProcessSuspensionState::kRunning);
     thread->suspend_count = 0;
     DCHECK(!is_64_reading_32);
-    CaptureContext(&thread->context.native);
+    thread->context.InitializeFromCurrentThread();
 
 #ifdef CLIENT_STACKTRACES_ENABLED
     DoStackWalk(thread, process, thread_handle, is_64_reading_32);
@@ -250,26 +253,25 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
           (suspension_state == ProcessSuspensionState::kSuspended ? 1 : 0);
     }
 
-    memset(&thread->context, 0, sizeof(thread->context));
 #if defined(ARCH_CPU_32_BITS)
-    const bool is_native = true;
-#elif defined(ARCH_CPU_64_BITS)
-    const bool is_native = !is_64_reading_32;
+    if (!thread->context.InitializeNative(thread_handle))
+      return false;
+#endif  // ARCH_CPU_32_BITS
+
+#if defined(ARCH_CPU_64_BITS)
     if (is_64_reading_32) {
-      thread->context.wow64.ContextFlags = CONTEXT_ALL;
-      if (!Wow64GetThreadContext(thread_handle, &thread->context.wow64)) {
-        PLOG(ERROR) << "Wow64GetThreadContext";
+      if (!thread->context.InitializeWow64(thread_handle))
         return false;
-      }
-    }
-#endif
-    if (is_native) {
-      thread->context.native.ContextFlags = CONTEXT_ALL;
-      if (!GetThreadContext(thread_handle, &thread->context.native)) {
-        PLOG(ERROR) << "GetThreadContext";
+#if defined(ARCH_CPU_X86_64)
+    } else if (IsXStateFeatureEnabled(XSTATE_MASK_CET_U)) {
+      if (!thread->context.InitializeXState(thread_handle, XSTATE_MASK_CET_U))
         return false;
-      }
+#endif  // ARCH_CPU_X86_64
+    } else {
+      if (!thread->context.InitializeNative(thread_handle))
+        return false;
     }
+#endif  // ARCH_CPU_64_BITS
 
 #ifdef CLIENT_STACKTRACES_ENABLED
     DoStackWalk(thread, process, thread_handle, is_64_reading_32);
@@ -286,8 +288,85 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
 
 }  // namespace
 
+ProcessReaderWin::ThreadContext::ThreadContext()
+    : offset_(0), initialized_(false), data_() {}
+
+void ProcessReaderWin::ThreadContext::InitializeFromCurrentThread() {
+  data_.resize(sizeof(CONTEXT));
+  initialized_ = true;
+  CaptureContext(context<CONTEXT>());
+}
+
+bool ProcessReaderWin::ThreadContext::InitializeNative(HANDLE thread_handle) {
+  data_.resize(sizeof(CONTEXT));
+  initialized_ = true;
+  context<CONTEXT>()->ContextFlags = CONTEXT_ALL;
+  if (!GetThreadContext(thread_handle, context<CONTEXT>())) {
+    PLOG(ERROR) << "GetThreadContext";
+    return false;
+  }
+  return true;
+}
+
+#if defined(ARCH_CPU_64_BITS)
+bool ProcessReaderWin::ThreadContext::InitializeWow64(HANDLE thread_handle) {
+  data_.resize(sizeof(WOW64_CONTEXT));
+  initialized_ = true;
+  context<WOW64_CONTEXT>()->ContextFlags = CONTEXT_ALL;
+  if (!Wow64GetThreadContext(thread_handle, context<WOW64_CONTEXT>())) {
+    PLOG(ERROR) << "Wow64GetThreadContext";
+    return false;
+  }
+  return true;
+}
+#endif
+
+#if defined(ARCH_CPU_X86_64)
+bool ProcessReaderWin::ThreadContext::InitializeXState(
+    HANDLE thread_handle,
+    ULONG64 XStateCompactionMask) {
+  // InitializeContext2 needs Windows 10 build 20348.
+  static const auto initialize_context_2 =
+      GET_FUNCTION(L"kernel32.dll", ::InitializeContext2);
+  if (!initialize_context_2)
+    return false;
+  // We want CET_U xstate to get the ssp, only possible when supported.
+  PCONTEXT ret_context = nullptr;
+  DWORD context_size = 0;
+  if (!initialize_context_2(nullptr,
+                            CONTEXT_ALL | CONTEXT_XSTATE,
+                            &ret_context,
+                            &context_size,
+                            XStateCompactionMask) &&
+      GetLastError() != ERROR_INSUFFICIENT_BUFFER) {
+    PLOG(ERROR) << "InitializeContext2 - getting required size";
+    return false;
+  }
+  // NB: ret_context may not be data.begin().
+  data_.resize(context_size);
+  if (!initialize_context_2(data_.data(),
+                            CONTEXT_ALL | CONTEXT_XSTATE,
+                            &ret_context,
+                            &context_size,
+                            XStateCompactionMask)) {
+    PLOG(ERROR) << "InitializeContext2 - initializing";
+    return false;
+  }
+  offset_ = reinterpret_cast<unsigned char*>(ret_context) - data_.data();
+  initialized_ = true;
+
+  if (!GetThreadContext(thread_handle, ret_context)) {
+    PLOG(ERROR) << "GetThreadContext";
+    return false;
+  }
+
+  return true;
+}
+#endif  // defined(ARCH_CPU_X86_64)
+
 ProcessReaderWin::Thread::Thread()
     : context(),
+      name(),
       id(0),
       teb_address(0),
       teb_size(0),
@@ -475,6 +554,21 @@ void ProcessReaderWin::ReadThreadData(bool is_64_reading_32) {
         thread.stack_region_size = 0;
       } else {
         thread.stack_region_size = base - limit;
+      }
+    }
+    // On Windows 10 build 1607 and later, read the thread name.
+    static const auto get_thread_description =
+        GET_FUNCTION(L"kernel32.dll", ::GetThreadDescription);
+    if (get_thread_description) {
+      wchar_t* thread_description;
+      HRESULT hr =
+          get_thread_description(thread_handle.get(), &thread_description);
+      if (SUCCEEDED(hr)) {
+        ScopedLocalAlloc thread_description_owner(thread_description);
+        thread.name = base::WideToUTF8(thread_description);
+      } else {
+        LOG(WARNING) << "GetThreadDescription: "
+                     << logging::SystemErrorCodeToString(hr);
       }
     }
     threads_.push_back(thread);

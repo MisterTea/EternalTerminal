@@ -4,6 +4,7 @@
 #include "sentry_json.h"
 #include "sentry_options.h"
 #include "sentry_session.h"
+#include <errno.h>
 #include <string.h>
 
 sentry_run_t *
@@ -49,13 +50,20 @@ sentry__run_new(const sentry_path_t *database_path)
     run->run_path = run_path;
     run->session_path = session_path;
     run->lock = sentry__filelock_new(lock_path);
-    if (!run->lock || !sentry__filelock_try_lock(run->lock)) {
-        sentry__run_free(run);
-        return NULL;
+    if (!run->lock) {
+        goto error;
     }
-
+    if (!sentry__filelock_try_lock(run->lock)) {
+        SENTRY_WARNF("failed to lock file \"%s\" (%s)", lock_path->path,
+            strerror(errno));
+        goto error;
+    }
     sentry__path_create_dir_all(run->run_path);
     return run;
+
+error:
+    sentry__run_free(run);
+    return NULL;
 }
 
 void
