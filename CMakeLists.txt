@@ -78,7 +78,7 @@ endif()
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
 # Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.2.4 LANGUAGES NONE)
+project(EternalTCP VERSION 6.2.5 LANGUAGES NONE)
 
 if(WIN32)
   message(STATUS "Windows detected.  Bumping up cmake version.")
