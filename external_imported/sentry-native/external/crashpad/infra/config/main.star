@@ -1,5 +1,5 @@
 #!/usr/bin/env lucicfg
-# Copyright 2021 The Crashpad Authors. All rights reserved.
+# Copyright 2021 The Crashpad Authors
 #
 # Licensed under the Apache License, Version 2.0 (the "License");
 # you may not use this file except in compliance with the License.
@@ -158,11 +158,11 @@ def crashpad_dimensions(platform, bucket):
     if platform == "fuchsia":
         dimensions["os"] = "Ubuntu-18.04"
     elif platform == "ios":
-        dimensions["os"] = "Mac-11"
+        dimensions["os"] = "Mac-12"
     elif platform == "linux":
         dimensions["os"] = "Ubuntu-18.04"
     elif platform == "mac":
-        dimensions["os"] = "Mac-11"
+        dimensions["os"] = "Mac-12"
     elif platform == "win":
         dimensions["os"] = "Windows-10"
 

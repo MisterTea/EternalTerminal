@@ -1,5 +1,4 @@
-// Copyright (c) 2010, Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -114,6 +113,7 @@ class MockCallFrameInfoHandler: public CallFrameInfo::Handler {
   MOCK_METHOD3(ValExpressionRule, bool(uint64_t address, int reg,
                                        const string& expression));
   MOCK_METHOD0(End, bool());
+  MOCK_METHOD0(Architecture, string());
   MOCK_METHOD2(PersonalityRoutine, bool(uint64_t address, bool indirect));
   MOCK_METHOD2(LanguageSpecificDataArea, bool(uint64_t address, bool indirect));
   MOCK_METHOD0(SignalHandler, bool());
@@ -1538,6 +1538,8 @@ TEST_F(CFIInsn, DW_CFA_GNU_window_save) {
   section
       .D8(google_breakpad::DW_CFA_GNU_window_save)
       .FinishEntry();
+
+  EXPECT_CALL(handler, Architecture()).WillRepeatedly(Return("sparc"));
 
   // Don't include all the rules in any particular sequence.
 

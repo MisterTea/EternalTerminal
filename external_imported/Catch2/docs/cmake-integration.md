@@ -2,9 +2,10 @@
 # CMake integration
 
 **Contents**<br>
-[CMake target](#cmake-target)<br>
+[CMake targets](#cmake-targets)<br>
 [Automatic test registration](#automatic-test-registration)<br>
 [CMake project options](#cmake-project-options)<br>
+[`CATCH_CONFIG_*` customization options in CMake](#catch_config_-customization-options-in-cmake)<br>
 [Installing Catch2 from git repository](#installing-catch2-from-git-repository)<br>
 [Installing Catch2 from vcpkg](#installing-catch2-from-vcpkg)<br>
 
@@ -15,26 +16,33 @@ integration points for our users.
 2) Catch2's repository contains CMake scripts for automatic registration
 of `TEST_CASE`s in CTest
 
-## CMake target
+## CMake targets
 
-Catch2's CMake build exports an interface target `Catch2::Catch2`. Linking
-against it will add the proper include path and all necessary capabilities
-to the resulting binary.
+Catch2's CMake build exports two targets, `Catch2::Catch2`, and
+`Catch2::Catch2WithMain`. If you do not need custom `main` function,
+you should be using the latter (and only the latter). Linking against
+it will add the proper include paths and link your target together with
+2 static libraries that implement Catch2 and its main respectively.
+If you need custom `main`, you should link only against `Catch2::Catch2`.
 
-This means that if Catch2 has been installed on the system, it should be
-enough to do:
+This means that if Catch2 has been installed on the system, it should
+be enough to do
 ```cmake
-find_package(Catch2 REQUIRED)
-target_link_libraries(tests Catch2::Catch2)
+find_package(Catch2 3 REQUIRED)
+# These tests can use the Catch2-provided main
+add_executable(tests test.cpp)
+target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
+
+# These tests need their own main
+add_executable(custom-main-tests test.cpp test-main.cpp)
+target_link_libraries(custom-main-tests PRIVATE Catch2::Catch2)
 ```
 
+These targets are also provided when Catch2 is used as a subdirectory.
+Assuming Catch2 has been cloned to `lib/Catch2`, you only need to replace
+the `find_package` call with `add_subdirectory(lib/Catch2)` and the snippet
+above still works.
 
-This target is also provided when Catch2 is used as a subdirectory.
-Assuming that Catch2 has been cloned to `lib/Catch2`:
-```cmake
-add_subdirectory(lib/Catch2)
-target_link_libraries(tests Catch2::Catch2)
-```
 
 Another possibility is to use [FetchContent](https://cmake.org/cmake/help/latest/module/FetchContent.html):
 ```cmake
@@ -43,26 +51,31 @@ Include(FetchContent)
 FetchContent_Declare(
   Catch2
   GIT_REPOSITORY https://github.com/catchorg/Catch2.git
-  GIT_TAG        v2.13.1)
+  GIT_TAG        v3.0.1 # or a later release
+)
 
 FetchContent_MakeAvailable(Catch2)
 
-target_link_libraries(tests Catch2::Catch2)
+add_executable(tests test.cpp)
+target_link_libraries(tests PRIVATE Catch2::Catch2WithMain)
 ```
+
 
 ## Automatic test registration
 
-Catch2's repository also contains two CMake scripts that help users
+Catch2's repository also contains three CMake scripts that help users
 with automatically registering their `TEST_CASE`s with CTest. They
-can be found in the `contrib` folder, and are
+can be found in the `extras` folder, and are
 
 1) `Catch.cmake` (and its dependency `CatchAddTests.cmake`)
 2) `ParseAndAddCatchTests.cmake` (deprecated)
+3) `CatchShardTests.cmake` (and its dependency `CatchShardTestsImpl.cmake`)
 
 If Catch2 has been installed in system, both of these can be used after
 doing `find_package(Catch2 REQUIRED)`. Otherwise you need to add them
 to your CMake module path.
 
+<a id="catch_discover_tests"></a>
 ### `Catch.cmake` and `CatchAddTests.cmake`
 
 `Catch.cmake` provides function `catch_discover_tests` to get tests from
@@ -78,13 +91,25 @@ project(baz LANGUAGES CXX VERSION 0.0.1)
 
 find_package(Catch2 REQUIRED)
 add_executable(foo test.cpp)
-target_link_libraries(foo Catch2::Catch2)
+target_link_libraries(foo PRIVATE Catch2::Catch2)
 
 include(CTest)
 include(Catch)
 catch_discover_tests(foo)
 ```
 
+When using `FetchContent`, `include(Catch)` will fail unless
+`CMAKE_MODULE_PATH` is explicitly updated to include the extras
+directory.
+
+```cmake
+# ... FetchContent ...
+#
+list(APPEND CMAKE_MODULE_PATH ${catch2_SOURCE_DIR}/extras)
+include(CTest)
+include(Catch)
+catch_discover_tests()
+```
 
 #### Customization
 `catch_discover_tests` can be given several extra argumets:
@@ -177,7 +202,7 @@ the output file name e.g. ".xml".
 ### `ParseAndAddCatchTests.cmake`
 
 ⚠ This script is [deprecated](https://github.com/catchorg/Catch2/pull/2120)
-in Catch 2.13.4 and superseded by the above approach using `catch_discover_tests`.
+in Catch2 2.13.4 and superseded by the above approach using `catch_discover_tests`.
 See [#2092](https://github.com/catchorg/Catch2/issues/2092) for details.
 
 `ParseAndAddCatchTests` works by parsing all implementation files
@@ -198,7 +223,7 @@ project(baz LANGUAGES CXX VERSION 0.0.1)
 
 find_package(Catch2 REQUIRED)
 add_executable(foo test.cpp)
-target_link_libraries(foo Catch2::Catch2)
+target_link_libraries(foo PRIVATE Catch2::Catch2)
 
 include(CTest)
 include(ParseAndAddCatchTests)
@@ -212,7 +237,7 @@ ParseAndAddCatchTests(foo)
 * `PARSE_CATCH_TESTS_VERBOSE` -- When `ON`, the script prints debug
 messages. Defaults to `OFF`.
 * `PARSE_CATCH_TESTS_NO_HIDDEN_TESTS` -- When `ON`, hidden tests (tests
-tagged with any of `[!hide]`, `[.]` or `[.foo]`) will not be registered.
+tagged with either of `[.]` or `[.foo]`) will not be registered.
 Defaults to `OFF`.
 * `PARSE_CATCH_TESTS_ADD_FIXTURE_IN_TEST_NAME` -- When `ON`, adds fixture
 class name to the test name in CTest. Defaults to `ON`.
@@ -234,10 +259,68 @@ unset(OptionalCatchTestLauncher)
 ParseAndAddCatchTests(bar)
 ```
 
+
+### `CatchShardTests.cmake`
+
+> `CatchShardTests.cmake` was introduced in Catch2 3.1.0.
+
+`CatchShardTests.cmake` provides a function
+`catch_add_sharded_tests(TEST_BINARY)` that splits tests from `TEST_BINARY`
+into multiple shards. The tests in each shard and their order is randomized,
+and the seed changes every invocation of CTest.
+
+Currently there are 3 customization points for this script:
+
+ * SHARD_COUNT - number of shards to split target's tests into
+ * REPORTER    - reporter spec to use for tests
+ * TEST_SPEC   - test spec used for filtering tests
+
+Example usage:
+
+```
+include(CatchShardTests)
+
+catch_add_sharded_tests(foo-tests
+  SHARD_COUNT 4
+  REPORTER "xml::out=-"
+  TEST_SPEC "A"
+)
+
+catch_add_sharded_tests(tests
+  SHARD_COUNT 8
+  REPORTER "xml::out=-"
+  TEST_SPEC "B"
+)
+```
+
+This registers total of 12 CTest tests (4 + 8 shards) to run shards
+from `foo-tests` test binary, filtered by a test spec.
+
+_Note that this script is currently a proof-of-concept for reseeding
+shards per CTest run, and thus does not support (nor does it currently
+aim to support) all customization points from
+[`catch_discover_tests`](#catch_discover_tests)._
+
+
 ## CMake project options
 
 Catch2's CMake project also provides some options for other projects
-that consume it. These are
+that consume it. These are:
+
+* `BUILD_TESTING` -- When `ON` and the project is not used as a subproject,
+Catch2's test binary will be built. Defaults to `ON`.
+* `CATCH_INSTALL_DOCS` -- When `ON`, Catch2's documentation will be
+included in the installation. Defaults to `ON`.
+* `CATCH_INSTALL_EXTRAS` -- When `ON`, Catch2's extras folder (the CMake
+scripts mentioned above, debugger helpers) will be included in the
+installation. Defaults to `ON`.
+* `CATCH_DEVELOPMENT_BUILD` -- When `ON`, configures the build for development
+of Catch2. This means enabling test projects, warnings and so on.
+Defaults to `OFF`.
+
+
+Enabling `CATCH_DEVELOPMENT_BUILD` also enables further configuration
+customization options:
 
 * `CATCH_BUILD_TESTING` -- When `ON`, Catch2's SelfTest project will be
 built. Defaults to `ON`. Note that Catch2 also obeys `BUILD_TESTING` CMake
@@ -245,12 +328,40 @@ variable, so _both_ of them need to be `ON` for the SelfTest to be built,
 and either of them can be set to `OFF` to disable building SelfTest.
 * `CATCH_BUILD_EXAMPLES` -- When `ON`, Catch2's usage examples will be
 built. Defaults to `OFF`.
-* `CATCH_INSTALL_DOCS` -- When `ON`, Catch2's documentation will be
-included in the installation. Defaults to `ON`.
-* `CATCH_INSTALL_HELPERS` -- When `ON`, Catch2's contrib folder will be
-included in the installation. Defaults to `ON`.
-* `BUILD_TESTING` -- When `ON` and the project is not used as a subproject,
-Catch2's test binary will be built. Defaults to `ON`.
+* `CATCH_BUILD_EXTRA_TESTS` -- When `ON`, Catch2's extra tests will be
+built. Defaults to `OFF`.
+* `CATCH_BUILD_FUZZERS` -- When `ON`, Catch2 fuzzing entry points will
+be built. Defaults to `OFF`.
+* `CATCH_ENABLE_WERROR` -- When `ON`, adds `-Werror` or equivalent flag
+to the compilation. Defaults to `ON`.
+* `CATCH_BUILD_SURROGATES` -- When `ON`, each header in Catch2 will be
+compiled separately to ensure that they are self-sufficient.
+Defaults to `OFF`.
+
+
+## `CATCH_CONFIG_*` customization options in CMake
+
+> CMake support for `CATCH_CONFIG_*` options was introduced in Catch2 3.0.1
+
+Due to the new separate compilation model, all the options from the
+[Compile-time configuration docs](configuration.md#top) can also be set
+through Catch2's CMake. To set them, define the option you want as `ON`,
+e.g. `-DCATCH_CONFIG_NOSTDOUT=ON`.
+
+Note that setting the option to `OFF` doesn't disable it. To force disable
+an option, you need to set the `_NO_` form of it to `ON`, e.g.
+`-DCATCH_CONFIG_NO_COLOUR_WIN32=ON`.
+
+
+To summarize the configuration option behaviour with an example:
+
+| `-DCATCH_CONFIG_COLOUR_WIN32` | `-DCATCH_CONFIG_NO_COLOUR_WIN32` |      Result |
+|-------------------------------|----------------------------------|-------------|
+|                          `ON` |                             `ON` |       error |
+|                          `ON` |                            `OFF` |    force-on |
+|                         `OFF` |                             `ON` |   force-off |
+|                         `OFF` |                            `OFF` | auto-detect |
+
 
 
 ## Installing Catch2 from git repository

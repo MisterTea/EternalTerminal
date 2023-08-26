@@ -1,0 +1,4 @@
+{
+   global: sentry_*;
+   local: *;
+};

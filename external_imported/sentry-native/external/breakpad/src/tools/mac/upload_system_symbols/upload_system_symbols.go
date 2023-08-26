@@ -1,5 +1,4 @@
-/* Copyright 2014, Google Inc.
-All rights reserved.
+/* Copyright 2014 Google LLC
 
 Redistribution and use in source and binary forms, with or without
 modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@ notice, this list of conditions and the following disclaimer.
 copyright notice, this list of conditions and the following disclaimer
 in the documentation and/or other materials provided with the
 distribution.
- * Neither the name of Google Inc. nor the names of its
+ * Neither the name of Google LLC nor the names of its
 contributors may be used to endorse or promote products derived from
 this software without specific prior written permission.
 
@@ -64,12 +63,12 @@ var (
 	dumpOnlyPath     = flag.String("dump-to", "", "Dump the symbols to the specified directory, but do not upload them.")
 	systemRoot       = flag.String("system-root", "", "Path to the root of the Mac OS X system whose symbols will be dumped.")
 	dumpArchitecture = flag.String("arch", "", "The CPU architecture for which symbols should be dumped. If not specified, dumps all architectures.")
+	apiKey           = flag.String("api-key", "", "API key to use. If this is present, the `sym-upload-v2` protocol is used.\nSee https://chromium.googlesource.com/breakpad/breakpad/+/HEAD/docs/sym_upload_v2_protocol.md or\n`symupload`'s help for more information.")
 )
 
 var (
 	// pathsToScan are the subpaths in the systemRoot that should be scanned for shared libraries.
 	pathsToScan = []string{
-		"/System/Library/Components",
 		"/System/Library/Frameworks",
 		"/System/Library/PrivateFrameworks",
 		"/usr/lib",
@@ -79,13 +78,26 @@ var (
 	optionalPathsToScan = []string{
 		// Gone in 10.15.
 		"/Library/QuickTime",
+		// Not present in dumped dyld_shared_caches
+		"/System/Library/Components",
 	}
 
-	// uploadServers are the list of servers to which symbols should be uploaded.
-	uploadServers = []string{
+	// uploadServersV1 are the list of servers to which symbols should be
+	// uploaded when using the V1 protocol.
+	uploadServersV1 = []string{
 		"https://clients2.google.com/cr/symbol",
 		"https://clients2.google.com/cr/staging_symbol",
 	}
+	// uploadServersV2 are the list of servers to which symbols should be
+	// uploaded when using the V2 protocol.
+	uploadServersV2 = []string{
+		"https://staging-crashsymbolcollector-pa.googleapis.com",
+		"https://prod-crashsymbolcollector-pa.googleapis.com",
+	}
+
+	// uploadServers are the list of servers that should be used, accounting
+	// for whether v1 or v2 protocol is used.
+	uploadServers = uploadServersV1
 
 	// blacklistRegexps match paths that should be excluded from dumping.
 	blacklistRegexps = []*regexp.Regexp{
@@ -101,6 +113,11 @@ var (
 func main() {
 	flag.Parse()
 	log.SetFlags(0)
+
+	// If `apiKey` is set, we're using the v2 protocol.
+	if len(*apiKey) > 0 {
+		uploadServers = uploadServersV2
+	}
 
 	var uq *UploadQueue
 
@@ -195,16 +212,28 @@ func (uq *UploadQueue) Done() {
 	close(uq.queue)
 }
 
-func (uq *UploadQueue) worker() {
+func (uq *UploadQueue) runSymUpload(symfile, server string) *exec.Cmd {
 	symUpload := path.Join(*breakpadTools, "symupload")
+	args := []string{symfile, server}
+	if len(*apiKey) > 0 {
+		args = append([]string{"-p", "sym-upload-v2", "-k", *apiKey}, args...)
+	}
+	return exec.Command(symUpload, args...)
+}
 
+func (uq *UploadQueue) worker() {
 	for symfile := range uq.queue {
 		for _, server := range uploadServers {
 			for i := 0; i < 3; i++ { // Give each upload 3 attempts to succeed.
-				cmd := exec.Command(symUpload, symfile, server)
+				cmd := uq.runSymUpload(symfile, server)
 				if output, err := cmd.Output(); err == nil {
 					// Success. No retry needed.
 					fmt.Printf("Uploaded %s to %s\n", symfile, server)
+					break
+				} else if exitError, ok := err.(*exec.ExitError); ok && exitError.ExitCode() == 2 && *apiKey != "" {
+					// Exit code 2 in protocol v2 means the file already exists on the server.
+					// No point retrying.
+					fmt.Printf("File %s already exists on %s\n", symfile, server)
 					break
 				} else {
 					log.Printf("Error running symupload(%s, %s), attempt %d: %v: %s\n", symfile, server, i, err, output)

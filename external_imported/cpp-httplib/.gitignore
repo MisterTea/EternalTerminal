@@ -10,10 +10,15 @@ example/redirect
 example/sse*
 example/upload
 example/*.pem
+test/httplib.cc
+test/httplib.h
 test/test
+test/server_fuzzer
 test/test_proxy
+test/test_split
 test/test.xcodeproj/xcuser*
 test/test.xcodeproj/*/xcuser*
+test/*.o
 test/*.pem
 test/*.srl
 

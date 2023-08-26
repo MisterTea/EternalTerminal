@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MEMORY_BUFFER_H
-#define _LIBUNWINDSTACK_MEMORY_BUFFER_H
+#pragma once
 
 #include <stdint.h>
 
@@ -33,14 +32,17 @@ class MemoryBuffer : public Memory {
 
   size_t Read(uint64_t addr, void* dst, size_t size) override;
 
-  uint8_t* GetPtr(size_t offset);
+  uint8_t* GetPtr(size_t offset) override;
 
   bool Resize(size_t size) {
-    raw_ = reinterpret_cast<uint8_t*>(realloc(raw_, size));
-    if (raw_ == nullptr) {
+    void* new_raw = realloc(raw_, size);
+    if (new_raw == nullptr) {
+      free(raw_);
+      raw_ = nullptr;
       size_ = 0;
       return false;
     }
+    raw_ = reinterpret_cast<uint8_t*>(new_raw);
     size_ = size;
     return true;
   }
@@ -53,5 +55,3 @@ class MemoryBuffer : public Memory {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MEMORY_BUFFER_H

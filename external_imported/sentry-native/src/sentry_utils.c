@@ -480,7 +480,7 @@ sentry__iso8601_to_msec(const char *iso)
 // to ensure the C locale is also used there.
 #if !defined(SENTRY_PLATFORM_ANDROID) && !defined(SENTRY_PLATFORM_IOS)
 static sentry__locale_t
-c_locale()
+c_locale(void)
 {
     static long c_locale_initialized = 0;
     static sentry__locale_t c_locale;

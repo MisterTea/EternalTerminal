@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_ELF_INTERFACE_ARM_H
-#define _LIBUNWINDSTACK_ELF_INTERFACE_ARM_H
+#pragma once
 
 #include <elf.h>
 #include <stdint.h>
@@ -77,7 +76,7 @@ class ElfInterfaceArm : public ElfInterface32 {
 
   bool StepExidx(uint64_t pc, Regs* regs, Memory* process_memory, bool* finished);
 
-  bool GetFunctionName(uint64_t addr, std::string* name, uint64_t* offset) override;
+  bool GetFunctionName(uint64_t addr, SharedString* name, uint64_t* offset) override;
 
   uint64_t start_offset() { return start_offset_; }
 
@@ -94,5 +93,3 @@ class ElfInterfaceArm : public ElfInterface32 {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_ELF_INTERFACE_ARM_H

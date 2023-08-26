@@ -38,43 +38,54 @@ extract_pdb_info(uintptr_t module_addr, sentry_value_t module)
         return;
     }
 
-    uint32_t relative_addr
-        = nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG]
-              .VirtualAddress;
-    if (!relative_addr) {
-        return;
-    }
-
-    PIMAGE_DEBUG_DIRECTORY debug_dict
-        = (PIMAGE_DEBUG_DIRECTORY)(module_addr + relative_addr);
-    if (!debug_dict || debug_dict->Type != IMAGE_DEBUG_TYPE_CODEVIEW) {
-        return;
-    }
-
-    struct CodeViewRecord70 *debug_info
-        = (struct CodeViewRecord70 *)(module_addr
-            + debug_dict->AddressOfRawData);
-    if (!debug_info || debug_info->signature != CV_SIGNATURE) {
-        return;
-    }
-
-    sentry_value_set_by_key(module, "debug_file",
-        sentry_value_new_string(debug_info->pdb_filename));
-
-    sentry_uuid_t debug_id_base
-        = sentry__uuid_from_native(&debug_info->pdb_signature);
     char id_buf[50];
-    sentry_uuid_as_string(&debug_id_base, id_buf);
-    id_buf[36] = '-';
-    snprintf(id_buf + 37, 10, "%x", debug_info->pdb_age);
-    sentry_value_set_by_key(
-        module, "debug_id", sentry_value_new_string(id_buf));
-
     snprintf(id_buf, sizeof(id_buf), "%08x%X",
         nt_headers->FileHeader.TimeDateStamp,
         nt_headers->OptionalHeader.SizeOfImage);
     sentry_value_set_by_key(module, "code_id", sentry_value_new_string(id_buf));
-    sentry_value_set_by_key(module, "type", sentry_value_new_string("pe"));
+
+    IMAGE_DATA_DIRECTORY debug_entry
+        = nt_headers->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_DEBUG];
+
+    size_t relative_addr = (size_t)debug_entry.VirtualAddress;
+    if (!relative_addr) {
+        return;
+    }
+
+    size_t table_size = (size_t)debug_entry.Size;
+    size_t entry_size = sizeof(IMAGE_DEBUG_DIRECTORY);
+    if (table_size % entry_size != 0) {
+        return;
+    }
+
+    for (size_t offset = 0; offset < table_size; offset += entry_size) {
+        PIMAGE_DEBUG_DIRECTORY debug_dict
+            = (PIMAGE_DEBUG_DIRECTORY)(module_addr + relative_addr + offset);
+
+        if (debug_dict->Type != IMAGE_DEBUG_TYPE_CODEVIEW) {
+            continue;
+        }
+
+        struct CodeViewRecord70 *debug_info
+            = (struct CodeViewRecord70 *)(module_addr
+                + debug_dict->AddressOfRawData);
+        if (debug_info->signature != CV_SIGNATURE) {
+            continue;
+        }
+
+        sentry_value_set_by_key(module, "debug_file",
+            sentry_value_new_string(debug_info->pdb_filename));
+
+        sentry_uuid_t debug_id_base
+            = sentry__uuid_from_native(&debug_info->pdb_signature);
+        sentry_uuid_as_string(&debug_id_base, id_buf);
+        id_buf[36] = '-';
+        snprintf(id_buf + 37, 10, "%x", debug_info->pdb_age);
+        sentry_value_set_by_key(
+            module, "debug_id", sentry_value_new_string(id_buf));
+
+        return;
+    }
 }
 
 static void
@@ -97,6 +108,8 @@ load_modules(void)
                         module.modBaseAddr, &vmem_info, sizeof(vmem_info))
                 && vmem_info.State == MEM_COMMIT) {
                 sentry_value_t rv = sentry_value_new_object();
+                sentry_value_set_by_key(
+                    rv, "type", sentry_value_new_string("pe"));
                 sentry_value_set_by_key(rv, "image_addr",
                     sentry__value_new_addr((uint64_t)module.modBaseAddr));
                 sentry_value_set_by_key(rv, "image_size",

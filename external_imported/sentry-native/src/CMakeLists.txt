@@ -10,6 +10,7 @@ sentry_target_sources_cwd(sentry
 	sentry_database.h
 	sentry_envelope.c
 	sentry_envelope.h
+	sentry_info.c
 	sentry_json.c
 	sentry_json.h
 	sentry_logger.c

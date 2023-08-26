@@ -40,9 +40,8 @@ bool sentry__event_is_transaction(sentry_value_t event);
  * being passed in is not a transaction.
  *
  * More specifically, it will do the following things:
- * - sample the event, possibly discarding it,
  * - apply the scope to it,
- * - call the before_send hook on it,
+ * - call the before_send hook on it (if invoke_before_send == true),
  * - add the event to a new envelope,
  * - record errors on the current session,
  * - add any attachments to the envelope as well
@@ -51,7 +50,7 @@ bool sentry__event_is_transaction(sentry_value_t event);
  * `event_id` out-parameter.
  */
 sentry_envelope_t *sentry__prepare_event(const sentry_options_t *options,
-    sentry_value_t event, sentry_uuid_t *event_id);
+    sentry_value_t event, sentry_uuid_t *event_id, bool invoke_before_send);
 
 /**
  * Sends a sentry event, regardless of its type.

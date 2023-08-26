@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -57,6 +57,7 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
   const CPUContext* Context() const override;
   const MemorySnapshot* Stack() const override;
   uint64_t ThreadID() const override;
+  std::string ThreadName() const override;
   int SuspendCount() const override;
   int Priority() const override;
   uint64_t ThreadSpecificDataAddress() const override;
@@ -84,6 +85,7 @@ class ThreadSnapshotLinux final : public ThreadSnapshot {
   CPUContext context_;
   MemorySnapshotGeneric stack_;
   LinuxVMAddress thread_specific_data_address_;
+  std::string thread_name_;
   pid_t thread_id_;
   int priority_;
   InitializationStateDcheck initialized_;

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -20,6 +20,12 @@
 // Missing from glibc and bionic
 #if !defined(SS_AUTODISARM)
 #define SS_AUTODISARM (1u << 31)
+#endif
+
+// Linux Kernel >= 5.11 flag for `sigaction::sa_flags`. Missing in headers from
+// earlier versions of Linux.
+#if !defined(SA_EXPOSE_TAGBITS)
+#define SA_EXPOSE_TAGBITS 0x00000800
 #endif
 
 // Missing from glibc and bionic-x86_64

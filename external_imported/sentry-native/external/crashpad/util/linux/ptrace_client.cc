@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -329,6 +329,11 @@ ssize_t PtraceClient::ReadUpTo(VMAddress address, size_t size, void* buffer) {
 
     if (bytes_read == 0) {
       return total_read;
+    }
+
+    if (static_cast<size_t>(bytes_read) > size) {
+      LOG(ERROR) << "invalid size " << bytes_read;
+      return -1;
     }
 
     if (!LoggingReadFileExactly(sock_, buffer_c, bytes_read)) {

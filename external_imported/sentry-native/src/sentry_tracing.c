@@ -55,16 +55,12 @@ sentry_transaction_context_new(const char *name, const char *operation)
     if (!tx_cxt) {
         return NULL;
     }
-    memset(tx_cxt, 0, sizeof(sentry_transaction_context_t));
+    tx_cxt->inner = sentry__value_transaction_context_new(name, operation);
 
-    sentry_value_t inner
-        = sentry__value_transaction_context_new(name, operation);
-
-    if (sentry_value_is_null(inner)) {
+    if (sentry_value_is_null(tx_cxt->inner)) {
+        sentry_free(tx_cxt);
         return NULL;
     }
-
-    tx_cxt->inner = inner;
 
     return tx_cxt;
 }
@@ -87,36 +83,48 @@ void
 sentry_transaction_context_set_name(
     sentry_transaction_context_t *tx_cxt, const char *name)
 {
-    sentry_value_set_by_key(
-        tx_cxt->inner, "transaction", sentry_value_new_string(name));
+    if (tx_cxt) {
+        sentry_value_set_by_key(
+            tx_cxt->inner, "transaction", sentry_value_new_string(name));
+    }
 }
 
 void
 sentry_transaction_context_set_operation(
     sentry_transaction_context_t *tx_cxt, const char *operation)
 {
-    sentry_value_set_by_key(
-        tx_cxt->inner, "op", sentry_value_new_string(operation));
+    if (tx_cxt) {
+        sentry_value_set_by_key(
+            tx_cxt->inner, "op", sentry_value_new_string(operation));
+    }
 }
 
 void
 sentry_transaction_context_set_sampled(
     sentry_transaction_context_t *tx_cxt, int sampled)
 {
-    sentry_value_set_by_key(
-        tx_cxt->inner, "sampled", sentry_value_new_bool(sampled));
+    if (tx_cxt) {
+        sentry_value_set_by_key(
+            tx_cxt->inner, "sampled", sentry_value_new_bool(sampled));
+    }
 }
 
 void
 sentry_transaction_context_remove_sampled(sentry_transaction_context_t *tx_cxt)
 {
-    sentry_value_remove_by_key(tx_cxt->inner, "sampled");
+    if (tx_cxt) {
+        sentry_value_remove_by_key(tx_cxt->inner, "sampled");
+    }
 }
 
 void
 sentry_transaction_context_update_from_header(
     sentry_transaction_context_t *tx_cxt, const char *key, const char *value)
 {
+    if (!tx_cxt) {
+        return;
+    }
+
     // do case-insensitive header key comparison
     const char sentry_trace[] = "sentry-trace";
     for (size_t i = 0; i < sizeof(sentry_trace); i++) {
@@ -169,7 +177,6 @@ sentry__transaction_new(sentry_value_t inner)
     if (!tx) {
         return NULL;
     }
-    memset(tx, 0, sizeof(sentry_transaction_t));
 
     tx->inner = inner;
 
@@ -179,7 +186,9 @@ sentry__transaction_new(sentry_value_t inner)
 void
 sentry__transaction_incref(sentry_transaction_t *tx)
 {
-    sentry_value_incref(tx->inner);
+    if (tx) {
+        sentry_value_incref(tx->inner);
+    }
 }
 
 void
@@ -200,7 +209,9 @@ sentry__transaction_decref(sentry_transaction_t *tx)
 void
 sentry__span_incref(sentry_span_t *span)
 {
-    sentry_value_incref(span->inner);
+    if (span) {
+        sentry_value_incref(span->inner);
+    }
 }
 
 void
@@ -212,6 +223,7 @@ sentry__span_decref(sentry_span_t *span)
 
     if (sentry_value_refcount(span->inner) <= 1) {
         sentry_value_decref(span->inner);
+        sentry__transaction_decref(span->transaction);
         sentry_free(span);
     } else {
         sentry_value_decref(span->inner);
@@ -229,7 +241,6 @@ sentry__span_new(sentry_transaction_t *tx, sentry_value_t inner)
     if (!span) {
         return NULL;
     }
-    memset(span, 0, sizeof(sentry_span_t));
 
     span->inner = inner;
 
@@ -268,20 +279,6 @@ sentry__value_span_new(
     return child;
 fail:
     return sentry_value_new_null();
-}
-
-// TODO: for now, don't allow multiple references to spans. this should be
-// revisited when sentry_transaction_t stores a list of sentry_span_t's
-// instead of a list of sentry_value_t's.
-void
-sentry__span_free(sentry_span_t *span)
-{
-    if (!span) {
-        return;
-    }
-    sentry_value_decref(span->inner);
-    sentry__transaction_decref(span->transaction);
-    sentry_free(span);
 }
 
 sentry_value_t
@@ -323,8 +320,10 @@ sentry__value_get_trace_context(sentry_value_t span)
 void
 sentry_transaction_set_name(sentry_transaction_t *tx, const char *name)
 {
-    sentry_value_set_by_key(
-        tx->inner, "transaction", sentry_value_new_string(name));
+    if (tx) {
+        sentry_value_set_by_key(
+            tx->inner, "transaction", sentry_value_new_string(name));
+    }
 }
 
 static void
@@ -348,13 +347,17 @@ void
 sentry_transaction_set_tag(
     sentry_transaction_t *tx, const char *tag, const char *value)
 {
-    set_tag(tx->inner, tag, value);
+    if (tx) {
+        set_tag(tx->inner, tag, value);
+    }
 }
 
 void
 sentry_span_set_tag(sentry_span_t *span, const char *tag, const char *value)
 {
-    set_tag(span->inner, tag, value);
+    if (span) {
+        set_tag(span->inner, tag, value);
+    }
 }
 
 static void
@@ -369,13 +372,17 @@ remove_tag(sentry_value_t item, const char *tag)
 void
 sentry_transaction_remove_tag(sentry_transaction_t *tx, const char *tag)
 {
-    remove_tag(tx->inner, tag);
+    if (tx) {
+        remove_tag(tx->inner, tag);
+    }
 }
 
 void
 sentry_span_remove_tag(sentry_span_t *span, const char *tag)
 {
-    remove_tag(span->inner, tag);
+    if (span) {
+        remove_tag(span->inner, tag);
+    }
 }
 
 static void
@@ -393,13 +400,17 @@ void
 sentry_transaction_set_data(
     sentry_transaction_t *tx, const char *key, sentry_value_t value)
 {
-    set_data(tx->inner, key, value);
+    if (tx) {
+        set_data(tx->inner, key, value);
+    }
 }
 
 void
 sentry_span_set_data(sentry_span_t *span, const char *key, sentry_value_t value)
 {
-    set_data(span->inner, key, value);
+    if (span) {
+        set_data(span->inner, key, value);
+    }
 }
 
 static void
@@ -414,13 +425,17 @@ remove_data(sentry_value_t item, const char *key)
 void
 sentry_transaction_remove_data(sentry_transaction_t *tx, const char *key)
 {
-    remove_data(tx->inner, key);
+    if (tx) {
+        remove_data(tx->inner, key);
+    }
 }
 
 void
 sentry_span_remove_data(sentry_span_t *span, const char *key)
 {
-    remove_data(span->inner, key);
+    if (span) {
+        remove_data(span->inner, key);
+    }
 }
 
 sentry_value_t
@@ -475,14 +490,18 @@ set_status(sentry_value_t item, sentry_span_status_t status)
 void
 sentry_span_set_status(sentry_span_t *span, sentry_span_status_t status)
 {
-    set_status(span->inner, status);
+    if (span) {
+        set_status(span->inner, status);
+    }
 }
 
 void
 sentry_transaction_set_status(
     sentry_transaction_t *tx, sentry_span_status_t status)
 {
-    set_status(tx->inner, status);
+    if (tx) {
+        set_status(tx->inner, status);
+    }
 }
 
 static void
@@ -509,12 +528,16 @@ void
 sentry_span_iter_headers(sentry_span_t *span,
     sentry_iter_headers_function_t callback, void *userdata)
 {
-    sentry__span_iter_headers(span->inner, callback, userdata);
+    if (span) {
+        sentry__span_iter_headers(span->inner, callback, userdata);
+    }
 }
 
 void
 sentry_transaction_iter_headers(sentry_transaction_t *tx,
     sentry_iter_headers_function_t callback, void *userdata)
 {
-    sentry__span_iter_headers(tx->inner, callback, userdata);
+    if (tx) {
+        sentry__span_iter_headers(tx->inner, callback, userdata);
+    }
 }

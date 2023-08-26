@@ -1,0 +1,69 @@
+name: CMake
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+  workflow_dispatch:
+
+env:
+  # Customize the CMake build type here (Release, Debug, RelWithDebInfo, etc.)
+  BUILD_TYPE: Release
+
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  build-ubuntu:
+    strategy:
+      matrix:
+        os: [ ubuntu-20.04, ubuntu-22.04 ]
+        compiler: [ g++-9, g++-10, clang++ ]
+
+    name: Build and Test on Ubuntu
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure CMake
+        run: cmake -S "${{github.workspace}}" -B "${{github.workspace}}/build" -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_CXX_COMPILER=${{matrix.compiler}}
+      - name: Build
+        run: cmake --build "${{github.workspace}}/build" --config $BUILD_TYPE
+      - name: Test
+        working-directory: ${{github.workspace}}/build/test
+        run: ctest -C $BUILD_TYPE --output-on-failure
+
+  build-macos:
+    name: Build and Test on MacOS
+    strategy:
+      matrix:
+        os: [ macos-11, macos-12 ]
+    runs-on: ${{matrix.os}}
+    steps:
+      - uses: actions/checkout@v3
+      - name: Configure CMake
+        run: cmake -S "${{github.workspace}}" -B "${{github.workspace}}/build" -DCMAKE_BUILD_TYPE=$BUILD_TYPE -DCMAKE_EXPORT_COMPILE_COMMANDS=ON
+      - name: Show compile commands
+        run: cat build/compile_commands.json
+      - name: Build
+        run: cmake --build "${{github.workspace}}/build" --config $BUILD_TYPE
+      - name: Test
+        working-directory: ${{github.workspace}}/build/test
+        shell: bash
+        run: ctest -C $BUILD_TYPE --output-on-failure
+
+  build-windows:
+    name: Build and Test on Windows
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v3
+      - uses: ilammy/msvc-dev-cmd@v1
+      - name: Configure CMake
+        run: cmake -S "${{github.workspace}}" -B "${{github.workspace}}/build" -DCMAKE_BUILD_TYPE=$BUILD_TYPE -T "ClangCl"
+      - name: Build
+        run: cmake --build "${{github.workspace}}/build" --config $BUILD_TYPE
+      - name: Test
+        working-directory: ${{github.workspace}}/build/test
+        run: cd $BUILD_TYPE && ./link_test && ./options_test

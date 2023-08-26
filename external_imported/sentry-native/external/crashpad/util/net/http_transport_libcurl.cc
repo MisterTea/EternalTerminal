@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -522,6 +522,10 @@ size_t HTTPTransportLibcurl::WriteResponseBody(char* buffer,
                                                size_t size,
                                                size_t nitems,
                                                void* userdata) {
+#if defined(MEMORY_SANITIZER)
+  // Work around an MSAN false-positive in passing `userdata`.
+  __msan_unpoison(&userdata, sizeof(userdata));
+#endif
   std::string* response_body = reinterpret_cast<std::string*>(userdata);
 
   // This libcurl callback mimics the silly stdio-style fread() interface: size

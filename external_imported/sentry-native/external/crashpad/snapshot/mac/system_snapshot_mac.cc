@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -388,6 +388,20 @@ void SystemSnapshotMac::TimeZone(DaylightSavingTimeStatus* dst_status,
                      daylight_offset_seconds,
                      standard_name,
                      daylight_name);
+}
+
+uint64_t SystemSnapshotMac::AddressMask() const {
+  uint64_t mask = 0;
+#if defined(ARCH_CPU_ARM64)
+  // `machdep.virtual_address_size` is the number of addressable bits in
+  // userspace virtual addresses
+  uint8_t addressable_bits =
+      CastIntSysctlByName<uint8_t>("machdep.virtual_address_size", 0);
+  if (addressable_bits) {
+    mask = ~((1UL << addressable_bits) - 1);
+  }
+#endif
+  return mask;
 }
 
 }  // namespace internal

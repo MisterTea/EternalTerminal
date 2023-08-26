@@ -54,15 +54,7 @@ sentry__filelock_try_lock(sentry_filelock_t *lock)
 {
     lock->is_locked = false;
 
-    const int oflags =
-#ifdef SENTRY_PLATFORM_AIX
-        // Under AIX, O_TRUNC can only be set if it can be written to, and
-        // flock (well, fcntl) will return EBADF if the fd is not read-write.
-        O_RDWR | O_CREAT | O_TRUNC;
-#else
-        O_RDONLY | O_CREAT | O_TRUNC;
-#endif
-    int fd = open(lock->path->path, oflags,
+    int fd = open(lock->path->path, O_RDWR | O_CREAT | O_TRUNC,
         S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH);
     if (fd < 0) {
         return false;

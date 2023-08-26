@@ -1,5 +1,4 @@
-// Copyright (c) 2014, Google Inc.
-// All rights reserved.
+// Copyright 2014 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -56,9 +55,13 @@ enum ProcessResult {
   PROCESS_ERROR_DUPLICATE_REQUESTING_THREADS,  // There was more than one
                                                // requesting thread.
 
-  PROCESS_SYMBOL_SUPPLIER_INTERRUPTED          // The dump processing was
+  PROCESS_SYMBOL_SUPPLIER_INTERRUPTED,         // The dump processing was
                                                // interrupted by the
                                                // SymbolSupplier(not fatal).
+
+  PROCESS_ERROR_GETTING_THREAD_NAME,           // There was an error getting one
+                                               // thread's name from the dump.
+
 };
 
 }  // namespace google_breakpad

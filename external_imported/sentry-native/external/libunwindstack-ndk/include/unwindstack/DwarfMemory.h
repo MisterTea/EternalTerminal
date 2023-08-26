@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_DWARF_MEMORY_H
-#define _LIBUNWINDSTACK_DWARF_MEMORY_H
+#pragma once
 
 #include <stdint.h>
 
@@ -72,5 +71,3 @@ class DwarfMemory {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_DWARF_MEMORY_H

@@ -1,4 +1,4 @@
-// Copyright 2017 The Crashpad Authors. All rights reserved.
+// Copyright 2017 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -17,6 +17,7 @@
 
 #include <algorithm>
 #include <atomic>
+#include <optional>
 
 #include <stdint.h>
 #include <string.h>
@@ -26,6 +27,7 @@
 #include "base/numerics/safe_conversions.h"
 #include "base/strings/string_piece.h"
 #include "build/build_config.h"
+#include "util/synchronization/scoped_spin_guard.h"
 
 namespace crashpad {
 #if BUILDFLAG(IS_IOS)
@@ -72,7 +74,8 @@ class AnnotationList;
 class Annotation {
  public:
   //! \brief The maximum length of an annotation’s name, in bytes.
-  static constexpr size_t kNameMaxLength = 64;
+  //!    Matches the behavior of Breakpad's SimpleStringDictionary.
+  static constexpr size_t kNameMaxLength = 256;
 
   //! \brief The maximum size of an annotation’s value, in bytes.
   static constexpr size_t kValueMaxSize = 5 * 4096;
@@ -91,6 +94,20 @@ class Annotation {
     //! \brief Clients may declare their own custom types by using values
     //!     greater than this.
     kUserDefinedStart = 0x8000,
+  };
+
+  //! \brief Mode used to guard concurrent reads from writes.
+  enum class ConcurrentAccessGuardMode : bool {
+    //! \!brief Annotation does not guard reads from concurrent
+    //!     writes. Annotation values can be corrupted if the process crashes
+    //!     mid-write and the handler tries to read from the Annotation while
+    //!     being written to.
+    kUnguarded = false,
+
+    //! \!brief Annotation guards reads from concurrent writes using
+    //!     ScopedSpinGuard. Clients must use TryCreateScopedSpinGuard()
+    //!     before reading or writing the data in this Annotation.
+    kScopedSpinGuard = true,
   };
 
   //! \brief Creates a user-defined Annotation::Type.
@@ -131,12 +148,11 @@ class Annotation {
   //! \param[in] value_ptr A pointer to the value for the annotation. The
   //!     pointer may not be changed once associated with an annotation, but
   //!     the data may be mutated.
-  constexpr Annotation(Type type, const char name[], void* const value_ptr)
-      : link_node_(nullptr),
-        name_(name),
-        value_ptr_(value_ptr),
-        size_(0),
-        type_(type) {}
+  constexpr Annotation(Type type, const char name[], void* value_ptr)
+      : Annotation(type,
+                   name,
+                   value_ptr,
+                   ConcurrentAccessGuardMode::kUnguarded) {}
 
   Annotation(const Annotation&) = delete;
   Annotation& operator=(const Annotation&) = delete;
@@ -171,7 +187,58 @@ class Annotation {
   const char* name() const { return name_; }
   const void* value() const { return value_ptr_; }
 
+  ConcurrentAccessGuardMode concurrent_access_guard_mode() const {
+    return concurrent_access_guard_mode_;
+  }
+
+  //! \brief If this Annotation guards concurrent access using ScopedSpinGuard,
+  //!     tries to obtain the spin guard and returns the result.
+  //!
+  //! \param[in] timeout_ns The timeout in nanoseconds after which to give up
+  //!     trying to obtain the spin guard.
+  //! \return std::nullopt if the spin guard could not be obtained within
+  //!     timeout_ns, or the obtained spin guard otherwise.
+  std::optional<ScopedSpinGuard> TryCreateScopedSpinGuard(uint64_t timeout_ns) {
+    // This can't use DCHECK_EQ() because ostream doesn't support
+    // operator<<(bool).
+    DCHECK(concurrent_access_guard_mode_ ==
+           ConcurrentAccessGuardMode::kScopedSpinGuard);
+    if (concurrent_access_guard_mode_ ==
+        ConcurrentAccessGuardMode::kUnguarded) {
+      return std::nullopt;
+    }
+    return ScopedSpinGuard::TryCreateScopedSpinGuard(timeout_ns,
+                                                     spin_guard_state_);
+  }
+
  protected:
+  //! \brief Constructs a new annotation.
+  //!
+  //! Upon construction, the annotation will not be included in any crash
+  //! reports until \sa SetSize() is called with a value greater than `0`.
+  //!
+  //! \param[in] type The data type of the value of the annotation.
+  //! \param[in] name A `NUL`-terminated C-string name for the annotation. Names
+  //!     do not have to be unique, though not all crash processors may handle
+  //!     Annotations with the same name. Names should be constexpr data with
+  //!     static storage duration.
+  //! \param[in] value_ptr A pointer to the value for the annotation. The
+  //!     pointer may not be changed once associated with an annotation, but
+  //!     the data may be mutated.
+  //! \param[in] concurrent_access_guard_mode Mode used to guard concurrent
+  //!     reads from writes.
+  constexpr Annotation(Type type,
+                       const char name[],
+                       void* value_ptr,
+                       ConcurrentAccessGuardMode concurrent_access_guard_mode)
+      : link_node_(nullptr),
+        name_(name),
+        value_ptr_(value_ptr),
+        size_(0),
+        type_(type),
+        concurrent_access_guard_mode_(concurrent_access_guard_mode),
+        spin_guard_state_() {}
+
   friend class AnnotationList;
 #if BUILDFLAG(IS_IOS)
   friend class internal::InProcessIntermediateDumpHandler;
@@ -191,6 +258,11 @@ class Annotation {
   void* const value_ptr_;
   ValueSizeType size_;
   const Type type_;
+
+  //! \brief Mode used to guard concurrent reads from writes.
+  const ConcurrentAccessGuardMode concurrent_access_guard_mode_;
+
+  SpinGuardState spin_guard_state_;
 };
 
 //! \brief An \sa Annotation that stores a `NUL`-terminated C-string value.

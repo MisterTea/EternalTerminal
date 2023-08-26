@@ -10,16 +10,13 @@ coverage:
       default:
         target: 80%
   ignore:
-    - "projects/SelfTest"
-    - "**/catch_reporter_tap.hpp"
-    - "**/catch_reporter_automake.hpp"
-    - "**/catch_reporter_teamcity.hpp"
-    - "**/catch_reporter_sonarqube.hpp"
     - "**/external/clara.hpp"
+    - "tests"
 
 
 codecov:
-  branch: v2.x
+  branch: devel
+  max_report_age: off
 
 comment:
   layout: "diff"

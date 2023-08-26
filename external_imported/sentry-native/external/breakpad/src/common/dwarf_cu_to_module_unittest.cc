@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -781,9 +780,6 @@ TEST_F(SimpleCU, AbstractOriginNotInlined) {
 }
 
 TEST_F(SimpleCU, UnknownAbstractOrigin) {
-  EXPECT_CALL(reporter_, UnknownAbstractOrigin(_, 1ULL)).WillOnce(Return());
-  EXPECT_CALL(reporter_, UnnamedFunction(0x11c70f94c6e87ccdLL))
-    .WillOnce(Return());
   PushLine(0x1758a0f941b71efbULL, 0x1cf154f1f545e146ULL, "line-file", 75173118);
 
   StartCU();
@@ -799,8 +795,6 @@ TEST_F(SimpleCU, UnknownAbstractOrigin) {
 }
 
 TEST_F(SimpleCU, UnnamedFunction) {
-  EXPECT_CALL(reporter_, UnnamedFunction(0xe34797c7e68590a8LL))
-    .WillOnce(Return());
   PushLine(0x72b80e41a0ac1d40ULL, 0x537174f231ee181cULL, "line-file", 14044850);
 
   StartCU();
@@ -1622,7 +1616,6 @@ TEST_F(Specifications, UnhandledInterCU) {
                                            google_breakpad::DW_TAG_compile_unit));
     ASSERT_TRUE(root3_handler.EndAttributes());
     EXPECT_CALL(reporter_, UnhandledInterCUReference(_, _)).Times(1);
-    EXPECT_CALL(reporter_, UnnamedFunction(_)).Times(1);
     DefinitionDIE(&root3_handler, google_breakpad::DW_TAG_subprogram,
                   0xb01fef8b380bd1a2ULL, "",
                   0x2618f00a1a711e53ULL, 0x4fd94b76d7c2caf5ULL);
@@ -1632,8 +1625,6 @@ TEST_F(Specifications, UnhandledInterCU) {
 
 TEST_F(Specifications, BadOffset) {
   PushLine(0xa0277efd7ce83771ULL, 0x149554a184c730c1ULL, "line-file", 56636272);
-  EXPECT_CALL(reporter_, UnknownSpecification(_, 0x2be953efa6f9a996ULL))
-    .WillOnce(Return());
 
   StartCU();
   DeclarationDIE(&root_handler_, 0xefd7f7752c27b7e4ULL,

@@ -265,6 +265,17 @@ sentry__end_current_session_with_status(sentry_session_status_t status)
     return session;
 }
 
+static void
+sentry__capture_session(sentry_session_t *session)
+{
+    sentry_envelope_t *envelope = sentry__envelope_new();
+    sentry__envelope_add_session(envelope, session);
+
+    SENTRY_WITH_OPTIONS (options) {
+        sentry__capture_envelope(options->transport, envelope);
+    }
+}
+
 void
 sentry_end_session(void)
 {
@@ -273,13 +284,20 @@ sentry_end_session(void)
         return;
     }
 
-    sentry_envelope_t *envelope = sentry__envelope_new();
-    sentry__envelope_add_session(envelope, session);
+    sentry__capture_session(session);
     sentry__session_free(session);
+}
 
-    SENTRY_WITH_OPTIONS (options) {
-        sentry__capture_envelope(options->transport, envelope);
+void
+sentry_end_session_with_status(sentry_session_status_t status)
+{
+    sentry_session_t *session = sentry__end_current_session_with_status(status);
+    if (!session) {
+        return;
     }
+
+    sentry__capture_session(session);
+    sentry__session_free(session);
 }
 
 void

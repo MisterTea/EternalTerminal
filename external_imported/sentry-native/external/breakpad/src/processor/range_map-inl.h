@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -39,6 +38,7 @@
 
 #include <assert.h>
 
+#include "common/safe_math.h"
 #include "processor/range_map.h"
 #include "processor/linked_ptr.h"
 #include "processor/logging.h"
@@ -57,10 +57,15 @@ template<typename AddressType, typename EntryType>
 bool RangeMap<AddressType, EntryType>::StoreRangeInternal(
     const AddressType& base, const AddressType& delta,
     const AddressType& size, const EntryType& entry) {
-  AddressType high = base + (size - 1);
-
+  AddressType high;
+  bool high_ok = false;
+  if (size > 0) {
+    std::pair<AddressType, bool> result = AddWithOverflowCheck(base, size - 1);
+    high = result.first;
+    high_ok = !result.second;
+  }
   // Check for undersize or overflow.
-  if (size <= 0 || high < base) {
+  if (!high_ok) {
     // The processor will hit this case too frequently with common symbol
     // files in the size == 0 case, which is more suited to a DEBUG channel.
     // Filter those out since there's no DEBUG channel at the moment.

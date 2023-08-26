@@ -14,38 +14,79 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MEMORY_CACHE_H
-#define _LIBUNWINDSTACK_MEMORY_CACHE_H
+#pragma once
 
+#include <pthread.h>
 #include <stdint.h>
 
 #include <memory>
-#include <string>
+#include <mutex>
+#include <optional>
 #include <unordered_map>
 
 #include <unwindstack/Memory.h>
 
 namespace unwindstack {
 
-class MemoryCache : public Memory {
+class MemoryCacheBase : public Memory {
  public:
-  MemoryCache(Memory* memory) : impl_(memory) {}
-  virtual ~MemoryCache() = default;
+  MemoryCacheBase(Memory* memory) : impl_(memory) {}
+  virtual ~MemoryCacheBase() = default;
 
-  size_t Read(uint64_t addr, void* dst, size_t size) override;
+  MemoryCacheBase* AsMemoryCacheBase() override { return this; }
+
+  const std::shared_ptr<Memory>& UnderlyingMemory() { return impl_; }
+
+  size_t Read(uint64_t addr, void* dst, size_t size) override {
+    // Only look at the cache for small reads.
+    if (size > 64) {
+      return impl_->Read(addr, dst, size);
+    }
+    return CachedRead(addr, dst, size);
+  }
+
   long ReadTag(uint64_t addr) override { return impl_->ReadTag(addr); }
 
-  void Clear() override { cache_.clear(); }
-
- private:
+ protected:
   constexpr static size_t kCacheBits = 12;
   constexpr static size_t kCacheMask = (1 << kCacheBits) - 1;
   constexpr static size_t kCacheSize = 1 << kCacheBits;
-  std::unordered_map<uint64_t, uint8_t[kCacheSize]> cache_;
 
-  std::unique_ptr<Memory> impl_;
+  using CacheDataType = std::unordered_map<uint64_t, uint8_t[kCacheSize]>;
+
+  virtual size_t CachedRead(uint64_t addr, void* dst, size_t size) = 0;
+
+  size_t InternalCachedRead(uint64_t addr, void* dst, size_t size, CacheDataType* cache);
+
+  std::shared_ptr<Memory> impl_;
+};
+
+class MemoryCache : public MemoryCacheBase {
+ public:
+  MemoryCache(Memory* memory) : MemoryCacheBase(memory) {}
+  virtual ~MemoryCache() = default;
+
+  size_t CachedRead(uint64_t addr, void* dst, size_t size) override;
+
+  void Clear() override;
+
+ protected:
+  CacheDataType cache_;
+
+  std::mutex cache_lock_;
+};
+
+class MemoryThreadCache : public MemoryCacheBase {
+ public:
+  MemoryThreadCache(Memory* memory);
+  virtual ~MemoryThreadCache();
+
+  size_t CachedRead(uint64_t addr, void* dst, size_t size) override;
+
+  void Clear() override;
+
+ protected:
+  std::optional<pthread_key_t> thread_cache_;
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MEMORY_CACHE_H

@@ -2,6 +2,8 @@
 
 # Release notes
 **Contents**<br>
+[3.1.0](#310)<br>
+[3.0.1](#301)<br>
 [2.13.7](#2137)<br>
 [2.13.6](#2136)<br>
 [2.13.5](#2135)<br>
@@ -48,6 +50,228 @@
 [Even Older versions](#even-older-versions)<br>
 
 
+## 3.1.0
+
+### Improvements
+* Improved suppression of `-Wparentheses` for older GCCs
+  * Turns out that even GCC 9 does not properly handle `_Pragma`s in the C++ frontend.
+* Added type constraints onto `random` generator (#2433)
+  * These constraints copy what the standard says for the underlying `std::uniform_int_distribution`
+* Suppressed -Wunused-variable from nvcc (#2306, #2427)
+* Suppressed -Wunused-variable from MinGW (#2132)
+* Added All/Any/NoneTrue range matchers (#2319)
+  * These check that all/any/none of boolean values in a range are true.
+* The JUnit reporter now normalizes classnames from C++ namespaces to Java-like namespaces (#2468)
+  * This provides better support for other JUnit based tools.
+* The Bazel support now understands `BAZEL_TEST` environment variable (#2459)
+  * The `CATCH_CONFIG_BAZEL_SUPPORT` configuration option is also still supported.
+* Returned support for compiling Catch2 with GCC 5 (#2448)
+  * This required removing inherited constructors from Catch2's internals.
+  * I recommend updating to a newer GCC anyway.
+* `catch_discover_tests` now has a new options for setting library load path(s) when running the Catch2 binary (#2467)
+
+
+### Fixes
+* Fixed crash when listing listeners without any registered listeners (#2442)
+* Fixed nvcc compilation error in constructor benchmarking helper (#2477)
+* Catch2's CMakeList supports pre-3.12 CMake again (#2428)
+  * The gain from requiring CMake 3.12 was very minor, but y'all should really update to newer CMake
+
+
+### Miscellaneous
+* Fixed SelfTest build on MinGW (#2447)
+* The in-repo conan recipe exports the CMake helper (#2460)
+* Added experimental CMake script to showcase using test case sharding together with CTest
+  * Compared to `catch_discover_tests`, it supports very limited number of options and customization
+* Added documentation page on best practices when running Catch2 tests
+* Catch2 can be built as a dynamic library (#2397, #2398)
+  * Note that Catch2 does not have visibility annotations, and you are responsible for ensuring correct visibility built into the resulting library.
+
+
+
+## 3.0.1
+
+**Catch2 now uses statically compiled library as its distribution model.
+This also means that to get all of Catch2's functionality in a test file,
+you have to include multiple headers.**
+
+You probably want to look into the [migration docs](migrate-v2-to-v3.md#top),
+which were written to help people coming from v2.x.x versions to the
+v3 releases.
+
+
+### FAQ
+
+* Why is Catch2 moving to separate headers?
+  * The short answer is future extensibility and scalability. The long answer is complex and can be found on my blog, but at the most basic level, it is that providing single-header distribution is at odds with providing variety of useful features. When Catch2 was distributed in a single header, adding a new Matcher would cause overhead for everyone, but was useful only to a subset of users. This meant that the barrier to entry for new Matchers/Generators/etc is high in single header model, but much smaller in the new model.
+* Will Catch2 again distribute single-header version in the future?
+  * No. But we do provide sqlite-style amalgamated distribution option. This means that you can download just 1 .cpp file and 1 header and place them next to your own sources. However, doing this has downsides similar to using the `catch_all.hpp` header.
+* Why the big breaking change caused by replacing `catch.hpp` with `catch_all.hpp`?
+  * The convenience header `catch_all.hpp` exists for two reasons. One of them is to provide a way for quick migration from Catch2, the second one is to provide a simple way to test things with Catch2. Using it for migration has one drawback in that it is **big**. This means that including it _will_ cause significant compile time drag, and so using it to migrate should be a conscious decision by the user, not something they can just stumble into unknowingly.
+
+
+### (Potentially) Breaking changes
+* **Catch2 now uses statically compiled library as its distribution model**
+  * **Including `catch.hpp` no longer works**
+* **Catch2 now uses C++14 as the minimum support language version**
+* `ANON_TEST_CASE` has been removed, use `TEST_CASE` with no arguments instead (#1220)
+* `--list*` commands no longer have non-zero return code (#1410)
+* `--list-test-names-only` has been removed (#1190)
+  * You should use verbosity-modifiers for `--list-tests` instead
+* `--list*` commands are now piped through the reporters
+  * The top-level reporter interface provides default implementation that works just as the old one
+  * XmlReporter outputs a machine-parseable XML
+* `TEST_CASE` description support has been removed
+  * If the second argument has text outside tags, the text will be ignored.
+* Hidden test cases are no longer included just because they don't match an exclusion tag
+  * Previously, a `TEST_CASE("A", "[.foo]")` would be included by asking for `~[bar]`.
+* `PredicateMatcher` is no longer type erased.
+  * This means that the type of the provided predicate is part of the `PredicateMatcher`'s type
+* `SectionInfo` no longer contains section description as a member (#1319)
+  * You can still write `SECTION("ShortName", "Long and wordy description")`, but the description is thrown away
+  * The description type now must be a `const char*` or be implicitly convertible to it
+* The `[!hide]` tag has been removed.
+  * Use `[.]` or `[.foo]` instead.
+* Lvalues of composed matchers cannot be composed further
+* Uses of `REGISTER_TEST_CASE` macro need to be followed by a semicolon
+  * This does not change `TEST_CASE` and friends in any way
+* `IStreamingReporter::IsMulti` member function was removed
+  * This is _very_ unlikely to actually affect anyone, as it was default-implemented in the interface, and only used internally
+* Various classes not designed for user-extension have been made final
+  * `ListeningReporter` is now `final`
+  * Concrete Matchers (e.g. `UnorderedEquals` vector matcher) are now `final`
+  * All Generators are now `final`
+* Matcher namespacing has been redone
+  * Matcher types are no longer in deeply nested namespaces
+  * Matcher factory functions are no longer brought into `Catch` namespace
+  * This means that all public-facing matcher-related functionality is now in `Catch::Matchers` namespace
+* Defining `CATCH_CONFIG_MAIN` will no longer create main in that TU.
+  * Link with `libCatch2Main.a`, or the proper CMake/pkg-config target
+  * If you want to write custom main, include `catch2/catch_session.hpp`
+* `CATCH_CONFIG_EXTERNAL_INTERFACES` has been removed.
+  * You should instead include the appropriate headers as needed.
+* `CATCH_CONFIG_IMPL` has been removed.
+  * The implementation is now compiled into a static library.
+* Event Listener interface has changed
+  * `TestEventListenerBase` was renamed to `EventListenerBase`
+  * `EventListenerBase` now directly derives from `IStreamingReporter`, instead of deriving from `StreamingReporterBase`
+* `GENERATE` decays its arguments (#2012, #2040)
+  * This means that `str` in `auto str = GENERATE("aa", "bb", "cc");` is inferred to `char const*` rather than `const char[2]`.
+* `--list-*` flags write their output to file specified by the `-o` flag
+* Many changes to reporter interfaces
+  * With the exception of the XmlReporter, the outputs of first party reporters should remain the same
+  * New pair of events were added
+  * One obsolete event was removed
+  * The base class has been renamed
+  * The built-in reporter class hierarchy has been redone
+* Catch2 generates a random seed if one hasn't been specified by the user
+* The short flag for `--list-tests`, `-l`, has been removed.
+  * This is not a commonly used flag and does not need to use up valuable single-letter space.
+* The short flag for `--list-tags`, `-t`, has been removed.
+  * This is not a commonly used flag and does not need to use up valuable single-letter space.
+* The `--colour` option has been replaced with `--colour-mode` option
+
+
+### Improvements
+* Matchers have been extended with the ability to use different signatures of `match` (#1307, #1553, #1554, #1843)
+  * This includes having templated `match` member function
+  * See the [rewritten Matchers documentation](matchers.md#top) for details
+  * Catch2 currently provides _some_ generic matchers, but there should be more before final release of v3
+    * `IsEmpty`, `SizeIs` which check that the range has specific properties
+    * `Contains`, which checks whether a range contains a specific element
+    * `AllMatch`, `AnyMatch`, `NoneMatch` range matchers, which apply matchers over a range of elements
+* Significant compilation time improvements
+  * including `catch_test_macros.hpp` is 80% cheaper than including `catch.hpp`
+* Some runtime performance optimizations
+  * In all tested cases the v3 branch was faster, so the table below shows the speedup of v3 to v2 at the same task
+<a id="v3-runtime-optimization-table"></a>
+
+|                   task                      |  debug build | release build |
+|:------------------------------------------- | ------------:| -------------:|
+| Run 1M `REQUIRE(true)`                      |  1.10 ± 0.01 |   1.02 ± 0.06 |
+| Run 100 tests, 3^3 sections, 1 REQUIRE each |  1.27 ± 0.01 |   1.04 ± 0.01 |
+| Run 3k tests, no names, no tags             |  1.29 ± 0.01 |   1.05 ± 0.01 |
+| Run 3k tests, names, tags                   |  1.49 ± 0.01 |   1.22 ± 0.01 |
+| Run 1 out of 3k tests no names, no tags     |  1.68 ± 0.02 |   1.19 ± 0.22 |
+| Run 1 out of 3k tests, names, tags          |  1.79 ± 0.02 |   2.06 ± 0.23 |
+
+
+* POSIX platforms use `gmtime_r`, rather than `gmtime` when constructing a date string (#2008, #2165)
+* `--list-*` flags write their output to file specified by the `-o` flag (#2061, #2163)
+* `Approx::operator()` is now properly `const`
+* Catch2's internal helper variables no longer use reserved identifiers (#578)
+* `--rng-seed` now accepts string `"random-device"` to generate random seed using `std::random_device`
+* Catch2 now supports test sharding (#2257)
+  * You can ask for the tests to be split into N groups and only run one of them.
+  * This greatly simplifies parallelization of tests in a binary through external runner.
+* The embedded CLI parser now supports repeatedly callable lambdas
+  * A lambda-based option parser can opt into being repeatedly specifiable.
+* Added `STATIC_CHECK` macro, similar to `STATIC_REQUIRE` (#2318)
+  * When deferred tu runtime, it behaves like `CHECK`, and not like `REQUIRE`.
+* You can have multiple tests with the same name, as long as other parts of the test identity differ (#1915, #1999, #2175)
+  * Test identity includes test's name, test's tags and and test's class name if applicable.
+* Added new warning, `UnmatchedTestSpec`, to error on test specs with no matching tests
+* The `-w`, `--warn` warning flags can now be provided multiple times to enable multiple warnings
+* The case-insensitive handling of tags is now more reliable and takes up less memory
+* Test case and assertion counting can no longer reasonably overflow on 32 bit systems
+  * The count is now kept in `uint64_t` on all platforms, instead of using `size_t` type.
+* The `-o`, `--out` output destination specifiers recognize `-` as stdout
+  * You have to provide it as `--out=-` to avoid CLI error about missing option
+  * The new reporter specification also recognizes `-` as stdout
+* Multiple reporters can now run at the same time and write to different files (#1712, #2183)
+  * To support this, the `-r`, `--reporter` flag now also accepts optional output destination
+  * For full overview of the semantics of using multiple reporters, look into the reporter documentation
+  * To enable the new syntax, reporter names can no longer contain `::`.
+* Console colour support has been rewritten and significantly improved
+  * The colour implementation based on ANSI colour codes is always available
+  * Colour implementations respect their associated stream
+    * previously e.g. Win32 impl would change console colour even if Catch2 was writing to a file
+  * The colour API is resilient against changing evaluation order of expressions
+  * The associated CLI flag and compile-time configuration options have changed
+    * For details see the docs for command-line and compile-time Catch2 configuration
+* Added a support for Bazel integration with `XML_OUTPUT_FILE` env var (#2399)
+  * This has to be enabled during compilation.
+* Added `--skip-benchmarks` flag to run tests without any `BENCHMARK`s (#2392, #2408)
+* Added option to list all listeners in the binary via `--list-listeners`
+
+
+### Fixes
+* The `INFO` macro no longer contains superfluous semicolon (#1456)
+* The `--list*` family of command line flags now return 0 on success (#1410, #1146)
+* Various ways of failing a benchmark are now counted and reporter properly
+* The ULP matcher now handles comparing numbers with different signs properly (#2152)
+* Universal ADL-found operators should no longer break decomposition (#2121)
+* Reporter selection is properly case-insensitive
+  * Previously it forced lower cased name, which would fail for reporters with upper case characters in name
+* The cumulative reporter base stores benchmark results alongside assertion results
+* Catch2's SE handling should no longer interferes with ASan on Windows (#2334)
+* Fixed Windows console colour handling for tests that redirect stdout (#2345)
+* Fixed issue with the `random` generators returning the same value over and over again
+
+
+### Other changes
+* `CATCH_CONFIG_DISABLE_MATCHERS` no longer exists.
+  * If you do not want to use Matchers in a TU, do not include their header.
+* `CATCH_CONFIG_ENABLE_CHRONO_STRINGMAKER` no longer exists.
+  * `StringMaker` specializations for `<chrono>` are always provided
+* Catch2's CMake now provides 2 targets, `Catch2` and `Catch2WithMain`.
+  * `Catch2` is the statically compiled implementation by itself
+  * `Catch2WithMain` also links in the default main
+* Catch2's pkg-config integration also provides 2 packages
+  * `catch2` is the statically compiled implementation by itself
+  * `catch2-with-main` also links in the default main
+* Passing invalid test specifications passed to Catch2 are now reported before tests are run, and are a hard error.
+* Running 0 tests (e.g. due to empty binary, or test spec not matching anything) returns non-0 exit code
+  * Flag `--allow-running-no-tests` overrides this behaviour.
+  * `NoTests` warning has been removed because it is fully subsumed by this change.
+* Catch2's compile-time configuration options (`CATCH_CONFIG_FOO`) can be set through CMake options of the same name
+  * They use the same semantics as C++ defines, including the `CATCH_CONFIG_NO_FOO` overrides,
+    * `-DCATCH_CONFIG_DEFAULT_REPORTER=compact` changes default reporter to "compact"
+    * `-DCATCH_CONFIG_NO_ANDROID_LOGWRITE=ON` forces android logwrite to off
+    * `-DCATCH_CONFIG_ANDROID_LOGWRITE=OFF` does nothing (the define will not exist)
+
+
+
 ## 2.13.7
 
 ### Fixes
@@ -81,9 +305,6 @@
   * Including `windows.h` without `NOMINMAX` remains a really bad idea, don't do it
 
 ### Miscellaneous
-* `Catch2WithMain` target (static library) is no longer built by default (#2142)
-  * Building it by default was at best unnecessary overhead for people not using it, and at worst it caused trouble with install paths
-  * To have it built, set CMake option `CATCH_BUILD_STATIC_LIBRARY` to `ON`
 * The check whether Catch2 is being built as a subproject is now more reliable (#2202, #2204)
   * The problem was that if the variable name used internally was defined the project including Catch2 as subproject, it would not be properly overwritten for Catch2's CMake.
 
@@ -207,6 +428,7 @@
 * Added support for `^` (bitwise xor) to `CHECK` and `REQUIRE`
 
 
+
 ## 2.12.0
 
 ### Improvements
@@ -227,6 +449,7 @@
 * Worked around IBM XL's codegen bug (#1907)
   * It would emit code for _destructors_ of temporaries in an unevaluated context
 * Improved detection of stdlib's support for `std::uncaught_exceptions` (#1911)
+
 
 
 ## 2.11.3
@@ -260,6 +483,7 @@
   * This bug has been present for the last ~2 years and nobody reported it
 
 
+
 ## 2.11.1
 
 ### Improvements
@@ -271,6 +495,7 @@
 * `ObjectStorage` now behaves properly in `const` contexts (#1820)
 * `GENERATE_COPY(a, b)` now compiles properly (#1809, #1815)
 * Some more cleanups in the benchmarking support
+
 
 
 ## 2.11.0
@@ -405,6 +630,7 @@
 
 ### Fixes
 * Fix benchmarking compilation failure in files without `CATCH_CONFIG_EXTERNAL_INTERFACES` (or implementation)
+
 
 ## 2.9.0
 
@@ -738,7 +964,7 @@ than `single_include/catch.hpp`.**
 * CLR objects (`T^`) can now be stringified (#1216)
   * This affects code compiled as C++/CLI
 * Added `PredicateMatcher`, a matcher that takes an arbitrary predicate function (#1236)
-  * See [documentation for details](https://github.com/catchorg/Catch2/blob/v2.x/docs/matchers.md)
+  * See [documentation for details](https://github.com/catchorg/Catch2/blob/devel/docs/matchers.md)
 
 ### Others
 * Modified CMake-installed pkg-config to allow `#include <catch.hpp>`(#1239)
@@ -766,7 +992,7 @@ than `single_include/catch.hpp`.**
 * Added an option to warn (+ exit with error) when no tests were ran (#1158)
   * Use as `-w NoTests`
 * Added provisional support for Emscripten (#1114)
-* [Added a way to override the fallback stringifier](https://github.com/catchorg/Catch2/blob/v2.x/docs/configuration.md#fallback-stringifier) (#1024)
+* [Added a way to override the fallback stringifier](https://github.com/catchorg/Catch2/blob/devel/docs/configuration.md#fallback-stringifier) (#1024)
   * This allows project's own stringification machinery to be easily reused for Catch
 * `Catch::Session::run()` now accepts `char const * const *`, allowing it to accept array of string literals (#1031, #1178)
   * The embedded version of Clara was bumped to v1.1.3

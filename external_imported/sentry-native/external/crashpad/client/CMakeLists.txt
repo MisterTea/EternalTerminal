@@ -8,6 +8,8 @@ add_library(crashpad_client STATIC
     crashpad_client.h
     crashpad_info.cc
     crashpad_info.h
+    length_delimited_ring_buffer.h
+    ring_buffer_annotation.h
     prune_crash_reports.cc
     prune_crash_reports.h
     settings.cc

@@ -1,4 +1,4 @@
-// Copyright 2021 The Crashpad Authors. All rights reserved.
+// Copyright 2021 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -70,6 +70,12 @@ bool IOSIntermediateDumpReader::Parse(FileReaderInterface* reader,
   }
 
   while (reader->ReadExactly(&command, sizeof(Command))) {
+    constexpr int kMaxStackDepth = 10;
+    if (stack.size() > kMaxStackDepth) {
+      LOG(ERROR) << "Unexpected depth of intermediate dump data.";
+      return false;
+    }
+
     IOSIntermediateDumpObject* parent = stack.top();
     switch (command) {
       case Command::kMapStart: {

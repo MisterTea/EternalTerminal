@@ -39,7 +39,7 @@ namespace unwindstack {
 static void SignalLogOnly(int, siginfo_t*, void*) {
   android::base::ErrnoRestorer restore;
 
-  log_async_safe("pid %d, tid %d: Received a spurious thread signal\n", getpid(),
+  Log::AsyncSafe("pid %d, tid %d: Received a spurious thread signal\n", getpid(),
                  static_cast<int>(android::base::GetThreadId()));
 }
 
@@ -63,14 +63,16 @@ static void SignalHandler(int, siginfo_t*, void* sigcontext) {
     // Do not remove the entry here because that can result in a deadlock
     // if the code cannot properly send a signal to the thread under test.
     entry->Wake();
-  } else {
-    // At this point, it is possible that entry has been freed, so just exit.
-    log_async_safe("Timed out waiting for unwind thread to indicate it completed.");
   }
+  // If the wait fails, the entry might have been freed, so only exit.
 }
 
-ThreadUnwinder::ThreadUnwinder(size_t max_frames)
-    : UnwinderFromPid(max_frames, getpid(), Regs::CurrentArch()) {}
+ThreadUnwinder::ThreadUnwinder(size_t max_frames, Maps* maps)
+    : UnwinderFromPid(max_frames, getpid(), Regs::CurrentArch(), maps) {}
+
+ThreadUnwinder::ThreadUnwinder(size_t max_frames, Maps* maps,
+                               std::shared_ptr<Memory>& process_memory)
+    : UnwinderFromPid(max_frames, getpid(), Regs::CurrentArch(), maps, process_memory) {}
 
 ThreadUnwinder::ThreadUnwinder(size_t max_frames, const ThreadUnwinder* unwinder)
     : UnwinderFromPid(max_frames, getpid(), Regs::CurrentArch()) {
@@ -92,7 +94,7 @@ ThreadEntry* ThreadUnwinder::SendSignalToThread(int signal, pid_t tid) {
   struct sigaction old_action = {};
   sigemptyset(&new_action.sa_mask);
   if (sigaction(signal, &new_action, &old_action) != 0) {
-    log_async_safe("sigaction failed: %s", strerror(errno));
+    Log::AsyncSafe("sigaction failed: %s", strerror(errno));
     ThreadEntry::Remove(entry);
     last_error_.code = ERROR_SYSTEM_CALL;
     return nullptr;
@@ -137,7 +139,6 @@ ThreadEntry* ThreadUnwinder::SendSignalToThread(int signal, pid_t tid) {
     last_error_.code = ERROR_THREAD_DOES_NOT_EXIST;
   } else {
     last_error_.code = ERROR_THREAD_TIMEOUT;
-    log_async_safe("Timed out waiting for signal handler to get ucontext data.");
   }
 
   ThreadEntry::Remove(entry);
@@ -145,11 +146,11 @@ ThreadEntry* ThreadUnwinder::SendSignalToThread(int signal, pid_t tid) {
   return nullptr;
 }
 
-void ThreadUnwinder::UnwindWithSignal(int signal, pid_t tid,
+void ThreadUnwinder::UnwindWithSignal(int signal, pid_t tid, std::unique_ptr<Regs>* initial_regs,
                                       const std::vector<std::string>* initial_map_names_to_skip,
                                       const std::vector<std::string>* map_suffixes_to_ignore) {
   ClearErrors();
-  if (tid == pid_) {
+  if (tid == static_cast<pid_t>(android::base::GetThreadId())) {
     last_error_.code = ERROR_UNSUPPORTED;
     return;
   }
@@ -164,6 +165,9 @@ void ThreadUnwinder::UnwindWithSignal(int signal, pid_t tid,
   }
 
   std::unique_ptr<Regs> regs(Regs::CreateFromUcontext(Regs::CurrentArch(), entry->GetUcontext()));
+  if (initial_regs != nullptr) {
+    initial_regs->reset(regs->Clone());
+  }
   SetRegs(regs.get());
   UnwinderFromPid::Unwind(initial_map_names_to_skip, map_suffixes_to_ignore);
 
@@ -171,10 +175,8 @@ void ThreadUnwinder::UnwindWithSignal(int signal, pid_t tid,
   entry->Wake();
 
   // Wait for the thread to indicate it is done with the ThreadEntry.
-  if (!entry->Wait(WAIT_FOR_THREAD_TO_RESTART)) {
-    // Send a warning, but do not mark as a failure to unwind.
-    log_async_safe("Timed out waiting for signal handler to indicate it finished.");
-  }
+  // If this fails, the Wait command will log an error message.
+  entry->Wait(WAIT_FOR_THREAD_TO_RESTART);
 
   ThreadEntry::Remove(entry);
 }

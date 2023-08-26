@@ -1,4 +1,4 @@
-// Copyright 2021 The Crashpad Authors. All rights reserved.
+// Copyright 2021 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -26,6 +26,7 @@
 #include "client/simple_string_dictionary.h"
 #include "gtest/gtest.h"
 #include "snapshot/ios/process_snapshot_ios_intermediate_dump.h"
+#include "test/scoped_set_thread_name.h"
 #include "test/scoped_temp_dir.h"
 #include "test/test_paths.h"
 #include "util/file/filesystem.h"
@@ -49,19 +50,23 @@ class InProcessIntermediateDumpHandlerTest : public testing::Test {
   }
 
   void TearDown() override {
+    EXPECT_TRUE(writer_->Close());
     writer_.reset();
     EXPECT_FALSE(IsRegularFile(path_));
   }
 
-  void WriteReport() {
-    internal::IOSIntermediateDumpWriter::ScopedRootMap rootMap(writer_.get());
-    InProcessIntermediateDumpHandler::WriteHeader(writer_.get());
-    InProcessIntermediateDumpHandler::WriteProcessInfo(
-        writer_.get(), {{"before_dump", "pre"}});
-    InProcessIntermediateDumpHandler::WriteSystemInfo(writer_.get(),
-                                                      system_data_);
-    InProcessIntermediateDumpHandler::WriteThreadInfo(writer_.get(), 0, 0);
-    InProcessIntermediateDumpHandler::WriteModuleInfo(writer_.get());
+  void WriteReportAndCloseWriter() {
+    {
+      internal::IOSIntermediateDumpWriter::ScopedRootMap rootMap(writer_.get());
+      InProcessIntermediateDumpHandler::WriteHeader(writer_.get());
+      InProcessIntermediateDumpHandler::WriteProcessInfo(
+          writer_.get(), {{"before_dump", "pre"}});
+      InProcessIntermediateDumpHandler::WriteSystemInfo(writer_.get(),
+                                                        system_data_);
+      InProcessIntermediateDumpHandler::WriteThreadInfo(writer_.get(), 0, 0);
+      InProcessIntermediateDumpHandler::WriteModuleInfo(writer_.get());
+    }
+    EXPECT_TRUE(writer_->Close());
   }
 
   void WriteMachException() {
@@ -92,7 +97,7 @@ class InProcessIntermediateDumpHandlerTest : public testing::Test {
 };
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestSystem) {
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
 
@@ -150,7 +155,7 @@ TEST_F(InProcessIntermediateDumpHandlerTest, TestAnnotations) {
   test_annotation_four.Set("same-name 4");
   test_annotation_two.Clear();
 
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(
       path(), {{"after_dump", "post"}}));
@@ -205,7 +210,9 @@ TEST_F(InProcessIntermediateDumpHandlerTest, TestAnnotations) {
 }
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestThreads) {
-  WriteReport();
+  const ScopedSetThreadName scoped_set_thread_name("TestThreads");
+
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
 
@@ -220,29 +227,30 @@ TEST_F(InProcessIntermediateDumpHandlerTest, TestThreads) {
                         &count),
             0);
   EXPECT_EQ(threads[0]->ThreadID(), identifier_info.thread_id);
+  EXPECT_EQ(threads[0]->ThreadName(), "TestThreads");
 }
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestProcess) {
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
   EXPECT_EQ(process_snapshot.ProcessID(), getpid());
 }
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestMachException) {
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
 }
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestSignalException) {
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
 }
 
 TEST_F(InProcessIntermediateDumpHandlerTest, TestNSException) {
-  WriteReport();
+  WriteReportAndCloseWriter();
   internal::ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), {}));
 }

@@ -1,5 +1,4 @@
-// Copyright (c) 2006, Google Inc.
-// All rights reserved.
+// Copyright 2006 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -45,6 +44,7 @@ namespace {
 
 using google_breakpad::Minidump;
 using google_breakpad::MinidumpThreadList;
+using google_breakpad::MinidumpThreadNameList;
 using google_breakpad::MinidumpModuleList;
 using google_breakpad::MinidumpMemoryInfoList;
 using google_breakpad::MinidumpMemoryList;
@@ -120,6 +120,11 @@ static bool PrintMinidumpDump(const Options& options) {
     BPLOG(ERROR) << "minidump.GetThreadList() failed";
   } else {
     thread_list->Print();
+  }
+
+  MinidumpThreadNameList *thread_name_list = minidump.GetThreadNameList();
+  if (thread_name_list) {
+    thread_name_list->Print();
   }
 
   // It's useful to be able to see the full list of modules here even if it

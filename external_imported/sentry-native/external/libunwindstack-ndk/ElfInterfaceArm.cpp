@@ -170,7 +170,7 @@ bool ElfInterfaceArm::StepExidx(uint64_t pc, Regs* regs, Memory* process_memory,
   return return_value;
 }
 
-bool ElfInterfaceArm::GetFunctionName(uint64_t addr, std::string* name, uint64_t* offset) {
+bool ElfInterfaceArm::GetFunctionName(uint64_t addr, SharedString* name, uint64_t* offset) {
   // For ARM, thumb function symbols have bit 0 set, but the address passed
   // in here might not have this bit set and result in a failure to find
   // the thumb function names. Adjust the address and offset to account

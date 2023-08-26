@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_UNWINDER_H
-#define _LIBUNWINDSTACK_UNWINDER_H
+#pragma once
 
 #include <stdint.h>
 #include <sys/types.h>
@@ -31,6 +30,7 @@
 #include <unwindstack/Maps.h>
 #include <unwindstack/Memory.h>
 #include <unwindstack/Regs.h>
+#include <unwindstack/SharedString.h>
 
 namespace unwindstack {
 
@@ -45,21 +45,10 @@ struct FrameData {
   uint64_t pc;
   uint64_t sp;
 
-  std::string function_name;
+  SharedString function_name;
   uint64_t function_offset = 0;
 
-  std::string map_name;
-  // The offset from the first map representing the frame. When there are
-  // two maps (read-only and read-execute) this will be the offset from
-  // the read-only map. When there is only one map, this will be the
-  // same as the actual offset of the map and match map_exact_offset.
-  uint64_t map_elf_start_offset = 0;
-  // The actual offset from the map where the pc lies.
-  uint64_t map_exact_offset = 0;
-  uint64_t map_start = 0;
-  uint64_t map_end = 0;
-  uint64_t map_load_bias = 0;
-  int map_flags = 0;
+  std::shared_ptr<MapInfo> map_info;
 };
 
 class Unwinder {
@@ -93,6 +82,9 @@ class Unwinder {
   std::string FormatFrame(size_t frame_num) const;
   std::string FormatFrame(const FrameData& frame) const;
 
+  static std::string FormatFrame(ArchEnum arch, const FrameData& frame,
+                                 bool display_build_id = true);
+
   void SetArch(ArchEnum arch) { arch_ = arch; };
 
   void SetJitDebug(JitDebug* jit_debug);
@@ -108,17 +100,11 @@ class Unwinder {
   // set to an empty string and the function offset being set to zero.
   void SetResolveNames(bool resolve) { resolve_names_ = resolve; }
 
-  // Enable/disable soname printing the soname for a map name if the elf is
-  // embedded in a file. This is enabled by default.
-  // NOTE: This does nothing unless resolving names is enabled.
-  void SetEmbeddedSoname(bool embedded_soname) { embedded_soname_ = embedded_soname; }
-
   void SetDisplayBuildID(bool display_build_id) { display_build_id_ = display_build_id; }
 
   void SetDexFiles(DexFiles* dex_files);
 
-  bool elf_from_memory_not_file() { return elf_from_memory_not_file_; }
-
+  const ErrorData& LastError() { return last_error_; }
   ErrorCode LastErrorCode() { return last_error_.code; }
   const char* LastErrorCodeString() { return GetErrorCodeString(last_error_.code); }
   uint64_t LastErrorAddress() { return last_error_.address; }
@@ -134,8 +120,11 @@ class Unwinder {
   FrameData BuildFrameFromPcOnly(uint64_t pc);
 
  protected:
-  Unwinder(size_t max_frames) : max_frames_(max_frames) {}
-  Unwinder(size_t max_frames, ArchEnum arch) : max_frames_(max_frames), arch_(arch) {}
+  Unwinder(size_t max_frames, Maps* maps = nullptr) : max_frames_(max_frames), maps_(maps) {}
+  Unwinder(size_t max_frames, ArchEnum arch, Maps* maps = nullptr)
+      : max_frames_(max_frames), maps_(maps), arch_(arch) {}
+  Unwinder(size_t max_frames, ArchEnum arch, Maps* maps, std::shared_ptr<Memory>& process_memory)
+      : max_frames_(max_frames), maps_(maps), process_memory_(process_memory), arch_(arch) {}
 
   void ClearErrors() {
     warnings_ = WARNING_NONE;
@@ -144,21 +133,18 @@ class Unwinder {
   }
 
   void FillInDexFrame();
-  FrameData* FillInFrame(MapInfo* map_info, Elf* elf, uint64_t rel_pc, uint64_t pc_adjustment);
+  FrameData* FillInFrame(std::shared_ptr<MapInfo>& map_info, Elf* elf, uint64_t rel_pc,
+                         uint64_t pc_adjustment);
 
   size_t max_frames_;
-  Maps* maps_;
+  Maps* maps_ = nullptr;
   Regs* regs_;
   std::vector<FrameData> frames_;
   std::shared_ptr<Memory> process_memory_;
   JitDebug* jit_debug_ = nullptr;
   DexFiles* dex_files_ = nullptr;
   bool resolve_names_ = true;
-  bool embedded_soname_ = true;
   bool display_build_id_ = false;
-  // True if at least one elf file is coming from memory and not the related
-  // file. This is only true if there is an actual file backing up the elf.
-  bool elf_from_memory_not_file_ = false;
   ErrorData last_error_;
   uint64_t warnings_;
   ArchEnum arch_ = ARCH_UNKNOWN;
@@ -166,9 +152,15 @@ class Unwinder {
 
 class UnwinderFromPid : public Unwinder {
  public:
-  UnwinderFromPid(size_t max_frames, pid_t pid) : Unwinder(max_frames), pid_(pid) {}
-  UnwinderFromPid(size_t max_frames, pid_t pid, ArchEnum arch)
-      : Unwinder(max_frames, arch), pid_(pid) {}
+  UnwinderFromPid(size_t max_frames, pid_t pid, Maps* maps = nullptr)
+      : Unwinder(max_frames, maps), pid_(pid) {}
+  UnwinderFromPid(size_t max_frames, pid_t pid, std::shared_ptr<Memory>& process_memory)
+      : Unwinder(max_frames, nullptr, process_memory), pid_(pid) {}
+  UnwinderFromPid(size_t max_frames, pid_t pid, ArchEnum arch, Maps* maps = nullptr)
+      : Unwinder(max_frames, arch, maps), pid_(pid) {}
+  UnwinderFromPid(size_t max_frames, pid_t pid, ArchEnum arch, Maps* maps,
+                  std::shared_ptr<Memory>& process_memory)
+      : Unwinder(max_frames, arch, maps, process_memory), pid_(pid) {}
   virtual ~UnwinderFromPid() = default;
 
   bool Init();
@@ -186,7 +178,8 @@ class UnwinderFromPid : public Unwinder {
 
 class ThreadUnwinder : public UnwinderFromPid {
  public:
-  explicit ThreadUnwinder(size_t max_frames);
+  ThreadUnwinder(size_t max_frames, Maps* maps = nullptr);
+  ThreadUnwinder(size_t max_frames, Maps* maps, std::shared_ptr<Memory>& process_memory);
   ThreadUnwinder(size_t max_frames, const ThreadUnwinder* unwinder);
   virtual ~ThreadUnwinder() = default;
 
@@ -194,7 +187,7 @@ class ThreadUnwinder : public UnwinderFromPid {
 
   void Unwind(const std::vector<std::string>*, const std::vector<std::string>*) override {}
 
-  void UnwindWithSignal(int signal, pid_t tid,
+  void UnwindWithSignal(int signal, pid_t tid, std::unique_ptr<Regs>* initial_regs = nullptr,
                         const std::vector<std::string>* initial_map_names_to_skip = nullptr,
                         const std::vector<std::string>* map_suffixes_to_ignore = nullptr);
 
@@ -203,5 +196,3 @@ class ThreadUnwinder : public UnwinderFromPid {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_UNWINDER_H

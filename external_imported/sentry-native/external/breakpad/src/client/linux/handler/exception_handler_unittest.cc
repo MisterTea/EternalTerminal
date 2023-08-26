@@ -1,5 +1,4 @@
-// Copyright (c) 2010 Google Inc.
-// All rights reserved.
+// Copyright 2010 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -11,7 +10,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -306,8 +305,22 @@ TEST(ExceptionHandlerTest, ParallelChildCrashesDontHang) {
     }
   }
 
-  // Wait a while until the child should have crashed.
-  usleep(1000000);
+  // Poll the child to see if it crashed.
+  int status, wp_pid;
+  for (int i = 0; i < 100; i++) {
+    wp_pid = HANDLE_EINTR(waitpid(child, &status, WNOHANG));
+    ASSERT_NE(-1, wp_pid);
+    if (wp_pid > 0) {
+      ASSERT_TRUE(WIFSIGNALED(status));
+      // If the child process terminated by itself,
+      // it will have returned SIGSEGV.
+      ASSERT_EQ(SIGSEGV, WTERMSIG(status));
+      return;
+    } else {
+      usleep(100000);
+    }
+  }
+
   // Kill the child if it is still running.
   kill(child, SIGKILL);
 

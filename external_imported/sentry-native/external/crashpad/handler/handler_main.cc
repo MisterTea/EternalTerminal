@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -287,7 +287,12 @@ bool AddKeyValueToMap(std::map<std::string, std::string>* map,
 // a normal exit, or if a CallMetricsRecordNormalExit object is destroyed after
 // something else logs an exit event.
 void MetricsRecordExit(Metrics::LifetimeMilestone milestone) {
+#if !defined(__cpp_lib_atomic_value_initialization) || \
+    __cpp_lib_atomic_value_initialization < 201911L
   static std::atomic_flag metrics_exit_recorded = ATOMIC_FLAG_INIT;
+#else
+  static std::atomic_flag metrics_exit_recorded;
+#endif
   if (!metrics_exit_recorded.test_and_set()) {
     Metrics::HandlerLifetimeMilestone(milestone);
   }
@@ -1023,7 +1028,10 @@ int HandlerMain(int argc,
     upload_thread_options.watch_pending_reports = options.periodic_tasks;
 
     upload_thread.Reset(new CrashReportUploadThread(
-        database.get(), options.url, upload_thread_options));
+        database.get(),
+        options.url,
+        upload_thread_options,
+        CrashReportUploadThread::ProcessPendingReportsObservationCallback()));
     upload_thread.Get()->Start();
   }
 

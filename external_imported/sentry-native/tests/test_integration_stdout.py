@@ -1,10 +1,11 @@
-import pytest
+import os
 import subprocess
 import sys
-import os
 import time
+
+import pytest
+
 from . import check_output, run, Envelope
-from .conditions import has_breakpad, has_files
 from .assertions import (
     assert_attachment,
     assert_meta,
@@ -14,8 +15,11 @@ from .assertions import (
     assert_crash,
     assert_minidump,
     assert_timestamp,
-    assert_session,
+    assert_before_send,
+    assert_no_before_send,
+    assert_crash_timestamp,
 )
+from .conditions import has_breakpad, has_files
 
 
 def test_capture_stdout(cmake):
@@ -111,52 +115,118 @@ def test_multi_process(cmake):
     assert len(runs) == 0
 
 
-def test_inproc_crash_stdout(cmake):
+def run_crash_stdout_for(backend, cmake, example_args):
     tmp_path = cmake(
         ["sentry_example"],
-        {"SENTRY_BACKEND": "inproc", "SENTRY_TRANSPORT": "none"},
+        {"SENTRY_BACKEND": backend, "SENTRY_TRANSPORT": "none"},
     )
 
-    child = run(tmp_path, "sentry_example", ["attachment", "crash"])
-    assert child.returncode  # well, its a crash after all
+    child = run(tmp_path, "sentry_example", ["attachment", "crash"] + example_args)
+    assert child.returncode  # well, it's a crash after all
 
-    output = check_output(tmp_path, "sentry_example", ["stdout", "no-setup"])
+    return tmp_path, check_output(tmp_path, "sentry_example", ["stdout", "no-setup"])
+
+
+def test_inproc_crash_stdout(cmake):
+    tmp_path, output = run_crash_stdout_for("inproc", cmake, [])
+
     envelope = Envelope.deserialize(output)
 
-    # The crash file should survive a `sentry_init` and should still be there
-    # even after restarts.
-    if has_files:
-        with open("{}/.sentry-native/last_crash".format(tmp_path)) as f:
-            crash_timestamp = f.read()
-        assert_timestamp(crash_timestamp)
-
+    assert_crash_timestamp(has_files, tmp_path)
     assert_meta(envelope, integration="inproc")
     assert_breadcrumb(envelope)
     assert_attachment(envelope)
+    assert_crash(envelope)
 
+
+def test_inproc_crash_stdout_before_send(cmake):
+    tmp_path, output = run_crash_stdout_for("inproc", cmake, ["before-send"])
+
+    envelope = Envelope.deserialize(output)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="inproc")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
+    assert_crash(envelope)
+    assert_before_send(envelope)
+
+
+def test_inproc_crash_stdout_discarding_on_crash(cmake):
+    tmp_path, output = run_crash_stdout_for("inproc", cmake, ["discarding-on-crash"])
+
+    # since the on_crash() handler discards further processing we expect an empty response
+    assert len(output) == 0
+
+    assert_crash_timestamp(has_files, tmp_path)
+
+
+def test_inproc_crash_stdout_before_send_and_on_crash(cmake):
+    tmp_path, output = run_crash_stdout_for(
+        "inproc", cmake, ["before-send", "on-crash"]
+    )
+
+    # the on_crash() hook retains the event
+    envelope = Envelope.deserialize(output)
+    # but we expect no event modification from before_send() since setting on_crash() disables before_send()
+    assert_no_before_send(envelope)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="inproc")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
     assert_crash(envelope)
 
 
 @pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
 def test_breakpad_crash_stdout(cmake):
-    tmp_path = cmake(
-        ["sentry_example"],
-        {"SENTRY_BACKEND": "breakpad", "SENTRY_TRANSPORT": "none"},
-    )
+    tmp_path, output = run_crash_stdout_for("breakpad", cmake, [])
 
-    child = run(tmp_path, "sentry_example", ["attachment", "crash"])
-    assert child.returncode  # well, its a crash after all
-
-    if has_files:
-        with open("{}/.sentry-native/last_crash".format(tmp_path)) as f:
-            crash_timestamp = f.read()
-        assert_timestamp(crash_timestamp)
-
-    output = check_output(tmp_path, "sentry_example", ["stdout", "no-setup"])
     envelope = Envelope.deserialize(output)
 
+    assert_crash_timestamp(has_files, tmp_path)
     assert_meta(envelope, integration="breakpad")
     assert_breadcrumb(envelope)
     assert_attachment(envelope)
-
     assert_minidump(envelope)
+
+
+@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+def test_breakpad_crash_stdout_before_send(cmake):
+    tmp_path, output = run_crash_stdout_for("breakpad", cmake, ["before-send"])
+
+    envelope = Envelope.deserialize(output)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="breakpad")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
+    assert_minidump(envelope)
+    assert_before_send(envelope)
+
+
+@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+def test_breakpad_crash_stdout_discarding_on_crash(cmake):
+    tmp_path, output = run_crash_stdout_for("breakpad", cmake, ["discarding-on-crash"])
+
+    # since the on_crash() handler discards further processing we expect an empty response
+    assert len(output) == 0
+
+    assert_crash_timestamp(has_files, tmp_path)
+
+
+@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+def test_breakpad_crash_stdout_before_send_and_on_crash(cmake):
+    tmp_path, output = run_crash_stdout_for(
+        "breakpad", cmake, ["before-send", "on-crash"]
+    )
+
+    # the on_crash() hook retains the event
+    envelope = Envelope.deserialize(output)
+    # but we expect no event modification from before_send() since setting on_crash() disables before_send()
+    assert_no_before_send(envelope)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="breakpad")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)

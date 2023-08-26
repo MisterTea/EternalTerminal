@@ -2,9 +2,9 @@
 
 // main() provided by Catch in file 020-TestCase-1.cpp.
 
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
 
-int Factorial( int number ) {
+static int Factorial( int number ) {
    return number <= 1 ? number : Factorial( number - 1 ) * number;  // fail
 // return number <= 1 ? 1      : Factorial( number - 1 ) * number;  // pass
 }

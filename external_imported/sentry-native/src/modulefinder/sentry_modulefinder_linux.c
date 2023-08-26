@@ -292,7 +292,7 @@ get_code_id_from_notes(
 }
 
 static const uint8_t *
-get_code_id_from_elf(const sentry_module_t *module, size_t *size_out)
+get_code_id_from_program_header(const sentry_module_t *module, size_t *size_out)
 {
     *size_out = 0;
 
@@ -350,68 +350,90 @@ fail:
     return NULL;
 }
 
+#define ELF_SECTION_ITER(INNER)                                                \
+    unsigned char e_ident[EI_NIDENT];                                          \
+    ENSURE(sentry__module_read_safely(e_ident, module, 0, EI_NIDENT));         \
+    if (e_ident[EI_CLASS] == ELFCLASS64) {                                     \
+        Elf64_Ehdr elf;                                                        \
+        ENSURE(                                                                \
+            sentry__module_read_safely(&elf, module, 0, sizeof(Elf64_Ehdr)));  \
+                                                                               \
+        Elf64_Shdr strheader;                                                  \
+        ENSURE(sentry__module_read_safely(&strheader, module,                  \
+            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,                    \
+            sizeof(Elf64_Shdr)));                                              \
+                                                                               \
+        for (int i = 0; i < elf.e_shnum; i++) {                                \
+            Elf64_Shdr header;                                                 \
+            ENSURE(sentry__module_read_safely(&header, module,                 \
+                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf64_Shdr)));       \
+                                                                               \
+            char name[6];                                                      \
+            ENSURE(sentry__module_read_safely(name, module,                    \
+                strheader.sh_offset + header.sh_name, sizeof(name)));          \
+            name[5] = '\0';                                                    \
+                                                                               \
+            INNER                                                              \
+        }                                                                      \
+    } else {                                                                   \
+        Elf32_Ehdr elf;                                                        \
+        ENSURE(                                                                \
+            sentry__module_read_safely(&elf, module, 0, sizeof(Elf32_Ehdr)));  \
+                                                                               \
+        Elf32_Shdr strheader;                                                  \
+        ENSURE(sentry__module_read_safely(&strheader, module,                  \
+            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,                    \
+            sizeof(Elf32_Shdr)));                                              \
+                                                                               \
+        for (int i = 0; i < elf.e_shnum; i++) {                                \
+            Elf32_Shdr header;                                                 \
+            ENSURE(sentry__module_read_safely(&header, module,                 \
+                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf32_Shdr)));       \
+                                                                               \
+            char name[6];                                                      \
+            ENSURE(sentry__module_read_safely(name, module,                    \
+                strheader.sh_offset + header.sh_name, sizeof(name)));          \
+            name[5] = '\0';                                                    \
+                                                                               \
+            INNER                                                              \
+        }                                                                      \
+    }
+
+static const uint8_t *
+get_code_id_from_note_section(const sentry_module_t *module, size_t *size_out)
+{
+    *size_out = 0;
+
+    ELF_SECTION_ITER(
+        if (header.sh_type == SHT_NOTE && strcmp(name, ".note") == 0) {
+            void *segment_addr = sentry__module_get_addr(
+                module, header.sh_offset, header.sh_size);
+            ENSURE(segment_addr);
+            const uint8_t *code_id = get_code_id_from_notes(header.sh_addralign,
+                segment_addr,
+                (void *)((uintptr_t)segment_addr + header.sh_size), size_out);
+            if (code_id) {
+                return code_id;
+            }
+        })
+fail:
+    return NULL;
+}
+
 static sentry_uuid_t
-get_code_id_from_text_fallback(const sentry_module_t *module)
+get_code_id_from_text_section(const sentry_module_t *module)
 {
     const uint8_t *text = NULL;
     size_t text_size = 0;
 
-    // iterate over all the program headers, for 32/64 bit separately
-    unsigned char e_ident[EI_NIDENT];
-    ENSURE(sentry__module_read_safely(e_ident, module, 0, EI_NIDENT));
-    if (e_ident[EI_CLASS] == ELFCLASS64) {
-        Elf64_Ehdr elf;
-        ENSURE(sentry__module_read_safely(&elf, module, 0, sizeof(Elf64_Ehdr)));
-
-        Elf64_Shdr strheader;
-        ENSURE(sentry__module_read_safely(&strheader, module,
-            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,
-            sizeof(Elf64_Shdr)));
-
-        for (int i = 0; i < elf.e_shnum; i++) {
-            Elf64_Shdr header;
-            ENSURE(sentry__module_read_safely(&header, module,
-                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf64_Shdr)));
-
-            char name[6];
-            ENSURE(sentry__module_read_safely(name, module,
-                strheader.sh_offset + header.sh_name, sizeof(name)));
-            name[5] = '\0';
-            if (header.sh_type == SHT_PROGBITS && strcmp(name, ".text") == 0) {
-                text = sentry__module_get_addr(
-                    module, header.sh_offset, header.sh_size);
-                ENSURE(text);
-                text_size = header.sh_size;
-                break;
-            }
-        }
-    } else {
-        Elf32_Ehdr elf;
-        ENSURE(sentry__module_read_safely(&elf, module, 0, sizeof(Elf32_Ehdr)));
-
-        Elf32_Shdr strheader;
-        ENSURE(sentry__module_read_safely(&strheader, module,
-            elf.e_shoff + elf.e_shentsize * elf.e_shstrndx,
-            sizeof(Elf32_Shdr)));
-
-        for (int i = 0; i < elf.e_shnum; i++) {
-            Elf32_Shdr header;
-            ENSURE(sentry__module_read_safely(&header, module,
-                elf.e_shoff + elf.e_shentsize * i, sizeof(Elf32_Shdr)));
-
-            char name[6];
-            ENSURE(sentry__module_read_safely(name, module,
-                strheader.sh_offset + header.sh_name, sizeof(name)));
-            name[5] = '\0';
-            if (header.sh_type == SHT_PROGBITS && strcmp(name, ".text") == 0) {
-                text = sentry__module_get_addr(
-                    module, header.sh_offset, header.sh_size);
-                ENSURE(text);
-                text_size = header.sh_size;
-                break;
-            }
-        }
-    }
+    ELF_SECTION_ITER(
+        if (header.sh_type == SHT_PROGBITS && strcmp(name, ".text") == 0) {
+            text = sentry__module_get_addr(
+                module, header.sh_offset, header.sh_size);
+            ENSURE(text);
+            text_size = header.sh_size;
+            break;
+        })
 
     sentry_uuid_t uuid = sentry_uuid_nil();
 
@@ -427,28 +449,43 @@ fail:
     return sentry_uuid_nil();
 }
 
+#undef ELF_SECTION_ITER
+
 bool
 sentry__procmaps_read_ids_from_elf(
     sentry_value_t value, const sentry_module_t *module)
 {
-    // and try to get the debug id from the elf headers of the loaded
-    // modules
+    // try to get the debug id from the elf headers of the loaded modules
     size_t code_id_size;
-    const uint8_t *code_id = get_code_id_from_elf(module, &code_id_size);
+    const uint8_t *code_id
+        = get_code_id_from_program_header(module, &code_id_size);
     sentry_uuid_t uuid = sentry_uuid_nil();
+
     if (code_id) {
         sentry_value_set_by_key(value, "code_id",
             sentry__value_new_hexstring(code_id, code_id_size));
 
         memcpy(uuid.bytes, code_id, MIN(code_id_size, 16));
     } else {
-        uuid = get_code_id_from_text_fallback(module);
+        // no code-id found, try the ".note.gnu.build-id" section
+        code_id = get_code_id_from_note_section(module, &code_id_size);
+        if (code_id) {
+            sentry_value_set_by_key(value, "code_id",
+                sentry__value_new_hexstring(code_id, code_id_size));
+
+            memcpy(uuid.bytes, code_id, MIN(code_id_size, 16));
+        } else {
+            // We were not able to locate the code-id, so fall back to
+            // hashing the first page of the ".text" (program code)
+            // section.
+            uuid = get_code_id_from_text_section(module);
+        }
     }
 
     // the usage of these is described here:
     // https://getsentry.github.io/symbolicator/advanced/symbol-server-compatibility/#identifiers
-    // in particular, the debug_id is a `little-endian GUID`, so we have to do
-    // appropriate byte-flipping
+    // in particular, the debug_id is a `little-endian GUID`, so we have
+    // to do appropriate byte-flipping
     char *uuid_bytes = uuid.bytes;
     uint32_t *a = (uint32_t *)uuid_bytes;
     *a = htonl(*a);
@@ -480,14 +517,15 @@ sentry__procmaps_module_to_value(const sentry_module_t *module)
     sentry_value_set_by_key(
         mod_val, "image_size", sentry_value_new_int32(module_size));
 
-    // At least on the android API-16, x86 simulator, the linker apparently
-    // does not load the complete file into memory. Or at least, the section
-    // headers which are located at the end of the file are not loaded, and
-    // we would be poking into invalid memory. To be safe, we mmap the
-    // complete file from disk, so we have the on-disk layout, and are
-    // independent of how the runtime linker would load or re-order any
-    // sections. The exception here is the linux-gate, which is not an
-    // actual file on disk, so we actually poke at its memory.
+    // At least on the android API-16, x86 simulator, the linker
+    // apparently does not load the complete file into memory. Or at
+    // least, the section headers which are located at the end of the
+    // file are not loaded, and we would be poking into invalid memory.
+    // To be safe, we mmap the complete file from disk, so we have the
+    // on-disk layout, and are independent of how the runtime linker
+    // would load or re-order any sections. The exception here is the
+    // linux-gate, which is not an actual file on disk, so we actually
+    // poke at its memory.
     if (sentry__slice_eq(module->file, LINUX_GATE)) {
         sentry__procmaps_read_ids_from_elf(mod_val, module);
     } else {
@@ -617,8 +655,9 @@ load_modules(sentry_value_t modules)
 
     uint64_t linux_vdso = get_linux_vdso();
 
-    // we have multiple memory maps per file, and we need to merge their offsets
-    // based on the filename. Luckily, the maps are ordered by filename, so yay
+    // we have multiple memory maps per file, and we need to merge their
+    // offsets based on the filename. Luckily, the maps are ordered by
+    // filename, so yay
     sentry_module_t last_module;
     memset(&last_module, 0, sizeof(sentry_module_t));
     while (true) {
@@ -649,19 +688,17 @@ load_modules(sentry_value_t modules)
         }
 
         if (is_valid_elf_header((void *)(size_t)module.start)) {
-            // On android, we sometimes have multiple mappings for the same
-            // inode at the same offset, such as this, excuse the auto-format
-            // here:
-            // 737b5570d000-737b5570e000 r--p 00000000 07:70 34
-            // /apex/com.android.runtime/lib64/bionic/libdl.so
-            // 737b5570e000-737b5570f000 r-xp 00000000 07:70 34
-            // /apex/com.android.runtime/lib64/bionic/libdl.so
-            // 737b5570f000-737b55710000 r--p 00000000 07:70 34
-            // /apex/com.android.runtime/lib64/bionic/libdl.so
+            // clang-format off
+            // On android, we sometimes have multiple mappings for the
+            // same inode at the same offset, such as this:
+            // 737b5570d000-737b5570e000 r--p 00000000 07:70 34 /apex/com.android.runtime/lib64/bionic/libdl.so
+            // 737b5570e000-737b5570f000 r-xp 00000000 07:70 34 /apex/com.android.runtime/lib64/bionic/libdl.so
+            // 737b5570f000-737b55710000 r--p 00000000 07:70 34 /apex/com.android.runtime/lib64/bionic/libdl.so
+            // clang-format on
 
             if (!is_duplicated_mapping(&last_module, &module)) {
-                // try to append the module based on the mappings that we have
-                // found so far
+                // try to append the module based on the mappings that
+                // we have found so far
                 try_append_module(modules, &last_module);
 
                 // start a new module based on the current mapping

@@ -1,4 +1,4 @@
-// Copyright 2014 The Crashpad Authors. All rights reserved.
+// Copyright 2014 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -85,6 +85,9 @@ class MinidumpCrashpadInfoWriter final : public internal::MinidumpStreamWriter {
   //! \note Valid in #kStateMutable.
   void SetModuleList(
       std::unique_ptr<MinidumpModuleCrashpadInfoListWriter> module_list);
+
+  //! \brief Sets MinidumpCrashpadInfo::address_mask.
+  void SetAddressMask(uint64_t mask);
 
   //! \brief Determines whether the object is useful.
   //!

@@ -1,4 +1,4 @@
-// Copyright 2016 The Crashpad Authors. All rights reserved.
+// Copyright 2016 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -62,6 +62,12 @@ class Metrics {
 
   //! \brief Reports on a crash upload attempt, and if it succeeded.
   static void CrashUploadAttempted(bool successful);
+
+#if BUILDFLAG(IS_APPLE) || DOXYGEN
+  //! \brief Records error codes from
+  //!     `+[NSURLConnection sendSynchronousRequest:returningResponse:error:]`.
+  static void CrashUploadErrorCode(int error_code);
+#endif
 
   //! \brief Values for CrashUploadSkipped().
   //!

@@ -1,15 +1,11 @@
 if(CRASHPAD_ZLIB_SYSTEM)
     add_library(crashpad_zlib INTERFACE)
-    string(REPLACE ";" "$<SEMICOLON>" GENEX_ZLIB_LIBRARIES "${ZLIB_LIBRARIES}")
-    target_include_directories(crashpad_zlib INTERFACE
-        $<BUILD_INTERFACE:${ZLIB_INCLUDE_DIRS}>
-    )
     target_compile_definitions(crashpad_zlib INTERFACE
         ZLIB_CONST
         CRASHPAD_ZLIB_SOURCE_SYSTEM
         $<BUILD_INTERFACE:${ZLIB_COMPILE_DEFINITIONS}>
     )
-    target_link_libraries(crashpad_zlib INTERFACE $<BUILD_INTERFACE:${GENEX_ZLIB_LIBRARIES}>)
+    target_link_libraries(crashpad_zlib INTERFACE ZLIB::ZLIB)
 else()
     add_library(crashpad_zlib STATIC
         zlib/adler32.c

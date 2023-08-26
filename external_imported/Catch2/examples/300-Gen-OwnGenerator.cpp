@@ -4,9 +4,13 @@
 // Specifically we will implement a random number generator for integers
 // It will have infinite capacity and settable lower/upper bound
 
-#include <catch2/catch.hpp>
+#include <catch2/catch_test_macros.hpp>
+#include <catch2/generators/catch_generators.hpp>
+#include <catch2/generators/catch_generators_adapters.hpp>
 
 #include <random>
+
+namespace {
 
 // This class shows how to implement a simple generator for Catch tests
 class RandomIntGenerator : public Catch::Generators::IGenerator<int> {
@@ -38,8 +42,14 @@ int const& RandomIntGenerator::get() const {
 // Notice that it returns an instance of GeneratorWrapper<int>, which
 // is a value-wrapper around std::unique_ptr<IGenerator<int>>.
 Catch::Generators::GeneratorWrapper<int> random(int low, int high) {
-    return Catch::Generators::GeneratorWrapper<int>(std::unique_ptr<Catch::Generators::IGenerator<int>>(new RandomIntGenerator(low, high)));
+    return Catch::Generators::GeneratorWrapper<int>(
+        new RandomIntGenerator(low, high)
+        // Another possibility:
+        // Catch::Detail::make_unique<RandomIntGenerator>(low, high)
+    );
 }
+
+} // end anonymous namespaces
 
 // The two sections in this test case are equivalent, but the first one
 // is much more readable/nicer to use
@@ -50,7 +60,7 @@ TEST_CASE("Generating random ints", "[example][generator]") {
         REQUIRE(i <= 100);
     }
     SECTION("Creating the random generator directly") {
-        auto i = GENERATE(take(100, GeneratorWrapper<int>(std::unique_ptr<IGenerator<int>>(new RandomIntGenerator(-100, 100)))));
+        auto i = GENERATE(take(100, GeneratorWrapper<int>(Catch::Detail::make_unique<RandomIntGenerator>(-100, 100))));
         REQUIRE(i >= -100);
         REQUIRE(i <= 100);
     }

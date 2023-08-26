@@ -20,6 +20,12 @@ typedef struct {
 } THREADNAME_INFO;
 #    pragma pack(pop)
 
+sentry_threadid_t
+sentry__thread_get_current_threadid()
+{
+    return GetCurrentThread();
+}
+
 int
 sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
 {
@@ -61,6 +67,12 @@ sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
     return 0;
 }
 #else
+sentry_threadid_t
+sentry__thread_get_current_threadid(void)
+{
+    return pthread_self();
+}
+
 int
 sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
 {
@@ -218,7 +230,12 @@ worker_thread(void *data)
 
     // should be called inside thread itself because of MSVC issues and mac
     // https://randomascii.wordpress.com/2015/10/26/thread-naming-in-windows-time-for-something-better/
-    if (sentry__thread_setname(bgw->thread_id, bgw->thread_name)) {
+    // Additionally, `bgw->thread_id` cannot be used reliably because it is
+    // subject to initialization race condition: current thread might be running
+    // before `bgw->thread_id` is initialized in the thread that started the
+    // background worker.
+    if (sentry__thread_setname(
+            sentry__thread_get_current_threadid(), bgw->thread_name)) {
         SENTRY_WARN("failed to set background worker thread name");
     }
 

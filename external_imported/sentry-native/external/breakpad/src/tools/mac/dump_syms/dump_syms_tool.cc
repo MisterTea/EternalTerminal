@@ -1,7 +1,6 @@
 // -*- mode: c++ -*-
 
-// Copyright (c) 2011, Google Inc.
-// All rights reserved.
+// Copyright 2011 Google LLC
 //
 // Redistribution and use in source and binary forms, with or without
 // modification, are permitted provided that the following conditions are
@@ -13,7 +12,7 @@
 // copyright notice, this list of conditions and the following disclaimer
 // in the documentation and/or other materials provided with the
 // distribution.
-//     * Neither the name of Google Inc. nor the names of its
+//     * Neither the name of Google LLC nor the names of its
 // contributors may be used to endorse or promote products derived from
 // this software without specific prior written permission.
 //
@@ -37,6 +36,8 @@
 
 #include <algorithm>
 #include <iostream>
+#include <memory>
+#include <utility>
 #include <vector>
 
 #include "common/mac/dump_syms.h"
@@ -51,8 +52,14 @@ using std::vector;
 
 struct Options {
   Options()
-      : srcPath(), dsymPath(), arch(), header_only(false),
-        cfi(true), handle_inter_cu_refs(true), handle_inlines(false) {}
+      : srcPath(),
+        dsymPath(),
+        arch(),
+        header_only(false),
+        cfi(true),
+        handle_inter_cu_refs(true),
+        handle_inlines(false),
+        enable_multiple(false) {}
 
   string srcPath;
   string dsymPath;
@@ -61,6 +68,7 @@ struct Options {
   bool cfi;
   bool handle_inter_cu_refs;
   bool handle_inlines;
+  bool enable_multiple;
 };
 
 static bool StackFrameEntryComparator(const Module::StackFrameEntry* a,
@@ -102,16 +110,47 @@ static void CopyCFIDataBetweenModules(Module* to_module,
     // If the entry does not overlap, then it is safe to copy to |to_module|.
     if (to_it == to_data.end() || (from_entry->address < (*to_it)->address &&
             from_entry_end < (*to_it)->address)) {
-      to_module->AddStackFrameEntry(new Module::StackFrameEntry(*from_entry));
+      to_module->AddStackFrameEntry(
+          std::make_unique<Module::StackFrameEntry>(*from_entry));
     }
   }
+}
+
+static bool SetArchitecture(DumpSymbols& dump_symbols,
+                            const NXArchInfo* arch,
+                            const std::string& filename) {
+  if (!dump_symbols.SetArchitecture(arch->cputype, arch->cpusubtype)) {
+    fprintf(stderr, "%s: no architecture '%s' is present in file.\n",
+            filename.c_str(), arch->name);
+    size_t available_size;
+    const SuperFatArch* available =
+        dump_symbols.AvailableArchitectures(&available_size);
+    if (available_size == 1)
+      fprintf(stderr, "the file's architecture is: ");
+    else
+      fprintf(stderr, "architectures present in the file are:\n");
+    for (size_t i = 0; i < available_size; i++) {
+      const SuperFatArch* arch = &available[i];
+      const NXArchInfo* arch_info =
+          google_breakpad::BreakpadGetArchInfoFromCpuType(arch->cputype,
+                                                          arch->cpusubtype);
+      if (arch_info)
+        fprintf(stderr, "%s (%s)\n", arch_info->name, arch_info->description);
+      else
+        fprintf(stderr, "unrecognized cpu type 0x%x, subtype 0x%x\n",
+                arch->cputype, arch->cpusubtype);
+    }
+    return false;
+  }
+  return true;
 }
 
 static bool Start(const Options& options) {
   SymbolData symbol_data =
       (options.handle_inlines ? INLINES : NO_DATA) |
       (options.cfi ? CFI : NO_DATA) | SYMBOLS_AND_FILES;
-  DumpSymbols dump_symbols(symbol_data, options.handle_inter_cu_refs);
+  DumpSymbols dump_symbols(symbol_data, options.handle_inter_cu_refs,
+                           options.enable_multiple);
 
   // For x86_64 binaries, the CFI data is in the __TEXT,__eh_frame of the
   // Mach-O file, which is not copied into the dSYM. Whereas in i386, the CFI
@@ -129,31 +168,9 @@ static bool Start(const Options& options) {
   if (!dump_symbols.Read(primary_file))
     return false;
 
-  if (options.arch) {
-    if (!dump_symbols.SetArchitecture(options.arch->cputype,
-                                      options.arch->cpusubtype)) {
-      fprintf(stderr, "%s: no architecture '%s' is present in file.\n",
-              primary_file.c_str(), options.arch->name);
-      size_t available_size;
-      const SuperFatArch *available =
-        dump_symbols.AvailableArchitectures(&available_size);
-      if (available_size == 1)
-        fprintf(stderr, "the file's architecture is: ");
-      else
-        fprintf(stderr, "architectures present in the file are:\n");
-      for (size_t i = 0; i < available_size; i++) {
-        const SuperFatArch *arch = &available[i];
-        const NXArchInfo *arch_info =
-          google_breakpad::BreakpadGetArchInfoFromCpuType(
-              arch->cputype, arch->cpusubtype);
-        if (arch_info)
-          fprintf(stderr, "%s (%s)\n", arch_info->name, arch_info->description);
-        else
-          fprintf(stderr, "unrecognized cpu type 0x%x, subtype 0x%x\n",
-                  arch->cputype, arch->cpusubtype);
-      }
-      return false;
-    }
+  if (options.arch &&
+      !SetArchitecture(dump_symbols, options.arch, primary_file)) {
+    return false;
   }
 
   if (options.header_only)
@@ -171,6 +188,10 @@ static bool Start(const Options& options) {
     if (!dump_symbols.Read(options.srcPath))
       return false;
 
+    if (options.arch &&
+        !SetArchitecture(dump_symbols, options.arch, options.srcPath)) {
+      return false;
+    }
     Module* cfi_module = NULL;
     if (!dump_symbols.ReadSymbolData(&cfi_module))
       return false;
@@ -205,6 +226,9 @@ static void Usage(int argc, const char *argv[]) {
   fprintf(stderr, "\t-c: Do not generate CFI section\n");
   fprintf(stderr, "\t-r: Do not handle inter-compilation unit references\n");
   fprintf(stderr, "\t-d: Generate INLINE and INLINE_ORIGIN records\n");
+  fprintf(stderr,
+          "\t-m: Enable writing the optional 'm' field on FUNC "
+          "and PUBLIC, denoting multiple symbols for the address.\n");
   fprintf(stderr, "\t-h: Usage\n");
   fprintf(stderr, "\t-?: Usage\n");
 }
@@ -214,7 +238,7 @@ static void SetupOptions(int argc, const char *argv[], Options *options) {
   extern int optind;
   signed char ch;
 
-  while ((ch = getopt(argc, (char * const*)argv, "ia:g:crd?h")) != -1) {
+  while ((ch = getopt(argc, (char* const*)argv, "ia:g:crdm?h")) != -1) {
     switch (ch) {
       case 'i':
         options->header_only = true;
@@ -241,6 +265,9 @@ static void SetupOptions(int argc, const char *argv[], Options *options) {
         break;
       case 'd':
         options->handle_inlines = true;
+        break;
+      case 'm':
+        options->enable_multiple = true;
         break;
       case '?':
       case 'h':

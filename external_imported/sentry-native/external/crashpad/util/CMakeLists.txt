@@ -104,6 +104,7 @@ add_library(crashpad_util STATIC
     stream/zlib_output_stream.h
     string/split_string.cc
     string/split_string.h
+    synchronization/scoped_spin_guard.h
     synchronization/semaphore.h
     thread/stoppable.h
     thread/thread.cc
@@ -132,11 +133,11 @@ if(NOT WIN32)
         thread/thread_posix.cc
         posix/close_multiple.cc
         posix/close_multiple.h
-        posix/double_fork_and_exec.cc
-        posix/double_fork_and_exec.h
         posix/drop_privileges.cc
         posix/drop_privileges.h
         posix/process_info.h
+        posix/spawn_subprocess.cc
+        posix/spawn_subprocess.h
         posix/symbolic_constants_posix.cc
         posix/symbolic_constants_posix.h
     )
@@ -225,6 +226,8 @@ if(APPLE)
             ios/scoped_background_task.mm
             ios/scoped_vm_read.cc
             ios/scoped_vm_read.h
+            ios/scoped_vm_map.cc
+            ios/scoped_vm_map.h
         )
         # This specific file requires ARC support, while other parts do not
         # build when ARC is enabled.
@@ -245,8 +248,30 @@ if(ANDROID)
 endif()
 
 if(LINUX OR ANDROID)
+    if (LINUX)
+        if(NOT CURL_FOUND) # Some other lib might bring libcurl already
+            find_package(CURL REQUIRED)
+        endif()
+
+        if(TARGET CURL::libcurl) # Only available in cmake 3.12+
+            target_link_libraries(crashpad_util PRIVATE CURL::libcurl)
+        else()
+            # Needed for cmake < 3.12 support (cmake 3.12 introduced the target CURL::libcurl)
+            target_include_directories(crashpad_util PRIVATE ${CURL_INCLUDE_DIR})
+            # The exported sentry target must not contain any path of the build machine, therefore use generator expressions
+            string(REPLACE ";" "$<SEMICOLON>" GENEX_CURL_LIBRARIES "${CURL_LIBRARIES}")
+            string(REPLACE ";" "$<SEMICOLON>" GENEX_CURL_COMPILE_DEFINITIONS "${CURL_COMPILE_DEFINITIONS}")
+            target_link_libraries(crashpad_util PRIVATE $<BUILD_INTERFACE:${GENEX_CURL_LIBRARIES}>)
+            target_compile_definitions(crashpad_util PRIVATE $<BUILD_INTERFACE:${GENEX_CURL_COMPILE_DEFINITIONS}>)
+        endif()
+
+        SET(HTTP_TRANSPORT_IMPL net/http_transport_libcurl.cc)
+    else()
+        SET(HTTP_TRANSPORT_IMPL net/http_transport_socket.cc)
+    endif()
+    
     target_sources(crashpad_util PRIVATE
-        net/http_transport_socket.cc
+        ${HTTP_TRANSPORT_IMPL}
         linux/address_types.h
         linux/auxiliary_vector.cc
         linux/auxiliary_vector.h
@@ -337,6 +362,7 @@ if(WIN32)
         win/process_structs.h
         win/registration_protocol_win.cc
         win/registration_protocol_win.h
+        win/registration_protocol_win_structs.h
         win/safe_terminate_process.h
         win/scoped_handle.cc
         win/scoped_handle.h

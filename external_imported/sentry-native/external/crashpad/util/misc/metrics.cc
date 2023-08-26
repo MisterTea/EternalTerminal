@@ -1,4 +1,4 @@
-// Copyright 2016 The Crashpad Authors. All rights reserved.
+// Copyright 2016 The Crashpad Authors
 //
 // Licensed under the Apache License, Version 2.0 (the "License");
 // you may not use this file except in compliance with the License.
@@ -77,6 +77,13 @@ void Metrics::CrashReportSize(FileOffset size) {
 void Metrics::CrashUploadAttempted(bool successful) {
   UMA_HISTOGRAM_BOOLEAN("Crashpad.CrashUpload.AttemptSuccessful", successful);
 }
+
+#if BUILDFLAG(IS_APPLE)
+// static
+void Metrics::CrashUploadErrorCode(int error_code) {
+  base::UmaHistogramSparse("Crashpad.CrashUpload.ErrorCode", error_code);
+}
+#endif
 
 // static
 void Metrics::CrashUploadSkipped(CrashSkippedReason reason) {

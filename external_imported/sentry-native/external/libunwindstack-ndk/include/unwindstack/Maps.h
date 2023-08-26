@@ -14,9 +14,9 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MAPS_H
-#define _LIBUNWINDSTACK_MAPS_H
+#pragma once
 
+#include <pthread.h>
 #include <sys/types.h>
 #include <unistd.h>
 
@@ -49,34 +49,35 @@ class Maps {
   Maps(Maps&&) = default;
   Maps& operator=(Maps&&) = default;
 
-  MapInfo* Find(uint64_t pc);
+  virtual std::shared_ptr<MapInfo> Find(uint64_t pc);
 
   virtual bool Parse();
 
   virtual const std::string GetMapsFile() const { return ""; }
 
+  void Add(uint64_t start, uint64_t end, uint64_t offset, uint64_t flags, const std::string& name);
   void Add(uint64_t start, uint64_t end, uint64_t offset, uint64_t flags, const std::string& name,
            uint64_t load_bias);
 
   void Sort();
 
-  typedef std::vector<std::unique_ptr<MapInfo>>::iterator iterator;
+  typedef std::vector<std::shared_ptr<MapInfo>>::iterator iterator;
   iterator begin() { return maps_.begin(); }
   iterator end() { return maps_.end(); }
 
-  typedef std::vector<std::unique_ptr<MapInfo>>::const_iterator const_iterator;
+  typedef std::vector<std::shared_ptr<MapInfo>>::const_iterator const_iterator;
   const_iterator begin() const { return maps_.begin(); }
   const_iterator end() const { return maps_.end(); }
 
   size_t Total() { return maps_.size(); }
 
-  MapInfo* Get(size_t index) {
+  std::shared_ptr<MapInfo> Get(size_t index) {
     if (index >= maps_.size()) return nullptr;
-    return maps_[index].get();
+    return maps_[index];
   }
 
  protected:
-  std::vector<std::unique_ptr<MapInfo>> maps_;
+  std::vector<std::shared_ptr<MapInfo>> maps_;
 };
 
 class RemoteMaps : public Maps {
@@ -98,15 +99,19 @@ class LocalMaps : public RemoteMaps {
 
 class LocalUpdatableMaps : public Maps {
  public:
-  LocalUpdatableMaps() : Maps() {}
+  LocalUpdatableMaps();
   virtual ~LocalUpdatableMaps() = default;
 
-  bool Reparse();
+  std::shared_ptr<MapInfo> Find(uint64_t pc) override;
+
+  bool Parse() override;
 
   const std::string GetMapsFile() const override;
 
- protected:
-  std::vector<std::unique_ptr<MapInfo>> saved_maps_;
+  bool Reparse(/*out*/ bool* any_changed = nullptr);
+
+ private:
+  pthread_rwlock_t maps_rwlock_;
 };
 
 class BufferMaps : public Maps {
@@ -132,5 +137,3 @@ class FileMaps : public Maps {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MAPS_H

@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_GLOBAL_H
-#define _LIBUNWINDSTACK_GLOBAL_H
+#pragma once
 
 #include <stdint.h>
 
@@ -32,7 +31,7 @@ namespace unwindstack {
 
 // Forward declarations.
 class Maps;
-struct MapInfo;
+class MapInfo;
 
 class Global {
  public:
@@ -59,5 +58,3 @@ class Global {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_GLOBAL_H

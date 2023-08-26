@@ -14,8 +14,7 @@
  * limitations under the License.
  */
 
-#ifndef _LIBUNWINDSTACK_MEMORY_RANGE_H
-#define _LIBUNWINDSTACK_MEMORY_RANGE_H
+#pragma once
 
 #include <stdint.h>
 
@@ -53,7 +52,7 @@ class MemoryRanges : public Memory {
   MemoryRanges() = default;
   virtual ~MemoryRanges() = default;
 
-  void Insert(MemoryRange* memory);
+  bool Insert(MemoryRange* memory);
 
   size_t Read(uint64_t addr, void* dst, size_t size) override;
 
@@ -62,5 +61,3 @@ class MemoryRanges : public Memory {
 };
 
 }  // namespace unwindstack
-
-#endif  // _LIBUNWINDSTACK_MEMORY_RANGE_H
