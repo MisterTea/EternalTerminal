@@ -16,11 +16,8 @@ jobs:
           command: sudo sed -i -e 's/#ListenAddress/ListenAddress/' /etc/ssh/sshd_config; sudo sed -i -e 's/AddressFamily inet/AddressFamily any/' /etc/ssh/sshd_config; sudo /etc/init.d/ssh restart; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls; ssh -o "StrictHostKeyChecking no" 0:0:0:0:0:0:0:1 ls
 
       - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
+          command: external_imported/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external_imported/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install
       - run:
           name: Build the root version of the project
           command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; git submodule update --init --recursive; cd build; cmake ../; make -j4
@@ -73,11 +70,8 @@ jobs:
           name: Set up ssh & known_hosts
           command: sudo /etc/init.d/ssh start; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls
       - run:
-          name: Init submodules
-          command: if [ $CIRCLE_BRANCH != "release" ]; then git submodule update --init --recursive; fi
-      - run:
           name: vcpkg
-          command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
+          command: external_imported/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external_imported/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install
       - run:
           name: Build the project
           command: cd build; cmake -DCMAKE_INSTALL_PREFIX=/usr ../; make -j4; sudo make install
