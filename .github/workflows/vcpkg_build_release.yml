@@ -1,4 +1,4 @@
-name: Vcpkg Build
+name: Vcpkg Build Release
 on:
   push:
     branches:
