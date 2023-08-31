@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -78,7 +78,7 @@ namespace Catch {
     };
 
     struct SectionStats {
-        SectionStats(   SectionInfo const& _sectionInfo,
+        SectionStats(   SectionInfo&& _sectionInfo,
                         Counts const& _assertions,
                         double _durationInSeconds,
                         bool _missingAssertions );
@@ -92,8 +92,8 @@ namespace Catch {
     struct TestCaseStats {
         TestCaseStats(  TestCaseInfo const& _testInfo,
                         Totals const& _totals,
-                        std::string const& _stdOut,
-                        std::string const& _stdErr,
+                        std::string&& _stdOut,
+                        std::string&& _stdErr,
                         bool _aborting );
 
         TestCaseInfo const * testInfo;
@@ -242,7 +242,12 @@ namespace Catch {
          */
         virtual void testRunEnded( TestRunStats const& testRunStats ) = 0;
 
-        //! Called with test cases that are skipped due to the test run aborting
+        /**
+         * Called with test cases that are skipped due to the test run aborting.
+         * NOT called for test cases that are explicitly skipped using the `SKIP` macro.
+         *
+         * Deprecated - will be removed in the next major release.
+         */
         virtual void skipTest( TestCaseInfo const& testInfo ) = 0;
 
         //! Called if a fatal error (signal/structured exception) occured

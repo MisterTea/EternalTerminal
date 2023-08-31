@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -10,6 +10,8 @@
 #include <catch2/internal/catch_string_manip.hpp>
 #include <catch2/catch_test_case_info.hpp>
 #include <catch2/interfaces/catch_interfaces_config.hpp>
+#include <catch2/catch_test_spec.hpp>
+#include <catch2/reporters/catch_reporter_helpers.hpp>
 
 #include <algorithm>
 #include <iterator>
@@ -98,6 +100,12 @@ namespace Catch {
                     printIssue("explicitly"_sr);
                     printRemainingMessages(Colour::None);
                     break;
+                case ResultWas::ExplicitSkip:
+                    printResultType(tapPassedString);
+                    printIssue(" # SKIP"_sr);
+                    printMessage();
+                    printRemainingMessages();
+                    break;
                     // These cases are here to prevent compiler warnings
                 case ResultWas::Unknown:
                 case ResultWas::FailureBit:
@@ -176,7 +184,7 @@ namespace Catch {
         private:
             std::ostream& stream;
             AssertionResult const& result;
-            std::vector<MessageInfo> messages;
+            std::vector<MessageInfo> const& messages;
             std::vector<MessageInfo>::const_iterator itMessage;
             bool printInfoMessages;
             std::size_t counter;
@@ -186,6 +194,9 @@ namespace Catch {
     } // End anonymous namespace
 
     void TAPReporter::testRunStarting( TestRunInfo const& ) {
+        if ( m_config->testSpec().hasFilters() ) {
+            m_stream << "# filters: " << m_config->testSpec() << '\n';
+        }
         m_stream << "# rng-seed: " << m_config->rngSeed() << '\n';
     }
 

@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- rng-seed=1 -->
+<!-- filters='"*" ~[!nonportable] ~[!benchmark] ~[approvals]' rng-seed=1 -->
 <testExecutions version="1"loose text artifact
 >
   <file path="tests/<exe-name>/IntrospectiveTests/Clara.tests.cpp">
@@ -9,44 +9,6 @@
     <testCase name="is_unary_function" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/CmdLine.tests.cpp">
-    <testCase name="#1905 -- test spec parser properly clears internal state between compound tests" duration="{duration}"/>
-    <testCase name="#1912 -- test spec parser handles escaping/Various parentheses" duration="{duration}"/>
-    <testCase name="#1912 -- test spec parser handles escaping/backslash in test name" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Empty test spec should have no filters" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Test spec from empty string should have no filters" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Test spec from just a comma should have no filters" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Test spec from name should have one filter" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Test spec from quoted name should have one filter" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Test spec from name should have one filter" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Wildcard at the start" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Wildcard at the end" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Wildcard at both ends" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Redundant wildcard at the start" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Redundant wildcard at the end" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Redundant wildcard at both ends" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Wildcard at both ends, redundant at start" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Just wildcard" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Single tag" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Single tag, two matches" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Two tags" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Two tags, spare separated" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Wildcarded name and tag" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Single tag exclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/One tag exclusion and one tag inclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/One tag exclusion and one wldcarded name inclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/One tag exclusion, using exclude:, and one wldcarded name inclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/name exclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/wildcarded name exclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/wildcarded name exclusion with tag inclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/wildcarded name exclusion, using exclude:, with tag inclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/two wildcarded names" duration="{duration}"/>
-    <testCase name="Parse test names and tags/empty tag" duration="{duration}"/>
-    <testCase name="Parse test names and tags/empty quoted name" duration="{duration}"/>
-    <testCase name="Parse test names and tags/quoted string followed by tag exclusion" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Leading and trailing spaces in test spec" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Leading and trailing spaces in test name" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Shortened hide tags are split apart when parsing" duration="{duration}"/>
-    <testCase name="Parse test names and tags/Shortened hide tags also properly handle exclusion" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags/shard-count" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags/Negative shard count reports error" duration="{duration}"/>
     <testCase name="Parsing sharding-related cli flags/Zero shard count reports error" duration="{duration}"/>
@@ -109,6 +71,7 @@
     <testCase name="convertToBits" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/GeneratorsImpl.tests.cpp">
+    <testCase name="Filter generator throws exception for empty generator" duration="{duration}"/>
     <testCase name="Generators internals/Single value" duration="{duration}"/>
     <testCase name="Generators internals/Preset values" duration="{duration}"/>
     <testCase name="Generators internals/Generator combinator" duration="{duration}"/>
@@ -156,6 +119,10 @@
     <testCase name="uniform samples" duration="{duration}"/>
     <testCase name="warmup" duration="{duration}"/>
     <testCase name="weighted_average_quantile" duration="{duration}"/>
+  </file>
+  <file path="tests/<exe-name>/IntrospectiveTests/Parse.tests.cpp">
+    <testCase name="Parse uints/proper inputs" duration="{duration}"/>
+    <testCase name="Parse uints/Bad inputs" duration="{duration}"/>
   </file>
   <file path="tests/<exe-name>/IntrospectiveTests/PartTracker.tests.cpp">
     <testCase name="#1938 - GENERATE after a section/A" duration="{duration}"/>
@@ -283,6 +250,11 @@
     <testCase name="Hashing different test cases produces different result/Different tags" duration="{duration}"/>
     <testCase name="Hashing test case produces same hash across multiple calls" duration="{duration}"/>
   </file>
+  <file path="tests/<exe-name>/IntrospectiveTests/TestSpec.tests.cpp">
+    <testCase name="#1905 -- test spec parser properly clears internal state between compound tests" duration="{duration}"/>
+    <testCase name="#1912 -- test spec parser handles escaping/Various parentheses" duration="{duration}"/>
+    <testCase name="#1912 -- test spec parser handles escaping/backslash in test name" duration="{duration}"/>
+  </file>
   <file path="tests/<exe-name>/IntrospectiveTests/TestSpecParser.tests.cpp">
     <testCase name="Parsed tags are matched case insensitive" duration="{duration}"/>
     <testCase name="Parsing tags with non-alphabetical characters is pass-through" duration="{duration}"/>
@@ -359,7 +331,7 @@ FAILED:
 	REQUIRE( s == "world" )
 with expansion:
 	"hello" == "world"
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A METHOD_AS_TEST_CASE based test run that succeeds" duration="{duration}"/>
@@ -369,7 +341,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>::m_a.size() == 1 )
 with expansion:
 	0 == 1
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD based test run that fails - Template_Foo&lt;int>" duration="{duration}">
@@ -378,7 +350,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>::m_a.size() == 1 )
 with expansion:
 	0 == 1
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD based test run that fails - std::vector&lt;float>" duration="{duration}">
@@ -387,7 +359,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>::m_a.size() == 1 )
 with expansion:
 	0 == 1
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD based test run that fails - std::vector&lt;int>" duration="{duration}">
@@ -396,7 +368,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>::m_a.size() == 1 )
 with expansion:
 	0 == 1
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD based test run that succeeds - Template_Foo&lt;float>" duration="{duration}"/>
@@ -409,7 +381,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>{}.m_a.size() &lt; 2 )
 with expansion:
 	6 &lt; 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - Template_Foo_2&lt;int, 2>" duration="{duration}">
@@ -418,7 +390,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>{}.m_a.size() &lt; 2 )
 with expansion:
 	2 &lt; 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array&lt;float, 6>" duration="{duration}">
@@ -427,7 +399,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>{}.m_a.size() &lt; 2 )
 with expansion:
 	6 &lt; 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that fails - std::array&lt;int, 2>" duration="{duration}">
@@ -436,7 +408,7 @@ FAILED:
 	REQUIRE( Template_Fixture_2&lt;TestType>{}.m_a.size() &lt; 2 )
 with expansion:
 	2 &lt; 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_PRODUCT_TEST_CASE_METHOD_SIG based test run that succeeds - Template_Foo_2&lt;float,6>" duration="{duration}"/>
@@ -449,7 +421,7 @@ FAILED:
 	REQUIRE( Template_Fixture&lt;TestType>::m_a == 2 )
 with expansion:
 	1.0 == 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD based test run that fails - float" duration="{duration}">
@@ -458,7 +430,7 @@ FAILED:
 	REQUIRE( Template_Fixture&lt;TestType>::m_a == 2 )
 with expansion:
 	1.0f == 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD based test run that fails - int" duration="{duration}">
@@ -467,7 +439,7 @@ FAILED:
 	REQUIRE( Template_Fixture&lt;TestType>::m_a == 2 )
 with expansion:
 	1 == 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD based test run that succeeds - double" duration="{duration}"/>
@@ -479,7 +451,7 @@ FAILED:
 	REQUIRE( Nttp_Fixture&lt;V>::value == 0 )
 with expansion:
 	1 == 0
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 3" duration="{duration}">
@@ -488,7 +460,7 @@ FAILED:
 	REQUIRE( Nttp_Fixture&lt;V>::value == 0 )
 with expansion:
 	3 == 0
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD_SIG based test run that fails - 6" duration="{duration}">
@@ -497,7 +469,7 @@ FAILED:
 	REQUIRE( Nttp_Fixture&lt;V>::value == 0 )
 with expansion:
 	6 == 0
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEMPLATE_TEST_CASE_METHOD_SIG based test run that succeeds - 1" duration="{duration}"/>
@@ -509,7 +481,7 @@ FAILED:
 	REQUIRE( m_a == 2 )
 with expansion:
 	1 == 2
-Class.tests.cpp:<line number>
+at Class.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A TEST_CASE_METHOD based test run that succeeds" duration="{duration}"/>
@@ -537,52 +509,52 @@ Class.tests.cpp:<line number>
       <failure message="CHECK(false != false)">
 FAILED:
 	CHECK( false != false )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(true != true)">
 FAILED:
 	CHECK( true != true )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(!true)">
 FAILED:
 	CHECK( !true )
 with expansion:
 	false
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_FALSE(!(true))">
 FAILED:
 	CHECK_FALSE( true )
 with expansion:
 	!true
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(!trueValue)">
 FAILED:
 	CHECK( !trueValue )
 with expansion:
 	false
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_FALSE(!(trueValue))">
 FAILED:
 	CHECK_FALSE( trueValue )
 with expansion:
 	!true
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(!(1 == 1))">
 FAILED:
 	CHECK( !(1 == 1) )
 with expansion:
 	false
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_FALSE(!(1 == 1))">
 FAILED:
 	CHECK_FALSE( 1 == 1 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="'Not' checks that should succeed" duration="{duration}"/>
@@ -595,91 +567,91 @@ FAILED:
 	CHECK( data.int_seven == 6 )
 with expansion:
 	7 == 6
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.int_seven == 8)">
 FAILED:
 	CHECK( data.int_seven == 8 )
 with expansion:
 	7 == 8
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.int_seven == 0)">
 FAILED:
 	CHECK( data.int_seven == 0 )
 with expansion:
 	7 == 0
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.float_nine_point_one == Approx( 9.11f ))">
 FAILED:
 	CHECK( data.float_nine_point_one == Approx( 9.11f ) )
 with expansion:
 	9.1f == Approx( 9.1099996567 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.float_nine_point_one == Approx( 9.0f ))">
 FAILED:
 	CHECK( data.float_nine_point_one == Approx( 9.0f ) )
 with expansion:
 	9.1f == Approx( 9.0 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.float_nine_point_one == Approx( 1 ))">
 FAILED:
 	CHECK( data.float_nine_point_one == Approx( 1 ) )
 with expansion:
 	9.1f == Approx( 1.0 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.float_nine_point_one == Approx( 0 ))">
 FAILED:
 	CHECK( data.float_nine_point_one == Approx( 0 ) )
 with expansion:
 	9.1f == Approx( 0.0 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.double_pi == Approx( 3.1415 ))">
 FAILED:
 	CHECK( data.double_pi == Approx( 3.1415 ) )
 with expansion:
 	3.1415926535 == Approx( 3.1415 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello == &quot;goodbye&quot;)">
 FAILED:
 	CHECK( data.str_hello == "goodbye" )
 with expansion:
 	"hello" == "goodbye"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello == &quot;hell&quot;)">
 FAILED:
 	CHECK( data.str_hello == "hell" )
 with expansion:
 	"hello" == "hell"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello == &quot;hello1&quot;)">
 FAILED:
 	CHECK( data.str_hello == "hello1" )
 with expansion:
 	"hello" == "hello1"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello.size() == 6)">
 FAILED:
 	CHECK( data.str_hello.size() == 6 )
 with expansion:
 	5 == 6
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(x == Approx( 1.301 ))">
 FAILED:
 	CHECK( x == Approx( 1.301 ) )
 with expansion:
 	1.3 == Approx( 1.301 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Equality checks that should succeed" duration="{duration}"/>
@@ -689,60 +661,60 @@ FAILED:
 	CHECK( data.int_seven != 7 )
 with expansion:
 	7 != 7
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.float_nine_point_one != Approx( 9.1f ))">
 FAILED:
 	CHECK( data.float_nine_point_one != Approx( 9.1f ) )
 with expansion:
 	9.1f != Approx( 9.1000003815 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.double_pi != Approx( 3.1415926535 ))">
 FAILED:
 	CHECK( data.double_pi != Approx( 3.1415926535 ) )
 with expansion:
 	3.1415926535 != Approx( 3.1415926535 )
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello != &quot;hello&quot;)">
 FAILED:
 	CHECK( data.str_hello != "hello" )
 with expansion:
 	"hello" != "hello"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
       <skipped message="CHECK(data.str_hello.size() != 5)">
 FAILED:
 	CHECK( data.str_hello.size() != 5 )
 with expansion:
 	5 != 5
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Inequality checks that should succeed" duration="{duration}"/>
     <testCase name="Mayfail test case with nested sections/1/A" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Mayfail test case with nested sections/2/A" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Mayfail test case with nested sections/1/B" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Mayfail test case with nested sections/2/B" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Ordering comparison checks that should fail" duration="{duration}">
@@ -751,133 +723,133 @@ FAILED:
 	CHECK( data.int_seven > 7 )
 with expansion:
 	7 > 7
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven &lt; 7)">
 FAILED:
 	CHECK( data.int_seven &lt; 7 )
 with expansion:
 	7 &lt; 7
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven > 8)">
 FAILED:
 	CHECK( data.int_seven > 8 )
 with expansion:
 	7 > 8
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven &lt; 6)">
 FAILED:
 	CHECK( data.int_seven &lt; 6 )
 with expansion:
 	7 &lt; 6
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven &lt; 0)">
 FAILED:
 	CHECK( data.int_seven &lt; 0 )
 with expansion:
 	7 &lt; 0
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven &lt; -1)">
 FAILED:
 	CHECK( data.int_seven &lt; -1 )
 with expansion:
 	7 &lt; -1
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven >= 8)">
 FAILED:
 	CHECK( data.int_seven >= 8 )
 with expansion:
 	7 >= 8
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.int_seven &lt;= 6)">
 FAILED:
 	CHECK( data.int_seven &lt;= 6 )
 with expansion:
 	7 &lt;= 6
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.float_nine_point_one &lt; 9)">
 FAILED:
 	CHECK( data.float_nine_point_one &lt; 9 )
 with expansion:
 	9.1f &lt; 9
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.float_nine_point_one > 10)">
 FAILED:
 	CHECK( data.float_nine_point_one > 10 )
 with expansion:
 	9.1f > 10
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.float_nine_point_one > 9.2)">
 FAILED:
 	CHECK( data.float_nine_point_one > 9.2 )
 with expansion:
 	9.1f > 9.2
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello > &quot;hello&quot;)">
 FAILED:
 	CHECK( data.str_hello > "hello" )
 with expansion:
 	"hello" > "hello"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello &lt; &quot;hello&quot;)">
 FAILED:
 	CHECK( data.str_hello &lt; "hello" )
 with expansion:
 	"hello" &lt; "hello"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello > &quot;hellp&quot;)">
 FAILED:
 	CHECK( data.str_hello > "hellp" )
 with expansion:
 	"hello" > "hellp"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello > &quot;z&quot;)">
 FAILED:
 	CHECK( data.str_hello > "z" )
 with expansion:
 	"hello" > "z"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello &lt; &quot;hellm&quot;)">
 FAILED:
 	CHECK( data.str_hello &lt; "hellm" )
 with expansion:
 	"hello" &lt; "hellm"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello &lt; &quot;a&quot;)">
 FAILED:
 	CHECK( data.str_hello &lt; "a" )
 with expansion:
 	"hello" &lt; "a"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello >= &quot;z&quot;)">
 FAILED:
 	CHECK( data.str_hello >= "z" )
 with expansion:
 	"hello" >= "z"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(data.str_hello &lt;= &quot;a&quot;)">
 FAILED:
 	CHECK( data.str_hello &lt;= "a" )
 with expansion:
 	"hello" &lt;= "a"
-Condition.tests.cpp:<line number>
+at Condition.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Ordering comparison checks that should succeed" duration="{duration}"/>
@@ -892,7 +864,7 @@ FAILED:
 	CHECK( truthy(false) )
 with expansion:
 	Hey, its truthy!
-Decomposition.tests.cpp:<line number>
+at Decomposition.tests.cpp:<line number>
       </failure>
     </testCase>
   </file>
@@ -910,7 +882,7 @@ Decomposition.tests.cpp:<line number>
 FAILED:
 expected exception
 answer := 42
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="#748 - captures with unexpected exceptions/inside REQUIRE_NOTHROW" duration="{duration}">
@@ -919,7 +891,7 @@ FAILED:
 	REQUIRE_NOTHROW( thisThrows() )
 expected exception
 answer := 42
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="#748 - captures with unexpected exceptions/inside REQUIRE_THROWS" duration="{duration}"/>
@@ -928,7 +900,7 @@ Exception.tests.cpp:<line number>
 FAILED:
 	{Unknown expression after the reported line}
 unexpected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Custom exceptions can be translated when testing for nothrow" duration="{duration}">
@@ -936,7 +908,7 @@ Exception.tests.cpp:<line number>
 FAILED:
 	REQUIRE_NOTHROW( throwCustom() )
 custom exception - not std
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Custom exceptions can be translated when testing for throwing as something else" duration="{duration}">
@@ -944,14 +916,14 @@ Exception.tests.cpp:<line number>
 FAILED:
 	REQUIRE_THROWS_AS( throwCustom(), std::exception )
 custom exception - not std
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Custom std-exceptions can be custom translated" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 custom std exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Exception messages can be tested for/exact match" duration="{duration}"/>
@@ -962,18 +934,18 @@ Exception.tests.cpp:<line number>
 FAILED:
 	CHECK_THROWS_AS( thisThrows(), std::string )
 expected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
       <failure message="CHECK_THROWS_AS(thisDoesntThrow(), std::domain_error)">
 FAILED:
 	CHECK_THROWS_AS( thisDoesntThrow(), std::domain_error )
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </failure>
       <error message="CHECK_NOTHROW(thisThrows())">
 FAILED:
 	CHECK_NOTHROW( thisThrows() )
 expected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Mismatching exception messages failing the test" duration="{duration}">
@@ -982,28 +954,28 @@ FAILED:
 	REQUIRE_THROWS_WITH( thisThrows(), "should fail" )
 with expansion:
 	"expected exception" equals: "should fail"
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Non-std exceptions can be translated" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 custom exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Thrown string literals are translated" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 For some reason someone is throwing a string literal!
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Unexpected exceptions can be translated" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 3.14
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When checked exceptions are thrown they can be expected or unexpected" duration="{duration}"/>
@@ -1011,7 +983,7 @@ Exception.tests.cpp:<line number>
       <error message="TEST_CASE()">
 FAILED:
 unexpected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When unchecked exceptions are thrown during a CHECK the test should continue" duration="{duration}">
@@ -1019,7 +991,7 @@ Exception.tests.cpp:<line number>
 FAILED:
 	CHECK( thisThrows() == 0 )
 expected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When unchecked exceptions are thrown during a REQUIRE the test should abort fail" duration="{duration}">
@@ -1027,7 +999,7 @@ Exception.tests.cpp:<line number>
 FAILED:
 	REQUIRE( thisThrows() == 0 )
 expected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When unchecked exceptions are thrown from functions they are always failures" duration="{duration}">
@@ -1035,27 +1007,34 @@ Exception.tests.cpp:<line number>
 FAILED:
 	CHECK( thisThrows() == 0 )
 expected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="When unchecked exceptions are thrown from sections they are always failures/section name" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 unexpected exception
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="thrown std::strings are translated" duration="{duration}">
       <error message="TEST_CASE()">
 FAILED:
 Why would you throw a std::string?
-Exception.tests.cpp:<line number>
+at Exception.tests.cpp:<line number>
       </error>
     </testCase>
   </file>
   <file path="tests/<exe-name>/UsageTests/Generators.tests.cpp">
     <testCase name="#1913 - GENERATE inside a for loop should not keep recreating the generator" duration="{duration}"/>
     <testCase name="#1913 - GENERATEs can share a line" duration="{duration}"/>
+    <testCase name="#2615 - Throwing in constructor generator fails test case but does not abort" duration="{duration}">
+      <skipped message="TEST_CASE()">
+FAILED:
+failure to init
+at Generators.tests.cpp:<line number>
+      </skipped>
+    </testCase>
     <testCase name="3x3x3 ints" duration="{duration}"/>
     <testCase name="Copy and then generate a range/from var and iterators" duration="{duration}"/>
     <testCase name="Copy and then generate a range/From a temporary container" duration="{duration}"/>
@@ -1099,14 +1078,14 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), ContainsSubstring( "not there", Catch::CaseSensitive::No ) )
 with expansion:
 	"this string contains 'abc' as a substring" contains: "not there" (case insensitive)
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), ContainsSubstring( &quot;STRING&quot; ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), ContainsSubstring( "STRING" ) )
 with expansion:
 	"this string contains 'abc' as a substring" contains: "STRING"
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="EndsWith string matcher" duration="{duration}">
@@ -1115,14 +1094,14 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), EndsWith( "Substring" ) )
 with expansion:
 	"this string contains 'abc' as a substring" ends with: "Substring"
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), EndsWith( &quot;this&quot;, Catch::CaseSensitive::No ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), EndsWith( "this", Catch::CaseSensitive::No ) )
 with expansion:
 	"this string contains 'abc' as a substring" ends with: "this" (case insensitive)
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Equals" duration="{duration}"/>
@@ -1132,26 +1111,26 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), Equals( "this string contains 'ABC' as a substring" ) )
 with expansion:
 	"this string contains 'abc' as a substring" equals: "this string contains 'ABC' as a substring"
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), Equals( &quot;something else&quot;, Catch::CaseSensitive::No ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), Equals( "something else", Catch::CaseSensitive::No ) )
 with expansion:
 	"this string contains 'abc' as a substring" equals: "something else" (case insensitive)
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Exception matchers that fail/No exception" duration="{duration}">
       <failure message="CHECK_THROWS_MATCHES(doesNotThrow(), SpecialException, ExceptionMatcher{ 1 })">
 FAILED:
 	CHECK_THROWS_MATCHES( doesNotThrow(), SpecialException, ExceptionMatcher{ 1 } )
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="REQUIRE_THROWS_MATCHES(doesNotThrow(), SpecialException, ExceptionMatcher{ 1 })">
 FAILED:
 	REQUIRE_THROWS_MATCHES( doesNotThrow(), SpecialException, ExceptionMatcher{ 1 } )
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Exception matchers that fail/Type mismatch" duration="{duration}">
@@ -1159,13 +1138,13 @@ Matchers.tests.cpp:<line number>
 FAILED:
 	CHECK_THROWS_MATCHES( throwsAsInt( 1 ), SpecialException, ExceptionMatcher{ 1 } )
 Unknown exception
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </error>
       <error message="REQUIRE_THROWS_MATCHES(throwsAsInt( 1 ), SpecialException, ExceptionMatcher{ 1 })">
 FAILED:
 	REQUIRE_THROWS_MATCHES( throwsAsInt( 1 ), SpecialException, ExceptionMatcher{ 1 } )
 Unknown exception
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </error>
     </testCase>
     <testCase name="Exception matchers that fail/Contents are wrong" duration="{duration}">
@@ -1174,17 +1153,18 @@ FAILED:
 	CHECK_THROWS_MATCHES( throwsSpecialException( 3 ), SpecialException, ExceptionMatcher{ 1 } )
 with expansion:
 	SpecialException::what special exception has value of 1
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="REQUIRE_THROWS_MATCHES(throwsSpecialException( 4 ), SpecialException, ExceptionMatcher{ 1 })">
 FAILED:
 	REQUIRE_THROWS_MATCHES( throwsSpecialException( 4 ), SpecialException, ExceptionMatcher{ 1 } )
 with expansion:
 	SpecialException::what special exception has value of 1
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Exception matchers that succeed" duration="{duration}"/>
+    <testCase name="Exception message can be matched" duration="{duration}"/>
     <testCase name="Exceptions matchers" duration="{duration}"/>
     <testCase name="Floating point matchers: double/Relative" duration="{duration}"/>
     <testCase name="Floating point matchers: double/Relative/Some subnormal values" duration="{duration}"/>
@@ -1192,12 +1172,14 @@ Matchers.tests.cpp:<line number>
     <testCase name="Floating point matchers: double/ULPs" duration="{duration}"/>
     <testCase name="Floating point matchers: double/Composed" duration="{duration}"/>
     <testCase name="Floating point matchers: double/Constructor validation" duration="{duration}"/>
+    <testCase name="Floating point matchers: double/IsNaN" duration="{duration}"/>
     <testCase name="Floating point matchers: float/Relative" duration="{duration}"/>
     <testCase name="Floating point matchers: float/Relative/Some subnormal values" duration="{duration}"/>
     <testCase name="Floating point matchers: float/Margin" duration="{duration}"/>
     <testCase name="Floating point matchers: float/ULPs" duration="{duration}"/>
     <testCase name="Floating point matchers: float/Composed" duration="{duration}"/>
     <testCase name="Floating point matchers: float/Constructor validation" duration="{duration}"/>
+    <testCase name="Floating point matchers: float/IsNaN" duration="{duration}"/>
     <testCase name="Matchers can be (AllOf) composed with the &amp;&amp; operator" duration="{duration}"/>
     <testCase name="Matchers can be (AnyOf) composed with the || operator" duration="{duration}"/>
     <testCase name="Matchers can be composed with both &amp;&amp; and ||" duration="{duration}"/>
@@ -1207,7 +1189,7 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), ( ContainsSubstring( "string" ) || ContainsSubstring( "different" ) ) &amp;&amp; ContainsSubstring( "random" ) )
 with expansion:
 	"this string contains 'abc' as a substring" ( ( contains: "string" or contains: "different" ) and contains: "random" )
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Matchers can be negated (Not) with the ! operator" duration="{duration}"/>
@@ -1217,7 +1199,7 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), !ContainsSubstring( "substring" ) )
 with expansion:
 	"this string contains 'abc' as a substring" not contains: "substring"
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Overloaded comma or address-of operators are not used" duration="{duration}"/>
@@ -1228,21 +1210,21 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), Matches( "this STRING contains 'abc' as a substring" ) )
 with expansion:
 	"this string contains 'abc' as a substring" matches "this STRING contains 'abc' as a substring" case sensitively
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), Matches( &quot;contains 'abc' as a substring&quot; ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), Matches( "contains 'abc' as a substring" ) )
 with expansion:
 	"this string contains 'abc' as a substring" matches "contains 'abc' as a substring" case sensitively
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), Matches( &quot;this string contains 'abc' as a&quot; ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), Matches( "this string contains 'abc' as a" ) )
 with expansion:
 	"this string contains 'abc' as a substring" matches "this string contains 'abc' as a" case sensitively
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Regression test #1" duration="{duration}"/>
@@ -1252,14 +1234,14 @@ FAILED:
 	CHECK_THAT( testStringForMatching(), StartsWith( "This String" ) )
 with expansion:
 	"this string contains 'abc' as a substring" starts with: "This String"
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(testStringForMatching(), StartsWith( &quot;string&quot;, Catch::CaseSensitive::No ))">
 FAILED:
 	CHECK_THAT( testStringForMatching(), StartsWith( "string", Catch::CaseSensitive::No ) )
 with expansion:
 	"this string contains 'abc' as a substring" starts with: "string" (case insensitive)
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="String matchers" duration="{duration}"/>
@@ -1273,7 +1255,7 @@ FAILED:
 	CHECK_THAT( empty, Approx( t1 ) )
 with expansion:
 	{  } is approx: { 1.0, 2.0 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Vector Approx matcher -- failing/Just different vectors" duration="{duration}">
@@ -1282,7 +1264,7 @@ FAILED:
 	CHECK_THAT( v1, Approx( v2 ) )
 with expansion:
 	{ 2.0, 4.0, 6.0 } is approx: { 1.0, 3.0, 5.0 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Vector matchers/Contains (element)" duration="{duration}"/>
@@ -1296,14 +1278,14 @@ FAILED:
 	CHECK_THAT( v, VectorContains( -1 ) )
 with expansion:
 	{ 1, 2, 3 } Contains: -1
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(empty, VectorContains( 1 ))">
 FAILED:
 	CHECK_THAT( empty, VectorContains( 1 ) )
 with expansion:
 	{  } Contains: 1
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Vector matchers that fail/Contains (vector)" duration="{duration}">
@@ -1312,14 +1294,14 @@ FAILED:
 	CHECK_THAT( empty, Contains( v ) )
 with expansion:
 	{  } Contains: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(v, Contains( v2 ))">
 FAILED:
 	CHECK_THAT( v, Contains( v2 ) )
 with expansion:
 	{ 1, 2, 3 } Contains: { 1, 2, 4 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Vector matchers that fail/Equals" duration="{duration}">
@@ -1328,28 +1310,28 @@ FAILED:
 	CHECK_THAT( v, Equals( v2 ) )
 with expansion:
 	{ 1, 2, 3 } Equals: { 1, 2 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(v2, Equals( v ))">
 FAILED:
 	CHECK_THAT( v2, Equals( v ) )
 with expansion:
 	{ 1, 2 } Equals: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(empty, Equals( v ))">
 FAILED:
 	CHECK_THAT( empty, Equals( v ) )
 with expansion:
 	{  } Equals: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(v, Equals( empty ))">
 FAILED:
 	CHECK_THAT( v, Equals( empty ) )
 with expansion:
 	{ 1, 2, 3 } Equals: {  }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Vector matchers that fail/UnorderedEquals" duration="{duration}">
@@ -1358,28 +1340,28 @@ FAILED:
 	CHECK_THAT( v, UnorderedEquals( empty ) )
 with expansion:
 	{ 1, 2, 3 } UnorderedEquals: {  }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(empty, UnorderedEquals( v ))">
 FAILED:
 	CHECK_THAT( empty, UnorderedEquals( v ) )
 with expansion:
 	{  } UnorderedEquals: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(permuted, UnorderedEquals( v ))">
 FAILED:
 	CHECK_THAT( permuted, UnorderedEquals( v ) )
 with expansion:
 	{ 1, 3 } UnorderedEquals: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
       <failure message="CHECK_THAT(permuted, UnorderedEquals( v ))">
 FAILED:
 	CHECK_THAT( permuted, UnorderedEquals( v ) )
 with expansion:
 	{ 3, 1 } UnorderedEquals: { 1, 2, 3 }
-Matchers.tests.cpp:<line number>
+at Matchers.tests.cpp:<line number>
       </failure>
     </testCase>
   </file>
@@ -1393,6 +1375,14 @@ Matchers.tests.cpp:<line number>
     <testCase name="Basic use of the Empty range matcher/Simple, std-provided containers" duration="{duration}"/>
     <testCase name="Basic use of the Empty range matcher/Type with empty" duration="{duration}"/>
     <testCase name="Basic use of the Empty range matcher/Type requires ADL found empty free function" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Container conversions/Two equal containers of different container types" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Container conversions/Two equal containers of different container types (differ in array N)" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Container conversions/Two equal containers of different container types and value types" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Container conversions/Two equal containers, one random access, one not" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Value type/Two equal containers of different value types" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Value type/Two non-equal containers of different value types" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Ranges with begin that needs ADL" duration="{duration}"/>
+    <testCase name="Type conversions of RangeEquals and similar/Custom predicate/Two equal non-empty containers (close enough)" duration="{duration}"/>
     <testCase name="Usage of AllMatch range matcher/Basic usage" duration="{duration}"/>
     <testCase name="Usage of AllMatch range matcher/Type requires ADL found begin and end" duration="{duration}"/>
     <testCase name="Usage of AllMatch range matcher/Shortcircuiting/All are read" duration="{duration}"/>
@@ -1432,6 +1422,26 @@ Matchers.tests.cpp:<line number>
     <testCase name="Usage of NoneTrue range matcher/Contained type is convertible to bool/All false evaluates to true" duration="{duration}"/>
     <testCase name="Usage of NoneTrue range matcher/Shortcircuiting/All are read" duration="{duration}"/>
     <testCase name="Usage of NoneTrue range matcher/Shortcircuiting/Short-circuited" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Empty container matches empty container" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Empty container does not match non-empty container" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Two equal 1-length non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Two equal-sized, equal, non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Two equal-sized, non-equal, non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Basic usage/Two non-equal-sized, non-empty containers (with same first elements)" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Custom predicate/Two equal non-empty containers (close enough)" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Custom predicate/Two non-equal non-empty containers (close enough)" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Ranges that need ADL begin/end" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Check short-circuiting behaviour/Check short-circuits on failure" duration="{duration}"/>
+    <testCase name="Usage of RangeEquals range matcher/Check short-circuiting behaviour/All elements are checked on success" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Empty container matches empty container" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Empty container does not match non-empty container" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Two equal 1-length non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Two equal-sized, equal, non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Two equal-sized, non-equal, non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Basic usage/Two non-equal-sized, non-empty containers" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Custom predicate/Two equal non-empty containers (close enough)" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Custom predicate/Two non-equal non-empty containers (close enough)" duration="{duration}"/>
+    <testCase name="Usage of UnorderedRangeEquals range matcher/Ranges that need ADL begin/end" duration="{duration}"/>
     <testCase name="Usage of the SizeIs range matcher/Some with stdlib containers" duration="{duration}"/>
     <testCase name="Usage of the SizeIs range matcher/Type requires ADL found size free function" duration="{duration}"/>
     <testCase name="Usage of the SizeIs range matcher/Type has size member" duration="{duration}"/>
@@ -1445,20 +1455,20 @@ Matchers.tests.cpp:<line number>
       <failure message="FAIL()">
 FAILED:
 This is a failure
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="FAIL does not require an argument" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="FAIL_CHECK does not abort the test" duration="{duration}">
       <failure message="FAIL_CHECK()">
 FAILED:
 This is a failure
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="INFO and WARN do not abort tests" duration="{duration}"/>
@@ -1470,7 +1480,7 @@ with expansion:
 	2 == 1
 this message should be logged
 so should this
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="INFO gets logged on failure, even if captured before successful assertions" duration="{duration}">
@@ -1481,7 +1491,7 @@ with expansion:
 	2 == 1
 this message may be logged later
 this message should be logged
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(a == 0)">
 FAILED:
@@ -1491,7 +1501,7 @@ with expansion:
 this message may be logged later
 this message should be logged
 and this, but later
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="INFO is reset for each loop" duration="{duration}">
@@ -1502,21 +1512,21 @@ with expansion:
 	10 &lt; 10
 current counter 10
 i := 10
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Output from all sections is reported/one" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
 Message from section one
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Output from all sections is reported/two" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
 Message from section two
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="SUCCEED counts as a test pass" duration="{duration}"/>
@@ -1527,14 +1537,14 @@ Message.tests.cpp:<line number>
       <failure message="FAIL()">
 FAILED:
 Previous info should not be seen
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="just failure after unscoped info" duration="{duration}">
       <failure message="FAIL()">
 FAILED:
 previous unscoped info SHOULD not be seen
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="mix info, unscoped info and warning" duration="{duration}"/>
@@ -1543,7 +1553,7 @@ Message.tests.cpp:<line number>
 FAILED:
 	REQUIRE( false )
 this SHOULD be seen
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="print unscoped info if passing unscoped info is printed" duration="{duration}"/>
@@ -1553,7 +1563,7 @@ FAILED:
 	REQUIRE( false )
 this SHOULD be seen
 this SHOULD also be seen
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="prints unscoped info only for the first assertion" duration="{duration}">
@@ -1561,7 +1571,7 @@ Message.tests.cpp:<line number>
 FAILED:
 	CHECK( false )
 this SHOULD be seen only ONCE
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="sends information to INFO" duration="{duration}">
@@ -1570,7 +1580,7 @@ FAILED:
 	REQUIRE( false )
 hi
 i := 7
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="stacks unscoped info in loops" duration="{duration}">
@@ -1581,7 +1591,7 @@ Count 1 to 3...
 1
 2
 3
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(false)">
 FAILED:
@@ -1590,7 +1600,7 @@ Count 4 to 6...
 4
 5
 6
-Message.tests.cpp:<line number>
+at Message.tests.cpp:<line number>
       </failure>
     </testCase>
   </file>
@@ -1606,7 +1616,7 @@ FAILED:
 	CHECK( f() == 0 )
 with expansion:
 	1 == 0
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="#961 -- Dynamically created sections should all be reported/Looped section 0" duration="{duration}"/>
@@ -1626,7 +1636,7 @@ Misc.tests.cpp:<line number>
       <failure message="FAIL()">
 FAILED:
 to infinity and beyond
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="A couple of nested sections followed by a failure/Outer/Inner" duration="{duration}"/>
@@ -1650,7 +1660,7 @@ with expansion:
 	$a = 20;
 }
 "
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="Template test case with test types specified inside non-copyable and non-movable std::tuple - NonCopyableAndNonMovableTypes - 0" duration="{duration}"/>
@@ -1712,13 +1722,13 @@ Misc.tests.cpp:<line number>
     <testCase name="Testing checked-if 2" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="Testing checked-if 3" duration="{duration}">
       <skipped message="FAIL()">
 FAILED:
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </skipped>
     </testCase>
     <testCase name="This test 'should' fail but doesn't" duration="{duration}"/>
@@ -1729,7 +1739,7 @@ FAILED:
 	REQUIRE( testCheckedElse( false ) )
 with expansion:
 	false
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="checkedIf" duration="{duration}"/>
@@ -1739,7 +1749,7 @@ FAILED:
 	REQUIRE( testCheckedIf( false ) )
 with expansion:
 	false
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="even more nested SECTION tests/c/d (leaf)" duration="{duration}"/>
@@ -1752,7 +1762,7 @@ FAILED:
 	CHECK( b > a )
 with expansion:
 	0 > 1
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="looped SECTION tests/b is currently: 1" duration="{duration}">
@@ -1761,7 +1771,7 @@ FAILED:
 	CHECK( b > a )
 with expansion:
 	1 > 1
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="looped SECTION tests/b is currently: 2" duration="{duration}"/>
@@ -1779,7 +1789,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[0] (1) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(( fib[i] % 2 ) == 0)">
 FAILED:
@@ -1787,7 +1797,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[1] (1) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(( fib[i] % 2 ) == 0)">
 FAILED:
@@ -1795,7 +1805,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[3] (3) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(( fib[i] % 2 ) == 0)">
 FAILED:
@@ -1803,7 +1813,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[4] (5) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(( fib[i] % 2 ) == 0)">
 FAILED:
@@ -1811,7 +1821,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[6] (13) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(( fib[i] % 2 ) == 0)">
 FAILED:
@@ -1819,7 +1829,7 @@ FAILED:
 with expansion:
 	1 == 0
 Testing if fib[7] (21) is even
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="more nested SECTION tests/equal/doesn't equal" duration="{duration}">
@@ -1828,7 +1838,7 @@ FAILED:
 	REQUIRE( a == b )
 with expansion:
 	1 == 2
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="more nested SECTION tests/doesn't equal/not equal" duration="{duration}"/>
@@ -1844,7 +1854,7 @@ Misc.tests.cpp:<line number>
 FAILED:
 	REQUIRE( false )
 3
-Misc.tests.cpp:<line number>
+at Misc.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="toString on const wchar_t const pointer returns the string contents" duration="{duration}"/>
@@ -1859,6 +1869,95 @@ Misc.tests.cpp:<line number>
     <testCase name="vectors can be sized and resized/reserving smaller does not change size or capacity" duration="{duration}"/>
     <testCase name="xmlentitycheck/embedded xml: &lt;test>it should be possible to embed xml characters, such as &lt;, &quot; or &amp;, or even whole &lt;xml>documents&lt;/xml> within an attribute&lt;/test>" duration="{duration}"/>
     <testCase name="xmlentitycheck/encoded chars: these should all be encoded: &amp;&amp;&amp;&quot;&quot;&quot;&lt;&lt;&lt;&amp;&quot;&lt;&lt;&amp;&quot;" duration="{duration}"/>
+  </file>
+  <file path="tests/<exe-name>/UsageTests/Skip.tests.cpp">
+    <testCase name="a succeeding test can still be skipped" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="dynamic skipping works with generators" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+skipping because answer = 41
+at Skip.tests.cpp:<line number>
+      </skipped>
+      <skipped message="SKIP()">
+SKIPPED
+skipping because answer = 43
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="failed assertions before SKIP cause test case to fail" duration="{duration}">
+      <skipped message="CHECK(3 == 4)">
+FAILED:
+	CHECK( 3 == 4 )
+at Skip.tests.cpp:<line number>
+      </skipped>
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="failing for some generator values causes entire test case to fail" duration="{duration}">
+      <skipped message="FAIL()">
+FAILED:
+at Skip.tests.cpp:<line number>
+      </skipped>
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+      <skipped message="FAIL()">
+FAILED:
+at Skip.tests.cpp:<line number>
+      </skipped>
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="failing in some unskipped sections causes entire test case to fail/skipped" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="failing in some unskipped sections causes entire test case to fail/not skipped" duration="{duration}">
+      <skipped message="FAIL()">
+FAILED:
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="nested sections can be skipped dynamically at runtime/B2/B" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="nested sections can be skipped dynamically at runtime/B" duration="{duration}"/>
+    <testCase name="sections can be skipped dynamically at runtime/not skipped" duration="{duration}"/>
+    <testCase name="sections can be skipped dynamically at runtime/skipped" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="sections can be skipped dynamically at runtime/also not skipped" duration="{duration}"/>
+    <testCase name="skipped tests can optionally provide a reason" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+skipping because answer = 43
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
+    <testCase name="tests can be skipped dynamically at runtime" duration="{duration}">
+      <skipped message="SKIP()">
+SKIPPED
+at Skip.tests.cpp:<line number>
+      </skipped>
+    </testCase>
   </file>
   <file path="tests/<exe-name>/UsageTests/ToStringChrono.tests.cpp">
     <testCase name="Stringifying std::chrono::duration helpers" duration="{duration}"/>
@@ -1921,7 +2020,7 @@ Misc.tests.cpp:<line number>
       <failure message="FAIL()">
 FAILED:
 1514
-Tricky.tests.cpp:<line number>
+at Tricky.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="(unimplemented) static bools can be evaluated/compare to true" duration="{duration}"/>
@@ -1935,14 +2034,14 @@ FAILED:
 	CHECK( &amp;o1 == &amp;o2 )
 with expansion:
 	0x<hex digits> == 0x<hex digits>
-Tricky.tests.cpp:<line number>
+at Tricky.tests.cpp:<line number>
       </failure>
       <failure message="CHECK(o1 == o2)">
 FAILED:
 	CHECK( o1 == o2 )
 with expansion:
 	{?} == {?}
-Tricky.tests.cpp:<line number>
+at Tricky.tests.cpp:<line number>
       </failure>
     </testCase>
     <testCase name="An expression with side-effects should only be evaluated once" duration="{duration}"/>

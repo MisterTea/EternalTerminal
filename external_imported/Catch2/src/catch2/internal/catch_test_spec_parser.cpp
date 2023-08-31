@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -221,10 +221,8 @@ namespace Catch {
                 token.erase(token.begin());
                 if (m_exclusion) {
                     m_currentFilter.m_forbidden.emplace_back(Detail::make_unique<TestSpec::TagPattern>(".", m_substring));
-                    m_currentFilter.m_forbidden.emplace_back(Detail::make_unique<TestSpec::TagPattern>(token, m_substring));
                 } else {
                     m_currentFilter.m_required.emplace_back(Detail::make_unique<TestSpec::TagPattern>(".", m_substring));
-                    m_currentFilter.m_required.emplace_back(Detail::make_unique<TestSpec::TagPattern>(token, m_substring));
                 }
             }
             if (m_exclusion) {
@@ -236,10 +234,6 @@ namespace Catch {
         m_substring.clear();
         m_exclusion = false;
         m_mode = None;
-    }
-
-    TestSpec parseTestSpec( std::string const& arg ) {
-        return TestSpecParser( ITagAliasRegistry::get() ).parse( arg ).testSpec();
     }
 
 } // namespace Catch

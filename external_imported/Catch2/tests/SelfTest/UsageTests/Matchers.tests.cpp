@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -497,6 +497,9 @@ TEST_CASE( "Floating point matchers: float", "[matchers][floating-point]" ) {
         REQUIRE_THROWS_AS( WithinRel( 1.f, -0.2f ), std::domain_error );
         REQUIRE_THROWS_AS( WithinRel( 1.f, 1.f ), std::domain_error );
     }
+    SECTION( "IsNaN" ) {
+        REQUIRE_THAT( 1., !IsNaN() );
+    }
 }
 
 TEST_CASE( "Floating point matchers: double", "[matchers][floating-point]" ) {
@@ -552,6 +555,9 @@ TEST_CASE( "Floating point matchers: double", "[matchers][floating-point]" ) {
         REQUIRE_THROWS_AS( WithinRel( 1., -0.2 ), std::domain_error );
         REQUIRE_THROWS_AS( WithinRel( 1., 1. ), std::domain_error );
     }
+    SECTION("IsNaN") {
+        REQUIRE_THAT( 1., !IsNaN() );
+    }
 }
 
 TEST_CASE( "Floating point matchers that are problematic in approvals",
@@ -566,6 +572,8 @@ TEST_CASE( "Floating point matchers that are problematic in approvals",
     REQUIRE_THAT( NAN, !WithinRel( NAN ) );
     REQUIRE_THAT( 1., !WithinRel( NAN ) );
     REQUIRE_THAT( NAN, !WithinRel( 1. ) );
+    REQUIRE_THAT( NAN, IsNaN() );
+    REQUIRE_THAT( static_cast<double>(NAN), IsNaN() );
 }
 
 TEST_CASE( "Arbitrary predicate matcher", "[matchers][generic]" ) {
@@ -658,6 +666,21 @@ TEST_CASE( "Exceptions matchers", "[matchers][exceptions][!throws]" ) {
     REQUIRE_THROWS_MATCHES( throwsSpecialException( 2 ),
                             SpecialException,
                             Message( "SpecialException::what" ) );
+}
+
+TEST_CASE( "Exception message can be matched", "[matchers][exceptions][!throws]" ) {
+    REQUIRE_THROWS_MATCHES( throwsDerivedException(),
+                            DerivedException,
+                            MessageMatches( StartsWith( "Derived" ) ) );
+    REQUIRE_THROWS_MATCHES( throwsDerivedException(),
+                            DerivedException,
+                            MessageMatches( EndsWith( "::what" ) ) );
+    REQUIRE_THROWS_MATCHES( throwsDerivedException(),
+                            DerivedException,
+                            MessageMatches( !StartsWith( "::what" ) ) );
+    REQUIRE_THROWS_MATCHES( throwsSpecialException( 2 ),
+                            SpecialException,
+                            MessageMatches( StartsWith( "Special" ) ) );
 }
 
 struct CheckedTestingMatcher : Catch::Matchers::MatcherBase<int> {

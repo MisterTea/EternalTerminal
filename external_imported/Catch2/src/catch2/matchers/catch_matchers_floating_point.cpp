@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -225,5 +225,17 @@ WithinRelMatcher WithinRel(float target) {
 }
 
 
-} // namespace Matchers
+
+bool IsNaNMatcher::match( double const& matchee ) const {
+    return std::isnan( matchee );
+}
+
+std::string IsNaNMatcher::describe() const {
+    using namespace std::string_literals;
+    return "is NaN"s;
+}
+
+IsNaNMatcher IsNaN() { return IsNaNMatcher(); }
+
+    } // namespace Matchers
 } // namespace Catch

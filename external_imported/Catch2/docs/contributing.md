@@ -55,6 +55,15 @@ tests from `SelfTest` through a specific reporter and then compare the
 generated output with a known good output ("Baseline"). By default, new
 tests should be placed here.
 
+To configure a Catch2 build with just the basic tests, use the `basic-tests`
+preset, like so:
+
+```
+# Assuming you are in Catch2's root folder
+
+cmake -B basic-test-build -S . -DCMAKE_BUILD_TYPE=Debug --preset basic-tests
+```
+
 However, not all tests can be written as plain unit tests. For example,
 checking that Catch2 orders tests randomly when asked to, and that this
 random ordering is subset-invariant, is better done as an integration
@@ -76,21 +85,23 @@ configuration and require separate compilation.
 Finally, CMake config tests test that you set Catch2's compile-time
 configuration options through CMake, using CMake options of the same name.
 
-None of these tests are enabled by default. To enable them, add
+These test categories can be enabled one by one, by passing
 `-DCATCH_BUILD_EXAMPLES=ON`, `-DCATCH_BUILD_EXTRA_TESTS=ON`, and
-`-DCATCH_ENABLE_CONFIGURE_TESTS=ON` when configuration the CMake build.
+`-DCATCH_ENABLE_CONFIGURE_TESTS=ON` when configuring the build.
 
-Bringing this all together, the steps below should configure, build,
-and run all tests in the `Debug` compilation.
+Catch2 also provides a preset that promises to enable _all_ test types,
+`all-tests`.
+
+The snippet below will build & run all tests, in `Debug` compilation mode.
 
 <!-- snippet: catch2-build-and-test -->
 <a id='snippet-catch2-build-and-test'></a>
 ```sh
-# 1. Regenerate the amalgamated distribution
+# 1. Regenerate the amalgamated distribution (some tests are built against it)
 ./tools/scripts/generateAmalgamatedFiles.py
 
 # 2. Configure the full test build
-cmake -Bdebug-build -H. -DCMAKE_BUILD_TYPE=Debug -DCATCH_DEVELOPMENT_BUILD=ON -DCATCH_BUILD_EXAMPLES=ON -DCATCH_BUILD_EXTRA_TESTS=ON
+cmake -B debug-build -S . -DCMAKE_BUILD_TYPE=Debug --preset all-tests
 
 # 3. Run the actual build
 cmake --build debug-build
@@ -125,7 +136,7 @@ information that you will need for updating Catch2's documentation, and
 possibly some generic advise as well.
 
 
-### Technicalities 
+### Technicalities
 
 First, the technicalities:
 
@@ -203,7 +214,7 @@ and so on.
 
 Catch2 currently targets C++14 as the minimum supported C++ version.
 Features from higher language versions should be used only sparingly,
-when the benefits from using them outweight the maintenance overhead.
+when the benefits from using them outweigh the maintenance overhead.
 
 Example of good use of polyfilling features is our use of `conjunction`,
 where if available we use `std::conjunction` and otherwise provide our
@@ -291,7 +302,7 @@ Specifically, every source file should start with the licence header:
 
     //              Copyright Catch2 Authors
     // Distributed under the Boost Software License, Version 1.0.
-    //   (See accompanying file LICENSE_1_0.txt or copy at
+    //   (See accompanying file LICENSE.txt or copy at
     //        https://www.boost.org/LICENSE_1_0.txt)
 
     // SPDX-License-Identifier: BSL-1.0
@@ -301,6 +312,20 @@ The include guards for header files should follow the pattern `{FILENAME}_INCLUD
 This means that for file `catch_matchers_foo.hpp`, the include guard should
 be `CATCH_MATCHERS_FOO_HPP_INCLUDED`, for `catch_generators_bar.hpp`, the include
 guard should be `CATCH_GENERATORS_BAR_HPP_INCLUDED`, and so on.
+
+
+### Adding new `CATCH_CONFIG` option
+
+When adding new `CATCH_CONFIG` option, there are multiple places to edit:
+  * `CMake/CatchConfigOptions.cmake` - this is used to generate the
+    configuration options in CMake, so that CMake frontends know about them.
+  * `docs/configuration.md` - this is where the options are documented
+  * `src/catch2/catch_user_config.hpp.in` - this is template for generating
+    `catch_user_config.hpp` which contains the materialized configuration
+  * `BUILD.bazel` - Bazel does not have configuration support like CMake,
+    and all expansions need to be done manually
+  * other files as needed, e.g. `catch2/internal/catch_config_foo.hpp`
+    for the logic that guards the configuration
 
 
 ## CoC

@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -61,7 +61,6 @@ namespace Catch {
                 multi->addListener(listener->create(config));
             }
 
-            std::size_t reporterIdx = 0;
             for ( auto const& reporterSpec : config->getProcessedReporterSpecs() ) {
                 multi->addReporter( createReporter(
                     reporterSpec.name,
@@ -69,7 +68,6 @@ namespace Catch {
                                     makeStream( reporterSpec.outputFilename ),
                                     reporterSpec.colourMode,
                                     reporterSpec.customOptions ) ) );
-                reporterIdx++;
             }
 
             return multi;
@@ -341,6 +339,12 @@ namespace Catch {
             if ( totals.testCases.total() == 0
                 && !m_config->zeroTestsCountAsSuccess() ) {
                 return 2;
+            }
+
+            if ( totals.testCases.total() > 0 &&
+                 totals.testCases.total() == totals.testCases.skipped
+                && !m_config->zeroTestsCountAsSuccess() ) {
+                return 4;
             }
 
             // Note that on unices only the lower 8 bits are usually used, clamping

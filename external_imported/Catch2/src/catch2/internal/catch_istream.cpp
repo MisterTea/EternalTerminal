@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -78,6 +78,7 @@ namespace Detail {
             FileStream( std::string const& filename ) {
                 m_ofs.open( filename.c_str() );
                 CATCH_ENFORCE( !m_ofs.fail(), "Unable to open file: '" << filename << '\'' );
+                m_ofs << std::unitbuf;
             }
             ~FileStream() override = default;
         public: // IStream

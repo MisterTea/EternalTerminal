@@ -141,58 +141,26 @@ are a permutation of the ones in `some_vec`.
 
 ### Floating point matchers
 
-Catch2 provides 3 matchers that target floating point numbers. These
+Catch2 provides 4 matchers that target floating point numbers. These
 are:
 
 * `WithinAbs(double target, double margin)`,
 * `WithinULP(FloatingPoint target, uint64_t maxUlpDiff)`, and
 * `WithinRel(FloatingPoint target, FloatingPoint eps)`.
+* `IsNaN()`
 
 > `WithinRel` matcher was introduced in Catch2 2.10.0
 
+> `IsNaN` matcher was introduced in Catch2 3.3.2.
 
-`WithinAbs` creates a matcher that accepts floating point numbers whose
-difference with `target` is less than the `margin`.
+The first three serve to compare two floating pointe numbers. For more
+details about how they work, read [the docs on comparing floating point
+numbers](comparing-floating-point-numbers.md#floating-point-matchers).
 
-`WithinULP` creates a matcher that accepts floating point numbers that
-are no more than `maxUlpDiff`
-[ULPs](https://en.wikipedia.org/wiki/Unit_in_the_last_place)
-away from the `target` value. The short version of what this means
-is that there is no more than `maxUlpDiff - 1` representeable floating
-point numbers between the argument for matching and the `target` value.
-
-**Important**: The WithinULP matcher requires the platform to use the
-[IEEE-754](https://en.wikipedia.org/wiki/IEEE_754) representation for
-floating point numbers.
-
-
-`WithinRel` creates a matcher that accepts floating point numbers that
-are _approximately equal_ with the `target` with tolerance of `eps.`
-Specifically, it matches if
-`|arg - target| <= eps * max(|arg|, |target|)` holds. If you do not
-specify `eps`, `std::numeric_limits<FloatingPoint>::epsilon * 100`
-is used as the default.
-
-
-In practice, you will often want to combine multiple of these matchers,
-together for an assertion, because all 3 options have edge cases where
-they behave differently than you would expect. As an example, under
-the `WithinRel` matcher, a `0.` only ever matches a `0.` (or `-0.`),
-regardless of the relative tolerance specified. Thus, if you want to
-handle numbers that are "close enough to 0 to be 0", you have to combine
-it with the `WithinAbs` matcher.
-
-For example, to check that our computation matches known good value
-within 0.1%, or is close enough (no different to 5 decimal places)
-to zero, we would write this assertion:
-```cpp
-    REQUIRE_THAT( computation(input),
-        Catch::Matchers::WithinRel(expected, 0.001)
-     || Catch::Matchers::WithinAbs(0, 0.000001) );
-```
-
-
-> floating point matchers live in `catch2/matchers/catch_matchers_floating.hpp`
+`IsNaN` then does exactly what it says on the tin. It matches the input
+if it is a NaN (Not a Number). The advantage of using it over just plain
+`REQUIRE(std::isnan(x))`, is that if the check fails, with `REQUIRE` you
+won't see the value of `x`, but with `REQUIRE_THAT(x, IsNaN())`, you will.
 
 
 ### Miscellaneous matchers
@@ -224,20 +192,30 @@ The other miscellaneous matcher utility is exception matching.
 
 #### Matching exceptions
 
-Catch2 provides an utility macro for asserting that an expression
+Catch2 provides a utility macro for asserting that an expression
 throws exception of specific type, and that the exception has desired
 properties. The macro is `REQUIRE_THROWS_MATCHES(expr, ExceptionType, Matcher)`.
 
 > `REQUIRE_THROWS_MATCHES` macro lives in `catch2/matchers/catch_matchers.hpp`
 
 
-Catch2 currently provides only one matcher for exceptions,
-`Message(std::string message)`. `Message` checks that the exception's
+Catch2 currently provides two matchers for exceptions.
+These are:
+* `Message(std::string message)`.
+* `MessageMatches(Matcher matcher)`.
+
+> `MessageMatches` was [introduced](https://github.com/catchorg/Catch2/pull/2570) in Catch2 3.3.0
+
+`Message` checks that the exception's
 message, as returned from `what` is exactly equal to `message`.
+
+`MessageMatches` applies the provided matcher on the exception's
+message, as returned from `what`. This is useful in conjunctions with the `std::string` matchers (e.g. `StartsWith`)
 
 Example use:
 ```cpp
 REQUIRE_THROWS_MATCHES(throwsDerivedException(),  DerivedException,  Message("DerivedException::what"));
+REQUIRE_THROWS_MATCHES(throwsDerivedException(),  DerivedException,  MessageMatches(StartsWith("DerivedException")));
 ```
 
 Note that `DerivedException` in the example above has to derive from
@@ -259,11 +237,19 @@ definitions to handle generic range-like types. These are:
 * `Contains(T&& target_element, Comparator = std::equal_to<>{})`
 * `Contains(Matcher element_matcher)`
 * `AllMatch(Matcher element_matcher)`
-* `NoneMatch(Matcher element_matcher)`
 * `AnyMatch(Matcher element_matcher)`
-* `AllTrue()`
-* `NoneTrue()`
-* `AnyTrue()`
+* `NoneMatch(Matcher element_matcher)`
+* `AllTrue()`, `AnyTrue()`, `NoneTrue()`
+* `RangeEquals(TargetRangeLike&&, Comparator = std::equal_to<>{})`
+* `UnorderedRangeEquals(TargetRangeLike&&, Comparator = std::equal_to<>{})`
+
+> `IsEmpty`, `SizeIs`, `Contains` were introduced in Catch2 3.0.1
+
+> `All/Any/NoneMatch` were introduced in Catch2 3.0.1
+
+> `All/Any/NoneTrue` were introduced in Catch2 3.1.0
+
+> `RangeEquals` and `UnorderedRangeEquals` matchers were [introduced](https://github.com/catchorg/Catch2/pull/2377) in Catch2 3.3.0
 
 `IsEmpty` should be self-explanatory. It successfully matches objects
 that are empty according to either `std::empty`, or ADL-found `empty`
@@ -282,13 +268,32 @@ in which case a range is accepted if any of its elements is accepted
 by the provided matcher.
 
 `AllMatch`, `NoneMatch`, and `AnyMatch` match ranges for which either
-all, none, or any of the contained elements matches the given matcher, 
+all, none, or any of the contained elements matches the given matcher,
 respectively.
 
 `AllTrue`, `NoneTrue`, and `AnyTrue` match ranges for which either
-all, none, or any of the contained elements are `true`, respectively. 
-It works for ranges of `bool`s and ranges of elements (explicitly) 
+all, none, or any of the contained elements are `true`, respectively.
+It works for ranges of `bool`s and ranges of elements (explicitly)
 convertible to `bool`.
+
+`RangeEquals` compares the range that the matcher is constructed with
+(the "target range") against the range to be tested, element-wise. The
+match succeeds if all elements from the two ranges compare equal (using
+`operator==` by default). The ranges do not need to be the same type,
+and the element types do not need to be the same, as long as they are
+comparable. (e.g. you may compare `std::vector<int>` to `std::array<char>`).
+
+`UnorderedRangeEquals` is similar to `RangeEquals`, but the order
+does not matter. For example "1, 2, 3" would match "3, 2, 1", but not
+"1, 1, 2, 3" As with `RangeEquals`, `UnorderedRangeEquals` compares
+the individual elements using using `operator==` by default.
+
+Both `RangeEquals` and `UnorderedRangeEquals` optionally accept a
+predicate which can be used to compare the containers element-wise.
+
+To check a container elementwise against a given matcher, use
+`AllMatch`.
+
 
 ## Writing custom matchers (old style)
 
@@ -368,7 +373,7 @@ style matchers arbitrarily.
 
 To create a new-style matcher, you have to create your own type that
 derives from `Catch::Matchers::MatcherGenericBase`. Your type has to
-also provide two methods, `bool match( ... ) const` and overriden
+also provide two methods, `bool match( ... ) const` and overridden
 `std::string describe() const`.
 
 Unlike with old-style matchers, there are no requirements on how

@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -11,15 +11,14 @@
 #include <type_traits>
 
 namespace Catch {
-    template<typename T>
-    struct always_false : std::false_type {};
+    template <typename>
+    struct true_given : std::true_type {};
 
-    template <typename> struct true_given : std::true_type {};
     struct is_callable_tester {
         template <typename Fun, typename... Args>
-        true_given<decltype(std::declval<Fun>()(std::declval<Args>()...))> static test(int);
+        static true_given<decltype(std::declval<Fun>()(std::declval<Args>()...))> test(int);
         template <typename...>
-        std::false_type static test(...);
+        static std::false_type test(...);
     };
 
     template <typename T>

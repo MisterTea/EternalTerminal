@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -74,6 +74,7 @@
         CATCH_INTERNAL_SUPPRESS_ZERO_VARIADIC_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_TEMPLATE_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_VARIABLE_WARNINGS \
+        CATCH_INTERNAL_SUPPRESS_COMMA_WARNINGS \
         INTERNAL_CATCH_DECLARE_SIG_TEST(TestFunc, INTERNAL_CATCH_REMOVE_PARENS(Signature));\
         namespace {\
         namespace INTERNAL_CATCH_MAKE_NAMESPACE(TestName){\
@@ -84,12 +85,12 @@
             struct TestName{\
                 TestName(){\
                     size_t index = 0;                                    \
-                    constexpr char const* tmpl_types[] = {CATCH_REC_LIST(INTERNAL_CATCH_STRINGIZE_WITHOUT_PARENS, __VA_ARGS__)};\
-                    using expander = size_t[];\
+                    constexpr char const* tmpl_types[] = {CATCH_REC_LIST(INTERNAL_CATCH_STRINGIZE_WITHOUT_PARENS, __VA_ARGS__)}; /* NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,hicpp-avoid-c-arrays) */\
+                    using expander = size_t[]; /* NOLINT(cppcoreguidelines-avoid-c-arrays,modernize-avoid-c-arrays,hicpp-avoid-c-arrays) */\
                     (void)expander{(reg_test(Types{}, Catch::NameAndTags{ Name " - " + std::string(tmpl_types[index]), Tags } ), index++)... };/* NOLINT */ \
                 }\
             };\
-            static int INTERNAL_CATCH_UNIQUE_NAME( globalRegistrar ) = [](){\
+            static const int INTERNAL_CATCH_UNIQUE_NAME( globalRegistrar ) = [](){\
             TestName<INTERNAL_CATCH_MAKE_TYPE_LISTS_FROM_TYPES(__VA_ARGS__)>();\
             return 0;\
         }();\
@@ -120,6 +121,7 @@
         CATCH_INTERNAL_SUPPRESS_ZERO_VARIADIC_WARNINGS                \
         CATCH_INTERNAL_SUPPRESS_UNUSED_TEMPLATE_WARNINGS       \
         CATCH_INTERNAL_SUPPRESS_UNUSED_VARIABLE_WARNINGS \
+        CATCH_INTERNAL_SUPPRESS_COMMA_WARNINGS \
         template<typename TestType> static void TestFuncName();       \
         namespace {\
         namespace INTERNAL_CATCH_MAKE_NAMESPACE(TestName) {                                     \
@@ -169,6 +171,7 @@
         CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_TEMPLATE_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_VARIABLE_WARNINGS \
+        CATCH_INTERNAL_SUPPRESS_COMMA_WARNINGS \
         template<typename TestType> static void TestFunc();       \
         namespace {\
         namespace INTERNAL_CATCH_MAKE_NAMESPACE(TestName){\
@@ -178,7 +181,7 @@
             void reg_tests() {                                          \
                 size_t index = 0;                                    \
                 using expander = size_t[];                           \
-                (void)expander{(Catch::AutoReg( Catch::makeTestInvoker( &TestFunc<Types> ), CATCH_INTERNAL_LINEINFO, Catch::StringRef(), Catch::NameAndTags{ Name " - " + std::string(INTERNAL_CATCH_STRINGIZE(TmplList)) + " - " + std::to_string(index), Tags } ), index++)... };/* NOLINT */\
+                (void)expander{(Catch::AutoReg( Catch::makeTestInvoker( &TestFunc<Types> ), CATCH_INTERNAL_LINEINFO, Catch::StringRef(), Catch::NameAndTags{ Name " - " INTERNAL_CATCH_STRINGIZE(TmplList) " - " + std::to_string(index), Tags } ), index++)... };/* NOLINT */\
             }                                                     \
         };\
         static int INTERNAL_CATCH_UNIQUE_NAME( globalRegistrar ) = [](){ \
@@ -300,6 +303,7 @@
         CATCH_INTERNAL_SUPPRESS_GLOBALS_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_TEMPLATE_WARNINGS \
         CATCH_INTERNAL_SUPPRESS_UNUSED_VARIABLE_WARNINGS \
+        CATCH_INTERNAL_SUPPRESS_COMMA_WARNINGS \
         template<typename TestType> \
         struct TestName : INTERNAL_CATCH_REMOVE_PARENS(ClassName <TestType>) { \
             void test();\
@@ -312,7 +316,7 @@
                 void reg_tests(){\
                     size_t index = 0;\
                     using expander = size_t[];\
-                    (void)expander{(Catch::AutoReg( Catch::makeTestInvoker( &TestName<Types>::test ), CATCH_INTERNAL_LINEINFO, #ClassName, Catch::NameAndTags{ Name " - " + std::string(INTERNAL_CATCH_STRINGIZE(TmplList)) + " - " + std::to_string(index), Tags } ), index++)... };/* NOLINT */ \
+                    (void)expander{(Catch::AutoReg( Catch::makeTestInvoker( &TestName<Types>::test ), CATCH_INTERNAL_LINEINFO, #ClassName##_catch_sr, Catch::NameAndTags{ Name " - " INTERNAL_CATCH_STRINGIZE(TmplList) " - " + std::to_string(index), Tags } ), index++)... };/* NOLINT */ \
                 }\
             };\
             static int INTERNAL_CATCH_UNIQUE_NAME( globalRegistrar ) = [](){\
