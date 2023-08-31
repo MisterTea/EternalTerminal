@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -11,15 +11,22 @@
 #include <catch2/catch_test_case_info.hpp>
 #include <catch2/internal/catch_reusable_string_stream.hpp>
 #include <catch2/interfaces/catch_interfaces_config.hpp>
+#include <catch2/catch_test_spec.hpp>
+#include <catch2/reporters/catch_reporter_helpers.hpp>
 
 #include <map>
 
 namespace Catch {
 
     namespace {
-        std::string createRngSeedString(uint32_t seed) {
+        std::string createMetadataString(IConfig const& config) {
             ReusableStringStream sstr;
-            sstr << "rng-seed=" << seed;
+            if ( config.testSpec().hasFilters() ) {
+                sstr << "filters='"
+                         << config.testSpec()
+                         << "' ";
+            }
+            sstr << "rng-seed=" << config.rngSeed();
             return sstr.str();
         }
     }
@@ -27,13 +34,13 @@ namespace Catch {
     void SonarQubeReporter::testRunStarting(TestRunInfo const& testRunInfo) {
         CumulativeReporterBase::testRunStarting(testRunInfo);
 
-        xml.writeComment( createRngSeedString( m_config->rngSeed() ) );
+        xml.writeComment( createMetadataString( *m_config ) );
         xml.startElement("testExecutions");
         xml.writeAttribute("version"_sr, '1');
     }
 
     void SonarQubeReporter::writeRun( TestRunNode const& runNode ) {
-        std::map<std::string, std::vector<TestCaseNode const*>> testsPerFile;
+        std::map<StringRef, std::vector<TestCaseNode const*>> testsPerFile;
 
         for ( auto const& child : runNode.children ) {
             testsPerFile[child->value.testInfo->lineInfo.file].push_back(
@@ -45,7 +52,7 @@ namespace Catch {
         }
     }
 
-    void SonarQubeReporter::writeTestFile(std::string const& filename, std::vector<TestCaseNode const*> const& testCaseNodes) {
+    void SonarQubeReporter::writeTestFile(StringRef filename, std::vector<TestCaseNode const*> const& testCaseNodes) {
         XmlWriter::ScopedElement e = xml.scopedElement("file");
         xml.writeAttribute("path"_sr, filename);
 
@@ -90,7 +97,8 @@ namespace Catch {
 
     void SonarQubeReporter::writeAssertion(AssertionStats const& stats, bool okToFail) {
         AssertionResult const& result = stats.assertionResult;
-        if (!result.isOk()) {
+        if ( !result.isOk() ||
+             result.getResultType() == ResultWas::ExplicitSkip ) {
             std::string elementName;
             if (okToFail) {
                 elementName = "skipped";
@@ -101,15 +109,13 @@ namespace Catch {
                     elementName = "error";
                     break;
                 case ResultWas::ExplicitFailure:
-                    elementName = "failure";
-                    break;
                 case ResultWas::ExpressionFailed:
-                    elementName = "failure";
-                    break;
                 case ResultWas::DidntThrowException:
                     elementName = "failure";
                     break;
-
+                case ResultWas::ExplicitSkip:
+                    elementName = "skipped";
+                    break;
                     // We should never see these here:
                 case ResultWas::Info:
                 case ResultWas::Warning:
@@ -129,7 +135,9 @@ namespace Catch {
             xml.writeAttribute("message"_sr, messageRss.str());
 
             ReusableStringStream textRss;
-            if (stats.totals.assertions.total() > 0) {
+            if ( result.getResultType() == ResultWas::ExplicitSkip ) {
+                textRss << "SKIPPED\n";
+            } else {
                 textRss << "FAILED:\n";
                 if (result.hasExpression()) {
                     textRss << '\t' << result.getExpressionInMacro() << '\n';

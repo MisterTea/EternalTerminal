@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -16,6 +16,7 @@
 #include <catch2/generators/catch_generators_adapters.hpp>
 #include <catch2/generators/catch_generators_random.hpp>
 #include <catch2/generators/catch_generators_range.hpp>
+#include <catch2/generators/catch_generator_exception.hpp>
 
 // Tests of generator implementation details
 TEST_CASE("Generators internals", "[generators][internals]") {
@@ -533,4 +534,13 @@ TEST_CASE( "Random generators can be seeded", "[generators][approvals]" ) {
             rng2.next();
         }
     }
+}
+
+TEST_CASE("Filter generator throws exception for empty generator",
+          "[generators]") {
+    using namespace Catch::Generators;
+
+    REQUIRE_THROWS_AS(
+        filter( []( int ) { return false; }, value( 3 ) ),
+        Catch::GeneratorException );
 }

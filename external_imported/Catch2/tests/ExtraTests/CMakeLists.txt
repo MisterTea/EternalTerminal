@@ -2,7 +2,7 @@
 # Build extra tests.
 #
 
-cmake_minimum_required( VERSION 3.5 )
+cmake_minimum_required( VERSION 3.10 )
 
 project( Catch2ExtraTests LANGUAGES CXX )
 
@@ -150,6 +150,29 @@ set_tests_properties(NO_CATCH_CONFIG_BAZEL_REPORTER-1
     ENVIRONMENT "BAZEL_TEST=1"
 )
 
+add_test(NAME BazelEnv::TESTBRIDGE_TEST_ONLY
+  COMMAND
+      $<TARGET_FILE:BazelReporterNoCatchConfig>
+)
+set_tests_properties(BazelEnv::TESTBRIDGE_TEST_ONLY
+  PROPERTIES
+    ENVIRONMENT "BAZEL_TEST=1;TESTBRIDGE_TEST_ONLY=Passing test case"
+    PASS_REGULAR_EXPRESSION "All tests passed \\(1 assertion in 1 test case\\)"
+)
+
+
+add_test(NAME BazelEnv::Sharding
+  COMMAND
+    "${PYTHON_EXECUTABLE}" "${CATCH_DIR}/tests/TestScripts/testBazelSharding.py"
+      $<TARGET_FILE:BazelReporterNoCatchConfig>
+      "${CMAKE_CURRENT_BINARY_DIR}"
+)
+set_tests_properties(BazelEnv::Sharding
+  PROPERTIES
+    LABELS "uses-python"
+)
+
+
 # The default handler on Windows leads to the just-in-time debugger firing,
 # which makes this test unsuitable for CI and headless runs, as it opens
 # up an interactive dialog.
@@ -187,7 +210,7 @@ add_test(NAME DeferredStaticChecks COMMAND DeferredStaticChecks -r compact)
 set_tests_properties(
     DeferredStaticChecks
   PROPERTIES
-    PASS_REGULAR_EXPRESSION "Failed 1 test case, failed all 3 assertions."
+    PASS_REGULAR_EXPRESSION "test cases: 1 \\| 1 failed\nassertions: 3 \\| 3 failed"
 )
 
 
@@ -219,9 +242,6 @@ set_tests_properties(
 if (MSVC)
     # This test fails if it does not compile and succeeds otherwise
     add_executable(WindowsHeader ${TESTS_DIR}/X90-WindowsHeaderInclusion.cpp)
-    set_property( TARGET WindowsHeader PROPERTY CXX_STANDARD 14 )
-    set_property( TARGET WindowsHeader PROPERTY CXX_STANDARD_REQUIRED ON )
-    set_property( TARGET WindowsHeader PROPERTY CXX_EXTENSIONS OFF )
     target_link_libraries( WindowsHeader Catch2WithMain )
     add_test(NAME WindowsHeader COMMAND WindowsHeader -r compact)
     list(APPEND CATCH_WARNING_TARGETS ${EXTRA_TEST_BINARIES} WindowsHeader)
@@ -249,6 +269,7 @@ set_tests_properties(
     BenchmarksInCumulativeReporter
   PROPERTIES
     PASS_REGULAR_EXPRESSION "1\n2\n3\n4\n5\n"
+    COST 30
 )
 
 
@@ -467,15 +488,32 @@ set_tests_properties(TestSpecs::EmptySpecWithNoTestsFails
   PROPERTIES
     WILL_FAIL ON
 )
+
 add_test(
   NAME TestSpecs::OverrideFailureWithEmptySpec
   COMMAND $<TARGET_FILE:NoTests> --allow-running-no-tests
 )
+
 add_test(
   NAME List::Listeners::WorksWithoutRegisteredListeners
   COMMAND $<TARGET_FILE:NoTests> --list-listeners
 )
+
+
+add_executable(AllSkipped ${TESTS_DIR}/X93-AllSkipped.cpp)
+target_link_libraries(AllSkipped PRIVATE Catch2::Catch2WithMain)
+
+add_test(
+  NAME TestSpecs::SkippingAllTestsFails
+  COMMAND $<TARGET_FILE:AllSkipped>
+)
+set_tests_properties(TestSpecs::SkippingAllTestsFails
+  PROPERTIES
+    WILL_FAIL ON
+)
+
 set( EXTRA_TEST_BINARIES
+    AllSkipped
     PrefixedMacros
     DisabledMacros
     DisabledExceptions-DefaultHandler
@@ -490,13 +528,6 @@ set( EXTRA_TEST_BINARIES
     ListenersGetEventsBeforeReporters
 #    DebugBreakMacros
 )
-
-# Shared config
-foreach( test ${EXTRA_TEST_BINARIES} )
-    set_property( TARGET ${test} PROPERTY CXX_STANDARD 14 )
-    set_property( TARGET ${test} PROPERTY CXX_STANDARD_REQUIRED ON )
-    set_property( TARGET ${test} PROPERTY CXX_EXTENSIONS OFF )
-endforeach()
 
 # Notice that we are modifying EXTRA_TEST_BINARIES destructively, do not
 # use it after this point!
@@ -514,9 +545,6 @@ add_executable(AmalgamatedTestCompilation
   ${CATCH_DIR}/extras/catch_amalgamated.cpp
 )
 target_include_directories(AmalgamatedTestCompilation PRIVATE ${CATCH_DIR}/extras)
-set_property( TARGET AmalgamatedTestCompilation PROPERTY CXX_STANDARD 14 )
-set_property( TARGET AmalgamatedTestCompilation PROPERTY CXX_STANDARD_REQUIRED ON )
-set_property( TARGET AmalgamatedTestCompilation PROPERTY CXX_EXTENSIONS OFF )
 
 add_test(NAME AmalgamatedFileTest COMMAND AmalgamatedTestCompilation)
 set_tests_properties(

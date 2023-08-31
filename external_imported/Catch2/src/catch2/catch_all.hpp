@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -27,6 +27,7 @@
 #include <catch2/catch_assertion_info.hpp>
 #include <catch2/catch_assertion_result.hpp>
 #include <catch2/catch_config.hpp>
+#include <catch2/catch_get_random_seed.hpp>
 #include <catch2/catch_message.hpp>
 #include <catch2/catch_section_info.hpp>
 #include <catch2/catch_session.hpp>
@@ -49,6 +50,7 @@
 #include <catch2/internal/catch_case_sensitive.hpp>
 #include <catch2/internal/catch_clara.hpp>
 #include <catch2/internal/catch_commandline.hpp>
+#include <catch2/internal/catch_compare_traits.hpp>
 #include <catch2/internal/catch_compiler_capabilities.hpp>
 #include <catch2/internal/catch_config_android_logwrite.hpp>
 #include <catch2/internal/catch_config_counter.hpp>
@@ -67,16 +69,20 @@
 #include <catch2/internal/catch_exception_translator_registry.hpp>
 #include <catch2/internal/catch_fatal_condition_handler.hpp>
 #include <catch2/internal/catch_floating_point_helpers.hpp>
+#include <catch2/internal/catch_getenv.hpp>
+#include <catch2/internal/catch_is_permutation.hpp>
 #include <catch2/internal/catch_istream.hpp>
 #include <catch2/internal/catch_lazy_expr.hpp>
 #include <catch2/internal/catch_leak_detector.hpp>
 #include <catch2/internal/catch_list.hpp>
+#include <catch2/internal/catch_logical_traits.hpp>
 #include <catch2/internal/catch_message_info.hpp>
 #include <catch2/internal/catch_meta.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
 #include <catch2/internal/catch_noncopyable.hpp>
 #include <catch2/internal/catch_optional.hpp>
 #include <catch2/internal/catch_output_redirect.hpp>
+#include <catch2/internal/catch_parse_numbers.hpp>
 #include <catch2/internal/catch_platform.hpp>
 #include <catch2/internal/catch_polyfills.hpp>
 #include <catch2/internal/catch_preprocessor.hpp>
@@ -113,7 +119,6 @@
 #include <catch2/internal/catch_unique_ptr.hpp>
 #include <catch2/internal/catch_void_type.hpp>
 #include <catch2/internal/catch_wildcard_pattern.hpp>
-#include <catch2/internal/catch_windows_h_proxy.hpp>
 #include <catch2/internal/catch_xmlwriter.hpp>
 #include <catch2/matchers/catch_matchers_all.hpp>
 #include <catch2/reporters/catch_reporters_all.hpp>

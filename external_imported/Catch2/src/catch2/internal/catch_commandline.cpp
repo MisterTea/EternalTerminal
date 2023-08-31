@@ -1,18 +1,18 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
 #include <catch2/internal/catch_commandline.hpp>
 
-#include <catch2/internal/catch_compiler_capabilities.hpp>
 #include <catch2/catch_config.hpp>
 #include <catch2/internal/catch_string_manip.hpp>
 #include <catch2/interfaces/catch_interfaces_registry_hub.hpp>
 #include <catch2/interfaces/catch_interfaces_reporter_registry.hpp>
 #include <catch2/internal/catch_console_colour.hpp>
+#include <catch2/internal/catch_parse_numbers.hpp>
 #include <catch2/internal/catch_reporter_spec_parser.hpp>
 
 #include <fstream>
@@ -77,23 +77,14 @@ namespace Catch {
                     return ParserResult::ok(ParseResultType::Matched);
                 }
 
-                CATCH_TRY {
-                    std::size_t parsedTo = 0;
-                    unsigned long parsedSeed = std::stoul(seed, &parsedTo, 0);
-                    if (parsedTo != seed.size()) {
-                        return ParserResult::runtimeError("Could not parse '" + seed + "' as seed");
-                    }
-
-                    // TODO: Ideally we could parse unsigned int directly,
-                    //       but the stdlib doesn't provide helper for that
-                    //       type. After this is refactored to use fixed size
-                    //       type, we should check the parsed value is in range
-                    //       of the underlying type.
-                    config.rngSeed = static_cast<unsigned int>(parsedSeed);
-                    return ParserResult::ok(ParseResultType::Matched);
-                } CATCH_CATCH_ANON(std::exception const&) {
-                    return ParserResult::runtimeError("Could not parse '" + seed + "' as seed");
+                // TODO: ideally we should be parsing uint32_t directly
+                //       fix this later when we add new parse overload
+                auto parsedSeed = parseUInt( seed, 0 );
+                if ( !parsedSeed ) {
+                    return ParserResult::runtimeError( "Could not parse '" + seed + "' as seed" );
                 }
+                config.rngSeed = *parsedSeed;
+                return ParserResult::ok( ParseResultType::Matched );
             };
         auto const setDefaultColourMode = [&]( std::string const& colourMode ) {
             Optional<ColourMode> maybeMode = Catch::Detail::stringToColourMode(toLower( colourMode ));
@@ -185,41 +176,28 @@ namespace Catch {
             return ParserResult::ok( ParseResultType::Matched );
         };
         auto const setShardCount = [&]( std::string const& shardCount ) {
-            CATCH_TRY{
-                std::size_t parsedTo = 0;
-                int64_t parsedCount = std::stoll(shardCount, &parsedTo, 0);
-                if (parsedTo != shardCount.size()) {
-                    return ParserResult::runtimeError("Could not parse '" + shardCount + "' as shard count");
-                }
-                if (parsedCount <= 0) {
-                    return ParserResult::runtimeError("Shard count must be a positive number");
-                }
-
-                config.shardCount = static_cast<unsigned int>(parsedCount);
-                return ParserResult::ok(ParseResultType::Matched);
-            } CATCH_CATCH_ANON(std::exception const&) {
-                return ParserResult::runtimeError("Could not parse '" + shardCount + "' as shard count");
+            auto parsedCount = parseUInt( shardCount );
+            if ( !parsedCount ) {
+                return ParserResult::runtimeError(
+                    "Could not parse '" + shardCount + "' as shard count" );
             }
+            if ( *parsedCount == 0 ) {
+                return ParserResult::runtimeError(
+                    "Shard count must be positive" );
+            }
+            config.shardCount = *parsedCount;
+            return ParserResult::ok( ParseResultType::Matched );
         };
 
         auto const setShardIndex = [&](std::string const& shardIndex) {
-            CATCH_TRY{
-                std::size_t parsedTo = 0;
-                int64_t parsedIndex = std::stoll(shardIndex, &parsedTo, 0);
-                if (parsedTo != shardIndex.size()) {
-                    return ParserResult::runtimeError("Could not parse '" + shardIndex + "' as shard index");
-                }
-                if (parsedIndex < 0) {
-                    return ParserResult::runtimeError("Shard index must be a non-negative number");
-                }
-
-                config.shardIndex = static_cast<unsigned int>(parsedIndex);
-                return ParserResult::ok(ParseResultType::Matched);
-            } CATCH_CATCH_ANON(std::exception const&) {
-                return ParserResult::runtimeError("Could not parse '" + shardIndex + "' as shard index");
+            auto parsedIndex = parseUInt( shardIndex );
+            if ( !parsedIndex ) {
+                return ParserResult::runtimeError(
+                    "Could not parse '" + shardIndex + "' as shard index" );
             }
+            config.shardIndex = *parsedIndex;
+            return ParserResult::ok( ParseResultType::Matched );
         };
-
 
         auto cli
             = ExeName( config.processName )

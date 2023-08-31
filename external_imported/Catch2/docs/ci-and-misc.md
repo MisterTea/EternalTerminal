@@ -1,14 +1,15 @@
 <a id="top"></a>
-# CI and other odd pieces
+# Tooling integration (CI, test runners and so on)
 
 **Contents**<br>
 [Continuous Integration systems](#continuous-integration-systems)<br>
-[Other reporters](#other-reporters)<br>
+[Bazel test runner integration](#bazel-test-runner-integration)<br>
 [Low-level tools](#low-level-tools)<br>
 [CMake](#cmake)<br>
 
-This page talks about how Catch integrates with Continuous Integration 
-Build Systems may refer to low-level tools, like CMake, or larger systems that run on servers, like Jenkins or TeamCity. This page will talk about both.
+This page talks about Catch2's integration with other related tooling,
+like Continuous Integration and 3rd party test runners.
+
 
 ## Continuous Integration systems
 
@@ -17,9 +18,9 @@ Probably the most important aspect to using Catch with a build server is the use
 Two of these reporters are built in (XML and JUnit) and the third (TeamCity) is included as a separate header. It's possible that the other two may be split out in the future too - as that would make the core of Catch smaller for those that don't need them.
 
 ### XML Reporter
-```-r xml``` 
+```-r xml```
 
-The XML Reporter writes in an XML format that is specific to Catch. 
+The XML Reporter writes in an XML format that is specific to Catch.
 
 The advantage of this format is that it corresponds well to the way Catch works (especially the more unusual features, such as nested sections) and is a fully streaming format - that is it writes output as it goes, without having to store up all its results before it can start writing.
 
@@ -34,19 +35,6 @@ The advantage of this format is that the JUnit Ant schema is widely understood b
 
 The disadvantage is that this schema was designed to correspond to how JUnit works - and there is a significant mismatch with how Catch works. Additionally the format is not streamable (because opening elements hold counts of failed and passing tests as attributes) - so the whole test run must complete before it can be written.
 
-## Other reporters
-Other reporters are not part of the single-header distribution and need
-to be downloaded and included separately. All reporters are stored in
-`single_include` directory in the git repository, and are named
-`catch_reporter_*.hpp`. For example, to use the TeamCity reporter you
-need to download `single_include/catch_reporter_teamcity.hpp` and include
-it after Catch itself.
-
-```cpp
-#define CATCH_CONFIG_MAIN
-#include "catch.hpp"
-#include "catch_reporter_teamcity.hpp"
-```
 
 ### TeamCity Reporter
 ```-r teamcity```
@@ -69,18 +57,28 @@ Because of the incremental nature of Catch's test suites and ability to run spec
 ```-r sonarqube```
 [SonarQube Generic Test Data](https://docs.sonarqube.org/latest/analysis/generic-test/) XML format for tests metrics.
 
+
+## Bazel test runner integration
+
+Catch2 understands some of the environment variables Bazel uses to control
+test execution. Specifically it understands
+
+ * JUnit output path via `XML_OUTPUT_FILE`
+ * Test filtering via `TESTBRIDGE_TEST_ONLY`
+ * Test sharding via `TEST_SHARD_INDEX`, `TEST_TOTAL_SHARDS`, and `TEST_SHARD_STATUS_FILE`
+
+> Support for `XML_OUTPUT_FILE` was [introduced](https://github.com/catchorg/Catch2/pull/2399) in Catch2 3.0.1
+
+> Support for `TESTBRIDGE_TEST_ONLY` and sharding was introduced in Catch2 3.2.0
+
+This integration is enabled via either a [compile time configuration
+option](configuration.md#bazel-support), or via `BAZEL_TEST` environment
+variable set to "1".
+
+> Support for `BAZEL_TEST` was [introduced](https://github.com/catchorg/Catch2/pull/2459) in Catch2 3.1.0
+
+
 ## Low-level tools
-
-### Precompiled headers (PCHs)
-
-Catch offers prototypal support for being included in precompiled headers, but because of its single-header nature it does need some actions by the user:
-* The precompiled header needs to define `CATCH_CONFIG_ALL_PARTS`
-* The implementation file needs to
-  * undefine `TWOBLUECUBES_SINGLE_INCLUDE_CATCH_HPP_INCLUDED`
-  * define `CATCH_CONFIG_IMPL_ONLY`
-  * define `CATCH_CONFIG_MAIN` or `CATCH_CONFIG_RUNNER`
-  * include "catch.hpp" again
-
 
 ### CodeCoverage module (GCOV, LCOV...)
 

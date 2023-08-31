@@ -19,7 +19,7 @@
 Catch2 is designed to "just work" as much as possible, and most of the
 configuration options below are changed automatically during compilation,
 according to the detected environment. However, this detection can also
-be overriden by users, using macros documented below, and/or CMake options
+be overridden by users, using macros documented below, and/or CMake options
 with the same name.
 
 
@@ -98,12 +98,18 @@ is equivalent with the out-of-the-box experience.
 
 
 ## Bazel support
-When `CATCH_CONFIG_BAZEL_SUPPORT` is defined or when `BAZEL_TEST=1` (which is set by the Bazel inside of a test environment), 
-Catch2 will register a `JUnit` reporter writing to a path pointed by `XML_OUTPUT_FILE` provided by Bazel.
+
+Compiling Catch2 with `CATCH_CONFIG_BAZEL_SUPPORT` force-enables Catch2's
+support for Bazel's environment variables (normally Catch2 looks for
+`BAZEL_TEST=1` env var first).
+
+This can be useful if you are using older versions of Bazel, that do not
+yet have `BAZEL_TEST` env var support.
 
 > `CATCH_CONFIG_BAZEL_SUPPORT` was [introduced](https://github.com/catchorg/Catch2/pull/2399) in Catch2 3.0.1.
 
 > `CATCH_CONFIG_BAZEL_SUPPORT` was [deprecated](https://github.com/catchorg/Catch2/pull/2459) in Catch2 3.1.0.
+
 
 ## C++11 toggles
 
@@ -149,12 +155,19 @@ by using `_NO_` in the macro, e.g. `CATCH_CONFIG_NO_CPP17_UNCAUGHT_EXCEPTIONS`.
     CATCH_CONFIG_USE_ASYNC                  // Force parallel statistical processing of samples during benchmarking
     CATCH_CONFIG_ANDROID_LOGWRITE           // Use android's logging system for debug output
     CATCH_CONFIG_GLOBAL_NEXTAFTER           // Use nextafter{,f,l} instead of std::nextafter
+    CATCH_CONFIG_GETENV                     // System has a working `getenv`
 
 > [`CATCH_CONFIG_ANDROID_LOGWRITE`](https://github.com/catchorg/Catch2/issues/1743) and [`CATCH_CONFIG_GLOBAL_NEXTAFTER`](https://github.com/catchorg/Catch2/pull/1739) were introduced in Catch2 2.10.0
+
+> `CATCH_CONFIG_GETENV` was [introduced](https://github.com/catchorg/Catch2/pull/2562) in Catch2 3.2.0
 
 Currently Catch enables `CATCH_CONFIG_WINDOWS_SEH` only when compiled with MSVC, because some versions of MinGW do not have the necessary Win32 API support.
 
 `CATCH_CONFIG_POSIX_SIGNALS` is on by default, except when Catch is compiled under `Cygwin`, where it is disabled by default (but can be force-enabled by defining `CATCH_CONFIG_POSIX_SIGNALS`).
+
+`CATCH_CONFIG_GETENV` is on by default, except when Catch2 is compiled for
+platforms that lacks working `std::getenv` (currently Windows UWP and
+Playstation).
 
 `CATCH_CONFIG_WINDOWS_CRTDBG` is off by default. If enabled, Windows's
 CRT is used to check for memory leaks, and displays them after the tests

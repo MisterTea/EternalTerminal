@@ -148,7 +148,7 @@ validity, and throw an error if they are wrong._
 > Support for passing arguments to reporters through the `-r`, `--reporter` flag was introduced in Catch2 3.0.1
 
 There are multiple built-in reporters, you can see what they do by using the
-[`--list-reporter`](command-line.md#listing-available-tests-tags-or-reporters)
+[`--list-reporters`](command-line.md#listing-available-tests-tags-or-reporters)
 flag. If you need a reporter providing custom format outside of the already
 provided ones, look at the ["write your own reporter" part of the reporter
 documentation](reporters.md#writing-your-own-reporter).
@@ -284,7 +284,7 @@ This option transforms tabs and newline characters into ```\t``` and ```\n``` re
 <pre>-w, --warn &lt;warning name></pre>
 
 You can think of Catch2's warnings as the equivalent of `-Werror` (`/WX`)
-flag for C++ compilers. It turns some suspicious occurences, like a section
+flag for C++ compilers. It turns some suspicious occurrences, like a section
 without assertions, into errors. Because these might be intended, warnings
 are not enabled by default, but user can opt in.
 
@@ -313,7 +313,7 @@ When set to ```yes``` Catch will report the duration of each test case, in milli
 > `--min-duration` was [introduced](https://github.com/catchorg/Catch2/pull/1910) in Catch2 2.13.0
 
 When set, Catch will report the duration of each test case that took more
-than &lt;value> seconds, in milliseconds. This option is overriden by both
+than &lt;value> seconds, in milliseconds. This option is overridden by both
 `-d yes` and `-d no`, so that either all durations are reported, or none
 are.
 
@@ -339,8 +339,8 @@ Test cases are ordered one of three ways:
 
 ### decl
 Declaration order (this is the default order if no --order argument is provided).
-Tests in the same TU are sorted using their declaration orders, different
-TUs are in an implementation (linking) dependent order.
+Tests in the same translation unit are sorted using their declaration orders,
+different TUs are sorted in an implementation (linking) dependent order.
 
 
 ### lex
@@ -507,10 +507,13 @@ start of the first section.</br>
 ## Filenames as tags
 <pre>-#, --filenames-as-tags</pre>
 
-When this option is used then every test is given an additional tag which is formed of the unqualified
-filename it is found in, with any extension stripped, prefixed with the `#` character.
+This option adds an extra tag to all test cases. The tag is `#` followed
+by the unqualified filename the test case is defined in, with the _last_
+extension stripped out.
 
-So, for example,  tests within the file `~\Dev\MyProject\Ferrets.cpp` would be tagged `[#Ferrets]`.
+For example, tests within the file `tests\SelfTest\UsageTests\BDD.tests.cpp`
+will be given the `[#BDD.tests]` tag.
+
 
 <a id="colour-mode"></a>
 ## Override output colouring
@@ -548,7 +551,8 @@ starting at 0. The tests in the set given by
 `--shard-index <#shard index to run>` will be executed. The default shard
 count is `1`, and the default index to run is `0`.
 
-_It is an error to specify a shard index greater than the number of shards._
+_Shard index must be less than number of shards. As the name suggests,
+it is treated as an index of the shard to run._
 
 Sharding is useful when you want to split test execution across multiple
 processes, as is done with the [Bazel test sharding](https://docs.bazel.build/versions/main/test-encyclopedia.html#test-sharding).
@@ -560,17 +564,17 @@ processes, as is done with the [Bazel test sharding](https://docs.bazel.build/ve
 
 > Introduced in Catch2 3.0.1.
 
-By default, Catch2 test binaries return non-0 exit code if no tests were
-run, e.g. if the binary was compiled with no tests, or the provided test
-spec matched no tests. This flag overrides that, so a test run with no
-tests still returns 0.
+By default, Catch2 test binaries return non-0 exit code if no tests were run,
+e.g. if the binary was compiled with no tests, the provided test spec matched no
+tests, or all tests [were skipped at runtime](skipping-passing-failing.md#top). This flag
+overrides that, so a test run with no tests still returns 0.
 
 ## Output verbosity
 ```
 -v, --verbosity <quiet|normal|high>
 ```
 
-Changing verbosity might change how much details Catch2's reporters output.
+Changing verbosity might change how many details Catch2's reporters output.
 However, you should consider changing the verbosity level as a _suggestion_.
 Not all reporters support all verbosity levels, e.g. because the reporter's
 format cannot meaningfully change. In that case, the verbosity level is

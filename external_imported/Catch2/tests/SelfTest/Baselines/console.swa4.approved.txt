@@ -1,4 +1,4 @@
-Filters: ~[!nonportable]~[!benchmark]~[approvals] *
+Filters: "*" ~[!nonportable] ~[!benchmark] ~[approvals]
 Randomness seeded to: 1
 
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -166,20 +166,20 @@ with expansion:
 -------------------------------------------------------------------------------
 #1905 -- test spec parser properly clears internal state between compound tests
 -------------------------------------------------------------------------------
-CmdLine.tests.cpp:<line number>
+TestSpec.tests.cpp:<line number>
 ...............................................................................
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE( spec.matches(*fakeTestCase("spec . char")) )
 with expansion:
   true
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE( spec.matches(*fakeTestCase("spec , char")) )
 with expansion:
   true
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE_FALSE( spec.matches(*fakeTestCase(R"(spec \, char)")) )
 with expansion:
   !false
@@ -188,20 +188,20 @@ with expansion:
 #1912 -- test spec parser handles escaping
   Various parentheses
 -------------------------------------------------------------------------------
-CmdLine.tests.cpp:<line number>
+TestSpec.tests.cpp:<line number>
 ...............................................................................
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE( spec.matches(*fakeTestCase(R"(spec {a} char)")) )
 with expansion:
   true
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE( spec.matches(*fakeTestCase(R"(spec [a] char)")) )
 with expansion:
   true
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE_FALSE( spec.matches(*fakeTestCase("differs but has similar tag", "[a]")) )
 with expansion:
   !false
@@ -210,10 +210,10 @@ with expansion:
 #1912 -- test spec parser handles escaping
   backslash in test name
 -------------------------------------------------------------------------------
-CmdLine.tests.cpp:<line number>
+TestSpec.tests.cpp:<line number>
 ...............................................................................
 
-CmdLine.tests.cpp:<line number>: PASSED:
+TestSpec.tests.cpp:<line number>: PASSED:
   REQUIRE( spec.matches(*fakeTestCase(R"(spec \ char)")) )
 with expansion:
   true
@@ -762,6 +762,16 @@ with expansion:
   00000000e+00])
 
 -------------------------------------------------------------------------------
+#2615 - Throwing in constructor generator fails test case but does not abort
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: FAILED:
+due to unexpected exception with message:
+  failure to init
+
+-------------------------------------------------------------------------------
 #748 - captures with unexpected exceptions
   outside assertions
 -------------------------------------------------------------------------------
@@ -941,6 +951,6 @@ Condition.tests.cpp:<line number>: FAILED:
   CHECK( true != true )
 
 ===============================================================================
-test cases:  32 | 27 passed | 3 failed | 2 failed as expected
-assertions: 101 | 94 passed | 4 failed | 3 failed as expected
+test cases:  33 | 27 passed | 3 failed | 3 failed as expected
+assertions: 102 | 94 passed | 4 failed | 4 failed as expected
 

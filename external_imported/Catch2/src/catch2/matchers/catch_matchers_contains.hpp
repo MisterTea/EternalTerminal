@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -33,13 +33,11 @@ namespace Catch {
             }
 
             template <typename RangeLike>
-            bool match(RangeLike&& rng) const {
-                using std::begin; using std::end;
-
-                return end(rng) != std::find_if(begin(rng), end(rng),
-                                               [&](auto const& elem) {
-                                                    return m_eq(elem, m_desired);
-                                               });
+            bool match( RangeLike&& rng ) const {
+                for ( auto&& elem : rng ) {
+                    if ( m_eq( elem, m_desired ) ) { return true; }
+                }
+                return false;
             }
         };
 
@@ -91,7 +89,7 @@ namespace Catch {
         /**
          * Creates a matcher that checks whether a range contains a specific element.
          *
-         * Uses `eq` to do the comparisons
+         * Uses `eq` to do the comparisons, the element is provided on the rhs
          */
         template <typename T, typename Equality>
         ContainsElementMatcher<T, Equality> Contains(T&& elem, Equality&& eq) {

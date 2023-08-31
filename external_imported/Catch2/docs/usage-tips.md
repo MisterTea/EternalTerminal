@@ -47,7 +47,7 @@ Catch2 also supports [splitting tests in a binary into multiple
 shards](command-line.md#test-sharding). This can be used by any test
 runner to run batches of tests in parallel. Do note that when selecting
 on the number of shards, you should have more shards than there are cores,
-to avoid issues with long running tests getting accidentally grouped in
+to avoid issues with long-running tests getting accidentally grouped in
 the same shard, and causing long-tailed execution time.
 
 **Note that naively composing sharding and random ordering of tests will break.**
@@ -72,6 +72,11 @@ seed, e.g.
 ./tests --order rand --shard-index 1 --shard-count 3 --rng-seed 0xBEEF
 ./tests --order rand --shard-index 2 --shard-count 3 --rng-seed 0xBEEF
 ```
+
+Catch2 actually provides a helper to automatically register multiple shards
+as CTest tests, with shared random seed that changes each CTest invocation.
+For details look at the documentation of
+[`CatchShardTests.cmake` CMake script](cmake-integration.md#catchshardtestscmake).
 
 
 ## Organizing tests into binaries

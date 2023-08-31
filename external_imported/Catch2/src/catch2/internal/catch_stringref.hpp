@@ -1,7 +1,7 @@
 
 //              Copyright Catch2 Authors
 // Distributed under the Boost Software License, Version 1.0.
-//   (See accompanying file LICENSE_1_0.txt or copy at
+//   (See accompanying file LICENSE.txt or copy at
 //        https://www.boost.org/LICENSE_1_0.txt)
 
 // SPDX-License-Identifier: BSL-1.0
@@ -12,6 +12,8 @@
 #include <string>
 #include <iosfwd>
 #include <cassert>
+
+#include <cstring>
 
 namespace Catch {
 
@@ -49,7 +51,10 @@ namespace Catch {
         }
 
     public: // operators
-        auto operator == ( StringRef other ) const noexcept -> bool;
+        auto operator == ( StringRef other ) const noexcept -> bool {
+            return m_size == other.m_size
+                && (std::memcmp( m_start, other.m_start, m_size ) == 0);
+        }
         auto operator != (StringRef other) const noexcept -> bool {
             return !(*this == other);
         }
