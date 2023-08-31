@@ -13,12 +13,20 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
-        gcc: [11, 12]
+        gcc: [11, 12, 13]
         exclude:
-          - os: macos-latest
-            gcc: 11
+          #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
+            #gcc: 11
           - os: macos-latest
             gcc: 12
+          - os: macos-latest
+            gcc: 13
+          #- os: windows-latest
+            #gcc: 11
+          - os: windows-latest
+            gcc: 12
+          - os: windows-latest
+            gcc: 13
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
@@ -54,7 +62,14 @@ jobs:
         with:
           submodules: recursive
 
-      # Run CMake to generate Ninja project files.
+      - name: Set up GCC (Ubuntu)
+        uses: egor-tensin/setup-gcc@v1
+        with:
+          version: ${{ matrix.gcc }}
+          platform: x64
+        if: matrix.os == 'ubuntu-latest'
+    
+        # Run CMake to generate Ninja project files.
       - name: Install dependencies and generate project files (mac)
         run: |
           OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
