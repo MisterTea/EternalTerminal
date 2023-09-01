@@ -104,17 +104,17 @@ jobs:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVCPKG_BUILD_TYPE=release
         if: matrix.os == 'ubuntu-latest'
 
       - name: Install dependencies and generate project files (mac)
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVCPKG_BUILD_TYPE=release
         if: matrix.os == 'macos-latest'
 
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DVCPKG_BUILD_TYPE=release
         if: matrix.os == 'windows-latest'
 
       # Build the whole project with Ninja (which is spawn by CMake).
