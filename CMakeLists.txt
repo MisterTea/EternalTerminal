@@ -94,8 +94,10 @@ include(CMakeFindDependencyMacro)
 
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake"
-  ${CMAKE_MODULE_PATH})
+set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+
+# Do not install httplib files
+set(HTTPLIB_INSTALL OFF)
 
 # Required packages
 find_package(OpenSSL REQUIRED)
@@ -112,7 +114,9 @@ add_subdirectory(${EXTERNAL_DIR}/cxxopts)
 add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
 add_subdirectory(${EXTERNAL_DIR}/json)
 include_directories(
-  ${EXTERNAL_DIR}/cpp-httplib
+  SYSTEM ${EXTERNAL_DIR}/cpp-httplib
+)
+include_directories(
   ${EXTERNAL_DIR}/simpleini
   ${EXTERNAL_DIR}/json/include
   ${EXTERNAL_DIR}/cxxopts/include
@@ -563,9 +567,10 @@ else(WIN32)
       test/Main.cpp
     )
 
-    add_dependencies(et-test TerminalCommon et-lib)
+    add_dependencies(et-test generated-code TerminalCommon et-lib)
     target_link_libraries(
       et-test
+      LINK_PUBLIC
       TerminalCommon
       et-lib
       Catch2::Catch2WithMain
@@ -577,7 +582,7 @@ else(WIN32)
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
     add_test(et-test et-test)
-    decorate_target(et-test)
+    add_sanitizers(et-test)
   endif()
 
   if(BUILD_TESTING AND FUZZING)
