@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
 
   # Every Vagrant development environment requires a box. You can search for
   # boxes at https://vagrantcloud.com/search.
-  config.vm.box = "debian/bullseye64"
+  config.vm.box = "debian/bookworm64"
   config.ssh.shell = "sh"
 
   config.vm.provider "virtualbox" do |v|
@@ -79,7 +79,7 @@ Vagrant.configure("2") do |config|
   echo "set grub-pc/install_devices /dev/sda" | debconf-communicate
   apt update
   DEBIAN_FRONTEND=noninteractive DEBIAN_PRIORITY=critical apt -q -y -o "Dpkg::Options::=--force-confdef" -o "Dpkg::Options::=--force-confold" upgrade
-  DEBIAN_FRONTEND=noninteractive apt install -y rsync build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake ninja-build libutempter-dev libunwind-dev debhelper git-lfs python3-distutils cowbuilder ubuntu-dev-tools openssh-server qemu qemu-user-static debootstrap binfmt-support libcurl4-openssl-dev libssl-dev
+  DEBIAN_FRONTEND=noninteractive apt install -y rsync build-essential git curl devscripts aptly dput jq libsodium-dev libprotobuf-dev protobuf-compiler cmake ninja-build libutempter-dev libunwind-dev debhelper git-lfs python3-distutils cowbuilder ubuntu-dev-tools openssh-server qemu-system-arm qemu-user-static debootstrap binfmt-support libcurl4-openssl-dev libssl-dev
 SHELL
 
   config.vm.provision "shell", privileged: false, inline: <<-SHELL
