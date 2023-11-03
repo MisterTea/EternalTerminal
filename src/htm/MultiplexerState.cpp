@@ -86,7 +86,7 @@ string MultiplexerState::toJsonString() {
 
 void MultiplexerState::appendData(const string &uid, const string &data) {
   if (panes.find(uid) == panes.end()) {
-    STFATAL << "Tried to write to non-existant terminal";
+    STFATAL << "Tried to write to non-existent terminal";
   }
   panes[uid]->terminal->appendData(data);
 }

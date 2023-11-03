@@ -20,7 +20,7 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
     ssize_t bytesRead = read(fd, ((char*)buf) + pos, count - pos);
     if (bytesRead == 0) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
-      // In EternalTCP, the server needs to explictly tell the client that
+      // In EternalTCP, the server needs to explicitly tell the client that
       // the session is over.
       SetErrno(EPIPE);
       bytesRead = -1;

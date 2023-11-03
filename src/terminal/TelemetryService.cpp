@@ -270,7 +270,7 @@ void TelemetryService::logToDatadog(const string& logText, el::Level logLevel,
                                     const string& filename, const int line) {
   map<string, string> messageJson = {
       {"message", logText},        {"level", logLevelToString(logLevel)},
-      {"Enviroment", environment}, {"Application", "Eternal Terminal"},
+      {"Environment", environment}, {"Application", "Eternal Terminal"},
       {"Version", ET_VERSION},     {"TelemetryId", telemetryId.str()},
       {"File", filename},          {"Line", to_string(line)}};
 

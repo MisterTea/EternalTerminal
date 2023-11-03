@@ -82,7 +82,7 @@ void TryCreateDirectory(string dir, mode_t mode) {
 
   CHECK_EQ(::umask(oldMode), 0)
       << "Unexpected result when restoring umask, which should return the "
-         "previous overriden value (0).";
+         "previous overridden value (0).";
 }
 
 }  // namespace
@@ -106,7 +106,7 @@ void ServerFifoPath::createDirectoriesIfRequired() {
     //
     // Create subdirectories for ~/.local/share. These may already be created
     // with different permissions on different machines, so also create an
-    // etserver subdir to enforce 0700 permssions.
+    // etserver subdir to enforce 0700 permissions.
     const string homeDir = GetHome();
     TryCreateDirectory(homeDir + "/.local", 0755);
     TryCreateDirectory(homeDir + "/.local/share", 0755);
