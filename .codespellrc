@@ -1,5 +1,5 @@
 [codespell]
 skip = .git,*.pdf,*.svg,.codespellrc
 check-hidden = true
-# ignore-regex = 
-# ignore-words-list =
+ignore-regex = \bhenrik@gassmann.onl\b
+ignore-words-list = te
