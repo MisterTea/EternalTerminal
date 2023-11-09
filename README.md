@@ -206,7 +206,7 @@ git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
-# Make it work on Apple Silicon:
+# Add if it doesn't work on Apple Silicon but should work without it
 if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make && sudo make install
