@@ -269,10 +269,10 @@ void TelemetryService::logToSentry(el::Level level, const string& message) {
 void TelemetryService::logToDatadog(const string& logText, el::Level logLevel,
                                     const string& filename, const int line) {
   map<string, string> messageJson = {
-      {"message", logText},        {"level", logLevelToString(logLevel)},
+      {"message", logText},         {"level", logLevelToString(logLevel)},
       {"Environment", environment}, {"Application", "Eternal Terminal"},
-      {"Version", ET_VERSION},     {"TelemetryId", telemetryId.str()},
-      {"File", filename},          {"Line", to_string(line)}};
+      {"Version", ET_VERSION},      {"TelemetryId", telemetryId.str()},
+      {"File", filename},           {"Line", to_string(line)}};
 
   lock_guard<recursive_mutex> lock(logMutex);
   if (logBuffer.size() > 16 * 1024) {
