@@ -47,7 +47,7 @@ int BackedReader::read(Packet* packet) {
         socketHandler->read(socketFd, tmpBuf, 4 - partialMessage.length());
     if (bytesRead == 0) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
-      // In EternalTCP, the server needs to explictly tell the client that
+      // In EternalTCP, the server needs to explicitly tell the client that
       // the session is over.
       SetErrno(EPIPE);
       return -1;
@@ -73,7 +73,7 @@ int BackedReader::read(Packet* packet) {
     ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
     if (bytesRead == 0) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
-      // In EternalTCP, the server needs to explictly tell the client that
+      // In EternalTCP, the server needs to explicitly tell the client that
       // the session is over.
       SetErrno(EPIPE);
       return -1;

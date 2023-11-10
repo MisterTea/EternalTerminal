@@ -51,7 +51,7 @@ int main(int argc, char** argv) {
         "[OPTION...] [user@]host[:port]\n\n"
         "  Note that 'host' can be a hostname or ipv4 address with or without "
         "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
-        ":: then it must\n  be specfied without a port (use -p,--port).");
+        ":: then it must\n  be specified without a port (use -p,--port).");
 
     options.add_options()             //
         ("h,help", "Print help")      //
