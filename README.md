@@ -228,7 +228,7 @@ Debian/Ubuntu Dependencies:
 
 ```
 sudo apt install libboost-dev libsodium-dev libncurses5-dev \
-	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl-dev \
+	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl4-openssl-dev \
     build-essential ninja-build cmake git zip
 ```
 
