@@ -259,11 +259,7 @@ int main(int argc, char** argv) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
       size_t colonIndex = proxyjump.find(":");
       if (colonIndex != string::npos) {
-        string userhostpair = proxyjump.substr(0, colonIndex);
-        size_t atIndex = userhostpair.find("@");
-        if (atIndex != string::npos) {
-          jumphost = userhostpair.substr(atIndex + 1);
-        }
+        jumphost = proxyjump.substr(0, colonIndex);
       } else {
         jumphost = proxyjump;
       }
@@ -275,7 +271,13 @@ int main(int argc, char** argv) {
     if (!jumphost.empty()) {
       is_jumphost = true;
       LOG(INFO) << "Setting port to jumphost port";
-      socketEndpoint.set_name(jumphost);
+      size_t atIndex = jumphost.find("@");
+      if (atIndex != string::npos) {
+        socketEndpoint.set_name(jumphost.substr(atIndex + 1));
+      } else {
+        socketEndpoint.set_name(jumphost);
+        jumphost = username + "@" + jumphost;
+      }
       socketEndpoint.set_port(result["jport"].as<int>());
     } else {
       socketEndpoint.set_name(destinationHost);
