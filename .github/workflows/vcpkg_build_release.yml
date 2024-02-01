@@ -14,10 +14,10 @@ jobs:
     strategy:
       fail-fast: true
       matrix:
-        os: [ubuntu-latest, macos-latest, windows-latest]
+        os: [ubuntu-latest, macos-latest, windows-2022]
         gcc: [11, 12, 13]
         include:
-        - os: windows-latest
+        - os: windows-2022
           extension: .exe
         exclude:
           #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
@@ -26,11 +26,11 @@ jobs:
             gcc: 12
           - os: macos-latest
             gcc: 13
-          #- os: windows-latest
+          #- os: windows-2022
             #gcc: 11
-          - os: windows-latest
+          - os: windows-2022
             gcc: 12
-          - os: windows-latest
+          - os: windows-2022
             gcc: 13
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
@@ -63,7 +63,7 @@ jobs:
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
         run: choco install ninja
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
       - name: Install Dependencies (macOS)
         run: brew update && brew install ninja cmake
         if: matrix.os == 'macos-latest'
@@ -118,7 +118,7 @@ jobs:
       - name: Install dependencies and generate project files (windows)
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
-        if: matrix.os == 'windows-latest'
+        if: matrix.os == 'windows-2022'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
