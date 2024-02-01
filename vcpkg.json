@@ -12,6 +12,7 @@
     "platform-folders",
     "cpp-httplib",
     "cxxopts",
-    "catch2"
+    "catch2",
+    "brotli"
   ]
 }
