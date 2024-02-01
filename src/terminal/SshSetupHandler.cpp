@@ -60,7 +60,7 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
   if (!jumphost.empty()) {
     ssh_args = {
         "-J",
-        SSH_USER_PREFIX + jumphost,
+        jumphost,
     };
   }
 
