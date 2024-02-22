@@ -60,6 +60,12 @@ typedef int socket_t;
 #endif
 #endif
 
+#ifdef _MSC_VER 
+//not #if defined(_WIN32) || defined(_WIN64) because we have strncasecmp in mingw
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+#endif
+
 enum ssh_config_opcode_e {
   SOC_UNSUPPORTED = -1,
   SOC_HOST,
