@@ -58,7 +58,7 @@ jobs:
         run: brew update && brew install ninja cmake pkg-config curl openssl protobuf libsodium
         if: matrix.os == 'macos-latest'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: recursive
 
@@ -90,7 +90,7 @@ jobs:
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
       
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
-          name: et-client-${{matrix.os}}
+          name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}
