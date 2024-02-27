@@ -58,7 +58,7 @@ void TerminalServer::run() {
     }
 
     tv.tv_sec = 0;
-    tv.tv_usec = 10000;
+    tv.tv_usec = 100000;
 
     const int numFdsSet = select(maxFd + 1, &rfds, NULL, NULL, &tv);
     if (numFdsSet < 0 && errno == EINTR) {
@@ -144,7 +144,7 @@ void TerminalServer::runJumpHost(
       maxfd = max(maxfd, serverClientFd);
     }
     tv.tv_sec = 0;
-    tv.tv_usec = 10000;
+    tv.tv_usec = 100000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
@@ -282,7 +282,7 @@ void TerminalServer::runTerminal(
       maxfd = max(maxfd, serverClientFd);
     }
     tv.tv_sec = 0;
-    tv.tv_usec = 10000;
+    tv.tv_usec = 100000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
