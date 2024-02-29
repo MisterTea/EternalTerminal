@@ -82,6 +82,8 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>())  //
         ("jport", "Jumphost machine port",
          cxxopts::value<int>()->default_value("2022"))  //
+        ("jserverfifo", "If set, communicate to jumphost on the matching fifo name",
+         cxxopts::value<string>()->default_value(""))  //
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("macserver",
@@ -294,6 +296,11 @@ int main(int argc, char** argv) {
     }
 
     int jport = result["jport"].as<int>();
+    string jServerFifo = "";
+    if (result["jserverfifo"].as<string>() != "") {
+      jServerFifo = result["jserverfifo"].as<string>();
+    }
+
     string serverFifo = "";
     if (result["serverfifo"].as<string>() != "") {
       serverFifo = result["serverfifo"].as<string>();
@@ -310,7 +317,7 @@ int main(int argc, char** argv) {
       etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost, jport,
+        username, destinationHost, host_alias, destinationPort, jumphost, jServerFifo,
         result.count("x") > 0, result["verbose"].as<int>(), etterminal_path,
         serverFifo, ssh_options);
 

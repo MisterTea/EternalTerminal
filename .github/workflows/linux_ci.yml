@@ -63,8 +63,28 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y sudo apt-get install -y rsyslog curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ net-tools lsof
+          echo "KEYGEN"
+          sudo netstat -nlp | grep :22
+          sudo sed -i '/imklog/s/^/#/' /etc/rsyslog.conf
+          #sudo echo "LogLevel DEBUG3" >> /etc/ssh/sshd_config
+          #echo "Port 2222" >> /etc/ssh/sshd_config
+          sudo service rsyslog restart
+          sudo service ssh restart
+          sudo cat /var/log/auth.log
+          sudo cat /etc/ssh/sshd_config
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""
+          echo "KEYGEN"
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          echo "KEYGEN"
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
+          echo "KEYGEN"
+          chown $USER:$USER ~/{.,.ssh/,.ssh/authorized_keys,.ssh/known_hosts}
+          chmod 600 ~/.ssh/authorized_keys
+          chmod go-w ~/
+          echo "KEYGEN"
+          ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' -p 2222 localhost "echo foobar" # Fails if we can't ssh into localhost without a password
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
@@ -95,6 +115,9 @@ jobs:
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
+
+          ./test/system_tests/connect_with_jumphost.sh
+
           rm -Rf build
 
   msan_linux:
@@ -109,7 +132,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
@@ -154,7 +177,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
@@ -199,7 +222,7 @@ jobs:
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
           git submodule sync --recursive
           git submodule update --init --force --recursive
 

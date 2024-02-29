@@ -8,7 +8,8 @@ class SshSetupHandler {
  public:
   static string SetupSsh(const string &user, const string &host,
                          const string &host_alias, int port,
-                         const string &jumphost, int jport, bool kill,
+                         const string &jumphost,
+                         const string& jServerFifo, bool kill,
                          int vlevel, const string &etterminal_path,
                          const string &serverFifo,
                          const std::vector<std::string> &ssh_options);
