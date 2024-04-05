@@ -11,7 +11,6 @@ RUN yum install -y \
     libunwind-devel \
     libutempter-devel \
     make \
-    ncurses-devel \
     perl \
     perl-Data-Dumper \
     perl-IPC-Cmd \

@@ -10,6 +10,6 @@ Homepage: https://mistertea.github.io/EternalTCP/
 
 Package: et
 Architecture: any
-Depends: ${misc:Depends}, ${shlibs:Depends}, libgcc1 (>= 1:3.3), libstdc++6, libtinfo5
+Depends: ${misc:Depends}, ${shlibs:Depends}, libgcc1 (>= 1:3.3), libstdc++6
 Description: Remote terminal for the busy and impatient
  Eternal Terminal is a remote shell that automatically reconnects without interrupting the session.
