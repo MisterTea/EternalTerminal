@@ -43,7 +43,6 @@ jobs:
             sudo apt-get install --no-install-recommends \
                 libboost-dev \
                 libsodium-dev \
-                libncurses5-dev \
                 libprotobuf-dev \
                 protobuf-compiler \
                 libgflags-dev \
@@ -60,7 +59,7 @@ jobs:
                 libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install ninja
+        run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
         run: brew update && brew install ninja cmake
