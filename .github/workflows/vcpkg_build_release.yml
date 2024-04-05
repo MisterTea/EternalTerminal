@@ -45,7 +45,6 @@ jobs:
             sudo apt-get install --no-install-recommends \
                 libboost-dev \
                 libsodium-dev \
-                libncurses5-dev \
                 libprotobuf-dev \
                 protobuf-compiler \
                 libgflags-dev \

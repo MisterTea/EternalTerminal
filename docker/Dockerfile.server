@@ -1,7 +1,7 @@
 FROM centos:8 as base
 
 ENV BUILD_REPOS="epel-release centos-release-scl" \
-    BUILD_DEPS="cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
+    BUILD_DEPS="cmake3 boost-devel libsodium-devel protobuf-devel \
     protobuf-compiler gflags-devel protobuf-lite-devel git \
     perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-devel \
     devtoolset-11 devtoolset-11-libatomic-devel rh-git227"

@@ -111,14 +111,14 @@ Install dependencies:
 * Fedora (tested on 25):
 
   ```
-  sudo dnf install boost-devel libsodium-devel ncurses-devel protobuf-devel \
+  sudo dnf install boost-devel libsodium-devel protobuf-devel \
   	protobuf-compiler cmake gflags-devel libcurl-devel
   ```
 
 * Gentoo:
 
   ```
-  sudo emerge dev-libs/boost dev-libs/libsodium sys-libs/ncurses \
+  sudo emerge dev-libs/boost dev-libs/libsodium \
   	dev-libs/protobuf dev-util/cmake dev-cpp/gflags
   ```
 
@@ -227,7 +227,7 @@ Grab the deps and then follow this process.
 Debian/Ubuntu Dependencies:
 
 ```
-sudo apt install libboost-dev libsodium-dev libncurses5-dev \
+sudo apt install libboost-dev libsodium-dev \
 	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl4-openssl-dev \
     build-essential ninja-build cmake git zip
 ```
@@ -255,7 +255,7 @@ Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
 Install dependencies:
 ```
 sudo yum install epel-release
-sudo yum install cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
+sudo yum install cmake3 boost-devel libsodium-devel protobuf-devel \
      protobuf-compiler gflags-devel protobuf-lite-devel libcurl-devel \
      perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-devel
 ```
