@@ -306,7 +306,7 @@ int main(int argc, char** argv) {
     if (result.count("macserver") > 0) {
       etterminal_path = "/usr/local/bin/etterminal";
     }
-    if (result.count("etterminal_path")) {
+    if (result.count("terminal-path")) {
       etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
