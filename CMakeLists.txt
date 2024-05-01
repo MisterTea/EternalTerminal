@@ -78,7 +78,7 @@ endif()
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
 # Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.2.8 LANGUAGES NONE)
+project(EternalTCP VERSION 6.2.9 LANGUAGES NONE)
 
 enable_language(C)
 enable_language(CXX)
