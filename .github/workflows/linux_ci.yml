@@ -55,18 +55,18 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-${{ matrix.sanitize }}
 
-      - name: Test with ubsan
+      - name: Build with ubsan
         run: |
           mkdir build
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
-          rm -Rf build
+          ./test/system_tests/connect_with_jumphost.sh
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'ubsan'
 
-      - name: Test with asan
+      - name: Build with asan
         run: |
           mkdir build
           pushd build
@@ -75,29 +75,28 @@ jobs:
           popd
           ./test/system_tests/connect_with_jumphost.sh
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
-          rm -Rf build
         if: matrix.sanitize == 'asan'
 
-      - name: Test with msan
+      - name: Build with msan
         run: |
           mkdir build
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
-          rm -Rf build
+          ./test/system_tests/connect_with_jumphost.sh
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'msan'
 
-      - name: Test with tsan
+      - name: Build with tsan
         run: |
           mkdir build
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
           popd
-          rm -Rf build
+          ./test/system_tests/connect_with_jumphost.sh
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'tsan'
 
   codecov:
@@ -135,7 +134,7 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux
 
-      - name: Test with code coverage
+      - name: Build with code coverage
         run: |
           mkdir build
           pushd build
