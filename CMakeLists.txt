@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.0.2)
+cmake_minimum_required(VERSION 3.16.3)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external_imported")
 
@@ -78,14 +78,7 @@ endif()
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
 # Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.2.8 LANGUAGES NONE)
-
-if(WIN32)
-  message(STATUS "Windows detected.  Bumping up cmake version.")
-
-  # Hack to force a higher minimum version on windows
-  cmake_minimum_required(VERSION 3.15.0)
-endif()
+project(EternalTCP VERSION 6.2.9 LANGUAGES NONE)
 
 enable_language(C)
 enable_language(CXX)
@@ -184,14 +177,6 @@ if(USE_SENTRY)
   else()
     find_package(sentry CONFIG REQUIRED)
   endif()
-endif()
-
-set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/cotire/CMake"
-  ${CMAKE_MODULE_PATH})
-include(cotire)
-
-if(POLICY CMP0058)
-  cmake_policy(SET CMP0058 NEW) # Needed for cotire
 endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
@@ -326,14 +311,7 @@ ENDIF()
 
 macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
-  set_target_properties(${TARGET_NAME} PROPERTIES COTIRE_CXX_PREFIX_HEADER_INIT
-    "src/base/Headers.hpp")
-
-  if(CMAKE_CROSSCOMPILING)
-  # Doesn't work when cross-compiling
-  else()
-    cotire(${TARGET_NAME})
-  endif()
+  target_precompile_headers(${TARGET_NAME} PUBLIC "src/base/Headers.hpp")
 endmacro()
 
 macro(DECORATE_FUZZER TARGET_NAME)
