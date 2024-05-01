@@ -30,6 +30,10 @@
 
 // dwarf_cu_to_module.cc: Unit tests for google_breakpad::DwarfCUToModule.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdint.h>
 
 #include <string>
@@ -262,6 +266,10 @@ class CUFixtureBase {
   // parameter size is zero.
   void TestFunction(int i, const string& name,
                     Module::Address address, Module::Address size);
+
+  // Test that the I'th function (ordered by address) in the module
+  // this.module_ has the given prefer_extern_name.
+  void TestFunctionPreferExternName(int i, bool prefer_extern_name);
 
   // Test that the number of source lines owned by the I'th function
   // in the module this.module_ is equal to EXPECTED.
@@ -609,6 +617,15 @@ void CUFixtureBase::TestFunction(int i, const string& name,
   EXPECT_EQ(address, function->address);
   EXPECT_EQ(size,    function->ranges[0].size);
   EXPECT_EQ(0U,      function->parameter_size);
+}
+
+void CUFixtureBase::TestFunctionPreferExternName(int i,
+                                                 bool prefer_extern_name) {
+  FillFunctions();
+  ASSERT_LT((size_t)i, functions_.size());
+
+  Module::Function* function = functions_[i];
+  EXPECT_EQ(prefer_extern_name, function->prefer_extern_name);
 }
 
 void CUFixtureBase::TestLineCount(int i, size_t expected) {

@@ -72,13 +72,13 @@ class ModuleSerializer {
   // Caller takes the ownership of the memory chunk (allocated on heap), and
   // owner should call delete [] to free the memory after use.
   char* Serialize(const BasicSourceLineResolver::Module& module,
-                  unsigned int* size = NULL);
+                  size_t* size = nullptr);
 
   // Given the string format symbol_data, produces a chunk of serialized data.
   // Caller takes ownership of the serialized data (on heap), and owner should
   // call delete [] to free the memory after use.
   char* SerializeSymbolFileData(const string& symbol_data,
-                                unsigned int* size = NULL);
+                                size_t* size = nullptr);
 
   // Serializes one loaded module with given moduleid in the basic source line
   // resolver, and loads the serialized data into the fast source line resolver.

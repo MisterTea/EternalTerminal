@@ -6,7 +6,7 @@
 
 #include <errno.h>
 
-#include "base/logging.h"
+#include "base/check_op.h"
 
 namespace base {
 namespace internal {

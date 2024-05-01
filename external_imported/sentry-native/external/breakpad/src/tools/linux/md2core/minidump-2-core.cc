@@ -30,6 +30,10 @@
 // Large parts lifted from the userspace core dumper:
 //   http://code.google.com/p/google-coredumper/
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <elf.h>
 #include <errno.h>
 #include <limits.h>
@@ -278,7 +282,7 @@ typedef struct prpsinfo {       /* Information about process                 */
 // We parse the minidump file and keep the parsed information in this structure
 struct CrashedProcess {
   CrashedProcess()
-      : crashing_tid(-1),
+      : exception{-1},
         auxv(NULL),
         auxv_length(0) {
     memset(&prps, 0, sizeof(prps));
@@ -302,7 +306,6 @@ struct CrashedProcess {
   };
   std::map<uint64_t, Mapping> mappings;
 
-  pid_t crashing_tid;
   int fatal_signal;
 
   struct Thread {
@@ -326,6 +329,7 @@ struct CrashedProcess {
     size_t stack_length;
   };
   std::vector<Thread> threads;
+  Thread exception;
 
   const uint8_t* auxv;
   size_t auxv_length;
@@ -579,25 +583,21 @@ ParseThreadRegisters(CrashedProcess::Thread* thread,
   thread->mcontext.__gregs[30] = rawregs->t5;
   thread->mcontext.__gregs[31] = rawregs->t6;
 
-# if __riscv_flen == 32
-  for (int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; ++i) {
-    thread->mcontext.__fpregs.__f.__f[i] = rawregs->float_save.regs[i];
+  // Breakpad only supports RISCV32 with 32 bit floating point.
+  // Breakpad only supports RISCV64 with 64 bit floating point.
+#if __riscv_xlen == 32
+  for (int i = 0; i < MD_CONTEXT_RISCV_FPR_COUNT; ++i) {
+    thread->mcontext.__fpregs.__f.__f[i] = rawregs->fpregs[i];
   }
-  thread->mcontext.__fpregs.__f.__fcsr = rawregs->float_save.fpcsr;
-# elif __riscv_flen == 64
-  for (int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; ++i) {
-    thread->mcontext.__fpregs.__d.__f[i] = rawregs->float_save.regs[i];
+  thread->mcontext.__fpregs.__f.__fcsr = rawregs->fcsr;
+#elif __riscv_xlen == 64
+  for (int i = 0; i < MD_CONTEXT_RISCV_FPR_COUNT; ++i) {
+    thread->mcontext.__fpregs.__d.__f[i] = rawregs->fpregs[i];
   }
-  thread->mcontext.__fpregs.__d.__fcsr = rawregs->float_save.fpcsr;
-# elif __riscv_flen == 128
-  for (int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; ++i) {
-    thread->mcontext.__fpregs.__q.__f[2*i] = rawregs->float_save.regs[i].high;
-    thread->mcontext.__fpregs.__q.__f[2*i+1] = rawregs->float_save.regs[i].low;
-  }
-  thread->mcontext.__fpregs.__q.__fcsr = rawregs->float_save.fpcsr;
-# else
-#  error "Unexpected __riscv_flen"
-# endif
+  thread->mcontext.__fpregs.__d.__fcsr = rawregs->fcsr;
+#else
+#error "Unexpected __riscv_xlen"
+#endif
 }
 #else
 #error "This code has not been ported to your platform yet"
@@ -995,10 +995,25 @@ ParseDSODebugInfo(const Options& options, CrashedProcess* crashinfo,
 
 static void
 ParseExceptionStream(const Options& options, CrashedProcess* crashinfo,
-                     const MinidumpMemoryRange& range) {
+                     const MinidumpMemoryRange& range,
+                     const MinidumpMemoryRange& full_file) {
   const MDRawExceptionStream* exp = range.GetData<MDRawExceptionStream>(0);
-  crashinfo->crashing_tid = exp->thread_id;
+  if (!exp) {
+    return;
+  }
+  if (options.verbose) {
+    fprintf(stderr,
+            "MD_EXCEPTION_STREAM:\n"
+            "Found exception thread %" PRIu32 " \n"
+            "\n\n",
+            exp->thread_id);
+  }
   crashinfo->fatal_signal = (int) exp->exception_record.exception_code;
+  crashinfo->exception = {};
+  crashinfo->exception.tid = exp->thread_id;
+  // crashinfo->threads[].tid == crashinfo->exception.tid provides the stack.
+  ParseThreadRegisters(&crashinfo->exception,
+                       full_file.Subrange(exp->thread_context));
 }
 
 static bool
@@ -1361,7 +1376,7 @@ main(int argc, const char* argv[]) {
         break;
       case MD_EXCEPTION_STREAM:
         ParseExceptionStream(options, &crashinfo,
-                             dump.Subrange(dirent->location));
+                             dump.Subrange(dirent->location), dump);
         break;
       case MD_MODULE_LIST_STREAM:
         ParseModuleStream(options, &crashinfo, dump.Subrange(dirent->location),
@@ -1477,16 +1492,21 @@ main(int argc, const char* argv[]) {
     return 1;
   }
 
-  for (unsigned i = 0; i < crashinfo.threads.size(); ++i) {
-    if (crashinfo.threads[i].tid == crashinfo.crashing_tid) {
-      WriteThread(options, crashinfo.threads[i], crashinfo.fatal_signal);
+  for (const auto& current_thread : crashinfo.threads) {
+    if (current_thread.tid == crashinfo.exception.tid) {
+      // Use the exception record's context for the crashed thread instead of
+      // the thread's own context. For the crashed thread the thread's own
+      // context is the state inside the exception handler. Using it would not
+      // result in the expected stack trace from the time of the crash.
+      // The stack memory has already been provided by current_thread.
+      WriteThread(options, crashinfo.exception, crashinfo.fatal_signal);
       break;
     }
   }
 
-  for (unsigned i = 0; i < crashinfo.threads.size(); ++i) {
-    if (crashinfo.threads[i].tid != crashinfo.crashing_tid)
-      WriteThread(options, crashinfo.threads[i], 0);
+  for (const auto& current_thread : crashinfo.threads) {
+    if (current_thread.tid != crashinfo.exception.tid)
+      WriteThread(options, current_thread, 0);
   }
 
   if (note_align) {

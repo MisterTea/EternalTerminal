@@ -42,6 +42,10 @@
 //  cpu: the CPU that the module was built for, typically "x86".
 //  symbol_file: the contents of the breakpad-format symbol file
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <windows.h>
 #include <dbghelp.h>
 #include <wininet.h>

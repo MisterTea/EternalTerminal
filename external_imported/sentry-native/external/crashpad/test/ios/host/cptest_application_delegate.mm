@@ -50,10 +50,6 @@
 #include "util/ios/raw_logging.h"
 #include "util/thread/thread.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 using OperationStatus = crashpad::CrashReportDatabase::OperationStatus;
 using Report = crashpad::CrashReportDatabase::Report;
 
@@ -110,13 +106,17 @@ GetProcessSnapshotMinidumpFromSinglePending() {
 
 UIWindow* GetAnyWindow() {
 #if defined(__IPHONE_15_0) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_15_0
+  UIWindowScene* scene = reinterpret_cast<UIWindowScene*>(
+      [UIApplication sharedApplication].connectedScenes.anyObject);
   if (@available(iOS 15.0, *)) {
-    UIWindowScene* scene = reinterpret_cast<UIWindowScene*>(
-        [UIApplication sharedApplication].connectedScenes.anyObject);
     return scene.keyWindow;
+  } else {
+    return [scene.windows firstObject];
   }
-#endif
+
+#else
   return [UIApplication sharedApplication].windows[0];
+#endif
 }
 
 [[clang::optnone]] void recurse(int counter) {
@@ -337,6 +337,10 @@ UIWindow* GetAnyWindow() {
   });
 }
 
+- (void)crashNotAnNSException {
+  @throw @"Boom";
+}
+
 - (void)crashUnhandledNSException {
   std::thread t([self]() {
     @autoreleasepool {
@@ -498,6 +502,34 @@ class CrashThread : public crashpad::Thread {
   mach_thread.Start();
   signal_thread.Join();
   mach_thread.Join();
+}
+
+class ThrowNSExceptionThread : public crashpad::Thread {
+ public:
+  explicit ThrowNSExceptionThread() : Thread() {}
+
+ private:
+  void ThreadMain() override {
+    for (int i = 0; i < 300; ++i) {
+      @try {
+        NSArray* empty_array = @[];
+        [empty_array objectAtIndex:42];
+      } @catch (NSException* exception) {
+      } @finally {
+      }
+    }
+  }
+};
+
+- (void)catchConcurrentNSException {
+  std::vector<ThrowNSExceptionThread> race_threads(30);
+  for (ThrowNSExceptionThread& race_thread : race_threads) {
+    race_thread.Start();
+  }
+
+  for (ThrowNSExceptionThread& race_thread : race_threads) {
+    race_thread.Join();
+  }
 }
 
 - (void)crashInHandlerReentrant {

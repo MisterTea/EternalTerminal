@@ -32,6 +32,10 @@
 //
 // Author: Mark Mentovai
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "processor/pathname_stripper.h"
 
 namespace google_breakpad {

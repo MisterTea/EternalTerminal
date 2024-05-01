@@ -54,7 +54,7 @@
 #include <lib/syslog/global.h>
 #endif
 
-#include "base/cxx17_backports.h"
+#include "base/check_op.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -102,7 +102,7 @@ std::string SystemErrorCodeToString(unsigned long error_code) {
                             error_code,
                             0,
                             msgbuf,
-                            static_cast<DWORD>(base::size(msgbuf)),
+                            static_cast<DWORD>(std::size(msgbuf)),
                             nullptr);
   if (len) {
     // Most system messages end in a period and a space. Remove the space if
@@ -244,7 +244,7 @@ LogMessage::~LogMessage() {
       // By default, messages are only readable by the admin group. Explicitly
       // make them readable by the user generating the messages.
       char euid_string[12];
-      snprintf(euid_string, base::size(euid_string), "%d", geteuid());
+      snprintf(euid_string, std::size(euid_string), "%d", geteuid());
       asl_set(asl_message.get(), ASL_KEY_READ_UID, euid_string);
 
       // Map Chrome log severities to ASL log levels.

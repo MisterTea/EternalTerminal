@@ -94,8 +94,18 @@ SENTRY_TEST(basic_transaction)
         sentry_transaction_context_set_name(opaque_tx_cxt, "");
         CHECK_STRING_PROPERTY(tx_cxt, "transaction", "");
 
+        char txn_ctx_name[] = { 'h', 'o', 'n', 'k', '.', 'b', 'e', 'e', 'p' };
+        sentry_transaction_context_set_name_n(
+            opaque_tx_cxt, txn_ctx_name, sizeof(txn_ctx_name));
+        CHECK_STRING_PROPERTY(tx_cxt, "transaction", "honk.beep");
+
         sentry_transaction_context_set_operation(opaque_tx_cxt, "");
         CHECK_STRING_PROPERTY(tx_cxt, "op", "");
+
+        char txn_ctx_op[] = { 'b', 'e', 'e', 'p', 'b', 'e', 'e', 'p' };
+        sentry_transaction_context_set_operation_n(
+            opaque_tx_cxt, txn_ctx_op, sizeof(txn_ctx_op));
+        CHECK_STRING_PROPERTY(tx_cxt, "op", "beepbeep");
 
         sentry_transaction_context_set_sampled(opaque_tx_cxt, 1);
         TEST_CHECK(
@@ -195,9 +205,13 @@ SENTRY_TEST(basic_function_transport_transaction)
     // consent was not given
     TEST_CHECK(!sentry_uuid_is_nil(&event_id));
     sentry_user_consent_give();
-
-    tx_cxt = sentry_transaction_context_new("honk", "beep");
+    char name[] = { 'h', 'o', 'n', 'k' };
+    char op[] = { 'b', 'e', 'e', 'p' };
+    tx_cxt
+        = sentry_transaction_context_new_n(name, sizeof(name), op, sizeof(op));
     tx = sentry_transaction_start(tx_cxt, sentry_value_new_null());
+    CHECK_STRING_PROPERTY(tx->inner, "transaction", "honk");
+    CHECK_STRING_PROPERTY(tx->inner, "op", "beep");
     event_id = sentry_transaction_finish(tx);
     TEST_CHECK(!sentry_uuid_is_nil(&event_id));
 
@@ -697,6 +711,43 @@ forward_headers_to(const char *key, const char *value, void *userdata)
     sentry_transaction_context_update_from_header(tx_ctx, key, value);
 }
 
+SENTRY_TEST(update_from_header_null_ctx)
+{
+    sentry_transaction_context_update_from_header(
+        NULL, "irrelevant-key", "irrelevant-value");
+}
+
+SENTRY_TEST(update_from_header_no_sampled_flag)
+{
+    sentry_options_t *options = sentry_options_new();
+    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+
+    sentry_options_set_traces_sample_rate(options, 1.0);
+    sentry_options_set_max_spans(options, 2);
+    sentry_init(options);
+
+    sentry_transaction_context_update_from_header(
+        NULL, "irrelevant-key", "irrelevant-value");
+    const char *trace_header
+        = "2674eb52d5874b13b560236d6c79ce8a-a0f9fdf04f1a63df";
+    sentry_transaction_context_t *tx_ctx
+        = sentry_transaction_context_new("wow!", NULL);
+    sentry_transaction_context_update_from_header(
+        tx_ctx, "sentry-trace", trace_header);
+    sentry_transaction_t *tx
+        = sentry_transaction_start(tx_ctx, sentry_value_new_null());
+
+    CHECK_STRING_PROPERTY(
+        tx->inner, "trace_id", "2674eb52d5874b13b560236d6c79ce8a");
+    CHECK_STRING_PROPERTY(tx->inner, "parent_span_id", "a0f9fdf04f1a63df");
+    sentry_value_t sampled = sentry_value_get_by_key(tx->inner, "sampled");
+    TEST_CHECK(sentry_value_get_type(sampled) == SENTRY_VALUE_TYPE_BOOL);
+    TEST_CHECK(sentry_value_is_true(sampled));
+
+    sentry__transaction_decref(tx);
+    sentry_close();
+}
+
 SENTRY_TEST(distributed_headers)
 {
     sentry_options_t *options = sentry_options_new();
@@ -715,9 +766,14 @@ SENTRY_TEST(distributed_headers)
     sentry_transaction_context_t *tx_ctx
         = sentry_transaction_context_new("wow!", NULL);
 
-    // check case insensitive headers, and bogus header names
+    // check case-insensitive headers, and bogus header names
     sentry_transaction_context_update_from_header(
         tx_ctx, "SeNtry-TrAcE", trace_header);
+    sentry_transaction_context_update_from_header(
+        tx_ctx, "sentry_trace", not_expected_header);
+    sentry_transaction_context_update_from_header(
+        tx_ctx, NULL, not_expected_header);
+    sentry_transaction_context_update_from_header(tx_ctx, "sentry-trace", NULL);
     sentry_transaction_context_update_from_header(
         tx_ctx, "nop", not_expected_header);
     sentry_transaction_context_update_from_header(
@@ -805,6 +861,247 @@ SENTRY_TEST(distributed_headers)
     sentry__transaction_decref(tx);
 
     sentry_close();
+}
+
+void
+check_after_set(sentry_value_t inner, const char *inner_key,
+    const char *item_key, const char *expected)
+{
+    sentry_value_t inner_tags = sentry_value_get_by_key(inner, inner_key);
+    TEST_CHECK_INT_EQUAL(1, sentry_value_get_length(inner_tags));
+    TEST_CHECK(
+        sentry_value_get_type(sentry_value_get_by_key(inner_tags, item_key))
+        == SENTRY_VALUE_TYPE_STRING);
+    CHECK_STRING_PROPERTY(inner_tags, item_key, expected);
+}
+
+void
+check_after_remove(
+    sentry_value_t inner, const char *inner_key, const char *item_key)
+{
+    sentry_value_t inner_tags = sentry_value_get_by_key(inner, inner_key);
+    TEST_CHECK_INT_EQUAL(0, sentry_value_get_length(inner_tags));
+    TEST_CHECK(IS_NULL(inner_tags, item_key));
+}
+
+SENTRY_TEST(txn_tagging)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+
+    sentry_transaction_set_tag(txn, "os.name", "Linux");
+    check_after_set(txn->inner, "tags", "os.name", "Linux");
+
+    sentry_transaction_remove_tag(txn, "os.name");
+    check_after_remove(txn->inner, "tags", "os.name");
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(span_tagging)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_span_t *span = sentry__span_new(txn, sentry_value_new_object());
+
+    sentry_span_set_tag(span, "os.name", "Linux");
+    check_after_set(span->inner, "tags", "os.name", "Linux");
+
+    sentry_span_remove_tag(span, "os.name");
+    check_after_remove(span->inner, "tags", "os.name");
+
+    sentry__span_decref(span);
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(txn_tagging_n)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+
+    char tag[] = { 'o', 's', '.', 'n', 'a', 'm', 'e' };
+    char tag_val[] = { 'L', 'i', 'n', 'u', 'x' };
+    sentry_transaction_set_tag_n(
+        txn, tag, sizeof(tag), tag_val, sizeof(tag_val));
+    check_after_set(txn->inner, "tags", "os.name", "Linux");
+
+    sentry_transaction_remove_tag_n(txn, tag, sizeof(tag));
+    check_after_remove(txn->inner, "tags", "os.name");
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(span_tagging_n)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_span_t *span = sentry__span_new(txn, sentry_value_new_object());
+
+    char tag[] = { 'o', 's', '.', 'n', 'a', 'm', 'e' };
+    char tag_val[] = { 'L', 'i', 'n', 'u', 'x' };
+    sentry_span_set_tag_n(span, tag, sizeof(tag), tag_val, sizeof(tag_val));
+    check_after_set(span->inner, "tags", "os.name", "Linux");
+
+    sentry_span_remove_tag_n(span, tag, sizeof(tag));
+    check_after_remove(span->inner, "tags", "os.name");
+
+    sentry__span_decref(span);
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(txn_name)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+
+    char *txn_name = "the_txn";
+    sentry_transaction_set_name(txn, txn_name);
+    sentry_value_t txn_name_value
+        = sentry_value_get_by_key(txn->inner, "transaction");
+    TEST_CHECK(
+        sentry_value_get_type(txn_name_value) == SENTRY_VALUE_TYPE_STRING);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(txn_name_value), txn_name);
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(txn_data)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+
+    sentry_transaction_set_data(
+        txn, "os.name", sentry_value_new_string("Linux"));
+    check_after_set(txn->inner, "data", "os.name", "Linux");
+
+    sentry_transaction_remove_data(txn, "os.name");
+    check_after_remove(txn->inner, "data", "os.name");
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(span_data)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_span_t *span = sentry__span_new(txn, sentry_value_new_object());
+
+    sentry_span_set_data(span, "os.name", sentry_value_new_string("Linux"));
+    check_after_set(span->inner, "data", "os.name", "Linux");
+
+    sentry_span_remove_data(span, "os.name");
+    check_after_remove(span->inner, "data", "os.name");
+
+    sentry__span_decref(span);
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(txn_name_n)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    char txn_name[] = { 't', 'h', 'e', '_', 't', 'x', 'n' };
+    sentry_transaction_set_name_n(txn, txn_name, sizeof(txn_name));
+
+    sentry_value_t txn_name_value
+        = sentry_value_get_by_key(txn->inner, "transaction");
+    TEST_CHECK(
+        sentry_value_get_type(txn_name_value) == SENTRY_VALUE_TYPE_STRING);
+    TEST_CHECK_STRING_EQUAL(sentry_value_as_string(txn_name_value), "the_txn");
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(txn_data_n)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+
+    char data_k[] = { 'o', 's', '.', 'n', 'a', 'm', 'e' };
+    char data_v[] = { 'L', 'i', 'n', 'u', 'x' };
+    sentry_value_t data_value
+        = sentry_value_new_string_n(data_v, sizeof(data_v));
+    sentry_transaction_set_data_n(txn, data_k, sizeof(data_k), data_value);
+    check_after_set(txn->inner, "data", "os.name", "Linux");
+
+    sentry_transaction_remove_data_n(txn, data_k, sizeof(data_k));
+    check_after_remove(txn->inner, "data", "os.name");
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(span_data_n)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_span_t *span = sentry__span_new(txn, sentry_value_new_object());
+
+    char data_k[] = { 'o', 's', '.', 'n', 'a', 'm', 'e' };
+    char data_v[] = { 'L', 'i', 'n', 'u', 'x' };
+    sentry_value_t data_value
+        = sentry_value_new_string_n(data_v, sizeof(data_v));
+    sentry_span_set_data_n(span, data_k, sizeof(data_k), data_value);
+    check_after_set(span->inner, "data", "os.name", "Linux");
+
+    sentry_span_remove_data_n(span, data_k, sizeof(data_k));
+    check_after_remove(span->inner, "data", "os.name");
+
+    sentry__span_decref(span);
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(sentry__value_span_new_requires_unfinished_parent)
+{
+    sentry_value_t parent = sentry_value_new_object();
+    // timestamps are typically iso8601 strings, but this is irrelevant to
+    // `sentry__value_span_new` which just wants `timestamp` to not be null.
+    sentry_value_set_by_key(parent, "timestamp", sentry_value_new_object());
+    sentry_value_t inner_span = sentry__value_span_new(0, parent, NULL, NULL);
+    TEST_CHECK(sentry_value_is_null(inner_span));
+
+    sentry_value_decref(parent);
+}
+
+SENTRY_TEST(set_tag_allows_null_tag_and_value)
+{
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_transaction_set_tag(txn, NULL, NULL);
+    sentry_value_t tags = sentry_value_get_by_key(txn->inner, "tags");
+    TEST_CHECK(!sentry_value_is_null(tags));
+    TEST_CHECK(sentry_value_get_type(tags) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK(sentry_value_get_length(tags) == 0);
+
+    sentry_transaction_set_tag(txn, "os.name", NULL);
+    tags = sentry_value_get_by_key(txn->inner, "tags");
+    TEST_CHECK(!sentry_value_is_null(tags));
+    TEST_CHECK(sentry_value_get_type(tags) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK(sentry_value_get_length(tags) == 1);
+    TEST_CHECK(IS_NULL(tags, "os.name"));
+
+    sentry__transaction_decref(txn);
+}
+
+SENTRY_TEST(set_tag_cuts_value_at_length_200)
+{
+    const char test_value[]
+        = "012345678901234567890123456789012345678901234567890123456789"
+          "012345678901234567890123456789012345678901234567890123456789"
+          "012345678901234567890123456789012345678901234567890123456789"
+          "012345678901234567890123456789012345678901234567890123456789";
+
+    sentry_transaction_t *txn
+        = sentry__transaction_new(sentry_value_new_object());
+    sentry_transaction_set_tag(txn, "cut-off", test_value);
+    sentry_value_t tags = sentry_value_get_by_key(txn->inner, "tags");
+    TEST_CHECK(!sentry_value_is_null(tags));
+    TEST_CHECK(sentry_value_get_type(tags) == SENTRY_VALUE_TYPE_OBJECT);
+    TEST_CHECK(sentry_value_get_length(tags) == 1);
+    TEST_CHECK_INT_EQUAL(strlen(sentry_value_as_string(
+                             sentry_value_get_by_key(tags, "cut-off"))),
+        200);
+
+    sentry__transaction_decref(txn);
 }
 
 #undef IS_NULL

@@ -38,6 +38,10 @@
 // generate an executable with STABS symbols (needs -m32), or -gdwarf-2 for one
 // with DWARF symbols (32- or 64-bit)
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdio.h>
 #include <sys/types.h>
 #include <unistd.h>

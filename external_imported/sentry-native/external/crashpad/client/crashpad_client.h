@@ -27,10 +27,13 @@
 #include "build/build_config.h"
 #include "build/chromeos_buildflags.h"
 #include "util/file/file_io.h"
+
+#if !BUILDFLAG(IS_FUCHSIA)
 #include "util/misc/capture_context.h"
+#endif  // !BUILDFLAG(IS_FUCHSIA)
 
 #if BUILDFLAG(IS_APPLE)
-#include "base/mac/scoped_mach_port.h"
+#include "base/apple/scoped_mach_port.h"
 #elif BUILDFLAG(IS_WIN)
 #include <windows.h>
 #include "util/win/scoped_handle.h"
@@ -124,6 +127,7 @@ class CrashpadClient {
                     const base::FilePath& database,
                     const base::FilePath& metrics_dir,
                     const std::string& url,
+                    const std::string& http_proxy,
                     const std::map<std::string, std::string>& annotations,
                     const std::vector<std::string>& arguments,
                     bool restartable,
@@ -363,6 +367,8 @@ class CrashpadClient {
   //!     path as its `--metrics-dir` argument.
   //! \param[in] url The URL of an upload server. The handler will be started
   //!     with this URL as its `--url` argument.
+  //! \param[in] http_proxy The URL of an HTTP proxy. The handler will be started
+  //!     with this URL as its `--http-proxy` argument.
   //! \param[in] annotations Process annotations to set in each crash report.
   //!     The handler will be started with an `--annotation` argument for each
   //!     element in this map.
@@ -377,6 +383,7 @@ class CrashpadClient {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments = {});
@@ -394,6 +401,8 @@ class CrashpadClient {
   //!     path as its `--metrics-dir` argument.
   //! \param[in] url The URL of an upload server. The handler will be started
   //!     with this URL as its `--url` argument.
+  //! \param[in] http_proxy The URL of an HTTP proxy. The handler will be started
+  //!     with this URL as its `--http-proxy` argument.
   //! \param[in] annotations Process annotations to set in each crash report.
   //!     The handler will be started with an `--annotation` argument for each
   //!     element in this map.
@@ -410,6 +419,7 @@ class CrashpadClient {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       int socket);
@@ -433,7 +443,7 @@ class CrashpadClient {
   static void CrashWithoutDump(const std::string& message);
 
   //! \brief The type for custom handlers installed by clients.
-  using FirstChanceHandlerLinux = bool (*)(int, siginfo_t*, ucontext_t*);
+  using FirstChanceHandler = bool (*)(int, siginfo_t*, ucontext_t*);
 
   //! \brief Installs a custom crash signal handler which runs before the
   //!     currently installed Crashpad handler.
@@ -451,7 +461,25 @@ class CrashpadClient {
   //! signal handler is run.
   //!
   //! \param[in] handler The custom crash signal handler to install.
-  static void SetFirstChanceExceptionHandler(FirstChanceHandlerLinux handler);
+  static void SetFirstChanceExceptionHandler(FirstChanceHandler handler);
+
+  //! \brief Installs a custom crash signal handler which runs after the
+  //!     currently installed Crashpad handler.
+  //!
+  //! Handling signals appropriately can be tricky and use of this method
+  //! should be avoided, if possible.
+  //!
+  //! A handler must have already been installed before calling this method.
+  //!
+  //! The custom handler runs in a signal handler context and must be safe for
+  //! that purpose.
+  //!
+  //! If the custom handler returns `true`, the signal is not reraised.
+  //!
+  //! \param[in] handler The custom crash signal handler to install.
+  static void SetLastChanceExceptionHandler(bool (*handler)(int,
+                                                            siginfo_t*,
+                                                            ucontext_t*));
 
   //! \brief Configures a set of signals that shouldn't have Crashpad signal
   //!     handlers installed.
@@ -624,7 +652,7 @@ class CrashpadClient {
   //!     Crashpad exception handler service.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
-  bool SetHandlerMachPort(base::mac::ScopedMachSendRight exception_port);
+  bool SetHandlerMachPort(base::apple::ScopedMachSendRight exception_port);
 
   //! \brief Retrieves a send right to the process’ crash handler Mach port.
   //!
@@ -645,12 +673,12 @@ class CrashpadClient {
   //!     SetHandlerMachService(). This method must only be called after a
   //!     successful call to one of those methods. `MACH_PORT_NULL` on failure
   //!     with a message logged.
-  base::mac::ScopedMachSendRight GetHandlerMachPort() const;
+  base::apple::ScopedMachSendRight GetHandlerMachPort() const;
 #endif
 
 #if BUILDFLAG(IS_WIN) || DOXYGEN
   //! \brief The type for custom handlers installed by clients.
-  using FirstChanceHandlerWin = bool (*)(EXCEPTION_POINTERS*);
+  using FirstChanceHandler = bool (*)(EXCEPTION_POINTERS*);
 
   //! \brief Installs a custom unhandled exception filter which runs before the
   //!     currently installed Crashpad handler.
@@ -668,7 +696,7 @@ class CrashpadClient {
   //! unhandled exception handler is run.
   //!
   //! \param[in] handler The custom unhandled exception handler to install.
-  static void SetFirstChanceExceptionHandler(FirstChanceHandlerWin handler);
+  static void SetFirstChanceExceptionHandler(FirstChanceHandler handler);
 
   //! \brief Sets the IPC pipe of a presumably-running Crashpad handler process
   //!     which was started with StartHandler() or by other compatible means
@@ -807,11 +835,17 @@ class CrashpadClient {
 #endif
 
  private:
+#if BUILDFLAG(IS_WIN)
+  //!  \brief Registers process handlers for the client.
+  void RegisterHandlers();
+#endif
+
 #if BUILDFLAG(IS_APPLE)
-  base::mac::ScopedMachSendRight exception_port_;
+  base::apple::ScopedMachSendRight exception_port_;
 #elif BUILDFLAG(IS_WIN)
   std::wstring ipc_pipe_;
   ScopedKernelHANDLE handler_start_thread_;
+  ScopedVectoredExceptionRegistration vectored_handler_;
 #elif BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || BUILDFLAG(IS_ANDROID)
   std::set<int> unhandled_signals_;
 #endif  // BUILDFLAG(IS_APPLE)

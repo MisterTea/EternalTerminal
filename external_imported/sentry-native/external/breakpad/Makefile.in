@@ -2185,12 +2185,10 @@ DEPDIR = @DEPDIR@
 ECHO_C = @ECHO_C@
 ECHO_N = @ECHO_N@
 ECHO_T = @ECHO_T@
-EGREP = @EGREP@
 ETAGS = @ETAGS@
 EXEEXT = @EXEEXT@
 GMOCK_CFLAGS = @GMOCK_CFLAGS@
 GMOCK_LIBS = @GMOCK_LIBS@
-GREP = @GREP@
 GTEST_CFLAGS = @GTEST_CFLAGS@
 GTEST_LIBS = @GTEST_LIBS@
 HAVE_CXX17 = @HAVE_CXX17@
@@ -2697,7 +2695,7 @@ src_tools_linux_dump_syms_dump_syms_CXXFLAGS = \
 
 src_tools_linux_dump_syms_dump_syms_LDADD = \
 	$(RUSTC_DEMANGLE_LIBS) \
-	-lz
+	-lz -lzstd
 
 src_tools_linux_md2core_minidump_2_core_SOURCES = \
 	src/common/linux/memory_mapped_file.cc \
@@ -2830,7 +2828,7 @@ src_common_dumper_unittest_LDADD = \
 	$(TEST_LIBS) \
 	$(RUSTC_DEMANGLE_LIBS) \
 	$(PTHREAD_CFLAGS) $(PTHREAD_LIBS) \
-	-lz
+	-lz -lzstd
 
 src_common_mac_macho_reader_unittest_SOURCES = \
 	src/common/dwarf_cfi_to_module.cc \
@@ -3734,10 +3732,12 @@ EXTRA_DIST = \
 	src/third_party/curl/typecheck-gcc.h \
 	src/third_party/curl/types.h \
 	src/third_party/mac_headers/architecture/byte_order.h \
+	src/third_party/mac_headers/arm/_types.h \
 	src/third_party/mac_headers/i386/_types.h \
 	src/third_party/mac_headers/mach/boolean.h \
+	src/third_party/mac_headers/mach/arm/boolean.h \
+	src/third_party/mac_headers/mach/arm/vm_types.h \
 	src/third_party/mac_headers/mach/i386/boolean.h \
-	src/third_party/mac_headers/mach/i386/vm_param.h \
 	src/third_party/mac_headers/mach/i386/vm_types.h \
 	src/third_party/mac_headers/mach/machine/boolean.h \
 	src/third_party/mac_headers/mach/machine.h \

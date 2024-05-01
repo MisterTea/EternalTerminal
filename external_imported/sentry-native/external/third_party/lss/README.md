@@ -39,6 +39,7 @@ the header itself as this list might be out of date.
 * MIPS 32-bit o32 ABI
 * MIPS 32-bit n32 ABI
 * MIPS 64-bit n64 ABI
+* LOONGARCH 64-bit ABI
 
 ## API
 
@@ -130,7 +131,7 @@ It only compiles things (does not execute at all).
 
 If you commit a change to LSS, please also commit a Chromium change to update
 `lss_revision` in
-[Chromium's DEPS](https://chromium.googlesource.com/chromium/src/+/master/DEPS)
+[Chromium's DEPS](https://chromium.googlesource.com/chromium/src/+/HEAD/DEPS)
 file.
 
 This ensures that the LSS change gets tested, so that people who commit later

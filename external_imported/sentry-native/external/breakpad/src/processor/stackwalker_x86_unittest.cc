@@ -30,6 +30,10 @@
 
 // stackwalker_x86_unittest.cc: Unit tests for StackwalkerX86 class.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string>
 #include <vector>
 

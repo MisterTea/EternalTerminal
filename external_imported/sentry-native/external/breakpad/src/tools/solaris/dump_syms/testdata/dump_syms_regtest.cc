@@ -28,6 +28,10 @@
 
 // ./dump_syms dump_syms_regtest.pdb > dump_syms_regtest.sym
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
 namespace google_breakpad {
 
 class C {

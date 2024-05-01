@@ -52,8 +52,16 @@ static std::string getHome() {
 		res = homeEnv;
 		return res;
 	}
-	struct passwd* pw = getpwuid(uid);
-	if (!pw) {
+	struct passwd* pw = nullptr;
+	struct passwd pwd;
+	long bufsize = sysconf(_SC_GETPW_R_SIZE_MAX);
+	if (bufsize < 0) {
+		bufsize = 16384;
+	}
+	std::vector<char> buffer;
+	buffer.resize(bufsize);
+	int error_code = getpwuid_r(uid, &pwd, buffer.data(), buffer.size(), &pw);
+	if (error_code) {
 		throw std::runtime_error("Unable to get passwd struct.");
 	}
 	const char* tempRes = pw->pw_dir;
@@ -64,7 +72,7 @@ static std::string getHome() {
 	return res;
 }
 
-#endif 
+#endif
 
 #ifdef _WIN32
 // Make sure we don't bring in all the extra junk with windows.h
@@ -80,23 +88,28 @@ static std::string getHome() {
 // For SHGetFolderPathW and various CSIDL "magic numbers"
 #include <shlobj.h>
 
-static std::string win32_utf16_to_utf8(const wchar_t* wstr) {
+namespace sago {
+namespace internal {
+
+std::string win32_utf16_to_utf8(const wchar_t* wstr) {
 	std::string res;
 	// If the 6th parameter is 0 then WideCharToMultiByte returns the number of bytes needed to store the result.
 	int actualSize = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, nullptr, 0, nullptr, nullptr);
 	if (actualSize > 0) {
 		//If the converted UTF-8 string could not be in the initial buffer. Allocate one that can hold it.
 		std::vector<char> buffer(actualSize);
-		actualSize = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &buffer[0], buffer.size(), nullptr, nullptr);
+		actualSize = WideCharToMultiByte(CP_UTF8, 0, wstr, -1, &buffer[0], static_cast<int>(buffer.size()), nullptr, nullptr);
 		res = buffer.data();
 	}
 	if (actualSize == 0) {
 		// WideCharToMultiByte return 0 for errors.
-		const std::string errorMsg = "UTF16 to UTF8 failed with error code: " + GetLastError();
-		throw std::runtime_error(errorMsg.c_str());
+		throw std::runtime_error("UTF16 to UTF8 failed with error code: " + std::to_string(GetLastError()));
 	}
 	return res;
 }
+
+}  // namesapce internal
+}  // namespace sago
 
 class FreeCoTaskMemory {
 	LPWSTR pointer = NULL;
@@ -116,7 +129,7 @@ static std::string GetKnownWindowsFolder(REFKNOWNFOLDERID folderId, const char* 
 	if (!SUCCEEDED(hr)) {
 		throw std::runtime_error(errorMsg);
 	}
-	return win32_utf16_to_utf8(wszPath);
+	return sago::internal::win32_utf16_to_utf8(wszPath);
 }
 
 static std::string GetAppData() {
@@ -137,6 +150,7 @@ static std::string GetAppDataLocal() {
 #include <sys/types.h>
 // For strlen and strtok
 #include <cstring>
+#include <sstream>
 //Typically Linux. For easy reading the comments will just say Linux but should work with most *nixes
 
 static void throwOnRelative(const char* envName, const char* envValue) {
@@ -161,34 +175,37 @@ static std::string getLinuxFolderDefault(const char* envName, const char* defaul
 	return res;
 }
 
-static void appendExtraFoldersTokenizer(const char* envName, const char* envValue, std::vector<std::string>& folders) {
-	std::vector<char> buffer(envValue, envValue + std::strlen(envValue) + 1);
-	char* p = std::strtok ( &buffer[0], ":");
-	while (p != nullptr) {
-		if (p[0] == '/') {
-			folders.push_back(p);
-		}
-		else {
-			//Unless the system is wrongly configured this should never happen... But of course some systems will be incorectly configured.
-			//The XDG documentation indicates that the folder should be ignored but that the program should continue.
-			std::cerr << "Skipping path \"" << p << "\" in \"" << envName << "\" because it does not start with a \"/\"\n";
-		}
-		p = std::strtok (nullptr, ":");
-	}
-}
-
 static void appendExtraFolders(const char* envName, const char* defaultValue, std::vector<std::string>& folders) {
 	const char* envValue = std::getenv(envName);
 	if (!envValue) {
 		envValue = defaultValue;
 	}
-	appendExtraFoldersTokenizer(envName, envValue, folders);
+	sago::internal::appendExtraFoldersTokenizer(envName, envValue, folders);
 }
 
 #endif
 
 
 namespace sago {
+
+#if !defined(_WIN32) && !defined(__APPLE__)
+namespace internal {
+void appendExtraFoldersTokenizer(const char* envName, const char* envValue, std::vector<std::string>& folders) {
+	std::stringstream ss(envValue);
+	std::string value;
+	while (std::getline(ss, value, ':')) {
+		if (value[0] == '/') {
+			folders.push_back(value);
+		}
+		else {
+			//Unless the system is wrongly configured this should never happen... But of course some systems will be incorectly configured.
+			//The XDG documentation indicates that the folder should be ignored but that the program should continue.
+			std::cerr << "Skipping path \"" << value << "\" in \"" << envName << "\" because it does not start with a \"/\"\n";
+		}
+	}
+}
+}
+#endif
 
 std::string getDataHome() {
 #ifdef _WIN32
@@ -217,6 +234,16 @@ std::string getCacheDir() {
 	return getHome()+"/Library/Caches";
 #else
 	return getLinuxFolderDefault("XDG_CACHE_HOME", ".cache");
+#endif
+}
+
+std::string getStateDir() {
+#ifdef _WIN32
+	return GetAppDataLocal();
+#elif defined(__APPLE__)
+	return getHome()+"/Library/Application Support";
+#else
+	return getLinuxFolderDefault("XDG_STATE_HOME", ".local/state");
 #endif
 }
 
@@ -255,7 +282,8 @@ static void PlatformFoldersAddFromFile(const std::string& filename, std::map<std
 			std::size_t valueEnd = line.find('"', valueStart+1);
 			std::string value = line.substr(valueStart+1, valueEnd - valueStart - 1);
 			folders[key] = value;
-		} catch (std::exception&  e) {
+		}
+		catch (std::exception&  e) {
 			std::cerr << "WARNING: Failed to process \"" << line << "\" from \"" << filename << "\". Error: "<< e.what() << "\n";
 			continue;
 		}

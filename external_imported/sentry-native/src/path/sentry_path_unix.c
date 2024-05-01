@@ -169,14 +169,20 @@ sentry__path_dir(const sentry_path_t *path)
 }
 
 sentry_path_t *
-sentry__path_from_str(const char *s)
+sentry__path_from_str_n(const char *s, size_t s_len)
 {
-    char *path = sentry__string_clone(s);
+    char *path = sentry__string_clone_n(s, s_len);
     if (!path) {
         return NULL;
     }
     // NOTE: function will free `path` on error
     return sentry__path_from_str_owned(path);
+}
+
+sentry_path_t *
+sentry__path_from_str(const char *s)
+{
+    return s ? sentry__path_from_str_n(s, strlen(s)) : NULL;
 }
 
 sentry_path_t *

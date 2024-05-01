@@ -35,6 +35,10 @@ void HTTPTransport::SetURL(const std::string& url) {
   url_ = url;
 }
 
+void HTTPTransport::SetHTTPProxy(const std::string& http_proxy) {
+  http_proxy_ = http_proxy;
+}
+
 void HTTPTransport::SetMethod(const std::string& method) {
   method_ = method;
 }

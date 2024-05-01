@@ -29,6 +29,10 @@
 // linux_core_dumper_unittest.cc:
 // Unit tests for google_breakpad::LinuxCoreDumoer.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string>
 
 #include "breakpad_googletest_includes.h"

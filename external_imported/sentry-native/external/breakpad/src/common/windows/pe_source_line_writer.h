@@ -31,7 +31,6 @@
 
 #include <string>
 
-#include "common/basictypes.h"
 #include "common/windows/module_info.h"
 
 namespace google_breakpad {
@@ -44,6 +43,8 @@ using std::wstring;
 class PESourceLineWriter {
 public:
   explicit PESourceLineWriter(const wstring& pe_file);
+  PESourceLineWriter(const PESourceLineWriter&) = delete;
+  void operator=(const PESourceLineWriter&) = delete;
   ~PESourceLineWriter();
 
   // Writes Breakpad symbols from the pe file to |symbol_file|.
@@ -58,9 +59,7 @@ public:
   bool GetPEInfo(PEModuleInfo* info);
 
 private:
-  const wstring pe_file_;
-
-  DISALLOW_COPY_AND_ASSIGN(PESourceLineWriter);
+ const wstring pe_file_;
 };
 
 }  // namespace google_breakpad

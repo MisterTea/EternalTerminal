@@ -30,6 +30,10 @@
 
 // dwarf_line_to_module.cc: Unit tests for google_breakpad::DwarfLineToModule.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <vector>
 
 #include "breakpad_googletest_includes.h"

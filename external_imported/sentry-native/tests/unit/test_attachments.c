@@ -35,7 +35,8 @@ SENTRY_TEST(lazy_attachments)
     sentry_options_set_transport(options,
         sentry_new_function_transport(
             send_envelope_test_attachments, &testdata));
-    sentry_options_set_release(options, "prod");
+    char rel[] = { 't', 'e', 's', 't' };
+    sentry_options_set_release_n(options, rel, sizeof(rel));
 
     sentry_options_add_attachment(options, PREFIX ".existing-file-attachment");
     sentry_options_add_attachment(
@@ -53,6 +54,7 @@ SENTRY_TEST(lazy_attachments)
 
     char *serialized
         = sentry_stringbuilder_take_string(&testdata.serialized_envelope);
+    TEST_CHECK(strstr(serialized, "\"release\":\"test\"") != NULL);
     TEST_CHECK(strstr(serialized,
                    "{\"type\":\"attachment\",\"length\":3,"
                    "\"filename\":\".existing-file-attachment\"}\n"

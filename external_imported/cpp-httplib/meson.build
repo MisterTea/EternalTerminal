@@ -19,7 +19,6 @@ project(
 # Check just in case downstream decides to edit the source
 # and add a project version
 version = meson.project_version()
-python3 = find_program('python3')
 if version == 'undefined'
   cxx = meson.get_compiler('cpp')
   version = cxx.get_define('CPPHTTPLIB_VERSION',
@@ -28,15 +27,20 @@ if version == 'undefined'
   assert(version != '', 'failed to get version from httplib.h')
 endif
 
-message('cpp-httplib version ' + version)
-
 deps = [dependency('threads')]
 args = []
 
-openssl_dep = dependency('openssl', version: '>=1.1.1', required: get_option('cpp-httplib_openssl'))
+openssl_dep = dependency('openssl', version: '>=3.0.0', required: get_option('cpp-httplib_openssl'))
 if openssl_dep.found()
   deps += openssl_dep
   args += '-DCPPHTTPLIB_OPENSSL_SUPPORT'
+  if host_machine.system() == 'darwin'
+    macosx_keychain_dep = dependency('appleframeworks', modules: ['CoreFoundation', 'Security'], required: get_option('cpp-httplib_macosx_keychain'))
+    if macosx_keychain_dep.found()
+        deps += macosx_keychain_dep
+        args += '-DCPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN'
+    endif  
+  endif
 endif
 
 zlib_dep = dependency('zlib', required: get_option('cpp-httplib_zlib'))
@@ -64,6 +68,8 @@ endif
 cpp_httplib_dep = dependency('', required: false)
 
 if get_option('cpp-httplib_compile')
+  python3 = find_program('python3')
+
   httplib_ch = custom_target(
     'split',
     input: 'httplib.h',
@@ -78,6 +84,7 @@ if get_option('cpp-httplib_compile')
     dependencies: deps,
     cpp_args: args,
     version: version,
+    soversion: version.split('.')[0] + '.' + version.split('.')[1],
     install: true
   )
   cpp_httplib_dep = declare_dependency(compile_args: args, dependencies: deps, link_with: lib, sources: httplib_ch[1])

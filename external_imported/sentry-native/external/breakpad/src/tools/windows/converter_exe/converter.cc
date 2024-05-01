@@ -31,6 +31,10 @@
 #pragma comment(lib, "diaguids.lib")
 #pragma comment(lib, "imagehlp.lib")
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <cassert>
 #include <cstdio>
 #include <ctime>

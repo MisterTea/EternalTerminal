@@ -30,6 +30,7 @@ set( SOURCES_IDIOMATIC_EXAMPLES
     110-Fix-ClassFixture.cpp
     120-Bdd-ScenarioGivenWhenThen.cpp
     210-Evt-EventListeners.cpp
+    232-Cfg-CustomMain.cpp
     300-Gen-OwnGenerator.cpp
     301-Gen-MapTypeConversion.cpp
     302-Gen-Table.cpp
@@ -53,7 +54,7 @@ set(ALL_EXAMPLE_TARGETS
 )
 
 foreach( name ${ALL_EXAMPLE_TARGETS} )
-    target_link_libraries( ${name} Catch2 Catch2WithMain )
+    target_link_libraries( ${name} Catch2WithMain )
 endforeach()
 
 

@@ -31,6 +31,10 @@
 //
 // Author: lambxsy@google.com (Siyang Xie)
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "processor/module_comparer.h"
 
 #include <map>
@@ -64,7 +68,7 @@ bool ModuleComparer::Compare(const string& symbol_data) {
   buffer.reset();
 
   // Serialize BasicSourceLineResolver::Module.
-  unsigned int serialized_size = 0;
+  size_t serialized_size = 0;
   scoped_array<char> serialized_data(
       serializer_.Serialize(*(basic_module.get()), &serialized_size));
   ASSERT_TRUE(serialized_data.get());

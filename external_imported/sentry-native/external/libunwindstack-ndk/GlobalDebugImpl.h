@@ -410,9 +410,6 @@ std::unique_ptr<GlobalDebugInterface<Symfile>> CreateGlobalDebugImpl(
       return std::make_unique<Impl>(arch, jit_memory, search_libs, global_variable_name);
     }
     case ARCH_ARM: {
-#ifdef SENTRY_REMOVED
-    case ARCH_MIPS: {
-#endif // SENTRY_REMOVED
       using Impl = GlobalDebugImpl<Symfile, uint32_t, Uint64_A>;
       static_assert(offsetof(typename Impl::JITCodeEntry, symfile_size) == 16, "layout");
       static_assert(offsetof(typename Impl::JITCodeEntry, seqlock) == 32, "layout");
@@ -423,7 +420,6 @@ std::unique_ptr<GlobalDebugInterface<Symfile>> CreateGlobalDebugImpl(
     case ARCH_ARM64:
     case ARCH_X86_64: {
 #ifdef SENTRY_REMOVED
-    case ARCH_MIPS64:
     case ARCH_RISCV64: {
 #endif // SENTRY_REMOVED
       using Impl = GlobalDebugImpl<Symfile, uint64_t, Uint64_A>;

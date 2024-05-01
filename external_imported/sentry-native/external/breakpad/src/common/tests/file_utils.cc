@@ -29,6 +29,10 @@
 // file_utils.cc: Implement utility functions for file manipulation.
 // See file_utils.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <fcntl.h>
 #include <stdio.h>
 #include <string.h>

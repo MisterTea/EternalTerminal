@@ -23,8 +23,10 @@
 #include <string.h>
 
 #include <memory>
+#include <string_view>
 
 #include "base/atomicops.h"
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/scoped_generic.h"
 #include "base/strings/stringprintf.h"
@@ -63,7 +65,7 @@ HANDLE g_signal_exception = INVALID_HANDLE_VALUE;
 // Where we store the exception information that the crash handler reads.
 ExceptionInformation g_crash_exception_information;
 
-CrashpadClient::FirstChanceHandlerWin first_chance_handler_ = nullptr;
+CrashpadClient::FirstChanceHandler first_chance_handler_ = nullptr;
 
 // Guards multiple simultaneous calls to DumpWithoutCrash() in the client.
 base::Lock* g_non_crash_dump_lock = nullptr;
@@ -203,6 +205,17 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   return EXCEPTION_CONTINUE_SEARCH;
 }
 
+#if !defined(ADDRESS_SANITIZER)
+LONG WINAPI HandleHeapCorruption(EXCEPTION_POINTERS* exception_pointers) {
+  if (exception_pointers->ExceptionRecord->ExceptionCode ==
+      STATUS_HEAP_CORRUPTION) {
+    return UnhandledExceptionHandler(exception_pointers);
+  }
+
+  return EXCEPTION_CONTINUE_SEARCH;
+}
+#endif
+
 void HandleAbortSignal(int signum) {
   DCHECK_EQ(signum, SIGABRT);
 
@@ -331,6 +344,7 @@ struct BackgroundHandlerStartThreadData {
       const base::FilePath& database,
       const base::FilePath& metrics_dir,
       const std::string& url,
+      const std::string& http_proxy,
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
@@ -340,6 +354,7 @@ struct BackgroundHandlerStartThreadData {
         database(database),
         metrics_dir(metrics_dir),
         url(url),
+        http_proxy(http_proxy),
         annotations(annotations),
         arguments(arguments),
         attachments(attachments),
@@ -350,6 +365,7 @@ struct BackgroundHandlerStartThreadData {
   base::FilePath database;
   base::FilePath metrics_dir;
   std::string url;
+  std::string http_proxy;
   std::map<std::string, std::string> annotations;
   std::vector<std::string> arguments;
   std::vector<base::FilePath> attachments;
@@ -403,6 +419,11 @@ bool StartHandlerProcess(
   if (!data->url.empty()) {
     AppendCommandLineArgument(
         FormatArgumentString("url", base::UTF8ToWide(data->url)),
+        &command_line);
+  }
+  if (!data->http_proxy.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("http-proxy", base::UTF8ToWide(data->http_proxy)),
         &command_line);
   }
   for (const auto& kv : data->annotations) {
@@ -520,7 +541,7 @@ bool StartHandlerProcess(
   // invalid command line where the first argument needed by rundll32 is not in
   // the correct format as required in:
   // https://support.microsoft.com/en-ca/help/164787/info-windows-rundll-and-rundll32-interface
-  const base::WStringPiece kRunDll32Exe(L"rundll32.exe");
+  const std::wstring_view kRunDll32Exe(L"rundll32.exe");
   bool is_embedded_in_dll = false;
   if (data->handler.value().size() >= kRunDll32Exe.size() &&
       _wcsicmp(data->handler.value()
@@ -592,35 +613,10 @@ void CommonInProcessInitialization() {
   g_non_crash_dump_lock = new base::Lock();
 }
 
-void RegisterHandlers() {
-  SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
-
-  // The Windows CRT's signal.h lists:
-  // - SIGINT
-  // - SIGILL
-  // - SIGFPE
-  // - SIGSEGV
-  // - SIGTERM
-  // - SIGBREAK
-  // - SIGABRT
-  // SIGILL and SIGTERM are documented as not being generated. SIGBREAK and
-  // SIGINT are for Ctrl-Break and Ctrl-C, and aren't something for which
-  // capturing a dump is warranted. SIGFPE and SIGSEGV are captured as regular
-  // exceptions through the unhandled exception filter. This leaves SIGABRT. In
-  // the standard CRT, abort() is implemented as a synchronous call to the
-  // SIGABRT signal handler if installed, but after doing so, the unhandled
-  // exception filter is not triggered (it instead __fastfail()s). So, register
-  // to handle SIGABRT to catch abort() calls, as client code might use this and
-  // expect it to cause a crash dump. This will only work when the abort()
-  // that's called in client code is the same (or has the same behavior) as the
-  // one in use here.
-  void (*rv)(int) = signal(SIGABRT, HandleAbortSignal);
-  DCHECK_NE(rv, SIG_ERR);
-}
-
 }  // namespace
 
-CrashpadClient::CrashpadClient() : ipc_pipe_(), handler_start_thread_() {}
+CrashpadClient::CrashpadClient()
+    : ipc_pipe_(), handler_start_thread_(), vectored_handler_() {}
 
 CrashpadClient::~CrashpadClient() {}
 
@@ -629,6 +625,7 @@ bool CrashpadClient::StartHandler(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     bool restartable,
@@ -661,6 +658,7 @@ bool CrashpadClient::StartHandler(
                                                    database,
                                                    metrics_dir,
                                                    url,
+                                                   http_proxy,
                                                    annotations,
                                                    arguments,
                                                    attachments,
@@ -692,6 +690,42 @@ bool CrashpadClient::StartHandler(
     return StartHandlerProcess(
         std::unique_ptr<BackgroundHandlerStartThreadData>(data));
   }
+}
+
+void CrashpadClient::RegisterHandlers() {
+  SetUnhandledExceptionFilter(&UnhandledExceptionHandler);
+
+  // Windows swallows heap corruption failures but we can intercept them with
+  // a vectored exception handler. Note that a vectored exception handler is
+  // not compatible with or generally helpful in ASAN builds (ASAN inserts a
+  // bad dereference at the beginning of the handler, leading to recursive
+  // invocation of the handler).
+#if !defined(ADDRESS_SANITIZER)
+  PVOID handler = AddVectoredExceptionHandler(true, HandleHeapCorruption);
+  vectored_handler_.reset(handler);
+#endif
+
+  // The Windows CRT's signal.h lists:
+  // - SIGINT
+  // - SIGILL
+  // - SIGFPE
+  // - SIGSEGV
+  // - SIGTERM
+  // - SIGBREAK
+  // - SIGABRT
+  // SIGILL and SIGTERM are documented as not being generated. SIGBREAK and
+  // SIGINT are for Ctrl-Break and Ctrl-C, and aren't something for which
+  // capturing a dump is warranted. SIGFPE and SIGSEGV are captured as regular
+  // exceptions through the unhandled exception filter. This leaves SIGABRT. In
+  // the standard CRT, abort() is implemented as a synchronous call to the
+  // SIGABRT signal handler if installed, but after doing so, the unhandled
+  // exception filter is not triggered (it instead __fastfail()s). So, register
+  // to handle SIGABRT to catch abort() calls, as client code might use this and
+  // expect it to cause a crash dump. This will only work when the abort()
+  // that's called in client code is the same (or has the same behavior) as the
+  // one in use here.
+  void (*rv)(int) = signal(SIGABRT, HandleAbortSignal);
+  DCHECK_NE(rv, SIG_ERR);
 }
 
 bool CrashpadClient::SetHandlerIPCPipe(const std::wstring& ipc_pipe) {
@@ -1119,7 +1153,7 @@ bool CrashpadClient::DumpAndCrashTargetProcess(HANDLE process,
 
 // static
 void CrashpadClient::SetFirstChanceExceptionHandler(
-    FirstChanceHandlerWin handler) {
+    FirstChanceHandler handler) {
   first_chance_handler_ = handler;
 }
 

@@ -1,4 +1,4 @@
-# Copyright 2018, Google Inc.  All rights reserved.
+# Copyright 2018 Google LLC
 #
 # Redistribution and use in source and binary forms, with or without
 # modification, are permitted provided that the following conditions are
@@ -10,7 +10,7 @@
 # copyright notice, this list of conditions and the following disclaimer
 # in the documentation and/or other materials provided with the
 # distribution.
-#     * Neither the name of Google Inc. nor the names of its
+#     * Neither the name of Google LLC nor the names of its
 # contributors may be used to endorse or promote products derived from
 # this software without specific prior written permission.
 #
@@ -41,7 +41,13 @@ LDFLAGS += -static
 
 TESTS = \
 	fallocate \
+	getitimer \
+	getrandom \
+	lstat \
+	setitimer \
+	sigaction \
 	sigtimedwait \
+	stat \
 	unlink \
 
 all: check
@@ -49,22 +55,31 @@ all: check
 %_test: %.c test_skel.h $(top_srcdir)/linux_syscall_support.h
 	$(CC) $(CFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $<
 
+# Force building C as C++ code to improve compile-time coverage.
+%_cc_test: %.c test_skel.h $(top_srcdir)/linux_syscall_support.h
+	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $<
+
 %_test: %.cc test_skel.h $(top_srcdir)/linux_syscall_support.h
 	$(CXX) $(CXXFLAGS) $(CPPFLAGS) $(LDFLAGS) -o $@ $<
 
 %_run: %_test
 	@t=$(@:_run=_test); \
 	echo "./$$t"; \
-	if ! env -i ./$$t; then \
+	env -i ./$$t; \
+	exit_status=$$?; \
+	if [ $$exit_status = 77 ]; then \
+		echo "SKIP: $$t"; \
+	elif [ $$exit_status != 0 ]; then \
+		echo "FAIL: $$t"; \
 		env -i strace -f -v ./$$t; \
 		echo "TRY: gdb -q -ex r -ex bt ./$$t"; \
 		exit 1; \
 	fi
 
-ALL_TEST_TARGETS = $(TESTS:=_test)
+ALL_TEST_TARGETS = $(TESTS:=_test) $(TESTS:=_cc_test)
 compile_tests: $(ALL_TEST_TARGETS)
 
-ALL_RUN_TARGETS = $(TESTS:=_run)
+ALL_RUN_TARGETS = $(TESTS:=_run) $(TESTS:=_cc_run)
 check: $(ALL_RUN_TARGETS)
 
 # The "tempfile" targets are the names we use with temp files.
@@ -105,6 +120,7 @@ cross:
 		"mips64-unknown-linux-gnu-gcc -mabi=n32" \
 		"s390-ibm-linux-gnu-gcc" \
 		"s390x-ibm-linux-gnu-gcc" \
+		"loongarch64-unknown-linux-gnu-gcc" \
 	; do \
 		cxx=`echo "$$cc" | sed 's:-gcc:-g++:'`; \
 		$(MAKE) --no-print-directory CC="$$cc" CXX="$$cxx" cross_compile; \

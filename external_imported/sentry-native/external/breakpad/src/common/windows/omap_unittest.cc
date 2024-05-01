@@ -28,6 +28,10 @@
 
 // Unittests for OMAP related functions.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/windows/omap.h"
 
 #include "breakpad_googletest_includes.h"

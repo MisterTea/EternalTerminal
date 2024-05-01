@@ -469,8 +469,7 @@ class CompilationUnit {
   // compilation unit.  We also inherit the Dwarf2Handler from
   // the executable file, and call it as if we were still
   // processing the original compilation unit.
-  void SetSplitDwarf(const uint8_t* addr_buffer, uint64_t addr_buffer_length,
-                     uint64_t addr_base, uint64_t ranges_base, uint64_t dwo_id);
+  void SetSplitDwarf(uint64_t addr_base, uint64_t dwo_id);
 
   // Begin reading a Dwarf2 compilation unit, and calling the
   // callbacks in the Dwarf2Handler
@@ -480,6 +479,36 @@ class CompilationUnit {
   // is the offset of the end of the compilation unit --- and the
   // start of the next compilation unit, if there is one.
   uint64_t Start();
+
+  // Process the actual debug information in a split DWARF file.
+  bool ProcessSplitDwarf(std::string& split_file,
+                         SectionMap& sections,
+                         ByteReader& split_byte_reader,
+                         uint64_t& cu_offset);
+
+  const uint8_t* GetAddrBuffer() { return addr_buffer_; }
+
+  uint64_t GetAddrBufferLen() { return addr_buffer_length_; }
+
+  uint64_t GetAddrBase() { return addr_base_; }
+
+  uint64_t GetLowPC() { return low_pc_; }
+
+  uint64_t GetDWOID() { return dwo_id_; }
+
+  const uint8_t* GetLineBuffer() { return line_buffer_; }
+
+  uint64_t GetLineBufferLen() { return line_buffer_length_; }
+
+  const uint8_t* GetLineStrBuffer() { return line_string_buffer_; }
+
+  uint64_t GetLineStrBufferLen() { return line_string_buffer_length_; }
+
+  bool HasSourceLineInfo() { return has_source_line_info_; }
+
+  uint64_t GetSourceLineOffset() { return source_line_offset_; }
+
+  bool ShouldProcessSplitDwarf() { return should_process_split_dwarf_; }
 
  private:
 
@@ -565,14 +594,12 @@ class CompilationUnit {
     else if (attr == DW_AT_str_offsets_base) {
       str_offsets_base_ = data;
     }
-    else if (attr == DW_AT_GNU_ranges_base || attr == DW_AT_rnglists_base) {
-      ranges_base_ = data;
+    else if (attr == DW_AT_low_pc) {
+      low_pc_ = data;
     }
-    // TODO(yunlian): When we add DW_AT_ranges_base from DWARF-5,
-    // that base will apply to DW_AT_ranges attributes in the
-    // skeleton CU as well as in the .dwo/.dwp files.
-    else if (attr == DW_AT_ranges && is_split_dwarf_) {
-      data += ranges_base_;
+    else if (attr == DW_AT_stmt_list) {
+      has_source_line_info_ = true;
+      source_line_offset_ = data;
     }
     handler_->ProcessAttributeUnsigned(offset, attr, form, data);
   }
@@ -647,9 +674,6 @@ class CompilationUnit {
   // new place to position the stream to.
   const uint8_t* SkipAttribute(const uint8_t* start, enum DwarfForm form);
 
-  // Process the actual debug information in a split DWARF file.
-  void ProcessSplitDwarf();
-
   // Read the debug sections from a .dwo file.
   void ReadDebugSectionsFromDwo(ElfReader* elf_reader,
                                 SectionMap* sections);
@@ -658,7 +682,7 @@ class CompilationUnit {
   const string path_;
 
   // Offset from section start is the offset of this compilation unit
-  // from the beginning of the .debug_info section.
+  // from the beginning of the .debug_info/.debug_info.dwo section.
   uint64_t offset_from_section_start_;
 
   // buffer is the buffer for our CU, starting at .debug_info + offset
@@ -688,7 +712,7 @@ class CompilationUnit {
   const uint8_t* string_buffer_;
   uint64_t string_buffer_length_;
 
-  // Similarly for .debug_line_string.
+  // Similarly for .debug_line_str.
   const uint8_t* line_string_buffer_;
   uint64_t line_string_buffer_length_;
 
@@ -701,6 +725,10 @@ class CompilationUnit {
   // (.debug_addr).
   const uint8_t* addr_buffer_;
   uint64_t addr_buffer_length_;
+
+  // .debug_line section buffer and length.
+  const uint8_t* line_buffer_;
+  uint64_t line_buffer_length_;
 
   // Flag indicating whether this compilation unit is part of a .dwo
   // or .dwp file.  If true, we are reading this unit because a
@@ -730,10 +758,6 @@ class CompilationUnit {
   // from the skeleton CU.
   uint64_t skeleton_dwo_id_;
 
-  // The value of the DW_AT_GNU_ranges_base or DW_AT_rnglists_base attribute,
-  // if any.
-  uint64_t ranges_base_;
-
   // The value of the DW_AT_GNU_addr_base attribute, if any.
   uint64_t addr_base_;
 
@@ -743,14 +767,20 @@ class CompilationUnit {
   // True if we have already looked for a .dwp file.
   bool have_checked_for_dwp_;
 
-  // Path to the .dwp file.
-  string dwp_path_;
-
-  // ByteReader for the DWP file.
-  std::unique_ptr<ByteReader> dwp_byte_reader_;
+  // ElfReader for the dwo/dwo file.
+  std::unique_ptr<ElfReader> split_elf_reader_;
 
   // DWP reader.
-   std::unique_ptr<DwpReader> dwp_reader_;
+  std::unique_ptr<DwpReader> dwp_reader_;
+
+  bool should_process_split_dwarf_;
+
+  // The value of the DW_AT_low_pc attribute, if any.
+  uint64_t low_pc_;
+
+  // The value of DW_AT_stmt_list attribute if any.
+  bool has_source_line_info_;
+  uint64_t source_line_offset_;
 };
 
 // A Reader for a .dwp file.  Supports the fetching of DWARF debug
@@ -769,8 +799,6 @@ class CompilationUnit {
 class DwpReader {
  public:
   DwpReader(const ByteReader& byte_reader, ElfReader* elf_reader);
-
-  ~DwpReader();
 
   // Read the CU index and initialize data members.
   void Initialize();
@@ -839,6 +867,8 @@ class DwpReader {
   size_t info_size_;
   const char* str_offsets_data_;
   size_t str_offsets_size_;
+  const char* rnglist_data_;
+  size_t rnglist_size_;
 };
 
 // This class is a reader for DWARF's Call Frame Information.  CFI

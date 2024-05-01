@@ -32,6 +32,10 @@
 //
 // Author: Mark Mentovai, Ted Mielczarek, Jim Blandy
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <vector>
 
 #include "common/scoped_ptr.h"

@@ -31,6 +31,10 @@
 // elf_symbols_to_module_unittest.cc:
 // Unittests for google_breakpad::ELFSymbolsToModule
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <elf.h>
 
 #include <string>

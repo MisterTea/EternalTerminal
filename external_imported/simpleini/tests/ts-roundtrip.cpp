@@ -29,7 +29,11 @@ TEST_F(TestRoundTrip, TestStandard) {
 		"\n"
 		"; Section 2 comment\n"
 		"[section2]\n"
+		"\n"
+		"; key1 comment\n"
 		"key1 = string\n"
+		"\n"
+		"; key 2 comment\n"
 		"key2 = true\n"
 		"key3 = 3.1415\n"
 		;
@@ -161,3 +165,82 @@ TEST_F(TestRoundTrip, TestWithoutBOM) {
 	std::string expected(input, 3);
 	ASSERT_STREQ(expected.c_str(), output.c_str());
 }
+
+TEST_F(TestRoundTrip, TestAllowKeyOnly1) {
+	ini.SetAllowKeyOnly(false);
+
+	input =
+		"[section1]\n"
+		"key1 = string\n"
+		"key2 = \n"
+		"key3= \n"
+		"key4=\n"
+		"key5\n"
+		"\n"
+		"Never going to give you up\n"
+		"Never going to let you down\n"
+		;
+
+	std::string expect =
+		"[section1]\n"
+		"key1 = string\n"
+		"key2 = \n"
+		"key3 = \n"
+		"key4 = \n"
+		;
+
+	SI_Error rc = ini.LoadData(input);
+	ASSERT_EQ(rc, SI_OK);
+
+	rc = ini.Save(output);
+	ASSERT_EQ(rc, SI_OK);
+
+	output.erase(std::remove(output.begin(), output.end(), '\r'), output.end());
+	ASSERT_STREQ(expect.c_str(), output.c_str());
+}
+
+TEST_F(TestRoundTrip, TestAllowKeyOnly2) {
+	ini.SetAllowKeyOnly(true);
+
+	input =
+		"[section1]\n"
+		"key1\n"
+		"key2\n"
+		"[section2]\n"
+		"key1 = string\n"
+		"key2 = \n"
+		"key3= \n"
+		"key4=\n"
+		"\n"
+		"key5\n"
+		"\n"
+		"Never going to give you up\n"
+		"\n"
+		"Never going to let you down\n"
+		;
+
+	std::string expect =
+		"[section1]\n"
+		"key1\n"
+		"key2\n"
+		"\n\n"
+		"[section2]\n"
+		"key1 = string\n"
+		"key2\n"
+		"key3\n"
+		"key4\n"
+		"key5\n"
+		"Never going to give you up\n"
+		"Never going to let you down\n"
+		;
+
+	SI_Error rc = ini.LoadData(input);
+	ASSERT_EQ(rc, SI_OK);
+
+	rc = ini.Save(output);
+	ASSERT_EQ(rc, SI_OK);
+
+	output.erase(std::remove(output.begin(), output.end(), '\r'), output.end());
+	ASSERT_STREQ(expect.c_str(), output.c_str());
+}
+

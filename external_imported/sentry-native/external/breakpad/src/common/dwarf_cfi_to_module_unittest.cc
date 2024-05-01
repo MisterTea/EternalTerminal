@@ -30,6 +30,10 @@
 
 // dwarf_cfi_to_module_unittest.cc: Tests for google_breakpad::DwarfCFIToModule.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string>
 #include <vector>
 
@@ -303,3 +307,15 @@ TEST(RegisterNames, X86_64) {
   EXPECT_EQ("$rsp", names[7]);
   EXPECT_EQ("$rip", names[16]);
 }
+
+TEST(RegisterNames, RISCV) {
+  vector<string> names = DwarfCFIToModule::RegisterNames::RISCV();
+
+  EXPECT_EQ("pc", names[0]);
+  EXPECT_EQ("t6", names[31]);
+  EXPECT_EQ("f0", names[32]);
+  EXPECT_EQ("f31", names[63]);
+  EXPECT_EQ("v0", names[96]);
+  EXPECT_EQ("v31", names[127]);
+}
+

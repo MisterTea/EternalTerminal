@@ -31,6 +31,10 @@
 // stackwalker_mips64_unittest.cc: Unit tests for StackwalkerMIPS class for
 // mips64 platforms.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string.h>
 #include <string>
 #include <vector>

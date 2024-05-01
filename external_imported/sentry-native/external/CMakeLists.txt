@@ -40,6 +40,8 @@ set(BREAKPAD_SOURCES_COMMON_WINDOWS
 )
 
 set(BREAKPAD_SOURCES_COMMON_APPLE
+    breakpad/src/common/mac/arch_utilities.cc
+    breakpad/src/common/mac/arch_utilities.h
     breakpad/src/common/mac/file_id.cc
     breakpad/src/common/mac/file_id.h
     breakpad/src/common/mac/macho_id.cc

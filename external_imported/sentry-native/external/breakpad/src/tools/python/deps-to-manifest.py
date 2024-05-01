@@ -1,4 +1,4 @@
-#!/usr/bin/python
+#!/usr/bin/env python3
 # Copyright 2016 Google LLC
 #
 # Redistribution and use in source and binary forms, with or without
@@ -28,8 +28,6 @@
 # OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 """Convert gclient's DEPS file to repo's manifest xml file."""
-
-from __future__ import print_function
 
 import argparse
 import os
@@ -76,7 +74,8 @@ def ConvertDepsToManifest(deps, manifest):
   """Convert the |deps| file to the |manifest|."""
   # Load the DEPS file data.
   ctx = {}
-  execfile(deps, ctx)
+  with open(deps, 'rb') as file:
+    exec(compile(file.read(), deps, 'exec'), ctx)
 
   new_contents = ''
 

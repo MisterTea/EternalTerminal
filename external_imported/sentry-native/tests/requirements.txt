@@ -1,3 +1,4 @@
-black==22.3.0
-pytest==6.2.5
-pytest-httpserver==1.0.1
+black==23.3.0
+pytest==7.4.0
+pytest-httpserver==1.0.8
+msgpack==1.0.5

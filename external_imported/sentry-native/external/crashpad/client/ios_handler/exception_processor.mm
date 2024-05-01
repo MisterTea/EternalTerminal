@@ -38,6 +38,7 @@
 #include <sys/types.h>
 #include <unwind.h>
 
+#include <atomic>
 #include <exception>
 #include <type_traits>
 #include <typeinfo>
@@ -64,7 +65,7 @@ struct objc_typeinfo {
   Class cls_unremapped;
 };
 struct objc_exception {
-  id obj;
+  id __unsafe_unretained obj;
   objc_typeinfo tinfo;
 };
 
@@ -218,7 +219,7 @@ class ExceptionPreprocessorState {
   // preprocessor didn't catch anything, so pass the frames or just the context
   // to the exception_delegate.
   void FinalizeUncaughtNSException(id exception) {
-    if ([last_exception_ isEqual:exception] &&
+    if (last_exception() == (__bridge void*)exception &&
         !last_handled_intermediate_dump_.empty() &&
         exception_delegate_->MoveIntermediateDumpAtPathToPending(
             last_handled_intermediate_dump_)) {
@@ -227,8 +228,11 @@ class ExceptionPreprocessorState {
     }
 
     std::string name, reason;
-    SetNSExceptionAnnotations(exception, name, reason);
-    NSArray<NSNumber*>* address_array = [exception callStackReturnAddresses];
+    NSArray<NSNumber*>* address_array = nil;
+    if ([exception isKindOfClass:[NSException class]]) {
+      SetNSExceptionAnnotations(exception, name, reason);
+      address_array = [exception callStackReturnAddresses];
+    }
 
     if ([address_array count] > 0) {
       static StringAnnotation<256> name_key("UncaughtNSException");
@@ -258,11 +262,8 @@ class ExceptionPreprocessorState {
   // Restore the objc_setExceptionPreprocessor and NSUncaughtExceptionHandler.
   void Uninstall();
 
-  NSException* last_exception() { return last_exception_; }
-  void set_last_exception(NSException* exception) {
-    [last_exception_ release];
-    last_exception_ = [exception retain];
-  }
+  void* last_exception() { return last_exception_; }
+  void set_last_exception(void* exception) { last_exception_ = exception; }
 
  private:
   ExceptionPreprocessorState() = default;
@@ -272,9 +273,11 @@ class ExceptionPreprocessorState {
   // HANDLE_UNCAUGHT_NSEXCEPTION.
   base::FilePath last_handled_intermediate_dump_;
 
-  // Recorded last NSException in case the exception is caught and thrown again
-  // (without using objc_exception_rethrow.)
-  NSException* last_exception_ = nil;
+  // Recorded last NSException pointer in case the exception is caught and
+  // thrown again (without using objc_exception_rethrow) as an
+  // unsafe_unretained reference. Stored as a void* as the only safe
+  // operation is pointer comparison.
+  std::atomic<void*> last_exception_ = nil;
 
   ObjcExceptionDelegate* exception_delegate_ = nullptr;
   objc_exception_preprocessor next_preprocessor_ = nullptr;
@@ -291,7 +294,9 @@ static __attribute__((noinline)) id HANDLE_UNCAUGHT_NSEXCEPTION(
     id exception,
     const char* sinkhole) {
   std::string name, reason;
-  SetNSExceptionAnnotations(exception, name, reason);
+  if ([exception isKindOfClass:[NSException class]]) {
+    SetNSExceptionAnnotations(exception, name, reason);
+  }
   LOG(WARNING) << "Handling Objective-C exception name: " << name
                << " reason: " << reason << " with sinkhole: " << sinkhole;
   NativeCPUContext cpu_context{};
@@ -319,6 +324,20 @@ bool ModulePathMatchesSinkhole(const char* path, const char* sinkhole) {
 #endif
 }
 
+//! \brief Helper to release memory from calls to __cxa_allocate_exception.
+class ScopedException {
+ public:
+  explicit ScopedException(objc_exception* exception) : exception_(exception) {}
+
+  ScopedException(const ScopedException&) = delete;
+  ScopedException& operator=(const ScopedException&) = delete;
+
+  ~ScopedException() { __cxxabiv1::__cxa_free_exception(exception_); }
+
+ private:
+  objc_exception* exception_;  // weak
+};
+
 id ObjcExceptionPreprocessor(id exception) {
   // Some sinkholes don't use objc_exception_rethrow when they should, which
   // would otherwise prevent the exception_preprocessor from getting called
@@ -326,10 +345,10 @@ id ObjcExceptionPreprocessor(id exception) {
   // ignore it.
   ExceptionPreprocessorState* preprocessor_state =
       ExceptionPreprocessorState::Get();
-  if ([preprocessor_state->last_exception() isEqual:exception]) {
+  if (preprocessor_state->last_exception() == (__bridge void*)exception) {
     return preprocessor_state->MaybeCallNextPreprocessor(exception);
   }
-  preprocessor_state->set_last_exception(exception);
+  preprocessor_state->set_last_exception((__bridge void*)exception);
 
   static bool seen_first_exception;
 
@@ -339,9 +358,14 @@ id ObjcExceptionPreprocessor(id exception) {
   static StringAnnotation<1024> lastexception_bt("lastexception_bt");
   auto* key = seen_first_exception ? &lastexception : &firstexception;
   auto* bt_key = seen_first_exception ? &lastexception_bt : &firstexception_bt;
-  NSString* value = [NSString
-      stringWithFormat:@"%@ reason %@", [exception name], [exception reason]];
-  key->Set(base::SysNSStringToUTF8(value));
+
+  if ([exception isKindOfClass:[NSException class]]) {
+    NSString* value = [NSString
+        stringWithFormat:@"%@ reason %@", [exception name], [exception reason]];
+    key->Set(base::SysNSStringToUTF8(value));
+  } else {
+    key->Set(base::SysNSStringToUTF8([exception description]));
+  }
 
   // This exception preprocessor runs prior to the one in libobjc, which sets
   // the -[NSException callStackReturnAddresses].
@@ -374,6 +398,7 @@ id ObjcExceptionPreprocessor(id exception) {
   // From 10.15.0 objc4-779.1/runtime/objc-exception.mm objc_exception_throw.
   objc_exception* exception_objc = reinterpret_cast<objc_exception*>(
       __cxxabiv1::__cxa_allocate_exception(sizeof(objc_exception)));
+  ScopedException exception_objc_owner(exception_objc);
   exception_objc->obj = exception;
   exception_objc->tinfo.vtable = objc_ehtype_vtable + 2;
   exception_objc->tinfo.name = object_getClassName(exception);

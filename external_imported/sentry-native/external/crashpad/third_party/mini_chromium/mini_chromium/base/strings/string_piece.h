@@ -160,7 +160,6 @@ std::ostream& operator<<(std::ostream& ostream,
 
 typedef BasicStringPiece<std::string> StringPiece;
 typedef BasicStringPiece<std::u16string> StringPiece16;
-typedef BasicStringPiece<std::wstring> WStringPiece;
 
 inline bool operator==(const StringPiece& x, const StringPiece& y) {
   if (x.size() != y.size())

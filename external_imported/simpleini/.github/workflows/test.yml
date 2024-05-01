@@ -1,0 +1,23 @@
+name: Test SimpleIni
+
+on:
+  push:
+    branches: [ master ]
+  pull_request:
+    branches: [ master ]
+
+jobs:
+  Ubuntu:
+    runs-on: ubuntu-latest
+    steps:
+    - name: Install requirements
+      run: sudo apt install libgtest-dev
+    - uses: actions/checkout@v2
+    - run: make all && make test
+  MacOS:
+    runs-on: macos-latest
+    steps:
+    - name: Install requirements
+      run: brew install googletest
+    - uses: actions/checkout@v2
+    - run: make all && make test

@@ -28,6 +28,7 @@ add_executable(sentry_test_unit
 	test_logger.c
 	test_modulefinder.c
 	test_mpack.c
+	test_options.c
 	test_path.c
 	test_ratelimiter.c
 	test_sampling.c

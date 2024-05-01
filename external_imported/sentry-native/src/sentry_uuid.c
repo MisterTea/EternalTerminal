@@ -25,13 +25,13 @@ sentry_uuid_new_v4(void)
 }
 
 sentry_uuid_t
-sentry_uuid_from_string(const char *str)
+sentry_uuid_from_string_n(const char *str, size_t str_len)
 {
     sentry_uuid_t rv;
     memset(&rv, 0, sizeof(rv));
 
     size_t i = 0;
-    size_t len = strlen(str);
+    size_t len = str_len;
     size_t pos = 0;
     bool is_nibble = true;
     char nibble = 0;
@@ -65,6 +65,12 @@ sentry_uuid_from_string(const char *str)
     return rv;
 }
 
+sentry_uuid_t
+sentry_uuid_from_string(const char *str)
+{
+    return str ? sentry_uuid_from_string_n(str, strlen(str))
+               : sentry_uuid_nil();
+}
 sentry_uuid_t
 sentry_uuid_from_bytes(const char bytes[16])
 {

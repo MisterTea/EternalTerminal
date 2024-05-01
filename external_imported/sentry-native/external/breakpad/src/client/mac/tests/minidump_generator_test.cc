@@ -28,6 +28,10 @@
 
 // minidump_generator_test.cc: Unit tests for google_breakpad::MinidumpGenerator
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <AvailabilityMacros.h>
 #ifndef MAC_OS_X_VERSION_10_6
 #define MAC_OS_X_VERSION_10_6 1060

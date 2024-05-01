@@ -32,8 +32,6 @@
 #include <assert.h>
 #include <string.h>
 
-#include "common/basictypes.h"
-
 namespace google_breakpad {
 
 // Opaque type for the serialized representation of a NonAllocatingMap. One is
@@ -80,6 +78,8 @@ class NonAllocatingMap {
         : map_(map),
           current_(0) {
     }
+    Iterator(const Iterator&) = delete;
+    void operator=(const Iterator&) = delete;
 
     // Returns the next entry in the map, or NULL if at the end of the
     // collection.
@@ -90,14 +90,12 @@ class NonAllocatingMap {
           return entry;
         }
       }
-      return NULL;
+      return nullptr;
     }
 
    private:
     const NonAllocatingMap& map_;
     size_t current_;
-
-    DISALLOW_COPY_AND_ASSIGN(Iterator);
   };
 
   NonAllocatingMap() : entries_() {

@@ -237,6 +237,8 @@ std::string UserAgent() {
 #elif defined(ARCH_CPU_BIG_ENDIAN)
     static constexpr char arch[] = "aarch64_be";
 #endif
+#elif defined (ARCH_CPU_RISCV64)
+    static constexpr char arch[] = "riscv64";
 #else
 #error Port
 #endif
@@ -456,6 +458,9 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_READDATA, this);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEFUNCTION, WriteResponseBody);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEDATA, response_body);
+  if (!http_proxy().empty()) {
+    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_PROXY, http_proxy().c_str());
+  }
 
 #undef TRY_CURL_EASY_SETOPT
 #undef TRY_CURL_SLIST_APPEND
@@ -480,7 +485,8 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   }
 
   if (status != 200) {
-    LOG(ERROR) << base::StringPrintf("HTTP status %ld", status);
+    LOG(ERROR) << base::StringPrintf(
+        "HTTP status %ld, response = \"%s\"", status, response_body->c_str());
     return false;
   }
 

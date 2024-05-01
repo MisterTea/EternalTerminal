@@ -6,8 +6,14 @@
 
 #include <ctype.h>
 
-#include "base/cxx17_backports.h"
+#include <ostream>
+
+#include "base/check.h"
 #include "base/logging.h"
+
+#if defined(FILE_PATH_USES_WIDE_CHARACTERS)
+#include "base/strings/utf_string_conversions.h"
+#endif  // FILE_PATH_USES_WIDE_CHARACTERS
 
 namespace base {
 
@@ -120,7 +126,7 @@ bool FilePath::operator!=(const FilePath& that) const {
 
 // static
 bool FilePath::IsSeparator(CharType character) {
-  for (size_t i = 0; i < size(FilePath::kSeparators) - 1; ++i) {
+  for (size_t i = 0; i < std::size(FilePath::kSeparators) - 1; ++i) {
     if (character == kSeparators[i]) {
       return true;
     }
@@ -143,9 +149,8 @@ FilePath FilePath::DirName() const {
   // resizes below using letter will still be valid.
   StringType::size_type letter = FindDriveLetter(new_path.path_);
 
-  StringType::size_type last_separator =
-      new_path.path_.find_last_of(kSeparators, StringType::npos,
-                                  size(kSeparators) - 1);
+  StringType::size_type last_separator = new_path.path_.find_last_of(
+      kSeparators, StringType::npos, std::size(kSeparators) - 1);
   if (last_separator == StringType::npos) {
     // path_ is in the current directory.
     new_path.path_.resize(letter + 1);
@@ -181,9 +186,8 @@ FilePath FilePath::BaseName() const {
 
   // Keep everything after the final separator, but if the pathname is only
   // one character and it's a separator, leave it alone.
-  StringType::size_type last_separator =
-      new_path.path_.find_last_of(kSeparators, StringType::npos,
-                                  size(kSeparators) - 1);
+  StringType::size_type last_separator = new_path.path_.find_last_of(
+      kSeparators, StringType::npos, std::size(kSeparators) - 1);
   if (last_separator != StringType::npos &&
       last_separator < new_path.path_.length() - 1) {
     new_path.path_.erase(0, last_separator + 1);
@@ -287,6 +291,10 @@ void FilePath::StripTrailingSeparatorsInternal() {
 
 }  // namespace base
 
-void PrintTo(const base::FilePath& path, std::ostream* out) {
-  *out << path.value().c_str();
+std::ostream& operator<<(std::ostream& os, const base::FilePath& file_path) {
+#ifdef FILE_PATH_USES_WIDE_CHARACTERS
+  return os << base::WideToUTF8(file_path.value());
+#else
+  return os << file_path.value();
+#endif
 }

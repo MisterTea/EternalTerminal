@@ -36,6 +36,10 @@
  -o minidump_file_writer_unittest
  */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <fcntl.h>
 #include <unistd.h>
 

@@ -6,13 +6,17 @@ import("platform.gni")
 
 if (mini_chromium_is_posix || mini_chromium_is_fuchsia) {
   declare_args() {
-    # A directory containing the system’s header files and libraries. If empty,
-    # a suitable default will be chosen.
-    target_sysroot = ""
+    # Don't execute if building inside the Fuchsia tree.
+    if (!(defined(is_fuchsia_tree) && is_fuchsia_tree)) {
+      # A directory containing the system’s header files and libraries. If empty,
+      # a suitable default will be chosen.
+      target_sysroot = ""
+    }
   }
 }
 
-if (mini_chromium_is_mac) {
+# Don't execute if building inside the Fuchsia tree.
+if (mini_chromium_is_mac && !(defined(is_fuchsia_tree) && is_fuchsia_tree)) {
   declare_args() {
     # The version of the macOS SDK to use. If |target_sysroot| is empty, this
     # will inform which SDK version will be chosen. If |mac_sdk| is also empty,

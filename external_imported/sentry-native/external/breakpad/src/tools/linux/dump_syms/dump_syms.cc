@@ -26,6 +26,10 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <paths.h>
 #include <stdio.h>
 #include <unistd.h>
@@ -56,7 +60,7 @@ int usage(const char* self) {
   fprintf(stderr, "  -n <name>   Use specified name for name of the object\n");
   fprintf(stderr, "  -o <os>     Use specified name for the "
                                  "operating system\n");
-  fprintf(stderr, "  -m          Enable writing the optional 'm' field on FUNC"
+  fprintf(stderr, "  -m          Enable writing the optional 'm' field on FUNC "
                                  "and PUBLIC, denoting multiple symbols for "
                                  "the address.\n");
   return 1;

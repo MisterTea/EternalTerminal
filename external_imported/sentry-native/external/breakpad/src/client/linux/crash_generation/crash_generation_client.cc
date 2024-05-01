@@ -26,6 +26,10 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/linux/crash_generation/crash_generation_client.h"
 
 #include <stdio.h>
@@ -45,9 +49,11 @@ namespace {
 class CrashGenerationClientImpl : public CrashGenerationClient {
  public:
   explicit CrashGenerationClientImpl(int server_fd) : server_fd_(server_fd) {}
-  virtual ~CrashGenerationClientImpl() {}
+  CrashGenerationClientImpl(const CrashGenerationClientImpl&) = delete;
+  void operator=(const CrashGenerationClientImpl&) = delete;
+  ~CrashGenerationClientImpl() override = default;
 
-  virtual bool RequestDump(const void* blob, size_t blob_size) {
+  bool RequestDump(const void* blob, size_t blob_size) override {
     int fds[2];
     if (sys_pipe(fds) < 0)
       return false;
@@ -88,8 +94,6 @@ class CrashGenerationClientImpl : public CrashGenerationClient {
 
  private:
   int server_fd_;
-
-  DISALLOW_COPY_AND_ASSIGN(CrashGenerationClientImpl);
 };
 
 }  // namespace

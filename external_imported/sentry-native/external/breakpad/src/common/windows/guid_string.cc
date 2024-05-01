@@ -30,6 +30,10 @@
 //
 // See guid_string.h for documentation.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <wchar.h>
 
 #include "common/windows/string_utils-inl.h"

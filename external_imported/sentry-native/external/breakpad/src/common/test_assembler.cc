@@ -31,6 +31,10 @@
 // test_assembler.cc: Implementation of google_breakpad::TestAssembler.
 // See test_assembler.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/test_assembler.h"
 
 #include <assert.h>

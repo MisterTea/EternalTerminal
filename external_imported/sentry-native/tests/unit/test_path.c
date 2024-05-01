@@ -58,6 +58,26 @@ SENTRY_TEST(path_joining_unix)
 #endif
 }
 
+SENTRY_TEST(path_from_str_null)
+{
+    TEST_CHECK(NULL == sentry__path_from_str(NULL));
+    TEST_CHECK(NULL == sentry__path_from_str_n(NULL, 0));
+    TEST_CHECK(NULL == sentry__path_from_str_n(NULL, 10));
+}
+
+SENTRY_TEST(path_from_str_n_wo_null_termination)
+{
+    // provide non-null-terminated path string with buffer character at the end.
+    char path_str[] = { 't', 'e', 's', 't', 'X' };
+    sentry_path_t *test_path = sentry__path_from_str_n(path_str, 4);
+#ifdef SENTRY_PLATFORM_WINDOWS
+    TEST_CHECK_WSTRING_EQUAL(test_path->path, L"test");
+#else
+    TEST_CHECK_STRING_EQUAL(test_path->path, "test");
+#endif
+    sentry__path_free(test_path);
+}
+
 SENTRY_TEST(path_joining_windows)
 {
 #ifndef SENTRY_PLATFORM_WINDOWS

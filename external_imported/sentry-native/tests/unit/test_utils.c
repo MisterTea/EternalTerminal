@@ -152,7 +152,7 @@ SENTRY_TEST(dsn_store_url_with_path)
     TEST_CHECK_STRING_EQUAL(
         url, "http://example.com:80/foo/bar/api/42/envelope/");
     sentry_free(url);
-    url = sentry__dsn_get_minidump_url(dsn);
+    url = sentry__dsn_get_minidump_url(dsn, SENTRY_SDK_USER_AGENT);
     TEST_CHECK_STRING_EQUAL(url,
         "http://example.com:80/foo/bar/api/42/minidump/"
         "?sentry_client=" SENTRY_SDK_USER_AGENT "&sentry_key=username");
@@ -168,10 +168,22 @@ SENTRY_TEST(dsn_store_url_without_path)
     url = sentry__dsn_get_envelope_url(dsn);
     TEST_CHECK_STRING_EQUAL(url, "http://example.com:80/api/42/envelope/");
     sentry_free(url);
-    url = sentry__dsn_get_minidump_url(dsn);
+    url = sentry__dsn_get_minidump_url(dsn, SENTRY_SDK_USER_AGENT);
     TEST_CHECK_STRING_EQUAL(url,
         "http://example.com:80/api/42/minidump/"
         "?sentry_client=" SENTRY_SDK_USER_AGENT "&sentry_key=username");
+    sentry_free(url);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_store_url_custom_agent)
+{
+    sentry_dsn_t *dsn
+        = sentry__dsn_new("http://username:password@example.com/42?x=y#z");
+    char *url = sentry__dsn_get_minidump_url(dsn, "custom_user_agent");
+    TEST_CHECK_STRING_EQUAL(url,
+        "http://example.com:80/api/42/minidump/"
+        "?sentry_client=custom_user_agent&sentry_key=username");
     sentry_free(url);
     sentry__dsn_decref(dsn);
 }
@@ -220,4 +232,105 @@ SENTRY_TEST(os)
         == SENTRY_VALUE_TYPE_STRING);
 
     sentry_value_decref(os);
+}
+
+SENTRY_TEST(check_version)
+{
+    TEST_CHECK(sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 11, .patch = 7 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 8 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(sentry__check_min_version(
+        (sentry_version_t) { .major = 8, .minor = 9, .patch = 7 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 11, .patch = 6 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+
+    TEST_CHECK(!sentry__check_min_version(
+        (sentry_version_t) { .major = 6, .minor = 10, .patch = 7 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(!sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 9, .patch = 7 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+    TEST_CHECK(!sentry__check_min_version(
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 6 },
+        (sentry_version_t) { .major = 7, .minor = 10, .patch = 7 }));
+}
+
+SENTRY_TEST(dsn_without_url_scheme_is_invalid)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("//without-scheme-separator");
+    TEST_CHECK(dsn->is_valid == false);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_with_non_http_scheme_is_invalid)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("ftp://ftp-server/");
+    TEST_CHECK(dsn->is_valid == false);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_without_project_id_is_invalid)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.io/");
+    TEST_CHECK(dsn->is_valid == false);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_with_ending_forward_slash_will_be_cleaned)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.io/42/43/44////");
+
+    TEST_CHECK_STRING_EQUAL(dsn->path, "/42/43");
+    TEST_CHECK_STRING_EQUAL(dsn->project_id, "44");
+    TEST_CHECK(dsn->is_valid == true);
+
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_auth_header_no_user_agent)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("https://key@sentry.io/42");
+    char *auth_header = sentry__dsn_get_auth_header(dsn, NULL);
+    TEST_CHECK_STRING_EQUAL(auth_header,
+        "Sentry sentry_key=key, sentry_version=7, "
+        "sentry_client=" SENTRY_SDK_NAME "/" SENTRY_SDK_VERSION);
+
+    sentry_free(auth_header);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_auth_header_custom_user_agent)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("https://key@sentry.io/42");
+    char *auth_header = sentry__dsn_get_auth_header(dsn, "user_agent");
+    TEST_CHECK_STRING_EQUAL(auth_header,
+        "Sentry sentry_key=key, sentry_version=7, "
+        "sentry_client=user_agent");
+
+    sentry_free(auth_header);
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(dsn_auth_header_null_dsn)
+{
+    char *auth_header = sentry__dsn_get_auth_header(NULL, NULL);
+    TEST_CHECK(!auth_header);
+}
+
+SENTRY_TEST(dsn_auth_header_invalid_dsn)
+{
+    sentry_dsn_t *dsn = sentry__dsn_new("whatever");
+    char *auth_header = sentry__dsn_get_auth_header(dsn, NULL);
+    TEST_CHECK(!auth_header);
+
+    sentry_free(auth_header);
+    sentry__dsn_decref(dsn);
 }

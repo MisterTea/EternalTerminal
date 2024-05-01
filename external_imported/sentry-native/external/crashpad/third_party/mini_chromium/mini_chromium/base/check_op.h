@@ -5,6 +5,7 @@
 #ifndef MINI_CHROMIUM_BASE_CHECK_OP_H_
 #define MINI_CHROMIUM_BASE_CHECK_OP_H_
 
+#include "base/check.h"
 #include "base/logging.h"
 
 namespace logging {

@@ -227,7 +227,7 @@ typedef struct {
 
 #define MD_CONTEXT_AMD64_ALL             (MD_CONTEXT_AMD64_FULL | \
                                           MD_CONTEXT_AMD64_SEGMENTS | \
-                                          MD_CONTEXT_X86_DEBUG_REGISTERS)
+                                          MD_CONTEXT_AMD64_DEBUG_REGISTERS)
      /* CONTEXT_ALL */
 
 

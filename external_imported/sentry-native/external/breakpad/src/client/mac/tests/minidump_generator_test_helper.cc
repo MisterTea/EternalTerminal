@@ -30,6 +30,10 @@
 //   minidump_generator_test.cc can launch to test certain things
 //   that require a separate executable.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <unistd.h>
 
 #include "client/mac/handler/exception_handler.h"

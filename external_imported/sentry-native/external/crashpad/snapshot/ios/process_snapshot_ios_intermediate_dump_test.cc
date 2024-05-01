@@ -16,7 +16,8 @@
 
 #include <mach-o/loader.h>
 
-#include "base/cxx17_backports.h"
+#include <algorithm>
+
 #include "base/files/scoped_file.h"
 #include "base/posix/eintr_wrapper.h"
 #include "build/build_config.h"
@@ -760,6 +761,11 @@ TEST_F(ProcessSnapshotIOSIntermediateDumpTest, FuzzTestCases) {
       FILE_PATH_LITERAL("snapshot/ios/testdata/crash-6605504629637120"));
   crashpad::internal::ProcessSnapshotIOSIntermediateDump process_snapshot3;
   EXPECT_FALSE(process_snapshot3.InitializeWithFilePath(fuzz_path, {}));
+
+  fuzz_path = TestPaths::TestDataRoot().Append(
+      FILE_PATH_LITERAL("snapshot/ios/testdata/crash-c44acfcbccd8c7a8"));
+  crashpad::internal::ProcessSnapshotIOSIntermediateDump process_snapshot4;
+  EXPECT_TRUE(process_snapshot4.InitializeWithFilePath(fuzz_path, {}));
 }
 
 }  // namespace

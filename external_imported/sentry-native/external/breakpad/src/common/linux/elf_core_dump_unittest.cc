@@ -28,6 +28,10 @@
 
 // elf_core_dump_unittest.cc: Unit tests for google_breakpad::ElfCoreDump.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <sys/procfs.h>
 
 #include <set>

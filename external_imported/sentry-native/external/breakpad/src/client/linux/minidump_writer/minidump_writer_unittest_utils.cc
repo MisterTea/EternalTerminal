@@ -29,6 +29,10 @@
 // minidump_writer_unittest_utils.cc:
 // Shared routines used by unittests under client/linux/minidump_writer.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <limits.h>
 #include <stdlib.h>
 

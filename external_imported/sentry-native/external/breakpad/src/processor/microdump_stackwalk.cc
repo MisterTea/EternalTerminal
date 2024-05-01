@@ -29,6 +29,10 @@
 // microdump_stackwalk.cc: Process a microdump with MicrodumpProcessor, printing
 // the results, including stack traces.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdio.h>
 #include <string.h>
 #include <unistd.h>

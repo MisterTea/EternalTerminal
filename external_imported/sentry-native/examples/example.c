@@ -218,6 +218,10 @@ main(int argc, char **argv)
             options, discarding_on_crash_callback, NULL);
     }
 
+    if (has_arg(argc, argv, "override-sdk-name")) {
+        sentry_options_set_sdk_name(options, "sentry.native.android.flutter");
+    }
+
     sentry_init(options);
 
     if (!has_arg(argc, argv, "no-setup")) {

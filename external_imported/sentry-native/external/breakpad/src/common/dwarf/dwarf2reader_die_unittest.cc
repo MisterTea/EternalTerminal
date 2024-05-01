@@ -30,6 +30,10 @@
 
 // dwarf2reader_die_unittest.cc: Unit tests for google_breakpad::CompilationUnit
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 
@@ -329,7 +333,8 @@ struct DwarfFormsFixture: public DIEFixture {
                             uint64_t offset=0) {
     ByteReader byte_reader(params.endianness == kLittleEndian ?
                            ENDIANNESS_LITTLE : ENDIANNESS_BIG);
-    CompilationUnit parser("", MakeSectionMap(), offset, &byte_reader, &handler);
+    CompilationUnit parser("", MakeSectionMap(), offset, &byte_reader,
+                           &handler);
     EXPECT_EQ(offset + parser.Start(), info_contents.size());
   }
 

@@ -8,7 +8,7 @@
 
 #include "base/synchronization/lock.h"
 
-#include "base/logging.h"
+#include "base/check_op.h"
 
 #ifndef NDEBUG
 

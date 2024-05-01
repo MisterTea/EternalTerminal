@@ -17,9 +17,11 @@
 #include <CoreFoundation/CoreFoundation.h>
 #include <malloc/malloc.h>
 #include <pthread.h>
+
 #include <limits>
 
-#include "base/mac/mach_logging.h"
+#include "base/apple/mach_logging.h"
+#include "base/check_op.h"
 #include "client/crashpad_client.h"
 #include "util/ios/raw_logging.h"
 
@@ -30,7 +32,25 @@ namespace {
 
 uint64_t g_main_thread = 0;
 uint64_t g_mach_exception_thread = 0;
-malloc_zone_t g_old_zone;
+
+// Somewhat simplified logic copied from Chromium's
+// base/allocator/partition_allocator/shim/malloc_zone_functions_apple.h. The
+// arrays g_original_zones and g_original_zones_ptr stores all information about
+// malloc zones before they are shimmed. This information needs to be accessed
+// during dispatch back into the zone.
+constexpr int kMaxZoneCount = 30;
+malloc_zone_t g_original_zones[kMaxZoneCount];
+malloc_zone_t* g_original_zones_ptr[kMaxZoneCount];
+unsigned int g_zone_count = 0;
+
+struct _malloc_zone_t original_zone_for_zone(struct _malloc_zone_t* zone) {
+  for (unsigned int i = 0; i < g_zone_count; ++i) {
+    if (g_original_zones_ptr[i] == zone) {
+      return g_original_zones[i];
+    }
+  }
+  return g_original_zones[0];
+}
 
 bool is_handler_thread() {
   uint64_t thread_self;
@@ -44,7 +64,7 @@ void* handler_forbidden_malloc(struct _malloc_zone_t* zone, size_t size) {
     CRASHPAD_RAW_LOG("handler_forbidden_malloc allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.malloc(zone, size);
+  return original_zone_for_zone(zone).malloc(zone, size);
 }
 
 void* handler_forbidden_calloc(struct _malloc_zone_t* zone,
@@ -54,7 +74,7 @@ void* handler_forbidden_calloc(struct _malloc_zone_t* zone,
     CRASHPAD_RAW_LOG("handler_forbidden_calloc allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.calloc(zone, num_items, size);
+  return original_zone_for_zone(zone).calloc(zone, num_items, size);
 }
 
 void* handler_forbidden_valloc(struct _malloc_zone_t* zone, size_t size) {
@@ -62,7 +82,7 @@ void* handler_forbidden_valloc(struct _malloc_zone_t* zone, size_t size) {
     CRASHPAD_RAW_LOG("handler_forbidden_valloc allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.valloc(zone, size);
+  return original_zone_for_zone(zone).valloc(zone, size);
 }
 
 void handler_forbidden_free(struct _malloc_zone_t* zone, void* ptr) {
@@ -70,7 +90,7 @@ void handler_forbidden_free(struct _malloc_zone_t* zone, void* ptr) {
     CRASHPAD_RAW_LOG("handler_forbidden_free allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  g_old_zone.free(zone, ptr);
+  original_zone_for_zone(zone).free(zone, ptr);
 }
 
 void* handler_forbidden_realloc(struct _malloc_zone_t* zone,
@@ -80,7 +100,7 @@ void* handler_forbidden_realloc(struct _malloc_zone_t* zone,
     CRASHPAD_RAW_LOG("handler_forbidden_realloc allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.realloc(zone, ptr, size);
+  return original_zone_for_zone(zone).realloc(zone, ptr, size);
 }
 
 void handler_forbidden_destroy(struct _malloc_zone_t* zone) {
@@ -88,7 +108,7 @@ void handler_forbidden_destroy(struct _malloc_zone_t* zone) {
     CRASHPAD_RAW_LOG("handler_forbidden_destroy allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  g_old_zone.destroy(zone);
+  original_zone_for_zone(zone).destroy(zone);
 }
 
 void* handler_forbidden_memalign(struct _malloc_zone_t* zone,
@@ -98,7 +118,7 @@ void* handler_forbidden_memalign(struct _malloc_zone_t* zone,
     CRASHPAD_RAW_LOG("handler_forbidden_memalign allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.memalign(zone, alignment, size);
+  return original_zone_for_zone(zone).memalign(zone, alignment, size);
 }
 
 unsigned handler_forbidden_batch_malloc(struct _malloc_zone_t* zone,
@@ -110,7 +130,8 @@ unsigned handler_forbidden_batch_malloc(struct _malloc_zone_t* zone,
         "handler_forbidden_batch_malloc allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.batch_malloc(zone, size, results, num_requested);
+  return original_zone_for_zone(zone).batch_malloc(
+      zone, size, results, num_requested);
 }
 
 void handler_forbidden_batch_free(struct _malloc_zone_t* zone,
@@ -120,7 +141,7 @@ void handler_forbidden_batch_free(struct _malloc_zone_t* zone,
     CRASHPAD_RAW_LOG("handler_forbidden_batch_free allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  g_old_zone.batch_free(zone, to_be_freed, num_to_be_freed);
+  original_zone_for_zone(zone).batch_free(zone, to_be_freed, num_to_be_freed);
 }
 
 void handler_forbidden_free_definite_size(struct _malloc_zone_t* zone,
@@ -131,7 +152,7 @@ void handler_forbidden_free_definite_size(struct _malloc_zone_t* zone,
         "handler_forbidden_free_definite_size allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  g_old_zone.free_definite_size(zone, ptr, size);
+  original_zone_for_zone(zone).free_definite_size(zone, ptr, size);
 }
 
 size_t handler_forbidden_pressure_relief(struct _malloc_zone_t* zone,
@@ -141,7 +162,7 @@ size_t handler_forbidden_pressure_relief(struct _malloc_zone_t* zone,
         "handler_forbidden_pressure_relief allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.pressure_relief(zone, goal);
+  return original_zone_for_zone(zone).pressure_relief(zone, goal);
 }
 
 boolean_t handler_forbidden_claimed_address(struct _malloc_zone_t* zone,
@@ -151,10 +172,46 @@ boolean_t handler_forbidden_claimed_address(struct _malloc_zone_t* zone,
         "handler_forbidden_claimed_address allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.claimed_address(zone, ptr);
+
+  if (original_zone_for_zone(zone).claimed_address) {
+    return original_zone_for_zone(zone).claimed_address(zone, ptr);
+  }
+
+  // If the fast API 'claimed_address' is not implemented in the specified zone,
+  // fall back to 'size' function, which also tells whether the given address
+  // belongs to the zone or not although it'd be slow.
+  return original_zone_for_zone(zone).size(zone, ptr);
 }
 
 #if defined(__IPHONE_16_1) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_16_1
+// The fallback function to be called when try_free_default_function receives a
+// pointer which doesn't belong to the allocator.
+void TryFreeDefaultFallbackToFindZoneAndFree(void* ptr) {
+  unsigned int zone_count = 0;
+  vm_address_t* zones = nullptr;
+  kern_return_t result =
+      malloc_get_all_zones(mach_task_self(), nullptr, &zones, &zone_count);
+  MACH_CHECK(result == KERN_SUCCESS, result) << "malloc_get_all_zones";
+
+  // "find_zone_and_free" expected by try_free_default.
+  //
+  // libmalloc's zones call find_registered_zone() in case the default one
+  // doesn't handle the allocation. We can't, so we try to emulate it. See the
+  // implementation in libmalloc/src/malloc.c for details.
+  // https://github.com/apple-oss-distributions/libmalloc/blob/main/src/malloc.c
+  for (unsigned int i = 0; i < zone_count; ++i) {
+    malloc_zone_t* zone = reinterpret_cast<malloc_zone_t*>(zones[i]);
+    if (size_t size = zone->size(zone, ptr)) {
+      if (zone->version >= 6 && zone->free_definite_size) {
+        zone->free_definite_size(zone, ptr, size);
+      } else {
+        zone->free(zone, ptr);
+      }
+      return;
+    }
+  }
+}
+
 void handler_forbidden_try_free_default(struct _malloc_zone_t* zone,
                                         void* ptr) {
   if (is_handler_thread()) {
@@ -162,7 +219,11 @@ void handler_forbidden_try_free_default(struct _malloc_zone_t* zone,
         "handler_forbidden_try_free_default allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  g_old_zone.try_free_default(zone, ptr);
+
+  if (original_zone_for_zone(zone).try_free_default) {
+    return original_zone_for_zone(zone).try_free_default(zone, ptr);
+  }
+  TryFreeDefaultFallbackToFindZoneAndFree(ptr);
 }
 #endif
 
@@ -171,7 +232,7 @@ size_t handler_forbidden_size(struct _malloc_zone_t* zone, const void* ptr) {
     CRASHPAD_RAW_LOG("handler_forbidden_size allocator used in handler.");
     exit(EXIT_FAILURE);
   }
-  return g_old_zone.size(zone, ptr);
+  return original_zone_for_zone(zone).size(zone, ptr);
 }
 
 bool DeprotectMallocZone(malloc_zone_t* default_zone,
@@ -253,7 +314,6 @@ void ReplaceZoneFunctions(malloc_zone_t* zone, const malloc_zone_t* functions) {
   zone->destroy = functions->destroy;
   zone->batch_malloc = functions->batch_malloc;
   zone->batch_free = functions->batch_free;
-  zone->introspect = functions->introspect;
   zone->memalign = functions->memalign;
   zone->free_definite_size = functions->free_definite_size;
   zone->pressure_relief = functions->pressure_relief;
@@ -286,8 +346,6 @@ void ReplaceAllocatorsWithHandlerForbidden() {
   CrashpadClient crashpad_client;
   g_mach_exception_thread = crashpad_client.GetThreadIdForTesting();
 
-  malloc_zone_t* default_zone = malloc_default_zone();
-  memcpy(&g_old_zone, default_zone, sizeof(g_old_zone));
   malloc_zone_t new_functions = {};
   new_functions.size = handler_forbidden_size;
   new_functions.malloc = handler_forbidden_malloc;
@@ -305,7 +363,15 @@ void ReplaceAllocatorsWithHandlerForbidden() {
 #if defined(__IPHONE_16_1) && __IPHONE_OS_VERSION_MAX_ALLOWED >= __IPHONE_16_1
   new_functions.try_free_default = handler_forbidden_try_free_default;
 #endif
+  malloc_zone_t* default_zone = malloc_default_zone();
+  g_original_zones_ptr[g_zone_count] = default_zone;
+  ReplaceZoneFunctions(&g_original_zones[g_zone_count++], default_zone);
   ReplaceZoneFunctions(default_zone, &new_functions);
+
+  malloc_zone_t* purgeable_zone = malloc_default_purgeable_zone();
+  g_original_zones_ptr[g_zone_count] = purgeable_zone;
+  ReplaceZoneFunctions(&g_original_zones[g_zone_count++], purgeable_zone);
+  ReplaceZoneFunctions(purgeable_zone, &new_functions);
 
   vm_address_t* zones;
   unsigned int count;
@@ -315,11 +381,13 @@ void ReplaceAllocatorsWithHandlerForbidden() {
     return;
   for (unsigned int i = 0; i < count; ++i) {
     malloc_zone_t* zone = reinterpret_cast<malloc_zone_t*>(zones[i]);
+    g_original_zones_ptr[g_zone_count] = zone;
+    ReplaceZoneFunctions(&g_original_zones[g_zone_count++], zone);
     ReplaceZoneFunctions(zone, &new_functions);
-  }
 
-  malloc_zone_t* purgeable_zone = malloc_default_purgeable_zone();
-  ReplaceZoneFunctions(purgeable_zone, &new_functions);
+    if (g_zone_count >= kMaxZoneCount)
+      break;
+  }
 }
 
 }  // namespace test

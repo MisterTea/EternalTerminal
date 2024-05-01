@@ -27,6 +27,10 @@
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "breakpad_googletest_includes.h"
 #include "client/windows/crash_generation/crash_generation_server.h"
 #include "client/windows/common/ipc_protocol.h"

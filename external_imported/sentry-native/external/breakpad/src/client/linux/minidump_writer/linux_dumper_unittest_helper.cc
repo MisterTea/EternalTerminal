@@ -30,6 +30,10 @@
 // threads. The first word of each thread's stack is set to the thread
 // id.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <pthread.h>
 #include <stdint.h>
 #include <stdio.h>

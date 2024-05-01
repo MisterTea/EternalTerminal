@@ -30,6 +30,7 @@
 int main() {
 	std::cout << "Config: " << sago::getConfigHome() << "\n";
 	std::cout << "Data: " << sago::getDataHome() << "\n";
+	std::cout << "State: " << sago::getStateDir() << "\n";
 	std::cout << "Cache: " << sago::getCacheDir() << "\n";
 	std::cout << "Documents: " << sago::getDocumentsFolder() << "\n";
 	std::cout << "Desktop: " << sago::getDesktopFolder() << "\n";

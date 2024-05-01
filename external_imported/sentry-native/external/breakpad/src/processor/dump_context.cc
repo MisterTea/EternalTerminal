@@ -30,6 +30,10 @@
 //
 // See dump_context.h for documentation.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "google_breakpad/processor/dump_context.h"
 
 #include <assert.h>
@@ -772,24 +776,14 @@ void DumpContext::Print() {
              context_riscv->t6);
 
 #if defined(__riscv)
-      for (unsigned int freg_index = 0;
-           freg_index < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; ++freg_index) {
-        riscv_fpr_size fp_value = context_riscv->float_save.regs[freg_index];
-# if __riscv_flen == 32
-        printf("  float_save.regs[%2d]            = 0x%" PRIx32 "\n",
-               freg_index, fp_value);
-# elif __riscv_flen == 64
-        printf("  float_save.regs[%2d]            = 0x%" PRIx64 "\n",
-               freg_index, fp_value);
-# elif __riscv_flen == 128
-        printf("  float_save.regs[%2d]            = 0x%" PRIx64 "%" PRIx64 "\n",
-               freg_index, fp_value.high, fp_value.low);
-# else
-#  error "Unexpected __riscv_flen"
-# endif
+      for (unsigned int freg_index = 0; freg_index < MD_CONTEXT_RISCV_FPR_COUNT;
+           ++freg_index) {
+        // Breakpad only supports RISCV32 with 32 bit floating point.
+        uint32_t fp_value = context_riscv->fpregs[freg_index];
+        printf("  fpregs[%2d]            = 0x%" PRIx32 "\n", freg_index,
+               fp_value);
       }
-      printf("  float_save.fpcsr     = 0x%" PRIx32 "\n",
-             context_riscv->float_save.fpcsr);
+      printf("  fcsr     = 0x%" PRIx32 "\n", context_riscv->fcsr);
 #endif
       break;
     }
@@ -866,25 +860,14 @@ void DumpContext::Print() {
              context_riscv64->t6);
 
 #if defined(__riscv)
-      for (unsigned int freg_index = 0;
-           freg_index < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; ++freg_index) {
-        riscv_fpr_size fp_value = context_riscv64->float_save.regs[freg_index];
-# if __riscv_flen == 32
-        printf("  float_save.regs[%2d]            = 0x%" PRIx32 "\n",
-               freg_index, fp_value);
-# elif __riscv_flen == 64
-        printf("  float_save.regs[%2d]            = 0x%" PRIx64 "\n",
-               freg_index, fp_value);
-# elif __riscv_flen == 128
-        printf("  float_save.regs[%2d]            = 0x%"
-               PRIx64 "%" PRIx64 "\n",
-               freg_index, fp_value.high, fp_value.low);
-# else
-#  error "Unexpected __riscv_flen"
-# endif
+      for (unsigned int freg_index = 0; freg_index < MD_CONTEXT_RISCV_FPR_COUNT;
+           ++freg_index) {
+        // Breakpad only supports RISCV64 with 64 bit floating point.
+        uint64_t fp_value = context_riscv64->fpregs[freg_index];
+        printf("  fpregs[%2d]            = 0x%" PRIx64 "\n", freg_index,
+               fp_value);
       }
-      printf("  float_save.fpcsr     = 0x%" PRIx32 "\n",
-             context_riscv64->float_save.fpcsr);
+      printf("  fcsr     = 0x%" PRIx32 "\n", context_riscv64->fcsr);
 #endif
       break;
     }

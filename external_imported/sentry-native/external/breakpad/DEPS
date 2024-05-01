@@ -52,7 +52,7 @@ deps = {
 hooks = [
   {
     # Keep the manifest up to date.
-    "action": ["python", "src/src/tools/python/deps-to-manifest.py",
+    "action": ["src/src/tools/python/deps-to-manifest.py",
                "src/DEPS", "src/default.xml"],
   },
 ]

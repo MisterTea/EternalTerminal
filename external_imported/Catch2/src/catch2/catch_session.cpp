@@ -13,13 +13,13 @@
 #include <catch2/internal/catch_run_context.hpp>
 #include <catch2/catch_test_spec.hpp>
 #include <catch2/catch_version.hpp>
-#include <catch2/interfaces/catch_interfaces_reporter.hpp>
 #include <catch2/internal/catch_startup_exception_registry.hpp>
 #include <catch2/internal/catch_sharding.hpp>
+#include <catch2/internal/catch_test_case_registry_impl.hpp>
 #include <catch2/internal/catch_textflow.hpp>
 #include <catch2/internal/catch_windows_h_proxy.hpp>
 #include <catch2/reporters/catch_reporter_multi.hpp>
-#include <catch2/interfaces/catch_interfaces_reporter_registry.hpp>
+#include <catch2/internal/catch_reporter_registry.hpp>
 #include <catch2/interfaces/catch_interfaces_reporter_factory.hpp>
 #include <catch2/internal/catch_move_and_forward.hpp>
 #include <catch2/internal/catch_stdstreams.hpp>
@@ -27,6 +27,7 @@
 
 #include <algorithm>
 #include <cassert>
+#include <exception>
 #include <iomanip>
 #include <set>
 

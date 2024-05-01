@@ -33,6 +33,10 @@
 //  Copyright 2008 Google LLC
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/mac/handler/testcases/breakpad_nlist_test.h"
 #include <mach-o/nlist.h>
 #include "client/mac/handler/breakpad_nlist_64.h"

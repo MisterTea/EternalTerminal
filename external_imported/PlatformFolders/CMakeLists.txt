@@ -1,13 +1,32 @@
 # For target_compile_features
 cmake_minimum_required(VERSION 3.1.0 FATAL_ERROR)
-project(platform_folders VERSION 4.0.0 LANGUAGES CXX)
 
-# Since it's off, the library will be static by default
-option(BUILD_SHARED_LIBS "Build shared instead of static." OFF)
+set(PLATFORMFOLDERS_MAIN_PROJECT OFF)
+if(CMAKE_CURRENT_SOURCE_DIR STREQUAL CMAKE_SOURCE_DIR)
+  set(PLATFORMFOLDERS_MAIN_PROJECT ON)
+endif()
 
-add_library(platform_folders
+project(platform_folders VERSION 4.2.0 LANGUAGES CXX)
+
+# BUILD_SHARED_LIBS is off by default, the library will be static by default
+option(PLATFORMFOLDERS_BUILD_SHARED_LIBS "Build platform_folders shared library" ${BUILD_SHARED_LIBS})
+option(PLATFORMFOLDERS_BUILD_TESTING "Build platform_folders tests" ${PLATFORMFOLDERS_MAIN_PROJECT})
+option(PLATFORMFOLDERS_ENABLE_INSTALL "Enable platform_folders INSTALL target" ${PLATFORMFOLDERS_MAIN_PROJECT})
+
+set(PLATFORMFOLDERS_TYPE STATIC)
+if(PLATFORMFOLDERS_BUILD_SHARED_LIBS)
+	set(PLATFORMFOLDERS_TYPE SHARED)
+endif()
+
+add_library(platform_folders ${PLATFORMFOLDERS_TYPE}
 	sago/platform_folders.cpp
 )
+
+set_target_properties(platform_folders PROPERTIES DEBUG_POSTFIX "${CMAKE_DEBUG_POSTFIX}")
+
+# Creates an alias so that people building in-tree (instead of using find_package)...
+# can still link against the same target
+add_library(sago::platform_folders ALIAS platform_folders)
 
 # Defines standardized defaults for install paths
 include(GNUInstallDirs)
@@ -57,52 +76,52 @@ else()
 	set(_PROJECT_INSTALL_CMAKE_DIR "${CMAKE_INSTALL_LIBDIR}/cmake/platform_folders")
 endif()
 
-# Gives "Make install" esque operations a location to install to...
-# and creates a .cmake file to be exported
-install(TARGETS platform_folders
-	EXPORT "platform_foldersConfig"
-	LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-	ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
-	# Tells it where to put the header files
-	PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sago"
-)
+if(PLATFORMFOLDERS_ENABLE_INSTALL)
+	# Gives "Make install" esque operations a location to install to...
+	# and creates a .cmake file to be exported
+	install(TARGETS platform_folders
+		EXPORT "platform_foldersConfig"
+		LIBRARY DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+		ARCHIVE DESTINATION "${CMAKE_INSTALL_LIBDIR}"
+		# Tells it where to put the header files
+		PUBLIC_HEADER DESTINATION "${CMAKE_INSTALL_INCLUDEDIR}/sago"
+	)
 
-# "The install(TARGETS) and install(EXPORT) commands work together to install a target and a file to help import it"
-# Installs a cmake file which external projects can import.
-install(EXPORT "platform_foldersConfig"
-	NAMESPACE sago::
-	DESTINATION "${_PROJECT_INSTALL_CMAKE_DIR}"
-)
+	# "The install(TARGETS) and install(EXPORT) commands work together to install a target and a file to help import it"
+	# Installs a cmake file which external projects can import.
+	install(EXPORT "platform_foldersConfig"
+		NAMESPACE sago::
+		DESTINATION "${_PROJECT_INSTALL_CMAKE_DIR}"
+	)
 
-# "The export command is used to generate a file exporting targets from a project build tree"
-# Creates an import file for external projects which are aware of the build tree.
-# May be useful for cross-compiling
-export(TARGETS platform_folders
-	FILE "platform_folders-exports.cmake"
-)
+	# "The export command is used to generate a file exporting targets from a project build tree"
+	# Creates an import file for external projects which are aware of the build tree.
+	# May be useful for cross-compiling
+	export(TARGETS platform_folders
+		FILE "platform_folders-exports.cmake"
+	)
 
-# For the config and configversion macros
-include(CMakePackageConfigHelpers)
+	# For the config and configversion macros
+	include(CMakePackageConfigHelpers)
 
-# Creates the project's ConfigVersion.cmake file
-# This allows for find_package() to use a version in the call
-write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/platform_foldersConfigVersion.cmake"
-	# This'll require versioning in the project() call
-	VERSION ${CMAKE_PROJECT_VERSION}
-	# Just assuming Semver is followed
-	COMPATIBILITY SameMajorVersion
-)
+	# Creates the project's ConfigVersion.cmake file
+	# This allows for find_package() to use a version in the call
+	write_basic_package_version_file("${CMAKE_CURRENT_BINARY_DIR}/platform_foldersConfigVersion.cmake"
+		# This'll require versioning in the project() call
+		VERSION ${CMAKE_PROJECT_VERSION}
+		# Just assuming Semver is followed
+		COMPATIBILITY SameMajorVersion
+	)
 
-# Install the ConfigVersion file, which is located in the build dir
-install(FILES
-		"${CMAKE_CURRENT_BINARY_DIR}/platform_foldersConfigVersion.cmake"
-	DESTINATION "${_PROJECT_INSTALL_CMAKE_DIR}"
-)
+	# Install the ConfigVersion file, which is located in the build dir
+	install(FILES
+			"${CMAKE_CURRENT_BINARY_DIR}/platform_foldersConfigVersion.cmake"
+		DESTINATION "${_PROJECT_INSTALL_CMAKE_DIR}"
+	)
+endif()
 
-# A module for testing the library
-include(CTest)
-# BUILD_TESTING is defined (default ON) in CTest
-if(BUILD_TESTING)
+if(PLATFORMFOLDERS_BUILD_TESTING)
+	enable_testing()
 	add_subdirectory(test)
 	add_executable(platform_folders_sample platform_folders.cpp)
 	target_link_libraries(platform_folders_sample PRIVATE platform_folders)

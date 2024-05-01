@@ -14,7 +14,7 @@ static_library("base") {
     "check.h",
     "check_op.h",
     "compiler_specific.h",
-    "cxx17_backports.h",
+    "containers/span.h",
     "debug/alias.cc",
     "debug/alias.h",
     "files/file_path.cc",
@@ -49,6 +49,11 @@ static_library("base") {
     "rand_util.h",
     "scoped_clear_last_error.h",
     "scoped_generic.h",
+    "strings/pattern.cc",
+    "strings/pattern.h",
+    "strings/strcat.cc",
+    "strings/strcat.h",
+    "strings/strcat_internal.h",
     "strings/string_number_conversions.cc",
     "strings/string_number_conversions.h",
     "strings/string_piece.h",
@@ -70,6 +75,7 @@ static_library("base") {
     "third_party/icu/icu_utf.h",
     "threading/thread_local_storage.cc",
     "threading/thread_local_storage.h",
+    "types/cxx23_to_underlying.h",
   ]
 
   if (mini_chromium_is_posix || mini_chromium_is_fuchsia) {
@@ -86,56 +92,43 @@ static_library("base") {
     ]
   }
 
+  if (mini_chromium_is_apple) {
+    sources += [
+      "apple/bridging.h",
+      "apple/foundation_util.h",
+      "apple/foundation_util.mm",
+      "apple/mach_logging.cc",
+      "apple/mach_logging.h",
+      "apple/scoped_cftyperef.h",
+      "apple/scoped_mach_port.cc",
+      "apple/scoped_mach_port.h",
+      "apple/scoped_mach_vm.cc",
+      "apple/scoped_mach_vm.h",
+      "apple/scoped_nsautorelease_pool.h",
+      "apple/scoped_nsautorelease_pool.mm",
+      "apple/scoped_typeref.h",
+      "strings/sys_string_conversions_mac.mm",
+    ]
+    frameworks = [
+      "CoreFoundation.framework",
+      "Foundation.framework",
+      "Security.framework",
+    ]
+  }
   if (mini_chromium_is_mac) {
     sources += [
       "mac/close_nocancel.cc",
-      "mac/foundation_util.h",
-      "mac/foundation_util.mm",
-      "mac/mach_logging.cc",
-      "mac/mach_logging.h",
-      "mac/scoped_cftyperef.h",
       "mac/scoped_ioobject.h",
       "mac/scoped_launch_data.h",
-      "mac/scoped_mach_port.cc",
-      "mac/scoped_mach_port.h",
-      "mac/scoped_mach_vm.cc",
-      "mac/scoped_mach_vm.h",
-      "mac/scoped_nsautorelease_pool.h",
-      "mac/scoped_nsautorelease_pool.mm",
-      "mac/scoped_nsobject.h",
-      "mac/scoped_typeref.h",
-      "strings/sys_string_conversions_mac.mm",
     ]
-    frameworks = [
+    frameworks += [
       "ApplicationServices.framework",
-      "CoreFoundation.framework",
-      "Foundation.framework",
       "IOKit.framework",
-      "Security.framework",
     ]
   } else if (mini_chromium_is_ios) {
-    sources += [
-      "mac/foundation_util.h",
-      "mac/foundation_util.mm",
-      "mac/mach_logging.cc",
-      "mac/mach_logging.h",
-      "mac/scoped_cftyperef.h",
-      "mac/scoped_mach_port.cc",
-      "mac/scoped_mach_port.h",
-      "mac/scoped_mach_vm.cc",
-      "mac/scoped_mach_vm.h",
-      "mac/scoped_nsautorelease_pool.h",
-      "mac/scoped_nsautorelease_pool.mm",
-      "mac/scoped_nsobject.h",
-      "mac/scoped_typeref.h",
-      "strings/sys_string_conversions_mac.mm",
-    ]
-    frameworks = [
-      "CoreFoundation.framework",
+    frameworks += [
       "CoreGraphics.framework",
       "CoreText.framework",
-      "Foundation.framework",
-      "Security.framework",
     ]
   } else if (mini_chromium_is_win) {
     sources += [
@@ -163,6 +156,10 @@ static_library("base") {
   public_configs = [ "../build:mini_chromium_config" ]
 
   public_deps = [ "../build" ]
+
+  if (mini_chromium_is_apple) {
+    public_configs += [ "../build/config:apple_enable_arc" ]
+  }
 
   if (mini_chromium_is_android) {
     libs = [ "log" ]

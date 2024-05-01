@@ -30,6 +30,7 @@
 
 #include <atomic>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/strings/stringprintf.h"
 #include "build/build_config.h"
@@ -131,6 +132,8 @@ std::vector<std::string> BuildArgsToLaunchWithLinker(
 
 #endif  // BUILDFLAG(IS_ANDROID)
 
+using LastChanceHandler = bool (*)(int, siginfo_t*, ucontext_t*);
+
 // A base class for Crashpad signal handler implementations.
 class SignalHandler {
  public:
@@ -150,8 +153,12 @@ class SignalHandler {
     }
   }
 
-  void SetFirstChanceHandler(CrashpadClient::FirstChanceHandlerLinux handler) {
+  void SetFirstChanceHandler(CrashpadClient::FirstChanceHandler handler) {
     first_chance_handler_ = handler;
+  }
+
+  void SetLastChanceExceptionHandler(LastChanceHandler handler) {
+    last_chance_handler_ = handler;
   }
 
   // The base implementation for all signal handlers, suitable for calling
@@ -212,6 +219,11 @@ class SignalHandler {
     if (!handler_->disabled_.test_and_set()) {
       handler_->HandleCrash(signo, siginfo, context);
       handler_->WakeThreads();
+      if (handler_->last_chance_handler_ &&
+          handler_->last_chance_handler_(
+              signo, siginfo, static_cast<ucontext_t*>(context))) {
+        return;
+      }
     } else {
       // Processes on Android normally have several chained signal handlers that
       // co-operate to report crashes. e.g. WebView will have this signal
@@ -253,7 +265,8 @@ class SignalHandler {
 
   Signals::OldActions old_actions_ = {};
   ExceptionInformation exception_information_ = {};
-  CrashpadClient::FirstChanceHandlerLinux first_chance_handler_ = nullptr;
+  CrashpadClient::FirstChanceHandler first_chance_handler_ = nullptr;
+  LastChanceHandler last_chance_handler_ = nullptr;
   int32_t dump_done_futex_ = kDumpNotDone;
 #if !defined(__cpp_lib_atomic_value_initialization) || \
     __cpp_lib_atomic_value_initialization < 201911L
@@ -443,6 +456,7 @@ bool CrashpadClient::StartHandler(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     bool restartable,
@@ -457,7 +471,7 @@ bool CrashpadClient::StartHandler(
   }
 
   std::vector<std::string> argv = BuildHandlerArgvStrings(
-      handler, database, metrics_dir, url, annotations, arguments, attachments);
+      handler, database, metrics_dir, url, http_proxy, annotations, arguments, attachments);
 
   argv.push_back(FormatArgumentInt("initial-client-fd", handler_sock.get()));
   argv.push_back("--shared-client-connection");
@@ -676,11 +690,12 @@ bool CrashpadClient::StartHandlerAtCrash(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     const std::vector<base::FilePath>& attachments) {
   std::vector<std::string> argv = BuildHandlerArgvStrings(
-      handler, database, metrics_dir, url, annotations, arguments, attachments);
+      handler, database, metrics_dir, url, http_proxy, annotations, arguments, attachments);
 
   auto signal_handler = LaunchAtCrashHandler::Get();
   return signal_handler->Initialize(&argv, nullptr, &unhandled_signals_);
@@ -692,11 +707,12 @@ bool CrashpadClient::StartHandlerForClient(
     const base::FilePath& database,
     const base::FilePath& metrics_dir,
     const std::string& url,
+    const std::string& http_proxy,
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     int socket) {
   std::vector<std::string> argv = BuildHandlerArgvStrings(
-      handler, database, metrics_dir, url, annotations, arguments);
+      handler, database, metrics_dir, url, http_proxy, annotations, arguments);
 
   argv.push_back(FormatArgumentInt("initial-client-fd", socket));
 
@@ -734,9 +750,15 @@ void CrashpadClient::CrashWithoutDump(const std::string& message) {
 
 // static
 void CrashpadClient::SetFirstChanceExceptionHandler(
-    FirstChanceHandlerLinux handler) {
+    FirstChanceHandler handler) {
   DCHECK(SignalHandler::Get());
   SignalHandler::Get()->SetFirstChanceHandler(handler);
+}
+
+// static
+void CrashpadClient::SetLastChanceExceptionHandler(LastChanceHandler handler) {
+  DCHECK(SignalHandler::Get());
+  SignalHandler::Get()->SetLastChanceExceptionHandler(handler);
 }
 
 void CrashpadClient::SetUnhandledSignals(const std::set<int>& signals) {

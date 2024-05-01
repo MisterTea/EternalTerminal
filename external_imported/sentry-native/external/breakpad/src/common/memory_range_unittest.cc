@@ -28,6 +28,10 @@
 
 // memory_range_unittest.cc: Unit tests for google_breakpad::MemoryRange.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "breakpad_googletest_includes.h"
 #include "common/memory_range.h"
 

@@ -25,14 +25,6 @@ if(CRASHPAD_ZLIB_SYSTEM)
     find_package(ZLIB REQUIRED)
 endif()
 
-
-if(LINUX OR ANDROID)
-    find_package(OpenSSL)
-    if(OPENSSL_FOUND)
-        set(CRASHPAD_USE_BORINGSSL ON)
-    endif()
-endif()
-
 if (NOT (ANDROID OR FUCHSIA))
     add_compile_definitions(CRASHPAD_FLOCK_ALWAYS_SUPPORTED=1)
 else()
@@ -58,7 +50,11 @@ function(crashpad_install_dev)
 endfunction()
 
 if(WIN32)
-    enable_language(ASM_MASM)
+    if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES ARM64)
+        enable_language(ASM_MARMASM)
+    else()
+        enable_language(ASM_MASM)
+    endif()
 
     if(MINGW)
         find_program(JWASM_FOUND jwasm)
@@ -110,6 +106,9 @@ if(WIN32)
     )
 endif()
 if(MSVC)
+    set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} /utf-8")
+    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /utf-8")
+
     string(REGEX REPLACE "/[Ww][0123]" "" CMAKE_C_FLAGS "${CMAKE_C_FLAGS}")
     string(REGEX REPLACE "/[Ww][0123]" "" CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS}")
     target_compile_options(crashpad_interface INTERFACE

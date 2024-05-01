@@ -35,6 +35,11 @@
 // cl /Zi dump_syms_regtest64.cc /link /PROFILE
 // dump_syms dump_syms_regtest64.pdb > dump_syms_regtest64.sym
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>
+#endif
+
+
 namespace google_breakpad {
 
 class C {

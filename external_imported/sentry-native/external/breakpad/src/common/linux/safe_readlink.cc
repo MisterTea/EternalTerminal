@@ -29,6 +29,10 @@
 // safe_readlink.cc: Implement google_breakpad::SafeReadLink.
 // See safe_readlink.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stddef.h>
 
 #include "third_party/lss/linux_syscall_support.h"

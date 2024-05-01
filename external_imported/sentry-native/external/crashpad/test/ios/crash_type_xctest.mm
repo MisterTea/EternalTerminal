@@ -24,10 +24,6 @@
 #include "util/mach/exception_types.h"
 #include "util/mach/mach_extensions.h"
 
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-#error "This file requires ARC support."
-#endif
-
 @interface CPTestTestCase : XCTestCase {
   XCUIApplication* app_;
   CPTestSharedObject* rootObject_;
@@ -150,10 +146,16 @@
 
 - (void)testException {
   [rootObject_ crashException];
+  // After https://reviews.llvm.org/D141222 exceptions call
+  // __libcpp_verbose_abort, which Chromium sets to `brk 0` in release.
+#if defined(CRASHPAD_IS_IN_CHROMIUM) && defined(NDEBUG)
+  [self verifyCrashReportException:SIGABRT];
+#else
   [self verifyCrashReportException:EXC_SOFT_SIGNAL];
   NSNumber* report_exception;
   XCTAssertTrue([rootObject_ pendingReportExceptionInfo:&report_exception]);
   XCTAssertEqual(report_exception.intValue, SIGABRT);
+#endif
 }
 
 - (void)testNSException {
@@ -167,6 +169,16 @@
       isEqualToString:@"Intentionally throwing error."]);
   XCTAssertTrue([[dict[@"objects"][2] valueForKeyPath:@"exceptionName"]
       isEqualToString:@"NSInternalInconsistencyException"]);
+}
+
+- (void)testNotAnNSException {
+  [rootObject_ crashNotAnNSException];
+  // When @throwing something other than an NSException the
+  // UncaughtExceptionHandler is not called, so the application SIGABRTs.
+  [self verifyCrashReportException:EXC_SOFT_SIGNAL];
+  NSNumber* report_exception;
+  XCTAssertTrue([rootObject_ pendingReportExceptionInfo:&report_exception]);
+  XCTAssertEqual(report_exception.intValue, SIGABRT);
 }
 
 - (void)testUnhandledNSException {
@@ -372,6 +384,17 @@
   XCTAssertTrue(app_.state == XCUIApplicationStateRunningForeground);
   rootObject_ = [EDOClientService rootObjectWithPort:12345];
   XCTAssertEqual([rootObject_ pendingReportCount], 1);
+}
+
+- (void)testSimultaneousNSException {
+  [rootObject_ catchConcurrentNSException];
+
+  // The app should not crash
+  XCTAssertTrue(app_.state == XCUIApplicationStateRunningForeground);
+
+  // No report should be generated.
+  [rootObject_ processIntermediateDumps];
+  XCTAssertEqual([rootObject_ pendingReportCount], 0);
 }
 
 - (void)testCrashInHandlerReentrant {

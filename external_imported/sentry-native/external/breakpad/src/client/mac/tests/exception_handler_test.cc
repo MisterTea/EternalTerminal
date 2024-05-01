@@ -28,6 +28,10 @@
 
 // exception_handler_test.cc: Unit tests for google_breakpad::ExceptionHandler
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <pthread.h>
 #include <sys/mman.h>
 #include <sys/stat.h>

@@ -31,6 +31,10 @@
 // macho_reader_unittest.cc: Unit tests for google_breakpad::Mach_O::FatReader
 // and google_breakpad::Mach_O::Reader.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <map>
 #include <string>
 #include <vector>

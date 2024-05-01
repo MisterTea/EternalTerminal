@@ -29,6 +29,10 @@
 // elf_core_dump.cc: Implement google_breakpad::ElfCoreDump.
 // See elf_core_dump.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/elf_core_dump.h"
 
 #include <stddef.h>

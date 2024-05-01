@@ -73,6 +73,25 @@ typedef int32_t UChar32;
      ((c)<=0xfdef || ((c)&0xfffe)==0xfffe) && (c)<=0x10ffff)
 
 /**
+ * \def UPRV_BLOCK_MACRO_BEGIN
+ * Defined as the "do" keyword by default.
+ * @internal
+ */
+#ifndef CBUPRV_BLOCK_MACRO_BEGIN
+#define CBUPRV_BLOCK_MACRO_BEGIN do
+#endif
+
+/**
+ * \def UPRV_BLOCK_MACRO_END
+ * Defined as "while (FALSE)" by default.
+ * @internal
+ */
+#ifndef CBUPRV_BLOCK_MACRO_END
+#define CBUPRV_BLOCK_MACRO_END while (0)
+#endif
+
+
+/**
  * Is c a Unicode code point value (0..U+10ffff)
  * that can be assigned a character?
  *
@@ -230,29 +249,36 @@ utf8_nextCharSafeBody(const uint8_t *s, int32_t *pi, int32_t length, ::base_icu:
  * @see U8_NEXT_UNSAFE
  * @stable ICU 2.4
  */
-#define CBU8_NEXT(s, i, length, c) { \
+#define CBU8_NEXT(s, i, length, c) CBU8_INTERNAL_NEXT_OR_SUB(s, i, length, c, CBU_SENTINEL)
+
+/** @internal */
+#define CBU8_INTERNAL_NEXT_OR_SUB(s, i, length, c, sub) CBUPRV_BLOCK_MACRO_BEGIN { \
     (c)=(uint8_t)(s)[(i)++]; \
     if(!CBU8_IS_SINGLE(c)) { \
-        uint8_t __t1, __t2; \
-        if( /* handle U+0800..U+FFFF inline */ \
-                (0xe0<=(c) && (c)<0xf0) && \
-                (((i)+1)<(length) || (length)<0) && \
-                CBU8_IS_VALID_LEAD3_AND_T1((c), __t1=(s)[i]) && \
-                (__t2=(uint8_t)((s)[(i)+1]-0x80))<=0x3f) { \
-            (c)=(((c)&0xf)<<12)|((__t1&0x3f)<<6)|__t2; \
-            (i)+=2; \
-        } else if( /* handle U+0080..U+07FF inline */ \
-                ((c)<0xe0 && (c)>=0xc2) && \
-                ((i)!=(length)) && \
-                (__t1=(uint8_t)((s)[i]-0x80))<=0x3f) { \
-            (c)=(((c)&0x1f)<<6)|__t1; \
-            ++(i); \
+        uint8_t __t = 0; \
+        if((i)!=(length) && \
+            /* fetch/validate/assemble all but last trail byte */ \
+            ((c)>=0xe0 ? \
+                ((c)<0xf0 ?  /* U+0800..U+FFFF except surrogates */ \
+                    CBU8_LEAD3_T1_BITS[(c)&=0xf]&(1<<((__t=(s)[i])>>5)) && \
+                    (__t&=0x3f, 1) \
+                :  /* U+10000..U+10FFFF */ \
+                    ((c)-=0xf0)<=4 && \
+                    CBU8_LEAD4_T1_BITS[(__t=(s)[i])>>4]&(1<<(c)) && \
+                    ((c)=((c)<<6)|(__t&0x3f), ++(i)!=(length)) && \
+                    (__t=(s)[i]-0x80)<=0x3f) && \
+                /* valid second-to-last trail byte */ \
+                ((c)=((c)<<6)|__t, ++(i)!=(length)) \
+            :  /* U+0080..U+07FF */ \
+                (c)>=0xc2 && ((c)&=0x1f, 1)) && \
+            /* last trail byte */ \
+            (__t=(s)[i]-0x80)<=0x3f && \
+            ((c)=((c)<<6)|__t, ++(i), 1)) { \
         } else { \
-            /* function call for "complicated" and error cases */ \
-            (c)=::base_icu::utf8_nextCharSafeBody((const uint8_t *)s, &(i), (length), c, -1); \
+            (c)=(sub);  /* ill-formed*/ \
         } \
     } \
-}
+} CBUPRV_BLOCK_MACRO_END
 
 /**
  * Append a code point to a string, overwriting 1 to 4 bytes.

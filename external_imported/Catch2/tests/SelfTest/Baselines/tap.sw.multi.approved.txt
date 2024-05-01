@@ -657,7 +657,7 @@ ok {test-number} - unrelated::ADL_empty{}, IsEmpty() for: {?} is empty
 # CAPTURE can deal with complex expressions
 ok {test-number} - with 7 messages: 'a := 1' and 'b := 2' and 'c := 3' and 'a + b := 3' and 'a+b := 3' and 'c > b := true' and 'a == 1 := true'
 # CAPTURE can deal with complex expressions involving commas
-ok {test-number} - with 7 messages: 'std::vector<int>{1, 2, 3}[0, 1, 2] := 3' and 'std::vector<int>{1, 2, 3}[(0, 1)] := 2' and 'std::vector<int>{1, 2, 3}[0] := 1' and '(helper_1436<int, int>{12, -12}) := { 12, -12 }' and '(helper_1436<int, int>(-12, 12)) := { -12, 12 }' and '(1, 2) := 2' and '(2, 3) := 3'
+ok {test-number} - with 7 messages: 'custom_index_op<int>{1, 2, 3}[0, 1, 2] := 0' and 'custom_index_op<int>{1, 2, 3}[(0, 1)] := 0' and 'custom_index_op<int>{1, 2, 3}[0] := 0' and '(helper_1436<int, int>{12, -12}) := { 12, -12 }' and '(helper_1436<int, int>(-12, 12)) := { -12, 12 }' and '(1, 2) := 2' and '(2, 3) := 3'
 # CAPTURE parses string and character constants
 ok {test-number} - with 11 messages: '("comma, in string", "escaped, \", ") := "escaped, ", "' and '"single quote in string,'," := "single quote in string,',"' and '"some escapes, \\,\\\\" := "some escapes, \,\\"' and '"some, ), unmatched, } prenheses {[<" := "some, ), unmatched, } prenheses {[<"' and ''"' := '"'' and ''\'' := '''' and '',' := ','' and ''}' := '}'' and '')' := ')'' and ''(' := '('' and ''{' := '{''
 # Capture and info messages
@@ -982,10 +982,10 @@ ok {test-number} - enumInfo->lookup(0) == "Value1" for: Value1 == "Value1"
 ok {test-number} - enumInfo->lookup(1) == "Value2" for: Value2 == "Value2"
 # Directly creating an EnumInfo
 ok {test-number} - enumInfo->lookup(3) == "{** unexpected enum value **}" for: {** unexpected enum value **} == "{** unexpected enum value **}"
+# Empty generators can SKIP in constructor
+ok {test-number} -  # SKIP 'This generator is empty'
 # Empty stream name opens cout stream
 ok {test-number} - Catch::makeStream( "" )->isConsole() for: true
-# Empty tag is not allowed
-ok {test-number} - Catch::TestCaseInfo( "", { "fake test name", "[]" }, dummySourceLineInfo )
 # EndsWith string matcher
 not ok {test-number} - testStringForMatching(), EndsWith( "Substring" ) for: "this string contains 'abc' as a substring" ends with: "Substring"
 # EndsWith string matcher
@@ -1256,6 +1256,14 @@ ok {test-number} - WithinRel( 1.f, -0.2f ), std::domain_error
 ok {test-number} - WithinRel( 1.f, 1.f ), std::domain_error
 # Floating point matchers: float
 ok {test-number} - 1., !IsNaN() for: 1.0 not is NaN
+# GENERATE can combine literals and generators
+ok {test-number} - i % 2 == 0 for: 0 == 0
+# GENERATE can combine literals and generators
+ok {test-number} - i % 2 == 0 for: 0 == 0
+# GENERATE can combine literals and generators
+ok {test-number} - i % 2 == 0 for: 0 == 0
+# GENERATE can combine literals and generators
+ok {test-number} - i % 2 == 0 for: 0 == 0
 # Generators -- adapters
 ok {test-number} - i % 2 == 0 for: 0 == 0
 # Generators -- adapters
@@ -1794,6 +1802,8 @@ ok {test-number} - h( dummy1 ) != h( dummy2 ) for: 2673152918 (0x<hex digits>) !
 ok {test-number} - h( dummy1 ) != h( dummy2 ) for: 2074929312 (0x<hex digits>) != 3429949824 (0x<hex digits>)
 # Hashing test case produces same hash across multiple calls
 ok {test-number} - h( dummy ) == h( dummy ) for: 3422778688 (0x<hex digits>) == 3422778688 (0x<hex digits>)
+# INFO and UNSCOPED_INFO can stream multiple arguments
+not ok {test-number} - explicitly with 3 messages: 'This info has multiple parts.' and 'This unscoped info has multiple parts.' and 'Show infos!'
 # INFO and WARN do not abort tests
 warning {test-number} - 'this is a message' with 1 message: 'this is a warning'
 # INFO gets logged on failure
@@ -1828,6 +1838,8 @@ ok {test-number} - i < 10 for: 8 < 10 with 2 messages: 'current counter 8' and '
 ok {test-number} - i < 10 for: 9 < 10 with 2 messages: 'current counter 9' and 'i := 9'
 # INFO is reset for each loop
 not ok {test-number} - i < 10 for: 10 < 10 with 2 messages: 'current counter 10' and 'i := 10'
+# Incomplete AssertionHandler
+not ok {test-number} - unexpected exception with message: 'Exception translation was disabled by CATCH_CONFIG_FAST_COMPILE'; expression was: Dummy
 # Inequality checks that should fail
 not ok {test-number} - data.int_seven != 7 for: 7 != 7
 # Inequality checks that should fail
@@ -1860,6 +1872,42 @@ ok {test-number} - data.str_hello != "hell" for: "hello" != "hell"
 ok {test-number} - data.str_hello != "hello1" for: "hello" != "hello1"
 # Inequality checks that should succeed
 ok {test-number} - data.str_hello.size() != 6 for: 5 != 6
+# JsonWriter
+ok {test-number} - stream.str() == "" for: "" == ""
+# JsonWriter
+ok {test-number} - stream.str() == "{\n}" for: "{ }" == "{ }"
+# JsonWriter
+ok {test-number} - stream.str(), ContainsSubstring( "\"int\": 1," ) && ContainsSubstring( "\"double\": 1.5," ) && ContainsSubstring( "\"true\": true," ) && ContainsSubstring( "\"false\": false," ) && ContainsSubstring( "\"string\": \"this is a string\"," ) && ContainsSubstring( "\"array\": [\n    1,\n    2\n  ]\n}" ) for: "{   "int": 1,   "double": 1.5,   "true": true,   "false": false,   "string": "this is a string",   "array": [     1,     2   ] }" ( contains: ""int": 1," and contains: ""double": 1.5," and contains: ""true": true," and contains: ""false": false," and contains: ""string": "this is a string"," and contains: ""array": [     1,     2   ] }" )
+# JsonWriter
+ok {test-number} - stream.str(), ContainsSubstring( "\"empty_object\": {\n  }," ) && ContainsSubstring( "\"fully_object\": {\n    \"key\": 1\n  }" ) for: "{   "empty_object": {   },   "fully_object": {     "key": 1   } }" ( contains: ""empty_object": {   }," and contains: ""fully_object": {     "key": 1   }" )
+# JsonWriter
+ok {test-number} - stream.str() == "[\n]" for: "[ ]" == "[ ]"
+# JsonWriter
+ok {test-number} - stream.str() == "[\n  1,\n  1.5,\n  true,\n  false,\n  \"this is a string\",\n  {\n    \"object\": 42\n  },\n  [\n    \"array\",\n    42.5\n  ]\n]" for: "[   1,   1.5,   true,   false,   "this is a string",   {     "object": 42   },   [     "array",     42.5   ] ]" == "[   1,   1.5,   true,   false,   "this is a string",   {     "object": 42   },   [     "array",     42.5   ] ]"
+# JsonWriter
+ok {test-number} - stream.str() == "{\n}" for: "{ }" == "{ }"
+# JsonWriter
+ok {test-number} - stream.str() == "[\n]" for: "[ ]" == "[ ]"
+# JsonWriter
+ok {test-number} - stream.str() == "\"custom\"" for: ""custom"" == ""custom""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\\"\"" for: ""\""" == ""\"""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\\\\"" for: ""\\"" == ""\\""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"/\"" for: ""/"" == ""/""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\b\"" for: ""\b"" == ""\b""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\f\"" for: ""\f"" == ""\f""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\n\"" for: ""\n"" == ""\n""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\r\"" for: ""\r"" == ""\r""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\t\"" for: ""\t"" == ""\t""
+# JsonWriter escapes charaters in strings properly
+ok {test-number} - sstream.str() == "\"\\\\/\\t\\r\\n\"" for: ""\\/\t\r\n"" == ""\\/\t\r\n""
 # Lambdas in assertions
 ok {test-number} - []() { return true; }() for: true
 # Less-than inequalities with different epsilons
@@ -2450,6 +2498,18 @@ ok {test-number} - listingString, ContainsSubstring("fake reporter"s) for: "Avai
 ok {test-number} - !(factories.empty()) for: !false
 # Reporter's write listings to provided stream
 ok {test-number} - listingString, ContainsSubstring( "fake test name"s ) && ContainsSubstring( "fakeTestTag"s ) for: "All available test cases:   fake test name       [fakeTestTag] 1 test case  " ( contains: "fake test name" and contains: "fakeTestTag" ) with 1 message: 'Tested reporter: console'
+# Reporter's write listings to provided stream
+ok {test-number} - !(factories.empty()) for: !false
+# Reporter's write listings to provided stream
+ok {test-number} - listingString, ContainsSubstring("fakeTag"s) for: "{   "version": 1,   "metadata": {     "name": "",     "rng-seed": 1234,     "catch2-version": "<version>"   },   "listings": {     "tags": [       {         "aliases": [           "fakeTag"         ],         "count": 1       }     ]" contains: "fakeTag" with 1 message: 'Tested reporter: JSON'
+# Reporter's write listings to provided stream
+ok {test-number} - !(factories.empty()) for: !false
+# Reporter's write listings to provided stream
+ok {test-number} - listingString, ContainsSubstring("fake reporter"s) for: "{   "version": 1,   "metadata": {     "name": "",     "rng-seed": 1234,     "catch2-version": "<version>"   },   "listings": {     "reporters": [       {         "name": "fake reporter",         "description": "fake description"       }     ]" contains: "fake reporter" with 1 message: 'Tested reporter: JSON'
+# Reporter's write listings to provided stream
+ok {test-number} - !(factories.empty()) for: !false
+# Reporter's write listings to provided stream
+ok {test-number} - listingString, ContainsSubstring( "fake test name"s ) && ContainsSubstring( "fakeTestTag"s ) for: "{   "version": 1,   "metadata": {     "name": "",     "rng-seed": 1234,     "catch2-version": "<version>"   },   "listings": {     "tests": [       {         "name": "fake test name",         "class-name": "",         "tags": [           "fakeTestTag"         ],         "source-location": {           "filename": "fake-file.cpp",           "line": 123456789         }       }     ]" ( contains: "fake test name" and contains: "fakeTestTag" ) with 1 message: 'Tested reporter: JSON'
 # Reporter's write listings to provided stream
 ok {test-number} - !(factories.empty()) for: !false
 # Reporter's write listings to provided stream
@@ -3060,6 +3120,14 @@ not ok {test-number} - explicitly
 ok {test-number} - false  # TODO
 # Testing checked-if 3
 not ok {test-number} - explicitly
+# Testing checked-if 4
+ok {test-number} - true
+# Testing checked-if 4
+not ok {test-number} - unexpected exception with message: 'Uncaught exception should fail!'; expression was: {Unknown expression after the reported line}
+# Testing checked-if 5
+ok {test-number} - false  # TODO
+# Testing checked-if 5
+not ok {test-number} - unexpected exception with message: 'Uncaught exception should fail!'; expression was: {Unknown expression after the reported line}
 # The NO_FAIL macro reports a failure but does not fail the test
 ok {test-number} - 1 == 2  # TODO
 # The default listing implementation write to provided stream
@@ -4344,6 +4412,10 @@ ok {test-number} - e.upper_bound == 23 for: 23.0 == 23
 ok {test-number} - e.lower_bound == 23 for: 23.0 == 23
 # uniform samples
 ok {test-number} - e.confidence_interval == 0.95 for: 0.95 == 0.95
+# uniform_integer_distribution can return the bounds
+ok {test-number} - dist.a() == -10 for: -10 == -10
+# uniform_integer_distribution can return the bounds
+ok {test-number} - dist.b() == 10 for: 10 == 10
 # unique_ptr reimplementation: basic functionality
 ok {test-number} - !(ptr) for: !{?}
 # unique_ptr reimplementation: basic functionality
@@ -4466,5 +4538,5 @@ ok {test-number} - q3 == 23. for: 23.0 == 23.0
 ok {test-number} -
 # xmlentitycheck
 ok {test-number} -
-1..2237
+1..2272
 

@@ -23,6 +23,13 @@
         TEST_MSG("Received: %s", Val);                                         \
     } while (0)
 
+#define TEST_CHECK_WSTRING_EQUAL(Val, ReferenceVal)                            \
+    do {                                                                       \
+        TEST_CHECK(wcscmp(Val, ReferenceVal) == 0);                            \
+        TEST_MSG("Expected: %s", ReferenceVal);                                \
+        TEST_MSG("Received: %s", Val);                                         \
+    } while (0)
+
 #define TEST_CHECK_JSON_VALUE(Val, ReferenceJson)                              \
     do {                                                                       \
         char *json = sentry_value_to_json(Val);                                \

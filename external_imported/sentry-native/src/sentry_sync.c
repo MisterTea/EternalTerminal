@@ -21,7 +21,7 @@ typedef struct {
 #    pragma pack(pop)
 
 sentry_threadid_t
-sentry__thread_get_current_threadid()
+sentry__thread_get_current_threadid(void)
 {
     return GetCurrentThread();
 }

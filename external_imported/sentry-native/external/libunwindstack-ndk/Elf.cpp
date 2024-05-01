@@ -304,11 +304,6 @@ ElfInterface* Elf::CreateInterfaceFromMemory(Memory* memory) {
     } else if (e_machine == EM_386) {
       arch_ = ARCH_X86;
       interface.reset(new ElfInterface32(memory));
-#ifdef SENTRY_REMOVED
-    } else if (e_machine == EM_MIPS) {
-      arch_ = ARCH_MIPS;
-      interface.reset(new ElfInterface32(memory));
-#endif // SENTRY_REMOVED
     } else {
       // Unsupported.
       return nullptr;
@@ -325,8 +320,6 @@ ElfInterface* Elf::CreateInterfaceFromMemory(Memory* memory) {
     } else if (e_machine == EM_X86_64) {
       arch_ = ARCH_X86_64;
 #ifdef SENTRY_REMOVED
-    } else if (e_machine == EM_MIPS) {
-      arch_ = ARCH_MIPS64;
     } else if (e_machine == EM_RISCV) {
       arch_ = ARCH_RISCV64;
 #endif // SENTRY_REMOVED

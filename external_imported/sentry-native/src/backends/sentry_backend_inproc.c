@@ -13,6 +13,31 @@
 #include "transports/sentry_disk_transport.h"
 #include <string.h>
 
+/**
+ * Android's bionic libc seems to allocate alternate signal handler stacks for
+ * every thread and also references them from their internal maintenance
+ * structs.
+ *
+ * The way we currently set up our sigaltstack seems to interfere with this
+ * setup and causes crashes whenever an ART signal handler touches the thread
+ * that called `sentry_init()`.
+ *
+ * In addition to this problem, it also means there is no need for our own
+ * sigaltstack on Android since our signal handler will always be running on
+ * an alternate stack managed by bionic.
+ *
+ * Note: In bionic the sigaltstacks for 32-bit devices have a size of 16KiB and
+ * on 64-bit devices they have 32KiB. The size of our own was set to 64KiB
+ * independent of the device. If this is a problem, we need figure out
+ * together with Google if there is a way in which our configs can coexist.
+ *
+ * Both breakpad and crashpad are way more defensive in the setup of their
+ * signal stacks and take existing stacks into account (or reuse them).
+ */
+#ifndef SENTRY_PLATFORM_ANDROID
+#    define SETUP_SIGALTSTACK
+#endif
+
 #define SIGNAL_DEF(Sig, Desc)                                                  \
     {                                                                          \
         Sig, #Sig, Desc                                                        \
@@ -32,8 +57,9 @@ struct signal_slot {
 #    define SIGNAL_STACK_SIZE 65536
 static struct sigaction g_sigaction;
 static struct sigaction g_previous_handlers[SIGNAL_COUNT];
+#    ifdef SETUP_SIGALTSTACK
 static stack_t g_signal_stack;
-
+#    endif
 static const struct signal_slot SIGNAL_DEFINITIONS[SIGNAL_COUNT] = {
     SIGNAL_DEF(SIGILL, "IllegalInstruction"),
     SIGNAL_DEF(SIGTRAP, "Trap"),
@@ -87,6 +113,7 @@ startup_inproc_backend(
     }
 
     // install our own signal handler
+#    ifdef SETUP_SIGALTSTACK
     g_signal_stack.ss_sp = sentry_malloc(SIGNAL_STACK_SIZE);
     if (!g_signal_stack.ss_sp) {
         return 1;
@@ -94,7 +121,7 @@ startup_inproc_backend(
     g_signal_stack.ss_size = SIGNAL_STACK_SIZE;
     g_signal_stack.ss_flags = 0;
     sigaltstack(&g_signal_stack, 0);
-
+#    endif
     sigemptyset(&g_sigaction.sa_mask);
     g_sigaction.sa_sigaction = handle_signal;
     g_sigaction.sa_flags = SA_SIGINFO | SA_ONSTACK;
@@ -107,10 +134,12 @@ startup_inproc_backend(
 static void
 shutdown_inproc_backend(sentry_backend_t *UNUSED(backend))
 {
+#    ifdef SETUP_SIGALTSTACK
     g_signal_stack.ss_flags = SS_DISABLE;
     sigaltstack(&g_signal_stack, 0);
     sentry_free(g_signal_stack.ss_sp);
     g_signal_stack.ss_sp = NULL;
+#    endif
     reset_signal_handlers();
 }
 
@@ -472,6 +501,8 @@ make_signal_event(
     void *backtrace[MAX_FRAMES];
     size_t frame_count
         = sentry_unwind_stack_from_ucontext(uctx, &backtrace[0], MAX_FRAMES);
+    SENTRY_TRACEF(
+        "captured backtrace from ucontext with %lu frames", frame_count);
     // if unwinding from a ucontext didn't yield any results, try again with a
     // direct unwind. this is most likely the case when using `libbacktrace`,
     // since that does not allow to unwind from a ucontext at all.
@@ -485,6 +516,14 @@ make_signal_event(
 
     sentry_value_t registers = sentry__registers_from_uctx(uctx);
     sentry_value_set_by_key(stacktrace, "registers", registers);
+
+#ifdef SENTRY_WITH_UNWINDER_LIBUNWINDSTACK
+    // libunwindstack already adjusts the PC according to `GetPcAdjustment()`
+    // https://github.com/getsentry/libunwindstack-ndk/blob/1929f7b601797fc8b2cac092d563b31d01d46a76/Regs.cpp#L187
+    // so there is no need to adjust the PC in the backend processing.
+    sentry_value_set_by_key(stacktrace, "instruction_addr_adjustment",
+        sentry_value_new_string("none"));
+#endif
 
     sentry_value_set_by_key(exc, "stacktrace", stacktrace);
     sentry_event_add_exception(event, exc);

@@ -7,6 +7,7 @@
 #include <stdint.h>
 
 #include <string>
+#include <string_view>
 
 #include "base/strings/utf_string_conversion_utils.h"
 #include "build/build_config.h"
@@ -58,8 +59,8 @@ std::string UTF16ToUTF8(const StringPiece16& utf16) {
   return ret;
 }
 
-#if defined(WCHAR_T_IS_UTF16)
-std::string WideToUTF8(WStringPiece wide) {
+#if defined(WCHAR_T_IS_16_BIT)
+std::string WideToUTF8(std::wstring_view wide) {
   std::string ret;
   UTF16ToUTF8(
       reinterpret_cast<const char16_t*>(wide.data()), wide.size(), &ret);
@@ -71,6 +72,6 @@ std::wstring UTF8ToWide(StringPiece utf8) {
   return std::wstring(reinterpret_cast<const wchar_t*>(utf16.data()),
                       utf16.size());
 }
-#endif  // defined(WCHAR_T_IS_UTF16)
+#endif  // defined(WCHAR_T_IS_16_BIT)
 
 }  // namespace

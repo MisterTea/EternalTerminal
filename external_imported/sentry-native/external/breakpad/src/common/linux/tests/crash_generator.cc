@@ -29,6 +29,10 @@
 // crash_generator.cc: Implement google_breakpad::CrashGenerator.
 // See crash_generator.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/tests/crash_generator.h"
 
 #include <pthread.h>
