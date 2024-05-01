@@ -1,3 +1,9 @@
+et (6.2.9-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * Update deps in external to match vcpkg
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Wed, 1 May 2024 10:06:54 -0800
+
 et (6.2.8-##DISTRO##2) ##DISTRO##; urgency=medium
 
   * Remove ncurses/libtinfo
