@@ -303,7 +303,6 @@ int main(int argc, char** argv) {
       exit(1);
     }
 
-    int jport = result["jport"].as<int>();
     string jServerFifo = "";
     if (result["jserverfifo"].as<string>() != "") {
       jServerFifo = result["jserverfifo"].as<string>();

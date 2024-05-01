@@ -209,11 +209,12 @@ TelemetryService::TelemetryService(const bool _allow,
     logSendingThread.reset(new thread([this]() {
       auto nextDumpTime = std::chrono::system_clock::now();
       while (true) {
-        bool lastRun = shuttingDown;
+        bool lastRun;
         string payload;
         int logBufferSize;
         {
           lock_guard<recursive_mutex> guard(logMutex);
+          lastRun = shuttingDown;
           logBufferSize = (int)logBuffer.size();
         }
         if (logBufferSize) {
@@ -253,6 +254,7 @@ TelemetryService::TelemetryService(const bool _allow,
 }
 
 TelemetryService::~TelemetryService() {
+  lock_guard<recursive_mutex> guard(logMutex);
   if (!shuttingDown) {
     cerr << "Destroyed telemetryService without a shutdown";
   }
@@ -283,10 +285,13 @@ void TelemetryService::logToDatadog(const string& logText, el::Level logLevel,
 }
 
 void TelemetryService::shutdown() {
-  if (shuttingDown) {
-    return;
+  {
+    lock_guard<recursive_mutex> guard(logMutex);
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
   }
-  shuttingDown = true;
 #ifdef USE_SENTRY
   sentry_shutdown();
 #endif
