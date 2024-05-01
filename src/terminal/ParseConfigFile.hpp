@@ -1431,6 +1431,7 @@ int parse_ssh_config_file(const char *targethost, struct Options *options,
   }
 
   ifstream infile(expandedFilename);
+  free(expandedFilename);
   if (!infile.good()) {
     LOG(INFO) << filename << " not found";
     return 0;

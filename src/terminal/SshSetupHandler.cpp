@@ -27,7 +27,8 @@ string genCommand(const string& passkey, const string& id,
 
 string SshSetupHandler::SetupSsh(const string& user, const string& host,
                                  const string& host_alias, int port,
-                                 const string& jumphost, int jport, bool kill,
+                                 const string& jumphost,
+                                 const string& jServerFifo, bool kill,
                                  int vlevel, const string& cmd_prefix,
                                  const string& serverFifo,
                                  const std::vector<std::string>& ssh_options) {
@@ -72,6 +73,9 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
 
   ssh_args.push_back(SSH_SCRIPT_DST);
 
+  std::string ssh_concat;
+  for (const auto& piece : ssh_args) ssh_concat += piece + " ";
+  VLOG(1) << "Trying ssh with args: " << ssh_concat << endl;
   auto sshBuffer = SubprocessToStringInteractive("ssh", ssh_args);
 
   try {
@@ -107,9 +111,12 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
   if (!jumphost.empty()) {
     /* If jumphost is set, we need to pass dst host and port to jumphost
      * and connect to jumphost here */
-    string cmdoptions{"--verbose=" + std::to_string(vlevel)};
-    string jump_cmdoptions = cmdoptions + " --jump --dsthost=" + host +
-                             " --dstport=" + to_string(port);
+    string jump_cmdoptions{"--verbose=" + std::to_string(vlevel)};
+    if (!jServerFifo.empty()) {
+      jump_cmdoptions += " --serverfifo=" + jServerFifo;
+    }
+    jump_cmdoptions = jump_cmdoptions + " --jump --dsthost=" + host +
+                      " --dstport=" + to_string(port);
     string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
                                         cmd_prefix, jump_cmdoptions);
 
