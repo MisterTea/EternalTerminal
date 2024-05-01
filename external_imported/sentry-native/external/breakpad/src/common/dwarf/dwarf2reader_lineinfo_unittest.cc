@@ -30,6 +30,10 @@
 
 // dwarf2reader_lineinfo_unittest.cc: Unit tests for google_breakpad::LineInfo
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdint.h>
 #include <stdlib.h>
 

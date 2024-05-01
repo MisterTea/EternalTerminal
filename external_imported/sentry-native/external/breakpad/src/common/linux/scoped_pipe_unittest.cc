@@ -28,6 +28,10 @@
 
 // scoped_pipe_unittest.cc: Unit tests for google_breakpad::ScopedPipe.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/scoped_pipe.h"
 
 #include "breakpad_googletest_includes.h"

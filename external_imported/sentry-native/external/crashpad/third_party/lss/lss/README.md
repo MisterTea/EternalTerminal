@@ -39,6 +39,7 @@ the header itself as this list might be out of date.
 * MIPS 32-bit o32 ABI
 * MIPS 32-bit n32 ABI
 * MIPS 64-bit n64 ABI
+* LOONGARCH 64-bit ABI
 
 ## API
 

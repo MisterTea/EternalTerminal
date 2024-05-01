@@ -29,6 +29,10 @@
 // Unit test for Minidump.  Uses a pre-generated minidump and
 // verifies that certain streams are correct.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <iostream>
 #include <fstream>
 #include <sstream>

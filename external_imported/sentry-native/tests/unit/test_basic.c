@@ -176,14 +176,19 @@ SENTRY_TEST(crashed_last_run)
     TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), -1);
 
     options = sentry_options_new();
-    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    const char *dsn_str = "https://foo@sentry.invalid/42";
+    const char dsn[] = { 'h', 't', 't', 'p', 's', ':', '/', '/', 'f', 'o', 'o',
+        '@', 's', 'e', 'n', 't', 'r', 'y', '.', 'i', 'n', 'v', 'a', 'l', 'i',
+        'd', '/', '4', '2' };
+    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
+    TEST_CHECK_STRING_EQUAL(sentry_options_get_dsn(options), dsn_str);
     TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
     sentry_close();
 
     TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 0);
 
     options = sentry_options_new();
-    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
 
     // simulate a crash
     TEST_CHECK(sentry__write_crash_marker(options));
@@ -201,7 +206,7 @@ SENTRY_TEST(crashed_last_run)
     TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 1);
 
     options = sentry_options_new();
-    sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
     TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
     sentry_close();
 

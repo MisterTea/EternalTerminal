@@ -580,10 +580,10 @@ enum DwarfSectionId {
   DW_SECT_TYPES = 2,
   DW_SECT_ABBREV = 3,
   DW_SECT_LINE = 4,
-  DW_SECT_LOC = 5,
+  DW_SECT_LOCLISTS = 5,
   DW_SECT_STR_OFFSETS = 6,
-  DW_SECT_MACINFO = 7,
-  DW_SECT_MACRO = 8
+  DW_SECT_MACRO = 7,
+  DW_SECT_RNGLISTS = 8
 };
 
 // Source languages.  These are values for DW_AT_language.

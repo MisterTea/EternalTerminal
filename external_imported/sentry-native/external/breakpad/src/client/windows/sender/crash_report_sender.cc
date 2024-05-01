@@ -29,6 +29,10 @@
 // Disable exception handler warnings.
 #pragma warning( disable : 4530 )
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <errno.h>
 
 #include "client/windows/sender/crash_report_sender.h"

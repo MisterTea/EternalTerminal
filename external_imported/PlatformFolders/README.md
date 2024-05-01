@@ -2,7 +2,7 @@
 
 A C++ library to look for directories like `My Documents`, `~/.config`, `%APPDATA%`, etc. so that you do not need to write platform-specific code
 
-[Source code](https://github.com/sago007/PlatformFolders) • [Latest release](https://github.com/sago007/PlatformFolders/releases/latest) • [Doxygen documentation](http://sago007.github.io/PlatformFolders/html/doxygen/)
+[Source code](https://github.com/sago007/PlatformFolders) • [Latest release](https://github.com/sago007/PlatformFolders/releases/latest) • [Doxygen documentation](https://sago007.github.io/PlatformFolders/html/doxygen/)
 
 ## Rationale
 
@@ -11,11 +11,11 @@ There are a lot of platform abstraction libraries available. You can get graphic
 But folder abstraction seems to be more difficult.
 My problem was that the code that found the place to save data was platform dependent. This cluttered my code and often I would not discover that it did not compile until moving it to the different platforms.
 
-[I have written a bit more about it here.](http://sago007.blogspot.dk/2015/10/abstraction-for-special-folders.html)
+[I have written a bit more about it here.](https://sago007.blogspot.dk/2015/10/abstraction-for-special-folders.html)
 
 There are some alternatives that you might consider instead:
 
-* [QStandardPaths](http://doc.qt.io/qt-5/qstandardpaths.html)
+* [QStandardPaths](https://doc.qt.io/qt-5/qstandardpaths.html)
 * [glib](https://developer.gnome.org/glib/stable/glib-Miscellaneous-Utility-Functions.html)
 
 Both are properly more mature than this library. However they are both parts of large frameworks and using them with libraries outside the framework may not be that simple.
@@ -45,15 +45,17 @@ This project should be compatible with things like [Cmake's ExternalProject_Add]
 You can also follow the [build step](#building) below to install at a system level, and use [Cmake's find_package](https://cmake.org/cmake/help/latest/command/find_package.html).
 
 ```cmake
-# Specifying a version is optional -- note it follows by Semver
+# Specifying a version is optional -- note it follows Semver
 find_package(platform_folders 3.1.0 REQUIRED)
-# Which creates the IMPORTED lib "sago::platform_folders"
+# Which imports the linkable library "sago::platform_folders"
 # Use it like so...
 target_link_libraries(EXEORLIBNAME PRIVATE sago::platform_folders)
 ```
 
 Alternatively, you can just copy the [sago](https://github.com/sago007/PlatformFolders/tree/master/sago) folder into your program and manually link everything.
 If you use the last option and are using a library version from before 4.0.0: Remember to link to the CoreServices lib when compiling on Mac. This typically means passing "-framework CoreServices" during the linking phase.
+
+Note that if you build in-tree, you can link against the Cmake alias `sago::platform_folders` just like if you had used find_package.
 
 ### Building
 
@@ -91,6 +93,7 @@ int main()
 {
 	std::cout << "Config: " << sago::getConfigHome() << "\n";
 	std::cout << "Data: " << sago::getDataHome() << "\n";
+	std::cout << "State: " << sago::getStateDir() << "\n";
 	std::cout << "Cache: " << sago::getCacheDir() << "\n";
 	std::cout << "Documents: " << sago::getDocumentsFolder() << "\n";
 	std::cout << "Desktop: " << sago::getDesktopFolder() << "\n";
@@ -111,6 +114,7 @@ int main()
 ```
 Config: /home/poul/.config
 Data: /home/poul/.local/share
+State: /home/poul/.local/state
 Cache: /home/poul/.cache
 Documents: /home/poul/Dokumenter
 Desktop: /home/poul/Skrivebord
@@ -127,6 +131,7 @@ Save Games 2: /home/poul/.local/share
 ```
 Config: C:\users\poul\Application Data
 Data: C:\users\poul\Application Data
+State: C:\users\poul\Local Settings\Application Data
 Cache: C:\users\poul\Local Settings\Application Data
 Documents: C:\users\poul\Mine dokumenter
 Desktop: C:\users\poul\Skrivebord
@@ -143,6 +148,7 @@ Save Games 2: C:\users\poul\Saved Games
 ```
 Config: /Users/poul/Library/Application Support
 Data: /Users/poul/Library/Application Support
+State: /Users/poul/Library/Application Support
 Cache: /Users/poul/Library/Caches
 Documents: /Users/poul/Documents
 Desktop: /Users/poul/Desktop

@@ -2738,9 +2738,9 @@ Message.tests.cpp:<line number>
 
 Message.tests.cpp:<line number>: PASSED:
 with messages:
-  std::vector<int>{1, 2, 3}[0, 1, 2] := 3
-  std::vector<int>{1, 2, 3}[(0, 1)] := 2
-  std::vector<int>{1, 2, 3}[0] := 1
+  custom_index_op<int>{1, 2, 3}[0, 1, 2] := 0
+  custom_index_op<int>{1, 2, 3}[(0, 1)] := 0
+  custom_index_op<int>{1, 2, 3}[0] := 0
   (helper_1436<int, int>{12, -12}) := { 12, -12 }
   (helper_1436<int, int>(-12, 12)) := { -12, 12 }
   (1, 2) := 2
@@ -3955,6 +3955,16 @@ with expansion:
   "{** unexpected enum value **}"
 
 -------------------------------------------------------------------------------
+Empty generators can SKIP in constructor
+-------------------------------------------------------------------------------
+Skip.tests.cpp:<line number>
+...............................................................................
+
+Skip.tests.cpp:<line number>: SKIPPED:
+explicitly with message:
+  This generator is empty
+
+-------------------------------------------------------------------------------
 Empty stream name opens cout stream
 -------------------------------------------------------------------------------
 Stream.tests.cpp:<line number>
@@ -3964,15 +3974,6 @@ Stream.tests.cpp:<line number>: PASSED:
   REQUIRE( Catch::makeStream( "" )->isConsole() )
 with expansion:
   true
-
--------------------------------------------------------------------------------
-Empty tag is not allowed
--------------------------------------------------------------------------------
-Tag.tests.cpp:<line number>
-...............................................................................
-
-Tag.tests.cpp:<line number>: PASSED:
-  REQUIRE_THROWS( Catch::TestCaseInfo( "", { "fake test name", "[]" }, dummySourceLineInfo ) )
 
 -------------------------------------------------------------------------------
 EndsWith string matcher
@@ -4885,6 +4886,50 @@ Matchers.tests.cpp:<line number>: PASSED:
   REQUIRE_THAT( 1., !IsNaN() )
 with expansion:
   1.0 not is NaN
+
+-------------------------------------------------------------------------------
+GENERATE can combine literals and generators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i % 2 == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+GENERATE can combine literals and generators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i % 2 == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+GENERATE can combine literals and generators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i % 2 == 0 )
+with expansion:
+  0 == 0
+
+-------------------------------------------------------------------------------
+GENERATE can combine literals and generators
+-------------------------------------------------------------------------------
+Generators.tests.cpp:<line number>
+...............................................................................
+
+Generators.tests.cpp:<line number>: PASSED:
+  REQUIRE( i % 2 == 0 )
+with expansion:
+  0 == 0
 
 -------------------------------------------------------------------------------
 Generators -- adapters
@@ -6980,6 +7025,18 @@ with expansion:
   3422778688 (0x<hex digits>)
 
 -------------------------------------------------------------------------------
+INFO and UNSCOPED_INFO can stream multiple arguments
+-------------------------------------------------------------------------------
+Message.tests.cpp:<line number>
+...............................................................................
+
+Message.tests.cpp:<line number>: FAILED:
+explicitly with messages:
+  This info has multiple parts.
+  This unscoped info has multiple parts.
+  Show infos!
+
+-------------------------------------------------------------------------------
 INFO and WARN do not abort tests
 -------------------------------------------------------------------------------
 Message.tests.cpp:<line number>
@@ -7141,6 +7198,17 @@ with messages:
   i := 10
 
 -------------------------------------------------------------------------------
+Incomplete AssertionHandler
+-------------------------------------------------------------------------------
+AssertionHandler.tests.cpp:<line number>
+...............................................................................
+
+AssertionHandler.tests.cpp:<line number>: FAILED:
+  REQUIRE( Dummy )
+due to unexpected exception with message:
+  Exception translation was disabled by CATCH_CONFIG_FAST_COMPILE
+
+-------------------------------------------------------------------------------
 Inequality checks that should fail
 -------------------------------------------------------------------------------
 Condition.tests.cpp:<line number>
@@ -7231,6 +7299,291 @@ Condition.tests.cpp:<line number>: PASSED:
   REQUIRE( data.str_hello.size() != 6 )
 with expansion:
   5 != 6
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Newly constructed JsonWriter does nothing
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "" )
+with expansion:
+  "" == ""
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Calling writeObject will create an empty pair of braces
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "{\n}" )
+with expansion:
+  "{
+  }"
+  ==
+  "{
+  }"
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Calling writeObject with key will create an object to write the value
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( stream.str(), ContainsSubstring( "\"int\": 1," ) && ContainsSubstring( "\"double\": 1.5," ) && ContainsSubstring( "\"true\": true," ) && ContainsSubstring( "\"false\": false," ) && ContainsSubstring( "\"string\": \"this is a string\"," ) && ContainsSubstring( "\"array\": [\n    1,\n    2\n  ]\n}" ) )
+with expansion:
+  "{
+    "int": 1,
+    "double": 1.5,
+    "true": true,
+    "false": false,
+    "string": "this is a string",
+    "array": [
+      1,
+      2
+    ]
+  }" ( contains: ""int": 1," and contains: ""double": 1.5," and contains:
+  ""true": true," and contains: ""false": false," and contains: ""string":
+  "this is a string"," and contains: ""array": [
+      1,
+      2
+    ]
+  }" )
+
+-------------------------------------------------------------------------------
+JsonWriter
+  nesting objects
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( stream.str(), ContainsSubstring( "\"empty_object\": {\n  }," ) && ContainsSubstring( "\"fully_object\": {\n    \"key\": 1\n  }" ) )
+with expansion:
+  "{
+    "empty_object": {
+    },
+    "fully_object": {
+      "key": 1
+    }
+  }" ( contains: ""empty_object": {
+    }," and contains: ""fully_object": {
+      "key": 1
+    }" )
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Calling writeArray will create an empty pair of braces
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "[\n]" )
+with expansion:
+  "[
+  ]"
+  ==
+  "[
+  ]"
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Calling writeArray creates array to write the values to
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "[\n  1,\n  1.5,\n  true,\n  false,\n  \"this is a string\",\n  {\n    \"object\": 42\n  },\n  [\n    \"array\",\n    42.5\n  ]\n]" )
+with expansion:
+  "[
+    1,
+    1.5,
+    true,
+    false,
+    "this is a string",
+    {
+      "object": 42
+    },
+    [
+      "array",
+      42.5
+    ]
+  ]"
+  ==
+  "[
+    1,
+    1.5,
+    true,
+    false,
+    "this is a string",
+    {
+      "object": 42
+    },
+    [
+      "array",
+      42.5
+    ]
+  ]"
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Moved from JsonObjectWriter shall not insert superfluous brace
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "{\n}" )
+with expansion:
+  "{
+  }"
+  ==
+  "{
+  }"
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Moved from JsonArrayWriter shall not insert superfluous bracket
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "[\n]" )
+with expansion:
+  "[
+  ]"
+  ==
+  "[
+  ]"
+
+-------------------------------------------------------------------------------
+JsonWriter
+  Custom class shall be quoted
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( stream.str() == "\"custom\"" )
+with expansion:
+  ""custom"" == ""custom""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  Quote in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\\"\"" )
+with expansion:
+  ""\""" == ""\"""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  Backslash in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\\\\"" )
+with expansion:
+  ""\\"" == ""\\""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  Forward slash in a string is **not** escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"/\"" )
+with expansion:
+  ""/"" == ""/""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  Backspace in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\b\"" )
+with expansion:
+  ""\b"" == ""\b""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  Formfeed in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\f\"" )
+with expansion:
+  ""\f"" == ""\f""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  linefeed in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\n\"" )
+with expansion:
+  ""\n"" == ""\n""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  carriage return in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\r\"" )
+with expansion:
+  ""\r"" == ""\r""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  tab in a string is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\t\"" )
+with expansion:
+  ""\t"" == ""\t""
+
+-------------------------------------------------------------------------------
+JsonWriter escapes charaters in strings properly
+  combination of characters is escaped
+-------------------------------------------------------------------------------
+Json.tests.cpp:<line number>
+...............................................................................
+
+Json.tests.cpp:<line number>: PASSED:
+  REQUIRE( sstream.str() == "\"\\\\/\\t\\r\\n\"" )
+with expansion:
+  ""\\/\t\r\n"" == ""\\/\t\r\n""
 
 -------------------------------------------------------------------------------
 Lambdas in assertions
@@ -9723,6 +10076,129 @@ with expansion:
 " ( contains: "fake test name" and contains: "fakeTestTag" )
 with message:
   Tested reporter: console
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( factories.empty() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+  JSON reporter lists tags
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( listingString, ContainsSubstring("fakeTag"s) )
+with expansion:
+  "{
+    "version": 1,
+    "metadata": {
+      "name": "",
+      "rng-seed": 1234,
+      "catch2-version": "<version>"
+    },
+    "listings": {
+      "tags": [
+        {
+          "aliases": [
+            "fakeTag"
+          ],
+          "count": 1
+        }
+      ]" contains: "fakeTag"
+with message:
+  Tested reporter: JSON
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( factories.empty() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+  JSON reporter lists reporters
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( listingString, ContainsSubstring("fake reporter"s) )
+with expansion:
+  "{
+    "version": 1,
+    "metadata": {
+      "name": "",
+      "rng-seed": 1234,
+      "catch2-version": "<version>"
+    },
+    "listings": {
+      "reporters": [
+        {
+          "name": "fake reporter",
+          "description": "fake description"
+        }
+      ]" contains: "fake reporter"
+with message:
+  Tested reporter: JSON
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_FALSE( factories.empty() )
+with expansion:
+  !false
+
+-------------------------------------------------------------------------------
+Reporter's write listings to provided stream
+  JSON reporter lists tests
+-------------------------------------------------------------------------------
+Reporters.tests.cpp:<line number>
+...............................................................................
+
+Reporters.tests.cpp:<line number>: PASSED:
+  REQUIRE_THAT( listingString, ContainsSubstring( "fake test name"s ) && ContainsSubstring( "fakeTestTag"s ) )
+with expansion:
+  "{
+    "version": 1,
+    "metadata": {
+      "name": "",
+      "rng-seed": 1234,
+      "catch2-version": "<version>"
+    },
+    "listings": {
+      "tests": [
+        {
+          "name": "fake test name",
+          "class-name": "",
+          "tags": [
+            "fakeTestTag"
+          ],
+          "source-location": {
+            "filename": "fake-file.cpp",
+            "line": 123456789
+          }
+        }
+      ]" ( contains: "fake test name" and contains: "fakeTestTag" )
+with message:
+  Tested reporter: JSON
 
 -------------------------------------------------------------------------------
 Reporter's write listings to provided stream
@@ -12515,6 +12991,34 @@ Misc.tests.cpp:<line number>: FAILED - but was ok:
 Misc.tests.cpp:<line number>: FAILED:
 
 -------------------------------------------------------------------------------
+Testing checked-if 4
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: PASSED:
+  CHECKED_ELSE( true )
+
+Misc.tests.cpp:<line number>: FAILED:
+  {Unknown expression after the reported line}
+due to unexpected exception with message:
+  Uncaught exception should fail!
+
+-------------------------------------------------------------------------------
+Testing checked-if 5
+-------------------------------------------------------------------------------
+Misc.tests.cpp:<line number>
+...............................................................................
+
+Misc.tests.cpp:<line number>: FAILED - but was ok:
+  CHECKED_ELSE( false )
+
+Misc.tests.cpp:<line number>: FAILED:
+  {Unknown expression after the reported line}
+due to unexpected exception with message:
+  Uncaught exception should fail!
+
+-------------------------------------------------------------------------------
 The NO_FAIL macro reports a failure but does not fail the test
 -------------------------------------------------------------------------------
 Message.tests.cpp:<line number>
@@ -13453,7 +13957,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of AllTrue range matcher
   Basic usage
-  One false evalutes to false
+  One false evaluates to false
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -13492,7 +13996,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of AllTrue range matcher
   Contained type is convertible to bool
-  One false evalutes to false
+  One false evaluates to false
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -13728,7 +14232,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of AnyTrue range matcher
   Basic usage
-  One true evalutes to true
+  One true evaluates to true
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -13767,7 +14271,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of AnyTrue range matcher
   Contained type is convertible to bool
-  One true evalutes to true
+  One true evaluates to true
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -14003,7 +14507,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of NoneTrue range matcher
   Basic usage
-  One true evalutes to false
+  One true evaluates to false
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -14042,7 +14546,7 @@ with expansion:
 -------------------------------------------------------------------------------
 Usage of NoneTrue range matcher
   Contained type is convertible to bool
-  One true evalutes to false
+  One true evaluates to false
 -------------------------------------------------------------------------------
 MatchersRanges.tests.cpp:<line number>
 ...............................................................................
@@ -17734,6 +18238,22 @@ with expansion:
   0.95 == 0.95
 
 -------------------------------------------------------------------------------
+uniform_integer_distribution can return the bounds
+-------------------------------------------------------------------------------
+RandomNumberGeneration.tests.cpp:<line number>
+...............................................................................
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( dist.a() == -10 )
+with expansion:
+  -10 == -10
+
+RandomNumberGeneration.tests.cpp:<line number>: PASSED:
+  REQUIRE( dist.b() == 10 )
+with expansion:
+  10 == 10
+
+-------------------------------------------------------------------------------
 unique_ptr reimplementation: basic functionality
   Default constructed unique_ptr is empty
 -------------------------------------------------------------------------------
@@ -18220,6 +18740,6 @@ Misc.tests.cpp:<line number>
 Misc.tests.cpp:<line number>: PASSED:
 
 ===============================================================================
-test cases:  409 |  309 passed |  84 failed | 5 skipped | 11 failed as expected
-assertions: 2226 | 2049 passed | 145 failed | 32 failed as expected
+test cases:  417 |  312 passed |  85 failed | 6 skipped | 14 failed as expected
+assertions: 2260 | 2079 passed | 146 failed | 35 failed as expected
 

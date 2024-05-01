@@ -31,6 +31,10 @@
 // line information in a stack frame, and also looks up WindowsFrameInfo or
 // CFIFrameInfo for a stack frame.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "google_breakpad/processor/stack_frame_symbolizer.h"
 
 #include <assert.h>

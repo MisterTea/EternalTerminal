@@ -31,6 +31,10 @@
 // cfi_frame_info_unittest.cc: Unit tests for CFIFrameInfo,
 // CFIRuleParser, CFIFrameInfoParseHandler, and SimpleCFIWalker.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string.h>
 
 #include "breakpad_googletest_includes.h"

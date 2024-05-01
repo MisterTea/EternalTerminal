@@ -30,6 +30,10 @@
 //
 // Author: Dave Camp
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/mac/byteswap.h"
 #include "common/mac/macho_utilities.h"
 

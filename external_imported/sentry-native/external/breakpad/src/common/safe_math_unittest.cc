@@ -28,6 +28,10 @@
 
 // safe_math_unittest.cc: Unit tests for SafeMath
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "safe_math.h"
 #include "breakpad_googletest_includes.h"
 

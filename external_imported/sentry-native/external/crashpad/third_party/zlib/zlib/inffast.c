@@ -18,13 +18,13 @@
    available, an end-of-block is encountered, or a data error is encountered.
    When large enough input and output buffers are supplied to inflate(), for
    example, a 16K input buffer and a 64K output buffer, more than 95% of the
-   inflate execution time is spent in this routine.
+   inflate() execution time is spent in this routine.
 
    Entry assumptions:
 
         state->mode == LEN
-        strm->avail_in >= 6
-        strm->avail_out >= 258
+        strm->avail_in >= INFLATE_FAST_MIN_INPUT (6 bytes)
+        strm->avail_out >= INFLATE_FAST_MIN_OUTPUT (258 bytes)
         start >= strm->avail_out
         state->bits < 8
 
@@ -36,21 +36,22 @@
 
    Notes:
 
+    INFLATE_FAST_MIN_INPUT: 6 bytes
+
     - The maximum input bits used by a length/distance pair is 15 bits for the
       length code, 5 bits for the length extra, 15 bits for the distance code,
       and 13 bits for the distance extra.  This totals 48 bits, or six bytes.
       Therefore if strm->avail_in >= 6, then there is enough input to avoid
       checking for available input while decoding.
 
+    INFLATE_FAST_MIN_OUTPUT: 258 bytes
+
     - The maximum bytes that a single length/distance pair can output is 258
       bytes, which is the maximum length that can be coded.  inflate_fast()
       requires strm->avail_out >= 258 for each loop to avoid checking for
-      output space.
+      available output space while decoding.
  */
-void ZLIB_INTERNAL inflate_fast(strm, start)
-z_streamp strm;
-unsigned start;         /* inflate()'s starting value for strm->avail_out */
-{
+void ZLIB_INTERNAL inflate_fast(z_streamp strm, unsigned start) {
     struct inflate_state FAR *state;
     z_const unsigned char FAR *in;      /* local strm->next_in */
     z_const unsigned char FAR *last;    /* have enough input while in < last */
@@ -70,7 +71,7 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
     code const FAR *dcode;      /* local strm->distcode */
     unsigned lmask;             /* mask for first level of length codes */
     unsigned dmask;             /* mask for first level of distance codes */
-    code here;                  /* retrieved table entry */
+    code const *here;           /* retrieved table entry */
     unsigned op;                /* code bits, operation, extra bits, or */
                                 /*  window position, window bytes to copy */
     unsigned len;               /* match length, unused bytes */
@@ -80,10 +81,10 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
     /* copy state to local variables */
     state = (struct inflate_state FAR *)strm->state;
     in = strm->next_in;
-    last = in + (strm->avail_in - 5);
+    last = in + (strm->avail_in - (INFLATE_FAST_MIN_INPUT - 1));
     out = strm->next_out;
     beg = out - (start - strm->avail_out);
-    end = out + (strm->avail_out - 257);
+    end = out + (strm->avail_out - (INFLATE_FAST_MIN_OUTPUT - 1));
 #ifdef INFLATE_STRICT
     dmax = state->dmax;
 #endif
@@ -107,20 +108,20 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
             hold += (unsigned long)(*in++) << bits;
             bits += 8;
         }
-        here = lcode[hold & lmask];
+        here = lcode + (hold & lmask);
       dolen:
-        op = (unsigned)(here.bits);
+        op = (unsigned)(here->bits);
         hold >>= op;
         bits -= op;
-        op = (unsigned)(here.op);
+        op = (unsigned)(here->op);
         if (op == 0) {                          /* literal */
-            Tracevv((stderr, here.val >= 0x20 && here.val < 0x7f ?
+            Tracevv((stderr, here->val >= 0x20 && here->val < 0x7f ?
                     "inflate:         literal '%c'\n" :
-                    "inflate:         literal 0x%02x\n", here.val));
-            *out++ = (unsigned char)(here.val);
+                    "inflate:         literal 0x%02x\n", here->val));
+            *out++ = (unsigned char)(here->val);
         }
         else if (op & 16) {                     /* length base */
-            len = (unsigned)(here.val);
+            len = (unsigned)(here->val);
             op &= 15;                           /* number of extra bits */
             if (op) {
                 if (bits < op) {
@@ -138,14 +139,14 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
                 hold += (unsigned long)(*in++) << bits;
                 bits += 8;
             }
-            here = dcode[hold & dmask];
+            here = dcode + (hold & dmask);
           dodist:
-            op = (unsigned)(here.bits);
+            op = (unsigned)(here->bits);
             hold >>= op;
             bits -= op;
-            op = (unsigned)(here.op);
+            op = (unsigned)(here->op);
             if (op & 16) {                      /* distance base */
-                dist = (unsigned)(here.val);
+                dist = (unsigned)(here->val);
                 op &= 15;                       /* number of extra bits */
                 if (bits < op) {
                     hold += (unsigned long)(*in++) << bits;
@@ -264,7 +265,7 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
                 }
             }
             else if ((op & 64) == 0) {          /* 2nd level distance code */
-                here = dcode[here.val + (hold & ((1U << op) - 1))];
+                here = dcode + here->val + (hold & ((1U << op) - 1));
                 goto dodist;
             }
             else {
@@ -274,7 +275,7 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
             }
         }
         else if ((op & 64) == 0) {              /* 2nd level length code */
-            here = lcode[here.val + (hold & ((1U << op) - 1))];
+            here = lcode + here->val + (hold & ((1U << op) - 1));
             goto dolen;
         }
         else if (op & 32) {                     /* end-of-block */
@@ -298,9 +299,12 @@ unsigned start;         /* inflate()'s starting value for strm->avail_out */
     /* update state and return */
     strm->next_in = in;
     strm->next_out = out;
-    strm->avail_in = (unsigned)(in < last ? 5 + (last - in) : 5 - (in - last));
+    strm->avail_in = (unsigned)(in < last ?
+        (INFLATE_FAST_MIN_INPUT - 1) + (last - in) :
+        (INFLATE_FAST_MIN_INPUT - 1) - (in - last));
     strm->avail_out = (unsigned)(out < end ?
-                                 257 + (end - out) : 257 - (out - end));
+        (INFLATE_FAST_MIN_OUTPUT - 1) + (end - out) :
+        (INFLATE_FAST_MIN_OUTPUT - 1) - (out - end));
     state->hold = hold;
     state->bits = bits;
     return;

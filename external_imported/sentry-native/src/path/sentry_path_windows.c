@@ -135,14 +135,26 @@ sentry__path_dir(const sentry_path_t *path)
 }
 
 sentry_path_t *
-sentry__path_from_wstr(const wchar_t *s)
+sentry__path_from_wstr_n(const wchar_t *s, size_t s_len)
 {
-    size_t len = wcslen(s) + 1;
-    sentry_path_t *rv = path_with_len(len);
+    if (!s) {
+        return NULL;
+    }
+    sentry_path_t *rv = path_with_len(s_len + 1);
     if (rv) {
-        memcpy(rv->path, s, len * sizeof(wchar_t));
+        memcpy(rv->path, s, s_len * sizeof(wchar_t));
+        rv->path[s_len] = 0;
     }
     return rv;
+}
+
+sentry_path_t *
+sentry__path_from_wstr(const wchar_t *s)
+{
+    if (!s) {
+        return NULL;
+    }
+    return sentry__path_from_wstr_n(s, wcslen(s));
 }
 
 sentry_path_t *
@@ -189,20 +201,42 @@ sentry__path_join_wstr(const sentry_path_t *base, const wchar_t *other)
 }
 
 sentry_path_t *
-sentry__path_from_str(const char *s)
+sentry__path_from_str_n(const char *s, size_t s_len)
 {
-    size_t len = MultiByteToWideChar(CP_ACP, 0, s, -1, NULL, 0);
+    if (!s) {
+        return NULL;
+    }
     sentry_path_t *rv = SENTRY_MAKE(sentry_path_t);
     if (!rv) {
         return NULL;
     }
-    rv->path = sentry_malloc(sizeof(wchar_t) * len);
+    size_t src_size = sizeof(char) * s_len;
+    size_t dst_size = sizeof(wchar_t) * (s_len + 1);
+    rv->path = sentry_malloc(dst_size);
     if (!rv->path) {
-        sentry_free(rv);
+        goto error;
+    }
+    int conv_len = MultiByteToWideChar(
+        CP_ACP, 0, s, (int)src_size, rv->path, (int)s_len);
+    if (conv_len == 0) {
+        goto error;
+    }
+    rv->path[conv_len] = 0;
+    return rv;
+
+error:
+    sentry_free(rv);
+    return NULL;
+}
+
+sentry_path_t *
+sentry__path_from_str(const char *s)
+{
+    if (!s) {
         return NULL;
     }
-    MultiByteToWideChar(CP_ACP, 0, s, -1, rv->path, (int)len);
-    return rv;
+
+    return sentry__path_from_str_n(s, strlen(s));
 }
 
 sentry_path_t *

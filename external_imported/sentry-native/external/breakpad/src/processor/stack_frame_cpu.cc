@@ -32,6 +32,10 @@
 //
 // Author: Colin Blundell
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "google_breakpad/processor/stack_frame_cpu.h"
 
 namespace google_breakpad {

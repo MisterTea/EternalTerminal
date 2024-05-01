@@ -28,6 +28,10 @@ SENTRY_TEST(basic_consent_tracking)
 
     init_consenting_sentry();
     sentry_user_consent_give();
+    // testing correct options ref/decref during double
+    // `sentry_user_consent_give` call see
+    // https://github.com/getsentry/sentry-native/pull/922
+    sentry_user_consent_give();
     TEST_CHECK_INT_EQUAL(sentry_user_consent_get(), SENTRY_USER_CONSENT_GIVEN);
     sentry_close();
     init_consenting_sentry();

@@ -2,6 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "breakpad_googletest_includes.h"
 #include "common/using_std_string.h"
 #include "google_breakpad/processor/proc_maps_linux.h"

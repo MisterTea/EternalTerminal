@@ -62,6 +62,10 @@
 // alternative malloc. Each function should have comment above it detailing the
 // context which it runs in.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/linux/handler/exception_handler.h"
 
 #include <errno.h>

@@ -27,8 +27,6 @@ enum ArchEnum : uint8_t {
   ARCH_X86,
   ARCH_X86_64,
 #ifdef SENTRY_REMOVED
-  ARCH_MIPS,
-  ARCH_MIPS64,
   ARCH_RISCV64,
 #endif // SENTRY_REMOVED
 };
@@ -37,9 +35,6 @@ static inline bool ArchIs32Bit(ArchEnum arch) {
   switch (arch) {
     case ARCH_ARM:
     case ARCH_X86:
-#ifdef SENTRY_REMOVED
-    case ARCH_MIPS:
-#endif // SENTRY_REMOVED
       return true;
     default:
       return false;

@@ -4,8 +4,9 @@
 CMakeSettings.json
 .idea
 
-# CMake builds
+# CMake builds & install
 /*build*
+/*install*
 
 # Run files
 .sentry-native

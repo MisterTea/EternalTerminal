@@ -30,6 +30,10 @@
 
 // module.cc: Implement google_breakpad::Module.  See module.h.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/module.h"
 #include "common/string_view.h"
 
@@ -101,14 +105,16 @@ Module::Module(const string& name,
                const string& architecture,
                const string& id,
                const string& code_id /* = "" */,
-               bool enable_multiple_field /* = false*/)
+               bool enable_multiple_field /* = false*/,
+               bool prefer_extern_name /* = false*/)
     : name_(name),
       os_(os),
       architecture_(architecture),
       id_(id),
       code_id_(code_id),
       load_address_(0),
-      enable_multiple_field_(enable_multiple_field) {}
+      enable_multiple_field_(enable_multiple_field),
+      prefer_extern_name_(prefer_extern_name) {}
 
 Module::~Module() {
   for (FileByNameMap::iterator it = files_.begin(); it != files_.end(); ++it)
@@ -148,11 +154,28 @@ bool Module::AddFunction(Function* function) {
     it_ext = externs_.find(&arm_thumb_ext);
   }
   if (it_ext != externs_.end()) {
+    Extern* found_ext = it_ext->get();
+    bool name_mismatch = found_ext->name != function->name;
     if (enable_multiple_field_) {
-      Extern* found_ext = it_ext->get();
+      bool is_multiple_based_on_name;
+      // In the case of a .dSYM built with -gmlt, the external name will be the
+      // fully-qualified symbol name, but the function name will be the partial
+      // name (or omitted).
+      //
+      // Don't mark multiple in this case.
+      if (name_mismatch &&
+          (function->name == "<name omitted>" ||
+           found_ext->name.find(function->name.str()) != string::npos)) {
+        is_multiple_based_on_name = false;
+      } else {
+        is_multiple_based_on_name = name_mismatch;
+      }
       // If the PUBLIC is for the same symbol as the FUNC, don't mark multiple.
       function->is_multiple |=
-          found_ext->name != function->name || found_ext->is_multiple;
+          is_multiple_based_on_name || found_ext->is_multiple;
+    }
+    if (name_mismatch && prefer_extern_name_) {
+      function->name = AddStringToPool(it_ext->get()->name);
     }
     externs_.erase(it_ext);
   }
@@ -266,8 +289,7 @@ void Module::GetStackFrameEntries(vector<StackFrameEntry*>* vec) const {
   }
 }
 
-void Module::AssignSourceIds(
-    set<InlineOrigin*, InlineOriginCompare>& inline_origins) {
+void Module::AssignSourceIds() {
   // First, give every source file an id of -1.
   for (FileByNameMap::iterator file_it = files_.begin();
        file_it != files_.end(); ++file_it) {
@@ -371,7 +393,7 @@ bool Module::Write(std::ostream& stream, SymbolData symbol_data) {
     // Get all referenced inline origins.
     set<InlineOrigin*, InlineOriginCompare> inline_origins;
     CreateInlineOrigins(inline_origins);
-    AssignSourceIds(inline_origins);
+    AssignSourceIds();
 
     // Write out files.
     for (FileByNameMap::iterator file_it = files_.begin();

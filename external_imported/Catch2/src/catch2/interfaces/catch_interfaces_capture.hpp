@@ -14,6 +14,7 @@
 #include <catch2/internal/catch_stringref.hpp>
 #include <catch2/internal/catch_result_type.hpp>
 #include <catch2/internal/catch_unique_ptr.hpp>
+#include <catch2/benchmark/detail/catch_benchmark_stats_fwd.hpp>
 
 namespace Catch {
 
@@ -31,8 +32,6 @@ namespace Catch {
     class IGeneratorTracker;
 
     struct BenchmarkInfo;
-    template <typename Duration = std::chrono::duration<double, std::nano>>
-    struct BenchmarkStats;
 
     namespace Generators {
         class GeneratorUntypedBase;
@@ -44,6 +43,7 @@ namespace Catch {
     public:
         virtual ~IResultCapture();
 
+        virtual void notifyAssertionStarted( AssertionInfo const& info ) = 0;
         virtual bool sectionStarted( StringRef sectionName,
                                      SourceLineInfo const& sectionLineInfo,
                                      Counts& assertions ) = 0;
@@ -84,7 +84,7 @@ namespace Catch {
                     AssertionReaction& reaction ) = 0;
         virtual void handleUnexpectedInflightException
                 (   AssertionInfo const& info,
-                    std::string const& message,
+                    std::string&& message,
                     AssertionReaction& reaction ) = 0;
         virtual void handleIncomplete
                 (   AssertionInfo const& info ) = 0;

@@ -25,16 +25,31 @@ source_set("tool_support") {
   deps = [ "$mini_chromium_source_parent:base" ]
 }
 
-if (!crashpad_is_ios) {
+crashpad_executable("dump_minidump_annotations") {
+  sources = [ "dump_minidump_annotations.cc" ]
+
+  deps = [
+    ":tool_support",
+    "../client",
+    "../snapshot",
+    "../util",
+  ]
+
+  if (crashpad_is_win) {
+    cflags = [ "/wd4201" ]  # nonstandard extension used : nameless struct/union
+  }
+}
+
+if (!crashpad_is_ios && !crashpad_is_fuchsia) {
   crashpad_executable("crashpad_database_util") {
     sources = [ "crashpad_database_util.cc" ]
 
     deps = [
       ":tool_support",
+      "$mini_chromium_source_parent:base",
       "../build:default_exe_manifest_win",
       "../client",
       "../compat",
-      "$mini_chromium_source_parent:base",
       "../util",
     ]
   }
@@ -44,9 +59,9 @@ if (!crashpad_is_ios) {
 
     deps = [
       ":tool_support",
+      "$mini_chromium_source_parent:base",
       "../build:default_exe_manifest_win",
       "../compat",
-      "$mini_chromium_source_parent:base",
       "../util",
       "../util:net",
     ]
@@ -57,8 +72,8 @@ crashpad_executable("base94_encoder") {
   sources = [ "base94_encoder.cc" ]
   deps = [
     ":tool_support",
-    "../build:default_exe_manifest_win",
     "$mini_chromium_source_parent:base",
+    "../build:default_exe_manifest_win",
     "../util",
   ]
 }
@@ -69,11 +84,11 @@ if (!crashpad_is_fuchsia && !crashpad_is_ios) {
 
     deps = [
       ":tool_support",
+      "$mini_chromium_source_parent:base",
       "../build:default_exe_manifest_win",
       "../compat",
       "../minidump",
       "../snapshot",
-      "$mini_chromium_source_parent:base",
       "../util",
     ]
 
@@ -103,9 +118,9 @@ if (crashpad_is_mac || crashpad_is_fuchsia) {
 
     deps = [
       ":tool_support",
+      "$mini_chromium_source_parent:base",
       "../client",
       "../compat",
-      "$mini_chromium_source_parent:base",
       "../util",
     ]
   }
@@ -117,8 +132,8 @@ if (crashpad_is_mac) {
 
     deps = [
       ":tool_support",
-      "../compat",
       "$mini_chromium_source_parent:base",
+      "../compat",
       "../util",
     ]
   }
@@ -138,8 +153,8 @@ if (crashpad_is_mac) {
 
     deps = [
       ":tool_support",
-      "../compat",
       "$mini_chromium_source_parent:base",
+      "../compat",
       "../util",
     ]
   }
@@ -154,8 +169,9 @@ if (crashpad_is_mac) {
 
     deps = [
       ":tool_support",
-      "../compat",
       "$mini_chromium_source_parent:base",
+      "../build:apple_enable_arc",
+      "../compat",
       "../util",
     ]
   }

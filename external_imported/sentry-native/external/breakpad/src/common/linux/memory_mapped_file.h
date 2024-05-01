@@ -33,7 +33,7 @@
 #define COMMON_LINUX_MEMORY_MAPPED_FILE_H_
 
 #include <stddef.h>
-#include "common/basictypes.h"
+
 #include "common/memory_range.h"
 
 namespace google_breakpad {
@@ -48,6 +48,9 @@ class MemoryMappedFile {
   // Constructor that calls Map() to map a file at |path| into memory.
   // If Map() fails, the object behaves as if it is default constructed.
   MemoryMappedFile(const char* path, size_t offset);
+
+  MemoryMappedFile(const MemoryMappedFile&) = delete;
+  void operator=(const MemoryMappedFile&) = delete;
 
   ~MemoryMappedFile();
 
@@ -77,8 +80,6 @@ class MemoryMappedFile {
  private:
   // Mapped file content as a MemoryRange object.
   MemoryRange content_;
-
-  DISALLOW_COPY_AND_ASSIGN(MemoryMappedFile);
 };
 
 }  // namespace google_breakpad

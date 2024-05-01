@@ -29,6 +29,10 @@
 // Unit test for MinidumpProcessor.  Uses a pre-generated minidump and
 // corresponding symbol file, and checks the stack frames for correctness.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdlib.h>
 
 #include <string>

@@ -26,6 +26,10 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/linux/dump_writer_common/thread_info.h"
 
 #include <string.h>
@@ -318,23 +322,19 @@ void ThreadInfo::FillCPUContext(RawContextCPU* out) const {
   out->t5  = mcontext.__gregs[30];
   out->t6  = mcontext.__gregs[31];
 
-# if __riscv_flen == 32
-  for(int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; i++)
-    out->float_save.regs[i] = mcontext.__fpregs.__f.__f[i];
-  out->float_save.fpcsr = mcontext.__fpregs.__f.__fcsr;
-# elif __riscv_flen == 64
-  for(int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; i++)
-    out->float_save.regs[i] = mcontext.__fpregs.__d.__f[i];
-  out->float_save.fpcsr = mcontext.__fpregs.__d.__fcsr;
-# elif __riscv_flen == 128
-  for(int i = 0; i < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT; i++) {
-    out->float_save.regs[i].high = mcontext.__fpregs.__q.__f[2*i];
-    out->float_save.regs[i].low  = mcontext.__fpregs.__q.__f[2*i+1];
-  }
-  out->float_save.fpcsr = mcontext.__fpregs.__q.__fcsr;
-# else
-#  error "Unexpected __riscv_flen"
-# endif
+  // Breakpad only supports RISCV32 with 32 bit floating point.
+  // Breakpad only supports RISCV64 with 64 bit floating point.
+#if __riscv_xlen == 32
+  for (int i = 0; i < MD_CONTEXT_RISCV_FPR_COUNT; i++)
+    out->fpregs[i] = mcontext.__fpregs.__f.__f[i];
+  out->fcsr = mcontext.__fpregs.__f.__fcsr;
+#elif __riscv_xlen == 64
+  for (int i = 0; i < MD_CONTEXT_RISCV_FPR_COUNT; i++)
+    out->fpregs[i] = mcontext.__fpregs.__d.__f[i];
+  out->fcsr = mcontext.__fpregs.__d.__fcsr;
+#else
+#error "Unexpected __riscv_xlen"
+#endif
 }
 #endif  // __riscv
 

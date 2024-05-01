@@ -43,7 +43,7 @@ SENTRY_TEST(multiple_inits)
         SENTRY_LEVEL_INFO, "root", "Hello World!"));
 
     sentry_value_t obj = sentry_value_new_object();
-    // something that is not a uuid, as this will be forcibly changed
+    // something that is not a UUID, as this will be forcibly changed
     sentry_value_set_by_key(obj, "event_id", sentry_value_new_int32(1234));
     sentry_capture_event(obj);
 
@@ -64,7 +64,7 @@ thread_worker(void *called)
         SENTRY_LEVEL_INFO, "root", "Hello World!"));
 
     sentry_value_t obj = sentry_value_new_object();
-    // something that is not a uuid, as this will be forcibly changed
+    // something that is not a UUID, as this will be forcibly changed
     sentry_value_set_by_key(obj, "event_id", sentry_value_new_int32(1234));
     sentry_capture_event(obj);
 
@@ -75,7 +75,7 @@ SENTRY_TEST(concurrent_init)
 {
     long called = 0;
 
-#define THREADS_NUM 10
+#define THREADS_NUM 100
     sentry_threadid_t threads[THREADS_NUM];
 
     for (size_t i = 0; i < THREADS_NUM; i++) {

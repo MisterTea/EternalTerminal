@@ -28,6 +28,10 @@
 
 // core_handler.cc: A tool to handle coredumps on Linux
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <pwd.h>
 #include <stdio.h>
 #include <stdlib.h>

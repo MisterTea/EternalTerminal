@@ -1,7 +1,8 @@
 simpleini
 =========
 
-[![Build Status](https://api.travis-ci.org/brofield/simpleini.svg?branch=master)](https://travis-ci.org/brofield/simpleini)
+![Test Results Linux](https://github.com/brofield/simpleini/actions/workflows/test.yml/badge.svg)
+![Test Results Windows](https://ci.appveyor.com/api/projects/status/github/brofield/simpleini?svg=true)
 
 A cross-platform library that provides a simple API to read and write INI-style configuration files. It supports data files in ASCII, MBCS and Unicode. It is designed explicitly to be portable to any platform and has been tested on Windows, WinCE and Linux. Released as open-source and free using the MIT licence.
 
@@ -12,7 +13,7 @@ A cross-platform library that provides a simple API to read and write INI-style 
 - loading and saving of INI-style configuration files
 - configuration files can have any newline format on all platforms
 - liberal acceptance of file format
-  * key/values with no section
+  * key/values with no section, keys with no value
   * removal of whitespace around sections, keys and values
 - support for multi-line values (values with embedded newline characters)
 - optional support for multiple keys with the same name

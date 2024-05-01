@@ -26,6 +26,10 @@
 // (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
 // OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <dlfcn.h>
 
 #include <iostream>
@@ -303,12 +307,10 @@ bool LibcurlWrapper::SendRequestInner(const string& url,
     (*easy_getinfo_)(curl_, CURLINFO_RESPONSE_CODE, http_status_code);
   }
 
-#ifndef NDEBUG
   if (err_code != CURLE_OK)
     fprintf(stderr, "Failed to send http request to %s, error: %s\n",
             url.c_str(),
             (*easy_strerror_)(err_code));
-#endif
 
   Reset();
 

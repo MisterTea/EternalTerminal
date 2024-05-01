@@ -71,7 +71,7 @@
 #include <libgen.h>
 #include <signal.h>
 
-#include "base/mac/scoped_mach_port.h"
+#include "base/apple/scoped_mach_port.h"
 #include "handler/mac/crash_report_exception_handler.h"
 #include "handler/mac/exception_handler_server.h"
 #include "handler/mac/file_limit_annotation.h"
@@ -223,6 +223,7 @@ struct Options {
   std::map<std::string, std::string> annotations;
   std::map<std::string, std::string> monitor_self_annotations;
   std::string url;
+  std::string http_proxy;
   base::FilePath database;
   base::FilePath metrics_dir;
   std::vector<std::string> monitor_self_arguments;
@@ -515,6 +516,7 @@ void MonitorSelf(const Options& options) {
                                     options.database,
                                     base::FilePath(),
                                     options.url,
+                                    options.http_proxy,
                                     options.annotations,
                                     extra_arguments,
                                     true,
@@ -621,6 +623,7 @@ int HandlerMain(int argc,
     kOptionTraceParentWithException,
 #endif
     kOptionURL,
+    kOptionHttpProxy,
 #if BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
     kOptionUseCrosCrashReporter,
     kOptionMinidumpDirForTests,
@@ -705,6 +708,7 @@ int HandlerMain(int argc,
 #endif  // BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) ||
         // BUILDFLAG(IS_ANDROID)
     {"url", required_argument, nullptr, kOptionURL},
+    {"http-proxy", optional_argument, nullptr, kOptionHttpProxy},
 #if BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
     {"use-cros-crash-reporter",
      no_argument,
@@ -878,6 +882,10 @@ int HandlerMain(int argc,
         options.url = optarg;
         break;
       }
+      case kOptionHttpProxy: {
+        options.http_proxy = optarg;
+        break;
+      }
 #if BUILDFLAG(IS_CHROMEOS_ASH) || BUILDFLAG(IS_CHROMEOS_LACROS)
       case kOptionUseCrosCrashReporter: {
         options.use_cros_crash_reporter = true;
@@ -1030,6 +1038,7 @@ int HandlerMain(int argc,
     upload_thread.Reset(new CrashReportUploadThread(
         database.get(),
         options.url,
+        options.http_proxy,
         upload_thread_options,
         CrashReportUploadThread::ProcessPendingReportsObservationCallback()));
     upload_thread.Get()->Start();
@@ -1112,7 +1121,7 @@ int HandlerMain(int argc,
     CloseStdinAndStdout();
   }
 
-  base::mac::ScopedMachReceiveRight receive_right;
+  base::apple::ScopedMachReceiveRight receive_right;
 
   if (options.handshake_fd >= 0) {
     receive_right.reset(

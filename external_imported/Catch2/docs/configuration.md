@@ -15,6 +15,7 @@
 [Enabling stringification](#enabling-stringification)<br>
 [Disabling exceptions](#disabling-exceptions)<br>
 [Overriding Catch's debug break (`-b`)](#overriding-catchs-debug-break--b)<br>
+[Static analysis support](#static-analysis-support)<br>
 
 Catch2 is designed to "just work" as much as possible, and most of the
 configuration options below are changed automatically during compilation,
@@ -25,7 +26,8 @@ with the same name.
 
 ## Prefixing Catch macros
 
-    CATCH_CONFIG_PREFIX_ALL
+    CATCH_CONFIG_PREFIX_ALL       // Prefix all macros with CATCH_
+    CATCH_CONFIG_PREFIX_MESSAGES  // Prefix only INFO, UNSCOPED_INFO, WARN and CAPTURE
 
 To keep test code clean and uncluttered Catch uses short macro names (e.g. ```TEST_CASE``` and ```REQUIRE```). Occasionally these may conflict with identifiers from platform headers or the system under test. In this case the above identifier can be defined. This will cause all the Catch user macros to be prefixed with ```CATCH_``` (e.g. ```CATCH_TEST_CASE``` and ```CATCH_REQUIRE```).
 
@@ -262,6 +264,31 @@ not know your platform, or your platform is misdetected.
 
 The macro will be used as is, that is, `CATCH_BREAK_INTO_DEBUGGER();`
 must compile and must break into debugger.
+
+
+## Static analysis support
+
+> Introduced in Catch2 3.4.0.
+
+Some parts of Catch2, e.g. `SECTION`s, can be hard for static analysis
+tools to reason about. Catch2 can change its internals to help static
+analysis tools reason about the tests.
+
+Catch2 automatically detects some static analysis tools (initial
+implementation checks for clang-tidy and Coverity), but you can override
+its detection (in either direction) via
+
+```
+CATCH_CONFIG_EXPERIMENTAL_STATIC_ANALYSIS_SUPPORT     // force enables static analysis help
+CATCH_CONFIG_NO_EXPERIMENTAL_STATIC_ANALYSIS_SUPPORT  // force disables static analysis help
+```
+
+_As the name suggests, this is currently experimental, and thus we provide
+no backwards compatibility guarantees._
+
+**DO NOT ENABLE THIS FOR BUILDS YOU INTEND TO RUN.** The changed internals
+are not meant to be runnable, only "scannable".
+
 
 
 ---

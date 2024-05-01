@@ -39,28 +39,8 @@
 
 #include "google_breakpad/common/breakpad_types.h"
 
-#define MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT 32
-#if defined(__riscv)
-# if __riscv_flen == 32
-typedef uint32_t riscv_fpr_size;
-# elif __riscv_flen == 64
-typedef uint64_t riscv_fpr_size;
-# elif __riscv_flen == 128
-typedef uint128_struct riscv_fpr_size;
-# else
-#  error "Unexpected __riscv_flen"
-# endif
-#else
-typedef uint32_t riscv_fpr_size;
-#endif
-
 #define MD_CONTEXT_RISCV_GPR_COUNT 32
-
-typedef struct {
-    /* 32 floating point registers, f0 .. f31. */
-    riscv_fpr_size regs[MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT];
-    uint32_t fpcsr;
-} MDFloatingSaveAreaRISCV;
+#define MD_CONTEXT_RISCV_FPR_COUNT 32
 
 enum MDRISCVRegisterNumbers {
   MD_CONTEXT_RISCV_REG_PC     = 0,
@@ -72,13 +52,14 @@ enum MDRISCVRegisterNumbers {
  * context stored in the structure. */
 #define MD_CONTEXT_RISCV 0x00800000
 #define MD_CONTEXT_RISCV_INTEGER (MD_CONTEXT_RISCV | 0x00000001)
-#define MD_CONTEXT_RISCV_FLOATING_POINT (MD_CONTEXT_RISCV | 0x00000004)
+#define MD_CONTEXT_RISCV_FLOATING_POINT (MD_CONTEXT_RISCV | 0x00000002)
 #define MD_CONTEXT_RISCV_FULL (MD_CONTEXT_RISCV_INTEGER | \
                                MD_CONTEXT_RISCV_FLOATING_POINT)
 
 typedef struct {
   /* Determines which fields of this struct are populated */
   uint32_t context_flags;
+  uint32_t version;
 
   uint32_t pc;
   uint32_t ra;
@@ -113,20 +94,24 @@ typedef struct {
   uint32_t t5;
   uint32_t t6;
 
-  MDFloatingSaveAreaRISCV float_save;
+  /* 32 floating point registers, f0 .. f31. Breakpad only supports RISCV32
+   * with 32 bit floating point. */
+  uint32_t fpregs[MD_CONTEXT_RISCV_FPR_COUNT];
+  uint32_t fcsr;
 } MDRawContextRISCV;
 
 /* For (MDRawContextRISCV64).context_flags.  These values indicate the type of
  * context stored in the structure. */
 #define MD_CONTEXT_RISCV64 0x08000000
 #define MD_CONTEXT_RISCV64_INTEGER (MD_CONTEXT_RISCV64 | 0x00000001)
-#define MD_CONTEXT_RISCV64_FLOATING_POINT (MD_CONTEXT_RISCV64 | 0x00000004)
+#define MD_CONTEXT_RISCV64_FLOATING_POINT (MD_CONTEXT_RISCV64 | 0x00000002)
 #define MD_CONTEXT_RISCV64_FULL (MD_CONTEXT_RISCV64_INTEGER | \
                                  MD_CONTEXT_RISCV64_FLOATING_POINT)
 
 typedef struct {
   /* Determines which fields of this struct are populated */
   uint32_t context_flags;
+  uint32_t version;
 
   uint64_t pc;
   uint64_t ra;
@@ -161,7 +146,10 @@ typedef struct {
   uint64_t t5;
   uint64_t t6;
 
-  MDFloatingSaveAreaRISCV float_save;
+  /* 32 floating point registers, f0 .. f31. Breakpad only supports RISCV64 with
+   * 64 bit floating point. */
+  uint64_t fpregs[MD_CONTEXT_RISCV_FPR_COUNT];
+  uint32_t fcsr;
 } MDRawContextRISCV64;
 
 

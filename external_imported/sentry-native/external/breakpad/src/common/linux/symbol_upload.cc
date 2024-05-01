@@ -29,6 +29,10 @@
 // symbol_upload.cc: implemented google_breakpad::sym_upload::Start, a helper
 // function for linux symbol upload tool.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/symbol_upload.h"
 
 #include <assert.h>

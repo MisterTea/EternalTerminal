@@ -29,6 +29,10 @@
 // crash_generation_app.cpp : Defines the entry point for the application.
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/windows/tests/crash_generation_app/crash_generation_app.h"
 
 #include <windows.h>

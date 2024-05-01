@@ -28,6 +28,10 @@
 
 // Unit test for crash dump uploader.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string>
 
 #include "common/linux/google_crashdump_uploader.h"

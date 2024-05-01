@@ -15,7 +15,7 @@ sentry__slice_from_str(const char *str)
 char *
 sentry__slice_to_owned(sentry_slice_t slice)
 {
-    return sentry__string_clonen(slice.ptr, slice.len);
+    return sentry__string_clone_n_unchecked(slice.ptr, slice.len);
 }
 
 bool

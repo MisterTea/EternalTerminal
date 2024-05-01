@@ -33,6 +33,10 @@
 // Author: Mark Mentovai
 
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/scoped_ptr.h"
 #include "processor/stackwalker_ppc.h"
 #include "google_breakpad/processor/call_stack.h"

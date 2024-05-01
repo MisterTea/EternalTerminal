@@ -31,6 +31,10 @@
 //
 // Author: Mark Mentovai
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "processor/stackwalk_common.h"
 
 #include <assert.h>
@@ -273,6 +277,32 @@ static void PrintStackContents(const string& indent,
   printf("\n");
 }
 
+static void PrintFrameHeader(const StackFrame* frame, int frame_index) {
+  printf("%2d  ", frame_index);
+
+  uint64_t instruction_address = frame->ReturnAddress();
+
+  if (frame->module) {
+    printf("%s", PathnameStripper::File(frame->module->code_file()).c_str());
+    if (!frame->function_name.empty()) {
+      printf("!%s", frame->function_name.c_str());
+      if (!frame->source_file_name.empty()) {
+        string source_file = PathnameStripper::File(frame->source_file_name);
+        printf(" [%s : %d + 0x%" PRIx64 "]", source_file.c_str(),
+               frame->source_line,
+               instruction_address - frame->source_line_base);
+      } else {
+        printf(" + 0x%" PRIx64, instruction_address - frame->function_base);
+      }
+    } else {
+      printf(" + 0x%" PRIx64,
+             instruction_address - frame->module->base_address());
+    }
+  } else {
+    printf("0x%" PRIx64, instruction_address);
+  }
+}
+
 // PrintStack prints the call stack in |stack| to stdout, in a reasonably
 // useful form.  Module, function, and source file names are displayed if
 // they are available.  The code offset to the base code address of the
@@ -294,30 +324,7 @@ static void PrintStack(const CallStack* stack,
   }
   for (int frame_index = 0; frame_index < frame_count; ++frame_index) {
     const StackFrame* frame = stack->frames()->at(frame_index);
-    printf("%2d  ", frame_index);
-
-    uint64_t instruction_address = frame->ReturnAddress();
-
-    if (frame->module) {
-      printf("%s", PathnameStripper::File(frame->module->code_file()).c_str());
-      if (!frame->function_name.empty()) {
-        printf("!%s", frame->function_name.c_str());
-        if (!frame->source_file_name.empty()) {
-          string source_file = PathnameStripper::File(frame->source_file_name);
-          printf(" [%s : %d + 0x%" PRIx64 "]",
-                 source_file.c_str(),
-                 frame->source_line,
-                 instruction_address - frame->source_line_base);
-        } else {
-          printf(" + 0x%" PRIx64, instruction_address - frame->function_base);
-        }
-      } else {
-        printf(" + 0x%" PRIx64,
-               instruction_address - frame->module->base_address());
-      }
-    } else {
-      printf("0x%" PRIx64, instruction_address);
-    }
+    PrintFrameHeader(frame, frame_index);
     printf("\n ");
 
     // Inlined frames don't have registers info.
@@ -1274,6 +1281,23 @@ void PrintProcessStateMachineReadable(const ProcessState& process_state) {
       PrintStackMachineReadable(thread_index,
                                 process_state.threads()->at(thread_index));
     }
+  }
+}
+
+void PrintRequestingThreadBrief(const ProcessState& process_state) {
+  int requesting_thread = process_state.requesting_thread();
+  if (requesting_thread == -1) {
+    printf(" <no crashing or requesting dump thread identified>\n");
+    return;
+  }
+
+  printf("Thread %d (%s)\n", requesting_thread,
+         process_state.crashed() ? "crashed" : "requested dump, did not crash");
+  const CallStack* stack = process_state.threads()->at(requesting_thread);
+  int frame_count = stack->frames()->size();
+  for (int frame_index = 0; frame_index < frame_count; ++frame_index) {
+    PrintFrameHeader(stack->frames()->at(frame_index), frame_index);
+    printf("\n");
   }
 }
 

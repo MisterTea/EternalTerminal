@@ -4,8 +4,8 @@
 
 #include "base/strings/sys_string_conversions.h"
 
-#include "base/logging.h"
-#include "base/mac/foundation_util.h"
+#include "base/apple/bridging.h"
+#include "base/check_op.h"
 
 namespace base {
 
@@ -83,7 +83,7 @@ std::string SysNSStringToUTF8(NSString *nsstring) {
   if (!nsstring) {
     return std::string();
   }
-  return SysCFStringRefToUTF8(base::mac::NSToCFCast(nsstring));
+  return SysCFStringRefToUTF8(apple::NSToCFPtrCast(nsstring));
 }
 
 CFStringRef SysUTF8ToCFStringRef(const std::string& utf8) {
@@ -91,7 +91,7 @@ CFStringRef SysUTF8ToCFStringRef(const std::string& utf8) {
 }
 
 NSString* SysUTF8ToNSString(const std::string& utf8) {
-  return [base::mac::CFToNSCast(SysUTF8ToCFStringRef(utf8)) autorelease];
+  return base::apple::CFToNSOwnershipCast(SysUTF8ToCFStringRef(utf8));
 }
 
 }  // namespace base

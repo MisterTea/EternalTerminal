@@ -322,7 +322,7 @@ sentry__envelope_add_from_buffer(sentry_envelope_t *envelope, const char *buf,
     // NOTE: function will check for the clone of `buf` internally and free it
     // on error
     return envelope_add_from_owned_buffer(
-        envelope, sentry__string_clonen(buf, buf_len), buf_len, type);
+        envelope, sentry__string_clone_n(buf, buf_len), buf_len, type);
 }
 
 sentry_envelope_item_t *
@@ -459,16 +459,30 @@ sentry_envelope_write_to_path(
 }
 
 int
-sentry_envelope_write_to_file(
-    const sentry_envelope_t *envelope, const char *path)
+sentry_envelope_write_to_file_n(
+    const sentry_envelope_t *envelope, const char *path, size_t path_len)
 {
-    sentry_path_t *path_obj = sentry__path_from_str(path);
+    if (!envelope || !path) {
+        return 1;
+    }
+    sentry_path_t *path_obj = sentry__path_from_str_n(path, path_len);
 
     int rv = sentry_envelope_write_to_path(envelope, path_obj);
 
     sentry__path_free(path_obj);
 
     return rv;
+}
+
+int
+sentry_envelope_write_to_file(
+    const sentry_envelope_t *envelope, const char *path)
+{
+    if (!envelope || !path) {
+        return 1;
+    }
+
+    return sentry_envelope_write_to_file_n(envelope, path, strlen(path));
 }
 
 #ifdef SENTRY_UNITTEST

@@ -29,6 +29,10 @@
 // crash_generation_server_test.cc
 // Unit tests for CrashGenerationServer
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <dirent.h>
 #include <glob.h>
 #include <stdint.h>

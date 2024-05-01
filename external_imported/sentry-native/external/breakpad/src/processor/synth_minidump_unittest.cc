@@ -31,6 +31,10 @@
 // synth_minidump_unittest.cc: Unit tests for google_breakpad::SynthMinidump
 // classes.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <sstream>
 #include <string>
 

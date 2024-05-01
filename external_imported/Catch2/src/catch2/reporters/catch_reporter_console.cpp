@@ -209,15 +209,9 @@ findMax( std::size_t& i, std::size_t& j, std::size_t& k, std::size_t& l ) {
         return l;
 }
 
-enum class Justification { Left, Right };
-
-struct ColumnInfo {
-    std::string name;
-    std::size_t width;
-    Justification justification;
-};
 struct ColumnBreak {};
 struct RowBreak {};
+struct OutputFlush {};
 
 class Duration {
     enum class Unit {
@@ -292,6 +286,14 @@ public:
 };
 } // end anon namespace
 
+enum class Justification { Left, Right };
+
+struct ColumnInfo {
+    std::string name;
+    std::size_t width;
+    Justification justification;
+};
+
 class TablePrinter {
     std::ostream& m_os;
     std::vector<ColumnInfo> m_columnInfos;
@@ -314,11 +316,10 @@ public:
             *this << RowBreak();
 
 			TextFlow::Columns headerCols;
-			auto spacer = TextFlow::Spacer(2);
 			for (auto const& info : m_columnInfos) {
                 assert(info.width > 2);
 				headerCols += TextFlow::Column(info.name).width(info.width - 2);
-				headerCols += spacer;
+                headerCols += TextFlow::Spacer( 2 );
 			}
 			m_os << headerCols << '\n';
 
@@ -334,12 +335,12 @@ public:
     }
 
     template<typename T>
-    friend TablePrinter& operator << (TablePrinter& tp, T const& value) {
+    friend TablePrinter& operator<< (TablePrinter& tp, T const& value) {
         tp.m_oss << value;
         return tp;
     }
 
-    friend TablePrinter& operator << (TablePrinter& tp, ColumnBreak) {
+    friend TablePrinter& operator<< (TablePrinter& tp, ColumnBreak) {
         auto colStr = tp.m_oss.str();
         const auto strSize = colStr.size();
         tp.m_oss.str("");
@@ -361,11 +362,16 @@ public:
         return tp;
     }
 
-    friend TablePrinter& operator << (TablePrinter& tp, RowBreak) {
+    friend TablePrinter& operator<< (TablePrinter& tp, RowBreak) {
         if (tp.m_currentColumn > 0) {
             tp.m_os << '\n';
             tp.m_currentColumn = -1;
         }
+        return tp;
+    }
+
+    friend TablePrinter& operator<<(TablePrinter& tp, OutputFlush) {
+        tp.m_os << std::flush;
         return tp;
     }
 };
@@ -389,7 +395,7 @@ ConsoleReporter::ConsoleReporter(ReporterConfig&& config):
                 { "benchmark name", CATCH_CONFIG_CONSOLE_WIDTH - 43, Justification::Left },
                 { "samples      mean       std dev", 14, Justification::Right },
                 { "iterations   low mean   low std dev", 14, Justification::Right },
-                { "estimated    high mean  high std dev", 14, Justification::Right }
+                { "est run time high mean  high std dev", 14, Justification::Right }
             };
         }
     }())) {}
@@ -473,8 +479,11 @@ void ConsoleReporter::benchmarkPreparing( StringRef name ) {
 void ConsoleReporter::benchmarkStarting(BenchmarkInfo const& info) {
     (*m_tablePrinter) << info.samples << ColumnBreak()
         << info.iterations << ColumnBreak();
-    if (!m_config->benchmarkNoAnalysis())
-        (*m_tablePrinter) << Duration(info.estimatedDuration) << ColumnBreak();
+    if ( !m_config->benchmarkNoAnalysis() ) {
+        ( *m_tablePrinter )
+            << Duration( info.estimatedDuration ) << ColumnBreak();
+    }
+    ( *m_tablePrinter ) << OutputFlush{};
 }
 void ConsoleReporter::benchmarkEnded(BenchmarkStats<> const& stats) {
     if (m_config->benchmarkNoAnalysis())

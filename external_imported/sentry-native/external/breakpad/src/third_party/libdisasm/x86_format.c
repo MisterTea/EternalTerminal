@@ -29,7 +29,7 @@
 } while( 0 )
 
 #define STRNCATF( buf, fmt, data, len ) do {        \
-        char _tmp[MAX_OP_STRING];                   \
+        char _tmp[MAX_OP_XML_STRING];               \
                                                     \
         snprintf( _tmp, sizeof _tmp, fmt, data );   \
         STRNCAT( buf, _tmp, len );                  \

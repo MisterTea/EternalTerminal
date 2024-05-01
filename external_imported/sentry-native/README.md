@@ -1,3 +1,5 @@
+[![Conan Center](https://shields.io/conan/v/sentry-native)](https://conan.io/center/recipes/sentry-native) [![nixpkgs unstable](https://repology.org/badge/version-for-repo/nix_unstable/sentry-native.svg)](https://github.com/NixOS/nixpkgs/blob/nixos-unstable/pkgs/development/libraries/sentry-native/default.nix) [![vcpkg](https://shields.io/vcpkg/v/sentry-native)](https://vcpkg.link/ports/sentry-native)
+
 <p align="center">
   <a href="https://sentry.io/?utm_source=github&utm_medium=logo" target="_blank">
     <picture>
@@ -15,13 +17,10 @@ applications, optimized for C and C++. Sentry allows to add tags, breadcrumbs
 and arbitrary custom context to enrich error reports. Supports Sentry _20.6.0_
 and later.
 
-**Note**: This SDK is being actively developed and still in Beta. We recommend
-to check for updates regularly to benefit from latest features and bug fixes.
-Please see [Known Limitations](#known-limitations).
-
 ## Resources <!-- omit in toc -->
 
-- [Discord](https://discord.gg/ez5KZN7) server for project discussions.
+- [SDK Documentation](https://docs.sentry.io/platforms/native/)
+- [Discord](https://discord.gg/ez5KZN7) server for project discussions
 - Follow [@getsentry](https://twitter.com/getsentry) on Twitter for updates
 
 ## Table of Contents <!-- omit in toc -->
@@ -228,9 +227,9 @@ using `cmake -D BUILD_SHARED_LIBS=OFF ..`.
   Sentry can use different backends depending on platform.
 
   - **crashpad**: This uses the out-of-process crashpad handler. It is currently
-    only supported on Desktop OSs, and used as the default on Windows and macOS.
+    only supported on Desktop OSs, and used as the default on Windows, Linux and macOS.
   - **breakpad**: This uses the in-process breakpad handler. It is currently
-    only supported on Desktop OSs, and used as the default on Linux.
+    only supported on Desktop OSs.
   - **inproc**: A small in-process handler which is supported on all platforms,
     and is used as default on Android.
   - **none**: This builds `sentry-native` without a backend, so it does not handle
@@ -239,12 +238,8 @@ using `cmake -D BUILD_SHARED_LIBS=OFF ..`.
 - `SENTRY_INTEGRATION_QT` (Default: OFF):
   Builds the Qt integration, which turns Qt log messages into breadcrumbs.
 
-- `SENTRY_BREAKPAD_SYSTEM` / `SENTRY_CRASHPAD_SYSTEM` (Default: OFF):
-  This instructs the build system to use system-installed breakpad or crashpad
-  libraries instead of using the in-tree version. This is generally not recommended
-  for crashpad, as sentry uses a patched version that has attachment support.
-  This is being worked on upstream as well, and a future version might work with
-  an unmodified crashpad version as well.
+- `SENTRY_BREAKPAD_SYSTEM` (Default: OFF):
+  This instructs the build system to use system-installed breakpad libraries instead of using the in-tree version. 
 
 | Feature    | Windows | macOS | Linux | Android | iOS |
 | ---------- | ------- | ----- | ----- | ------- | --- |

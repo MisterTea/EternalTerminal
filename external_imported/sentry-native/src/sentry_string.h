@@ -110,10 +110,11 @@ size_t sentry__stringbuilder_len(const sentry_stringbuilder_t *sb);
 void sentry__stringbuilder_set_len(sentry_stringbuilder_t *sb, size_t len);
 
 /**
- * Duplicates a zero terminated string with a length limit.
+ * Duplicates a zero terminated string with a length limit. Does not check
+ * if `str` is NULL.
  */
 static inline char *
-sentry__string_clonen(const char *str, size_t n)
+sentry__string_clone_n_unchecked(const char *str, size_t n)
 {
     size_t len = n + 1;
     char *rv = (char *)sentry_malloc(len);
@@ -125,12 +126,31 @@ sentry__string_clonen(const char *str, size_t n)
 }
 
 /**
+ * Duplicates a ptr/len string into a zero terminated string.
+ */
+static inline char *
+sentry__string_clone_n(const char *str, size_t n)
+{
+    return str ? sentry__string_clone_n_unchecked(str, n) : NULL;
+}
+
+/**
  * Duplicates a zero terminated string.
  */
 static inline char *
 sentry__string_clone(const char *str)
 {
-    return str ? sentry__string_clonen(str, strlen(str)) : NULL;
+    return str ? sentry__string_clone_n_unchecked(str, strlen(str)) : NULL;
+}
+
+static inline char *
+sentry__string_clone_max_n(const char *str, size_t str_len, size_t max_len)
+{
+    if (!str) {
+        return NULL;
+    }
+    size_t min_len = str_len < max_len ? str_len : max_len;
+    return sentry__string_clone_n_unchecked(str, min_len);
 }
 
 /**

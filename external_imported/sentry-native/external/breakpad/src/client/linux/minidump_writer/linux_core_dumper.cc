@@ -29,6 +29,10 @@
 // linux_core_dumper.cc: Implement google_breakpad::LinuxCoreDumper.
 // See linux_core_dumper.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/linux/minidump_writer/linux_core_dumper.h"
 
 #include <asm/ptrace.h>

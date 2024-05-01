@@ -406,13 +406,17 @@ bool UnwinderFromPid::Init() {
     }
   }
 
-  jit_debug_ptr_ = CreateJitDebug(arch_, process_memory_);
-  jit_debug_ = jit_debug_ptr_.get();
-  SetJitDebug(jit_debug_);
+  // jit_debug_ and dex_files_ may have already been set, for example in
+  // AndroidLocalUnwinder::InternalUnwind.
+  if (jit_debug_ == nullptr) {
+    jit_debug_ptr_ = CreateJitDebug(arch_, process_memory_);
+    SetJitDebug(jit_debug_ptr_.get());
+  }
 #if defined(DEXFILE_SUPPORT)
-  dex_files_ptr_ = CreateDexFiles(arch_, process_memory_);
-  dex_files_ = dex_files_ptr_.get();
-  SetDexFiles(dex_files_);
+  if (dex_files_ == nullptr) {
+    dex_files_ptr_ = CreateDexFiles(arch_, process_memory_);
+    SetDexFiles(dex_files_ptr_.get());
+  }
 #endif
 
   return true;

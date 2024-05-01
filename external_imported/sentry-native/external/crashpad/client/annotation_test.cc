@@ -161,8 +161,9 @@ TEST_F(Annotation, BaseAnnotationShouldNotSupportSpinGuard) {
       crashpad::Annotation::Type::kString, "no-spin-guard", buffer);
   EXPECT_EQ(annotation.concurrent_access_guard_mode(),
             crashpad::Annotation::ConcurrentAccessGuardMode::kUnguarded);
-#ifdef NDEBUG
-  // This fails a DCHECK() in debug builds, so only test it for NDEBUG builds.
+#if !DCHECK_IS_ON()
+  // This fails a DCHECK() in debug builds, so only test it when DCHECK()
+  // is not on.
   EXPECT_EQ(std::nullopt, annotation.TryCreateScopedSpinGuard(0));
 #endif
 }

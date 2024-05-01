@@ -29,6 +29,10 @@
 // Windows utility to dump the line number data from a pdb file to
 // a text-based format that we can use from the minidump processor.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <stdio.h>
 #include <wchar.h>
 

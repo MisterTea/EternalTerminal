@@ -63,7 +63,7 @@ sentry__winhttp_transport_start(
     winhttp_bgworker_state_t *state = sentry__bgworker_get_state(bgworker);
 
     state->dsn = sentry__dsn_incref(opts->dsn);
-    state->user_agent = sentry__string_to_wstr(SENTRY_SDK_USER_AGENT);
+    state->user_agent = sentry__string_to_wstr(opts->user_agent);
     state->debug = opts->debug;
 
     sentry__bgworker_setname(bgworker, opts->transport_thread_name);
@@ -74,7 +74,7 @@ sentry__winhttp_transport_start(
         const char *ptr = opts->http_proxy + 7;
         const char *slash = strchr(ptr, '/');
         if (slash) {
-            char *copy = sentry__string_clonen(ptr, slash - ptr);
+            char *copy = sentry__string_clone_n(ptr, slash - ptr);
             state->proxy = sentry__string_to_wstr(copy);
             sentry_free(copy);
         } else {
@@ -152,9 +152,11 @@ sentry__winhttp_send_task(void *_envelope, void *_state)
 
     uint64_t started = sentry__monotonic_time();
 
+    char *user_agent = sentry__string_from_wstr(state->user_agent);
     sentry_prepared_http_request_t *req = sentry__prepare_http_request(
-        envelope, state->dsn, state->ratelimiter);
+        envelope, state->dsn, state->ratelimiter, user_agent);
     if (!req) {
+        sentry_free(user_agent);
         return;
     }
 
@@ -283,6 +285,7 @@ exit:
         state->request = NULL;
         WinHttpCloseHandle(request);
     }
+    sentry_free(user_agent);
     sentry_free(url);
     sentry_free(headers);
     sentry__prepared_http_request_free(req);

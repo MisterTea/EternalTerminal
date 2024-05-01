@@ -32,6 +32,10 @@
 // This file was renamed from linux_dumper_unittest.cc and modified due
 // to LinuxDumper being splitted into two classes.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>

@@ -53,6 +53,7 @@ sentry_path_t *sentry__path_dir(const sentry_path_t *path);
  * Create a new path from the given string.
  */
 sentry_path_t *sentry__path_from_str(const char *s);
+sentry_path_t *sentry__path_from_str_n(const char *s, size_t s_len);
 
 /**
  * Create a new path from the given string.
@@ -205,6 +206,7 @@ void sentry__filelock_free(sentry_filelock_t *lock);
  * Create a new path from a Wide String.
  */
 sentry_path_t *sentry__path_from_wstr(const wchar_t *s);
+sentry_path_t *sentry__path_from_wstr_n(const wchar_t *s, size_t s_len);
 
 /**
  * Create another path by appending a new path segment.

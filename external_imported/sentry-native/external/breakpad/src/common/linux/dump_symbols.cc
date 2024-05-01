@@ -31,6 +31,10 @@
 // dump_symbols.cc: implement google_breakpad::WriteSymbolFile:
 // Find all the debugging info in a file and dump it as a Breakpad symbol file.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/dump_symbols.h"
 
 #include <assert.h>
@@ -47,6 +51,9 @@
 #include <sys/stat.h>
 #include <unistd.h>
 #include <zlib.h>
+#ifdef HAVE_LIBZSTD
+#include <zstd.h>
+#endif
 
 #include <set>
 #include <string>
@@ -102,6 +109,11 @@ using google_breakpad::wasteful_vector;
 // Define AARCH64 ELF architecture if host machine does not include this define.
 #ifndef EM_AARCH64
 #define EM_AARCH64      183
+#endif
+
+// Define ZStd compression if host machine does not include this define.
+#ifndef ELFCOMPRESS_ZSTD
+#define ELFCOMPRESS_ZSTD 2
 #endif
 
 //
@@ -301,7 +313,7 @@ uint32_t GetCompressionHeader(
   return sizeof (*header);
 }
 
-std::pair<uint8_t *, uint64_t> UncompressSectionContents(
+std::pair<uint8_t *, uint64_t> UncompressZlibSectionContents(
     const uint8_t* compressed_buffer, uint64_t compressed_size, uint64_t uncompressed_size) {
   z_stream stream;
   memset(&stream, 0, sizeof stream);
@@ -328,6 +340,90 @@ std::pair<uint8_t *, uint64_t> UncompressSectionContents(
   return inflateEnd(&stream) != Z_OK || status != Z_OK || stream.avail_out != 0
     ? std::make_pair(nullptr, 0)
     : std::make_pair(uncompressed_buffer.release(), uncompressed_size);
+}
+
+#ifdef HAVE_LIBZSTD
+std::pair<uint8_t *, uint64_t> UncompressZstdSectionContents(
+    const uint8_t* compressed_buffer, uint64_t compressed_size,uint64_t uncompressed_size) {
+
+  google_breakpad::scoped_array<uint8_t> uncompressed_buffer(new uint8_t[uncompressed_size]);
+  size_t out_size = ZSTD_decompress(uncompressed_buffer.get(), uncompressed_size,
+    compressed_buffer, compressed_size);
+  if (ZSTD_isError(out_size)) {
+    return std::make_pair(nullptr, 0);
+  }
+  assert(out_size == uncompressed_size);
+  return std::make_pair(uncompressed_buffer.release(), uncompressed_size);
+}
+#endif
+
+std::pair<uint8_t *, uint64_t> UncompressSectionContents(
+    uint64_t compression_type, const uint8_t* compressed_buffer,
+    uint64_t compressed_size, uint64_t uncompressed_size) {
+  if (compression_type == ELFCOMPRESS_ZLIB) {
+    return UncompressZlibSectionContents(compressed_buffer, compressed_size, uncompressed_size);
+  }
+
+#ifdef HAVE_LIBZSTD
+  if (compression_type == ELFCOMPRESS_ZSTD) {
+    return UncompressZstdSectionContents(compressed_buffer, compressed_size, uncompressed_size);
+  }
+#endif
+
+  return std::make_pair(nullptr, 0);
+}
+
+void StartProcessSplitDwarf(google_breakpad::CompilationUnit* reader,
+                            Module* module,
+                            google_breakpad::Endianness endianness,
+                            bool handle_inter_cu_refs,
+                            bool handle_inline) {
+  std::string split_file;
+  google_breakpad::SectionMap split_sections;
+  google_breakpad::ByteReader split_byte_reader(endianness);
+  uint64_t cu_offset = 0;
+  if (!reader->ProcessSplitDwarf(split_file, split_sections, split_byte_reader,
+                                 cu_offset))
+    return;
+  DwarfCUToModule::FileContext file_context(split_file, module,
+                                            handle_inter_cu_refs);
+  for (auto section : split_sections)
+    file_context.AddSectionToSectionMap(section.first, section.second.first,
+                                        section.second.second);
+  // Because DWP/DWO file doesn't have .debug_addr/.debug_line/.debug_line_str,
+  // its debug info will refer to .debug_addr/.debug_line in the main binary.
+  if (file_context.section_map().find(".debug_addr") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_addr", reader->GetAddrBuffer(),
+                                        reader->GetAddrBufferLen());
+  if (file_context.section_map().find(".debug_line") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line", reader->GetLineBuffer(),
+                                        reader->GetLineBufferLen());
+  if (file_context.section_map().find(".debug_line_str") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line_str",
+                                        reader->GetLineStrBuffer(),
+                                        reader->GetLineStrBufferLen());
+
+  DumperRangesHandler ranges_handler(&split_byte_reader);
+  DumperLineToModule line_to_module(&split_byte_reader);
+  DwarfCUToModule::WarningReporter reporter(split_file, cu_offset);
+  DwarfCUToModule root_handler(
+      &file_context, &line_to_module, &ranges_handler, &reporter, handle_inline,
+      reader->GetLowPC(), reader->GetAddrBase(), reader->HasSourceLineInfo(),
+      reader->GetSourceLineOffset());
+  google_breakpad::DIEDispatcher die_dispatcher(&root_handler);
+  google_breakpad::CompilationUnit split_reader(
+      split_file, file_context.section_map(), cu_offset, &split_byte_reader,
+      &die_dispatcher);
+  split_reader.SetSplitDwarf(reader->GetAddrBase(), reader->GetDWOID());
+  split_reader.Start();
+  // Normally, it won't happen unless we have transitive reference.
+  if (split_reader.ShouldProcessSplitDwarf()) {
+    StartProcessSplitDwarf(&split_reader, module, endianness,
+                           handle_inter_cu_refs, handle_inline);
+  }
 }
 
 template<typename ElfClass>
@@ -380,7 +476,7 @@ bool LoadDwarf(const string& dwarf_filename,
     size -= compression_header_size;
 
     std::pair<uint8_t *, uint64_t> uncompressed =
-      UncompressSectionContents(contents, size, chdr.ch_size);
+      UncompressSectionContents(chdr.ch_type, contents, size, chdr.ch_size);
 
     if (uncompressed.first != nullptr && uncompressed.second != 0) {
       file_context.AddManagedSectionToSectionMap(name, uncompressed.first, uncompressed.second);
@@ -417,6 +513,11 @@ bool LoadDwarf(const string& dwarf_filename,
                                          &die_dispatcher);
     // Process the entire compilation unit; get the offset of the next.
     offset += reader.Start();
+    // Start to process split dwarf file.
+    if (reader.ShouldProcessSplitDwarf()) {
+      StartProcessSplitDwarf(&reader, module, endianness, handle_inter_cu_refs,
+                             handle_inline);
+    }
   }
   return true;
 }
@@ -444,6 +545,9 @@ bool DwarfCFIRegisterNames(const typename ElfClass::Ehdr* elf_header,
       return true;
     case EM_X86_64:
       *register_names = DwarfCFIToModule::RegisterNames::X86_64();
+      return true;
+    case EM_RISCV:
+      *register_names = DwarfCFIToModule::RegisterNames::RISCV();
       return true;
     default:
       return false;
@@ -522,7 +626,7 @@ bool LoadDwarfCFI(const string& dwarf_filename,
   cfi_size -= compression_header_size;
 
   std::pair<uint8_t *, uint64_t> uncompressed =
-    UncompressSectionContents(cfi, cfi_size, chdr.ch_size);
+    UncompressSectionContents(chdr.ch_type, cfi, cfi_size, chdr.ch_size);
 
   if (uncompressed.first == nullptr || uncompressed.second == 0) {
     fprintf(stderr, "%s: decompression failed\n", dwarf_filename.c_str());
@@ -1018,6 +1122,7 @@ const char* ElfArchitecture(const typename ElfClass::Ehdr* elf_header) {
     case EM_SPARC:      return "sparc";
     case EM_SPARCV9:    return "sparcv9";
     case EM_X86_64:     return "x86_64";
+    case EM_RISCV:      return "riscv";
     default: return NULL;
   }
 }

@@ -33,6 +33,10 @@
 //  Copyright 2008 Google LLC
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "client/mac/handler/testcases/DynamicImagesTests.h"
 #include "client/mac/handler/dynamic_images.h"
 

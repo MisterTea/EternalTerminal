@@ -32,6 +32,10 @@
 
 // dump_syms.cc: Create a symbol file for use with minidumps
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/mac/dump_syms.h"
 
 #include <assert.h>
@@ -217,11 +221,10 @@ bool DumpSymbols::ReadData(uint8_t* contents, size_t size,
   return true;
 }
 
-bool DumpSymbols::SetArchitecture(cpu_type_t cpu_type,
-                                  cpu_subtype_t cpu_subtype) {
+bool DumpSymbols::SetArchitecture(const ArchInfo& info) {
   // Find the best match for the architecture the user requested.
-  const SuperFatArch* best_match = FindBestMatchForArchitecture(
-      cpu_type, cpu_subtype);
+  const SuperFatArch* best_match =
+      FindBestMatchForArchitecture(info.cputype, info.cpusubtype);
   if (!best_match) return false;
 
   // Record the selected object file.
@@ -229,70 +232,37 @@ bool DumpSymbols::SetArchitecture(cpu_type_t cpu_type,
   return true;
 }
 
-bool DumpSymbols::SetArchitecture(const std::string& arch_name) {
-  bool arch_set = false;
-  const NXArchInfo* arch_info =
-      google_breakpad::BreakpadGetArchInfoFromName(arch_name.c_str());
-  if (arch_info) {
-    arch_set = SetArchitecture(arch_info->cputype, arch_info->cpusubtype);
-  }
-  return arch_set;
-}
 
 SuperFatArch* DumpSymbols::FindBestMatchForArchitecture(
-    cpu_type_t cpu_type, cpu_subtype_t cpu_subtype) {
-  // Check if all the object files can be converted to struct fat_arch.
-  bool can_convert_to_fat_arch = true;
-  vector<struct fat_arch> fat_arch_vector;
-  for (vector<SuperFatArch>::const_iterator it = object_files_.begin();
-       it != object_files_.end();
-       ++it) {
-    struct fat_arch arch;
-    bool success = it->ConvertToFatArch(&arch);
-    if (!success) {
-      can_convert_to_fat_arch = false;
-      break;
+    cpu_type_t cpu_type,
+    cpu_subtype_t cpu_subtype) {
+  SuperFatArch* closest_match = nullptr;
+  for (auto& object_file : object_files_) {
+    if (static_cast<cpu_type_t>(object_file.cputype) == cpu_type) {
+      // If there's an exact match, return it directly.
+      if ((static_cast<cpu_subtype_t>(object_file.cpusubtype) &
+           ~CPU_SUBTYPE_MASK) == (cpu_subtype & ~CPU_SUBTYPE_MASK)) {
+        return &object_file;
+      }
+      // Otherwise, hold on to this as the closest match since at least the CPU
+      // type matches.
+      if (!closest_match) {
+        closest_match = &object_file;
+      }
     }
-    fat_arch_vector.push_back(arch);
   }
-
-  // If all the object files can be converted to struct fat_arch, use
-  // NXFindBestFatArch.
-  if (can_convert_to_fat_arch) {
-    const struct fat_arch* best_match
-      = NXFindBestFatArch(cpu_type, cpu_subtype, &fat_arch_vector[0],
-                          static_cast<uint32_t>(fat_arch_vector.size()));
-
-    for (size_t i = 0; i < fat_arch_vector.size(); ++i) {
-      if (best_match == &fat_arch_vector[i])
-        return &object_files_[i];
-    }
-    assert(best_match == NULL);
-    // Fall through since NXFindBestFatArch can't find arm slices on x86_64
-    // macOS 13. See FB11955188.
-  }
-
-  // Check for an exact match with cpu_type and cpu_subtype.
-  for (vector<SuperFatArch>::iterator it = object_files_.begin();
-       it != object_files_.end();
-       ++it) {
-    if (static_cast<cpu_type_t>(it->cputype) == cpu_type &&
-        (static_cast<cpu_subtype_t>(it->cpusubtype) & ~CPU_SUBTYPE_MASK) ==
-            (cpu_subtype & ~CPU_SUBTYPE_MASK))
-      return &*it;
-  }
-
   // No exact match found.
-  // TODO(erikchen): If it becomes necessary, we can copy the implementation of
-  // NXFindBestFatArch, located at
-  // http://web.mit.edu/darwin/src/modules/cctools/libmacho/arch.c.
-  fprintf(stderr, "Failed to find an exact match for an object file with cpu "
-      "type: %d and cpu subtype: %d.\n", cpu_type, cpu_subtype);
-  if (!can_convert_to_fat_arch) {
-    fprintf(stderr, "Furthermore, at least one object file is larger "
-        "than 2**32.\n");
+  fprintf(stderr,
+          "Failed to find an exact match for an object file with cpu "
+          "type: %d and cpu subtype: %d.\n",
+          cpu_type, cpu_subtype);
+  if (closest_match) {
+    fprintf(stderr, "Using %s as the closest match.\n",
+            GetNameFromCPUType(closest_match->cputype,
+                               closest_match->cpusubtype));
+    return closest_match;
   }
-  return NULL;
+  return nullptr;
 }
 
 string DumpSymbols::Identifier() {
@@ -398,8 +368,8 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
       selected_object_file_ = &object_files_[0];
     else {
       // Look for an object file whose architecture matches our own.
-      const NXArchInfo* local_arch = NXGetLocalArchInfo();
-      if (!SetArchitecture(local_arch->cputype, local_arch->cpusubtype)) {
+      ArchInfo local_arch = GetLocalArchInfo();
+      if (!SetArchitecture(local_arch)) {
         fprintf(stderr, "%s: object file contains more than one"
                 " architecture, none of which match the current"
                 " architecture; specify an architecture explicitly"
@@ -414,18 +384,16 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
 
   // Find the name of the selected file's architecture, to appear in
   // the MODULE record and in error messages.
-  const NXArchInfo* selected_arch_info =
-      google_breakpad::BreakpadGetArchInfoFromCpuType(
-          selected_object_file_->cputype, selected_object_file_->cpusubtype);
+  const char* selected_arch_name = GetNameFromCPUType(
+      selected_object_file_->cputype, selected_object_file_->cpusubtype);
 
   // In certain cases, it is possible that architecture info can't be reliably
   // determined, e.g. new architectures that breakpad is unware of. In that
   // case, avoid crashing and return false instead.
-  if (selected_arch_info == NULL) {
+  if (selected_arch_name == kUnknownArchName) {
     return false;
   }
 
-  const char* selected_arch_name = selected_arch_info->name;
   if (strcmp(selected_arch_name, "i386") == 0)
     selected_arch_name = "x86";
 
@@ -438,7 +406,12 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
   }
 
   // Compute a module name, to appear in the MODULE record.
-  string module_name = google_breakpad::BaseName(object_filename_);
+  string module_name;
+  if (!module_name_.empty()) {
+    module_name = module_name_;
+  } else {
+    module_name = google_breakpad::BaseName(object_filename_);
+  }
 
   // Choose an identifier string, to appear in the MODULE record.
   string identifier = Identifier();
@@ -447,8 +420,61 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
 
   // Create a module to hold the debugging information.
   module.reset(new Module(module_name, "mac", selected_arch_name, identifier,
-                          "", enable_multiple_));
+                          "", enable_multiple_, prefer_extern_name_));
   return true;
+}
+
+void DumpSymbols::StartProcessSplitDwarf(
+    google_breakpad::CompilationUnit* reader,
+    Module* module,
+    google_breakpad::Endianness endianness,
+    bool handle_inter_cu_refs,
+    bool handle_inline) const {
+  std::string split_file;
+  google_breakpad::SectionMap split_sections;
+  google_breakpad::ByteReader split_byte_reader(endianness);
+  uint64_t cu_offset = 0;
+  if (reader->ProcessSplitDwarf(split_file, split_sections, split_byte_reader,
+                                cu_offset))
+    return;
+  DwarfCUToModule::FileContext file_context(split_file, module,
+                                            handle_inter_cu_refs);
+  for (auto section : split_sections)
+    file_context.AddSectionToSectionMap(section.first, section.second.first,
+                                        section.second.second);
+  // Because DWP/DWO file doesn't have .debug_addr/.debug_line/.debug_line_str,
+  // its debug info will refer to .debug_addr/.debug_line in the main binary.
+  if (file_context.section_map().find(".debug_addr") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_addr", reader->GetAddrBuffer(),
+                                        reader->GetAddrBufferLen());
+  if (file_context.section_map().find(".debug_line") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line", reader->GetLineBuffer(),
+                                        reader->GetLineBufferLen());
+  if (file_context.section_map().find(".debug_line_str") ==
+      file_context.section_map().end())
+    file_context.AddSectionToSectionMap(".debug_line_str",
+                                        reader->GetLineStrBuffer(),
+                                        reader->GetLineStrBufferLen());
+  DumperRangesHandler ranges_handler(&split_byte_reader);
+  DumperLineToModule line_to_module(&split_byte_reader);
+  DwarfCUToModule::WarningReporter reporter(split_file, cu_offset);
+  DwarfCUToModule root_handler(
+      &file_context, &line_to_module, &ranges_handler, &reporter, handle_inline,
+      reader->GetLowPC(), reader->GetAddrBase(), reader->HasSourceLineInfo(),
+      reader->GetSourceLineOffset());
+  google_breakpad::DIEDispatcher die_dispatcher(&root_handler);
+  google_breakpad::CompilationUnit split_reader(
+      split_file, file_context.section_map(), cu_offset, &split_byte_reader,
+      &die_dispatcher);
+  split_reader.SetSplitDwarf(reader->GetAddrBase(), reader->GetDWOID());
+  split_reader.Start();
+  // Normally, it won't happen unless we have transitive reference.
+  if (split_reader.ShouldProcessSplitDwarf()) {
+    StartProcessSplitDwarf(&split_reader, module, endianness,
+                           handle_inter_cu_refs, handle_inline);
+  }
 }
 
 void DumpSymbols::ReadDwarf(google_breakpad::Module* module,
@@ -456,9 +482,9 @@ void DumpSymbols::ReadDwarf(google_breakpad::Module* module,
                             const mach_o::SectionMap& dwarf_sections,
                             bool handle_inter_cu_refs) const {
   // Build a byte reader of the appropriate endianness.
-  ByteReader byte_reader(macho_reader.big_endian()
-                         ? ENDIANNESS_BIG
-                         : ENDIANNESS_LITTLE);
+  google_breakpad::Endianness endianness =
+      macho_reader.big_endian() ? ENDIANNESS_BIG : ENDIANNESS_LITTLE;
+  ByteReader byte_reader(endianness);
 
   // Construct a context for this file.
   DwarfCUToModule::FileContext file_context(selected_object_name_,
@@ -494,14 +520,14 @@ void DumpSymbols::ReadDwarf(google_breakpad::Module* module,
 
   // Walk the __debug_info section, one compilation unit at a time.
   uint64_t debug_info_length = debug_info_section.second;
+  bool handle_inline = symbol_data_ & INLINES;
   for (uint64_t offset = 0; offset < debug_info_length;) {
     // Make a handler for the root DIE that populates MODULE with the
     // debug info.
     DwarfCUToModule::WarningReporter reporter(selected_object_name_,
                                               offset);
     DwarfCUToModule root_handler(&file_context, &line_to_module,
-                                 &ranges_handler, &reporter,
-                                 symbol_data_ & INLINES);
+                                 &ranges_handler, &reporter, handle_inline);
     // Make a Dwarf2Handler that drives our DIEHandler.
     DIEDispatcher die_dispatcher(&root_handler);
     // Make a DWARF parser for the compilation unit at OFFSET.
@@ -512,6 +538,11 @@ void DumpSymbols::ReadDwarf(google_breakpad::Module* module,
                                                &die_dispatcher);
     // Process the entire compilation unit; get the offset of the next.
     offset += dwarf_reader.Start();
+    // Start to process split dwarf file.
+    if (dwarf_reader.ShouldProcessSplitDwarf()) {
+      StartProcessSplitDwarf(&dwarf_reader, module, endianness,
+                             handle_inter_cu_refs, handle_inline);
+    }
   }
 }
 
@@ -536,16 +567,14 @@ bool DumpSymbols::ReadCFI(google_breakpad::Module* module,
       register_names = DwarfCFIToModule::RegisterNames::ARM64();
       break;
     default: {
-      const NXArchInfo* arch = google_breakpad::BreakpadGetArchInfoFromCpuType(
-          macho_reader.cpu_type(), macho_reader.cpu_subtype());
-      fprintf(stderr, "%s: cannot convert DWARF call frame information for ",
-              selected_object_name_.c_str());
-      if (arch)
-        fprintf(stderr, "architecture '%s'", arch->name);
-      else
-        fprintf(stderr, "architecture %d,%d",
-                macho_reader.cpu_type(), macho_reader.cpu_subtype());
-      fprintf(stderr, " to Breakpad symbol file: no register name table\n");
+      const char* arch_name = GetNameFromCPUType(macho_reader.cpu_type(),
+                                                 macho_reader.cpu_subtype());
+      fprintf(
+          stderr,
+          "%s: cannot convert DWARF call frame information for architecture "
+          "'%s' (%d, %d) to Breakpad symbol file: no register name table\n",
+          selected_object_name_.c_str(), arch_name, macho_reader.cpu_type(),
+          macho_reader.cpu_subtype());
       return false;
     }
   }

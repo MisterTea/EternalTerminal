@@ -9,7 +9,15 @@
 #include "gtest/gtest.h"
 
 #if BUILDFLAG(IS_APPLE)
-#import <Foundation/Foundation.h>
+
+// Note that this uses the direct runtime interface to the autorelease pool.
+// https://clang.llvm.org/docs/AutomaticReferenceCounting.html#runtime-support
+// This is so this can work when compiled for ARC.
+
+extern "C" {
+void* objc_autoreleasePoolPush(void);
+void objc_autoreleasePoolPop(void* pool);
+}
 
 // The implementation is in this header because mini_chromium does not directly
 // depend on googletest. Consumers are free to use this interface if they do
@@ -19,18 +27,13 @@ class PlatformTest : public testing::Test {
   PlatformTest(const PlatformTest&) = delete;
   PlatformTest& operator=(const PlatformTest&) = delete;
 
-  ~PlatformTest() override { [pool_ release]; }
+  ~PlatformTest() override { objc_autoreleasePoolPop(autorelease_pool_); }
 
  protected:
-  PlatformTest() : pool_([[NSAutoreleasePool alloc] init]) {}
+  PlatformTest() : autorelease_pool_(objc_autoreleasePoolPush()) {}
 
  private:
-#if !defined(__has_feature) || !__has_feature(objc_arc)
-  using PoolType = NSAutoreleasePool*;
-#else
-  using PoolType = id;
-#endif
-  PoolType pool_;
+  void* autorelease_pool_;
 };
 #else
 using PlatformTest = testing::Test;

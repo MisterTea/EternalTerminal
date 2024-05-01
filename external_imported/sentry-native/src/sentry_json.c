@@ -471,8 +471,8 @@ tokens_to_value(jsmntok_t *tokens, size_t token_count, const char *buf,
         break;
     }
     case JSMN_STRING: {
-        char *string
-            = sentry__string_clonen(buf + root->start, root->end - root->start);
+        char *string = sentry__string_clone_n_unchecked(
+            buf + root->start, root->end - root->start);
         if (decode_string_inplace(string)) {
             rv = sentry__value_new_string_owned(string);
         } else {
@@ -492,7 +492,7 @@ tokens_to_value(jsmntok_t *tokens, size_t token_count, const char *buf,
             sentry_value_t child;
             NESTED_PARSE(&child);
 
-            char *key = sentry__string_clonen(
+            char *key = sentry__string_clone_n_unchecked(
                 buf + token->start, token->end - token->start);
             if (decode_string_inplace(key)) {
                 sentry_value_set_by_key(rv, key, child);

@@ -105,7 +105,7 @@ template("create_signed_bundle") {
 
     # Bundle ID should respect rfc1034 and replace _ with -.
     _xcode_product_bundle_id =
-        string_replace("$ios_app_bundle_id_prefix.googletest.$_output_name",
+        string_replace("$ios_app_bundle_id_prefix.$_output_name",
                        "_",
                        "-")
 
@@ -222,7 +222,20 @@ template("ios_app_bundle") {
   if (defined(invoker.info_plist)) {
     _plist_templates += [ invoker.info_plist ]
   }
-  _plist_extra_substitutions = []
+
+  if (defined(invoker.bundle_identifier)) {
+    _bundle_identifier = invoker.bundle_identifier
+    assert(_bundle_identifier == string_replace(_bundle_identifier, "_", "-"),
+           "$target_name: bundle_identifier does not respect rfc1034: " +
+               _bundle_identifier)
+  } else {
+    # Bundle identifier should respect rfc1034, so replace "_" with "-".
+    _bundle_identifier = "$ios_app_bundle_id_prefix.googletest." +
+                         string_replace(_output_name, "_", "-")
+  }
+
+  _plist_extra_substitutions = [ "BUNDLE_IDENTIFIER=$_bundle_identifier" ]
+
   if (defined(invoker.extra_substitutions)) {
     _plist_extra_substitutions += invoker.extra_substitutions
   }
@@ -675,4 +688,3 @@ template("ios_test_runner_xcuitest") {
     forward_variables_from(invoker, "*", ["data_deps"])
   }
 }
-

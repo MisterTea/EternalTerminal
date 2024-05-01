@@ -31,6 +31,10 @@
 // Implementation of LineInfo, CompilationUnit,
 // and CallFrameInfo. See dwarf2reader.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/dwarf/dwarf2reader.h"
 
 #include <stdint.h>
@@ -76,9 +80,10 @@ CompilationUnit::CompilationUnit(const string& path,
       str_offsets_buffer_(NULL), str_offsets_buffer_length_(0),
       addr_buffer_(NULL), addr_buffer_length_(0),
       is_split_dwarf_(false), is_type_unit_(false), dwo_id_(0), dwo_name_(),
-      skeleton_dwo_id_(0), ranges_base_(0), addr_base_(0),
-      str_offsets_base_(0), have_checked_for_dwp_(false), dwp_path_(),
-      dwp_byte_reader_(), dwp_reader_() {}
+      skeleton_dwo_id_(0), addr_base_(0),
+      str_offsets_base_(0), have_checked_for_dwp_(false),
+      should_process_split_dwarf_(false), low_pc_(0),
+      has_source_line_info_(false), source_line_offset_(0) {}
 
 // Initialize a compilation unit from a .dwo or .dwp file.
 // In this case, we need the .debug_addr section from the
@@ -87,16 +92,10 @@ CompilationUnit::CompilationUnit(const string& path,
 // the executable file, and call it as if we were still
 // processing the original compilation unit.
 
-void CompilationUnit::SetSplitDwarf(const uint8_t* addr_buffer,
-                                    uint64_t addr_buffer_length,
-                                    uint64_t addr_base,
-                                    uint64_t ranges_base,
+void CompilationUnit::SetSplitDwarf(uint64_t addr_base,
                                     uint64_t dwo_id) {
   is_split_dwarf_ = true;
-  addr_buffer_ = addr_buffer;
-  addr_buffer_length_ = addr_buffer_length;
   addr_base_ = addr_base;
-  ranges_base_ = ranges_base;
   skeleton_dwo_id_ = dwo_id;
 }
 
@@ -396,7 +395,13 @@ uint64_t CompilationUnit::Start() {
 
   // Set up our buffer
   buffer_ = iter->second.first + offset_from_section_start_;
-  buffer_length_ = iter->second.second - offset_from_section_start_;
+  if (is_split_dwarf_) {
+    iter = GetSectionByName(sections_, ".debug_info_offset");
+    assert(iter != sections_.end());
+    buffer_length_ = iter->second.second;
+  } else {
+    buffer_length_ = iter->second.second - offset_from_section_start_;
+  }
 
   // Read the header
   ReadHeader();
@@ -430,6 +435,12 @@ uint64_t CompilationUnit::Start() {
     string_buffer_length_ = iter->second.second;
   }
 
+  iter = GetSectionByName(sections_, ".debug_line");
+  if (iter != sections_.end()) {
+    line_buffer_ = iter->second.first;
+    line_buffer_length_ = iter->second.second;
+  }
+
   // Set the line string section if we have one.
   iter = GetSectionByName(sections_, ".debug_line_str");
   if (iter != sections_.end()) {
@@ -457,10 +468,8 @@ uint64_t CompilationUnit::Start() {
   // If this is a skeleton compilation unit generated with split DWARF,
   // and the client needs the full debug info, we need to find the full
   // compilation unit in a .dwo or .dwp file.
-  if (!is_split_dwarf_
-      && dwo_name_ != NULL
-      && handler_->NeedSplitDebugInfo())
-    ProcessSplitDwarf();
+  should_process_split_dwarf_ =
+      !is_split_dwarf_ && dwo_name_ != NULL && handler_->NeedSplitDebugInfo();
 
   return ourlength;
 }
@@ -881,7 +890,9 @@ const uint8_t* CompilationUnit::ProcessDIE(uint64_t dieoffset,
   // DW_AT_str_offsets_base or DW_AT_addr_base.  If it does, that attribute must
   // be found and processed before trying to process the other attributes;
   // otherwise the string or address values will all come out incorrect.
-  if (abbrev.tag == DW_TAG_compile_unit && header_.version == 5) {
+  if ((abbrev.tag == DW_TAG_compile_unit ||
+       abbrev.tag == DW_TAG_skeleton_unit) &&
+      header_.version == 5) {
     uint64_t dieoffset_copy = dieoffset;
     const uint8_t* start_copy = start;
     for (AttributeList::const_iterator i = abbrev.attributes.begin();
@@ -990,66 +1001,69 @@ inline int GetElfWidth(const ElfReader& elf) {
   return 0;
 }
 
-void CompilationUnit::ProcessSplitDwarf() {
+bool CompilationUnit::ProcessSplitDwarf(std::string& split_file,
+                                        SectionMap& sections,
+                                        ByteReader& split_byte_reader,
+                                        uint64_t& cu_offset) {
+  if (!should_process_split_dwarf_)
+    return false;
   struct stat statbuf;
+  bool found_in_dwp = false;
   if (!have_checked_for_dwp_) {
     // Look for a .dwp file in the same directory as the executable.
     have_checked_for_dwp_ = true;
     string dwp_suffix(".dwp");
-    dwp_path_ = path_ + dwp_suffix;
-    if (stat(dwp_path_.c_str(), &statbuf) != 0) {
+    std::string dwp_path = path_ + dwp_suffix;
+    if (stat(dwp_path.c_str(), &statbuf) != 0) {
       // Fall back to a split .debug file in the same directory.
       string debug_suffix(".debug");
-      dwp_path_ = path_;
+      dwp_path = path_;
       size_t found = path_.rfind(debug_suffix);
-      if (found + debug_suffix.length() == path_.length())
-        dwp_path_ = dwp_path_.replace(found, debug_suffix.length(), dwp_suffix);
+      if (found != string::npos &&
+          found + debug_suffix.length() == path_.length())
+        dwp_path = dwp_path.replace(found, debug_suffix.length(), dwp_suffix);
     }
-    if (stat(dwp_path_.c_str(), &statbuf) == 0) {
-      ElfReader* elf = new ElfReader(dwp_path_);
-      int width = GetElfWidth(*elf);
+    if (stat(dwp_path.c_str(), &statbuf) == 0) {
+      split_elf_reader_ = std::make_unique<ElfReader>(dwp_path);
+      int width = GetElfWidth(*split_elf_reader_.get());
       if (width != 0) {
-        dwp_byte_reader_.reset(new ByteReader(reader_->GetEndianness()));
-        dwp_byte_reader_->SetAddressSize(width);
-        dwp_reader_.reset(new DwpReader(*dwp_byte_reader_, elf));
+        split_byte_reader = ByteReader(reader_->GetEndianness());
+        split_byte_reader.SetAddressSize(width);
+        dwp_reader_ = std::make_unique<DwpReader>(split_byte_reader,
+                                                  split_elf_reader_.get());
         dwp_reader_->Initialize();
-      } else {
-        delete elf;
+        // If we have a .dwp file, read the debug sections for the requested CU.
+        dwp_reader_->ReadDebugSectionsForCU(dwo_id_, &sections);
+        if (!sections.empty()) {
+          SectionMap::const_iterator cu_iter =
+              GetSectionByName(sections, ".debug_info_offset");
+          SectionMap::const_iterator debug_info_iter =
+              GetSectionByName(sections, ".debug_info");
+          assert(cu_iter != sections.end());
+          assert(debug_info_iter != sections.end());
+          cu_offset = cu_iter->second.first - debug_info_iter->second.first;
+          found_in_dwp = true;
+          split_file = dwp_path;
+        }
       }
-    }
-  }
-  bool found_in_dwp = false;
-  if (dwp_reader_) {
-    // If we have a .dwp file, read the debug sections for the requested CU.
-    SectionMap sections;
-    dwp_reader_->ReadDebugSectionsForCU(dwo_id_, &sections);
-    if (!sections.empty()) {
-      found_in_dwp = true;
-      CompilationUnit dwp_comp_unit(dwp_path_, sections, 0,
-                                    dwp_byte_reader_.get(), handler_);
-      dwp_comp_unit.SetSplitDwarf(addr_buffer_, addr_buffer_length_, addr_base_,
-                                  ranges_base_, dwo_id_);
-      dwp_comp_unit.Start();
     }
   }
   if (!found_in_dwp) {
     // If no .dwp file, try to open the .dwo file.
     if (stat(dwo_name_, &statbuf) == 0) {
-      ElfReader elf(dwo_name_);
-      int width = GetElfWidth(elf);
+      split_elf_reader_ = std::make_unique<ElfReader>(dwo_name_);
+      int width = GetElfWidth(*split_elf_reader_.get());
       if (width != 0) {
-        ByteReader reader(ENDIANNESS_LITTLE);
-        reader.SetAddressSize(width);
-        SectionMap sections;
-        ReadDebugSectionsFromDwo(&elf, &sections);
-        CompilationUnit dwo_comp_unit(dwo_name_, sections, 0, &reader,
-                                      handler_);
-        dwo_comp_unit.SetSplitDwarf(addr_buffer_, addr_buffer_length_,
-                                    addr_base_, ranges_base_, dwo_id_);
-        dwo_comp_unit.Start();
+        split_byte_reader = ByteReader(ENDIANNESS_LITTLE);
+        split_byte_reader.SetAddressSize(width);
+        ReadDebugSectionsFromDwo(split_elf_reader_.get(), &sections);
+        if (!sections.empty()) {
+          split_file = dwo_name_;
+        }
       }
     }
   }
+  return !split_file.empty();
 }
 
 void CompilationUnit::ReadDebugSectionsFromDwo(ElfReader* elf_reader,
@@ -1083,10 +1097,6 @@ DwpReader::DwpReader(const ByteReader& byte_reader, ElfReader* elf_reader)
       offset_table_(NULL), size_table_(NULL), abbrev_data_(NULL),
       abbrev_size_(0), info_data_(NULL), info_size_(0),
       str_offsets_data_(NULL), str_offsets_size_(0) {}
-
-DwpReader::~DwpReader() {
-  if (elf_reader_) delete elf_reader_;
-}
 
 void DwpReader::Initialize() {
   cu_index_ = elf_reader_->GetSectionByName(".debug_cu_index",
@@ -1127,6 +1137,8 @@ void DwpReader::Initialize() {
     info_data_ = elf_reader_->GetSectionByName(".debug_info.dwo", &info_size_);
     str_offsets_data_ = elf_reader_->GetSectionByName(".debug_str_offsets.dwo",
                                                       &str_offsets_size_);
+    rnglist_data_ =
+        elf_reader_->GetSectionByName(".debug_rnglists.dwo", &rnglist_size_);
     if (size_table_ >= cu_index_ + cu_index_size_) {
       version_ = 0;
     }
@@ -1227,13 +1239,24 @@ void DwpReader::ReadDebugSectionsForCU(uint64_t dwo_id,
       } else if (section_id == DW_SECT_INFO) {
         sections->insert(std::make_pair(
             ".debug_info",
-            std::make_pair(reinterpret_cast<const uint8_t*> (info_data_)
-                           + offset, size)));
+            std::make_pair(reinterpret_cast<const uint8_t*>(info_data_), 0)));
+        // .debug_info_offset will points the buffer for the CU with given
+        // dwo_id.
+        sections->insert(std::make_pair(
+            ".debug_info_offset",
+            std::make_pair(
+                reinterpret_cast<const uint8_t*>(info_data_) + offset, size)));
       } else if (section_id == DW_SECT_STR_OFFSETS) {
         sections->insert(std::make_pair(
             ".debug_str_offsets",
             std::make_pair(reinterpret_cast<const uint8_t*> (str_offsets_data_)
                            + offset, size)));
+      } else if (section_id == DW_SECT_RNGLISTS) {
+        sections->insert(std::make_pair(
+            ".debug_rnglists",
+            std::make_pair(
+                reinterpret_cast<const uint8_t*>(rnglist_data_) + offset,
+                size)));
       }
     }
     sections->insert(std::make_pair(
@@ -1819,6 +1842,11 @@ bool RangeListReader::ReadRanges(enum DwarfForm form, uint64_t data) {
       return ReadDebugRngList(data);
     }
   } else if (form == DW_FORM_rnglistx) {
+    if (cu_info_->ranges_base_ == 0) {
+      // In split dwarf, there's no DW_AT_rnglists_base attribute, range_base
+      // will just be the first byte after the header.
+      cu_info_->ranges_base_ = reader_->OffsetSize() == 4? 12: 20;
+    }
     offset_array_ = cu_info_->ranges_base_;
     uint64_t index_offset = reader_->OffsetSize() * data;
     uint64_t range_list_offset =

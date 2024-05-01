@@ -1,10 +1,8 @@
 #include "sentry_boot.h"
 
 #include <stdarg.h>
-#include <stdlib.h>
 #include <string.h>
 
-#include "sentry_alloc.h"
 #include "sentry_backend.h"
 #include "sentry_core.h"
 #include "sentry_database.h"
@@ -165,11 +163,16 @@ sentry_init(sentry_options_t *options)
     g_options = options;
 
     // *after* setting the global options, trigger a scope and consent flush,
-    // since at least crashpad needs that.
-    // the only way to get a reference to the scope is by locking it, the macro
-    // does all that at once, including invoking the backends scope flush hook
+    // since at least crashpad needs that. At this point we also freeze the
+    // `client_sdk` in the `scope` because some downstream SDKs want to override
+    // it at runtime via the options interface.
     SENTRY_WITH_SCOPE_MUT (scope) {
-        (void)scope;
+        if (options->sdk_name) {
+            sentry_value_t sdk_name
+                = sentry_value_new_string(options->sdk_name);
+            sentry_value_set_by_key(scope->client_sdk, "name", sdk_name);
+        }
+        sentry_value_freeze(scope->client_sdk);
     }
     if (backend && backend->user_consent_changed_func) {
         backend->user_consent_changed_func(backend);
@@ -289,29 +292,27 @@ set_user_consent(sentry_user_consent_t new_val)
 {
     SENTRY_WITH_OPTIONS (options) {
         if (sentry__atomic_store((long *)&options->user_consent, new_val)
-            == new_val) {
-            // nothing was changed
-            break; // SENTRY_WITH_OPTIONS
-        }
+            != new_val) {
+            if (options->backend
+                && options->backend->user_consent_changed_func) {
+                options->backend->user_consent_changed_func(options->backend);
+            }
 
-        if (options->backend && options->backend->user_consent_changed_func) {
-            options->backend->user_consent_changed_func(options->backend);
+            sentry_path_t *consent_path
+                = sentry__path_join_str(options->database_path, "user-consent");
+            switch (new_val) {
+            case SENTRY_USER_CONSENT_GIVEN:
+                sentry__path_write_buffer(consent_path, "1\n", 2);
+                break;
+            case SENTRY_USER_CONSENT_REVOKED:
+                sentry__path_write_buffer(consent_path, "0\n", 2);
+                break;
+            case SENTRY_USER_CONSENT_UNKNOWN:
+                sentry__path_remove(consent_path);
+                break;
+            }
+            sentry__path_free(consent_path);
         }
-
-        sentry_path_t *consent_path
-            = sentry__path_join_str(options->database_path, "user-consent");
-        switch (new_val) {
-        case SENTRY_USER_CONSENT_GIVEN:
-            sentry__path_write_buffer(consent_path, "1\n", 2);
-            break;
-        case SENTRY_USER_CONSENT_REVOKED:
-            sentry__path_write_buffer(consent_path, "0\n", 2);
-            break;
-        case SENTRY_USER_CONSENT_UNKNOWN:
-            sentry__path_remove(consent_path);
-            break;
-        }
-        sentry__path_free(consent_path);
     }
 }
 
@@ -641,10 +642,28 @@ sentry_set_tag(const char *key, const char *value)
 }
 
 void
+sentry_set_tag_n(
+    const char *key, size_t key_len, const char *value, size_t value_len)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_set_by_key_n(scope->tags, key, key_len,
+            sentry_value_new_string_n(value, value_len));
+    }
+}
+
+void
 sentry_remove_tag(const char *key)
 {
     SENTRY_WITH_SCOPE_MUT (scope) {
         sentry_value_remove_by_key(scope->tags, key);
+    }
+}
+
+void
+sentry_remove_tag_n(const char *key, size_t key_len)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_remove_by_key_n(scope->tags, key, key_len);
     }
 }
 
@@ -657,10 +676,26 @@ sentry_set_extra(const char *key, sentry_value_t value)
 }
 
 void
+sentry_set_extra_n(const char *key, size_t key_len, sentry_value_t value)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_set_by_key_n(scope->extra, key, key_len, value);
+    }
+}
+
+void
 sentry_remove_extra(const char *key)
 {
     SENTRY_WITH_SCOPE_MUT (scope) {
         sentry_value_remove_by_key(scope->extra, key);
+    }
+}
+
+void
+sentry_remove_extra_n(const char *key, size_t key_len)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_remove_by_key_n(scope->extra, key, key_len);
     }
 }
 
@@ -673,10 +708,45 @@ sentry_set_context(const char *key, sentry_value_t value)
 }
 
 void
+sentry_set_context_n(const char *key, size_t key_len, sentry_value_t value)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_set_by_key_n(scope->contexts, key, key_len, value);
+    }
+}
+
+void
 sentry_remove_context(const char *key)
 {
     SENTRY_WITH_SCOPE_MUT (scope) {
         sentry_value_remove_by_key(scope->contexts, key);
+    }
+}
+
+void
+sentry_remove_context_n(const char *key, size_t key_len)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_remove_by_key_n(scope->contexts, key, key_len);
+    }
+}
+
+void
+sentry_set_fingerprint_n(const char *fingerprint, size_t fingerprint_len, ...)
+{
+    sentry_value_t fingerprint_value = sentry_value_new_list();
+
+    va_list va;
+    va_start(va, fingerprint_len);
+    for (; fingerprint; fingerprint = va_arg(va, const char *)) {
+        sentry_value_append(fingerprint_value,
+            sentry_value_new_string_n(fingerprint, fingerprint_len));
+    }
+    va_end(va);
+
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_value_decref(scope->fingerprint);
+        scope->fingerprint = fingerprint_value;
     }
 }
 
@@ -696,7 +766,7 @@ sentry_set_fingerprint(const char *fingerprint, ...)
     SENTRY_WITH_SCOPE_MUT (scope) {
         sentry_value_decref(scope->fingerprint);
         scope->fingerprint = fingerprint_value;
-    };
+    }
 }
 
 void
@@ -705,7 +775,7 @@ sentry_remove_fingerprint(void)
     SENTRY_WITH_SCOPE_MUT (scope) {
         sentry_value_decref(scope->fingerprint);
         scope->fingerprint = sentry_value_new_null();
-    };
+    }
 }
 
 void
@@ -717,6 +787,21 @@ sentry_set_transaction(const char *transaction)
 
         if (scope->transaction_object) {
             sentry_transaction_set_name(scope->transaction_object, transaction);
+        }
+    }
+}
+
+void
+sentry_set_transaction_n(const char *transaction, size_t transaction_len)
+{
+    SENTRY_WITH_SCOPE_MUT (scope) {
+        sentry_free(scope->transaction);
+        scope->transaction
+            = sentry__string_clone_n(transaction, transaction_len);
+
+        if (scope->transaction_object) {
+            sentry_transaction_set_name_n(
+                scope->transaction_object, transaction, transaction_len);
         }
     }
 }
@@ -870,8 +955,9 @@ sentry_set_span(sentry_span_t *span)
 }
 
 sentry_span_t *
-sentry_transaction_start_child(
-    sentry_transaction_t *opaque_parent, char *operation, char *description)
+sentry_transaction_start_child_n(sentry_transaction_t *opaque_parent,
+    const char *operation, size_t operation_len, const char *description,
+    size_t description_len)
 {
     if (!opaque_parent || sentry_value_is_null(opaque_parent->inner)) {
         SENTRY_DEBUG("no transaction available to create a child under");
@@ -886,14 +972,25 @@ sentry_transaction_start_child(
         max_spans = options->max_spans;
     }
 
-    sentry_value_t span
-        = sentry__value_span_new(max_spans, parent, operation, description);
+    sentry_value_t span = sentry__value_span_new_n(max_spans, parent,
+        (sentry_slice_t) { operation, operation_len },
+        (sentry_slice_t) { description, description_len });
     return sentry__span_new(opaque_parent, span);
 }
 
 sentry_span_t *
-sentry_span_start_child(
-    sentry_span_t *opaque_parent, char *operation, char *description)
+sentry_transaction_start_child(sentry_transaction_t *opaque_parent,
+    const char *operation, const char *description)
+{
+    const size_t operation_len = operation ? strlen(operation) : 0;
+    const size_t description_len = description ? strlen(description) : 0;
+    return sentry_transaction_start_child_n(
+        opaque_parent, operation, operation_len, description, description_len);
+}
+
+sentry_span_t *
+sentry_span_start_child_n(sentry_span_t *opaque_parent, const char *operation,
+    size_t operation_len, const char *description, size_t description_len)
 {
     if (!opaque_parent || sentry_value_is_null(opaque_parent->inner)) {
         SENTRY_DEBUG("no parent span available to create a child span under");
@@ -912,10 +1009,21 @@ sentry_span_start_child(
         max_spans = options->max_spans;
     }
 
-    sentry_value_t span
-        = sentry__value_span_new(max_spans, parent, operation, description);
+    sentry_value_t span = sentry__value_span_new_n(max_spans, parent,
+        (sentry_slice_t) { operation, operation_len },
+        (sentry_slice_t) { description, description_len });
 
     return sentry__span_new(opaque_parent->transaction, span);
+}
+
+sentry_span_t *
+sentry_span_start_child(sentry_span_t *opaque_parent, const char *operation,
+    const char *description)
+{
+    size_t operation_len = operation ? strlen(operation) : 0;
+    size_t description_len = description ? strlen(description) : 0;
+    return sentry_span_start_child_n(
+        opaque_parent, operation, operation_len, description, description_len);
 }
 
 void
@@ -1010,7 +1118,6 @@ sentry_span_finish(sentry_span_t *opaque_span)
 
 fail:
     sentry__span_decref(opaque_span);
-    return;
 }
 
 int

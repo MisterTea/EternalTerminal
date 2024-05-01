@@ -31,6 +31,10 @@
 // dump_symbols_unittest.cc:
 // Unittests for google_breakpad::DumpSymbols
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <elf.h>
 #include <link.h>
 #include <stdio.h>

@@ -6,6 +6,7 @@
 #include <limits>
 #include <utility>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "snapshot/exception_snapshot.h"
 #include "snapshot/thread_snapshot.h"

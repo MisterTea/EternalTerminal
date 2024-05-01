@@ -31,6 +31,10 @@
 // synth_elf_unittest.cc:
 // Unittests for google_breakpad::synth_elf::ELF
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <elf.h>
 
 #include "breakpad_googletest_includes.h"

@@ -331,7 +331,7 @@ MatchersRanges.tests.cpp:<line number>: passed: inner_lists_are_empty.front(), I
 MatchersRanges.tests.cpp:<line number>: passed: has_empty{}, !IsEmpty() for: {?} not is empty
 MatchersRanges.tests.cpp:<line number>: passed: unrelated::ADL_empty{}, IsEmpty() for: {?} is empty
 Message.tests.cpp:<line number>: passed: with 7 messages: 'a := 1' and 'b := 2' and 'c := 3' and 'a + b := 3' and 'a+b := 3' and 'c > b := true' and 'a == 1 := true'
-Message.tests.cpp:<line number>: passed: with 7 messages: 'std::vector<int>{1, 2, 3}[0, 1, 2] := 3' and 'std::vector<int>{1, 2, 3}[(0, 1)] := 2' and 'std::vector<int>{1, 2, 3}[0] := 1' and '(helper_1436<int, int>{12, -12}) := { 12, -12 }' and '(helper_1436<int, int>(-12, 12)) := { -12, 12 }' and '(1, 2) := 2' and '(2, 3) := 3'
+Message.tests.cpp:<line number>: passed: with 7 messages: 'custom_index_op<int>{1, 2, 3}[0, 1, 2] := 0' and 'custom_index_op<int>{1, 2, 3}[(0, 1)] := 0' and 'custom_index_op<int>{1, 2, 3}[0] := 0' and '(helper_1436<int, int>{12, -12}) := { 12, -12 }' and '(helper_1436<int, int>(-12, 12)) := { -12, 12 }' and '(1, 2) := 2' and '(2, 3) := 3'
 Message.tests.cpp:<line number>: passed: with 11 messages: '("comma, in string", "escaped, \", ") := "escaped, ", "' and '"single quote in string,'," := "single quote in string,',"' and '"some escapes, \\,\\\\" := "some escapes, \,\\"' and '"some, ), unmatched, } prenheses {[<" := "some, ), unmatched, } prenheses {[<"' and ''"' := '"'' and ''\'' := '''' and '',' := ','' and ''}' := '}'' and '')' := ')'' and ''(' := '('' and ''{' := '{''
 ToStringGeneral.tests.cpp:<line number>: passed: true with 1 message: 'i := 2'
 ToStringGeneral.tests.cpp:<line number>: passed: true with 1 message: '3'
@@ -520,8 +520,8 @@ ToString.tests.cpp:<line number>: passed: enumInfo->lookup(1) == "Value2" for: V
 ToString.tests.cpp:<line number>: passed: enumInfo->lookup(3) == "{** unexpected enum value **}" for: {** unexpected enum value **}
 ==
 "{** unexpected enum value **}"
+Skip.tests.cpp:<line number>: skipped: 'This generator is empty'
 Stream.tests.cpp:<line number>: passed: Catch::makeStream( "" )->isConsole() for: true
-Tag.tests.cpp:<line number>: passed: Catch::TestCaseInfo( "", { "fake test name", "[]" }, dummySourceLineInfo )
 Matchers.tests.cpp:<line number>: failed: testStringForMatching(), EndsWith( "Substring" ) for: "this string contains 'abc' as a substring" ends with: "Substring"
 Matchers.tests.cpp:<line number>: failed: testStringForMatching(), EndsWith( "this", Catch::CaseSensitive::No ) for: "this string contains 'abc' as a substring" ends with: "this" (case insensitive)
 EnumToString.tests.cpp:<line number>: passed: stringify( EnumClass3::Value1 ) == "Value1" for: "Value1" == "Value1"
@@ -663,6 +663,10 @@ Matchers.tests.cpp:<line number>: passed: WithinRel( 1.f, 0.f )
 Matchers.tests.cpp:<line number>: passed: WithinRel( 1.f, -0.2f ), std::domain_error
 Matchers.tests.cpp:<line number>: passed: WithinRel( 1.f, 1.f ), std::domain_error
 Matchers.tests.cpp:<line number>: passed: 1., !IsNaN() for: 1.0 not is NaN
+Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
+Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
+Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
+Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
 Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
 Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
 Generators.tests.cpp:<line number>: passed: i % 2 == 0 for: 0 == 0
@@ -944,6 +948,7 @@ TestCaseInfoHasher.tests.cpp:<line number>: passed: h( dummy1 ) != h( dummy2 ) f
 TestCaseInfoHasher.tests.cpp:<line number>: passed: h( dummy ) == h( dummy ) for: 3422778688 (0x<hex digits>)
 ==
 3422778688 (0x<hex digits>)
+Message.tests.cpp:<line number>: failed: explicitly with 3 messages: 'This info has multiple parts.' and 'This unscoped info has multiple parts.' and 'Show infos!'
 Message.tests.cpp:<line number>: warning: 'this is a message' with 1 message: 'this is a warning'
 Message.tests.cpp:<line number>: failed: a == 1 for: 2 == 1 with 2 messages: 'this message should be logged' and 'so should this'
 Message.tests.cpp:<line number>: passed: a == 2 for: 2 == 2 with 1 message: 'this message may be logged later'
@@ -961,6 +966,7 @@ Message.tests.cpp:<line number>: passed: i < 10 for: 7 < 10 with 2 messages: 'cu
 Message.tests.cpp:<line number>: passed: i < 10 for: 8 < 10 with 2 messages: 'current counter 8' and 'i := 8'
 Message.tests.cpp:<line number>: passed: i < 10 for: 9 < 10 with 2 messages: 'current counter 9' and 'i := 9'
 Message.tests.cpp:<line number>: failed: i < 10 for: 10 < 10 with 2 messages: 'current counter 10' and 'i := 10'
+AssertionHandler.tests.cpp:<line number>: failed: unexpected exception with message: 'Exception translation was disabled by CATCH_CONFIG_FAST_COMPILE'; expression was: Dummy
 Condition.tests.cpp:<line number>: failed: data.int_seven != 7 for: 7 != 7
 Condition.tests.cpp:<line number>: failed: data.float_nine_point_one != Approx( 9.1f ) for: 9.1f != Approx( 9.1000003815 )
 Condition.tests.cpp:<line number>: failed: data.double_pi != Approx( 3.1415926535 ) for: 3.1415926535 != Approx( 3.1415926535 )
@@ -977,6 +983,91 @@ Condition.tests.cpp:<line number>: passed: data.str_hello != "goodbye" for: "hel
 Condition.tests.cpp:<line number>: passed: data.str_hello != "hell" for: "hello" != "hell"
 Condition.tests.cpp:<line number>: passed: data.str_hello != "hello1" for: "hello" != "hello1"
 Condition.tests.cpp:<line number>: passed: data.str_hello.size() != 6 for: 5 != 6
+Json.tests.cpp:<line number>: passed: stream.str() == "" for: "" == ""
+Json.tests.cpp:<line number>: passed: stream.str() == "{\n}" for: "{
+}"
+==
+"{
+}"
+Json.tests.cpp:<line number>: passed: stream.str(), ContainsSubstring( "\"int\": 1," ) && ContainsSubstring( "\"double\": 1.5," ) && ContainsSubstring( "\"true\": true," ) && ContainsSubstring( "\"false\": false," ) && ContainsSubstring( "\"string\": \"this is a string\"," ) && ContainsSubstring( "\"array\": [\n    1,\n    2\n  ]\n}" ) for: "{
+  "int": 1,
+  "double": 1.5,
+  "true": true,
+  "false": false,
+  "string": "this is a string",
+  "array": [
+    1,
+    2
+  ]
+}" ( contains: ""int": 1," and contains: ""double": 1.5," and contains: ""true": true," and contains: ""false": false," and contains: ""string": "this is a string"," and contains: ""array": [
+    1,
+    2
+  ]
+}" )
+Json.tests.cpp:<line number>: passed: stream.str(), ContainsSubstring( "\"empty_object\": {\n  }," ) && ContainsSubstring( "\"fully_object\": {\n    \"key\": 1\n  }" ) for: "{
+  "empty_object": {
+  },
+  "fully_object": {
+    "key": 1
+  }
+}" ( contains: ""empty_object": {
+  }," and contains: ""fully_object": {
+    "key": 1
+  }" )
+Json.tests.cpp:<line number>: passed: stream.str() == "[\n]" for: "[
+]"
+==
+"[
+]"
+Json.tests.cpp:<line number>: passed: stream.str() == "[\n  1,\n  1.5,\n  true,\n  false,\n  \"this is a string\",\n  {\n    \"object\": 42\n  },\n  [\n    \"array\",\n    42.5\n  ]\n]" for: "[
+  1,
+  1.5,
+  true,
+  false,
+  "this is a string",
+  {
+    "object": 42
+  },
+  [
+    "array",
+    42.5
+  ]
+]"
+==
+"[
+  1,
+  1.5,
+  true,
+  false,
+  "this is a string",
+  {
+    "object": 42
+  },
+  [
+    "array",
+    42.5
+  ]
+]"
+Json.tests.cpp:<line number>: passed: stream.str() == "{\n}" for: "{
+}"
+==
+"{
+}"
+Json.tests.cpp:<line number>: passed: stream.str() == "[\n]" for: "[
+]"
+==
+"[
+]"
+Json.tests.cpp:<line number>: passed: stream.str() == "\"custom\"" for: ""custom"" == ""custom""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\\"\"" for: ""\""" == ""\"""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\\\\"" for: ""\\"" == ""\\""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"/\"" for: ""/"" == ""/""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\b\"" for: ""\b"" == ""\b""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\f\"" for: ""\f"" == ""\f""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\n\"" for: ""\n"" == ""\n""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\r\"" for: ""\r"" == ""\r""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\t\"" for: ""\t"" == ""\t""
+Json.tests.cpp:<line number>: passed: sstream.str() == "\"\\\\/\\t\\r\\n\"" for: ""\\/\t\r\n"" == ""\\/\t\r\n""
 Compilation.tests.cpp:<line number>: passed: []() { return true; }() for: true
 Approx.tests.cpp:<line number>: passed: d <= Approx( 1.24 ) for: 1.23 <= Approx( 1.24 )
 Approx.tests.cpp:<line number>: passed: d <= Approx( 1.23 ) for: 1.23 <= Approx( 1.23 )
@@ -1340,6 +1431,60 @@ Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring( "fa
 1 test case
 
 " ( contains: "fake test name" and contains: "fakeTestTag" ) with 1 message: 'Tested reporter: console'
+Reporters.tests.cpp:<line number>: passed: !(factories.empty()) for: !false
+Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring("fakeTag"s) for: "{
+  "version": 1,
+  "metadata": {
+    "name": "",
+    "rng-seed": 1234,
+    "catch2-version": "<version>"
+  },
+  "listings": {
+    "tags": [
+      {
+        "aliases": [
+          "fakeTag"
+        ],
+        "count": 1
+      }
+    ]" contains: "fakeTag" with 1 message: 'Tested reporter: JSON'
+Reporters.tests.cpp:<line number>: passed: !(factories.empty()) for: !false
+Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring("fake reporter"s) for: "{
+  "version": 1,
+  "metadata": {
+    "name": "",
+    "rng-seed": 1234,
+    "catch2-version": "<version>"
+  },
+  "listings": {
+    "reporters": [
+      {
+        "name": "fake reporter",
+        "description": "fake description"
+      }
+    ]" contains: "fake reporter" with 1 message: 'Tested reporter: JSON'
+Reporters.tests.cpp:<line number>: passed: !(factories.empty()) for: !false
+Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring( "fake test name"s ) && ContainsSubstring( "fakeTestTag"s ) for: "{
+  "version": 1,
+  "metadata": {
+    "name": "",
+    "rng-seed": 1234,
+    "catch2-version": "<version>"
+  },
+  "listings": {
+    "tests": [
+      {
+        "name": "fake test name",
+        "class-name": "",
+        "tags": [
+          "fakeTestTag"
+        ],
+        "source-location": {
+          "filename": "fake-file.cpp",
+          "line": 123456789
+        }
+      }
+    ]" ( contains: "fake test name" and contains: "fakeTestTag" ) with 1 message: 'Tested reporter: JSON'
 Reporters.tests.cpp:<line number>: passed: !(factories.empty()) for: !false
 Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring("fakeTag"s) for: "<?xml version="1.0" encoding="UTF-8"?>
 All available tags:
@@ -1750,6 +1895,10 @@ Misc.tests.cpp:<line number>: passed: true
 Misc.tests.cpp:<line number>: failed: explicitly
 Misc.tests.cpp:<line number>: failed - but was ok: false
 Misc.tests.cpp:<line number>: failed: explicitly
+Misc.tests.cpp:<line number>: passed: true
+Misc.tests.cpp:<line number>: failed: unexpected exception with message: 'Uncaught exception should fail!'; expression was: {Unknown expression after the reported line}
+Misc.tests.cpp:<line number>: failed - but was ok: false
+Misc.tests.cpp:<line number>: failed: unexpected exception with message: 'Uncaught exception should fail!'; expression was: {Unknown expression after the reported line}
 Message.tests.cpp:<line number>: failed - but was ok: 1 == 2
 Reporters.tests.cpp:<line number>: passed: listingString, ContainsSubstring("[fakeTag]"s) for: "All available tags:
    1  [fakeTag]
@@ -2473,6 +2622,8 @@ InternalBenchmark.tests.cpp:<line number>: passed: e.point == 23 for: 23.0 == 23
 InternalBenchmark.tests.cpp:<line number>: passed: e.upper_bound == 23 for: 23.0 == 23
 InternalBenchmark.tests.cpp:<line number>: passed: e.lower_bound == 23 for: 23.0 == 23
 InternalBenchmark.tests.cpp:<line number>: passed: e.confidence_interval == 0.95 for: 0.95 == 0.95
+RandomNumberGeneration.tests.cpp:<line number>: passed: dist.a() == -10 for: -10 == -10
+RandomNumberGeneration.tests.cpp:<line number>: passed: dist.b() == 10 for: 10 == 10
 UniquePtr.tests.cpp:<line number>: passed: !(ptr) for: !{?}
 UniquePtr.tests.cpp:<line number>: passed: ptr.get() == 0 for: 0 == 0
 UniquePtr.tests.cpp:<line number>: passed: ptr for: {?}
@@ -2538,7 +2689,7 @@ InternalBenchmark.tests.cpp:<line number>: passed: med == 18. for: 18.0 == 18.0
 InternalBenchmark.tests.cpp:<line number>: passed: q3 == 23. for: 23.0 == 23.0
 Misc.tests.cpp:<line number>: passed:
 Misc.tests.cpp:<line number>: passed:
-test cases:  409 |  309 passed |  84 failed | 5 skipped | 11 failed as expected
-assertions: 2226 | 2049 passed | 145 failed | 32 failed as expected
+test cases:  417 |  312 passed |  85 failed | 6 skipped | 14 failed as expected
+assertions: 2260 | 2079 passed | 146 failed | 35 failed as expected
 
 

@@ -31,6 +31,10 @@
 // cfi_frame_info.cc: Implementation of CFIFrameInfo class.
 // See cfi_frame_info.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "processor/cfi_frame_info.h"
 
 #include <string.h>

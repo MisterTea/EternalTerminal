@@ -29,6 +29,10 @@
 // Utility class for creating a temporary file that is deleted in the
 // destructor.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/scoped_tmpfile.h"
 
 #include <fcntl.h>

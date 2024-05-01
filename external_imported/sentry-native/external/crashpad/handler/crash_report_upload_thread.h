@@ -85,7 +85,8 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   //!     processing and attempting to upload on-disk crash reports.
   //!     If this callback is empty, it is not invoked.
   CrashReportUploadThread(CrashReportDatabase* database,
-                          const std::string& url,
+                          std::string url,
+                          std::string http_proxy,
                           const Options& options,
                           ProcessPendingReportsObservationCallback callback);
 
@@ -226,6 +227,7 @@ class CrashReportUploadThread : public WorkerThread::Delegate,
   const Options options_;
   const ProcessPendingReportsObservationCallback callback_;
   const std::string url_;
+  const std::string http_proxy_;
   WorkerThread thread_;
   ThreadSafeVector<UUID> known_pending_report_uuids_;
 #if BUILDFLAG(IS_IOS)

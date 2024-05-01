@@ -23,24 +23,17 @@
 
 #include "build/build_config.h"
 
-#if BUILDFLAG(IS_POSIX)
-
-#if (defined(_INTTYPES_H) || defined(_INTTYPES_H_)) && !defined(PRId64)
+#if BUILDFLAG(IS_POSIX) && \
+    (defined(_INTTYPES_H) || defined(_INTTYPES_H_)) && !defined(PRId64)
 #error "inttypes.h has already been included before this header file, but "
 #error "without __STDC_FORMAT_MACROS defined."
 #endif
 
-#if !defined(__STDC_FORMAT_MACROS)
+#if BUILDFLAG(IS_POSIX) && !defined(__STDC_FORMAT_MACROS)
 #define __STDC_FORMAT_MACROS
 #endif
 
 #include <inttypes.h>
-
-// GCC will concatenate wide and narrow strings correctly, so nothing needs to
-// be done here.
-#define WidePRId64 PRId64
-#define WidePRIu64 PRIu64
-#define WidePRIx64 PRIx64
 
 #if !defined(PRIuS)
 #define PRIuS "zu"
@@ -73,29 +66,5 @@
 #endif
 #endif
 #endif  // BUILDFLAG(IS_APPLE)
-
-#else  // BUILDFLAG(IS_WIN)
-
-#if !defined(PRId64)
-#define PRId64 "I64d"
-#endif
-
-#if !defined(PRIu64)
-#define PRIu64 "I64u"
-#endif
-
-#if !defined(PRIx64)
-#define PRIx64 "I64x"
-#endif
-
-#define WidePRId64 L"I64d"
-#define WidePRIu64 L"I64u"
-#define WidePRIx64 L"I64x"
-
-#if !defined(PRIuS)
-#define PRIuS "Iu"
-#endif
-
-#endif
 
 #endif  // BASE_FORMAT_MACROS_H_

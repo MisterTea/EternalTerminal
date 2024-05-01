@@ -1,0 +1,16 @@
+on: [push]
+
+jobs:
+  ci_job:
+    runs-on: ubuntu-latest
+    name: Test that the code compiles
+    steps:
+      - name: Check Out Repo
+        uses: actions/checkout@v2
+      - name: Test Linux build
+        run: |
+          sudo apt-get install -y build-essential cmake
+          mkdir -p build && cd build
+          cmake -DPLATFORMFOLDERS_BUILD_TESTING=ON -DCMAKE_BUILD_TYPE=Release .. -B .
+          sudo cmake --build . --target install
+          ctest

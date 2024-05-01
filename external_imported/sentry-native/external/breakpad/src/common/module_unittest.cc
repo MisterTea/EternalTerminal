@@ -30,6 +30,10 @@
 
 // module_unittest.cc: Unit tests for google_breakpad::Module.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <errno.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -194,9 +198,7 @@ TEST(Module, WriteOmitUnusedFiles) {
   function->lines.push_back(line1);
   function->lines.push_back(line2);
   m.AddFunction(function);
-
-  std::set<Module::InlineOrigin*, Module::InlineOriginCompare> inline_origins;
-  m.AssignSourceIds(inline_origins);
+  m.AssignSourceIds();
 
   vector<Module::File*> vec;
   m.GetFiles(&vec);
@@ -633,6 +635,37 @@ TEST(Module, ConstructFunctionsAndExternsWithSameAddress) {
                MODULE_ID " " MODULE_NAME "\n"
                "FUNC fff0 10 0 _xyz\n"
                "PUBLIC abc0 0 abc\n",
+               contents.c_str());
+}
+
+// If there exists an extern and a function at the same address, only write
+// out the FUNC entry.
+TEST(Module, ConstructFunctionsAndExternsWithSameAddressPreferExternName) {
+  stringstream s;
+  Module m(MODULE_NAME, MODULE_OS, MODULE_ARCH, MODULE_ID, "", false, true);
+
+  // Two externs.
+  auto extern1 = std::make_unique<Module::Extern>(0xabc0);
+  extern1->name = "extern1";
+  auto extern2 = std::make_unique<Module::Extern>(0xfff0);
+  extern2->name = "extern2";
+
+  m.AddExtern(std::move(extern1));
+  m.AddExtern(std::move(extern2));
+
+  Module::Function* function = new Module::Function("function2", 0xfff0);
+  Module::Range range(0xfff0, 0x10);
+  function->ranges.push_back(range);
+  function->parameter_size = 0;
+  m.AddFunction(function);
+
+  m.Write(s, ALL_SYMBOL_DATA);
+  string contents = s.str();
+
+  EXPECT_STREQ("MODULE " MODULE_OS " " MODULE_ARCH " " MODULE_ID " " MODULE_NAME
+               "\n"
+               "FUNC fff0 10 0 extern2\n"
+               "PUBLIC abc0 0 extern1\n",
                contents.c_str());
 }
 

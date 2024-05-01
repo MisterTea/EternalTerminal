@@ -1,14 +1,12 @@
-import time
-import pytest
-import subprocess
-import sys
+import itertools
+import json
 import os
 import time
-import itertools
 import uuid
-import json
-from . import make_dsn, check_output, run, Envelope
-from .conditions import has_http, has_breakpad, has_files
+
+import pytest
+
+from . import make_dsn, run, Envelope
 from .assertions import (
     assert_attachment,
     assert_meta,
@@ -16,15 +14,17 @@ from .assertions import (
     assert_stacktrace,
     assert_event,
     assert_exception,
-    assert_crash,
+    assert_inproc_crash,
     assert_session,
     assert_minidump,
+    assert_breakpad_crash,
 )
+from .conditions import has_http, has_breakpad, has_files
 
 pytestmark = pytest.mark.skipif(not has_http, reason="tests need http")
 
 auth_header = (
-    "Sentry sentry_key=uiaeosnrtdy, sentry_version=7, sentry_client=sentry.native/0.6.0"
+    "Sentry sentry_key=uiaeosnrtdy, sentry_version=7, sentry_client=sentry.native/0.7.0"
 )
 
 
@@ -217,7 +217,7 @@ def test_inproc_crash_http(cmake, httpserver):
         ["log", "start-session", "attachment", "crash"],
         env=env,
     )
-    assert child.returncode  # well, its a crash after all
+    assert child.returncode  # well, it's a crash after all
 
     run(
         tmp_path,
@@ -236,7 +236,7 @@ def test_inproc_crash_http(cmake, httpserver):
     assert_breadcrumb(envelope)
     assert_attachment(envelope)
 
-    assert_crash(envelope)
+    assert_inproc_crash(envelope)
 
 
 def test_inproc_reinstall(cmake, httpserver):
@@ -254,7 +254,7 @@ def test_inproc_reinstall(cmake, httpserver):
         ["log", "reinstall", "crash"],
         env=env,
     )
-    assert child.returncode  # well, its a crash after all
+    assert child.returncode  # well, it's a crash after all
 
     run(
         tmp_path,
@@ -279,8 +279,7 @@ def test_inproc_dump_inflight(cmake, httpserver):
     child = run(
         tmp_path, "sentry_example", ["log", "capture-multiple", "crash"], env=env
     )
-    assert child.returncode  # well, its a crash after all
-
+    assert child.returncode  # well, it's a crash after all
     run(tmp_path, "sentry_example", ["log", "no-setup"], check=True, env=env)
 
     # we trigger 10 normal events, and 1 crash
@@ -303,7 +302,7 @@ def test_breakpad_crash_http(cmake, httpserver):
         ["log", "start-session", "attachment", "crash"],
         env=env,
     )
-    assert child.returncode  # well, its a crash after all
+    assert child.returncode  # well, it's a crash after all
 
     run(
         tmp_path,
@@ -322,6 +321,7 @@ def test_breakpad_crash_http(cmake, httpserver):
     assert_breadcrumb(envelope)
     assert_attachment(envelope)
 
+    assert_breakpad_crash(envelope)
     assert_minidump(envelope)
 
 
@@ -341,7 +341,7 @@ def test_breakpad_reinstall(cmake, httpserver):
         ["log", "reinstall", "crash"],
         env=env,
     )
-    assert child.returncode  # well, its a crash after all
+    assert child.returncode  # well, it's a crash after all
 
     run(
         tmp_path,
@@ -367,7 +367,7 @@ def test_breakpad_dump_inflight(cmake, httpserver):
     child = run(
         tmp_path, "sentry_example", ["log", "capture-multiple", "crash"], env=env
     )
-    assert child.returncode  # well, its a crash after all
+    assert child.returncode  # well, it's a crash after all
 
     run(tmp_path, "sentry_example", ["log", "no-setup"], check=True, env=env)
 
@@ -405,6 +405,7 @@ def test_shutdown_timeout(cmake, httpserver):
         env=env,
         check=True,
     )
+    assert child.returncode == 0
 
     httpserver.clear_all_handlers()
     httpserver.clear_log()
@@ -417,6 +418,9 @@ def test_shutdown_timeout(cmake, httpserver):
     run(tmp_path, "sentry_example", ["log", "no-setup"], check=True, env=env)
 
     assert len(httpserver.log) == 10
+
+
+RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
 
 
 def test_transaction_only(cmake, httpserver):
@@ -450,10 +454,10 @@ def test_transaction_only(cmake, httpserver):
     (event,) = envelope.items
 
     assert event.headers["type"] == "transaction"
-    json = event.payload.json
+    payload = event.payload.json
 
     # See https://develop.sentry.dev/sdk/performance/trace-context/#trace-context
-    trace_context = json["contexts"]["trace"]
+    trace_context = payload["contexts"]["trace"]
 
     assert (
         trace_context["op"] == "Short and stout here is my handle and here is my spout"
@@ -469,8 +473,7 @@ def test_transaction_only(cmake, httpserver):
     assert trace_context["span_id"]
     assert trace_context["status"] == "ok"
 
-    RFC3339_FORMAT = "%Y-%m-%dT%H:%M:%S.%fZ"
-    start_timestamp = time.strptime(json["start_timestamp"], RFC3339_FORMAT)
+    start_timestamp = time.strptime(payload["start_timestamp"], RFC3339_FORMAT)
     assert start_timestamp
-    timestamp = time.strptime(json["timestamp"], RFC3339_FORMAT)
+    timestamp = time.strptime(payload["timestamp"], RFC3339_FORMAT)
     assert timestamp >= start_timestamp

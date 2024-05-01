@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <map>
 #include <memory>
+#include <utility>
 #include <vector>
 
 #include "base/logging.h"
@@ -88,12 +89,14 @@ class ScopedFunctionInvoker final {
 
 CrashReportUploadThread::CrashReportUploadThread(
     CrashReportDatabase* database,
-    const std::string& url,
+    std::string url,
+    std::string http_proxy,
     const Options& options,
     ProcessPendingReportsObservationCallback callback)
     : options_(options),
-      callback_(callback),
-      url_(url),
+      callback_(std::move(callback)),
+      url_(std::move(url)),
+      http_proxy_(std::move(http_proxy)),
       // When watching for pending reports, check every 15 minutes, even in the
       // absence of a signal from the handler thread. This allows for failed
       // uploads to be retried periodically, and for pending reports written by
@@ -365,6 +368,7 @@ CrashReportUploadThread::UploadResult CrashReportUploadThread::UploadReport(
     }
   }
   http_transport->SetURL(url);
+  http_transport->SetHTTPProxy(http_proxy_);
 
   if (!http_transport->ExecuteSynchronously(response_body)) {
     return UploadResult::kRetry;

@@ -30,12 +30,12 @@
 #include <mutex>
 #include <tuple>
 
+#include "base/apple/scoped_nsautorelease_pool.h"
 #include "base/logging.h"
-#include "base/mac/scoped_nsautorelease_pool.h"
 #include "base/posix/eintr_wrapper.h"
 #include "base/scoped_generic.h"
+#include "base/strings/strcat.h"
 #include "base/strings/string_piece.h"
-#include "base/strings/stringprintf.h"
 #include "base/strings/sys_string_conversions.h"
 #include "client/settings.h"
 #include "util/file/directory_reader.h"
@@ -116,9 +116,9 @@ bool CreateOrEnsureDirectoryExists(const base::FilePath& path) {
 // have changed, and new_name determines whether the returned xattr name will be
 // the old name or its new equivalent.
 std::string XattrNameInternal(const base::StringPiece& name, bool new_name) {
-  return base::StringPrintf(new_name ? "org.chromium.crashpad.database.%s"
-                                     : "com.googlecode.crashpad.%s",
-                            name.data());
+  return base::StrCat({new_name ? "org.chromium.crashpad.database."
+                                : "com.googlecode.crashpad.",
+                       name});
 }
 
 }  // namespace
@@ -813,7 +813,7 @@ bool CrashReportDatabaseMac::ReadReportMetadataLocked(
 CrashReportDatabase::OperationStatus CrashReportDatabaseMac::ReportsInDirectory(
     const base::FilePath& path,
     std::vector<CrashReportDatabase::Report>* reports) {
-  base::mac::ScopedNSAutoreleasePool pool;
+  base::apple::ScopedNSAutoreleasePool pool;
 
   DCHECK(reports->empty());
 

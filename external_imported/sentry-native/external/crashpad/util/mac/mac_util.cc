@@ -21,10 +21,10 @@
 #include <sys/types.h>
 #include <sys/utsname.h>
 
+#include "base/apple/foundation_util.h"
+#include "base/apple/scoped_cftyperef.h"
 #include "base/check_op.h"
 #include "base/logging.h"
-#include "base/mac/foundation_util.h"
-#include "base/mac/scoped_cftyperef.h"
 #include "base/mac/scoped_ioobject.h"
 #include "base/notreached.h"
 #include "base/strings/string_number_conversions.h"
@@ -45,7 +45,6 @@ extern "C" {
 // TryCFCopy*VersionDictionary() helpers to account for the possibility that
 // they may not be present at runtime.
 CFDictionaryRef _CFCopySystemVersionDictionary() WEAK_IMPORT;
-CFDictionaryRef _CFCopyServerVersionDictionary() WEAK_IMPORT;
 
 // Don’t use these constants with CFDictionaryGetValue() directly, use them with
 // the TryCFDictionaryGetValue() wrapper to account for the possibility that
@@ -85,8 +84,8 @@ int DarwinMajorVersion() {
   int rv = uname(&uname_info);
   PCHECK(rv == 0) << "uname";
 
-  DCHECK_EQ(strcmp(uname_info.sysname, "Darwin"), 0) << "unexpected sysname "
-                                                     << uname_info.sysname;
+  DCHECK_EQ(strcmp(uname_info.sysname, "Darwin"), 0)
+      << "unexpected sysname " << uname_info.sysname;
 
   char* dot = strchr(uname_info.release, '.');
   CHECK(dot);
@@ -105,13 +104,6 @@ int DarwinMajorVersion() {
 CFDictionaryRef TryCFCopySystemVersionDictionary() {
   if (_CFCopySystemVersionDictionary) {
     return _CFCopySystemVersionDictionary();
-  }
-  return nullptr;
-}
-
-CFDictionaryRef TryCFCopyServerVersionDictionary() {
-  if (_CFCopyServerVersionDictionary) {
-    return _CFCopyServerVersionDictionary();
   }
   return nullptr;
 }
@@ -174,9 +166,9 @@ bool StringToVersionNumbers(const std::string& version,
 
 std::string IORegistryEntryDataPropertyAsString(io_registry_entry_t entry,
                                                 CFStringRef key) {
-  base::ScopedCFTypeRef<CFTypeRef> property(
+  base::apple::ScopedCFTypeRef<CFTypeRef> property(
       IORegistryEntryCreateCFProperty(entry, key, kCFAllocatorDefault, 0));
-  CFDataRef data = base::mac::CFCast<CFDataRef>(property);
+  CFDataRef data = base::apple::CFCast<CFDataRef>(property.get());
   if (data && CFDataGetLength(data) > 0) {
     return reinterpret_cast<const char*>(CFDataGetBytePtr(data));
   }
@@ -242,25 +234,19 @@ bool MacOSVersionComponents(int* major,
                             int* minor,
                             int* bugfix,
                             std::string* build,
-                            bool* server,
                             std::string* version_string) {
-  base::ScopedCFTypeRef<CFDictionaryRef> dictionary(
-      TryCFCopyServerVersionDictionary());
-  if (dictionary) {
-    *server = true;
-  } else {
-    dictionary.reset(TryCFCopySystemVersionDictionary());
-    if (!dictionary) {
-      LOG(ERROR) << "_CFCopySystemVersionDictionary failed";
-      return false;
-    }
-    *server = false;
+  base::apple::ScopedCFTypeRef<CFDictionaryRef> dictionary(
+      TryCFCopySystemVersionDictionary());
+  if (!dictionary) {
+    LOG(ERROR) << "_CFCopySystemVersionDictionary failed";
+    return false;
   }
 
   bool success = true;
 
-  CFStringRef version_cf = base::mac::CFCast<CFStringRef>(
-      TryCFDictionaryGetValue(dictionary, _kCFSystemVersionProductVersionKey));
+  CFStringRef version_cf =
+      base::apple::CFCast<CFStringRef>(TryCFDictionaryGetValue(
+          dictionary.get(), _kCFSystemVersionProductVersionKey));
   std::string version;
   if (!version_cf) {
     LOG(ERROR) << "version_cf not found";
@@ -279,8 +265,9 @@ bool MacOSVersionComponents(int* major,
     }
   }
 
-  CFStringRef build_cf = base::mac::CFCast<CFStringRef>(
-      TryCFDictionaryGetValue(dictionary, _kCFSystemVersionBuildVersionKey));
+  CFStringRef build_cf =
+      base::apple::CFCast<CFStringRef>(TryCFDictionaryGetValue(
+          dictionary.get(), _kCFSystemVersionBuildVersionKey));
   if (!build_cf) {
     LOG(ERROR) << "build_cf not found";
     success = false;
@@ -288,8 +275,9 @@ bool MacOSVersionComponents(int* major,
     build->assign(base::SysCFStringRefToUTF8(build_cf));
   }
 
-  CFStringRef product_cf = base::mac::CFCast<CFStringRef>(
-      TryCFDictionaryGetValue(dictionary, _kCFSystemVersionProductNameKey));
+  CFStringRef product_cf =
+      base::apple::CFCast<CFStringRef>(TryCFDictionaryGetValue(
+          dictionary.get(), _kCFSystemVersionProductNameKey));
   std::string product;
   if (!product_cf) {
     LOG(ERROR) << "product_cf not found";
@@ -299,8 +287,9 @@ bool MacOSVersionComponents(int* major,
   }
 
   // This key is not required, and in fact is normally not present.
-  CFStringRef extra_cf = base::mac::CFCast<CFStringRef>(TryCFDictionaryGetValue(
-      dictionary, _kCFSystemVersionProductVersionExtraKey));
+  CFStringRef extra_cf =
+      base::apple::CFCast<CFStringRef>(TryCFDictionaryGetValue(
+          dictionary.get(), _kCFSystemVersionProductVersionExtraKey));
   std::string extra;
   if (extra_cf) {
     extra = base::SysCFStringRefToUTF8(extra_cf);
@@ -327,8 +316,8 @@ void MacModelAndBoard(std::string* model, std::string* board_id) {
       IOServiceGetMatchingService(kIOMasterPortDefault,
                                   IOServiceMatching("IOPlatformExpertDevice")));
   if (platform_expert) {
-    model->assign(
-        IORegistryEntryDataPropertyAsString(platform_expert, CFSTR("model")));
+    model->assign(IORegistryEntryDataPropertyAsString(platform_expert.get(),
+                                                      CFSTR("model")));
 #if defined(ARCH_CPU_X86_FAMILY)
     CFStringRef kBoardProperty = CFSTR("board-id");
 #elif defined(ARCH_CPU_ARM64)
@@ -338,7 +327,7 @@ void MacModelAndBoard(std::string* model, std::string* board_id) {
     // alternative.
     CFStringRef kBoardProperty = CFSTR("target-type");
 #endif
-    board_id->assign(IORegistryEntryDataPropertyAsString(platform_expert,
+    board_id->assign(IORegistryEntryDataPropertyAsString(platform_expert.get(),
                                                          kBoardProperty));
   } else {
     model->clear();

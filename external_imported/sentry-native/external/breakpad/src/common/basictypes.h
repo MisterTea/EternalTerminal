@@ -29,14 +29,6 @@
 #ifndef COMMON_BASICTYPES_H_
 #define COMMON_BASICTYPES_H_
 
-// A macro to disallow the copy constructor and operator= functions
-// This should be used in the private: declarations for a class
-#ifndef DISALLOW_COPY_AND_ASSIGN
-#define DISALLOW_COPY_AND_ASSIGN(TypeName) \
-  TypeName(const TypeName&);               \
-  void operator=(const TypeName&)
-#endif  // DISALLOW_COPY_AND_ASSIGN
-
 namespace google_breakpad {
 
 // Used to explicitly mark the return value of a function as unused. If you are

@@ -5,8 +5,8 @@
 #ifndef MINI_CHROMIUM_BASE_STRINGS_STRING_UTIL_H_
 #define MINI_CHROMIUM_BASE_STRINGS_STRING_UTIL_H_
 
+#include "base/check_op.h"
 #include "base/compiler_specific.h"
-#include "base/logging.h"
 #include "build/build_config.h"
 
 namespace base {
@@ -17,13 +17,16 @@ int vsnprintf(char* buffer, size_t size, const char* format, va_list arguments)
 size_t strlcpy(char* dst, const char* src, size_t dst_size);
 size_t wcslcpy(wchar_t* dst, const wchar_t* src, size_t dst_size);
 
-}  // namespace base
-
-#if BUILDFLAG(IS_WIN)
-#include "base/strings/string_util_win.h"
-#elif BUILDFLAG(IS_POSIX)
-#include "base/strings/string_util_posix.h"
-#endif
+// Determines the type of ASCII character, independent of locale (the C
+// library versions will change based on locale).
+template <typename Char>
+inline bool IsAsciiWhitespace(Char c) {
+  return c == ' ' || (c >= 0x09 && c <= 0x0d);
+}
+template <typename Char>
+inline bool IsAsciiDigit(Char c) {
+  return c >= '0' && c <= '9';
+}
 
 template <class string_type>
 inline typename string_type::value_type* WriteInto(string_type* str,
@@ -37,5 +40,13 @@ inline typename string_type::value_type* WriteInto(string_type* str,
 
   return &((*str)[0]);
 }
+
+}  // namespace base
+
+#if BUILDFLAG(IS_WIN)
+#include "base/strings/string_util_win.h"
+#elif BUILDFLAG(IS_POSIX)
+#include "base/strings/string_util_posix.h"
+#endif
 
 #endif  // MINI_CHROMIUM_BASE_STRINGS_STRING_UTIL_H_

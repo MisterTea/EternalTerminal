@@ -267,6 +267,10 @@ if(LINUX OR ANDROID)
 
         SET(HTTP_TRANSPORT_IMPL net/http_transport_libcurl.cc)
     else()
+        find_package(OpenSSL)
+        if(OPENSSL_FOUND)
+            set(CRASHPAD_USE_BORINGSSL ON)
+        endif()
         SET(HTTP_TRANSPORT_IMPL net/http_transport_socket.cc)
     endif()
     
@@ -285,6 +289,8 @@ if(LINUX OR ANDROID)
         linux/exception_information.h
         linux/memory_map.cc
         linux/memory_map.h
+        linux/pac_helper.cc
+        linux/pac_helper.h
         linux/proc_stat_reader.cc
         linux/proc_stat_reader.h
         linux/proc_task_reader.cc
@@ -379,7 +385,7 @@ if(WIN32)
         win/traits.h
         win/xp_compat.h
     )
-    if(${CMAKE_SYSTEM_PROCESSOR} MATCHES "arm")
+    if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "arm|ARM64")
         target_sources(crashpad_util PRIVATE
             misc/capture_context_win_arm64.asm
         )
@@ -520,7 +526,9 @@ endif()
 if(WIN32)
     target_link_libraries(crashpad_util PRIVATE user32 version winhttp)
     if(MSVC)
-        target_compile_options(crashpad_util PRIVATE "/wd4201")
+        target_compile_options(crashpad_util PRIVATE
+            $<$<COMPILE_LANGUAGE:C,CXX>:/wd4201> # nonstandard extension used : nameless struct/union.
+        )
         if(CMAKE_SIZEOF_VOID_P EQUAL 4)
             set(CMAKE_ASM_MASM_FLAGS "${CMAKE_ASM_MASM_FLAGS} /safeseh")
         endif()

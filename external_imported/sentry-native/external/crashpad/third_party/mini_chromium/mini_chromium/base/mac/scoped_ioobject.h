@@ -7,7 +7,7 @@
 
 #include <IOKit/IOKitLib.h>
 
-#include "base/mac/scoped_typeref.h"
+#include "base/apple/scoped_typeref.h"
 
 namespace base {
 namespace mac {
@@ -27,7 +27,8 @@ struct ScopedIOObjectTraits {
 }  // namespce internal
 
 template <typename IOT>
-using ScopedIOObject = ScopedTypeRef<IOT, internal::ScopedIOObjectTraits<IOT>>;
+using ScopedIOObject =
+    apple::ScopedTypeRef<IOT, internal::ScopedIOObjectTraits<IOT>>;
 
 }  // namespace mac
 }  // namespace base

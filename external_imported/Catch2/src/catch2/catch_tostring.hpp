@@ -116,7 +116,6 @@ namespace Catch {
     } // namespace Detail
 
 
-    // If we decide for C++14, change these to enable_if_ts
     template <typename T, typename = void>
     struct StringMaker {
         template <typename Fake = T>
@@ -397,6 +396,12 @@ namespace Catch {
             } else {
                 return "{ }";
             }
+        }
+    };
+    template <>
+    struct StringMaker<std::nullopt_t> {
+        static std::string convert(const std::nullopt_t&) {
+            return "{ }";
         }
     };
 }

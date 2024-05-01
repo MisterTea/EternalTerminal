@@ -117,6 +117,10 @@ ArchEnum Regs::RemoteGetArch(pid_t pid, ErrorCode* error_code) {
       return ARCH_ARM;
     case sizeof(arm64_user_regs):
       return ARCH_ARM64;
+#ifdef SENTRY_REMOVED
+    case sizeof(riscv64_user_regs):
+      return ARCH_RISCV64;
+#endif // SENTRY_REMOVED
   }
 
   Log::Error("No matching size of user regs structure for pid %d: size %zu", pid, io.iov_len);
@@ -224,16 +228,6 @@ uint64_t GetPcAdjustment(uint64_t rel_pc, Elf* elf, ArchEnum arch) {
         return 0;
       }
       return 4;
-#ifdef SENTRY_REMOVED
-    }
-  case ARCH_MIPS:
-  case ARCH_MIPS64: {
-    if (rel_pc < 8) {
-      return 0;
-    }
-    // For now, just assume no compact branches
-    return 8;
-#endif // SENTRY_REMOVED
   }
   case ARCH_X86:
   case ARCH_X86_64: {

@@ -28,6 +28,10 @@
 
 // Unit tests for FileID
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <elf.h>
 #include <spawn.h>
 #include <stdlib.h>

@@ -528,12 +528,33 @@ template <typename ElfTypes>
 void ElfInterfaceImpl<ElfTypes>::GetMaxSize(Memory* memory, uint64_t* size) {
   EhdrType ehdr;
   if (!memory->ReadFully(0, &ehdr, sizeof(ehdr))) {
+    *size = 0;
     return;
   }
-  if (ehdr.e_shnum == 0) {
-    return;
+
+  // If this winds up as zero, the PT_LOAD reading will get a better value.
+  uint64_t elf_size = ehdr.e_shoff + ehdr.e_shentsize * ehdr.e_shnum;
+
+  // Search through the PT_LOAD values and if any result in a larger elf
+  // size, use that.
+  uint64_t offset = ehdr.e_phoff;
+  for (size_t i = 0; i < ehdr.e_phnum; i++, offset += ehdr.e_phentsize) {
+    PhdrType phdr;
+    if (!memory->ReadFully(offset, &phdr, sizeof(phdr))) {
+      break;
+    }
+    if (phdr.p_type == PT_LOAD) {
+      uint64_t end_offset;
+      if (__builtin_add_overflow(phdr.p_offset, phdr.p_memsz, &end_offset)) {
+        continue;
+      }
+      if (end_offset > elf_size) {
+        elf_size = end_offset;
+      }
+    }
   }
-  *size = ehdr.e_shoff + ehdr.e_shentsize * ehdr.e_shnum;
+
+  *size = elf_size;
 }
 
 template <typename EhdrType, typename ShdrType>

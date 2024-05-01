@@ -144,6 +144,7 @@ The example currently supports the following commands:
 - `discarding-before-send`: Installs a `before_send()` callback that discards the event.
 - `on-crash`: Installs an `on_crash()` callback that retains the crash event. 
 - `discarding-on-crash`: Installs an `on_crash()` callback that discards the crash event.
+- `override-sdk-name`: Changes the SDK name via the options at runtime.
 
 Only on Windows using crashpad with its WER handler module: 
 

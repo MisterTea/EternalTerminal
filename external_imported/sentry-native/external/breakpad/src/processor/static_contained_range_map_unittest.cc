@@ -31,6 +31,10 @@
 //
 // Author: Siyang Xie (lambxsy@google.com)
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "breakpad_googletest_includes.h"
 #include "common/scoped_ptr.h"
 #include "processor/contained_range_map-inl.h"

@@ -29,6 +29,10 @@
 // asm/sigcontext.h can't be included with signal.h on glibc or
 // musl, so only compare _libc_fpstate and _fpstate on Android.
 #if defined(__ANDROID__) && defined(__x86_64__)
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <asm/sigcontext.h>
 #endif
 

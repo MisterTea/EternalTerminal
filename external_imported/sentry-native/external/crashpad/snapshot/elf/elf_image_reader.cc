@@ -21,6 +21,7 @@
 #include <utility>
 #include <vector>
 
+#include "base/check_op.h"
 #include "base/logging.h"
 #include "base/numerics/safe_math.h"
 #include "build/build_config.h"
@@ -733,8 +734,11 @@ bool ElfImageReader::GetAddressFromDynamicArray(uint64_t tag,
   if (!dynamic_array_->GetValue(tag, log, address)) {
     return false;
   }
-#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA)
-  // The GNU loader updates the dynamic array according to the load bias.
+
+#if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_FUCHSIA) || \
+    (defined(__GLIBC__) && defined(ARCH_CPU_RISCV64))
+  // The GNU loader updates the dynamic array according to the load bias (except
+  // for RISC-V: https://sourceware.org/bugzilla/show_bug.cgi?id=24484).
   // The Android and Fuchsia loaders only update the debug address.
   if (tag != DT_DEBUG) {
     *address += GetLoadBias();

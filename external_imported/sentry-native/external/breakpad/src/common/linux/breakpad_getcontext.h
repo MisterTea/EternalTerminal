@@ -29,10 +29,6 @@
 #ifndef GOOGLE_BREAKPAD_COMMON_LINUX_INCLUDE_UCONTEXT_H
 #define GOOGLE_BREAKPAD_COMMON_LINUX_INCLUDE_UCONTEXT_H
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #ifndef HAVE_GETCONTEXT
 
 #include <signal.h>

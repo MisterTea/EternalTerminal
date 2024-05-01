@@ -32,6 +32,10 @@
 // dwarf_range_list_handler.cc: Implementation of DwarfRangeListHandler class.
 // See dwarf_range_list_handler.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <algorithm>
 
 #include "common/dwarf_range_list_handler.h"

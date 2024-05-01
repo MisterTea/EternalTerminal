@@ -156,6 +156,50 @@ TEST(TestSnippets, TestGettingValues) {
 	ASSERT_EQ(expectedValues[i], nullptr);
 }
 
+// ### VALUE EXISTS
+
+TEST(TestSnippets, TestExists)
+{
+	const std::string example =
+		"[section1]\n"
+		"key1 = value1\n"
+		"key2 = value2.1\n"
+		"key2 = value2.2\n"
+		"\n"
+		"[section2]\n"
+		"key1\n"
+		"key2\n"
+		"[section3]\n";
+
+	CSimpleIniA ini;
+	ini.SetUnicode();
+	ini.SetMultiKey();
+	ini.SetAllowKeyOnly();
+
+	SI_Error rc = ini.LoadData(example);
+	ASSERT_EQ(rc, SI_OK);
+
+
+	// check for section doesn't exist
+	EXPECT_FALSE(ini.SectionExists(""));
+	EXPECT_FALSE(ini.SectionExists("section4"));
+
+	// check for section does exist
+	EXPECT_TRUE(ini.SectionExists("section1"));
+	EXPECT_TRUE(ini.SectionExists("section2"));
+	EXPECT_TRUE(ini.SectionExists("section3"));
+
+	// check for key doesn't exist
+	EXPECT_FALSE(ini.KeyExists("", "key"));
+	EXPECT_FALSE(ini.KeyExists("section1", "key"));
+	EXPECT_FALSE(ini.KeyExists("section2", "key"));
+
+	// check for key does exist
+	EXPECT_TRUE(ini.KeyExists("section1", "key1"));
+	EXPECT_TRUE(ini.KeyExists("section1", "key2"));
+	EXPECT_TRUE(ini.KeyExists("section2", "key1"));
+	EXPECT_TRUE(ini.KeyExists("section2", "key2"));
+}
 
 // ### MODIFYING DATA
 

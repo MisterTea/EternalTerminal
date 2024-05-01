@@ -30,6 +30,10 @@
 
 // stackwalker_arm_unittest.cc: Unit tests for StackwalkerARM class.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string.h>
 #include <string>
 #include <vector>

@@ -33,6 +33,10 @@
 //
 // Author: Mark Mentovai
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "processor/basic_code_modules.h"
 
 #include <assert.h>

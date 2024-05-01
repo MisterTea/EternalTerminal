@@ -18,7 +18,6 @@
 
 #include <stdint.h>
 
-#include <iterator>
 #include <map>
 #include <optional>
 #include <unordered_map>
@@ -42,8 +41,14 @@ class DwarfSection {
   DwarfSection(Memory* memory);
   virtual ~DwarfSection() = default;
 
-  class iterator : public std::iterator<std::bidirectional_iterator_tag, DwarfFde*> {
+  class iterator {
    public:
+    using iterator_category = std::bidirectional_iterator_tag;
+    using value_type = DwarfFde*;
+    using difference_type = std::ptrdiff_t;
+    using pointer = DwarfFde**;
+    using reference = DwarfFde*&;
+
     iterator(DwarfSection* section, size_t index) : index_(index) {
       section->GetFdes(&fdes_);
       if (index_ == static_cast<size_t>(-1)) {

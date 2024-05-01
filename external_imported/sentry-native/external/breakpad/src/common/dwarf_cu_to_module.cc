@@ -35,6 +35,10 @@
 #define __STDC_FORMAT_MACROS
 #endif  /* __STDC_FORMAT_MACROS */
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/dwarf_cu_to_module.h"
 
 #include <assert.h>
@@ -165,19 +169,23 @@ bool DwarfCUToModule::FileContext::IsUnhandledInterCUReference(
 // parsing. This is for data shared across the CU's entire DIE tree,
 // and parameters from the code invoking the CU parser.
 struct DwarfCUToModule::CUContext {
-  CUContext(FileContext* file_context_arg, WarningReporter* reporter_arg,
-            RangesHandler* ranges_handler_arg)
+  CUContext(FileContext* file_context_arg,
+            WarningReporter* reporter_arg,
+            RangesHandler* ranges_handler_arg,
+            uint64_t low_pc,
+            uint64_t addr_base)
       : version(0),
         file_context(file_context_arg),
         reporter(reporter_arg),
         ranges_handler(ranges_handler_arg),
         language(Language::CPlusPlus),
-        low_pc(0),
+        low_pc(low_pc),
         high_pc(0),
         ranges_form(DW_FORM_sec_offset),
         ranges_data(0),
         ranges_base(0),
-        str_offsets_base(0) { }
+        addr_base(addr_base),
+        str_offsets_base(0) {}
 
   ~CUContext() {
     for (vector<Module::Function*>::iterator it = functions.begin();
@@ -326,7 +334,10 @@ class DwarfCUToModule::GenericDIEHandler: public DIEHandler {
   // Use this from EndAttributes member functions, not ProcessAttribute*
   // functions; only the former can be sure that all the DIE's attributes
   // have been seen.
-  StringView ComputeQualifiedName();
+  //
+  // On return, if has_qualified_name is non-NULL, *has_qualified_name is set to
+  // true if the DIE includes a fully-qualified name, false otherwise.
+  StringView ComputeQualifiedName(bool* has_qualified_name);
 
   CUContext* cu_context_;
   DIEContext* parent_context_;
@@ -462,7 +473,8 @@ void DwarfCUToModule::GenericDIEHandler::ProcessAttributeString(
   }
 }
 
-StringView DwarfCUToModule::GenericDIEHandler::ComputeQualifiedName() {
+StringView DwarfCUToModule::GenericDIEHandler::ComputeQualifiedName(
+    bool* has_qualified_name) {
   // Use the demangled name, if one is available. Demangled names are
   // preferable to those inferred from the DWARF structure because they
   // include argument types.
@@ -478,6 +490,15 @@ StringView DwarfCUToModule::GenericDIEHandler::ComputeQualifiedName() {
   StringView* unqualified_name = nullptr;
   StringView* enclosing_name = nullptr;
   if (!qualified_name) {
+    if (has_qualified_name) {
+      // dSYMs built with -gmlt do not include the DW_AT_linkage_name
+      // with the unmangled symbol, but rather include it in the
+      // LC_SYMTAB STABS, which end up in the externs of the module.
+      //
+      // Remember this so the Module can copy over the extern name later.
+      *has_qualified_name = false;
+    }
+
     // Find the unqualified name. If the DIE has its own DW_AT_name
     // attribute, then use that; otherwise, check the specification.
     if (!name_attribute_.empty()) {
@@ -495,6 +516,10 @@ StringView DwarfCUToModule::GenericDIEHandler::ComputeQualifiedName() {
       enclosing_name = &specification_->enclosing_name;
     } else if (parent_context_) {
       enclosing_name = &parent_context_->name;
+    }
+  } else {
+    if (has_qualified_name) {
+      *has_qualified_name = true;
     }
   }
 
@@ -554,6 +579,7 @@ class DwarfCUToModule::InlineHandler : public GenericDIEHandler {
         ranges_data_(0),
         call_site_line_(0),
         inline_nest_level_(inline_nest_level),
+        has_range_data_(false),
         inlines_(inlines) {}
 
   void ProcessAttributeUnsigned(enum DwarfAttribute attr,
@@ -575,6 +601,7 @@ class DwarfCUToModule::InlineHandler : public GenericDIEHandler {
   int call_site_line_;         // DW_AT_call_line
   int call_site_file_id_;      // DW_AT_call_file
   int inline_nest_level_;
+  bool has_range_data_;
   // A vector of inlines in the same nest level. It's owned by its parent
   // function/inline. At Finish(), add this inline into the vector.
   vector<unique_ptr<Module::Inline>>& inlines_;
@@ -595,6 +622,7 @@ void DwarfCUToModule::InlineHandler::ProcessAttributeUnsigned(
       high_pc_ = data;
       break;
     case DW_AT_ranges:
+      has_range_data_ = true;
       ranges_data_ = data;
       ranges_form_ = form;
       break;
@@ -638,7 +666,7 @@ bool DwarfCUToModule::InlineHandler::EndAttributes() {
 void DwarfCUToModule::InlineHandler::Finish() {
   vector<Module::Range> ranges;
 
-  if (low_pc_ && high_pc_) {
+  if (!has_range_data_) {
     if (high_pc_form_ != DW_FORM_addr &&
         high_pc_form_ != DW_FORM_GNU_addr_index &&
         high_pc_form_ != DW_FORM_addrx &&
@@ -675,11 +703,12 @@ void DwarfCUToModule::InlineHandler::Finish() {
   // Every DW_TAG_inlined_subroutine should have a DW_AT_abstract_origin.
   assert(specification_offset_ != 0);
 
-  cu_context_->file_context->module_->inline_origin_map.SetReference(
-      specification_offset_, specification_offset_);
+  Module::InlineOriginMap& inline_origin_map =
+      cu_context_->file_context->module_
+          ->inline_origin_maps[cu_context_->file_context->filename_];
+  inline_origin_map.SetReference(specification_offset_, specification_offset_);
   Module::InlineOrigin* origin =
-      cu_context_->file_context->module_->inline_origin_map
-          .GetOrCreateInlineOrigin(specification_offset_, name_);
+      inline_origin_map.GetOrCreateInlineOrigin(specification_offset_, name_);
   unique_ptr<Module::Inline> in(
       new Module::Inline(origin, ranges, call_site_line_, call_site_file_id_,
                          inline_nest_level_, std::move(child_inlines_)));
@@ -718,7 +747,9 @@ class DwarfCUToModule::FuncHandler: public GenericDIEHandler {
         ranges_form_(DW_FORM_sec_offset),
         ranges_data_(0),
         inline_(false),
-        handle_inline_(handle_inline) {}
+        handle_inline_(handle_inline),
+        has_qualified_name_(false),
+        has_range_data_(false) {}
 
   void ProcessAttributeUnsigned(enum DwarfAttribute attr,
                                 enum DwarfForm form,
@@ -741,6 +772,8 @@ class DwarfCUToModule::FuncHandler: public GenericDIEHandler {
   bool inline_;
   vector<unique_ptr<Module::Inline>> child_inlines_;
   bool handle_inline_;
+  bool has_qualified_name_;
+  bool has_range_data_;
   DIEContext child_context_; // A context for our children.
 };
 
@@ -760,6 +793,7 @@ void DwarfCUToModule::FuncHandler::ProcessAttributeUnsigned(
       high_pc_ = data;
       break;
     case DW_AT_ranges:
+      has_range_data_ = true;
       ranges_data_ = data;
       ranges_form_ = form;
       break;
@@ -804,7 +838,7 @@ DIEHandler* DwarfCUToModule::FuncHandler::FindChildHandler(
 
 bool DwarfCUToModule::FuncHandler::EndAttributes() {
   // Compute our name, and record a specification, if appropriate.
-  name_ = ComputeQualifiedName();
+  name_ = ComputeQualifiedName(&has_qualified_name_);
   if (name_.empty() && abstract_origin_) {
     name_ = abstract_origin_->name;
   }
@@ -830,7 +864,7 @@ void DwarfCUToModule::FuncHandler::Finish() {
       iter->second->name = name_;
   }
 
-  if (!ranges_data_) {
+  if (!has_range_data_) {
     // Make high_pc_ an address, if it isn't already.
     if (high_pc_form_ != DW_FORM_addr &&
         high_pc_form_ != DW_FORM_GNU_addr_index &&
@@ -877,6 +911,9 @@ void DwarfCUToModule::FuncHandler::Finish() {
     scoped_ptr<Module::Function> func(new Module::Function(name, low_pc_));
     func->ranges = ranges;
     func->parameter_size = 0;
+    // If the name was unqualified, prefer the Extern name if there's a mismatch
+    // (the Extern name will be fully-qualified in that case).
+    func->prefer_extern_name = !has_qualified_name_;
     if (func->address) {
       // If the function address is zero this is a sign that this function
       // description is just empty debug data and should just be discarded.
@@ -903,15 +940,16 @@ void DwarfCUToModule::FuncHandler::Finish() {
     StringView name = name_.empty() ? name_omitted : name_;
     uint64_t offset =
         specification_offset_ != 0 ? specification_offset_ : offset_;
-    cu_context_->file_context->module_->inline_origin_map.SetReference(offset_,
-                                                                       offset);
-    cu_context_->file_context->module_->inline_origin_map
-        .GetOrCreateInlineOrigin(offset_, name);
+    Module::InlineOriginMap& inline_origin_map =
+        cu_context_->file_context->module_
+            ->inline_origin_maps[cu_context_->file_context->filename_];
+    inline_origin_map.SetReference(offset_, offset);
+    inline_origin_map.GetOrCreateInlineOrigin(offset_, name);
   }
 }
 
 bool DwarfCUToModule::NamedScopeHandler::EndAttributes() {
-  child_context_.name = ComputeQualifiedName();
+  child_context_.name = ComputeQualifiedName(NULL);
   if (child_context_.name.empty() && no_specification) {
     cu_context_->reporter->UnknownSpecification(offset_, specification_offset_);
   }
@@ -1041,12 +1079,21 @@ DwarfCUToModule::DwarfCUToModule(FileContext* file_context,
                                  LineToModuleHandler* line_reader,
                                  RangesHandler* ranges_handler,
                                  WarningReporter* reporter,
-                                 bool handle_inline)
+                                 bool handle_inline,
+                                 uint64_t low_pc,
+                                 uint64_t addr_base,
+                                 bool has_source_line_info,
+                                 uint64_t source_line_offset)
     : RootDIEHandler(handle_inline),
       line_reader_(line_reader),
-      cu_context_(new CUContext(file_context, reporter, ranges_handler)),
+      cu_context_(new CUContext(file_context,
+                                reporter,
+                                ranges_handler,
+                                low_pc,
+                                addr_base)),
       child_context_(new DIEContext()),
-      has_source_line_info_(false) {}
+      has_source_line_info_(has_source_line_info),
+      source_line_offset_(source_line_offset) {}
 
 DwarfCUToModule::~DwarfCUToModule() {
 }

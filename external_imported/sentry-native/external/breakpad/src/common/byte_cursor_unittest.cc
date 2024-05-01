@@ -31,6 +31,10 @@
 // byte_cursor_unittest.cc: Unit tests for google_breakpad::ByteBuffer
 // and google_breakpad::ByteCursor.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <string>
 
 #include <string.h>

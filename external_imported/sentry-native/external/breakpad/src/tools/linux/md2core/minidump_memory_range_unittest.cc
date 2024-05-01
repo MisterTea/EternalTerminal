@@ -29,6 +29,10 @@
 // minidump_memory_range_unittest.cc:
 // Unit tests for google_breakpad::MinidumpMemoryRange.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "breakpad_googletest_includes.h"
 #include "tools/linux/md2core/minidump_memory_range.h"
 

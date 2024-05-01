@@ -18,7 +18,6 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Information Files", "Inform
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Other Files", "Other Files", "{560B512C-6D1C-4E65-83C1-049110E5DEF6}"
 	ProjectSection(SolutionItems) = preProject
-		..\other\.travis.yml = ..\other\.travis.yml
 		..\other\Makefile = ..\other\Makefile
 		..\other\package.cmd = ..\other\package.cmd
 		..\other\simpleini.doxy = ..\other\simpleini.doxy

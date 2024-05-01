@@ -163,6 +163,29 @@ func main() {
 	}
 }
 
+// manglePath reduces an absolute filesystem path to a string suitable as the
+// base for a file name which encodes some of the original path. The result
+// concatenates the leading initial from each path component except the last to
+// the last path component; for example /System/Library/Frameworks/AppKit
+// becomes SLFAppKit.
+// Assumes ASCII.
+func manglePath(path string) string {
+	components := strings.Split(path, "/")
+	n := len(components)
+	builder := strings.Builder{}
+	for i, component := range components {
+		if len(component) == 0 {
+			continue
+		}
+		if i < n-1 {
+			builder.WriteString(component[:1])
+		} else {
+			builder.WriteString(component)
+		}
+	}
+	return builder.String()
+}
+
 type WorkerPool struct {
 	wg sync.WaitGroup
 }
@@ -296,7 +319,7 @@ func (dq *DumpQueue) worker() {
 	dumpSyms := path.Join(*breakpadTools, "dump_syms")
 
 	for req := range dq.queue {
-		filebase := path.Join(dq.dumpPath, strings.Replace(req.path, "/", "_", -1))
+		filebase := path.Join(dq.dumpPath, manglePath(req.path))
 		symfile := fmt.Sprintf("%s_%s.sym", filebase, req.arch)
 		f, err := os.Create(symfile)
 		if err != nil {

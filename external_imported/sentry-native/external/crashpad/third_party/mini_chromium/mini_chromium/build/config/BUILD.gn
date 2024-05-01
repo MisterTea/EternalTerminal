@@ -270,13 +270,13 @@ config("default") {
     common_flags += [ "-pthread" ]
 
     if (current_cpu == "x86") {
-      common_flags += [
-        "-m32",
-      ]
+      common_flags += [ "-m32" ]
     } else if (current_cpu == "x64") {
-      common_flags += [
-        "-m64",
-      ]
+      common_flags += [ "-m64" ]
+    } else if (current_cpu == "arm64") {
+      common_flags += [ "--target=aarch64-linux-gnu" ]
+    } else if (current_cpu == "riscv64") {
+      common_flags += [ "--target=riscv64-linux-gnu" ]
     } else {
       assert(false, "Unsupported architecture")
     }
@@ -355,12 +355,13 @@ config("executable") {
   }
 }
 
-config("ios_enable_arc") {
-  if (mini_chromium_is_ios) {
-    common_flags = [ "-fobjc-arc" ]
-    cflags_objc = common_flags
-    cflags_objcc = common_flags
-  }
+config("apple_enable_arc") {
+  common_flags = [
+    "-fobjc-arc",
+    "-fno-objc-arc-exceptions",
+  ]
+  cflags_objc = common_flags
+  cflags_objcc = common_flags
 }
 
 config("Wexit_time_destructors") {
@@ -403,39 +404,49 @@ toolchain("gcc_like_toolchain") {
     ar = rebase_path(clang_path, root_build_dir) + "/bin/llvm-ar"
     ld = cxx
   } else if (mini_chromium_is_android) {
-     assert(android_ndk_root != "", "Android builds must set android_ndk_root")
+    assert(android_ndk_root != "", "Android builds must set android_ndk_root")
 
-     if (host_os == "linux") {
-       ndk_host_arch = "linux-x86_64"
-     } else if (host_os == "mac") {
-       ndk_host_arch = "darwin-x86_64"
-     } else if (host_os == "win") {
-       ndk_host_arch = "windows-x86_64"
-     }
-     ndk_bin_dir = string_join("/", [android_ndk_root, "toolchains", "llvm",
-                               "prebuilt", ndk_host_arch, "bin", ""])
+    if (host_os == "linux") {
+      ndk_host_arch = "linux-x86_64"
+    } else if (host_os == "mac") {
+      ndk_host_arch = "darwin-x86_64"
+    } else if (host_os == "win") {
+      ndk_host_arch = "windows-x86_64"
+    }
+    ndk_bin_dir = string_join("/",
+                              [
+                                android_ndk_root,
+                                "toolchains",
+                                "llvm",
+                                "prebuilt",
+                                ndk_host_arch,
+                                "bin",
+                                "",
+                              ])
 
-     if (target_cpu == "arm") {
-       tool_prefix = "arm-linux-androideabi"
-     } else if (target_cpu == "arm64") {
-       tool_prefix = "aarch64-linux-android"
-     } else if (target_cpu == "x86") {
-       tool_prefix = "i686-linux-android"
-     } else if (target_cpu == "x64") {
-       tool_prefix = "x86_64-linux-android"
-     }
+    if (target_cpu == "arm") {
+      tool_prefix = "arm-linux-androideabi"
+    } else if (target_cpu == "arm64") {
+      tool_prefix = "aarch64-linux-android"
+    } else if (target_cpu == "x86") {
+      tool_prefix = "i686-linux-android"
+    } else if (target_cpu == "x64") {
+      tool_prefix = "x86_64-linux-android"
+    } else if (target_cpu == "riscv64") {
+      tool_prefix = "riscv64-linux-android"
+    }
 
-     if (target_cpu == "arm") {
-       clang_prefix = "armv7a-linux-androideabi" + android_api_level
-     } else {
-       clang_prefix = tool_prefix + android_api_level
-     }
+    if (target_cpu == "arm") {
+      clang_prefix = "armv7a-linux-androideabi" + android_api_level
+    } else {
+      clang_prefix = tool_prefix + android_api_level
+    }
 
-     cc = ndk_bin_dir + clang_prefix + "-clang"
-     cxx = ndk_bin_dir + clang_prefix + "-clang++"
-     asm = cxx
-     ld = cxx
-     ar = ndk_bin_dir + tool_prefix + "-ar"
+    cc = ndk_bin_dir + clang_prefix + "-clang"
+    cxx = ndk_bin_dir + clang_prefix + "-clang++"
+    asm = cxx
+    ld = cxx
+    ar = ndk_bin_dir + tool_prefix + "-ar"
   } else {
     cc = "clang"
     cxx = "clang++"

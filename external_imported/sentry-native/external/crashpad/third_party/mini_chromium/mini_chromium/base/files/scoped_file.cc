@@ -10,6 +10,8 @@
 
 #if BUILDFLAG(IS_POSIX)
 #include <unistd.h>
+
+#include "base/check.h"
 #include "base/posix/eintr_wrapper.h"
 #endif
 

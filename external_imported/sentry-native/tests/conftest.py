@@ -43,3 +43,10 @@ def pytest_runtest_setup(item):
         "--with_crashpad_wer"
     ):
         pytest.skip("need --with_crashpad_wer to run this test")
+
+
+def pytest_configure(config):
+    config.addinivalue_line(
+        "markers",
+        "with_crashpad_wer: mark test to only run when WER testing is enabled",
+    )

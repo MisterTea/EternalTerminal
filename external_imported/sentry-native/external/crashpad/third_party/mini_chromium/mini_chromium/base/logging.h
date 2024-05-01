@@ -5,16 +5,13 @@
 #ifndef MINI_CHROMIUM_BASE_LOGGING_H_
 #define MINI_CHROMIUM_BASE_LOGGING_H_
 
-#include <assert.h>
 #include <errno.h>
+#include <stdint.h>
 
 #include <limits>
 #include <sstream>
 #include <string>
 
-#include "base/check.h"
-#include "base/check_op.h"
-#include "base/notreached.h"
 #include "build/build_config.h"
 
 namespace logging {
@@ -306,9 +303,6 @@ const LogSeverity LOG_0 = LOG_ERROR;
 #define DVPLOG_IF(verbose_level, condition) \
     LAZY_STREAM(VPLOG_STREAM(verbose_level), \
                 DVLOG_IS_ON(verbose_level) && (condition))
-
-#undef assert
-#define assert(condition) DLOG_ASSERT(condition)
 
 namespace std {
 ostream& operator<<(ostream& out, const u16string& str);

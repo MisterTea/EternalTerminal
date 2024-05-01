@@ -1,13 +1,16 @@
-import datetime
 import email
 import gzip
 import platform
 import re
 import sys
+from dataclasses import dataclass
+from datetime import datetime
+
+import msgpack
 
 from .conditions import is_android
 
-VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)(?:[-\.]?)(.*)")
+VERSION_RE = re.compile(r"(\d+\.\d+\.\d+)[-.]?(.*)")
 
 
 def matches(actual, expected):
@@ -55,9 +58,9 @@ def assert_meta(
     }
     expected_sdk = {
         "name": "sentry.native",
-        "version": "0.6.0",
+        "version": "0.7.0",
         "packages": [
-            {"name": "github:getsentry/sentry-native", "version": "0.6.0"},
+            {"name": "github:getsentry/sentry-native", "version": "0.7.0"},
         ],
     }
     if is_android:
@@ -95,7 +98,7 @@ def assert_meta(
             )
             assert event["contexts"]["os"]["build"] is not None
 
-    if sdk_override != None:
+    if sdk_override is not None:
         expected_sdk["name"] = sdk_override
 
     assert_matches(event, expected)
@@ -161,7 +164,7 @@ def assert_minidump(envelope):
     assert minidump.payload.bytes.startswith(b"MDMP")
 
 
-def assert_timestamp(ts, now=datetime.datetime.utcnow()):
+def assert_timestamp(ts, now=datetime.utcnow()):
     assert ts[:11] == now.isoformat()[:11]
 
 
@@ -176,6 +179,14 @@ def assert_event(envelope):
     assert_timestamp(event["timestamp"])
 
 
+def assert_breakpad_crash(envelope):
+    event = envelope.get_event()
+    expected = {
+        "level": "fatal",
+    }
+    assert_matches(event, expected)
+
+
 def assert_exception(envelope):
     event = envelope.get_event()
     exception = {
@@ -186,7 +197,7 @@ def assert_exception(envelope):
     assert_timestamp(event["timestamp"])
 
 
-def assert_crash(envelope):
+def assert_inproc_crash(envelope):
     event = envelope.get_event()
     assert_matches(event, {"level": "fatal"})
     # depending on the unwinder, we currently don’t get any stack frames from
@@ -213,16 +224,62 @@ def assert_no_before_send(envelope):
     assert ("adapted_by", "before_send") not in event.items()
 
 
+@dataclass(frozen=True)
+class CrashpadAttachments:
+    event: dict
+    breadcrumb1: list
+    breadcrumb2: list
+
+
+def _unpack_breadcrumbs(payload):
+    unpacker = msgpack.Unpacker()
+    unpacker.feed(payload)
+    return [unpacked for unpacked in unpacker]
+
+
+def _load_crashpad_attachments(msg):
+    event = {}
+    breadcrumb1 = []
+    breadcrumb2 = []
+    for part in msg.walk():
+        match part.get_filename():
+            case "__sentry-event":
+                event = msgpack.unpackb(part.get_payload(decode=True))
+            case "__sentry-breadcrumb1":
+                breadcrumb1 = _unpack_breadcrumbs(part.get_payload(decode=True))
+            case "__sentry-breadcrumb2":
+                breadcrumb2 = _unpack_breadcrumbs(part.get_payload(decode=True))
+
+    return CrashpadAttachments(event, breadcrumb1, breadcrumb2)
+
+
+def is_valid_timestamp(timestamp):
+    try:
+        datetime.fromisoformat(timestamp)
+        return True
+    except ValueError:
+        return False
+
+
+def _validate_breadcrumb_seq(seq, breadcrumb_func):
+    for i in seq:
+        breadcrumb = breadcrumb_func(i)
+        assert breadcrumb["message"] == str(i)
+        assert is_valid_timestamp(breadcrumb["timestamp"])
+
+
 def assert_crashpad_upload(req):
     multipart = gzip.decompress(req.get_data())
     msg = email.message_from_bytes(bytes(str(req.headers), encoding="utf8") + multipart)
-    files = [part.get_filename() for part in msg.walk()]
+    attachments = _load_crashpad_attachments(msg)
 
-    # TODO:
-    # Actually assert that we get a correct event/breadcrumbs payload
-    assert "__sentry-breadcrumb1" in files
-    assert "__sentry-breadcrumb2" in files
-    assert "__sentry-event" in files
+    if len(attachments.breadcrumb1) > 3:
+        _validate_breadcrumb_seq(range(97), lambda i: attachments.breadcrumb1[3 + i])
+        _validate_breadcrumb_seq(
+            range(97, 101), lambda i: attachments.breadcrumb2[i - 97]
+        )
+
+    assert attachments.event["level"] == "fatal"
 
     assert any(
         b'name="upload_file_minidump"' in part.as_bytes()

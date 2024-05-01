@@ -32,6 +32,10 @@
 //
 // Author: Mark Mentovai
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "google_breakpad/processor/minidump.h"
 
 #include <assert.h>
@@ -71,6 +75,11 @@ using std::numeric_limits;
 using std::vector;
 
 namespace {
+
+// Limit arrived at by adding up possible states in Intel Ch. 13.5 X-SAVE
+// MANAGED STATE
+// (~ 3680 bytes) plus some extra for the future.
+const uint32_t kMaxXSaveAreaSize = 16384;
 
 // Returns true iff |context_size| matches exactly one of the sizes of the
 // various MDRawContext* types.
@@ -503,6 +512,10 @@ bool MinidumpContext::Read(uint32_t expected_size) {
     // sizeof(MDRawContextAMD64). For now we skip this extended data.
     if (expected_size > sizeof(MDRawContextAMD64)) {
       size_t bytes_left = expected_size - sizeof(MDRawContextAMD64);
+      if (bytes_left > kMaxXSaveAreaSize) {
+        BPLOG(ERROR) << "MinidumpContext oversized xstate area";
+        return false;
+      }
       std::vector<uint8_t> xstate(bytes_left);
       if (!minidump_->ReadBytes(xstate.data(),
                                 bytes_left)) {
@@ -1246,12 +1259,11 @@ bool MinidumpContext::Read(uint32_t expected_size) {
           Swap(&context_riscv->t5);
           Swap(&context_riscv->t6);
 
-          for (int fpr_index = 0;
-               fpr_index < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT;
+          for (int fpr_index = 0; fpr_index < MD_CONTEXT_RISCV_FPR_COUNT;
                ++fpr_index) {
-            Swap(&context_riscv->float_save.regs[fpr_index]);
+            Swap(&context_riscv->fpregs[fpr_index]);
           }
-          Swap(&context_riscv->float_save.fpcsr);
+          Swap(&context_riscv->fcsr);
         }
         SetContextRISCV(context_riscv.release());
 
@@ -1325,12 +1337,11 @@ bool MinidumpContext::Read(uint32_t expected_size) {
           Swap(&context_riscv64->t5);
           Swap(&context_riscv64->t6);
 
-          for (int fpr_index = 0;
-               fpr_index < MD_FLOATINGSAVEAREA_RISCV_FPR_COUNT;
+          for (int fpr_index = 0; fpr_index < MD_CONTEXT_RISCV_FPR_COUNT;
                ++fpr_index) {
-            Swap(&context_riscv64->float_save.regs[fpr_index]);
+            Swap(&context_riscv64->fpregs[fpr_index]);
           }
-          Swap(&context_riscv64->float_save.fpcsr);
+          Swap(&context_riscv64->fcsr);
         }
         SetContextRISCV64(context_riscv64.release());
 
@@ -5478,6 +5489,27 @@ void MinidumpCrashpadInfo::Print() {
     for (const auto& annot : simple_annots) {
       printf("  module_list[%d].simple_annotations[\"%s\"] = %s\n",
              module_index, annot.first.c_str(), annot.second.c_str());
+    }
+    const auto& crashpad_annots =
+        module_crashpad_info_annotation_objects_[module_index];
+    for (const AnnotationObject& annot : crashpad_annots) {
+      std::string str_value;
+      if (annot.type == 1) {
+        // Value represents a C-style string.
+        for (const uint8_t& v : annot.value) {
+          str_value.append(1, static_cast<char>(v));
+        }
+      } else {
+        // Value represents something else.
+        char buffer[3];
+        for (const uint8_t& v : annot.value) {
+          snprintf(buffer, sizeof(buffer), "%02X", v);
+          str_value.append(buffer);
+        }
+      }
+      printf(
+          "  module_list[%d].crashpad_annotations[\"%s\"] (type = %u) = %s\n",
+          module_index, annot.name.c_str(), annot.type, str_value.c_str());
     }
     printf("  address_mask = %" PRIu64 "\n", crashpad_info_.address_mask);
   }

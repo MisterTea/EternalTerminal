@@ -92,6 +92,8 @@ sentry__breakpad_backend_callback(
     dump_path = sentry__path_new(descriptor.path());
 #endif
     sentry_value_t event = sentry_value_new_event();
+    sentry_value_set_by_key(
+        event, "level", sentry__value_new_level(SENTRY_LEVEL_FATAL));
 
     SENTRY_WITH_OPTIONS (options) {
         sentry__write_crash_marker(options);
@@ -116,9 +118,6 @@ sentry__breakpad_backend_callback(
         if (should_handle) {
             sentry_envelope_t *envelope = sentry__prepare_event(
                 options, event, nullptr, !options->on_crash_func);
-            // the event we just prepared is empty,
-            // so no error is recorded for it
-            sentry__record_errors_on_current_session(1);
             sentry_session_t *session = sentry__end_current_session_with_status(
                 SENTRY_SESSION_STATUS_CRASHED);
             sentry__envelope_add_session(envelope, session);

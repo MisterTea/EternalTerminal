@@ -21,6 +21,9 @@
 /* Define to 1 if you have the `rustc_demangle' library (-lrustc_demangle). */
 #undef HAVE_LIBRUSTC_DEMANGLE
 
+/* Define to 1 if you have the `zstd' library (-lzstd). */
+#undef HAVE_LIBZSTD
+
 /* Define to 1 if you have the `memfd_create' function. */
 #undef HAVE_MEMFD_CREATE
 

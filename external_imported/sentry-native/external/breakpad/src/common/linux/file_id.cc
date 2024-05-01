@@ -31,6 +31,10 @@
 // See file_id.h for documentation
 //
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/linux/file_id.h"
 
 #include <arpa/inet.h>

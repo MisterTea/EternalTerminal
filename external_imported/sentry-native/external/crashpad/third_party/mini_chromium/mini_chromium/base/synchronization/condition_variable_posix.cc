@@ -4,7 +4,7 @@
 
 #include "base/synchronization/condition_variable.h"
 
-#include "base/logging.h"
+#include "base/check_op.h"
 
 namespace base {
 

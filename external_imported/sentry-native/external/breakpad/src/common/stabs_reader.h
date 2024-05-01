@@ -49,10 +49,6 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#ifdef HAVE_CONFIG_H
-#include <config.h>
-#endif
-
 #ifdef HAVE_MACH_O_NLIST_H
 #include <mach-o/nlist.h>
 #elif defined(HAVE_A_OUT_H)

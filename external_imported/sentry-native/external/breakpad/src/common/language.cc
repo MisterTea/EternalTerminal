@@ -31,6 +31,10 @@
 // language.cc: Subclasses and singletons for google_breakpad::Language.
 // See language.h for details.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "common/language.h"
 
 #include <stdlib.h>

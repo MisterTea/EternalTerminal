@@ -33,6 +33,10 @@
 // Author: Dan Waylonis
 
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include <fcntl.h>
 #include <mach-o/loader.h>
 #include <stdio.h>

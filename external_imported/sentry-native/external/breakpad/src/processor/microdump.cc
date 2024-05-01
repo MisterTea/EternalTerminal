@@ -30,6 +30,10 @@
 //
 // See microdump.h for documentation.
 
+#ifdef HAVE_CONFIG_H
+#include <config.h>  // Must come first
+#endif
+
 #include "google_breakpad/processor/microdump.h"
 
 #include <stdio.h>

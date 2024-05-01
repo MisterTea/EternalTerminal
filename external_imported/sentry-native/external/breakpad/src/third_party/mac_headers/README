@@ -1,2 +1,25 @@
-These headers were copied from the Mac OS X 10.7 SDK to enable building
-the Mac dump_syms code that processes Mach-O files on Linux.
+These headers were copied to enable building the Mac dump_syms code that
+processes Mach-O files on Linux.
+
+From xnu-8792.41.9 (https://github.com/apple-oss-distributions/xnu at 5c2921b)
+i386/_types.h
+arm/_types.h
+mach/boolean.h
+mach/machine.h
+mach/thread_status.h
+mach/vm_prot.h
+mach/i386/boolean.h
+mach/i386/vm_types.h
+mach/arm/boolean.h
+mach/arm/vm_types.h
+mach/machine/boolean.h
+mach/machine/vm_types.h
+
+From cctools-986 (https://github.com/apple-oss-distributions/cctools at cbe977a)
+mach-o/arch.h
+mach-o/fat.h
+mach-o/loader.h
+mach-o/nlist.h
+
+From architecture-282 (https://github.com/apple-oss-distributions/architecture at fe86900)
+architecture/byte_order.h

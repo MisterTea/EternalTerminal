@@ -102,6 +102,7 @@ int RunWithCrashpadMain(int argc, char* argv[]) {
     kOptionAnnotation,
     kOptionDatabase,
     kOptionURL,
+    kOptionHTTPProxy,
 
     // Standard options.
     kOptionHelp = -2,
@@ -113,6 +114,7 @@ int RunWithCrashpadMain(int argc, char* argv[]) {
       {"annotation", required_argument, nullptr, kOptionAnnotation},
       {"database", required_argument, nullptr, kOptionDatabase},
       {"url", required_argument, nullptr, kOptionURL},
+      {"http-proxy", optional_argument, nullptr, kOptionHTTPProxy},
       {"argument", required_argument, nullptr, kOptionArgument},
       {"help", no_argument, nullptr, kOptionHelp},
       {"version", no_argument, nullptr, kOptionVersion},
@@ -124,6 +126,7 @@ int RunWithCrashpadMain(int argc, char* argv[]) {
     std::map<std::string, std::string> annotations;
     std::string database;
     std::string url;
+    std::string httpProxy;
     std::vector<std::string> arguments;
   } options = {};
   options.handler = "crashpad_handler";
@@ -158,6 +161,10 @@ int RunWithCrashpadMain(int argc, char* argv[]) {
         options.url = optarg;
         break;
       }
+      case kOptionHTTPProxy: {
+        options.httpProxy = optarg;
+        break;
+      }
       case kOptionArgument: {
         options.arguments.push_back(optarg);
         break;
@@ -190,6 +197,7 @@ int RunWithCrashpadMain(int argc, char* argv[]) {
                                     base::FilePath(options.database),
                                     base::FilePath(),
                                     options.url,
+                                    options.httpProxy,
                                     options.annotations,
                                     options.arguments,
                                     false,

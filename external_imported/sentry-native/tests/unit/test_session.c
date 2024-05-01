@@ -47,7 +47,7 @@ send_envelope(const sentry_envelope_t *envelope, void *data)
         "my_release");
     TEST_CHECK_STRING_EQUAL(
         sentry_value_as_string(sentry_value_get_by_key(attrs, "environment")),
-        "my_environment");
+        "test");
 
     sentry_value_decref(session);
 }
@@ -67,6 +67,10 @@ SENTRY_TEST(session_basics)
     TEST_CHECK_STRING_EQUAL(
         sentry_options_get_environment(options), "production");
     sentry_options_set_environment(options, "my_environment");
+    TEST_CHECK_STRING_EQUAL(
+        sentry_options_get_environment(options), "my_environment");
+    char env[] = { 't', 'e', 's', 't' };
+    sentry_options_set_environment_n(options, env, sizeof(env));
     sentry_init(options);
 
     // a session was already started by automatic session tracking
