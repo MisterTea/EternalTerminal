@@ -60,6 +60,11 @@ typedef int socket_t;
 #endif
 #endif
 
+#ifdef _MSC_VER
+#define strncasecmp _strnicmp
+#define strcasecmp _stricmp
+#endif
+
 enum ssh_config_opcode_e {
   SOC_UNSUPPORTED = -1,
   SOC_HOST,
@@ -1426,6 +1431,7 @@ int parse_ssh_config_file(const char *targethost, struct Options *options,
   }
 
   ifstream infile(expandedFilename);
+  free(expandedFilename);
   if (!infile.good()) {
     LOG(INFO) << filename << " not found";
     return 0;

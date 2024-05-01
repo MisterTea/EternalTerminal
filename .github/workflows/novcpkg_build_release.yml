@@ -4,6 +4,8 @@ on:
     branches:
       - release
   pull_request:
+    branches:
+      - release
 
 jobs:
   build_novcpkg:
@@ -38,7 +40,6 @@ jobs:
             sudo apt-get install --no-install-recommends \
                 libboost-dev \
                 libsodium-dev \
-                libncurses5-dev \
                 libprotobuf-dev \
                 protobuf-compiler \
                 libgflags-dev \
@@ -58,7 +59,7 @@ jobs:
         run: brew update && brew install ninja cmake pkg-config curl openssl protobuf libsodium
         if: matrix.os == 'macos-latest'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
@@ -90,7 +91,7 @@ jobs:
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
       
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
-          name: et-client-${{matrix.os}}
+          name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

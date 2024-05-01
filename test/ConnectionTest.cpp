@@ -140,8 +140,8 @@ class TestServerConnection : public ServerConnection {
  public:
   TestServerConnection(shared_ptr<SocketHandler> _socketHandler,
                        SocketEndpoint socketEndpoint)
-      : ServerConnection(_socketHandler, socketEndpoint){};
-  virtual ~TestServerConnection(){};
+      : ServerConnection(_socketHandler, socketEndpoint) {}
+  virtual ~TestServerConnection() {}
   virtual bool newClient(
       shared_ptr<ServerClientConnection> _serverClientState) {
     string clientId = _serverClientState->getId();

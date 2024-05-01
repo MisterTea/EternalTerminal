@@ -209,11 +209,12 @@ TelemetryService::TelemetryService(const bool _allow,
     logSendingThread.reset(new thread([this]() {
       auto nextDumpTime = std::chrono::system_clock::now();
       while (true) {
-        bool lastRun = shuttingDown;
+        bool lastRun;
         string payload;
         int logBufferSize;
         {
           lock_guard<recursive_mutex> guard(logMutex);
+          lastRun = shuttingDown;
           logBufferSize = (int)logBuffer.size();
         }
         if (logBufferSize) {
@@ -253,6 +254,7 @@ TelemetryService::TelemetryService(const bool _allow,
 }
 
 TelemetryService::~TelemetryService() {
+  lock_guard<recursive_mutex> guard(logMutex);
   if (!shuttingDown) {
     cerr << "Destroyed telemetryService without a shutdown";
   }
@@ -269,10 +271,10 @@ void TelemetryService::logToSentry(el::Level level, const string& message) {
 void TelemetryService::logToDatadog(const string& logText, el::Level logLevel,
                                     const string& filename, const int line) {
   map<string, string> messageJson = {
-      {"message", logText},        {"level", logLevelToString(logLevel)},
-      {"Enviroment", environment}, {"Application", "Eternal Terminal"},
-      {"Version", ET_VERSION},     {"TelemetryId", telemetryId.str()},
-      {"File", filename},          {"Line", to_string(line)}};
+      {"message", logText},         {"level", logLevelToString(logLevel)},
+      {"Environment", environment}, {"Application", "Eternal Terminal"},
+      {"Version", ET_VERSION},      {"TelemetryId", telemetryId.str()},
+      {"File", filename},           {"Line", to_string(line)}};
 
   lock_guard<recursive_mutex> lock(logMutex);
   if (logBuffer.size() > 16 * 1024) {
@@ -283,10 +285,13 @@ void TelemetryService::logToDatadog(const string& logText, el::Level logLevel,
 }
 
 void TelemetryService::shutdown() {
-  if (shuttingDown) {
-    return;
+  {
+    lock_guard<recursive_mutex> guard(logMutex);
+    if (shuttingDown) {
+      return;
+    }
+    shuttingDown = true;
   }
-  shuttingDown = true;
 #ifdef USE_SENTRY
   sentry_shutdown();
 #endif

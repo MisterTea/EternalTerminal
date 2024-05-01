@@ -27,7 +27,6 @@ RUN apt-get update && export DEBIAN_FRONTEND=noninteractive \
     && apt-get -y install --no-install-recommends \
     libboost-dev \
     libsodium-dev \
-    libncurses5-dev \
     libprotobuf-dev \
     protobuf-compiler \
     libgflags-dev \

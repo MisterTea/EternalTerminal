@@ -37,6 +37,7 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
           int portRangeLength = sourcePortEnd - sourcePortStart + 1;
           for (int i = 0; i < portRangeLength; ++i) {
             PortForwardSourceRequest pfsr;
+            pfsr.mutable_source()->set_name("localhost");
             pfsr.mutable_source()->set_port(sourcePortStart + i);
             pfsr.mutable_destination()->set_port(destinationPortStart + i);
             pfsrs.push_back(pfsr);
@@ -49,6 +50,7 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
             "destination must be a range (and vice versa)");
       } else {
         PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_name("localhost");
         pfsr.mutable_source()->set_port(stoi(sourceDestination[0]));
         pfsr.mutable_destination()->set_port(stoi(sourceDestination[1]));
         pfsrs.push_back(pfsr);

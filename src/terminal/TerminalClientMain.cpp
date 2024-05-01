@@ -42,6 +42,25 @@ int main(int argc, char** argv) {
   // Override easylogging handler for sigint
   ::signal(SIGINT, et::InterruptSignalHandler);
 
+  Options sshConfigOptions = {
+      NULL,  // username
+      NULL,  // host
+      NULL,  // sshdir
+      NULL,  // knownhosts
+      NULL,  // ProxyCommand
+      NULL,  // ProxyJump
+      0,     // timeout
+      0,     // port
+      0,     // StrictHostKeyChecking
+      0,     // ssh2
+      0,     // ssh1
+      NULL,  // gss_server_identity
+      NULL,  // gss_client_identity
+      0,     // gss_delegate_creds
+      0,     // forward_agent
+      NULL   // identity_agent
+  };
+
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
   try {
@@ -51,7 +70,7 @@ int main(int argc, char** argv) {
         "[OPTION...] [user@]host[:port]\n\n"
         "  Note that 'host' can be a hostname or ipv4 address with or without "
         "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
-        ":: then it must\n  be specfied without a port (use -p,--port).");
+        ":: then it must\n  be specified without a port (use -p,--port).");
 
     options.add_options()             //
         ("h,help", "Print help")      //
@@ -82,6 +101,9 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>())  //
         ("jport", "Jumphost machine port",
          cxxopts::value<int>()->default_value("2022"))  //
+        ("jserverfifo",
+         "If set, communicate to jumphost on the matching fifo name",
+         cxxopts::value<string>()->default_value(""))  //
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("macserver",
@@ -213,44 +235,32 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
-    Options sshConfigOptions = {
-        NULL,  // username
-        NULL,  // host
-        NULL,  // sshdir
-        NULL,  // knownhosts
-        NULL,  // ProxyCommand
-        NULL,  // ProxyJump
-        0,     // timeout
-        0,     // port
-        0,     // StrictHostKeyChecking
-        0,     // ssh2
-        0,     // ssh1
-        NULL,  // gss_server_identity
-        NULL,  // gss_client_identity
-        0,     // gss_delegate_creds
-        0,     // forward_agent
-        NULL   // identity_agent
-    };
-
-    char* home_dir = ssh_get_user_home_dir();
-    const char* host_from_command = destinationHost.c_str();
-    ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
-                    destinationHost.c_str());
-    // First parse user-specific ssh config, then system-wide config.
-    parse_ssh_config_file(host_from_command, &sshConfigOptions,
-                          string(home_dir) + USER_SSH_CONFIG_PATH);
-    parse_ssh_config_file(host_from_command, &sshConfigOptions,
-                          SYSTEM_SSH_CONFIG_PATH);
-    LOG(INFO) << "Parsed ssh config file, connecting to "
-              << sshConfigOptions.host;
-    destinationHost = string(sshConfigOptions.host);
+    {
+      char* home_dir = ssh_get_user_home_dir();
+      const char* host_from_command = destinationHost.c_str();
+      ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
+                      destinationHost.c_str());
+      // First parse user-specific ssh config, then system-wide config.
+      parse_ssh_config_file(host_from_command, &sshConfigOptions,
+                            string(home_dir) + USER_SSH_CONFIG_PATH);
+      parse_ssh_config_file(host_from_command, &sshConfigOptions,
+                            SYSTEM_SSH_CONFIG_PATH);
+      if (sshConfigOptions.host) {
+        LOG(INFO) << "Parsed ssh config file, connecting to "
+                  << sshConfigOptions.host;
+        destinationHost = string(sshConfigOptions.host);
+      }
+      free(home_dir);
+    }
 
     // Parse username: cmdline > sshconfig > localuser
     if (username.empty()) {
       if (sshConfigOptions.username) {
         username = string(sshConfigOptions.username);
       } else {
-        username = string(ssh_get_local_username());
+        char* usernamePtr = ssh_get_local_username();
+        username = string(usernamePtr);
+        SAFE_FREE(usernamePtr);
       }
     }
 
@@ -259,11 +269,7 @@ int main(int argc, char** argv) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
       size_t colonIndex = proxyjump.find(":");
       if (colonIndex != string::npos) {
-        string userhostpair = proxyjump.substr(0, colonIndex);
-        size_t atIndex = userhostpair.find("@");
-        if (atIndex != string::npos) {
-          jumphost = userhostpair.substr(atIndex + 1);
-        }
+        jumphost = proxyjump.substr(0, colonIndex);
       } else {
         jumphost = proxyjump;
       }
@@ -275,7 +281,13 @@ int main(int argc, char** argv) {
     if (!jumphost.empty()) {
       is_jumphost = true;
       LOG(INFO) << "Setting port to jumphost port";
-      socketEndpoint.set_name(jumphost);
+      size_t atIndex = jumphost.find("@");
+      if (atIndex != string::npos) {
+        socketEndpoint.set_name(jumphost.substr(atIndex + 1));
+      } else {
+        socketEndpoint.set_name(jumphost);
+        jumphost = username + "@" + jumphost;
+      }
       socketEndpoint.set_port(result["jport"].as<int>());
     } else {
       socketEndpoint.set_name(destinationHost);
@@ -291,7 +303,11 @@ int main(int argc, char** argv) {
       exit(1);
     }
 
-    int jport = result["jport"].as<int>();
+    string jServerFifo = "";
+    if (result["jserverfifo"].as<string>() != "") {
+      jServerFifo = result["jserverfifo"].as<string>();
+    }
+
     string serverFifo = "";
     if (result["serverfifo"].as<string>() != "") {
       serverFifo = result["serverfifo"].as<string>();
@@ -304,13 +320,13 @@ int main(int argc, char** argv) {
     if (result.count("macserver") > 0) {
       etterminal_path = "/usr/local/bin/etterminal";
     }
-    if (result.count("etterminal_path")) {
+    if (result.count("terminal-path")) {
       etterminal_path = result["terminal-path"].as<string>();
     }
     string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost, jport,
-        result.count("x") > 0, result["verbose"].as<int>(), etterminal_path,
-        serverFifo, ssh_options);
+        username, destinationHost, host_alias, destinationPort, jumphost,
+        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+        etterminal_path, serverFifo, ssh_options);
 
     string id = "", passkey = "";
     // Trim whitespace
@@ -361,6 +377,17 @@ int main(int argc, char** argv) {
   } catch (cxxopts::exceptions::exception& oe) {
     handleParseException(oe, options);
   }
+
+  // Clean up ssh config options
+  SAFE_FREE(sshConfigOptions.username);
+  SAFE_FREE(sshConfigOptions.host);
+  SAFE_FREE(sshConfigOptions.sshdir);
+  SAFE_FREE(sshConfigOptions.knownhosts);
+  SAFE_FREE(sshConfigOptions.ProxyCommand);
+  SAFE_FREE(sshConfigOptions.ProxyJump);
+  SAFE_FREE(sshConfigOptions.gss_server_identity);
+  SAFE_FREE(sshConfigOptions.gss_client_identity);
+  SAFE_FREE(sshConfigOptions.identity_agent);
 
 #ifdef WIN32
   WSACleanup();

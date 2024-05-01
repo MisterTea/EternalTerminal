@@ -4,6 +4,8 @@ on:
     branches:
       - release
   pull_request:
+    branches:
+      - release
 
 jobs:
   build_vcpkg:
@@ -43,7 +45,6 @@ jobs:
             sudo apt-get install --no-install-recommends \
                 libboost-dev \
                 libsodium-dev \
-                libncurses5-dev \
                 libprotobuf-dev \
                 protobuf-compiler \
                 libgflags-dev \
@@ -60,13 +61,13 @@ jobs:
                 libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install ninja
+        run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
         run: brew update && brew install ninja cmake
         if: matrix.os == 'macos-latest'
 
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: false
 
@@ -79,7 +80,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v2
+        uses: actions/cache@v4
         with:
           path: |
             ${{ env.VCPKG_ROOT }}
@@ -122,7 +123,7 @@ jobs:
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
       
-      - uses: actions/upload-artifact@v2
+      - uses: actions/upload-artifact@v4
         with:
-          name: et-client-${{matrix.os}}
+          name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

@@ -45,10 +45,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     SocketEndpoint source;
     if (pfsr.has_source()) {
       source = pfsr.source();
-      if (source.has_name()) {
-        throw runtime_error(
-            "Named socket tunneling is only allowed with temporary filenames.");
-      }
     } else {
       // Make a random file to forward the pipe
       string sourcePattern =

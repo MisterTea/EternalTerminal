@@ -1,7 +1,7 @@
-FROM centos:7 as base
+FROM centos:8 as base
 
 ENV BUILD_REPOS="epel-release centos-release-scl" \
-    BUILD_DEPS="cmake3 boost-devel libsodium-devel ncurses-devel protobuf-devel \
+    BUILD_DEPS="cmake3 boost-devel libsodium-devel protobuf-devel \
     protobuf-compiler gflags-devel protobuf-lite-devel git \
     perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-devel \
     devtoolset-11 devtoolset-11-libatomic-devel rh-git227"
@@ -18,7 +18,7 @@ RUN yum install -y $BUILD_REPOS && \
     bash -c "scl enable devtoolset-11 rh-git227 'cmake3 ../'" && \
     bash -c "scl enable devtoolset-11 'make -j $(grep ^processor /proc/cpuinfo |wc -l) && make install'"
 
-FROM centos:7
+FROM centos:8
 
 RUN yum install -y epel-release && \
     yum install -y protobuf-lite libsodium openssh-server libatomic libunwind
