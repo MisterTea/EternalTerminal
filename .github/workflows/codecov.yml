@@ -49,9 +49,16 @@ jobs:
           cmake -DCODE_COVERAGE=ON ../
           make -j`nproc`
           ./et-test
-          lcov --capture --directory . --output-file coverage.info
-          lcov --remove coverage.info '/usr/*' --output-file coverage.info # filter system-files
-          lcov --list coverage.info # debug info
-          # Uploading report to CodeCov
-          bash <(curl -s https://codecov.io/bash) -f coverage.info || echo "Codecov did not collect coverage reports"
+          lcov --capture --directory . --output-file ../coverage.info
+          lcov --remove ../coverage.info '/usr/*' --output-file coverage.info # filter system-files
+          lcov --list ../coverage.info # debug info
           popd
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          directory: ./
+          fail_ci_if_error: true
+          files: ./coverage.info
+          token: ${{ secrets.CODECOV_TOKEN }}
+          verbose: true
