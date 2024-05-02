@@ -1,4 +1,4 @@
-name: Linux CI
+name: Codecov
 
 on:
   push:
