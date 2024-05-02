@@ -79,7 +79,7 @@ int main(int argc, char **argv) {
 
     int port = 0;
     string bindIp = "";
-    bool telemetry = false;
+    bool enableTelemetry = false;
     string logDirectory = GetTempDirectory();
     if (result.count("cfgfile")) {
       // Load the config file
@@ -101,7 +101,7 @@ int main(int argc, char **argv) {
           }
         }
 
-        telemetry = ini.GetBoolValue("Debug", "telemetry", false);
+        enableTelemetry = ini.GetBoolValue("Debug", "telemetry", false);
         // read verbose level (prioritize command line option over cfgfile)
         const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
         if (result.count("verbose")) {
@@ -155,7 +155,7 @@ int main(int argc, char **argv) {
     }
 
     if (result.count("telemetry")) {
-      telemetry = result["telemetry"].as<bool>();
+      enableTelemetry = result["telemetry"].as<bool>();
     }
 
     if (result.count("logdir")) {
@@ -181,7 +181,7 @@ int main(int argc, char **argv) {
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
     TelemetryService::create(
-        telemetry, GetTempDirectory() + "/.sentry-native-etserver", "Server");
+        enableTelemetry, logDirectory + "/.sentry-native-etserver", "Server");
 
     serverFifo.createDirectoriesIfRequired();
 
