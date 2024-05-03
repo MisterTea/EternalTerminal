@@ -207,7 +207,7 @@ cd EternalTerminal
 mkdir build
 cd build
 # Add if it doesn't work on Apple Silicon but should work without it
-if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
+if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make && sudo make install
 ```
@@ -240,7 +240,7 @@ cd EternalTerminal
 mkdir build
 cd build
 # For ARM (including OS/X with apple silicon):
-if [[ $(uname -a | grep arm) ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
+if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make package
 sudo dpkg --install *.deb
