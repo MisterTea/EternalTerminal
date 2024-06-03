@@ -3,7 +3,7 @@
 #include "base64.h"
 
 namespace et {
-#define SOCKET_DATA_TRANSFER_TIMEOUT (10)
+#define SOCKET_DATA_TRANSFER_TIMEOUT (30)
 
 void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
   time_t startTime = time(NULL);
@@ -11,7 +11,7 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
   while (pos < count) {
     if (!waitOnSocketData(fd)) {
       time_t currentTime = time(NULL);
-      if (timeout && currentTime > startTime + 10) {
+      if (timeout && currentTime > startTime + SOCKET_DATA_TRANSFER_TIMEOUT) {
         throw std::runtime_error("Socket Timeout");
       }
       continue;
@@ -46,7 +46,7 @@ int SocketHandler::writeAllOrReturn(int fd, const void* buf, size_t count) {
   time_t startTime = time(NULL);
   while (pos < count) {
     time_t currentTime = time(NULL);
-    if (currentTime > startTime + 10) {
+    if (currentTime > startTime + SOCKET_DATA_TRANSFER_TIMEOUT) {
       return -1;
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
@@ -77,7 +77,7 @@ void SocketHandler::writeAllOrThrow(int fd, const void* buf, size_t count,
   size_t pos = 0;
   while (pos < count) {
     time_t currentTime = time(NULL);
-    if (timeout && currentTime > startTime + 10) {
+    if (timeout && currentTime > startTime + SOCKET_DATA_TRANSFER_TIMEOUT) {
       throw std::runtime_error("Socket Timeout");
     }
     ssize_t bytesWritten = write(fd, ((const char*)buf) + pos, count - pos);
