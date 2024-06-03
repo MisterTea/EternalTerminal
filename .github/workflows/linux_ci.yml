@@ -21,7 +21,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
 
           echo "Host localhost\n  Port 2222\n\n" >> ~/.ssh/config
 
