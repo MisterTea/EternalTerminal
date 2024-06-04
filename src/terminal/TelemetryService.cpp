@@ -79,6 +79,7 @@ void shutdownTelemetry() {
   if (TelemetryService::exists()) {
     cerr << "Shutting down sentry" << endl;
     auto ts = TelemetryService::get();
+    TelemetryService::destroy();
     ts->shutdown();
   }
 }
