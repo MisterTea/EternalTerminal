@@ -62,7 +62,7 @@ jobs:
         run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake autoconf libtool
+        run: brew update && brew install ninja cmake automake autoconf libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
