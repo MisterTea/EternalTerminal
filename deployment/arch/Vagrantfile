@@ -78,7 +78,7 @@ Vagrant.configure("2") do |config|
     pacman-key --init
     pacman-key --refresh-keys
     pacman -Syu --noconfirm
-    pacman -Syu --noconfirm jq git base-devel sudo go openssh emacs ninja libunwind libutempter namcap curl zip unzip tar openssl libsodium protobuf wget
+    pacman -Syu --noconfirm --needed jq git base-devel sudo go openssh emacs ninja libunwind libutempter namcap curl zip unzip tar openssl libsodium protobuf wget
   SHELL
   
     config.vm.provision "shell", privileged: false, inline: <<-SHELL
