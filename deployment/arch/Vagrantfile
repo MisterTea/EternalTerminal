@@ -12,7 +12,7 @@ Vagrant.configure("2") do |config|
   
     # Every Vagrant development environment requires a box. You can search for
     # boxes at https://vagrantcloud.com/search.
-    config.vm.box = "archlinux/archlinux"
+    config.vm.box = "generic/arch"
     config.ssh.shell = "sh"
   
     config.vm.provider "virtualbox" do |v|
@@ -74,6 +74,9 @@ Vagrant.configure("2") do |config|
     # Puppet, Chef, Ansible, Salt, and Docker are also available. Please see the
     # documentation for more information about their specific syntax and use.
     config.vm.provision "shell", privileged: true, inline: <<-SHELL
+    pacman -S archlinux-keyring
+    pacman-key --init
+    pacman-key --refresh-keys
     pacman -Syu --noconfirm
     pacman -Syu --noconfirm jq git base-devel sudo go openssh emacs ninja libunwind libutempter namcap curl zip unzip tar openssl libsodium protobuf wget
   SHELL
