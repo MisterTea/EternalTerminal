@@ -165,10 +165,10 @@ Once you have an open port, the syntax is similar to ssh. Username is default to
 et hostname (etserver running on default port 2022, username is the same as current)
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
-You can specify a jumphost and the port et is running on jumphost using `-jumphost` and `-jport`. If no `-jport` is given, et will try to connect to default port 2022.
+You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 ```
 et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostname and jumphost)
-et hostname:8888 -jumphost jump_hostname -jport 9999
+et hostname:8888 --jumphost jump_hostname --jport 9999
 ```
 Additional arguments that et accept are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
 
