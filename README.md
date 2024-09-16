@@ -201,13 +201,11 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
 
 ```
-brew install --only-dependencies MisterTea/et/et
+brew install autoconf automake libtool
 git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
-# Add if it doesn't work on Apple Silicon but should work without it
-if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
 make && sudo make install
 ```
