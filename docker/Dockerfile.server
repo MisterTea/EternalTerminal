@@ -12,7 +12,7 @@ RUN --mount=type=cache,mode=0755,target=/var/lib/apt/lists,sharing=locked \
     apt-get install -y ca-certificates && \
     echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ bookworm main" > /etc/apt/sources.list.d/et.list && \
     apt-get update -qq && \
-    apt-get install -y et
+    apt-get install -y et openssh-server
 
 COPY --chmod=755 container-entrypoint /bin/container-entrypoint
 
