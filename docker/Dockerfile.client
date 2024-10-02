@@ -1,13 +1,16 @@
 FROM debian:bookworm-slim
 
+# Use ADD to avoid having to install curl
+ADD --chmod=644 https://github.com/MisterTea/debian-et/raw/master/et.gpg /etc/apt/trusted.gpg.d/et.gpg
+
+# Use a run cache to speed up rebuilding and avoid having to remove the cache when we're done
 RUN --mount=type=cache,mode=0755,target=/var/lib/apt/lists,sharing=locked \
     --mount=type=cache,mode=0755,target=/var/cache/apt,sharing=locked \
     rm -f /etc/apt/apt.conf.d/docker-clean && \
-    apt-get update -qq && \
-    apt-get install -y curl && \
     echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    apt-get update -qq && \
+    apt-get install -y ca-certificates && \
     echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ bookworm main" > /etc/apt/sources.list.d/et.list && \
-    curl -sSL https://github.com/MisterTea/debian-et/raw/master/et.gpg > /etc/apt/trusted.gpg.d/et.gpg && \
     apt-get update -qq && \
     apt-get install -y et
 
