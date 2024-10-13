@@ -25,6 +25,8 @@ The easiest way to install is using Homebrew:
 brew install MisterTea/et/et
 ```
 
+If the install fails on including csignal, see https://github.com/MisterTea/EternalTerminal/issues/662#issuecomment-2408889829
+
 Then if you want a daemon to launch `etserver` on every boot:
 
 On m1 (Apple Silicon) Macs:
