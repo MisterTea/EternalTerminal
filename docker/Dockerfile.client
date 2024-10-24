@@ -1,30 +1,19 @@
-FROM centos:8 as base
+FROM debian:bookworm-slim
 
-ENV BUILD_REPOS="epel-release centos-release-scl" \
-    BUILD_DEPS="cmake3 boost-devel libsodium-devel protobuf-devel \
-    protobuf-compiler gflags-devel protobuf-lite-devel git \
-    perl-IPC-Cmd perl-Data-Dumper libunwind-devel libutempter-devel \
-    devtoolset-11 devtoolset-11-libatomic-devel rh-git227"
+# Use ADD to avoid having to install curl
+ADD --chmod=644 https://github.com/MisterTea/debian-et/raw/master/et.gpg /etc/apt/trusted.gpg.d/et.gpg
 
+# Use a run cache to speed up rebuilding and avoid having to remove the cache when we're done
+RUN --mount=type=cache,mode=0755,target=/var/lib/apt/lists,sharing=locked \
+    --mount=type=cache,mode=0755,target=/var/cache/apt,sharing=locked \
+    rm -f /etc/apt/apt.conf.d/docker-clean && \
+    echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache && \
+    apt-get update -qq && \
+    apt-get install -y ca-certificates && \
+    echo "deb https://github.com/MisterTea/debian-et/raw/master/debian-source/ bookworm main" > /etc/apt/sources.list.d/et.list && \
+    apt-get update -qq && \
+    apt-get install -y et openssh-server
 
-WORKDIR /
-
-RUN yum install -y $BUILD_REPOS && \
-    yum install -y $BUILD_DEPS && \
-    git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git && \
-    cd EternalTerminal && \
-    mkdir build && \
-    cd build && \
-    bash -c "scl enable devtoolset-11 rh-git227 'cmake3 ../'" && \
-    bash -c "scl enable devtoolset-11 'make -j $(grep ^processor /proc/cpuinfo |wc -l) && make install'"
-
-FROM centos:8
-
-RUN yum install -y epel-release && \
-    yum install -y protobuf-lite libsodium libatomic libunwind
-
-COPY --from=base /usr/bin/etserver /usr/bin/etterminal /usr/bin/htm /usr/bin/htmd  /usr/bin/
-COPY --from=base /EternalTerminal/etc/et.cfg /etc/et.cfg
 COPY --chmod=755 container-entrypoint /bin/container-entrypoint
 
 ENTRYPOINT ["/bin/container-entrypoint", "client"]

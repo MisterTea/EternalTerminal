@@ -3,6 +3,11 @@
 set -x
 
 if [ "$1" == server ]; then
+    if [ ! -d /run/sshd ]; then
+        mkdir /run/sshd
+        chmod 0755 /run/sshd
+    fi
+
     /usr/sbin/sshd
     shift
     exec etserver --logtostdout -v 1 "$@"
