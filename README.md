@@ -209,7 +209,7 @@ cd EternalTerminal
 mkdir build
 cd build
 cmake ../
-make && sudo make install
+make -j$(nproc) && sudo make install
 ```
 
 To run an `et` server for testing, run `./etserver`.  To run an `et`
