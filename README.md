@@ -127,7 +127,7 @@ Install dependencies:
 Download and install from source:
 
 ```
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules --depth 1 https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
@@ -204,12 +204,12 @@ To build Eternal Terminal on Mac, the easiest way is to grab dependencies with H
 
 ```
 brew install autoconf automake libtool
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules --depth 1 https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
 cmake ../
-make && sudo make install
+make -j$(nproc) && sudo make install
 ```
 
 To run an `et` server for testing, run `./etserver`.  To run an `et`
@@ -227,27 +227,27 @@ Grab the deps and then follow this process.
 Debian/Ubuntu Dependencies:
 
 ```
-sudo apt install libboost-dev libsodium-dev autoconf libtool \
-	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl4-openssl-dev \
+sudo apt install libsodium-dev autoconf libtool \
+	libprotobuf-dev protobuf-compiler libutempter-dev libcurl4-openssl-dev \
     build-essential ninja-build cmake git zip
 ```
 
 Fetch source, build and install:
 
 ```
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules --depth 1 https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
 # For ARM (including OS/X with apple silicon):
 if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
 cmake ../
-make package
+make -j$(nproc) package
 sudo dpkg --install *.deb
 sudo cp ../etc/et.cfg /etc/
 ```
 
-Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
+Once built, the binary only requires `libprotobuf-dev`.
 
 
 ### CentOS 7
@@ -268,7 +268,7 @@ sudo yum install devtoolset-11 devtoolset-11-libatomic-devel rh-git227
 
 Download and install from source ([see #238 for details](https://github.com/MisterTea/EternalTerminal/issues/238)):
 ```
-git clone --recurse-submodules https://github.com/MisterTea/EternalTerminal.git
+git clone --recurse-submodules --depth 1 https://github.com/MisterTea/EternalTerminal.git
 cd EternalTerminal
 mkdir build
 cd build
