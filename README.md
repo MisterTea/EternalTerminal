@@ -227,8 +227,8 @@ Grab the deps and then follow this process.
 Debian/Ubuntu Dependencies:
 
 ```
-sudo apt install libboost-dev libsodium-dev autoconf libtool \
-	libprotobuf-dev protobuf-compiler libgflags-dev libutempter-dev libcurl4-openssl-dev \
+sudo apt install libsodium-dev autoconf libtool \
+	libprotobuf-dev protobuf-compiler libutempter-dev libcurl4-openssl-dev \
     build-essential ninja-build cmake git zip
 ```
 
@@ -247,7 +247,7 @@ sudo dpkg --install *.deb
 sudo cp ../etc/et.cfg /etc/
 ```
 
-Once built, the binary only requires `libgflags-dev` and `libprotobuf-dev`.
+Once built, the binary only requires `libprotobuf-dev`.
 
 
 ### CentOS 7
