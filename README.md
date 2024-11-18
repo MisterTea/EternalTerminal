@@ -244,10 +244,11 @@ if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINAR
 cmake -DCPACK_GENERATOR=DEB ../
 make -j$(nproc) package
 sudo dpkg --install *.deb
-sudo cp ../etc/et.cfg /etc/
 ```
 
 Once built, the binary only requires `libprotobuf-dev`.
+
+Disable et server by `sudo systemctl disable --now et`
 
 
 ### CentOS 7
