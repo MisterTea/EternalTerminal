@@ -234,7 +234,7 @@ Debian/Ubuntu Dependencies:
 ```
 sudo apt install libsodium-dev autoconf libtool \
 	libprotobuf-dev protobuf-compiler libutempter-dev libcurl4-openssl-dev \
-    build-essential ninja-build cmake git zip
+    build-essential ninja-build cmake git zip pkg-config
 ```
 
 Fetch source, build and install:
@@ -246,13 +246,14 @@ mkdir build
 cd build
 # For ARM (including OS/X with apple silicon):
 if [[ $(uname -a | grep 'arm\|aarch64') ]]; then export VCPKG_FORCE_SYSTEM_BINARIES=1; fi
-cmake ../
+cmake -DCPACK_GENERATOR=DEB ../
 make -j$(nproc) package
 sudo dpkg --install *.deb
-sudo cp ../etc/et.cfg /etc/
 ```
 
 Once built, the binary only requires `libprotobuf-dev`.
+
+Disable et server by `sudo systemctl disable --now et`
 
 ### CentOS 7
 
