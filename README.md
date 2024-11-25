@@ -258,6 +258,8 @@ Disable et server by `sudo systemctl disable --now et`
 
 ### CentOS 7
 
+Install dependencies:
+
 ```bash
 sudo yum install epel-release
 sudo yum install cmake3 boost-devel libsodium-devel protobuf-devel \
