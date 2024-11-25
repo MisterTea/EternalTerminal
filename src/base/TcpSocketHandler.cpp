@@ -84,7 +84,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
     select(sockFd + 1, NULL, &fdset, NULL, &tv);
 
     if (FD_ISSET(sockFd, &fdset)) {
-      VLOG(4) << "sockFd " << sockFd << "is selected" << sockFd;
+      VLOG(4) << "sockFd " << sockFd << " is selected";
       int so_error;
       socklen_t len = sizeof so_error;
 

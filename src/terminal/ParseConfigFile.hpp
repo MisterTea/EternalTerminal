@@ -1183,7 +1183,7 @@ static void local_parse_file(const char *targethost, struct Options *options,
 
   ifstream infile(filename);
   if (!infile.good()) {
-    LOG(INFO) << filename << "not found";
+    LOG(INFO) << filename << " not found";
     return;
   }
 
