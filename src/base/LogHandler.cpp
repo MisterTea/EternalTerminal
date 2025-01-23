@@ -33,7 +33,7 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
   char buffer[80];
   time(&rawtime);
   timeinfo = localtime(&rawtime);
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S.%f", timeinfo);
   string current_time(buffer);
   string logFilename = filenamePrefix + "-" + current_time;
   string stderrFilename = filenamePrefix + "-stderr-" + current_time;
