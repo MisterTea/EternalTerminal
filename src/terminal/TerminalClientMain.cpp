@@ -29,6 +29,23 @@ void handleParseException(std::exception& e, cxxopts::Options& options) {
   exit(1);
 }
 
+template <class T, class DefaultT>
+T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
+                                 const cxxopts::Options& options,
+                                 const string& name, DefaultT defaultValue) {
+  auto count = result.count(name);
+  if (count == 0) {
+    return defaultValue;
+  }
+  if (count == 1) {
+    return result[name].as<T>();
+  }
+  CLOG(INFO, "stdout") << "Value for " << name
+                       << " must be specified only once\n";
+  CLOG(INFO, "stdout") << options.help({}) << endl;
+  exit(0);
+}
+
 int main(int argc, char** argv) {
   WinsockContext context;
   string tmpDir = GetTempDirectory();
@@ -222,10 +239,9 @@ int main(int argc, char** argv) {
     string host_alias = destinationHost;
 
     string jumphost =
-        result.count("jumphost") ? result["jumphost"].as<string>() : "";
-    int keepaliveDuration = result.count("keepalive")
-                                ? result["keepalive"].as<int>()
-                                : MAX_CLIENT_KEEP_ALIVE_DURATION;
+        extractSingleOptionWithDefault<string>(result, options, "jumphost", "");
+    int keepaliveDuration = extractSingleOptionWithDefault<int>(
+        result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
     if (keepaliveDuration < 1 ||
         keepaliveDuration > MAX_CLIENT_KEEP_ALIVE_DURATION) {
       CLOG(INFO, "stdout") << "Keep-alive duration must between 1 and "
@@ -361,10 +377,9 @@ int main(int argc, char** argv) {
     TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
                                           __FILE__, __LINE__);
     string tunnel_arg =
-        result.count("tunnel") ? result["tunnel"].as<string>() : "";
-    string r_tunnel_arg = result.count("reversetunnel")
-                              ? result["reversetunnel"].as<string>()
-                              : "";
+        extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
+    string r_tunnel_arg = extractSingleOptionWithDefault<string>(
+        result, options, "reversetunnel", "");
     TerminalClient terminalClient(clientSocket, clientPipeSocket,
                                   socketEndpoint, id, passkey, console,
                                   is_jumphost, tunnel_arg, r_tunnel_arg,
