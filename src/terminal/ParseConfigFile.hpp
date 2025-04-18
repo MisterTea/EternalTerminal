@@ -6,6 +6,8 @@
 // #include <string.h>
 // #include <unistd.h>
 
+#include <glob.h>
+
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -1248,7 +1250,18 @@ static int ssh_config_parse_line(const char *targethost,
       if (p) {
         char *filename = ssh_path_expand_tilde(p);
         if (filename) {
-          local_parse_file(targethost, options, filename, parsing, seen);
+          glob_t g;
+          if (strchr(filename, '*') || strchr(filename, '?')) {
+            if (glob(filename, 0, NULL, &g) == 0) {
+              for (size_t i = 0; i < g.gl_pathc; ++i) {
+                local_parse_file(targethost, options, g.gl_pathv[i], parsing,
+                                 seen);
+              }
+              globfree(&g);
+            }
+          } else {
+            local_parse_file(targethost, options, filename, parsing, seen);
+          }
         }
         SAFE_FREE(filename);
       }
