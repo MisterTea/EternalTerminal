@@ -1245,7 +1245,7 @@ static int ssh_config_parse_line(const char *targethost,
     case SOC_INCLUDE: /* recursive include of other files */
 
       p = ssh_config_get_str_tok(&s, NULL);
-      if (p && *parsing) {
+      if (p) {
         char *filename = ssh_path_expand_tilde(p);
         if (filename) {
           local_parse_file(targethost, options, filename, parsing, seen);
