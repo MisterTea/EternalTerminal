@@ -7,7 +7,7 @@ Website: <https://mistertea.github.io/EternalTerminal/>.
 ## Packaging status
 
 [![Packaging
-status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg)](https://repology.org/project/eternalterminal/versions)
+status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg?exclude_unsupported=1)](https://repology.org/project/eternalterminal/versions)
 
 ## Installing
 
