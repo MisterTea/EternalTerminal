@@ -13,6 +13,7 @@ else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
     "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
+  set(VCPKG_INSTALL_OPTIONS "--allow-unsupported")
 
   # Set the triplet
   if(WIN32)
