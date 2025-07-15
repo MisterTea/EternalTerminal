@@ -2,7 +2,7 @@ version: 2
 jobs:
   connect_to_initial_version:
     machine:
-      image: ubuntu-2004:202101-01
+      image: ubuntu-2204:current
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -60,7 +60,7 @@ jobs:
 
   connect_with_jumphost:
     machine:
-      image: ubuntu-2004:202101-01
+      image: ubuntu-2204:current
     steps:
       - run:
           name: Avoid hosts unknown for github
