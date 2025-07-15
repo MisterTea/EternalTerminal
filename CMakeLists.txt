@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.16.3)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
+if(APPLE)
+  if(NOT CMAKE_OSX_SYSROOT)
+      set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+  endif()
+endif()
+
 if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
