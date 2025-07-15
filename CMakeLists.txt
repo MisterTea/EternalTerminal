@@ -7,7 +7,7 @@ else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
     "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
-    
+
   # Set the triplet
   if(WIN32)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "VCPKG Triplet")
@@ -225,29 +225,7 @@ if(WIN32)
   add_definitions(-D_UNICODE)
 endif()
 
-option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" ON)
-
-if(FULL_PROTOBUF)
-  if(WIN32)
-    set(PROTOBUF_LIBS protobuf::libprotobuf)
-  else()
-    set(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
-  endif()
-else()
-  if(WIN32)
-    set(PROTOBUF_LIBS protobuf::libprotobuf-lite)
-  else()
-    set(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
-  endif()
-endif()
-
-# Needed for arch: https://github.com/protocolbuffers/protobuf/issues/15604
-if (Protobuf_VERSION VERSION_GREATER_EQUAL 4)
-    find_package(absl REQUIRED)
-
-    set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
-endif()
-
+set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(SELINUX_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
