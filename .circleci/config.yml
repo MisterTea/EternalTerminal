@@ -31,25 +31,25 @@ jobs:
           no_output_timeout: 60m
       - run:
           name: Connect new -> old
-          command: sudo ../root_version/build/etserver --daemon; sudo cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 3; build/et -c "ls" localhost --logtostdout --verbose=9
+          command: export ET_NO_TELEMETRY=YES; sudo ../root_version/build/etserver --daemon; sudo cp ../root_version/build/etterminal /usr/bin/etterminal; sleep 3; build/et -c "ls" localhost --logtostdout --verbose=9
       - run:
           name: Connect new -> old (ipv6)
-          command: build/et -c "ls" 0:0:0:0:0:0:0:1 --logtostdout --verbose=9
+          command: ET_NO_TELEMETRY=YES build/et -c "ls" 0:0:0:0:0:0:0:1 --logtostdout --verbose=9
       - run:
           name: Connect new -> old (ipv6 with port in host)
-          command: build/et -c "ls" 0:0:0:0:0:0:0:1:2022 --logtostdout --verbose=9
+          command: ET_NO_TELEMETRY=YES build/et -c "ls" 0:0:0:0:0:0:0:1:2022 --logtostdout --verbose=9
       - run:
           name: Connect new -> old (ipv6 abbreviated)
-          command: build/et -c "ls" ::1 --logtostdout --verbose=9
+          command: ET_NO_TELEMETRY=YES build/et -c "ls" ::1 --logtostdout --verbose=9
       - run:
           name: Connect new -> old (ipv6 abbreviated with port arg)
-          command: build/et -c "ls" ::1 --port 2022 --logtostdout --verbose=9
+          command: ET_NO_TELEMETRY=YES build/et -c "ls" ::1 --port 2022 --logtostdout --verbose=9
       - run:
           name: Kill server
           command: sudo pkill etserver
       - run:
           name: Connect old -> new
-          command: export TERM=xterm-256color; sudo build/etserver --daemon; sudo cp build/etterminal /usr/bin/etterminal; sleep 3; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
+          command: export TERM=xterm-256color; export ET_NO_TELEMETRY=YES; sudo build/etserver --daemon; sudo cp build/etterminal /usr/bin/etterminal; sleep 3; ../root_version/build/et -c "ls" localhost --logtostdout --verbose=9
       - run:
           name: Kill server
           command: sudo pkill etserver
