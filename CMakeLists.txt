@@ -91,7 +91,7 @@ set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PA
 
 # Do not install httplib files
 set(HTTPLIB_INSTALL OFF)
-set(HTTPLIB_REQUIRE_ZLIB ON)
+set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF)
 
 # Required packages
 find_package(OpenSSL REQUIRED)
