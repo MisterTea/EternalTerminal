@@ -50,12 +50,12 @@ else()
     set(Protobuf_PROTOC_EXECUTABLE
       "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
     )
-    set(ZLIB_LIBRARY_RELEASE
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
-    )
-    set(ZLIB_LIBRARY_DEBUG
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
-    )
+    # set(ZLIB_LIBRARY_RELEASE
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
+    # )
+    # set(ZLIB_LIBRARY_DEBUG
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
+    # )
   else()
     # Make BoostConfig.cmake able to check its inputs
     cmake_policy(SET CMP0057 NEW)
