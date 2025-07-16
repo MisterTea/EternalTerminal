@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16.3)
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 if(MSVC)
-  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 if(APPLE)
@@ -78,27 +78,27 @@ else()
   endif()
 
   # Make BoostConfig.cmake able to check its inputs
-  #cmake_policy(SET CMP0057 NEW)
+  cmake_policy(SET CMP0057 NEW)
 
   # Honor the visibility properties for all target types, including
   # object libraries and static libraries.
-  #cmake_policy(SET CMP0063 NEW)
+  cmake_policy(SET CMP0063 NEW)
 
   # Don't ignore <PackageName>_ROOT variables
-  #cmake_policy(SET CMP0074 NEW)
+  cmake_policy(SET CMP0074 NEW)
 
   set(Protobuf_USE_STATIC_LIBS ON)
 endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-# Add cmake script directory.
-list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
-set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
-
 project(EternalTCP VERSION 6.2.9 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
+
+# Add cmake script directory.
+list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
+set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
 
 # Do not install httplib files
 set(HTTPLIB_INSTALL OFF)
@@ -139,6 +139,10 @@ find_package(UTempter)
 
 if(LINUX)
   find_package(SELinux)
+endif()
+
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 # Using FreeBSD?
