@@ -1,9 +1,5 @@
 cmake_minimum_required(VERSION 3.16.3)
 
-project(EternalTCP VERSION 6.2.9 LANGUAGES C CXX)
-
-include(CMakeFindDependencyMacro)
-
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 if(MSVC)
@@ -26,6 +22,7 @@ else()
   # Set the triplet
   if(WIN32)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "VCPKG Triplet")
+    set(protobuf_MSVC_STATIC_RUNTIME ON)
   elseif(APPLE)
     execute_process(
       COMMAND uname -m
@@ -62,9 +59,9 @@ else()
 
   # Some hacks to fix vcpkg
   if(WIN32)
-    set(Protobuf_PROTOC_EXECUTABLE
-      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
-    )
+    # set(Protobuf_PROTOC_EXECUTABLE
+    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+    # )
     # set(ZLIB_INCLUDE_DIR
     #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include" CACHE PATH
     # )
@@ -75,23 +72,22 @@ else()
     #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib" CACHE FILEPATH
     # )
   else()
-    set(Protobuf_PROTOC_EXECUTABLE
-      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
-    )
+    # set(Protobuf_PROTOC_EXECUTABLE
+    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+    # )
   endif()
 
   # Make BoostConfig.cmake able to check its inputs
-  cmake_policy(SET CMP0057 NEW)
+  #cmake_policy(SET CMP0057 NEW)
 
   # Honor the visibility properties for all target types, including
   # object libraries and static libraries.
-  cmake_policy(SET CMP0063 NEW)
+  #cmake_policy(SET CMP0063 NEW)
 
   # Don't ignore <PackageName>_ROOT variables
-  cmake_policy(SET CMP0074 NEW)
+  #cmake_policy(SET CMP0074 NEW)
 
   set(Protobuf_USE_STATIC_LIBS ON)
-  set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
@@ -99,6 +95,10 @@ message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
+
+project(EternalTCP VERSION 6.2.9 LANGUAGES C CXX)
+
+include(CMakeFindDependencyMacro)
 
 # Do not install httplib files
 set(HTTPLIB_INSTALL OFF)
