@@ -2,15 +2,27 @@ cmake_minimum_required(VERSION 3.16.3)
 
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
+
+if(APPLE)
+  if(NOT CMAKE_OSX_SYSROOT)
+      set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+  endif()
+endif()
+
 if(DISABLE_VCPKG)
 else()
   # Enable vcpkg
   set(CMAKE_TOOLCHAIN_FILE
     "${EXTERNAL_DIR}/vcpkg/scripts/buildsystems/vcpkg.cmake")
-    
+  set(VCPKG_INSTALL_OPTIONS "--allow-unsupported")
+
   # Set the triplet
   if(WIN32)
     set(VCPKG_TARGET_TRIPLET "x64-windows-static" CACHE STRING "VCPKG Triplet")
+    set(protobuf_MSVC_STATIC_RUNTIME ON)
   elseif(APPLE)
     execute_process(
       COMMAND uname -m
@@ -47,41 +59,40 @@ else()
 
   # Some hacks to fix vcpkg
   if(WIN32)
-    set(Protobuf_PROTOC_EXECUTABLE
-      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
-    )
-    set(ZLIB_LIBRARY_RELEASE
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib"
-    )
-    set(ZLIB_LIBRARY_DEBUG
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib"
-    )
+    # set(Protobuf_PROTOC_EXECUTABLE
+    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
+    # )
+    # set(ZLIB_INCLUDE_DIR
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include" CACHE PATH
+    # )
+    # set(ZLIB_LIBRARY_RELEASE
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib" CACHE FILEPATH
+    # )
+    # set(ZLIB_LIBRARY_DEBUG
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib" CACHE FILEPATH
+    # )
   else()
-    # Make BoostConfig.cmake able to check its inputs
-    cmake_policy(SET CMP0057 NEW)
-
-    # Honor the visibility properties for all target types, including
-    # object libraries and static libraries.
-    cmake_policy(SET CMP0063 NEW)
-
-    # Don't ignore <PackageName>_ROOT variables
-    cmake_policy(SET CMP0074 NEW)
-    set(Protobuf_PROTOC_EXECUTABLE
-      "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
-    )
+    # set(Protobuf_PROTOC_EXECUTABLE
+    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
+    # )
   endif()
 
+  # Make BoostConfig.cmake able to check its inputs
+  cmake_policy(SET CMP0057 NEW)
+
+  # Honor the visibility properties for all target types, including
+  # object libraries and static libraries.
+  cmake_policy(SET CMP0063 NEW)
+
+  # Don't ignore <PackageName>_ROOT variables
+  cmake_policy(SET CMP0074 NEW)
+
   set(Protobuf_USE_STATIC_LIBS ON)
-  set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-# Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.2.9 LANGUAGES NONE)
-
-enable_language(C)
-enable_language(CXX)
+project(EternalTCP VERSION 6.2.9 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
@@ -91,14 +102,15 @@ set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PA
 
 # Do not install httplib files
 set(HTTPLIB_INSTALL OFF)
+set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF)
 
 # Required packages
+find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(ZLIB REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
@@ -225,29 +237,7 @@ if(WIN32)
   add_definitions(-D_UNICODE)
 endif()
 
-option(FULL_PROTOBUF "Link to full protobuf library instead of protobuf-lite" ON)
-
-if(FULL_PROTOBUF)
-  if(WIN32)
-    set(PROTOBUF_LIBS protobuf::libprotobuf)
-  else()
-    set(PROTOBUF_LIBS ${PROTOBUF_LIBRARIES})
-  endif()
-else()
-  if(WIN32)
-    set(PROTOBUF_LIBS protobuf::libprotobuf-lite)
-  else()
-    set(PROTOBUF_LIBS ${PROTOBUF_LITE_LIBRARIES})
-  endif()
-endif()
-
-# Needed for arch: https://github.com/protocolbuffers/protobuf/issues/15604
-if (Protobuf_VERSION VERSION_GREATER_EQUAL 4)
-    find_package(absl REQUIRED)
-
-    set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
-endif()
-
+set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(SELINUX_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
