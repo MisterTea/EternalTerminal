@@ -3,7 +3,7 @@ cmake_minimum_required(VERSION 3.16.3)
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 if(MSVC)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  #set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 if(APPLE)
