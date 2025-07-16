@@ -1,6 +1,14 @@
 cmake_minimum_required(VERSION 3.16.3)
 
+project(EternalTCP VERSION 6.2.9 LANGUAGES C CXX)
+
+include(CMakeFindDependencyMacro)
+
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
+
+if(MSVC)
+  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+endif()
 
 if(APPLE)
   if(NOT CMAKE_OSX_SYSROOT)
@@ -57,43 +65,36 @@ else()
     set(Protobuf_PROTOC_EXECUTABLE
       "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
     )
-    set(ZLIB_INCLUDE_DIR
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include" CACHE PATH
-    )
-    set(ZLIB_LIBRARY_RELEASE
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib" CACHE FILEPATH
-    )
-    set(ZLIB_LIBRARY_DEBUG
-      "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib" CACHE FILEPATH
-    )
+    # set(ZLIB_INCLUDE_DIR
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include" CACHE PATH
+    # )
+    # set(ZLIB_LIBRARY_RELEASE
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib" CACHE FILEPATH
+    # )
+    # set(ZLIB_LIBRARY_DEBUG
+    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib" CACHE FILEPATH
+    # )
   else()
-    # Make BoostConfig.cmake able to check its inputs
-    cmake_policy(SET CMP0057 NEW)
-
-    # Honor the visibility properties for all target types, including
-    # object libraries and static libraries.
-    cmake_policy(SET CMP0063 NEW)
-
-    # Don't ignore <PackageName>_ROOT variables
-    cmake_policy(SET CMP0074 NEW)
     set(Protobuf_PROTOC_EXECUTABLE
       "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
     )
   endif()
+
+  # Make BoostConfig.cmake able to check its inputs
+  cmake_policy(SET CMP0057 NEW)
+
+  # Honor the visibility properties for all target types, including
+  # object libraries and static libraries.
+  cmake_policy(SET CMP0063 NEW)
+
+  # Don't ignore <PackageName>_ROOT variables
+  cmake_policy(SET CMP0074 NEW)
 
   set(Protobuf_USE_STATIC_LIBS ON)
   set(protobuf_MSVC_STATIC_RUNTIME ON)
 endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
-
-# Don't specify languages yet in case we need to bump the cmake version
-project(EternalTCP VERSION 6.2.9 LANGUAGES NONE)
-
-enable_language(C)
-enable_language(CXX)
-
-include(CMakeFindDependencyMacro)
 
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -104,12 +105,12 @@ set(HTTPLIB_INSTALL OFF)
 set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF)
 
 # Required packages
+find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
 find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(ZLIB REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
@@ -138,10 +139,6 @@ find_package(UTempter)
 
 if(LINUX)
   find_package(SELinux)
-endif()
-
-if(MSVC)
-  set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
 endif()
 
 # Using FreeBSD?
