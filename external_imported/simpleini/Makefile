@@ -1,9 +1,7 @@
-help:
-	@echo This makefile is just for the test program \(use \"make clean all test\"\)
-	@echo Just include the SimpleIni.h header file to use it.
+# This makefile is just to build the automatic test harness
+# To use SimpleIni, just include SimpleIni.h header file 
 
-install:
-	@echo No install required. Just include the SimpleIni.h header file to use it.
+PREFIX?=	/usr/local
 
 TOPTARGETS := all clean test
 
@@ -14,3 +12,7 @@ $(SUBDIRS):
 	$(MAKE) -C $@ $(MAKECMDGOALS)
 
 .PHONY: $(TOPTARGETS) $(SUBDIRS)
+
+install:
+	mkdir -p $(DESTDIR)$(PREFIX)/include/
+	install -C -m 644 SimpleIni.h $(DESTDIR)$(PREFIX)/include/

@@ -968,6 +968,8 @@ int CrashReportDatabaseWin::CleanDatabase(time_t lockfile_ttl) {
   time_t now = time(nullptr);
 
   std::unique_ptr<Metadata> metadata(AcquireMetadata());
+  if (!metadata)
+    return kDatabaseError;
 
   // Remove old reports without metadata.
   while ((result = reader.NextFile(&filename)) ==

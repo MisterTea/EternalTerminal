@@ -89,6 +89,7 @@ TEST_CASE("Basic options", "[options]")
   auto result = options.parse(argc, actual_argv);
 
   CHECK(result.count("long") == 1);
+  CHECK(result.contains("long"));
   CHECK(result.count("s") == 1);
   CHECK(result.count("value") == 1);
   CHECK(result.count("a") == 1);
@@ -112,7 +113,9 @@ TEST_CASE("Basic options", "[options]")
   CHECK(arguments[2].key() == "value");
   CHECK(arguments[3].key() == "av");
 
-  CHECK_THROWS_AS(result["nothing"].as<std::string>(), cxxopts::exceptions::option_has_no_value&);
+  CHECK(result.count("nothing") == 0);
+  CHECK_FALSE(result.contains("nothing"));
+  CHECK_THROWS_AS(result["nothing"].as<std::string>(), cxxopts::exceptions::option_has_no_value);
 
   CHECK(options.program() == "tester");
 }
@@ -147,7 +150,7 @@ TEST_CASE("Short options", "[options]")
   CHECK(result["c"].as<std::string>() == "foo=something");
 
   REQUIRE_THROWS_AS(options.add_options()("", "nothing option"),
-    cxxopts::exceptions::invalid_option_format&);
+    cxxopts::exceptions::invalid_option_format);
 }
 
 TEST_CASE("No positional", "[positional]")
@@ -238,9 +241,6 @@ TEST_CASE("No positional with extras", "[positional]")
   auto** argv = av.argv();
   auto argc = av.argc();
 
-  auto old_argv = argv;
-  auto old_argc = argc;
-
   auto result = options.parse(argc, argv);
 
   auto& unmatched = result.unmatched();
@@ -260,7 +260,7 @@ TEST_CASE("Positional not valid", "[positional]") {
   auto** argv = av.argv();
   auto argc = av.argc();
 
-  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option&);
+  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option);
 }
 
 TEST_CASE("Positional with empty arguments", "[positional]") {
@@ -286,6 +286,37 @@ TEST_CASE("Positional with empty arguments", "[positional]") {
   REQUIRE(result["program"].as<std::string>() == "someProgram");
   REQUIRE(result.count("programArgs") == expected.size());
   REQUIRE(actual == expected);
+}
+
+TEST_CASE("Positional with list delimiter", "[positional]") {
+  std::string single;
+  std::vector<std::string> positional;
+
+  cxxopts::Options options("test_all_positional_list_delimiter", " - test all positional with list delimiters");
+  options.add_options()
+    ("single", "Single positional param",
+      cxxopts::value<std::string>(single))
+    ("positional", "Positional parameters vector",
+      cxxopts::value<std::vector<std::string>>(positional))
+  ;
+
+  Argv av({"tester", "a,b", "c,d", "e"});
+
+  auto argc = av.argc();
+  auto argv = av.argv();
+
+  std::vector<std::string> pos_names = {"single", "positional"};
+
+  options.parse_positional(pos_names.begin(), pos_names.end());
+
+  auto result = options.parse(argc, argv);
+
+  CHECK(result.unmatched().size() == 0);
+  REQUIRE(positional.size() == 2);
+
+  CHECK(single == "a,b");
+  CHECK(positional[0] == "c,d");
+  CHECK(positional[1] == "e");
 }
 
 TEST_CASE("Empty with implicit value", "[implicit]")
@@ -319,7 +350,7 @@ TEST_CASE("Boolean without implicit value", "[implicit]")
     auto** argv = av.argv();
     auto argc = av.argc();
 
-    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::missing_argument&);
+    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::missing_argument);
   }
 
   SECTION("With equal-separated true") {
@@ -489,7 +520,7 @@ TEST_CASE("Unsigned integers", "[options]")
   auto argc = av.argc();
 
   options.parse_positional("positional");
-  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type&);
+  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type);
 }
 
 TEST_CASE("Integer bounds", "[integer]")
@@ -524,14 +555,32 @@ TEST_CASE("Overflow on boundary", "[integer]")
   using namespace cxxopts::values;
 
   int8_t si;
+  int16_t si16;
+  int64_t si64;
   uint8_t ui;
+  uint16_t ui16;
+  uint64_t ui64;
 
-  CHECK_THROWS_AS((integer_parser("128", si)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("-129", si)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("256", ui)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("-0x81", si)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("0x80", si)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("0x100", ui)), cxxopts::exceptions::incorrect_argument_type&);
+  CHECK_THROWS_AS((integer_parser("128", si)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-129", si)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("256", ui)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-0x81", si)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("0x80", si)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("0x100", ui)), cxxopts::exceptions::incorrect_argument_type);
+
+  CHECK_THROWS_AS((integer_parser("65536", ui16)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("75536", ui16)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("32768", si16)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-32769", si16)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-42769", si16)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-75536", si16)), cxxopts::exceptions::incorrect_argument_type);
+
+  CHECK_THROWS_AS((integer_parser("18446744073709551616", ui64)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("28446744073709551616", ui64)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("9223372036854775808", si64)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-9223372036854775809", si64)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-10223372036854775809", si64)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("-28446744073709551616", si64)), cxxopts::exceptions::incorrect_argument_type);
 }
 
 TEST_CASE("Integer overflow", "[options]")
@@ -548,11 +597,11 @@ TEST_CASE("Integer overflow", "[options]")
   auto argc = av.argc();
 
   options.parse_positional("positional");
-  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type&);
+  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type);
 
   int integer = 0;
-  CHECK_THROWS_AS((integer_parser("23423423423", integer)), cxxopts::exceptions::incorrect_argument_type&);
-  CHECK_THROWS_AS((integer_parser("234234234234", integer)), cxxopts::exceptions::incorrect_argument_type&);
+  CHECK_THROWS_AS((integer_parser("23423423423", integer)), cxxopts::exceptions::incorrect_argument_type);
+  CHECK_THROWS_AS((integer_parser("234234234234", integer)), cxxopts::exceptions::incorrect_argument_type);
 }
 
 TEST_CASE("Floats", "[options]")
@@ -593,7 +642,7 @@ TEST_CASE("Invalid integers", "[integer]") {
     auto argc = av.argc();
 
     options.parse_positional("positional");
-    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type&);
+    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::incorrect_argument_type);
 }
 
 TEST_CASE("Booleans", "[boolean]") {
@@ -663,11 +712,13 @@ TEST_CASE("std::vector", "[vector]") {
 #ifdef CXXOPTS_HAS_OPTIONAL
 TEST_CASE("std::optional", "[optional]") {
   std::optional<std::string> optional;
+  std::optional<bool> opt_bool;
   cxxopts::Options options("optional", " - tests optional");
   options.add_options()
-    ("optional", "an optional option", cxxopts::value<std::optional<std::string>>(optional));
+    ("optional", "an optional option", cxxopts::value<std::optional<std::string>>(optional))
+    ("optional_bool", "an boolean optional", cxxopts::value<std::optional<bool>>(opt_bool)->default_value("false"));
 
-  Argv av({"optional", "--optional", "foo"});
+  Argv av({"optional", "--optional", "foo", "--optional_bool", "true"});
 
   auto** argv = av.argv();
   auto argc = av.argc();
@@ -676,6 +727,29 @@ TEST_CASE("std::optional", "[optional]") {
 
   REQUIRE(optional.has_value());
   CHECK(*optional == "foo");
+  CHECK(opt_bool.has_value());
+  CHECK(*opt_bool);
+}
+#endif
+
+#ifdef CXXOPTS_HAS_FILESYSTEM
+TEST_CASE("std::filesystem::path", "[path]") {
+  std::filesystem::path path;
+  cxxopts::Options options("path", " - tests path");
+  options.add_options()
+    ("path", "a path", cxxopts::value<std::filesystem::path>(path));
+
+  Argv av({"path", "--path", "Hello World.txt"});
+
+  auto** argv = av.argv();
+  auto argc = av.argc();
+
+  REQUIRE(path.empty());
+
+  options.parse(argc, argv);
+
+  REQUIRE(!path.empty());
+  CHECK(path == "Hello World.txt");
 }
 #endif
 
@@ -699,7 +773,7 @@ TEST_CASE("Unrecognised options", "[options]") {
   auto argc = av.argc();
 
   SECTION("Default behaviour") {
-    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option&);
+    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option);
   }
 
   SECTION("After allowing unrecognised options") {
@@ -726,7 +800,7 @@ TEST_CASE("Allow bad short syntax", "[options]") {
   auto argc = av.argc();
 
   SECTION("Default behaviour") {
-    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::invalid_option_syntax&);
+    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::invalid_option_syntax);
   }
 
   SECTION("After allowing unrecognised options") {
@@ -749,7 +823,7 @@ TEST_CASE("Invalid option syntax", "[options]") {
   auto argc = av.argc();
 
   SECTION("Default behaviour") {
-    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::invalid_option_syntax&);
+    CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::invalid_option_syntax);
   }
 }
 
@@ -768,8 +842,115 @@ TEST_CASE("Options empty", "[options]") {
   auto** argv = argv_.argv();
 
   CHECK(options.groups().empty());
-  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option&);
+  CHECK_THROWS_AS(options.parse(argc, argv), cxxopts::exceptions::no_such_option);
 }
+
+#ifdef CXXOPTS_HAS_OPTIONAL
+TEST_CASE("Optional value", "[optional]")
+{
+  cxxopts::Options options("options", "query as std::optional");
+  options.add_options()
+    ("int", "Integer", cxxopts::value<int>())
+    ("float", "Float", cxxopts::value<float>())
+    ("string", "String", cxxopts::value<std::string>())
+    ;
+
+  SECTION("Available") {
+    Argv av({
+      "available",
+      "--int",
+      "42",
+      "--float",
+      "3.141",
+      "--string",
+      "Hello"
+    });
+
+    auto** argv = av.argv();
+    auto argc = av.argc();
+
+    auto result = options.parse(argc, argv);
+
+    CHECK(result.as_optional<int>("int"));
+    CHECK(result.as_optional<float>("float"));
+    CHECK(result.as_optional<std::string>("string"));
+
+    CHECK(result.as_optional<int>("int") == 42);
+    CHECK(result.as_optional<float>("float") == 3.141f);
+    CHECK(result.as_optional<std::string>("string") == "Hello");
+  }
+
+  SECTION("Unavailable") {
+    Argv av({
+      "unavailable"
+    });
+
+    auto** argv = av.argv();
+    auto argc = av.argc();
+
+    auto result = options.parse(argc, argv);
+
+    CHECK(!result.as_optional<int>("int"));
+    CHECK(!result.as_optional<float>("float"));
+    CHECK(!result.as_optional<std::string>("string"));
+  }
+
+}
+#endif
+
+#ifdef CXXOPTS_HAS_OPTIONAL
+TEST_CASE("std::filesystem::path value", "[path]")
+{
+  cxxopts::Options options("options", "query as std::fileystem::path");
+  options.add_options()
+    ("a", "Path", cxxopts::value<std::filesystem::path>())
+    ("b", "Path", cxxopts::value<std::filesystem::path>())
+    ("c", "Path", cxxopts::value<std::filesystem::path>())
+    ("d", "Path", cxxopts::value<std::filesystem::path>())
+    ("e", "Path", cxxopts::value<std::filesystem::path>())
+    ;
+
+  SECTION("Available") {
+    Argv av({
+      "available",
+      "-a", "hello.txt",
+      "-b", "C:\\Users\\JoeCitizen\\hello world.txt",
+      "-c", "/home/joecitzen/hello world.txt",
+      "-d", "../world.txt"
+    });
+
+    auto** argv = av.argv();
+    auto argc = av.argc();
+
+    auto result = options.parse(argc, argv);
+
+    CHECK(result.as_optional<std::filesystem::path>("a"));
+    CHECK(result.as_optional<std::filesystem::path>("b"));
+    CHECK(result.as_optional<std::filesystem::path>("c"));
+    CHECK(result.as_optional<std::filesystem::path>("d"));
+    CHECK(!result.as_optional<std::filesystem::path>("e"));
+
+    CHECK(result.as_optional<std::filesystem::path>("a") == "hello.txt");
+    CHECK(result.as_optional<std::filesystem::path>("b") == "C:\\Users\\JoeCitizen\\hello world.txt");
+    CHECK(result.as_optional<std::filesystem::path>("c") == "/home/joecitzen/hello world.txt");
+    CHECK(result.as_optional<std::filesystem::path>("d") == "../world.txt");
+  }
+
+  SECTION("Unavailable") {
+    Argv av({
+      "unavailable"
+    });
+
+    auto** argv = av.argv();
+    auto argc = av.argc();
+
+    auto result = options.parse(argc, argv);
+
+    CHECK(!result.as_optional<std::filesystem::path>("a"));
+  }
+
+}
+#endif
 
 TEST_CASE("Initializer list with group", "[options]") {
   cxxopts::Options options("Initializer list group", " - test initializer list with group");

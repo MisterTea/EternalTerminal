@@ -52,12 +52,12 @@ ClientInfo::ClientInfo(CrashGenerationServer* crash_server,
       assert_info_(assert_info),
       custom_client_info_(custom_client_info),
       thread_id_(thread_id),
-      process_handle_(NULL),
-      dump_requested_handle_(NULL),
-      dump_generated_handle_(NULL),
-      dump_request_wait_handle_(NULL),
-      process_exit_wait_handle_(NULL),
-      crash_id_(NULL) {
+      process_handle_(nullptr),
+      dump_requested_handle_(nullptr),
+      dump_generated_handle_(nullptr),
+      dump_request_wait_handle_(nullptr),
+      process_exit_wait_handle_(nullptr),
+      crash_id_(0) {
   GetSystemTimeAsFileTime(&start_time_);
 }
 
@@ -75,26 +75,26 @@ bool ClientInfo::Initialize() {
   }
   crash_id_ = start_time_.dwLowDateTime;
 
-  dump_requested_handle_ = CreateEvent(NULL,    // Security attributes.
-                                       TRUE,    // Manual reset.
-                                       FALSE,   // Initial state.
-                                       NULL);   // Name.
+  dump_requested_handle_ = CreateEvent(nullptr,    // Security attributes.
+                                       TRUE,       // Manual reset.
+                                       FALSE,      // Initial state.
+                                       nullptr);   // Name.
   if (!dump_requested_handle_) {
     return false;
   }
 
-  dump_generated_handle_ = CreateEvent(NULL,    // Security attributes.
-                                       TRUE,    // Manual reset.
-                                       FALSE,   // Initial state.
-                                       NULL);   // Name.
-  return dump_generated_handle_ != NULL;
+  dump_generated_handle_ = CreateEvent(nullptr,    // Security attributes.
+                                       TRUE,       // Manual reset.
+                                       FALSE,      // Initial state.
+                                       nullptr);   // Name.
+  return dump_generated_handle_ != nullptr;
 }
 
 void ClientInfo::UnregisterDumpRequestWaitAndBlockUntilNoPending() {
   if (dump_request_wait_handle_) {
     // Wait for callbacks that might already be running to finish.
     UnregisterWaitEx(dump_request_wait_handle_, INVALID_HANDLE_VALUE);
-    dump_request_wait_handle_ = NULL;
+    dump_request_wait_handle_ = nullptr;
   }
 }
 
@@ -106,7 +106,7 @@ void ClientInfo::UnregisterProcessExitWait(bool block_until_no_pending) {
     } else {
       UnregisterWait(process_exit_wait_handle_);
     }
-    process_exit_wait_handle_ = NULL;
+    process_exit_wait_handle_ = nullptr;
   }
 }
 

@@ -15,27 +15,47 @@ jobs:
           - name: Android (API 16, NDK 20)
             ANDROID_API: 16
             ANDROID_NDK: 20.1.5948944
-          - name: Android (API 30, NDK 22)
-            ANDROID_API: 30
-            ANDROID_NDK: 22.1.7171670
+          - name: Android (API 35, NDK 27)
+            ANDROID_API: 35
+            ANDROID_NDK: 27.0.12077973
 
-    runs-on: macos-latest
+    runs-on: ubuntu-latest
 
     env:
       ANDROID_API: ${{ matrix.ANDROID_API }}
       ANDROID_NDK: ${{ matrix.ANDROID_NDK }}
 
     steps:
-      - uses: actions/checkout@v2
+      - uses: actions/checkout@v4
         with:
           submodules: "recursive"
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@9fc6c4e9069bf8d3d10b2204b1fb8f6ef7065407
+        with:
+          packages: 'tools platform-tools'
 
       - name: Installing Android SDK Dependencies
         run: |
           echo "Downloading ndk;$ANDROID_NDK"
-          echo "y" | $ANDROID_HOME/tools/bin/sdkmanager --install \
+          echo "y" | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --install \
             "ndk;$ANDROID_NDK" | \
             grep -v "\[=" || true # suppress the progress bar, so we get meaningful logs
+
+      - name: Build x86
+        run: |
+          rm -rf build
+          cmake -B build -S cmake \
+            -D CMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -D ANDROID_NATIVE_API_LEVEL=$ANDROID_API \
+            -D ANDROID_ABI=x86
+          cmake --build build --parallel
 
       - name: Build x86_64
         run: |
@@ -43,6 +63,15 @@ jobs:
             -D CMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/$ANDROID_NDK/build/cmake/android.toolchain.cmake \
             -D ANDROID_NATIVE_API_LEVEL=$ANDROID_API \
             -D ANDROID_ABI=x86_64
+          cmake --build build --parallel
+
+      - name: Build armeabi-v7a
+        run: |
+          rm -rf build
+          cmake -B build -S cmake \
+            -D CMAKE_TOOLCHAIN_FILE=$ANDROID_HOME/ndk/$ANDROID_NDK/build/cmake/android.toolchain.cmake \
+            -D ANDROID_NATIVE_API_LEVEL=$ANDROID_API \
+            -D ANDROID_ABI=armeabi-v7a
           cmake --build build --parallel
 
       - name: Build arm64-v8a

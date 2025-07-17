@@ -5,11 +5,21 @@
 #include "sentry_ratelimiter.h"
 #include "sentry_string.h"
 
-#define ENVELOPE_MIME "application/x-sentry-envelope"
-// The headers we use are: `x-sentry-auth`, `content-type`, `content-length`
-#define MAX_HTTP_HEADERS 3
+#ifdef SENTRY_TRANSPORT_COMPRESSION
+#    include "zlib.h"
+#endif
 
-typedef struct sentry_transport_s {
+#define ENVELOPE_MIME "application/x-sentry-envelope"
+#ifdef SENTRY_TRANSPORT_COMPRESSION
+// The headers we use are: `x-sentry-auth`, `content-type`, `content-encoding`,
+// `content-length`
+#    define MAX_HTTP_HEADERS 4
+#else
+// The headers we use are: `x-sentry-auth`, `content-type`, `content-length`
+#    define MAX_HTTP_HEADERS 3
+#endif
+
+struct sentry_transport_s {
     void (*send_envelope_func)(sentry_envelope_t *envelope, void *state);
     int (*startup_func)(const sentry_options_t *options, void *state);
     int (*shutdown_func)(uint64_t timeout, void *state);
@@ -18,7 +28,7 @@ typedef struct sentry_transport_s {
     size_t (*dump_func)(sentry_run_t *run, void *state);
     void *state;
     bool running;
-} sentry_transport_t;
+};
 
 sentry_transport_t *
 sentry_transport_new(
@@ -74,11 +84,11 @@ sentry__transport_send_envelope(
         return;
     }
     if (!transport) {
-        SENTRY_TRACE("discarding envelope due to invalid transport");
+        SENTRY_WARN("discarding envelope due to invalid transport");
         sentry_envelope_free(envelope);
         return;
     }
-    SENTRY_TRACE("sending envelope");
+    SENTRY_DEBUG("sending envelope");
     transport->send_envelope_func(envelope, transport->state);
 }
 
@@ -87,7 +97,7 @@ sentry__transport_startup(
     sentry_transport_t *transport, const sentry_options_t *options)
 {
     if (transport->startup_func) {
-        SENTRY_TRACE("starting transport");
+        SENTRY_DEBUG("starting transport");
         int rv = transport->startup_func(options, transport->state);
         transport->running = rv == 0;
         return rv;
@@ -99,7 +109,7 @@ int
 sentry__transport_flush(sentry_transport_t *transport, uint64_t timeout)
 {
     if (transport->flush_func && transport->running) {
-        SENTRY_TRACE("flushing transport");
+        SENTRY_DEBUG("flushing transport");
         return transport->flush_func(timeout, transport->state);
     }
     return 0;
@@ -109,7 +119,7 @@ int
 sentry__transport_shutdown(sentry_transport_t *transport, uint64_t timeout)
 {
     if (transport->shutdown_func && transport->running) {
-        SENTRY_TRACE("shutting down transport");
+        SENTRY_DEBUG("shutting down transport");
         transport->running = false;
         return transport->shutdown_func(timeout, transport->state);
     }
@@ -131,7 +141,7 @@ sentry__transport_dump_queue(sentry_transport_t *transport, sentry_run_t *run)
     }
     size_t dumped = transport->dump_func(run, transport->state);
     if (dumped) {
-        SENTRY_TRACEF("dumped %zu in-flight envelopes to disk", dumped);
+        SENTRY_DEBUGF("dumped %zu in-flight envelopes to disk", dumped);
     }
     return dumped;
 }
@@ -147,6 +157,56 @@ sentry_transport_free(sentry_transport_t *transport)
     }
     sentry_free(transport);
 }
+
+#ifdef SENTRY_TRANSPORT_COMPRESSION
+static bool
+gzipped_with_compression(const char *body, const size_t body_len,
+    char **compressed_body, size_t *compressed_body_len)
+{
+    if (!body || body_len == 0) {
+        return false;
+    }
+
+    z_stream stream;
+    memset(&stream, 0, sizeof(stream));
+    stream.next_in = (unsigned char *)body;
+    stream.avail_in = (unsigned int)body_len;
+
+    int err = deflateInit2(&stream, Z_DEFAULT_COMPRESSION, Z_DEFLATED,
+        MAX_WBITS + 16, 9, Z_DEFAULT_STRATEGY);
+    if (err != Z_OK) {
+        SENTRY_WARNF("deflateInit2 failed: %d", err);
+        return false;
+    }
+
+    size_t len = compressBound((unsigned long)body_len);
+    char *buffer = sentry_malloc(len);
+    if (!buffer) {
+        deflateEnd(&stream);
+        return false;
+    }
+
+    while (err == Z_OK) {
+        stream.next_out = (unsigned char *)(buffer + stream.total_out);
+        stream.avail_out = (unsigned int)(len - stream.total_out);
+        err = deflate(&stream, Z_FINISH);
+    }
+
+    if (err != Z_STREAM_END) {
+        SENTRY_WARNF("deflate failed: %d", err);
+        sentry_free(buffer);
+        buffer = NULL;
+        deflateEnd(&stream);
+        return false;
+    }
+
+    *compressed_body_len = stream.total_out;
+    *compressed_body = buffer;
+
+    deflateEnd(&stream);
+    return true;
+}
+#endif
 
 sentry_prepared_http_request_t *
 sentry__prepare_http_request(sentry_envelope_t *envelope,
@@ -164,6 +224,23 @@ sentry__prepare_http_request(sentry_envelope_t *envelope,
     if (!body) {
         return NULL;
     }
+
+#ifdef SENTRY_TRANSPORT_COMPRESSION
+    bool compressed = false;
+    char *compressed_body = NULL;
+    size_t compressed_body_len = 0;
+    compressed = gzipped_with_compression(
+        body, body_len, &compressed_body, &compressed_body_len);
+    if (compressed) {
+        if (body_owned) {
+            sentry_free(body);
+            body_owned = false;
+        }
+        body = compressed_body;
+        body_len = compressed_body_len;
+        body_owned = true;
+    }
+#endif
 
     sentry_prepared_http_request_t *req
         = SENTRY_MAKE(sentry_prepared_http_request_t);
@@ -195,6 +272,14 @@ sentry__prepare_http_request(sentry_envelope_t *envelope,
     h = &req->headers[req->headers_len++];
     h->key = "content-type";
     h->value = sentry__string_clone(ENVELOPE_MIME);
+
+#ifdef SENTRY_TRANSPORT_COMPRESSION
+    if (compressed) {
+        h = &req->headers[req->headers_len++];
+        h->key = "content-encoding";
+        h->value = sentry__string_clone("gzip");
+    }
+#endif
 
     h = &req->headers[req->headers_len++];
     h->key = "content-length";

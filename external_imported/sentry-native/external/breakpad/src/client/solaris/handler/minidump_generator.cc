@@ -32,18 +32,19 @@
 #include <config.h>  // Must come first
 #endif
 
+#include "client/solaris/handler/minidump_generator.h"
+
+#include <assert.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/frame.h>
 #include <sys/stat.h>
 #include <sys/types.h>
 #include <sys/utsname.h>
 #include <sys/wait.h>
+#include <time.h>
 #include <unistd.h>
 
-#include <cstdlib>
-#include <ctime>
-
-#include "client/solaris/handler/minidump_generator.h"
 #include "client/minidump_file_writer-inl.h"
 #include "common/solaris/file_id.h"
 
@@ -90,7 +91,7 @@ struct FindCrashLwpContext {
   int crashing_lwpid;
 
   FindCrashLwpContext() :
-    lwp_lister(NULL),
+    lwp_lister(nullptr),
     crashing_stack_bottom(0UL),
     crashing_lwpid(-1) {
   }
@@ -156,7 +157,7 @@ bool WriteLwpStack(const SolarisLwp* lwp_lister,
 
 #if TARGET_CPU_SPARC
 bool WriteContext(MDRawContextSPARC* context, ucontext_t* sig_ctx) {
-  assert(sig_ctx != NULL);
+  assert(sig_ctx != nullptr);
   int* regs = sig_ctx->uc_mcontext.gregs;
   context->context_flags = MD_CONTEXT_SPARC_FULL;
 
@@ -236,7 +237,7 @@ bool WriteCrashedLwpStream(MinidumpFileWriter* minidump_writer,
                            const WriterArgument* writer_args,
                            const lwpstatus_t* lsp,
                            MDRawThread* lwp) {
-  assert(writer_args->sig_ctx != NULL);
+  assert(writer_args->sig_ctx != nullptr);
 
   lwp->thread_id = lsp->pr_lwpid;
 
@@ -337,7 +338,7 @@ bool WriteCPUInformation(MDRawSystemInfo* sys_info) {
   build = strchr(uts.version, '_');
   ++build;
   sys_info->build_number = atoi(build);
-  
+
   return true;
 }
 
@@ -356,10 +357,10 @@ bool WriteOSInformation(MinidumpFileWriter* minidump_writer,
       uts.version,
       uts.machine,
       "OpenSolaris",
-      NULL
+      nullptr
     };
     for (const char** cur_os_info = os_info_table;
-         *cur_os_info != NULL;
+         *cur_os_info != nullptr;
          ++cur_os_info) {
       if (cur_os_info != os_info_table && space_left > 1) {
         strcat(os_version, " ");
@@ -402,7 +403,7 @@ bool LwpInformationCallback(lwpstatus_t* lsp, void* context) {
     memset(&lwp, 0, sizeof(MDRawThread));
 
     if (lsp->pr_lwpid != callback_context->writer_args->crashed_lwpid ||
-        callback_context->writer_args->sig_ctx == NULL) {
+        callback_context->writer_args->sig_ctx == nullptr) {
       success = WriteLwpStream(callback_context->minidump_writer,
                                callback_context->writer_args->lwp_lister,
                                lsp, &lwp);
@@ -519,7 +520,7 @@ bool ModuleInfoCallback(const ModuleInfo& module_info, void* context) {
     return false;
   buf[count] = '\0';
 
-  if ((realname = strrchr(buf, '/')) == NULL)
+  if ((realname = strrchr(buf, '/')) == nullptr)
     return false;
   realname++;
 
@@ -581,7 +582,7 @@ bool WriteExceptionStream(MinidumpFileWriter* minidump_writer,
                           const WriterArgument* writer_args,
                           MDRawDirectory* dir) {
   // This happenes when this is not a crash, but a requested dump.
-  if (writer_args->sig_ctx == NULL)
+  if (writer_args->sig_ctx == nullptr)
     return false;
 
   TypedMDRVA<MDRawExceptionStream> exception(minidump_writer);
@@ -595,9 +596,9 @@ bool WriteExceptionStream(MinidumpFileWriter* minidump_writer,
   exception.get()->exception_record.exception_flags = 0;
 
 #if TARGET_CPU_SPARC
-  if (writer_args->sig_ctx != NULL) {
-    exception.get()->exception_record.exception_address = 
-      writer_args->sig_ctx->uc_mcontext.gregs[REG_PC];
+  if (writer_args->sig_ctx != nullptr) {
+    exception.get()->exception_record.exception_address =
+        writer_args->sig_ctx->uc_mcontext.gregs[REG_PC];
   } else {
     return true;
   }
@@ -610,7 +611,7 @@ bool WriteExceptionStream(MinidumpFileWriter* minidump_writer,
   memset(context.get(), 0, sizeof(MDRawContextSPARC));
   return WriteContext(context.get(), writer_args->sig_ctx);
 #elif TARGET_CPU_X86
-  if (writer_args->sig_ctx != NULL) {
+  if (writer_args->sig_ctx != nullptr) {
     exception.get()->exception_record.exception_address =
       writer_args->sig_ctx->uc_mcontext.gregs[EIP];
   } else {
@@ -625,7 +626,7 @@ bool WriteExceptionStream(MinidumpFileWriter* minidump_writer,
   memset(context.get(), 0, sizeof(MDRawContextX86));
   return WriteContext(context.get(),
                       (int*)&writer_args->sig_ctx->uc_mcontext.gregs,
-                      NULL);
+                      nullptr);
 #endif
 }
 
@@ -693,21 +694,21 @@ void* Write(void* argument) {
   WriterArgument* writer_args = static_cast<WriterArgument*>(argument);
 
   if (!writer_args->lwp_lister->ControlAllLwps(true))
-    return NULL;
+    return nullptr;
 
   AutoLwpResumer lwpResumer(writer_args->lwp_lister);
 
   if (writer_args->sighandler_ebp != 0 &&
       writer_args->lwp_lister->FindSigContext(writer_args->sighandler_ebp,
                                               &writer_args->sig_ctx)) {
-    writer_args->crashed_stack_bottom = 
-      writer_args->lwp_lister->GetLwpStackBottom(
+    writer_args->crashed_stack_bottom =
+        writer_args->lwp_lister->GetLwpStackBottom(
 #if TARGET_CPU_SPARC
-          writer_args->sig_ctx->uc_mcontext.gregs[REG_O6]
+            writer_args->sig_ctx->uc_mcontext.gregs[REG_O6]
 #elif TARGET_CPU_X86
-          writer_args->sig_ctx->uc_mcontext.gregs[UESP]
+            writer_args->sig_ctx->uc_mcontext.gregs[UESP]
 #endif
-      );
+        );
 
     int crashed_lwpid = FindCrashingLwp(writer_args->crashed_stack_bottom,
                                         writer_args->requester_pid,
@@ -728,7 +729,7 @@ void* Write(void* argument) {
     return 0;
   header.get()->signature = MD_HEADER_SIGNATURE;
   header.get()->version = MD_HEADER_VERSION;
-  header.get()->time_date_stamp = time(NULL);
+  header.get()->time_date_stamp = time(nullptr);
   header.get()->stream_count = writer_count;
   header.get()->stream_directory_rva = dir.position();
 
@@ -761,9 +762,9 @@ bool MinidumpGenerator::WriteMinidumpToFile(const char* file_pathname,
   // The exception handler thread.
   pthread_t handler_thread;
 
-  assert(file_pathname != NULL);
+  assert(file_pathname != nullptr);
 
-  if (file_pathname == NULL)
+  if (file_pathname == nullptr)
     return false;
 
   MinidumpFileWriter minidump_writer;
@@ -777,10 +778,10 @@ bool MinidumpGenerator::WriteMinidumpToFile(const char* file_pathname,
     argument.crashed_lwpid = pthread_self();
     argument.signo = signo;
     argument.sighandler_ebp = sighandler_ebp;
-    argument.sig_ctx = NULL;
+    argument.sig_ctx = nullptr;
 
-    pthread_create(&handler_thread, NULL, Write, (void*)&argument);
-    pthread_join(handler_thread, NULL);
+    pthread_create(&handler_thread, nullptr, Write, (void*)&argument);
+    pthread_join(handler_thread, nullptr);
     return true;
   }
 

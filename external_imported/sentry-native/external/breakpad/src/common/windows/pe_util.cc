@@ -140,7 +140,7 @@ bool ReadModuleInfo(const wstring & pe_file, PDBModuleInfo * info) {
     return false;
   }
 
-  AutoImage img(ImageLoad((PSTR)img_file.c_str(), NULL));
+  AutoImage img(ImageLoad((PSTR)img_file.c_str(), nullptr));
   if (!img) {
     fprintf(stderr, "Failed to load %s\n", img_file.c_str());
     return false;
@@ -214,7 +214,7 @@ bool ReadPEInfo(const wstring & pe_file, PEModuleInfo * info) {
     return false;
   }
 
-  AutoImage img(ImageLoad((PSTR)img_file.c_str(), NULL));
+  AutoImage img(ImageLoad((PSTR)img_file.c_str(), nullptr));
   if (!img) {
     fprintf(stderr, "Failed to open PE file: %S\n", pe_file.c_str());
     return false;
@@ -256,7 +256,7 @@ bool PrintPEFrameData(const wstring & pe_file, FILE * out_file)
     return false;
   }
 
-  AutoImage img(ImageLoad((PSTR)img_file.c_str(), NULL));
+  AutoImage img(ImageLoad((PSTR)img_file.c_str(), nullptr));
   if (!img) {
     fprintf(stderr, "Failed to load %s\n", img_file.c_str());
     return false;
@@ -366,7 +366,7 @@ bool PrintPEFrameData(const wstring & pe_file, FILE * out_file)
             &img->LastRvaSection));
       }
       else {
-        unwind_info = NULL;
+        unwind_info = nullptr;
       }
     } while (unwind_info);
     fprintf(out_file, "STACK CFI INIT %lx %lx .cfa: $rsp .ra: .cfa %lu - ^\n",

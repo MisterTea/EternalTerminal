@@ -1,0 +1,57 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="4.0" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <ItemGroup>
+    <ClCompile Include="ts-bugfix.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-noconvert.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-quotes.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-roundtrip.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-snippets.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-utf8.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="ts-wchar.cpp">
+      <Filter>Test Cases</Filter>
+    </ClCompile>
+    <ClCompile Include="pch.cpp">
+      <Filter>Other Files</Filter>
+    </ClCompile>
+  </ItemGroup>
+  <ItemGroup>
+    <None Include="example.ini">
+      <Filter>Other Files</Filter>
+    </None>
+    <None Include="packages.config">
+      <Filter>Other Files</Filter>
+    </None>
+    <None Include="tests.ini">
+      <Filter>Test Cases</Filter>
+    </None>
+    <None Include="Makefile">
+      <Filter>Other Files</Filter>
+    </None>
+  </ItemGroup>
+  <ItemGroup>
+    <Filter Include="Test Cases">
+      <UniqueIdentifier>{8b76c482-decd-405d-abd8-98726f5c0b03}</UniqueIdentifier>
+      <Extensions>ts-*.cpp</Extensions>
+    </Filter>
+    <Filter Include="Other Files">
+      <UniqueIdentifier>{8f23fd84-666d-4e92-83de-ed431f244af0}</UniqueIdentifier>
+    </Filter>
+  </ItemGroup>
+  <ItemGroup>
+    <ClInclude Include="pch.h">
+      <Filter>Other Files</Filter>
+    </ClInclude>
+  </ItemGroup>
+</Project>

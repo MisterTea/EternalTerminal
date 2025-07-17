@@ -169,10 +169,15 @@ std::unique_ptr<HTTPBodyStream> HTTPMultipartBuilder::GetBodyStream() {
   for (const auto& pair : file_attachments_) {
     const FileAttachment& attachment = pair.second;
     std::string header = GetFormDataBoundary(boundary_, pair.first);
+#ifdef SENTRY_MODIFIED
     header += base::StringPrintf("; filename=\"%s\"%s",
         attachment.filename.c_str(), kCRLF);
     header += base::StringPrintf("Content-Type: %s%s",
         attachment.content_type.c_str(), kBoundaryCRLF);
+#else
+     header += base::StringPrintf("; filename=\"%s\"%s",
+        attachment.filename.c_str(), kBoundaryCRLF);
+#endif
 
     streams.push_back(new StringHTTPBodyStream(header));
     streams.push_back(new FileReaderHTTPBodyStream(attachment.reader));

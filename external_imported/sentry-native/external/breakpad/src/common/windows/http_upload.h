@@ -41,6 +41,7 @@
 #include <wininet.h>
 
 #include <map>
+#include <string>
 
 namespace google_breakpad {
 
@@ -51,7 +52,8 @@ using std::map;
 class HTTPUpload {
  public:
   // Sends a PUT request containing the data in |path| to the given
-  // URL.
+  // URL. The data is encoded via the deflate algorithm, if support for such
+  // is available at build-time.
   // Only HTTP(S) URLs are currently supported.  Returns true on success.
   // If the request is successful and response_body is non-NULL,
   // the response body will be returned in response_body.

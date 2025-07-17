@@ -116,6 +116,12 @@ struct ShutdownRequest {
   uint64_t token;
 };
 
+//! \brief A file attachment request.
+struct AttachmentRequest {
+  //! \brief The path of the attachment.
+  wchar_t path[MAX_PATH];
+};
+
 //! \brief The message passed from client to server by
 //!     SendToCrashHandlerServer().
 struct ClientToServerMessage {
@@ -127,6 +133,12 @@ struct ClientToServerMessage {
     //! \brief For ShutdownRequest.
     kShutdown,
 
+    //! \brief For AttachmentRequest.
+    kAddAttachment,
+
+    //! \brief For AttachmentRequest.
+    kRemoveAttachment,
+
     //! \brief An empty message sent by the initial client in asynchronous mode.
     //!     No data is required, this just confirms that the server is ready to
     //!     accept client registrations.
@@ -136,6 +148,7 @@ struct ClientToServerMessage {
   union {
     RegistrationRequest registration;
     ShutdownRequest shutdown;
+    AttachmentRequest attachment;
   };
 };
 

@@ -1,0 +1,14 @@
+NAME="elementary OS"
+VERSION="6 Odin"
+ID=elementary
+ID_LIKE=ubuntu
+PRETTY_NAME="elementary OS 6 Odin"
+LOGO=distributor-logo
+VERSION_ID="6"
+HOME_URL="https://elementary.io/"
+DOCUMENTATION_URL="https://elementary.io/docs/learning-the-basics"
+SUPPORT_URL="https://elementary.io/support"
+BUG_REPORT_URL="https://github.com/elementary/os/issues/new"
+PRIVACY_POLICY_URL="https://elementary.io/privacy-policy"
+VERSION_CODENAME=odin
+UBUNTU_CODENAME=focal

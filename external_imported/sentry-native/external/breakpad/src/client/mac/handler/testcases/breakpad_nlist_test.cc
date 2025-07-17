@@ -73,7 +73,7 @@ void BreakpadNlistTest::CompareToNM() {
     symbolNames[0] = (const char*)symbolName;
     symbolNames[1] = "\0";
     breakpad_nlist_64("/usr/lib/dyld", &list, symbolNames);
-    uint64_t nmAddr = strtol(oneNMAddr, NULL, 16);
+    uint64_t nmAddr = strtol(oneNMAddr, nullptr, 16);
     if (!IsSymbolMoreThanOnceInDyld(symbolName)) {
       CPTAssert(nmAddr == symbolList[0].n_value);
     }

@@ -106,7 +106,7 @@ namespace google_breakpad {
     if (!HTTPUpload::SendSimplePostRequest(
         url,
         body,
-        L"application/json",
+        L"Content-Type: application/json",
         timeout_ms,
         &response,
         &response_code)) {

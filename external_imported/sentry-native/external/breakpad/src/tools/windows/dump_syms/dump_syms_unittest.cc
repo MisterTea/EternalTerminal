@@ -75,13 +75,13 @@ void TrimLastComponent(const std::wstring& path,
   while (len > 0 && path[len - 1] != '\\')
     --len;
 
-  if (component != NULL)
+  if (component != nullptr)
     component->assign(path.c_str() + len, path.c_str() + path.size());
 
   while (len > 0 && path[len - 1] == '\\')
     --len;
 
-  if (trimmed != NULL)
+  if (trimmed != nullptr)
     trimmed->assign(path.c_str(), len);
 }
 
@@ -90,13 +90,13 @@ bool GetSelfDirectory(std::wstring* self_dir) {
   std::wstring command_line = GetCommandLineW();
 
   int num_args = 0;
-  wchar_t** args = NULL;
+  wchar_t** args = nullptr;
   args = ::CommandLineToArgvW(command_line.c_str(), &num_args);
-  if (args == NULL)
+  if (args == nullptr)
     return false;
 
   *self_dir = args[0];
-  TrimLastComponent(*self_dir, self_dir, NULL);
+  TrimLastComponent(*self_dir, self_dir, nullptr);
 
   return true;
 }
@@ -129,12 +129,12 @@ void RunCommand(const std::wstring& command_line,
   STARTUPINFO startup_info = {};
   PROCESS_INFORMATION process_info = {};
   startup_info.cb = sizeof(STARTUPINFO);
-  startup_info.hStdError = NULL;
+  startup_info.hStdError = nullptr;
   startup_info.hStdInput = child_stdin_read;
   startup_info.hStdOutput = child_stdout_write;
   startup_info.dwFlags = STARTF_USESTDHANDLES;
-  ASSERT_TRUE(::CreateProcessW(NULL, (LPWSTR)command_line.c_str(), NULL, NULL,
-                               TRUE, 0, NULL, NULL,
+  ASSERT_TRUE(::CreateProcessW(nullptr, (LPWSTR)command_line.c_str(), nullptr,
+                               nullptr, TRUE, 0, nullptr, nullptr,
                                &startup_info, &process_info));
 
   // Collect the output.
@@ -142,7 +142,7 @@ void RunCommand(const std::wstring& command_line,
   char buffer[4096] = {};
   DWORD bytes_read = 0;
   while (::ReadFile(child_stdout_read, buffer, sizeof(buffer), &bytes_read,
-                    NULL) && bytes_read > 0) {
+                    nullptr) && bytes_read > 0) {
     stdout_string->append(buffer, bytes_read);
   }
 
@@ -159,7 +159,7 @@ void RunCommand(const std::wstring& command_line,
 
 void GetFileContents(const std::wstring& path, std::string* content) {
   FILE* f = ::_wfopen(path.c_str(), L"rb");
-  ASSERT_TRUE(f != NULL);
+  ASSERT_TRUE(f != nullptr);
 
   char buffer[4096] = {};
   while (true) {
@@ -177,7 +177,7 @@ class DumpSymsRegressionTest : public testing::TestWithParam<const wchar_t*> {
     ASSERT_TRUE(GetSelfDirectory(&self_dir));
     dump_syms_exe = self_dir + L"\\dump_syms.exe";
 
-    TrimLastComponent(self_dir, &testdata_dir, NULL);
+    TrimLastComponent(self_dir, &testdata_dir, nullptr);
     testdata_dir += L"\\testdata";
   }
 
@@ -192,7 +192,7 @@ public:
     ASSERT_TRUE(GetSelfDirectory(&self_dir));
     dump_syms_exe = self_dir + L"\\dump_syms.exe";
 
-    TrimLastComponent(self_dir, &testdata_dir, NULL);
+    TrimLastComponent(self_dir, &testdata_dir, nullptr);
     testdata_dir += L"\\testdata";
   }
 

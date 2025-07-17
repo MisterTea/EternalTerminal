@@ -8,6 +8,7 @@
 #include "sentry_string.h"
 #include "sentry_transport.h"
 #include "sentry_value.h"
+#include <assert.h>
 #include <string.h>
 
 struct sentry_envelope_item_s {
@@ -234,7 +235,7 @@ sentry__envelope_add_event(sentry_envelope_t *envelope, sentry_value_t event)
         return NULL;
     }
 
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(NULL);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
     if (!jw) {
         return NULL;
     }
@@ -265,7 +266,7 @@ sentry__envelope_add_transaction(
         return NULL;
     }
 
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(NULL);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
     if (!jw) {
         return NULL;
     }
@@ -288,9 +289,39 @@ sentry__envelope_add_transaction(
     sentry_value_t now = sentry_value_new_string("2021-12-16T05:53:59.343Z");
 #else
     sentry_value_t now = sentry__value_new_string_owned(
-        sentry__msec_time_to_iso8601(sentry__msec_time()));
+        sentry__usec_time_to_iso8601(sentry__usec_time()));
 #endif
     sentry__envelope_set_header(envelope, "sent_at", now);
+
+    return item;
+}
+
+sentry_envelope_item_t *
+sentry__envelope_add_user_feedback(
+    sentry_envelope_t *envelope, sentry_value_t user_feedback)
+{
+    sentry_envelope_item_t *item = envelope_add_item(envelope);
+    if (!item) {
+        return NULL;
+    }
+
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
+    if (!jw) {
+        return NULL;
+    }
+
+    sentry_value_t event_id = sentry__ensure_event_id(user_feedback, NULL);
+
+    sentry__jsonwriter_write_value(jw, user_feedback);
+    item->payload = sentry__jsonwriter_into_string(jw, &item->payload_len);
+
+    sentry__envelope_item_set_header(
+        item, "type", sentry_value_new_string("user_report"));
+    sentry_value_t length = sentry_value_new_int32((int32_t)item->payload_len);
+    sentry__envelope_item_set_header(item, "length", length);
+
+    sentry_value_incref(event_id);
+    sentry__envelope_set_header(envelope, "event_id", event_id);
 
     return item;
 }
@@ -302,7 +333,7 @@ sentry__envelope_add_session(
     if (!envelope || !session) {
         return NULL;
     }
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(NULL);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
     if (!jw) {
         return NULL;
     }
@@ -313,6 +344,77 @@ sentry__envelope_add_session(
     // NOTE: function will check for `payload` internally and free it on error
     return envelope_add_from_owned_buffer(
         envelope, payload, payload_len, "session");
+}
+
+static const char *
+str_from_attachment_type(sentry_attachment_type_t attachment_type)
+{
+    switch (attachment_type) {
+    case ATTACHMENT:
+        return "event.attachment";
+    case MINIDUMP:
+        return "event.minidump";
+    case VIEW_HIERARCHY:
+        return "event.view_hierarchy";
+    default:
+        UNREACHABLE("Unknown attachment type");
+        return "event.attachment";
+    }
+}
+
+sentry_envelope_item_t *
+sentry__envelope_add_attachment(
+    sentry_envelope_t *envelope, const sentry_attachment_t *attachment)
+{
+    if (!envelope || !attachment) {
+        return NULL;
+    }
+
+    sentry_envelope_item_t *item = NULL;
+    if (attachment->buf) {
+        item = sentry__envelope_add_from_buffer(
+            envelope, attachment->buf, attachment->buf_len, "attachment");
+    } else {
+        item = sentry__envelope_add_from_path(
+            envelope, attachment->path, "attachment");
+    }
+    if (!item) {
+        return NULL;
+    }
+    if (attachment->type != ATTACHMENT) { // don't need to set the default
+        sentry__envelope_item_set_header(item, "attachment_type",
+            sentry_value_new_string(
+                str_from_attachment_type(attachment->type)));
+    }
+    if (attachment->content_type) {
+        sentry__envelope_item_set_header(item, "content_type",
+            sentry_value_new_string(attachment->content_type));
+    }
+    sentry__envelope_item_set_header(item, "filename",
+#ifdef SENTRY_PLATFORM_WINDOWS
+        sentry__value_new_string_from_wstr(
+#else
+        sentry_value_new_string(
+#endif
+            sentry__path_filename(attachment->filename ? attachment->filename
+                                                       : attachment->path)));
+
+    return item;
+}
+
+void
+sentry__envelope_add_attachments(
+    sentry_envelope_t *envelope, const sentry_attachment_t *attachments)
+{
+    if (!envelope || !attachments) {
+        return;
+    }
+
+    SENTRY_DEBUG("adding attachments to envelope");
+    for (const sentry_attachment_t *attachment = attachments; attachment;
+        attachment = attachment->next) {
+        sentry__envelope_add_attachment(envelope, attachment);
+    }
 }
 
 sentry_envelope_item_t *
@@ -348,7 +450,7 @@ static void
 sentry__envelope_serialize_headers_into_stringbuilder(
     const sentry_envelope_t *envelope, sentry_stringbuilder_t *sb)
 {
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(sb);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(sb);
     if (jw) {
         sentry__jsonwriter_write_value(jw, envelope->contents.items.headers);
         sentry__jsonwriter_free(jw);
@@ -359,7 +461,7 @@ static void
 sentry__envelope_serialize_item_into_stringbuilder(
     const sentry_envelope_item_t *item, sentry_stringbuilder_t *sb)
 {
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(sb);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(sb);
     if (!jw) {
         return;
     }
@@ -383,7 +485,7 @@ sentry__envelope_serialize_into_stringbuilder(
         return;
     }
 
-    SENTRY_TRACE("serializing envelope into buffer");
+    SENTRY_DEBUG("serializing envelope into buffer");
     sentry__envelope_serialize_headers_into_stringbuilder(envelope, sb);
 
     for (size_t i = 0; i < envelope->contents.items.item_count; i++) {
@@ -438,7 +540,9 @@ sentry_envelope_serialize(const sentry_envelope_t *envelope, size_t *size_out)
 
     sentry__envelope_serialize_into_stringbuilder(envelope, &sb);
 
-    *size_out = sentry__stringbuilder_len(&sb);
+    if (size_out) {
+        *size_out = sentry__stringbuilder_len(&sb);
+    }
     return sentry__stringbuilder_into_string(&sb);
 }
 
@@ -446,16 +550,43 @@ MUST_USE int
 sentry_envelope_write_to_path(
     const sentry_envelope_t *envelope, const sentry_path_t *path)
 {
-    // TODO: This currently builds the whole buffer in-memory.
-    // It would be nice to actually stream this to a file.
-    size_t buf_len = 0;
-    char *buf = sentry_envelope_serialize(envelope, &buf_len);
+    sentry_filewriter_t *fw = sentry__filewriter_new(path);
+    if (!fw) {
+        return 1;
+    }
 
-    int rv = sentry__path_write_buffer(path, buf, buf_len);
+    if (envelope->is_raw) {
+        size_t rv = sentry__filewriter_write(fw, envelope->contents.raw.payload,
+            envelope->contents.raw.payload_len);
+        sentry__filewriter_free(fw);
+        return rv != 0;
+    }
 
-    sentry_free(buf);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_fw(fw);
+    if (jw) {
+        sentry__jsonwriter_write_value(jw, envelope->contents.items.headers);
+        sentry__jsonwriter_reset(jw);
 
-    return rv;
+        for (size_t i = 0; i < envelope->contents.items.item_count; i++) {
+            const sentry_envelope_item_t *item
+                = &envelope->contents.items.items[i];
+            const char newline = '\n';
+            sentry__filewriter_write(fw, &newline, sizeof(char));
+
+            sentry__jsonwriter_write_value(jw, item->headers);
+            sentry__jsonwriter_reset(jw);
+
+            sentry__filewriter_write(fw, &newline, sizeof(char));
+
+            sentry__filewriter_write(fw, item->payload, item->payload_len);
+        }
+        sentry__jsonwriter_free(jw);
+    }
+
+    size_t rv = sentry__filewriter_byte_count(fw);
+    sentry__filewriter_free(fw);
+
+    return rv == 0;
 }
 
 int

@@ -38,7 +38,7 @@ typedef testing::Test LinuxLibcSupportTest;
 }
 
 TEST(LinuxLibcSupportTest, strlen) {
-  static const char* test_data[] = { "", "a", "aa", "aaa", "aabc", NULL };
+  static const char* test_data[] = { "", "a", "aa", "aaa", "aabc", nullptr };
   for (unsigned i = 0; ; ++i) {
     if (!test_data[i])
       break;
@@ -56,7 +56,7 @@ TEST(LinuxLibcSupportTest, strcmp) {
     "ab", "aa",
     "abc", "ab",
     "abc", "abc",
-    NULL,
+    nullptr,
   };
 
   for (unsigned i = 0; ; ++i) {
@@ -130,9 +130,9 @@ TEST(LinuxLibcSupportTest, uitos) {
 }
 
 TEST(LinuxLibcSupportTest, strchr) {
-  ASSERT_EQ(NULL, my_strchr("abc", 'd'));
-  ASSERT_EQ(NULL, my_strchr("", 'd'));
-  ASSERT_EQ(NULL, my_strchr("efghi", 'd'));
+  ASSERT_EQ(nullptr, my_strchr("abc", 'd'));
+  ASSERT_EQ(nullptr, my_strchr("", 'd'));
+  ASSERT_EQ(nullptr, my_strchr("efghi", 'd'));
 
   ASSERT_TRUE(my_strchr("a", 'a'));
   ASSERT_TRUE(my_strchr("abc", 'a'));
@@ -144,9 +144,9 @@ TEST(LinuxLibcSupportTest, strchr) {
 }
 
 TEST(LinuxLibcSupportTest, strrchr) {
-  ASSERT_EQ(NULL, my_strrchr("abc", 'd'));
-  ASSERT_EQ(NULL, my_strrchr("", 'd'));
-  ASSERT_EQ(NULL, my_strrchr("efghi", 'd'));
+  ASSERT_EQ(nullptr, my_strrchr("abc", 'd'));
+  ASSERT_EQ(nullptr, my_strrchr("", 'd'));
+  ASSERT_EQ(nullptr, my_strrchr("efghi", 'd'));
 
   ASSERT_TRUE(my_strrchr("a", 'a'));
   ASSERT_TRUE(my_strrchr("abc", 'a'));
@@ -158,9 +158,9 @@ TEST(LinuxLibcSupportTest, strrchr) {
 }
 
 TEST(LinuxLibcSupportTest, memchr) {
-  ASSERT_EQ(NULL, my_memchr("abc", 'd', 3));
-  ASSERT_EQ(NULL, my_memchr("abcd", 'd', 3));
-  ASSERT_EQ(NULL, my_memchr("a", 'a', 0));
+  ASSERT_EQ(nullptr, my_memchr("abc", 'd', 3));
+  ASSERT_EQ(nullptr, my_memchr("abcd", 'd', 3));
+  ASSERT_EQ(nullptr, my_memchr("a", 'a', 0));
 
   static const char abc3[] = "abcabcabc";
   ASSERT_EQ(abc3, my_memchr(abc3, 'a', 3));

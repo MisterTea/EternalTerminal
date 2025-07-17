@@ -15,7 +15,10 @@ mc_append_sources(
     check.h
     check_op.h
     compiler_specific.h
+    containers/checked_iterators.h
+    containers/dynamic_extent.h
     containers/span.h
+    containers/util.h
     debug/alias.cc
     debug/alias.h
     files/file_path.cc
@@ -24,15 +27,19 @@ mc_append_sources(
     files/scoped_file.cc
     files/scoped_file.h
     format_macros.h
+    immediate_crash.h
     logging.cc
     logging.h
     memory/free_deleter.h
     memory/page_size.h
+    memory/raw_ptr_exclusion.h
     memory/scoped_policy.h
     metrics/histogram_functions.h
     metrics/histogram_macros.h
     metrics/persistent_histogram_allocator.h
     notreached.h
+    numerics/basic_ops_impl.h
+    numerics/byte_conversions.h
     numerics/checked_math.h
     numerics/checked_math_impl.h
     numerics/clamped_math.h
@@ -76,6 +83,7 @@ mc_append_sources(
     threading/thread_local_storage.cc
     threading/thread_local_storage.h
     types/cxx23_to_underlying.h
+    types/to_address.h
 )
 
 if(NOT MINGW)
@@ -138,7 +146,10 @@ else()
 endif()
 
 if(APPLE)
-    target_compile_options(mini_chromium PUBLIC -fobjc-arc -fno-objc-arc-exceptions)
+    target_compile_options(mini_chromium
+        PUBLIC "-fobjc-arc" "-fno-objc-arc-exceptions"
+        PRIVATE "-Wno-deprecated-declarations"
+    )
 endif()
 if(APPLE AND NOT IOS)
     target_link_libraries(mini_chromium PUBLIC

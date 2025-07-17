@@ -5,3 +5,4 @@ ColumnLimit: 80
 AlwaysBreakAfterDefinitionReturnType: All
 PointerAlignment: Right
 ForEachMacros: ['SENTRY_WITH_SCOPE', 'SENTRY_WITH_SCOPE_MUT', 'SENTRY_WITH_SCOPE_MUT_NO_FLUSH', 'SENTRY_WITH_OPTIONS', 'SENTRY_WITH_OPTIONS_MUT']
+InsertNewlineAtEOF: True

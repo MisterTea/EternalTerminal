@@ -1,5 +1,6 @@
 #include "sentry_core.h"
 #include "sentry_database.h"
+#include "sentry_string.h"
 #include "sentry_testsupport.h"
 
 static void
@@ -30,8 +31,7 @@ send_envelope_test_basic(const sentry_envelope_t *envelope, void *data)
 SENTRY_TEST(basic_function_transport)
 {
     uint64_t called = 0;
-
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
     sentry_options_set_transport(options,
         sentry_new_function_transport(send_envelope_test_basic, &called));
@@ -83,7 +83,7 @@ SENTRY_TEST(sampling_before_send)
     uint64_t called_beforesend = 0;
     uint64_t called_transport = 0;
 
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
     sentry_options_set_transport(options,
         sentry_new_function_transport(
@@ -123,8 +123,10 @@ SENTRY_TEST(discarding_before_send)
     uint64_t called_beforesend = 0;
     uint64_t called_transport = 0;
 
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
+    // Disable sessions or this test would fail if env:SENTRY_RELEASE is set.
+    sentry_options_set_auto_session_tracking(options, 0);
     sentry_options_set_transport(options,
         sentry_new_function_transport(
             counting_transport_func, &called_transport));
@@ -143,7 +145,7 @@ SENTRY_TEST(discarding_before_send)
 
 SENTRY_TEST(crash_marker)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
 
     // clear returns true, regardless if the file exists
     TEST_CHECK(sentry__clear_crash_marker(options));
@@ -168,47 +170,117 @@ SENTRY_TEST(crashed_last_run)
     TEST_CHECK_INT_EQUAL(sentry_clear_crashed_last_run(), 1);
 
     // clear any leftover from previous test runs
-    sentry_options_t *options = sentry_options_new();
-    TEST_CHECK(sentry__clear_crash_marker(options));
-    sentry_options_free(options);
+    {
+        SENTRY_TEST_OPTIONS_NEW(options);
+        TEST_CHECK(sentry__clear_crash_marker(options));
+        sentry_options_free(options);
+    }
 
-    // -1 before sentry_init()
-    TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), -1);
-
-    options = sentry_options_new();
     const char *dsn_str = "https://foo@sentry.invalid/42";
     const char dsn[] = { 'h', 't', 't', 'p', 's', ':', '/', '/', 'f', 'o', 'o',
         '@', 's', 'e', 'n', 't', 'r', 'y', '.', 'i', 'n', 'v', 'a', 'l', 'i',
         'd', '/', '4', '2' };
-    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
-    TEST_CHECK_STRING_EQUAL(sentry_options_get_dsn(options), dsn_str);
-    TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
+
+    {
+        SENTRY_TEST_OPTIONS_NEW(options);
+        sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
+        TEST_CHECK_STRING_EQUAL(sentry_options_get_dsn(options), dsn_str);
+        TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
+        sentry_close();
+
+        TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 0);
+    }
+
+    {
+        SENTRY_TEST_OPTIONS_NEW(options);
+        sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
+
+        // simulate a crash
+        TEST_CHECK(sentry__write_crash_marker(options));
+
+        TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
+
+        TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 1);
+
+        // clear the status and re-init
+        TEST_CHECK_INT_EQUAL(sentry_clear_crashed_last_run(), 0);
+
+        sentry_close();
+
+        // no change yet before sentry_init() is called
+        TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 1);
+    }
+
+    {
+        SENTRY_TEST_OPTIONS_NEW(options);
+        sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
+        TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
+        sentry_close();
+
+        TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 0);
+    }
+}
+
+SENTRY_TEST(capture_minidump_basic)
+{
+    // skipping on platforms that don't have access to fixtures on the local FS
+#if defined(SENTRY_PLATFORM_ANDROID) || defined(SENTRY_PLATFORM_NX)            \
+    || defined(SENTRY_PLATFORM_PS)
+    SKIP_TEST();
+#else
+    SENTRY_TEST_OPTIONS_NEW(options);
+    sentry_init(options);
+
+    const char *minidump_rel_path = "../fixtures/minidump.dmp";
+    sentry_path_t *path = sentry__path_from_str(__FILE__);
+    sentry_path_t *dir = sentry__path_dir(path);
+    sentry_path_t *minidump_path
+        = sentry__path_join_str(dir, minidump_rel_path);
+
+#    if defined(SENTRY_PLATFORM_WINDOWS)
+    char *path_str = sentry__string_from_wstr(minidump_path->path);
+    const sentry_uuid_t event_id = sentry_capture_minidump(path_str);
+    sentry_free(path_str);
+#    else
+    const sentry_uuid_t event_id = sentry_capture_minidump(minidump_path->path);
+#    endif
+    TEST_CHECK(!sentry_uuid_is_nil(&event_id));
+
+    sentry__path_free(minidump_path);
+    sentry__path_free(dir);
+    sentry__path_free(path);
+
     sentry_close();
+#endif
+}
 
-    TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 0);
+SENTRY_TEST(capture_minidump_null_path)
+{
+    // a NULL path will activate the path check at the beginning of the function
+    const sentry_uuid_t event_id = sentry_capture_minidump(NULL);
+    TEST_CHECK(sentry_uuid_is_nil(&event_id));
+}
 
-    options = sentry_options_new();
-    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
+SENTRY_TEST(capture_minidump_without_sentry_init)
+{
+    // if the path initialization was successful, but the SDK wasn't initialized
+    // capturing will fail at the point of acquiring the active options.
+    const sentry_uuid_t event_id
+        = sentry_capture_minidump("irrelevant_minidump_path");
+    TEST_CHECK(sentry_uuid_is_nil(&event_id));
+}
 
-    // simulate a crash
-    TEST_CHECK(sentry__write_crash_marker(options));
+SENTRY_TEST(capture_minidump_invalid_path)
+{
+    SENTRY_TEST_OPTIONS_NEW(options);
+    sentry_init(options);
 
-    TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
-
-    TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 1);
-
-    // clear the status and re-init
-    TEST_CHECK_INT_EQUAL(sentry_clear_crashed_last_run(), 0);
+    // here the initialization is successful, but we provide an invalid minidump
+    // path which should prevent capture locally and return a nil UUID since we
+    // cannot create an attachment envelope-item for the minidump file.
+    const sentry_uuid_t event_id
+        = sentry_capture_minidump("some_invalid_minidump_path");
+    TEST_CHECK(sentry_uuid_is_nil(&event_id));
 
     sentry_close();
-
-    // no change yet before sentry_init() is called
-    TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 1);
-
-    options = sentry_options_new();
-    sentry_options_set_dsn_n(options, dsn, sizeof(dsn));
-    TEST_CHECK_INT_EQUAL(sentry_init(options), 0);
-    sentry_close();
-
-    TEST_CHECK_INT_EQUAL(sentry_get_crashed_last_run(), 0);
 }

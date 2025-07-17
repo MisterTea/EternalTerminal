@@ -44,6 +44,7 @@
 
 #include "dynamic_images.h"
 #include "mach_vm_compat.h"
+#include "AvailabilityMacros.h"
 
 #if !TARGET_OS_IPHONE && (MAC_OS_X_VERSION_MAX_ALLOWED < MAC_OS_X_VERSION_10_7)
   #define HAS_PPC_SUPPORT
@@ -130,6 +131,9 @@ class MinidumpGenerator {
   // the MinidumpGenerator class.
   static void GatherSystemInformation();
 
+  // Get context of |thread_id| thread
+  bool GetThreadContext(mach_port_t thread_id, breakpad_ucontext_t* context);
+
  protected:
   // Overridable Stream writers
   virtual bool WriteExceptionStream(MDRawDirectory* exception_stream);
@@ -175,6 +179,8 @@ class MinidumpGenerator {
 #ifdef HAS_ARM64_SUPPORT
   bool WriteStackARM64(breakpad_thread_state_data_t state,
                        MDMemoryDescriptor* stack_location);
+  void GetContextARM64(breakpad_thread_state_data_t state,
+                         MDRawContextARM64_Old* context_ptr);
   bool WriteContextARM64(breakpad_thread_state_data_t state,
                          MDLocationDescriptor* register_location);
   uint64_t CurrentPCForStackARM64(breakpad_thread_state_data_t state);
@@ -199,6 +205,8 @@ class MinidumpGenerator {
   uint64_t CurrentPCForStackX86(breakpad_thread_state_data_t state);
   bool WriteStackX86_64(breakpad_thread_state_data_t state,
                         MDMemoryDescriptor* stack_location);
+  void GetContextX86_64(breakpad_thread_state_data_t state,
+                          MDRawContextAMD64* context_ptr);
   bool WriteContextX86_64(breakpad_thread_state_data_t state,
                           MDLocationDescriptor* register_location);
   uint64_t CurrentPCForStackX86_64(breakpad_thread_state_data_t state);

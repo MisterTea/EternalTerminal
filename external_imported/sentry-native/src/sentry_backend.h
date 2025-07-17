@@ -11,7 +11,6 @@
  * can ensure that any captured crash contains the sentry scope and other
  * information.
  */
-typedef struct sentry_backend_s sentry_backend_t;
 struct sentry_backend_s {
     int (*startup_func)(sentry_backend_t *, const sentry_options_t *options);
     void (*shutdown_func)(sentry_backend_t *);
@@ -26,7 +25,10 @@ struct sentry_backend_s {
     void (*user_consent_changed_func)(sentry_backend_t *);
     uint64_t (*get_last_crash_func)(sentry_backend_t *);
     void (*prune_database_func)(sentry_backend_t *);
+    void (*add_attachment_func)(sentry_backend_t *, sentry_attachment_t *);
+    void (*remove_attachment_func)(sentry_backend_t *, sentry_attachment_t *);
     void *data;
+    // Whether this backend still runs after shutdown_func was called.
     bool can_capture_after_shutdown;
 };
 

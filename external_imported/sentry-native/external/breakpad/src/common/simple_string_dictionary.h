@@ -142,11 +142,11 @@ class NonAllocatingMap {
   const char* GetValueForKey(const char* key) const {
     assert(key);
     if (!key)
-      return NULL;
+      return nullptr;
 
     size_t index = GetEntryIndexForKey(key);
     if (index == num_entries)
-      return NULL;
+      return nullptr;
 
     return entries_[index].value;
   }

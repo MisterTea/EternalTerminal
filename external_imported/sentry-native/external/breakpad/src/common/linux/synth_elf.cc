@@ -10,6 +10,7 @@
 #include <string.h>
 
 #include "common/linux/elf_gnu_compat.h"
+#include "common/memory_allocator.h"
 #include "common/using_std_string.h"
 
 namespace google_breakpad {
@@ -159,7 +160,7 @@ void ELF::AddSegment(int start, int end, uint32_t type, uint32_t flags) {
     if (sections_[i].type_ != SHT_NOBITS) {
       assert(!prev_was_nobits);
       // non SHT_NOBITS sections are 4-byte aligned (see AddSection)
-      size = (size + 3) & ~3;
+      size = PageAllocator::AlignUp(size, 4);
       filesz += size;
     } else {
       prev_was_nobits = true;

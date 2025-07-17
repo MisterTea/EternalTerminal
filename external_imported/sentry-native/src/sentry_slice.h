@@ -21,6 +21,14 @@ typedef struct {
 sentry_slice_t sentry__slice_from_str(const char *str);
 
 /**
+ * Copies a slice to a pre-allocated buffer. The resulting buffer will contain a
+ * zero-terminated string. `buffer_len` is expected to be the full length of the
+ * buffer, so the resulting string can at maximum be `buffer_len - 1` long.
+ */
+void sentry__slice_to_buffer(
+    sentry_slice_t slice, char *buffer, size_t buffer_len);
+
+/**
  * Creates an owned copy from a slice.
  */
 char *sentry__slice_to_owned(sentry_slice_t slice);

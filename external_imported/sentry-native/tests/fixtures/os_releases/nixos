@@ -1,0 +1,9 @@
+NAME=NixOS
+ID=nixos
+VERSION="18.09.1436.a7fd4310c0c (Jellyfish)"
+VERSION_CODENAME=jellyfish
+VERSION_ID="18.09.1436.a7fd4310c0c"
+PRETTY_NAME="NixOS 18.09.1436.a7fd4310c0c (Jellyfish)"
+HOME_URL="https://nixos.org/"
+SUPPORT_URL="https://nixos.org/nixos/support.html"
+BUG_REPORT_URL="https://github.com/NixOS/nixpkgs/issues"

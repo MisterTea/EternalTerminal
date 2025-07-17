@@ -104,5 +104,5 @@ int main(int argc, char* argv[]) {
                                              FLAGS_crash_server,
                                              FLAGS_proxy_host,
                                              FLAGS_proxy_userpasswd);
-  g.Upload(NULL, NULL, NULL);
+  g.Upload(nullptr, nullptr, nullptr);
 }

@@ -41,7 +41,7 @@ bool DumpCallback(const google_breakpad::MinidumpDescriptor& descriptor,
 }
 
 void Crash() {
-  volatile int* a = reinterpret_cast<volatile int*>(NULL);
+  volatile int* a = static_cast<volatile int*>(nullptr);
   *a = 1;
 }
 
@@ -49,8 +49,8 @@ void Crash() {
 
 int main(int argc, char* argv[]) {
   google_breakpad::MinidumpDescriptor descriptor(".");
-  google_breakpad::ExceptionHandler eh(descriptor, NULL, DumpCallback,
-                                       NULL, true, -1);
+  google_breakpad::ExceptionHandler eh(descriptor, nullptr, DumpCallback,
+                                       nullptr, true, -1);
   Crash();
   return 0;
 }

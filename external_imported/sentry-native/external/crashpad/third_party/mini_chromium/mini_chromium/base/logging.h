@@ -106,9 +106,12 @@ class LogMessage {
   LogMessage(const LogMessage&) = delete;
   LogMessage& operator=(const LogMessage&) = delete;
 
-  ~LogMessage();
+  virtual ~LogMessage();
 
   std::ostream& stream() { return stream_; }
+
+ protected:
+  void Flush();
 
  private:
   void Init(const char* function);
@@ -198,6 +201,9 @@ class ErrnoLogMessage : public LogMessage {
     COMPACT_GOOGLE_LOG_EX_ERROR(LogMessage)
 #define COMPACT_GOOGLE_LOG_ERROR_REPORT \
     COMPACT_GOOGLE_LOG_EX_ERROR_REPORT(LogMessage)
+// TODO(crbug.com/40254046): Make LOG(FATAL) understood as [[noreturn]]. See
+// Chromium or absl implementations for LogMessageFatal subclasses where the
+// destructor is annotated as [[noreturn]].
 #define COMPACT_GOOGLE_LOG_FATAL \
     COMPACT_GOOGLE_LOG_EX_FATAL(LogMessage)
 #define COMPACT_GOOGLE_LOG_DFATAL \

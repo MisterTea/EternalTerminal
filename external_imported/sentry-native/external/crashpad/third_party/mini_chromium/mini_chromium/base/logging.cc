@@ -46,7 +46,6 @@
 #include <sys/syscall.h>
 #include <sys/types.h>
 #elif BUILDFLAG(IS_WIN)
-#include <intrin.h>
 #include <windows.h>
 #elif BUILDFLAG(IS_ANDROID)
 #include <android/log.h>
@@ -55,6 +54,7 @@
 #endif
 
 #include "base/check_op.h"
+#include "base/immediate_crash.h"
 #include "base/strings/string_util.h"
 #include "base/strings/stringprintf.h"
 #include "base/strings/utf_string_conversions.h"
@@ -146,6 +146,10 @@ LogMessage::LogMessage(const char* function,
 }
 
 LogMessage::~LogMessage() {
+  Flush();
+}
+
+void LogMessage::Flush() {
   stream_ << std::endl;
   std::string str_newline(stream_.str());
 
@@ -372,24 +376,7 @@ LogMessage::~LogMessage() {
   }
 
   if (severity_ == LOG_FATAL) {
-#if defined(COMPILER_MSVC)
-    __debugbreak();
-#if defined(ARCH_CPU_X86_FAMILY)
-    __ud2();
-#elif defined(ARCH_CPU_ARM64)
-    __hlt(0);
-#else
-#error Unsupported Windows Arch
-#endif
-#elif defined(ARCH_CPU_X86_FAMILY)
-    asm("int3; ud2;");
-#elif defined(ARCH_CPU_ARMEL)
-    asm("bkpt #0; udf #0;");
-#elif defined(ARCH_CPU_ARM64)
-    asm("brk #0; hlt #0;");
-#else
-    __builtin_trap();
-#endif
+    base::ImmediateCrash();
   }
 }
 

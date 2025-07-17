@@ -155,10 +155,6 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
     return EXCEPTION_CONTINUE_SEARCH;
   }
 
-  if (first_chance_handler_ && first_chance_handler_(exception_pointers)) {
-    return EXCEPTION_CONTINUE_SEARCH;
-  }
-
   // Otherwise, we know the handler startup has succeeded, and we can continue.
 
   // Tracks whether a thread has already entered UnhandledExceptionHandler.
@@ -178,6 +174,17 @@ LONG WINAPI UnhandledExceptionHandler(EXCEPTION_POINTERS* exception_pointers) {
   // that's blocked at this location.
   if (base::subtle::Barrier_AtomicIncrement(&have_crashed, 1) > 1) {
     SleepEx(INFINITE, false);
+  }
+
+  // TODO(supervacuus):
+  //  On Windows the first-chance handler is executed inside the UEF which is
+  //  synchronous with respect to thread it is executing on. However, any other
+  //  running thread can also raise an exception and therefore will also execute
+  //  a UEF, at which point they would run concurrently. Adapting to this would
+  //  mean to adapt the pipeline, because even if the handler was UEF-safe,
+  //  there is currently no way in which to correlate non-nested crashes.
+  if (first_chance_handler_ && first_chance_handler_(exception_pointers)) {
+    return EXCEPTION_CONTINUE_SEARCH;
   }
 
   // Otherwise, we're the first thread, so record the exception pointer and
@@ -348,6 +355,8 @@ struct BackgroundHandlerStartThreadData {
       const std::map<std::string, std::string>& annotations,
       const std::vector<std::string>& arguments,
       const std::vector<base::FilePath>& attachments,
+      const base::FilePath& screenshot,
+      const bool wait_for_upload,
       const std::wstring& ipc_pipe,
       ScopedFileHANDLE ipc_pipe_handle)
       : handler(handler),
@@ -358,6 +367,8 @@ struct BackgroundHandlerStartThreadData {
         annotations(annotations),
         arguments(arguments),
         attachments(attachments),
+        screenshot(screenshot),
+        wait_for_upload(wait_for_upload),
         ipc_pipe(ipc_pipe),
         ipc_pipe_handle(std::move(ipc_pipe_handle)) {}
 
@@ -369,6 +380,8 @@ struct BackgroundHandlerStartThreadData {
   std::map<std::string, std::string> annotations;
   std::vector<std::string> arguments;
   std::vector<base::FilePath> attachments;
+  base::FilePath screenshot;
+  bool wait_for_upload;
   std::wstring ipc_pipe;
   ScopedFileHANDLE ipc_pipe_handle;
 };
@@ -436,9 +449,18 @@ bool StartHandlerProcess(
     AppendCommandLineArgument(
         FormatArgumentString("attachment", attachment.value()), &command_line);
   }
+  if (!data->screenshot.empty()) {
+    AppendCommandLineArgument(
+        FormatArgumentString("screenshot", data->screenshot.value()),
+        &command_line);
+  }
+
+  if (data->wait_for_upload) {
+      AppendCommandLineArgument(L"--wait-for-upload", &command_line);
+  }
 
   ScopedKernelHANDLE this_process(
-      OpenProcess(kXPProcessAllAccess, true, GetCurrentProcessId()));
+      OpenProcess(kXPProcessLimitedAccess, true, GetCurrentProcessId()));
   if (!this_process.is_valid()) {
     PLOG(ERROR) << "OpenProcess";
     return false;
@@ -630,7 +652,9 @@ bool CrashpadClient::StartHandler(
     const std::vector<std::string>& arguments,
     bool restartable,
     bool asynchronous_start,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& screenshot,
+    bool wait_for_upload) {
   DCHECK(ipc_pipe_.empty());
 
   // Both the pipe and the signalling events have to be created on the main
@@ -662,6 +686,8 @@ bool CrashpadClient::StartHandler(
                                                    annotations,
                                                    arguments,
                                                    attachments,
+                                                   screenshot,
+                                                   wait_for_upload,
                                                    ipc_pipe_,
                                                    std::move(ipc_pipe_handle));
 
@@ -1155,6 +1181,24 @@ bool CrashpadClient::DumpAndCrashTargetProcess(HANDLE process,
 void CrashpadClient::SetFirstChanceExceptionHandler(
     FirstChanceHandler handler) {
   first_chance_handler_ = handler;
+}
+
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kAddAttachment;
+  swprintf_s(
+      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  ClientToServerMessage message = {};
+  message.type = ClientToServerMessage::kRemoveAttachment;
+  swprintf_s(
+      message.attachment.path, MAX_PATH, L"%ls", attachment.value().c_str());
+  ServerToClientMessage response = {};
+  SendToCrashHandlerServer(ipc_pipe_, message, &response);
 }
 
 }  // namespace crashpad

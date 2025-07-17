@@ -36,20 +36,19 @@
 #include <config.h>  // Must come first
 #endif
 
+#include "common/solaris/file_id.h"
+
+#include <assert.h>
 #include <elf.h>
 #include <fcntl.h>
 #include <gelf.h>
-#include <sys/mman.h>
-#include <sys/ksyms.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/ksyms.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
-#include <cassert>
-#include <cstdio>
-
 #include "common/md5.h"
-#include "common/solaris/file_id.h"
 #include "common/solaris/message_output.h"
 #include "google_breakpad/common/minidump_format.h"
 
@@ -71,7 +70,7 @@ static bool FindElfTextSection(int fd, const void* elf_base,
   assert(text_start);
   assert(text_size);
 
-  *text_start = NULL;
+  *text_start = nullptr;
   *text_size = 0;
 
   if (elf_version(EV_CURRENT) == EV_NONE) {
@@ -81,10 +80,10 @@ static bool FindElfTextSection(int fd, const void* elf_base,
 
   GElf_Ehdr elf_header;
   lseek(fd, 0L, 0);
-  Elf* elf = elf_begin(fd, ELF_C_READ, NULL);
+  Elf* elf = elf_begin(fd, ELF_C_READ, nullptr);
   AutoElfEnder elfEnder(elf);
 
-  if (gelf_getehdr(elf, &elf_header) == (GElf_Ehdr*)NULL) {
+  if (gelf_getehdr(elf, &elf_header) == (GElf_Ehdr*)nullptr) {
     print_message2(2, "failed to read elf header: %s\n", elf_errmsg(-1));
     return false;
   }
@@ -98,11 +97,11 @@ static bool FindElfTextSection(int fd, const void* elf_base,
   }
 
   static const char kTextSectionName[] = ".text";
-  const GElf_Shdr* text_section = NULL;
-  Elf_Scn* scn = NULL;
+  const GElf_Shdr* text_section = nullptr;
+  Elf_Scn* scn = nullptr;
   GElf_Shdr shdr;
 
-  while ((scn = elf_nextscn(elf, scn)) != NULL) {
+  while ((scn = elf_nextscn(elf, scn)) != nullptr) {
     if (gelf_getshdr(scn, &shdr) == (GElf_Shdr*)0) {
       print_message2(2, "failed to read section header: %s\n", elf_errmsg(0));
       return false;
@@ -122,7 +121,7 @@ static bool FindElfTextSection(int fd, const void* elf_base,
       }
     }
   }
-  if (text_section != NULL && text_section->sh_size > 0) {
+  if (text_section != nullptr && text_section->sh_size > 0) {
     *text_start = (char*)elf_base + text_section->sh_offset;
     *text_size = text_section->sh_size;
     return true;
@@ -155,12 +154,12 @@ bool FileID::ElfFileIdentifier(unsigned char identifier[16]) {
   if (fstat(fd, &st) != 0 || st.st_size <= 0)
     return false;
 
-  void* base = mmap(NULL, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
+  void* base = mmap(nullptr, st.st_size, PROT_READ, MAP_PRIVATE, fd, 0);
   if (base == MAP_FAILED)
     return false;
 
   bool success = false;
-  const void* text_section = NULL;
+  const void* text_section = nullptr;
   int text_size = 0;
 
   if (FindElfTextSection(fd, base, &text_section, &text_size)) {

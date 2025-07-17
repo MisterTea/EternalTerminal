@@ -32,6 +32,8 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
+
 #include <fstream>
 #include <iostream>
 #include <string>

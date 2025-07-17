@@ -3,11 +3,13 @@
 
 #include "sentry_boot.h"
 #include "sentry_logger.h"
+#include "sentry_sampling_context.h"
 
 #define SENTRY_BREADCRUMBS_MAX 100
 #define SENTRY_SPANS_MAX 1000
 
-#if defined(__GNUC__) && (__GNUC__ >= 4)
+#if (defined(__GNUC__) && (__GNUC__ >= 4))                                     \
+    || (defined(_MSC_VER) && defined(__clang__))
 #    define MUST_USE __attribute__((warn_unused_result))
 #elif defined(_MSC_VER) && (_MSC_VER >= 1700)
 #    define MUST_USE _Check_return_
@@ -15,7 +17,13 @@
 #    define MUST_USE
 #endif
 
-#if defined(__GNUC__)
+#if defined(__GNUC__) || (defined(_MSC_VER) && defined(__clang__))
+#    define EXPLICIT_FALLTHROUGH __attribute__((__fallthrough__))
+#else
+#    define EXPLICIT_FALLTHROUGH
+#endif
+
+#if defined(__GNUC__) || (defined(_MSC_VER) && defined(__clang__))
 #    define UNUSED(x) UNUSED_##x __attribute__((__unused__))
 #elif defined(_MSC_VER)
 #    define UNUSED(x) UNUSED_##x __pragma(warning(suppress : 4100))
@@ -50,12 +58,14 @@ bool sentry__event_is_transaction(sentry_value_t event);
  * `event_id` out-parameter.
  */
 sentry_envelope_t *sentry__prepare_event(const sentry_options_t *options,
-    sentry_value_t event, sentry_uuid_t *event_id, bool invoke_before_send);
+    sentry_value_t event, sentry_uuid_t *event_id, bool invoke_before_send,
+    sentry_scope_t *local_scope);
 
 /**
  * Sends a sentry event, regardless of its type.
  */
-sentry_uuid_t sentry__capture_event(sentry_value_t event);
+sentry_uuid_t sentry__capture_event(
+    sentry_value_t event, sentry_scope_t *local_scope);
 
 /**
  * Convert the given transaction into an envelope. This assumes that the
@@ -110,14 +120,21 @@ sentry_options_t *sentry__options_lock(void);
  */
 void sentry__options_unlock(void);
 
+void sentry__set_propagation_context(const char *key, sentry_value_t value);
+
 #define SENTRY_WITH_OPTIONS(Options)                                           \
     for (const sentry_options_t *Options = sentry__options_getref(); Options;  \
-         sentry_options_free((sentry_options_t *)Options), Options = NULL)
+        sentry_options_free((sentry_options_t *)Options), Options = NULL)
 
 // these for now are only needed outside of core for tests
 #ifdef SENTRY_UNITTEST
 bool sentry__roll_dice(double probability);
-bool sentry__should_send_transaction(sentry_value_t tx_cxt);
+bool sentry__should_send_transaction(
+    sentry_value_t tx_ctx, sentry_sampling_context_t *sampling_ctx);
+#endif
+
+#if defined(SENTRY_PLATFORM_NX) || defined(SENTRY_PLATFORM_PS)
+int sentry__native_init(sentry_options_t *options);
 #endif
 
 #endif

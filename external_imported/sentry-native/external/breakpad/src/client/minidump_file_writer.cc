@@ -34,6 +34,7 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
 #include <fcntl.h>
 #include <limits.h>
 #include <stdio.h>
@@ -42,6 +43,7 @@
 
 #include "client/minidump_file_writer-inl.h"
 #include "common/linux/linux_libc_support.h"
+#include "common/memory_allocator.h"
 #include "common/string_conversion.h"
 #if defined(__linux__) && __linux__
 #include "third_party/lss/linux_syscall_support.h"
@@ -287,7 +289,7 @@ MDRVA MinidumpFileWriter::Allocate(size_t size) {
     return current_position;
   }
 #endif
-  size_t aligned_size = (size + 7) & ~7;  // 64-bit alignment
+  size_t aligned_size = PageAllocator::AlignUp(size, 8);  // 64-bit alignment
 
   if (position_ + aligned_size > size_) {
     size_t growth = aligned_size;

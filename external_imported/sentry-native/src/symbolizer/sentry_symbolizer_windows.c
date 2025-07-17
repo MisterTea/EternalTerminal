@@ -12,6 +12,11 @@ bool
 sentry__symbolize(
     void *addr, void (*func)(const sentry_frame_info_t *, void *), void *data)
 {
+#ifdef SENTRY_PLATFORM_XBOX_SCARLETT
+    (void)data;
+    (void)func;
+    (void)addr;
+#else
     HANDLE proc = sentry__init_dbghelp();
 
     SYMBOL_INFO *sym = (SYMBOL_INFO *)_alloca(sizeof(SYMBOL_INFO) + MAX_SYM);
@@ -35,6 +40,7 @@ sentry__symbolize(
     frame_info.symbol = sym->Name;
     frame_info.object_name = mod_name;
     func(&frame_info, data);
+#endif // SENTRY_PLATFORM_XBOX_SCARLETT
 
     return true;
 }

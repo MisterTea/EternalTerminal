@@ -121,6 +121,10 @@ class CrashpadClient {
   //!     option is only used on Windows.
   //! \param[in] attachments Vector that stores file paths that should be
   //!     captured with each report at the time of the crash.
+  //! \param[in] screenshot The path to a screenshot that should be
+  //!     captured with each report at the time of the crash.
+  //! \param[in] wait_for_upload If true, the handler will wait until the upload
+  //!     process finishes before signaling shutdown.
   //!
   //! \return `true` on success, `false` on failure with a message logged.
   bool StartHandler(const base::FilePath& handler,
@@ -132,7 +136,9 @@ class CrashpadClient {
                     const std::vector<std::string>& arguments,
                     bool restartable,
                     bool asynchronous_start,
-                    const std::vector<base::FilePath>& attachments = {});
+                    const std::vector<base::FilePath>& attachments = {},
+                    const base::FilePath& screenshot = base::FilePath(),
+                    bool wait_for_upload = false);
 
 #if BUILDFLAG(IS_ANDROID) || BUILDFLAG(IS_LINUX) || BUILDFLAG(IS_CHROMEOS) || \
     DOXYGEN
@@ -832,6 +838,20 @@ class CrashpadClient {
   //!     a handler and not by clients that use any other handler starting
   //!     methods.
   static void SetCrashLoopBefore(uint64_t crash_loop_before_time);
+#endif
+
+#if BUILDFLAG(IS_WIN) || BUILDFLAG(IS_LINUX) || DOXYGEN
+  //! \brief Adds a file to the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be added.
+  void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Removes a file from the list of files to be attached to the crash
+  //!     report.
+  //!
+  //! \param[in] attachment The path to the file to be removed.
+  void RemoveAttachment(const base::FilePath& attachment);
 #endif
 
  private:

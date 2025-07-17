@@ -83,7 +83,8 @@ BasicCodeModules::BasicCodeModules(const CodeModules* that,
     linked_ptr<const CodeModule> module(that->GetModuleAtIndex(i)->Copy());
     uint64_t delta = 0;
     if (map_.RetrieveRange(module->base_address() + module->size() - 1,
-                           &module, NULL /* base */, &delta, NULL /* size */) &&
+                           &module, nullptr /* base */, &delta,
+                           nullptr /* size */) &&
         delta > 0) {
       BPLOG(INFO) << "The range for module " << module->code_file()
                   << " was shrunk down by " << HexString(delta) << " bytes.";
@@ -109,10 +110,10 @@ unsigned int BasicCodeModules::module_count() const {
 const CodeModule* BasicCodeModules::GetModuleForAddress(
     uint64_t address) const {
   linked_ptr<const CodeModule> module;
-  if (!map_.RetrieveRange(address, &module, NULL /* base */, NULL /* delta */,
-                          NULL /* size */)) {
+  if (!map_.RetrieveRange(address, &module, nullptr /* base */,
+                          nullptr /* delta */, nullptr /* size */)) {
     BPLOG(INFO) << "No module at " << HexString(address);
-    return NULL;
+    return nullptr;
   }
 
   return module.get();
@@ -125,10 +126,10 @@ const CodeModule* BasicCodeModules::GetMainModule() const {
 const CodeModule* BasicCodeModules::GetModuleAtSequence(
     unsigned int sequence) const {
   linked_ptr<const CodeModule> module;
-  if (!map_.RetrieveRangeAtIndex(sequence, &module, NULL /* base */,
-                                 NULL /* delta */, NULL /* size */)) {
+  if (!map_.RetrieveRangeAtIndex(sequence, &module, nullptr /* base */,
+                                 nullptr /* delta */, nullptr /* size */)) {
     BPLOG(ERROR) << "RetrieveRangeAtIndex failed for sequence " << sequence;
-    return NULL;
+    return nullptr;
   }
 
   return module.get();

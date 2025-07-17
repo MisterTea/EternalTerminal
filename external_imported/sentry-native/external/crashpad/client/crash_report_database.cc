@@ -36,6 +36,45 @@ std::string FixAttachmentName(std::string name) {
   
   return name;
 }
+
+// If the file exists, "-N" is appended to the base name before the extension,
+// where N is a number starting from 1.
+base::FilePath EnsureUniqueFile(const base::FilePath& dir,
+                                const base::FilePath::StringType& filename) {
+  const base::FilePath path = dir.Append(filename);
+  if (!IsRegularFile(path)) {
+    return path;
+  }
+
+  // support common double extensions like ".tar.gz"
+  const base::FilePath basename =
+      path.BaseName().RemoveFinalExtension().RemoveFinalExtension();
+  const base::FilePath::StringType extension =
+      path.RemoveFinalExtension().FinalExtension() + path.FinalExtension();
+
+  // find the next available "filename-N.ext"
+  size_t n = 1;
+  constexpr size_t max_n = 4096;  // arbitrary but reasonable limit to break out
+  base::FilePath unique = path;
+  do {
+#if BUILDFLAG(IS_WIN)
+    base::FilePath::StringType ns = std::to_wstring(n);
+#else
+    base::FilePath::StringType ns = std::to_string(n);
+#endif
+    base::FilePath::StringType filename_n =
+        basename.value() + FILE_PATH_LITERAL("-") + ns + extension;
+    unique = dir.Append(filename_n);
+  } while (IsRegularFile(unique) && ++n < max_n);
+
+  if (n >= max_n) {
+    LOG(ERROR) << "failed to find a unique file name for "
+               << base::FilePath(filename);
+    return path;
+  }
+
+  return unique;
+}
 }  // namespace
 
 CrashReportDatabase::Report::Report()
@@ -105,7 +144,8 @@ FileWriter* CrashReportDatabase::NewReport::AddAttachment(
 #else
   const std::string name_string = FixAttachmentName(name);
 #endif
-  base::FilePath attachment_path = report_attachments_dir.Append(name_string);
+  base::FilePath attachment_path =
+      EnsureUniqueFile(report_attachments_dir, name_string);
   auto writer = std::make_unique<FileWriter>();
   if (!writer->Open(attachment_path,
                     FileWriteMode::kCreateOrFail,

@@ -44,8 +44,10 @@ TESTS = \
 	getitimer \
 	getrandom \
 	lstat \
+	mmap \
 	setitimer \
 	sigaction \
+	sigreturn \
 	sigtimedwait \
 	stat \
 	unlink \

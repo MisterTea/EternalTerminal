@@ -56,13 +56,11 @@ namespace {
 // The number of seconds to wait between checking for pending reports.
 const int kRetryWorkIntervalSeconds = 15 * 60;
 
-#if BUILDFLAG(IS_IOS)
 // The number of times to attempt to upload a pending report, repeated on
 // failure. Attempts will happen once per launch, once per call to
 // ReportPending(), and, if Options.watch_pending_reports is true, once every
-// kRetryWorkIntervalSeconds. Currently iOS only.
+// kRetryWorkIntervalSeconds.
 const int kRetryAttempts = 5;
-#endif
 
 // Wraps a reference to a no-args function (which can be empty). When this
 // object goes out of scope, invokes the function if it is non-empty.
@@ -116,6 +114,11 @@ void CrashReportUploadThread::ReportPending(const UUID& report_uuid) {
   known_pending_report_uuids_.PushBack(report_uuid);
   if (thread_.is_running())
     thread_.DoWorkNow();
+}
+
+void CrashReportUploadThread::ReportPendingSync(const UUID& report_uuid) {
+  known_pending_report_uuids_.PushBack(report_uuid);
+  DoWork(nullptr);
 }
 
 void CrashReportUploadThread::Start() {
@@ -211,10 +214,8 @@ void CrashReportUploadThread::ProcessPendingReport(
   if (ShouldRateLimitUpload(report))
     return;
 
-#if BUILDFLAG(IS_IOS)
   if (ShouldRateLimitRetry(report))
     return;
-#endif  // BUILDFLAG(IS_IOS)
 
   std::unique_ptr<const CrashReportDatabase::UploadReport> upload_report;
   CrashReportDatabase::OperationStatus status =
@@ -239,7 +240,7 @@ void CrashReportUploadThread::ProcessPendingReport(
       return;
 
     case CrashReportDatabase::kCannotRequestUpload:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return;
   }
 
@@ -256,7 +257,6 @@ void CrashReportUploadThread::ProcessPendingReport(
           report.uuid, Metrics::CrashSkippedReason::kPrepareForUploadFailed);
       break;
     case UploadResult::kRetry:
-#if BUILDFLAG(IS_IOS)
       if (upload_report->upload_attempts > kRetryAttempts) {
         upload_report.reset();
         database_->SkipReportUpload(report.uuid,
@@ -268,15 +268,6 @@ void CrashReportUploadThread::ProcessPendingReport(
             time(nullptr) +
             (1 << upload_report->upload_attempts) * kRetryWorkIntervalSeconds;
       }
-#else
-      upload_report.reset();
-
-      // TODO(mark): Deal with retries properly: don’t call SkipReportUplaod()
-      // if the result was kRetry and the report hasn’t already been retried
-      // too many times.
-      database_->SkipReportUpload(report.uuid,
-                                  Metrics::CrashSkippedReason::kUploadFailed);
-#endif
       break;
   }
 }
@@ -417,7 +408,6 @@ bool CrashReportUploadThread::ShouldRateLimitUpload(
   return false;
 }
 
-#if BUILDFLAG(IS_IOS)
 bool CrashReportUploadThread::ShouldRateLimitRetry(
     const CrashReportDatabase::Report& report) {
   if (retry_uuid_time_map_.find(report.uuid) != retry_uuid_time_map_.end()) {
@@ -430,6 +420,5 @@ bool CrashReportUploadThread::ShouldRateLimitRetry(
   }
   return false;
 }
-#endif
 
 }  // namespace crashpad

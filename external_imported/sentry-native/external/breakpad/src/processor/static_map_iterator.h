@@ -52,7 +52,7 @@ template<typename Key, typename Value, typename Compare>
 class StaticMapIterator {
  public:
   // Constructors.
-  StaticMapIterator(): index_(-1), base_(NULL) { }
+  StaticMapIterator(): index_(-1), base_(nullptr) { }
 
   // Increment & Decrement operators:
   StaticMapIterator& operator++();
@@ -87,21 +87,21 @@ class StaticMapIterator {
   friend class StaticMap<Key, Value, Compare>;
 
   // Only StaticMap can call this constructor.
-  explicit StaticMapIterator(const char* base, const int32_t& index);
+  explicit StaticMapIterator(const char* base, int64_t index);
 
   // Index of node that the iterator is pointing to.
-  int32_t index_;
+  int64_t index_;
 
   // Beginning address of the serialized map data.
   const char* base_;
 
   // Number of nodes in the map.  Use it to identify end() iterator.
-  int32_t num_nodes_;
+  int64_t num_nodes_;
 
   // offsets_ is an array of offset addresses of mapped values.
   // For example:
   // address_of_i-th_node_value = base_ + offsets_[i]
-  const uint32_t* offsets_;
+  const uint64_t* offsets_;
 
   // keys_[i] = key of i_th node.
   const Key* keys_;

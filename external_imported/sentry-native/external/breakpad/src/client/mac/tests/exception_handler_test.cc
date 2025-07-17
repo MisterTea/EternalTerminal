@@ -113,7 +113,8 @@ void ExceptionHandlerTest::InProcessCrash(bool aborting) {
   if (pid == 0) {
     // In the child process.
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
     // crash
     SoonToCrash(aborting ? &AbortCrasher : &Crasher);
     // not reached
@@ -195,8 +196,8 @@ static bool DumpNameMDCallback(const char* dump_dir, const char* file_name,
 }
 
 TEST_F(ExceptionHandlerTest, WriteMinidump) {
-  ExceptionHandler eh(tempDir.path(), NULL, DumpNameMDCallback, this, true,
-                      NULL);
+  ExceptionHandler eh(tempDir.path(), nullptr, DumpNameMDCallback, this, true,
+                      nullptr);
   ASSERT_TRUE(eh.WriteMinidump());
 
   // Ensure that minidump file exists and is > 0 bytes.
@@ -214,8 +215,8 @@ TEST_F(ExceptionHandlerTest, WriteMinidump) {
 }
 
 TEST_F(ExceptionHandlerTest, WriteMinidumpWithException) {
-  ExceptionHandler eh(tempDir.path(), NULL, DumpNameMDCallback, this, true,
-                      NULL);
+  ExceptionHandler eh(tempDir.path(), nullptr, DumpNameMDCallback, this, true,
+                      nullptr);
   ASSERT_TRUE(eh.WriteMinidump(true));
 
   // Ensure that minidump file exists and is > 0 bytes.
@@ -323,10 +324,11 @@ TEST_F(ExceptionHandlerTest, InstructionPointerMemory) {
   pid_t pid = fork();
   if (pid == 0) {
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
     // Get some executable memory.
     char* memory =
-      reinterpret_cast<char*>(mmap(NULL,
+      reinterpret_cast<char*>(mmap(nullptr,
                                    kMemorySize,
                                    PROT_READ | PROT_WRITE | PROT_EXEC,
                                    MAP_PRIVATE | MAP_ANON,
@@ -422,10 +424,11 @@ TEST_F(ExceptionHandlerTest, InstructionPointerMemoryMinBound) {
   pid_t pid = fork();
   if (pid == 0) {
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
     // Get some executable memory.
     char* memory =
-      reinterpret_cast<char*>(mmap(NULL,
+      reinterpret_cast<char*>(mmap(nullptr,
                                    kMemorySize,
                                    PROT_READ | PROT_WRITE | PROT_EXEC,
                                    MAP_PRIVATE | MAP_ANON,
@@ -521,10 +524,11 @@ TEST_F(ExceptionHandlerTest, InstructionPointerMemoryMaxBound) {
   pid_t pid = fork();
   if (pid == 0) {
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
     // Get some executable memory.
     char* memory =
-      reinterpret_cast<char*>(mmap(NULL,
+      reinterpret_cast<char*>(mmap(nullptr,
                                    kMemorySize,
                                    PROT_READ | PROT_WRITE | PROT_EXEC,
                                    MAP_PRIVATE | MAP_ANON,
@@ -611,13 +615,14 @@ TEST_F(ExceptionHandlerTest, InstructionPointerMemoryNullPointer) {
   pid_t pid = fork();
   if (pid == 0) {
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
     // Try calling a NULL pointer.
     typedef void (*void_function)(void);
     // Volatile markings are needed to keep Clang from generating invalid
     // opcodes.  See http://crbug.com/498354 for details.
     volatile void_function memory_function =
-      reinterpret_cast<void_function>(NULL);
+      static_cast<void_function>(nullptr);
     memory_function();
     // not reached
     exit(1);
@@ -657,7 +662,7 @@ TEST_F(ExceptionHandlerTest, InstructionPointerMemoryNullPointer) {
 
 static void* Junk(void*) {
   sleep(1000000);
-  return NULL;
+  return nullptr;
 }
 
 // Test that the memory list gets written correctly when multiple
@@ -670,11 +675,12 @@ TEST_F(ExceptionHandlerTest, MemoryListMultipleThreads) {
   pid_t pid = fork();
   if (pid == 0) {
     close(fds[0]);
-    ExceptionHandler eh(tempDir.path(), NULL, MDCallback, &fds[1], true, NULL);
+    ExceptionHandler eh(tempDir.path(), nullptr, MDCallback, &fds[1], true,
+                        nullptr);
 
     // Run an extra thread so >2 memory regions will be written.
     pthread_t junk_thread;
-    if (pthread_create(&junk_thread, NULL, Junk, NULL) == 0)
+    if (pthread_create(&junk_thread, nullptr, Junk, nullptr) == 0)
       pthread_detach(junk_thread);
 
     // Just crash.

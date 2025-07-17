@@ -59,7 +59,7 @@ StackwalkerSPARC::StackwalkerSPARC(const SystemInfo* system_info,
 StackFrame* StackwalkerSPARC::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameSPARC* frame = new StackFrameSPARC();
@@ -79,7 +79,7 @@ StackFrame* StackwalkerSPARC::GetCallerFrame(const CallStack* stack,
                                              bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameSPARC* last_frame = static_cast<StackFrameSPARC*>(
@@ -99,26 +99,26 @@ StackFrame* StackwalkerSPARC::GetCallerFrame(const CallStack* stack,
   // end of the stack.
   uint64_t stack_pointer = last_frame->context.g_r[30];
   if (stack_pointer <= last_frame->context.g_r[14]) {
-    return NULL;
+    return nullptr;
   }
 
   uint32_t instruction;
   if (!memory_->GetMemoryAtAddress(stack_pointer + 60,
                      &instruction) || instruction <= 1) {
-    return NULL;
+    return nullptr;
   }
 
   uint32_t stack_base;
   if (!memory_->GetMemoryAtAddress(stack_pointer + 56,
                      &stack_base) || stack_base <= 1) {
-    return NULL;
+    return nullptr;
   }
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
   if (TerminateWalk(instruction, stack_pointer, last_frame->context.g_r[14],
                     /*is_context_frame=*/last_frame->trust ==
                         StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   StackFrameSPARC* frame = new StackFrameSPARC();

@@ -48,6 +48,7 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/catch_approx.hpp
   ${SOURCES_DIR}/catch_assertion_info.hpp
   ${SOURCES_DIR}/catch_assertion_result.hpp
+  ${SOURCES_DIR}/catch_case_sensitive.hpp
   ${SOURCES_DIR}/catch_config.hpp
   ${SOURCES_DIR}/catch_get_random_seed.hpp
   ${SOURCES_DIR}/catch_message.hpp
@@ -67,13 +68,13 @@ set(IMPL_HEADERS
   ${SOURCES_DIR}/catch_version_macros.hpp
   ${SOURCES_DIR}/internal/catch_assertion_handler.hpp
   ${SOURCES_DIR}/internal/catch_case_insensitive_comparisons.hpp
-  ${SOURCES_DIR}/internal/catch_case_sensitive.hpp
   ${SOURCES_DIR}/internal/catch_clara.hpp
   ${SOURCES_DIR}/internal/catch_commandline.hpp
   ${SOURCES_DIR}/internal/catch_compare_traits.hpp
   ${SOURCES_DIR}/internal/catch_compiler_capabilities.hpp
   ${SOURCES_DIR}/internal/catch_config_android_logwrite.hpp
   ${SOURCES_DIR}/internal/catch_config_counter.hpp
+  ${SOURCES_DIR}/internal/catch_config_prefix_messages.hpp
   ${SOURCES_DIR}/internal/catch_config_static_analysis_support.hpp
   ${SOURCES_DIR}/internal/catch_config_uncaught_exceptions.hpp
   ${SOURCES_DIR}/internal/catch_config_wchar.hpp
@@ -194,7 +195,6 @@ set(IMPL_SOURCES
   ${SOURCES_DIR}/internal/catch_random_seed_generation.cpp
   ${SOURCES_DIR}/internal/catch_reporter_registry.cpp
   ${SOURCES_DIR}/internal/catch_reporter_spec_parser.cpp
-  ${SOURCES_DIR}/internal/catch_result_type.cpp
   ${SOURCES_DIR}/internal/catch_reusable_string_stream.cpp
   ${SOURCES_DIR}/internal/catch_run_context.cpp
   ${SOURCES_DIR}/internal/catch_section.cpp
@@ -354,7 +354,7 @@ endif()
 add_library(Catch2::Catch2 ALIAS Catch2)
 
 if (ANDROID)
-    target_link_libraries(Catch2 INTERFACE log)
+    target_link_libraries(Catch2 PRIVATE log)
 endif()
 
 set_target_properties(Catch2 PROPERTIES
@@ -362,29 +362,10 @@ set_target_properties(Catch2 PROPERTIES
                                 VERSION ${PROJECT_VERSION}
                               SOVERSION ${PROJECT_VERSION})
 
-# depend on bunch of C++11 and C++14 features to have C++14 enabled by default
+# require C++14
 target_compile_features(Catch2
   PUBLIC
-    cxx_alignas
-    cxx_alignof
-    cxx_attributes
-    cxx_auto_type
-    cxx_constexpr
-    cxx_defaulted_functions
-    cxx_deleted_functions
-    cxx_final
-    cxx_lambdas
-    cxx_noexcept
-    cxx_override
-    cxx_range_for
-    cxx_rvalue_references
-    cxx_static_assert
-    cxx_strong_enums
-    cxx_trailing_return_types
-    cxx_unicode_literals
-    cxx_user_literals
-    cxx_variable_templates
-    cxx_variadic_macros
+    cxx_std_14
 )
 
 configure_file(
@@ -475,26 +456,7 @@ if (CATCH_BUILD_EXAMPLES OR CATCH_BUILD_EXTRA_TESTS)
     )
     target_compile_features(Catch2_buildall_interface
       INTERFACE
-        cxx_alignas
-        cxx_alignof
-        cxx_attributes
-        cxx_auto_type
-        cxx_constexpr
-        cxx_defaulted_functions
-        cxx_deleted_functions
-        cxx_final
-        cxx_lambdas
-        cxx_noexcept
-        cxx_override
-        cxx_range_for
-        cxx_rvalue_references
-        cxx_static_assert
-        cxx_strong_enums
-        cxx_trailing_return_types
-        cxx_unicode_literals
-        cxx_user_literals
-        cxx_variable_templates
-        cxx_variadic_macros
+        cxx_std_14
     )
 endif()
 

@@ -367,36 +367,11 @@ size_t MinidumpContextAMD64Writer::ContextSize() const {
 
 bool MinidumpXSaveAMD64CetU::InitializeFromSnapshot(
     const CPUContextX86_64* context_snapshot) {
-#ifdef SENTRY_DISABLED
-  DCHECK_EQ(context_snapshot->xstate.cet_u.cetmsr, 1ull);
-#else
-  // TODO(supervacuus): this DCHECK led to multiple user inquiries because it
-  //  ends up killing the crashpad_handler (when using a DEBUG build) which in
-  //  turn keeps the crashpad client waiting indefinitely.
-  //
-  //  It seems that crashpad devs put a DCHECK here because they already check
-  //  at the call-site that the CET_U flag is enabled in the XSAVE feature set.
-  //  However, that this flag is set, only means that the CET_U registers in
-  //  XSAVE are valid, not necessarily that the SH_STK_EN bit is set.
-  //
-  //  I couldn't find anything in the Intel (SDM 13.1) or AMD (PR 11.5.2,
-  //  18.11/12/13) CET/SS spec that would signal that SH_STK_EN(=cetmsr[0])
-  //  cannot be 0 at this point. Ideally, if SH_STK_EN is not set, then SSP
-  //  should be set to 0 too (which means both are in their initial state). But
-  //  even that should not lead to fatally exit the crashpad_handler (even in
-  //  DEBUG), but rather produce a log and result in something that can be
-  //  analysed in the backend.
-  //
-  //  Any validation based on these register contents must check SH_STK_EN
-  //  anyway or check SSP for !NULL and as a valid base like it is done here:
-  //  https://chromium.googlesource.com/crashpad/crashpad/+/6278690abe6ef0dda047e67dc1d0c49ce7af3811/snapshot/win/thread_snapshot_win.cc#130
-  if (!(context_snapshot->xstate.cet_u.cetmsr & 1ull)) {
-    LOG(WARNING) << "CET MSR enabled flag is not set ("
-                 << context_snapshot->xstate.cet_u.cetmsr
-                 << "); SSP = "
-                 << context_snapshot->xstate.cet_u.ssp;
-  }
-#endif
+  // Exception records do not carry CET registers but we have to provide the
+  // same shaped context for threads and exception contexts, so both 0 (no ssp
+  // present) and 1 (ssp present) are expected.
+  DCHECK(context_snapshot->xstate.cet_u.cetmsr == 0ull ||
+         context_snapshot->xstate.cet_u.cetmsr == 1ull);
   cet_u_.cetmsr = context_snapshot->xstate.cet_u.cetmsr;
   cet_u_.ssp = context_snapshot->xstate.cet_u.ssp;
   return true;

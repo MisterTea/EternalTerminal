@@ -68,6 +68,12 @@ class ExceptionHandlerClient {
   //! \param[in] can_set_ptracer Whether SetPtracer should be enabled.
   void SetCanSetPtracer(bool can_set_ptracer);
 
+  //! \brief Adds an attachment to the crash report.
+  void AddAttachment(const base::FilePath& attachment);
+
+  //! \brief Removes an attachment from the crash report.
+  void RemoveAttachment(const base::FilePath& attachment);
+
  private:
   int SendCrashDumpRequest(
       const ExceptionHandlerProtocol::ClientInformation& info,

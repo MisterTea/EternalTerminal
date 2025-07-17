@@ -36,7 +36,8 @@
 #include <config.h>  // Must come first
 #endif
 
-#include "common/scoped_ptr.h"
+#include <memory>
+
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/code_modules.h"
 #include "google_breakpad/processor/memory_region.h"
@@ -65,7 +66,7 @@ StackwalkerMIPS::StackwalkerMIPS(const SystemInfo* system_info,
             << HexString(memory_->GetBase())
             << "+"
             << HexString(memory_->GetSize());
-        memory_ = NULL;
+        memory_ = nullptr;
       }
     } else {
       if (0xffffffff - memory_->GetBase() < memory_->GetSize() - 1) {
@@ -73,7 +74,7 @@ StackwalkerMIPS::StackwalkerMIPS(const SystemInfo* system_info,
             << HexString(memory_->GetBase())
             << "+"
             << HexString(memory_->GetSize());
-        memory_ = NULL;
+        memory_ = nullptr;
       }
     }
   }
@@ -82,7 +83,7 @@ StackwalkerMIPS::StackwalkerMIPS(const SystemInfo* system_info,
 StackFrame* StackwalkerMIPS::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context.";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameMIPS* frame = new StackFrameMIPS();
@@ -102,7 +103,7 @@ static const char* const kRegisterNames[] = {
    "$zero", "$at", "$v0", "$v1", "$a0", "$a1", "$a2", "$a3", "$to", "$t1",
    "$t2",   "$t3", "$t4", "$t5", "$t6", "$t7", "$s0", "$s1", "$s2", "$s3",
    "$s4",   "$s5", "$s6", "$s7", "$t8", "$t9", "$k0", "$k1", "$gp", "$sp",
-   "$fp",   "$ra", NULL
+   "$fp",   "$ra", nullptr
   // TODO(gordanac): add float point save registers
 };
 
@@ -126,7 +127,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByCFIFrameInfo(
 
     if (!cfi_frame_info->FindCallerRegs(callee_registers, *memory_,
         &caller_registers))  {
-      return NULL;
+      return nullptr;
     }
 
     CFIFrameInfo::RegisterValueMap<uint32_t>::const_iterator entry =
@@ -143,7 +144,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByCFIFrameInfo(
     }
     caller_registers["$pc"] = pc;
     // Construct a new stack frame given the values the CFI recovered.
-    scoped_ptr<StackFrameMIPS> frame(new StackFrameMIPS());
+    std::unique_ptr<StackFrameMIPS> frame(new StackFrameMIPS());
 
     for (int i = 0; kRegisterNames[i]; ++i) {
       CFIFrameInfo::RegisterValueMap<uint32_t>::const_iterator caller_entry =
@@ -193,7 +194,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByCFIFrameInfo(
 
     if (!cfi_frame_info->FindCallerRegs(callee_registers, *memory_,
         &caller_registers))  {
-      return NULL;
+      return nullptr;
     }
 
     CFIFrameInfo::RegisterValueMap<uint64_t>::const_iterator entry =
@@ -210,7 +211,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByCFIFrameInfo(
     }
     caller_registers["$pc"] = pc;
     // Construct a new stack frame given the values the CFI recovered.
-    scoped_ptr<StackFrameMIPS> frame(new StackFrameMIPS());
+    std::unique_ptr<StackFrameMIPS> frame(new StackFrameMIPS());
 
     for (int i = 0; kRegisterNames[i]; ++i) {
       CFIFrameInfo::RegisterValueMap<uint64_t>::const_iterator caller_entry =
@@ -252,15 +253,15 @@ StackFrame* StackwalkerMIPS::GetCallerFrame(const CallStack* stack,
                                             bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   const vector<StackFrame*>& frames = *stack->frames();
   StackFrameMIPS* last_frame = static_cast<StackFrameMIPS*>(frames.back());
-  scoped_ptr<StackFrameMIPS> new_frame;
+  std::unique_ptr<StackFrameMIPS> new_frame;
 
   // See if there is DWARF call frame information covering this address.
-  scoped_ptr<CFIFrameInfo> cfi_frame_info(
+  std::unique_ptr<CFIFrameInfo> cfi_frame_info(
     frame_symbolizer_->FindCFIFrameInfo(last_frame));
   if (cfi_frame_info.get())
     new_frame.reset(GetCallerByCFIFrameInfo(frames, cfi_frame_info.get()));
@@ -272,7 +273,7 @@ StackFrame* StackwalkerMIPS::GetCallerFrame(const CallStack* stack,
 
   // If nothing worked, tell the caller.
   if (!new_frame.get()) {
-    return NULL;
+    return nullptr;
   }
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
@@ -281,7 +282,7 @@ StackFrame* StackwalkerMIPS::GetCallerFrame(const CallStack* stack,
                     last_frame->context.iregs[MD_CONTEXT_MIPS_REG_SP],
                     /*first_unwind=*/last_frame->trust ==
                         StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   return new_frame.release();
@@ -326,13 +327,13 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByStackScan(
         // If we can't find an instruction pointer even with stack scanning,
         // give up.
         BPLOG(ERROR) << " ScanForReturnAddress failed ";
-        return NULL;
+        return nullptr;
       }
       // Get $fp stored in the stack frame.
       if (!memory_->GetMemoryAtAddress(caller_sp - sizeof(caller_pc),
           &caller_fp)) {
         BPLOG(INFO) << " GetMemoryAtAddress for fp failed " ;
-        return NULL;
+        return nullptr;
       }
 
       count = count - (caller_sp - last_sp) / sizeof(caller_pc);
@@ -342,7 +343,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByStackScan(
 
     if (!count) {
       BPLOG(INFO) << " No frame found " ;
-      return NULL;
+      return nullptr;
     }
 
     // ScanForReturnAddress found a reasonable return address. Advance
@@ -392,13 +393,13 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByStackScan(
         // If we can't find an instruction pointer even with stack scanning,
         // give up.
         BPLOG(ERROR) << " ScanForReturnAddress failed ";
-        return NULL;
+        return nullptr;
       }
       // Get $fp stored in the stack frame.
       if (!memory_->GetMemoryAtAddress(caller_sp - sizeof(caller_pc),
           &caller_fp)) {
         BPLOG(INFO) << " GetMemoryAtAddress for fp failed " ;
-        return NULL;
+        return nullptr;
       }
 
       count = count - (caller_sp - last_sp) / sizeof(caller_pc);
@@ -408,7 +409,7 @@ StackFrameMIPS* StackwalkerMIPS::GetCallerByStackScan(
 
     if (!count) {
       BPLOG(INFO) << " No frame found " ;
-      return NULL;
+      return nullptr;
     }
 
     // ScanForReturnAddress found a reasonable return address. Advance

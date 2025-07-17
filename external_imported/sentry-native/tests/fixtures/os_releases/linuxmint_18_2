@@ -1,0 +1,11 @@
+NAME="Linux Mint"
+VERSION="18.2 (Sonya)"
+ID=linuxmint
+ID_LIKE=ubuntu
+PRETTY_NAME="Linux Mint 18.2"
+VERSION_ID="18.2"
+HOME_URL="http://www.linuxmint.com/"
+SUPPORT_URL="http://forums.linuxmint.com/"
+BUG_REPORT_URL="http://bugs.launchpad.net/linuxmint/"
+VERSION_CODENAME=sonya
+UBUNTU_CODENAME=xenial

@@ -11,3 +11,6 @@ rsesek@chromium.org
 ted@mielczarek.org
 thestig@chromium.org
 vapier@chromium.org
+
+# Allow autoroller to update our DEPS file automatically.
+per-file DEPS=*

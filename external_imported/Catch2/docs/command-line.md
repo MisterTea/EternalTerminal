@@ -145,7 +145,7 @@ only tests that match the positive filters are included.
 
 You can also match test names with special characters by escaping them
 with a backslash (`"\"`), e.g. a test named `"Do A, then B"` is matched
-by "Do A\, then B" test spec. Backslash also escapes itself.
+by `"Do A\, then B"` test spec. Backslash also escapes itself.
 
 
 ### Examples
@@ -194,7 +194,8 @@ verbose and human-friendly output.
 
 Reporters are also individually configurable. To pass configuration options
 to the reporter, you append `::key=value` to the reporter specification
-as many times as you want, e.g. `--reporter xml::out=someFile.xml`.
+as many times as you want, e.g. `--reporter xml::out=someFile.xml` or
+`--reporter custom::colour-mode=ansi::Xoption=2`.
 
 The keys must either be prefixed by "X", in which case they are not parsed
 by Catch2 and are only passed down to the reporter, or one of options
@@ -365,14 +366,14 @@ There are currently two warnings implemented:
 ## Reporting timings
 <pre>-d, --durations &lt;yes/no></pre>
 
-When set to ```yes``` Catch will report the duration of each test case, in milliseconds. Note that it does this regardless of whether a test case passes or fails. Note, also, the certain reporters (e.g. Junit) always report test case durations regardless of this option being set or not.
+When set to ```yes``` Catch will report the duration of each test case, in seconds with millisecond precision. Note that it does this regardless of whether a test case passes or fails. Note, also, the certain reporters (e.g. Junit) always report test case durations regardless of this option being set or not.
 
 <pre>-D, --min-duration &lt;value></pre>
 
 > `--min-duration` was [introduced](https://github.com/catchorg/Catch2/pull/1910) in Catch2 2.13.0
 
 When set, Catch will report the duration of each test case that took more
-than &lt;value> seconds, in milliseconds. This option is overridden by both
+than &lt;value> seconds, in seconds with millisecond precision. This option is overridden by both
 `-d yes` and `-d no`, so that either all durations are reported, or none
 are.
 

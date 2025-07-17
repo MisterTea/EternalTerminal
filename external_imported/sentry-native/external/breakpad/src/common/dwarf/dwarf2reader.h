@@ -570,10 +570,10 @@ class CompilationUnit {
   // Special version of ProcessAttribute, for finding str_offsets_base and
   // DW_AT_addr_base in DW_TAG_compile_unit, for DWARF v5.
   const uint8_t* ProcessOffsetBaseAttribute(uint64_t dieoffset,
-					       const uint8_t* start,
-					       enum DwarfAttribute attr,
-					       enum DwarfForm form,
-					       uint64_t implicit_const);
+                                            const uint8_t* start,
+                                            enum DwarfAttribute attr,
+                                            enum DwarfForm form,
+                                            uint64_t implicit_const);
 
   // Called when we have an attribute with unsigned data to give to
   // our handler.  The attribute is for the DIE at OFFSET from the
@@ -664,7 +664,7 @@ class CompilationUnit {
   }
 
   // Processes all DIEs for this compilation unit
-  void ProcessDIEs();
+  bool ProcessDIEs();
 
   // Skips the die with attributes specified in ABBREV starting at
   // START, and return the new place to position the stream to.
@@ -909,11 +909,11 @@ class DwpReader {
 //
 // For example, here is a complete (uncompressed) table describing the
 // function above:
-// 
+//
 //     insn      cfa    r0      r1 ...  ra
 //     =======================================
 //     func+0:   sp                     cfa[0]
-//     func+1:   sp+16                  cfa[0] 
+//     func+1:   sp+16                  cfa[0]
 //     func+2:   sp+16  cfa[-4]         cfa[0]
 //     func+11:  sp+20  cfa[-4]         cfa[0]
 //     func+21:  sp+20                  cfa[0]
@@ -947,7 +947,7 @@ class DwpReader {
 //   save them, caller-saves registers are probably dead in the caller
 //   anyway, so compilers usually don't generate CFA for caller-saves
 //   registers.)
-// 
+//
 // - Exactly where the CFA points is a matter of convention that
 //   depends on the architecture and ABI in use. In the example, the
 //   CFA is the value the stack pointer had upon entry to the
@@ -968,7 +968,7 @@ class DwpReader {
 // reduces the size of the data by mentioning only the addresses and
 // columns at which changes take place. So for the above, DWARF CFI
 // data would only actually mention the following:
-// 
+//
 //     insn      cfa    r0      r1 ...  ra
 //     =======================================
 //     func+0:   sp                     cfa[0]
@@ -976,7 +976,7 @@ class DwpReader {
 //     func+2:          cfa[-4]
 //     func+11:  sp+20
 //     func+21:         r0
-//     func+22:  sp            
+//     func+22:  sp
 //
 // In fact, this is the way the parser reports CFI to the consumer: as
 // a series of statements of the form, "At address X, column Y changed
@@ -1094,7 +1094,7 @@ class CallFrameInfo {
   // handling are described here, rather poorly:
   // http://refspecs.linux-foundation.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/dwarfext.html
   // http://refspecs.linux-foundation.org/LSB_4.0.0/LSB-Core-generic/LSB-Core-generic/ehframechpt.html
-  // 
+  //
   // The mechanics of C++ exception handling, personality routines,
   // and language-specific data areas are described here, rather nicely:
   // http://www.codesourcery.com/public/cxx-abi/abi-eh.html
@@ -1127,7 +1127,7 @@ class CallFrameInfo {
 
     // The start of this entry in the buffer.
     const uint8_t* start;
-    
+
     // Which kind of entry this is.
     //
     // We want to be able to use this for error reporting even while we're
@@ -1161,13 +1161,13 @@ class CallFrameInfo {
   struct CIE: public Entry {
     uint8_t version;                      // CFI data version number
     string augmentation;                // vendor format extension markers
-    uint64_t code_alignment_factor;       // scale for code address adjustments 
+    uint64_t code_alignment_factor;       // scale for code address adjustments
     int data_alignment_factor;          // scale for stack pointer adjustments
     unsigned return_address_register;   // which register holds the return addr
 
     // True if this CIE includes Linux C++ ABI 'z' augmentation data.
     bool has_z_augmentation;
- 
+
     // Parsed 'z' augmentation data. These are meaningful only if
     // has_z_augmentation is true.
     bool has_z_lsda;                    // The 'z' augmentation included 'L'.
@@ -1221,7 +1221,7 @@ class CallFrameInfo {
   class ValExpressionRule;
   class RuleMap;
   class State;
-  
+
   // Parse the initial length and id of a CFI entry, either a CIE, an FDE,
   // or a .eh_frame end-of-data mark. CURSOR points to the beginning of the
   // data to parse. On success, populate ENTRY as appropriate, and return
@@ -1308,7 +1308,7 @@ class CallFrameInfo::Handler {
   // Immediately after a call to Entry, the handler should assume that
   // the rule for each callee-saves register is "unchanged" --- that
   // is, that the register still has the value it had in the caller.
-  // 
+  //
   // If a *Rule function returns true, we continue processing this entry's
   // instructions. If a *Rule function returns false, we stop evaluating
   // instructions, and skip to the next entry. Either way, we call End
@@ -1497,13 +1497,13 @@ class CallFrameInfo::Reporter {
   // The instruction at INSN_OFFSET in the entry at OFFSET, of kind
   // KIND, establishes a rule that cites the CFA, but we have not
   // established a CFA rule yet.
-  virtual void NoCFARule(uint64_t offset, CallFrameInfo::EntryKind kind, 
+  virtual void NoCFARule(uint64_t offset, CallFrameInfo::EntryKind kind,
                          uint64_t insn_offset);
 
   // The instruction at INSN_OFFSET in the entry at OFFSET, of kind
   // KIND, is a DW_CFA_restore_state instruction, but the stack of
   // saved states is empty.
-  virtual void EmptyStateStack(uint64_t offset, CallFrameInfo::EntryKind kind, 
+  virtual void EmptyStateStack(uint64_t offset, CallFrameInfo::EntryKind kind,
                                uint64_t insn_offset);
 
   // The DW_CFA_remember_state instruction at INSN_OFFSET in the entry
@@ -1511,7 +1511,7 @@ class CallFrameInfo::Reporter {
   // rule, whereas the current state does have a CFA rule. This is
   // bogus input, which the CallFrameInfo::Handler interface doesn't
   // (and shouldn't) have any way to report.
-  virtual void ClearingCFARule(uint64_t offset, CallFrameInfo::EntryKind kind, 
+  virtual void ClearingCFARule(uint64_t offset, CallFrameInfo::EntryKind kind,
                                uint64_t insn_offset);
 
  protected:

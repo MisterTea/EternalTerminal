@@ -59,22 +59,55 @@
 
 #include "client/linux/minidump_writer/directory_reader.h"
 #include "client/linux/minidump_writer/line_reader.h"
+#include "common/linux/eintr_wrapper.h"
 #include "common/linux/linux_libc_support.h"
 #include "third_party/lss/linux_syscall_support.h"
+
+#if defined(__arm__)
+/*
+ * https://elixir.bootlin.com/linux/v6.8-rc2/source/arch/arm/include/asm/user.h#L81
+ * User specific VFP registers. If only VFPv2 is present, registers 16 to 31
+ * are ignored by the ptrace system call and the signal handler.
+ */
+typedef struct {
+  unsigned long long fpregs[32];
+  unsigned long fpscr;
+// Kernel just appends fpscr to the copy of fpregs, so we need to force
+// compiler to build the same layout.
+} __attribute__((packed, aligned(4))) user_vfp_t;
+#endif  // defined(__arm__)
 
 // Suspends a thread by attaching to it.
 static bool SuspendThread(pid_t pid) {
   // This may fail if the thread has just died or debugged.
   errno = 0;
-  if (sys_ptrace(PTRACE_ATTACH, pid, NULL, NULL) != 0 &&
+  if (sys_ptrace(PTRACE_ATTACH, pid, nullptr, nullptr) != 0 &&
       errno != 0) {
     return false;
   }
-  while (sys_waitpid(pid, NULL, __WALL) < 0) {
-    if (errno != EINTR) {
-      sys_ptrace(PTRACE_DETACH, pid, NULL, NULL);
+  while (true) {
+    int status;
+    int r = HANDLE_EINTR(sys_waitpid(pid, &status, __WALL));
+    if (r < 0) {
+      sys_ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
       return false;
     }
+
+    if (!WIFSTOPPED(status))
+      return false;
+
+    // Any signal will stop the thread, make sure it is SIGSTOP. Otherwise, this
+    // signal will be delivered after PTRACE_DETACH, and the thread will enter
+    // the "T (stopped)" state.
+    if (WSTOPSIG(status) == SIGSTOP)
+      break;
+
+    // Signals other than SIGSTOP that are received need to be reinjected,
+    // or they will otherwise get lost.
+    r = sys_ptrace(PTRACE_CONT, pid, nullptr,
+                   reinterpret_cast<void*>(WSTOPSIG(status)));
+    if (r < 0)
+      return false;
   }
 #if defined(__i386) || defined(__x86_64)
   // On x86, the stack pointer is NULL or -1, when executing trusted code in
@@ -85,14 +118,14 @@ static bool SuspendThread(pid_t pid) {
   // We thus test the stack pointer and exclude any threads that are part of
   // the seccomp sandbox's trusted code.
   user_regs_struct regs;
-  if (sys_ptrace(PTRACE_GETREGS, pid, NULL, &regs) == -1 ||
+  if (sys_ptrace(PTRACE_GETREGS, pid, nullptr, &regs) == -1 ||
 #if defined(__i386)
       !regs.esp
 #elif defined(__x86_64)
       !regs.rsp
 #endif
       ) {
-    sys_ptrace(PTRACE_DETACH, pid, NULL, NULL);
+    sys_ptrace(PTRACE_DETACH, pid, nullptr, nullptr);
     return false;
   }
 #endif
@@ -101,7 +134,7 @@ static bool SuspendThread(pid_t pid) {
 
 // Resumes a thread by detaching from it.
 static bool ResumeThread(pid_t pid) {
-  return sys_ptrace(PTRACE_DETACH, pid, NULL, NULL) >= 0;
+  return sys_ptrace(PTRACE_DETACH, pid, nullptr, nullptr) >= 0;
 }
 
 namespace google_breakpad {
@@ -152,6 +185,24 @@ bool LinuxPtraceDumper::CopyFromProcess(void* dest, pid_t child,
   return true;
 }
 
+// This read VFP registers via either PTRACE_GETREGSET or PTRACE_GETREGS
+#if defined(__arm__)
+static bool ReadVFPRegistersArm32(pid_t tid, struct iovec* io) {
+#ifdef PTRACE_GETREGSET
+  if (sys_ptrace(PTRACE_GETREGSET, tid, reinterpret_cast<void*>(NT_ARM_VFP),
+                 io) == 0 && io->iov_len == sizeof(user_vfp_t)) {
+    return true;
+  }
+#endif  // PTRACE_GETREGSET
+#ifdef PTRACE_GETVFPREGS
+  if (sys_ptrace(PTRACE_GETVFPREGS, tid, nullptr, io->iov_base) == 0) {
+    return true;
+  }
+#endif  // PTRACE_GETVFPREGS
+  return false;
+}
+#endif  // defined(__arm__)
+
 bool LinuxPtraceDumper::ReadRegisterSet(ThreadInfo* info, pid_t tid)
 {
 #ifdef PTRACE_GETREGSET
@@ -163,7 +214,24 @@ bool LinuxPtraceDumper::ReadRegisterSet(ThreadInfo* info, pid_t tid)
 
   info->GetFloatingPointRegisters(&io.iov_base, &io.iov_len);
   if (sys_ptrace(PTRACE_GETREGSET, tid, (void*)NT_FPREGSET, (void*)&io) == -1) {
-    return false;
+  // We are going to check if we can read VFP registers on ARM32.
+  // Currently breakpad does not support VFP registers to be a part of minidump,
+  // so this is only to confirm that we can actually read FP registers.
+  // That is needed to prevent a false-positive minidumps failures with ARM32
+  // binaries running on top of ARM64 Linux kernels.
+#if defined(__arm__)
+    switch (errno) {
+      case EIO:
+      case EINVAL:
+        user_vfp_t vfp;
+        struct iovec io;
+        io.iov_base = &vfp;
+        io.iov_len = sizeof(vfp);
+        return ReadVFPRegistersArm32(tid, &io);
+      default:
+        return false;
+    }
+#endif  // defined(__arm__)
   }
   return true;
 #else
@@ -174,8 +242,8 @@ bool LinuxPtraceDumper::ReadRegisterSet(ThreadInfo* info, pid_t tid)
 bool LinuxPtraceDumper::ReadRegisters(ThreadInfo* info, pid_t tid) {
 #ifdef PTRACE_GETREGS
   void* gp_addr;
-  info->GetGeneralPurposeRegisters(&gp_addr, NULL);
-  if (sys_ptrace(PTRACE_GETREGS, tid, NULL, gp_addr) == -1) {
+  info->GetGeneralPurposeRegisters(&gp_addr, nullptr);
+  if (sys_ptrace(PTRACE_GETREGS, tid, nullptr, gp_addr) == -1) {
     return false;
   }
 
@@ -192,9 +260,26 @@ bool LinuxPtraceDumper::ReadRegisters(ThreadInfo* info, pid_t tid) {
   // aren't written to the cpu context anyway, so just don't get them here.
   // See http://crbug.com/508324
   void* fp_addr;
-  info->GetFloatingPointRegisters(&fp_addr, NULL);
-  if (sys_ptrace(PTRACE_GETFPREGS, tid, NULL, fp_addr) == -1) {
-    return false;
+  info->GetFloatingPointRegisters(&fp_addr, nullptr);
+  if (sys_ptrace(PTRACE_GETFPREGS, tid, nullptr, fp_addr) == -1) {
+  // We are going to check if we can read VFP registers on ARM32.
+  // Currently breakpad does not support VFP registers to be a part of minidump,
+  // so this is only to confirm that we can actually read FP registers.
+  // That is needed to prevent a false-positive minidumps failures with ARM32
+  // binaries running on top of ARM64 Linux kernels.
+#if defined(__arm__)
+    switch (errno) {
+      case EIO:
+      case EINVAL:
+        user_vfp_t vfp;
+        struct iovec io;
+        io.iov_base = &vfp;
+        io.iov_len = sizeof(vfp);
+        return ReadVFPRegistersArm32(tid, &io);
+      default:
+        return false;
+    }
+#endif  // defined(__arm__)
   }
 #endif  // !(defined(__ANDROID__) && defined(__ARM_EABI__))
 #endif  // !defined(__SOFTFP__)
@@ -214,7 +299,7 @@ bool LinuxPtraceDumper::GetThreadInfoByIndex(size_t index, ThreadInfo* info) {
 
   pid_t tid = threads_[index];
 
-  assert(info != NULL);
+  assert(info != nullptr);
   char status_path[NAME_MAX];
   if (!BuildProcPath(status_path, tid, "status"))
     return false;
@@ -257,7 +342,7 @@ bool LinuxPtraceDumper::GetThreadInfoByIndex(size_t index, ThreadInfo* info) {
   int eax, ebx, ecx, edx;
   __cpuid(1, eax, ebx, ecx, edx);
   if (edx & bit_FXSAVE) {
-    if (sys_ptrace(PTRACE_GETFPXREGS, tid, NULL, &info->fpxregs) == -1) {
+    if (sys_ptrace(PTRACE_GETFPXREGS, tid, nullptr, &info->fpxregs) == -1) {
       return false;
     }
   } else {

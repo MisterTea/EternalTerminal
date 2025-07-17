@@ -9,6 +9,8 @@
 
 #include <string>
 
+#include "base/containers/span.h"
+
 namespace base {
 
 uint64_t RandUint64();
@@ -19,7 +21,7 @@ uint64_t RandGenerator(uint64_t range);
 
 double RandDouble();
 
-void RandBytes(void* output, size_t output_length);
+void RandBytes(span<uint8_t> output);
 std::string RandBytesAsString(size_t length);
 
 }  // namespace base

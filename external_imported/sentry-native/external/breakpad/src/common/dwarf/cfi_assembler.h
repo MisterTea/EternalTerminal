@@ -96,7 +96,7 @@ class CFISection: public Section {
              bool eh_frame = false)
       : Section(endianness), address_size_(address_size), eh_frame_(eh_frame),
         pointer_encoding_(DW_EH_PE_absptr),
-        encoded_pointer_bases_(), entry_length_(NULL), in_fde_(false) {
+        encoded_pointer_bases_(), entry_length_(nullptr), in_fde_(false) {
     // The 'start', 'Here', and 'Mark' members of a CFISection all refer
     // to section offsets.
     start() = 0;

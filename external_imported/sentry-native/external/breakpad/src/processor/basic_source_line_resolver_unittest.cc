@@ -33,10 +33,10 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <memory>
 #include <string>
 
 #include "breakpad_googletest_includes.h"
-#include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 #include "google_breakpad/processor/basic_source_line_resolver.h"
 #include "google_breakpad/processor/code_module.h"
@@ -55,12 +55,11 @@ using google_breakpad::CodeModule;
 using google_breakpad::MemoryRegion;
 using google_breakpad::StackFrame;
 using google_breakpad::WindowsFrameInfo;
-using google_breakpad::scoped_ptr;
 using google_breakpad::SymbolParseHelper;
 
 class TestCodeModule : public CodeModule {
  public:
-  TestCodeModule(string code_file) : code_file_(code_file) {}
+  TestCodeModule(const string& code_file) : code_file_(code_file) {}
   virtual ~TestCodeModule() {}
 
   virtual uint64_t base_address() const { return 0; }
@@ -160,7 +159,7 @@ static bool VerifyEmpty(const StackFrame& frame) {
 
 static void ClearSourceLineInfo(StackFrame* frame) {
   frame->function_name.clear();
-  frame->module = NULL;
+  frame->module = nullptr;
   frame->source_file_name.clear();
   frame->source_line = 0;
 }
@@ -187,10 +186,10 @@ TEST_F(TestBasicSourceLineResolver, TestLoadAndResolve)
 
 
   StackFrame frame;
-  scoped_ptr<WindowsFrameInfo> windows_frame_info;
-  scoped_ptr<CFIFrameInfo> cfi_frame_info;
+  std::unique_ptr<WindowsFrameInfo> windows_frame_info;
+  std::unique_ptr<CFIFrameInfo> cfi_frame_info;
   frame.instruction = 0x1000;
-  frame.module = NULL;
+  frame.module = nullptr;
   resolver.FillSourceLineInfo(&frame, nullptr);
   ASSERT_FALSE(frame.module);
   ASSERT_TRUE(frame.function_name.empty());

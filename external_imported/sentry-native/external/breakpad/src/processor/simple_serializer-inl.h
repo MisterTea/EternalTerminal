@@ -39,7 +39,8 @@
 
 #include "processor/simple_serializer.h"
 
-#include <cstdint>
+#include <stdint.h>
+
 #include <string>
 
 #include "google_breakpad/processor/basic_source_line_resolver.h"
@@ -192,7 +193,7 @@ class SimpleSerializer< linked_ptr<BasicSourceLineResolver::Line> > {
   typedef BasicSourceLineResolver::Line Line;
  public:
   static size_t SizeOf(const linked_ptr<Line>& lineptr) {
-    if (lineptr.get() == NULL) return 0;
+    if (lineptr.get() == nullptr) return 0;
     return SimpleSerializer<Line>::SizeOf(*(lineptr.get()));
   }
   static char* Write(const linked_ptr<Line>& lineptr, char* dest) {
@@ -208,7 +209,7 @@ class SimpleSerializer<linked_ptr<BasicSourceLineResolver::InlineOrigin>> {
 
  public:
   static size_t SizeOf(const linked_ptr<InlineOrigin>& origin_ptr) {
-    if (origin_ptr.get() == NULL)
+    if (origin_ptr.get() == nullptr)
       return 0;
     return SimpleSerializer<InlineOrigin>::SizeOf(*(origin_ptr.get()));
   }
@@ -237,7 +238,7 @@ class SimpleSerializer<linked_ptr<BasicSourceLineResolver::Inline>> {
 
  public:
   static size_t SizeOf(const linked_ptr<Inline>& inline_ptr) {
-    if (inline_ptr.get() == NULL)
+    if (inline_ptr.get() == nullptr)
       return 0;
     return SimpleSerializer<Inline>::SizeOf(*(inline_ptr.get()));
   }
@@ -342,7 +343,7 @@ class SimpleSerializer< linked_ptr<BasicSourceLineResolver::PublicSymbol> > {
   typedef BasicSourceLineResolver::PublicSymbol PublicSymbol;
  public:
   static size_t SizeOf(const linked_ptr<PublicSymbol>& pubsymbol) {
-    if (pubsymbol.get() == NULL) return 0;
+    if (pubsymbol.get() == nullptr) return 0;
     return SimpleSerializer<PublicSymbol>::SizeOf(*(pubsymbol.get()));
   }
   static char* Write(const linked_ptr<PublicSymbol>& pubsymbol, char* dest) {
@@ -356,7 +357,7 @@ template<>
 class SimpleSerializer< linked_ptr<WindowsFrameInfo> > {
  public:
   static size_t SizeOf(const linked_ptr<WindowsFrameInfo>& wfi) {
-    if (wfi.get() == NULL) return 0;
+    if (wfi.get() == nullptr) return 0;
     return SimpleSerializer<WindowsFrameInfo>::SizeOf(*(wfi.get()));
   }
   static char* Write(const linked_ptr<WindowsFrameInfo>& wfi, char* dest) {

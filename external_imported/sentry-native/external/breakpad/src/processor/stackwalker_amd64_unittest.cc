@@ -156,7 +156,7 @@ TEST_F(SanityCheck, NoResolver) {
   raw_context.rip = 0x00007400c0000200ULL;
   raw_context.rbp = 0x8000000080000000ULL;
 
-  StackFrameSymbolizer frame_symbolizer(NULL, NULL);
+  StackFrameSymbolizer frame_symbolizer(nullptr, nullptr);
   StackwalkerAMD64 walker(&system_info, &raw_context, &stack_region, &modules,
                           &frame_symbolizer);
   // This should succeed even without a resolver or supplier.
@@ -208,7 +208,7 @@ TEST_F(GetContextFrame, NoStackMemory) {
   raw_context.rbp = 0x8000000080000000ULL;
 
   StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
-  StackwalkerAMD64 walker(&system_info, &raw_context, NULL, &modules,
+  StackwalkerAMD64 walker(&system_info, &raw_context, nullptr, &modules,
                           &frame_symbolizer);
   vector<const CodeModule*> modules_without_symbols;
   vector<const CodeModule*> modules_with_corrupt_symbols;

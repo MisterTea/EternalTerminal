@@ -96,7 +96,7 @@ pid_t SetupChildProcess(int number_of_threads) {
           "linux_dumper_unittest_helper",
           pipe_fd_string,
           kNumberOfThreadsArgument,
-          NULL);
+          nullptr);
     // Kill if we get here.
     printf("Errno from exec: %d", errno);
     std::string err_str = "Exec of  " + helper_path + " failed";
@@ -197,7 +197,7 @@ TEST_F(LinuxPtraceDumperChildTest, FindMappings) {
 
   ASSERT_TRUE(dumper.FindMapping(reinterpret_cast<void*>(getpid)));
   ASSERT_TRUE(dumper.FindMapping(reinterpret_cast<void*>(printf)));
-  ASSERT_FALSE(dumper.FindMapping(NULL));
+  ASSERT_FALSE(dumper.FindMapping(nullptr));
 }
 
 TEST_F(LinuxPtraceDumperChildTest, ThreadList) {
@@ -220,7 +220,7 @@ TEST_F(LinuxPtraceDumperChildTest, ThreadList) {
 class StackHelper {
  public:
   StackHelper()
-    : fd_(-1), mapping_(NULL), size_(0) {}
+    : fd_(-1), mapping_(nullptr), size_(0) {}
   ~StackHelper() {
     if (size_)
       munmap(mapping_, size_);
@@ -266,7 +266,7 @@ void LinuxPtraceDumperMappingsTest::SetUp() {
   ASSERT_NE(-1, fd) << "Failed to open file: " << helper_path_
                     << ", Error: " << strerror(errno);
   char* mapping =
-    reinterpret_cast<char*>(mmap(NULL,
+    reinterpret_cast<char*>(mmap(nullptr,
                                  kMappingSize,
                                  PROT_READ,
                                  MAP_SHARED,
@@ -323,10 +323,10 @@ TEST_F(LinuxPtraceDumperChildTest, BuildProcPath) {
   EXPECT_TRUE(dumper.BuildProcPath(maps_path, pid, "maps"));
   EXPECT_STREQ(maps_path_expected, maps_path);
 
-  EXPECT_FALSE(dumper.BuildProcPath(NULL, pid, "maps"));
+  EXPECT_FALSE(dumper.BuildProcPath(nullptr, pid, "maps"));
   EXPECT_FALSE(dumper.BuildProcPath(maps_path, 0, "maps"));
   EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, ""));
-  EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, NULL));
+  EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, nullptr));
 
   char long_node[NAME_MAX];
   size_t long_node_len = NAME_MAX - strlen("/proc/123") - 1;

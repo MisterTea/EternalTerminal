@@ -56,26 +56,26 @@ DisassemblerX86::DisassemblerX86(const uint8_t* bytecode,
                                      pushed_bad_value_(false),
                                      end_of_block_(false),
                                      flags_(0) {
-  libdis::x86_init(libdis::opt_none, NULL, NULL);
+  x86_init(opt_none, nullptr, nullptr);
 }
 
 DisassemblerX86::~DisassemblerX86() {
   if (instr_valid_)
-    libdis::x86_oplist_free(&current_instr_);
+    x86_oplist_free(&current_instr_);
 
-  libdis::x86_cleanup();
+  x86_cleanup();
 }
 
 uint32_t DisassemblerX86::NextInstruction() {
   if (instr_valid_)
-    libdis::x86_oplist_free(&current_instr_);
+    x86_oplist_free(&current_instr_);
 
   if (current_byte_offset_ >= size_) {
     instr_valid_ = false;
     return 0;
   }
   uint32_t instr_size = 0;
-  instr_size = libdis::x86_disasm((unsigned char*)bytecode_, size_,
+  instr_size = x86_disasm((unsigned char*)bytecode_, size_,
                           virtual_address_, current_byte_offset_,
                           &current_instr_);
   if (instr_size == 0) {
@@ -85,39 +85,39 @@ uint32_t DisassemblerX86::NextInstruction() {
 
   current_byte_offset_ += instr_size;
   current_inst_offset_++;
-  instr_valid_ = libdis::x86_insn_is_valid(&current_instr_);
+  instr_valid_ = x86_insn_is_valid(&current_instr_);
   if (!instr_valid_)
     return 0;
 
-  if (current_instr_.type == libdis::insn_return)
+  if (current_instr_.type == insn_return)
     end_of_block_ = true;
-  libdis::x86_op_t* src = libdis::x86_get_src_operand(&current_instr_);
-  libdis::x86_op_t* dest = libdis::x86_get_dest_operand(&current_instr_);
+  x86_op_t* src = x86_get_src_operand(&current_instr_);
+  x86_op_t* dest = x86_get_dest_operand(&current_instr_);
 
   if (register_valid_) {
     switch (current_instr_.group) {
       // Flag branches based off of bad registers and calls that occur
       // after pushing bad values.
-      case libdis::insn_controlflow:
+      case insn_controlflow:
         switch (current_instr_.type) {
-          case libdis::insn_jmp:
-          case libdis::insn_jcc:
-          case libdis::insn_call:
-          case libdis::insn_callcc:
+          case insn_jmp:
+          case insn_jcc:
+          case insn_call:
+          case insn_callcc:
             if (dest) {
               switch (dest->type) {
-                case libdis::op_expression:
+                case op_expression:
                   if (dest->data.expression.base.id == bad_register_.id)
                     flags_ |= DISX86_BAD_BRANCH_TARGET;
                   break;
-                case libdis::op_register:
+                case op_register:
                   if (dest->data.reg.id == bad_register_.id)
                     flags_ |= DISX86_BAD_BRANCH_TARGET;
                   break;
                 default:
                   if (pushed_bad_value_ &&
-                      (current_instr_.type == libdis::insn_call ||
-                      current_instr_.type == libdis::insn_callcc))
+                      (current_instr_.type == insn_call ||
+                      current_instr_.type == insn_callcc))
                     flags_ |= DISX86_BAD_ARGUMENT_PASSED;
                   break;
               }
@@ -129,24 +129,24 @@ uint32_t DisassemblerX86::NextInstruction() {
         break;
 
       // Flag block data operations that use bad registers for src or dest.
-      case libdis::insn_string:
-        if (dest && dest->type == libdis::op_expression &&
+      case insn_string:
+        if (dest && dest->type == op_expression &&
             dest->data.expression.base.id == bad_register_.id)
           flags_ |= DISX86_BAD_BLOCK_WRITE;
-        if (src && src->type == libdis::op_expression &&
+        if (src && src->type == op_expression &&
             src->data.expression.base.id == bad_register_.id)
           flags_ |= DISX86_BAD_BLOCK_READ;
         break;
 
       // Flag comparisons based on bad data.
-      case libdis::insn_comparison:
-        if ((dest && dest->type == libdis::op_expression &&
+      case insn_comparison:
+        if ((dest && dest->type == op_expression &&
             dest->data.expression.base.id == bad_register_.id) ||
-            (src && src->type == libdis::op_expression &&
+            (src && src->type == op_expression &&
             src->data.expression.base.id == bad_register_.id) ||
-            (dest && dest->type == libdis::op_register &&
+            (dest && dest->type == op_register &&
             dest->data.reg.id == bad_register_.id) ||
-            (src && src->type == libdis::op_register &&
+            (src && src->type == op_register &&
             src->data.reg.id == bad_register_.id))
           flags_ |= DISX86_BAD_COMPARISON;
         break;
@@ -154,10 +154,10 @@ uint32_t DisassemblerX86::NextInstruction() {
       // Flag any other instruction which derefs a bad register for
       // src or dest.
       default:
-        if (dest && dest->type == libdis::op_expression &&
+        if (dest && dest->type == op_expression &&
             dest->data.expression.base.id == bad_register_.id)
           flags_ |= DISX86_BAD_WRITE;
-        if (src && src->type == libdis::op_expression &&
+        if (src && src->type == op_expression &&
             src->data.expression.base.id == bad_register_.id)
           flags_ |= DISX86_BAD_READ;
         break;
@@ -166,14 +166,14 @@ uint32_t DisassemblerX86::NextInstruction() {
 
   // When a register is marked as tainted check if it is pushed.
   // TODO(cdn): may also want to check for MOVs into EBP offsets.
-  if (register_valid_ && dest && current_instr_.type == libdis::insn_push) {
+  if (register_valid_ && dest && current_instr_.type == insn_push) {
     switch (dest->type) {
-      case libdis::op_expression:
+      case op_expression:
         if (dest->data.expression.base.id == bad_register_.id ||
             dest->data.expression.index.id == bad_register_.id)
           pushed_bad_value_ = true;
         break;
-      case libdis::op_register:
+      case op_register:
         if (dest->data.reg.id == bad_register_.id)
           pushed_bad_value_ = true;
         break;
@@ -187,31 +187,31 @@ uint32_t DisassemblerX86::NextInstruction() {
   // there is a hit.
   if (register_valid_) {
     switch (current_instr_.type) {
-      case libdis::insn_xor:
-        if (src && src->type == libdis::op_register &&
-            dest && dest->type == libdis::op_register &&
+      case insn_xor:
+        if (src && src->type == op_register &&
+            dest && dest->type == op_register &&
             src->data.reg.id == bad_register_.id &&
             src->data.reg.id == dest->data.reg.id)
           register_valid_ = false;
         break;
-      case libdis::insn_pop:
-      case libdis::insn_mov:
-      case libdis::insn_movcc:
-        if (dest && dest->type == libdis::op_register &&
+      case insn_pop:
+      case insn_mov:
+      case insn_movcc:
+        if (dest && dest->type == op_register &&
             dest->data.reg.id == bad_register_.id)
           register_valid_ = false;
         break;
-      case libdis::insn_popregs:
+      case insn_popregs:
         register_valid_ = false;
         break;
-      case libdis::insn_xchg:
-      case libdis::insn_xchgcc:
-        if (dest && dest->type == libdis::op_register &&
-            src && src->type == libdis::op_register) {
+      case insn_xchg:
+      case insn_xchgcc:
+        if (dest && dest->type == op_register &&
+            src && src->type == op_register) {
           if (dest->data.reg.id == bad_register_.id)
-            memcpy(&bad_register_, &src->data.reg, sizeof(libdis::x86_reg_t));
+            memcpy(&bad_register_, &src->data.reg, sizeof(x86_reg_t));
           else if (src->data.reg.id == bad_register_.id)
-            memcpy(&bad_register_, &dest->data.reg, sizeof(libdis::x86_reg_t));
+            memcpy(&bad_register_, &dest->data.reg, sizeof(x86_reg_t));
         }
         break;
       default:
@@ -226,12 +226,12 @@ bool DisassemblerX86::setBadRead() {
   if (!instr_valid_)
     return false;
 
-  libdis::x86_op_t* operand = libdis::x86_get_src_operand(&current_instr_);
-  if (!operand || operand->type != libdis::op_expression)
+  x86_op_t* operand = x86_get_src_operand(&current_instr_);
+  if (!operand || operand->type != op_expression)
     return false;
 
   memcpy(&bad_register_, &operand->data.expression.base,
-         sizeof(libdis::x86_reg_t));
+         sizeof(x86_reg_t));
   register_valid_ = true;
   return true;
 }
@@ -240,12 +240,12 @@ bool DisassemblerX86::setBadWrite() {
   if (!instr_valid_)
     return false;
 
-  libdis::x86_op_t* operand = libdis::x86_get_dest_operand(&current_instr_);
-  if (!operand || operand->type != libdis::op_expression)
+  x86_op_t* operand = x86_get_dest_operand(&current_instr_);
+  if (!operand || operand->type != op_expression)
     return false;
 
   memcpy(&bad_register_, &operand->data.expression.base,
-         sizeof(libdis::x86_reg_t));
+         sizeof(x86_reg_t));
   register_valid_ = true;
   return true;
 }

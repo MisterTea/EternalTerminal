@@ -35,9 +35,10 @@
 #include <config.h>  // Must come first
 #endif
 
-#include <cassert>
-#include <cstdio>
-#include <ctime>
+#include <assert.h>
+#include <stdio.h>
+#include <time.h>
+
 #include <map>
 #include <regex>
 #include <string>
@@ -275,7 +276,7 @@ static bool SendFetchFailedPing(const wstring& fetch_symbol_failure_url,
   if (!HTTPDownload::Download(fetch_symbol_failure_url,
                              & parameters,
                              & content,
-                              NULL)) {
+                              nullptr)) {
     FprintfFlush(stderr, "SendFetchFailedPing: HTTPDownload::Download failed "
                          "for %s %s %s\n",
                  missing_info.debug_file.c_str(),
@@ -642,14 +643,14 @@ static void ConvertMissingSymbolFile(const MissingSymbolInfo& missing_info,
 
 // Reads the contents of file |file_name| and populates |contents|.
 // Returns true on success.
-static bool ReadFile(string file_name, string* contents) {
+static bool ReadFile(const string& file_name, string* contents) {
   char buffer[1024 * 8];
   FILE* fp = fopen(file_name.c_str(), "rt");
   if (!fp) {
     return false;
   }
   contents->clear();
-  while (fgets(buffer, sizeof(buffer), fp) != NULL) {
+  while (fgets(buffer, sizeof(buffer), fp) != nullptr) {
     contents->append(buffer);
   }
   fclose(fp);
@@ -671,7 +672,7 @@ static bool ConvertMissingSymbolsList(const ConverterOptions& options) {
       return false;
     }
   } else if (!HTTPDownload::Download(options.missing_symbols_url,& parameters,
-                                    & missing_symbol_list, NULL)) {
+                                    & missing_symbol_list, nullptr)) {
     return false;
   }
 

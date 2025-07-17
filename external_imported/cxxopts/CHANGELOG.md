@@ -3,11 +3,57 @@
 This is the changelog for `cxxopts`, a C++11 library for parsing command line
 options. The project adheres to semantic versioning.
 
+## 3.3.1
+
+### Bug fixes
+
+* Added missing version bump
+
+## 3.3.0
+
+### Bug fixes
+
+* Added missing header for GCC 15
+* Fix some CMake packaging problems
+
+### Added
+
+* `as_optional`
+* `ParseResult::contains`
+* `std::filesystem` support
+* CMake 4 compatibility
+
+## 3.2.1
+
+### Bug fixes
+
+* Fix compilation with optional on C++20.
+
+## 3.2
+
+### Bug fixes
+
+* Fix unannotated fallthrough.
+* Fix sign conversion with Unicode output.
+* Don't initialize regex in static initialiser.
+* Fix incorrect integer overflow checks.
+
+### Added
+
+* Add fuzzing to CI
+
+### Changed
+
+* Change quote output to '' to match Windows.
+* Don't split positional arguments by the list delimiter.
+* Order help groups by the order they were added.
+
 ## 3.1.1
 
 ### Bug Fixes
 
 * Fixed version number in header.
+* Fixed cast warning in Unicode function.
 
 ## 3.1
 
@@ -21,6 +67,7 @@ options. The project adheres to semantic versioning.
 ### Changed
 
 * Cleanup exception code, add cxxopts::exceptions namespace.
+* Renamed several exceptions to be more descriptive, and added to a nested namespace.
 
 ### Bug Fixes
 

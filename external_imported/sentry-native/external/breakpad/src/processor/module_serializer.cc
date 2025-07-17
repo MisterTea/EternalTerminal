@@ -38,11 +38,23 @@
 
 #include "processor/module_serializer.h"
 
+#include <stdint.h>
+#include <string.h>
+
 #include <map>
+#include <memory>
 #include <string>
 
+#include "common/scoped_ptr.h"
+#include "google_breakpad/processor/basic_source_line_resolver.h"
+#include "google_breakpad/processor/code_module.h"
+#include "google_breakpad/processor/fast_source_line_resolver.h"
 #include "processor/basic_code_module.h"
+#include "processor/linked_ptr.h"
 #include "processor/logging.h"
+#include "processor/map_serializers.h"
+#include "processor/simple_serializer.h"
+#include "processor/windows_frame_info.h"
 
 namespace google_breakpad {
 
@@ -78,7 +90,7 @@ size_t ModuleSerializer::SizeOf(const BasicSourceLineResolver::Module& module) {
       inline_origin_serializer_.SizeOf(module.inline_origins_);
 
   // Header size.
-  total_size_alloc_ += kNumberMaps_ * sizeof(uint32_t);
+  total_size_alloc_ += kNumberMaps_ * sizeof(uint64_t);
 
   for (int i = 0; i < kNumberMaps_; ++i) {
     total_size_alloc_ += map_sizes_[i];
@@ -95,8 +107,8 @@ char* ModuleSerializer::Write(const BasicSourceLineResolver::Module& module,
   // Write the is_corrupt flag.
   dest = SimpleSerializer<bool>::Write(module.is_corrupt_, dest);
   // Write header.
-  memcpy(dest, map_sizes_, kNumberMaps_ * sizeof(uint32_t));
-  dest += kNumberMaps_ * sizeof(uint32_t);
+  memcpy(dest, map_sizes_, kNumberMaps_ * sizeof(uint64_t));
+  dest += kNumberMaps_ * sizeof(uint64_t);
   // Write each map.
   dest = files_serializer_.Write(module.files_, dest);
   dest = functions_serializer_.Write(module.functions_, dest);
@@ -122,7 +134,7 @@ char* ModuleSerializer::Serialize(const BasicSourceLineResolver::Module& module,
     BPLOG(ERROR) << "ModuleSerializer: memory allocation failed, "
                  << "size to alloc: " << size_to_alloc;
     if (size) *size = 0;
-    return NULL;
+    return nullptr;
   }
 
   // Write serialized data to allocated memory chunk.
@@ -161,11 +173,11 @@ bool ModuleSerializer::SerializeModuleAndLoadIntoFastResolver(
 
   // Copy the data into string.
   // Must pass string to LoadModuleUsingMapBuffer(), instead of passing char* to
-  // LoadModuleUsingMemoryBuffer(), becaused of data ownership/lifetime issue.
+  // LoadModuleUsingMemoryBuffer(), because of data ownership/lifetime issue.
   string symbol_data_string(symbol_data.get(), size);
   symbol_data.reset();
 
-  scoped_ptr<CodeModule> code_module(
+  std::unique_ptr<CodeModule> code_module(
       new BasicCodeModule(0, 0, iter->first, "", "", "", ""));
 
   return fast_resolver->LoadModuleUsingMapBuffer(code_module.get(),
@@ -204,16 +216,16 @@ bool ModuleSerializer::ConvertOneModule(
 
 char* ModuleSerializer::SerializeSymbolFileData(const string& symbol_data,
                                                 size_t* size) {
-  scoped_ptr<BasicSourceLineResolver::Module> module(
+  std::unique_ptr<BasicSourceLineResolver::Module> module(
       new BasicSourceLineResolver::Module("no name"));
   scoped_array<char> buffer(new char[symbol_data.size() + 1]);
   memcpy(buffer.get(), symbol_data.c_str(), symbol_data.size());
   buffer.get()[symbol_data.size()] = '\0';
   if (!module->LoadMapFromMemory(buffer.get(), symbol_data.size() + 1)) {
-    return NULL;
+    return nullptr;
   }
-  buffer.reset(NULL);
-  return Serialize(*(module.get()), size);
+  buffer.reset(nullptr);
+  return Serialize(*module, size);
 }
 
 }  // namespace google_breakpad

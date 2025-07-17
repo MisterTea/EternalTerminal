@@ -7,7 +7,8 @@ A C++11 single-file header-only cross platform HTTP/HTTPS library.
 
 It's extremely easy to setup. Just include the **httplib.h** file in your code!
 
-NOTE: This library uses 'blocking' socket I/O. If you are looking for a library with 'non-blocking' socket I/O, this is not the one that you want.
+> [!IMPORTANT]
+> This library uses 'blocking' socket I/O. If you are looking for a library with 'non-blocking' socket I/O, this is not the one that you want.
 
 Simple examples
 ---------------
@@ -38,10 +39,10 @@ svr.listen("0.0.0.0", 8080);
 #include "path/to/httplib.h"
 
 // HTTP
-httplib::Client cli("http://cpp-httplib-server.yhirose.repl.co");
+httplib::Client cli("http://yhirose.github.io");
 
 // HTTPS
-httplib::Client cli("https://cpp-httplib-server.yhirose.repl.co");
+httplib::Client cli("https://yhirose.github.io");
 
 auto res = cli.Get("/hi");
 res->status;
@@ -53,9 +54,11 @@ SSL Support
 
 SSL support is available with `CPPHTTPLIB_OPENSSL_SUPPORT`. `libssl` and `libcrypto` should be linked.
 
-NOTE: cpp-httplib currently supports only version 3.0 or later. Please see [this page](https://www.openssl.org/policies/releasestrat.html) to get more information.
+> [!NOTE]
+> cpp-httplib currently supports only version 3.0 or later. Please see [this page](https://www.openssl.org/policies/releasestrat.html) to get more information.
 
-NOTE for macOS: cpp-httplib now can use system certs with `CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN`. `CoreFoundation` and `Security` should be linked with `-framework`.
+> [!TIP]
+> For macOS: cpp-httplib now can use system certs with `CPPHTTPLIB_USE_CERTS_FROM_MACOSX_KEYCHAIN`. `CoreFoundation` and `Security` should be linked with `-framework`.
 
 ```c++
 #define CPPHTTPLIB_OPENSSL_SUPPORT
@@ -74,9 +77,13 @@ cli.set_ca_cert_path("./ca-bundle.crt");
 
 // Disable cert verification
 cli.enable_server_certificate_verification(false);
+
+// Disable host verification
+cli.enable_server_hostname_verification(false);
 ```
 
-NOTE: When using SSL, it seems impossible to avoid SIGPIPE in all cases, since on some operating systems, SIGPIPE can only be suppressed on a per-message basis, but there is no way to make the OpenSSL library do so for its internal communications. If your program needs to avoid being terminated on SIGPIPE, the only fully general way might be to set up a signal handler for SIGPIPE to handle or ignore it yourself.
+> [!NOTE]
+> When using SSL, it seems impossible to avoid SIGPIPE in all cases, since on some operating systems, SIGPIPE can only be suppressed on a per-message basis, but there is no way to make the OpenSSL library do so for its internal communications. If your program needs to avoid being terminated on SIGPIPE, the only fully general way might be to set up a signal handler for SIGPIPE to handle or ignore it yourself.
 
 Server
 ------
@@ -116,6 +123,21 @@ int main(void)
       auto val = req.get_param_value("key");
     }
     res.set_content(req.body, "text/plain");
+  });
+
+  // If the handler takes time to finish, you can also poll the connection state
+  svr.Get("/task", [&](const Request& req, Response& res) {
+    const char * result = nullptr;
+    process.run(); // for example, starting an external process
+    while (result == nullptr) {
+      sleep(1);
+      if (req.is_connection_closed()) {
+        process.kill(); // kill the process
+        return;
+      }
+      result = process.stdout(); // != nullptr if the process finishes
+    }
+    res.set_content(result, "text/plain");
   });
 
   svr.Get("/stop", [&](const Request& req, Response& res) {
@@ -190,7 +212,8 @@ The followings are built-in mappings:
 | webm       | video/webm                  | zip        | application/zip             |
 | mp3        | audio/mp3                   | wasm       | application/wasm            |
 
-NOTE: These static file server methods are not thread-safe.
+> [!WARNING]
+> These static file server methods are not thread-safe.
 
 ### File request handler
 
@@ -239,7 +262,8 @@ svr.set_exception_handler([](const auto& req, auto& res, std::exception_ptr ep) 
 });
 ```
 
-NOTE: if you don't provide the `catch (...)` block for a rethrown exception pointer, an uncaught exception will end up causing the server crash. Be careful!
+> [!CAUTION]
+> if you don't provide the `catch (...)` block for a rethrown exception pointer, an uncaught exception will end up causing the server crash. Be careful!
 
 ### Pre routing handler
 
@@ -258,6 +282,22 @@ svr.set_pre_routing_handler([](const auto& req, auto& res) {
 ```cpp
 svr.set_post_routing_handler([](const auto& req, auto& res) {
   res.set_header("ADDITIONAL_HEADER", "value");
+});
+```
+
+### Pre request handler
+
+```cpp
+svr.set_pre_request_handler([](const auto& req, auto& res) {
+  if (req.matched_route == "/user/:user") {
+    auto user = req.path_params.at("user");
+    if (user != "john") {
+      res.status = StatusCode::Forbidden_403;
+      res.set_content("error", "text/html");
+      return Server::HandlerResponse::Handled;
+    }
+  }
+  return Server::HandlerResponse::Unhandled;
 });
 ```
 
@@ -378,6 +418,18 @@ svr.Get("/chunked", [&](const Request& req, Response& res) {
 });
 ```
 
+### Send file content
+
+```cpp
+svr.Get("/content", [&](const Request &req, Response &res) {
+  res.set_file_content("./path/to/content.html");
+});
+
+svr.Get("/content", [&](const Request &req, Response &res) {
+  res.set_file_content("./path/to/content", "text/html");
+});
+```
+
 ### 'Expect: 100-continue' handler
 
 By default, the server sends a `100 Continue` response for an `Expect: 100-continue` header.
@@ -417,7 +469,8 @@ svr.set_idle_interval(0, 100000); // 100 milliseconds
 svr.set_payload_max_length(1024 * 1024 * 512); // 512MB
 ```
 
-NOTE: When the request body content type is 'www-form-urlencoded', the actual payload length shouldn't exceed `CPPHTTPLIB_FORM_URL_ENCODED_PAYLOAD_MAX_LENGTH`.
+> [!NOTE]
+> When the request body content type is 'www-form-urlencoded', the actual payload length shouldn't exceed `CPPHTTPLIB_FORM_URL_ENCODED_PAYLOAD_MAX_LENGTH`.
 
 ### Server-Sent Events
 
@@ -425,7 +478,7 @@ Please see [Server example](https://github.com/yhirose/cpp-httplib/blob/master/e
 
 ### Default thread pool support
 
-`ThreadPool` is used as a **default** task queue, and the default thread count is 8, or `std::thread::hardware_concurrency()`. You can change it with `CPPHTTPLIB_THREAD_POOL_COUNT`.
+`ThreadPool` is used as the **default** task queue, with a default thread count of 8 or `std::thread::hardware_concurrency() - 1`, whichever is greater. You can change it with `CPPHTTPLIB_THREAD_POOL_COUNT`.
 
 If you want to set the thread count at runtime, there is no convenient way... But here is how.
 
@@ -496,7 +549,8 @@ int main(void)
 }
 ```
 
-NOTE: Constructor with scheme-host-port string is now supported!
+> [!TIP]
+> Constructor with scheme-host-port string is now supported!
 
 ```c++
 httplib::Client cli("localhost");
@@ -534,18 +588,18 @@ enum Error {
 
 ```c++
 httplib::Headers headers = {
-  { "Accept-Encoding", "gzip, deflate" }
+  { "Hello", "World!" }
 };
 auto res = cli.Get("/hi", headers);
 ```
 or
 ```c++
-auto res = cli.Get("/hi", {{"Accept-Encoding", "gzip, deflate"}});
+auto res = cli.Get("/hi", {{"Hello", "World!"}});
 ```
 or
 ```c++
 cli.set_default_headers({
-  { "Accept-Encoding", "gzip, deflate" }
+  { "Hello", "World!" }
 });
 auto res = cli.Get("/hi");
 ```
@@ -616,6 +670,9 @@ res = cli.Options("/resource/foo");
 cli.set_connection_timeout(0, 300000); // 300 milliseconds
 cli.set_read_timeout(5, 0); // 5 seconds
 cli.set_write_timeout(5, 0); // 5 seconds
+
+// This method works the same as curl's `--max-timeout` option
+svr.set_max_timeout(5000); // 5 seconds
 ```
 
 ### Receive content with a content receiver
@@ -704,7 +761,8 @@ cli.set_digest_auth("user", "pass");
 cli.set_bearer_token_auth("token");
 ```
 
-NOTE: OpenSSL is required for Digest Authentication.
+> [!NOTE]
+> OpenSSL is required for Digest Authentication.
 
 ### Proxy server support
 
@@ -721,7 +779,8 @@ cli.set_proxy_digest_auth("user", "pass");
 cli.set_proxy_bearer_token_auth("pass");
 ```
 
-NOTE: OpenSSL is required for Digest Authentication.
+> [!NOTE]
+> OpenSSL is required for Digest Authentication.
 
 ### Range
 
@@ -770,7 +829,8 @@ res->status; // 200
 
 ### Use a specific network interface
 
-NOTE: This feature is not available on Windows, yet.
+> [!NOTE]
+> This feature is not available on Windows, yet.
 
 ```cpp
 cli.set_interface("eth0"); // Interface name, IP address or host name
@@ -797,6 +857,21 @@ The server can apply compression to the following MIME type contents:
 Brotli compression is available with `CPPHTTPLIB_BROTLI_SUPPORT`. Necessary libraries should be linked.
 Please see https://github.com/google/brotli for more detail.
 
+### Default `Accept-Encoding` value
+
+The default `Accept-Encoding` value contains all possible compression types. So, the following two examples are same.
+
+```c++
+res = cli.Get("/resource/foo");
+res = cli.Get("/resource/foo", {{"Accept-Encoding", "gzip, deflate, br"}});
+```
+
+If we don't want a response without compression, we have to set `Accept-Encoding` to an empty string. This behavior is similar to curl.
+
+```c++
+res = cli.Get("/resource/foo", {{"Accept-Encoding", ""}});
+```
+
 ### Compress request body on client
 
 ```c++
@@ -808,14 +883,27 @@ res = cli.Post("/resource/foo", "...", "text/plain");
 
 ```c++
 cli.set_decompress(false);
-res = cli.Get("/resource/foo", {{"Accept-Encoding", "gzip, deflate, br"}});
+res = cli.Get("/resource/foo");
 res->body; // Compressed data
+
 ```
 
-Use `poll` instead of `select`
-------------------------------
+Unix Domain Socket Support
+--------------------------
 
-`select` system call is used as default since it's more widely supported. If you want to let cpp-httplib use `poll` instead, you can do so with `CPPHTTPLIB_USE_POLL`.
+Unix Domain Socket support is available on Linux and macOS.
+
+```c++
+// Server
+httplib::Server svr;
+svr.set_address_family(AF_UNIX).listen("./my-socket.sock", 80);
+
+// Client
+httplib::Client cli("./my-socket.sock");
+cli.set_address_family(AF_UNIX);
+```
+
+"my-socket.sock" can be a relative path or an absolute path. You application must have the appropriate permissions for the path. You can also use an abstract socket address on Linux. To use an abstract socket address, prepend a null byte ('\x00') to the path.
 
 
 Split httplib.h into .h and .cc
@@ -835,6 +923,32 @@ optional arguments:
 
 $ ./split.py
 Wrote out/httplib.h and out/httplib.cc
+```
+
+Dockerfile for Static HTTP Server
+---------------------------------
+
+Dockerfile for static HTTP server is available. Port number of this HTTP server is 80, and it serves static files from `/html` directory in the container.
+
+```bash
+> docker build -t cpp-httplib-server .
+...
+
+> docker run --rm -it -p 8080:80 -v ./docker/html:/html cpp-httplib-server
+Serving HTTP on 0.0.0.0 port 80 ...
+192.168.65.1 - - [31/Aug/2024:21:33:56 +0000] "GET / HTTP/1.1" 200 599 "-" "curl/8.7.1"
+192.168.65.1 - - [31/Aug/2024:21:34:26 +0000] "GET / HTTP/1.1" 200 599 "-" "Mozilla/5.0 ..."
+192.168.65.1 - - [31/Aug/2024:21:34:26 +0000] "GET /favicon.ico HTTP/1.1" 404 152 "-" "Mozilla/5.0 ..."
+```
+
+From Docker Hub
+
+```bash
+> docker run --rm -it -p 8080:80 -v ./docker/html:/html yhirose4dockerhub/cpp-httplib-server
+Serving HTTP on 0.0.0.0 port 80 ...
+192.168.65.1 - - [31/Aug/2024:21:33:56 +0000] "GET / HTTP/1.1" 200 599 "-" "curl/8.7.1"
+192.168.65.1 - - [31/Aug/2024:21:34:26 +0000] "GET / HTTP/1.1" 200 599 "-" "Mozilla/5.0 ..."
+192.168.65.1 - - [31/Aug/2024:21:34:26 +0000] "GET /favicon.ico HTTP/1.1" 404 152 "-" "Mozilla/5.0 ..."
 ```
 
 NOTE
@@ -859,14 +973,16 @@ Include `httplib.h` before `Windows.h` or include `Windows.h` by defining `WIN32
 #include <httplib.h>
 ```
 
-NOTE: cpp-httplib officially supports only the latest Visual Studio. It might work with former versions of Visual Studio, but I can no longer verify it. Pull requests are always welcome for the older versions of Visual Studio unless they break the C++11 conformance.
+> [!NOTE]
+> cpp-httplib officially supports only the latest Visual Studio. It might work with former versions of Visual Studio, but I can no longer verify it. Pull requests are always welcome for the older versions of Visual Studio unless they break the C++11 conformance.
 
-NOTE: Windows 8 or lower, Visual Studio 2013 or lower, and Cygwin and MSYS2 including MinGW are neither supported nor tested.
+> [!NOTE]
+> Windows 8 or lower, Visual Studio 2015 or lower, and Cygwin and MSYS2 including MinGW are neither supported nor tested.
 
 License
 -------
 
-MIT license (© 2024 Yuji Hirose)
+MIT license (© 2025 Yuji Hirose)
 
 Special Thanks To
 -----------------

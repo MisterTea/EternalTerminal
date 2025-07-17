@@ -52,8 +52,9 @@ namespace google_breakpad {
 // Older GCC may not support it.
 static string Demangle(const string& mangled) {
   int status = 0;
-  char *demangled = abi::__cxa_demangle(mangled.c_str(), NULL, NULL, &status);
-  if (status == 0 && demangled != NULL) {
+  char *demangled = abi::__cxa_demangle(
+      mangled.c_str(), nullptr, nullptr, &status);
+  if (status == 0 && demangled != nullptr) {
     string str(demangled);
     free(demangled);
     return str;
@@ -85,8 +86,8 @@ bool StabsToModule::EndCompilationUnit(uint64_t address) {
   assert(in_compilation_unit_);
   in_compilation_unit_ = false;
   comp_unit_base_address_ = 0;
-  current_source_file_ = NULL;
-  current_source_file_name_ = NULL;
+  current_source_file_ = nullptr;
+  current_source_file_name_ = nullptr;
   if (address)
     boundaries_.push_back(static_cast<Module::Address>(address));
   return true;
@@ -115,7 +116,7 @@ bool StabsToModule::EndFunction(uint64_t address) {
     functions_.push_back(current_function_);
   else
     delete current_function_;
-  current_function_ = NULL;
+  current_function_ = nullptr;
   if (address)
     boundaries_.push_back(static_cast<Module::Address>(address));
   return true;

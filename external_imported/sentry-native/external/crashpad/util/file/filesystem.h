@@ -19,6 +19,7 @@
 
 #include "base/files/file_path.h"
 #include "util/file/file_io.h"
+#include <cstdint>
 
 namespace crashpad {
 

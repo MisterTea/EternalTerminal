@@ -119,7 +119,7 @@ CFISection& CFISection::FinishEntry() {
   Align(address_size_, DW_CFA_nop);
   entry_length_->length = Here() - entry_length_->start;
   delete entry_length_;
-  entry_length_ = NULL;
+  entry_length_ = nullptr;
   in_fde_ = false;
   return *this;
 }

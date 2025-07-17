@@ -1,0 +1,7 @@
+NAME="SLES"
+VERSION="11.4"
+VERSION_ID="11.4"
+PRETTY_NAME="SUSE Linux Enterprise Server 11 SP4"
+ID="sles"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sles:11:4"

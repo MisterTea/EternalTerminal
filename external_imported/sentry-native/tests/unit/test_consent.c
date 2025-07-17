@@ -4,13 +4,8 @@
 static void
 init_consenting_sentry(void)
 {
-#ifdef __ANDROID__
-#    define PREFIX "/data/local/tmp/"
-#else
-#    define PREFIX ""
-#endif
     sentry_options_t *opts = sentry_options_new();
-    sentry_options_set_database_path(opts, PREFIX ".test-db");
+    sentry_options_set_database_path(opts, SENTRY_TEST_PATH_PREFIX ".test-db");
     sentry_options_set_dsn(opts, "http://foo@127.0.0.1/42");
     sentry_options_set_require_user_consent(opts, true);
     sentry_init(opts);
@@ -18,7 +13,9 @@ init_consenting_sentry(void)
 
 SENTRY_TEST(basic_consent_tracking)
 {
-    sentry_path_t *path = sentry__path_from_str(PREFIX ".test-db");
+    sentry_path_t *path
+        = sentry__path_from_str(SENTRY_TEST_PATH_PREFIX ".test-db");
+    TEST_ASSERT(!!path);
     sentry__path_remove_all(path);
 
     init_consenting_sentry();

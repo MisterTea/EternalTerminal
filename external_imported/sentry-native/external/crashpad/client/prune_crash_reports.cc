@@ -123,7 +123,7 @@ bool BinaryPruneCondition::ShouldPruneReport(
     case OR:
       return lhs_->ShouldPruneReport(report) || rhs_->ShouldPruneReport(report);
     default:
-      NOTREACHED();
+      NOTREACHED_IN_MIGRATION();
       return false;
   }
 }

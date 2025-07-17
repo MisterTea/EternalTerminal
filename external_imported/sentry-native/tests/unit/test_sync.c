@@ -4,7 +4,7 @@
 
 #ifdef SENTRY_PLATFORM_WINDOWS
 #    include <windows.h>
-#    define sleep_s(SECONDS) Sleep((SECONDS)*1000)
+#    define sleep_s(SECONDS) Sleep((SECONDS) * 1000)
 #else
 #    include <unistd.h>
 #    define sleep_s(SECONDS) sleep(SECONDS)
@@ -33,7 +33,7 @@ SENTRY_TEST(background_worker)
 {
     for (size_t i = 0; i < 100; i++) {
         sentry_bgworker_t *bgw = sentry__bgworker_new(NULL, NULL);
-        TEST_CHECK(!!bgw);
+        TEST_ASSERT(!!bgw);
 
         sentry__bgworker_start(bgw);
 
@@ -88,10 +88,12 @@ collect(void *task, void *data)
 SENTRY_TEST(task_queue)
 {
     sentry_bgworker_t *bgw = sentry__bgworker_new(NULL, NULL);
+    TEST_ASSERT(!!bgw);
     sentry__bgworker_submit(bgw, sleep_task, NULL, NULL);
     sentry__bgworker_decref(bgw);
 
     bgw = sentry__bgworker_new(NULL, NULL);
+    TEST_ASSERT(!!bgw);
 
     // submit before starting
     for (size_t i = 0; i < 20; i++) {
@@ -135,6 +137,7 @@ SENTRY_TEST(task_queue)
 SENTRY_TEST(bgworker_flush)
 {
     sentry_bgworker_t *bgw = sentry__bgworker_new(NULL, NULL);
+    TEST_ASSERT(!!bgw);
     sentry__bgworker_submit(bgw, sleep_task, NULL, NULL);
 
     sentry__bgworker_start(bgw);

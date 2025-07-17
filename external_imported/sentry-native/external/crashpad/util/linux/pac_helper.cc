@@ -34,7 +34,17 @@ VMAddress StripPACBits(VMAddress address) {
 #elif defined(ARCH_CPU_ARM64)
     // Strip any pointer authentication bits that are assigned to the address.
     register uintptr_t x30 __asm("x30") = address;
+  #ifdef SENTRY_MODIFIED
     asm("xpaclri" : "+r"(x30));
+  #else
+    // `xpaclri` is to be decoded as `NOP` if `FEAT_PAuth` is not implemented:
+    // https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/XPACD--XPACI--XPACLRI--Strip-Pointer-Authentication-Code-#XPACLRI_HI_hints
+    // which means we don't need any runtime checks on pre-ARMv8.3 or
+    // environments where it is disabled.
+    // Use `hint #7` as encoded here https://developer.arm.com/documentation/ddi0602/2024-12/Base-Instructions/HINT--Hint-instruction-
+    // to support older toolchains with assemblers that don't know `xpaclri`:
+    asm("hint #7" /* = xpaclri */ : "+r"(x30));
+  #endif
     address = x30;
 #endif
     return address;

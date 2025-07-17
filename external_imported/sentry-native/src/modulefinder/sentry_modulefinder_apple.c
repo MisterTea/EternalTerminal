@@ -55,9 +55,9 @@ add_image(const struct mach_header *mh, intptr_t UNUSED(vmaddr_slide))
     bool has_uuid = false;
 
     for (size_t i = 0; cmd && (i < header->ncmds) && (!has_uuid || !has_size);
-         ++i,
+        ++i,
                 cmd
-         = (const struct load_command *)((const char *)cmd + cmd->cmdsize)) {
+        = (const struct load_command *)((const char *)cmd + cmd->cmdsize)) {
         if (cmd->cmd == CMD_SEGMENT) {
             const mach_segment_command_type *seg
                 = (const mach_segment_command_type *)cmd;

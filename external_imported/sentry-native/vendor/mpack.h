@@ -201,9 +201,8 @@
  * to grow buffers.
  */
 #if defined(MPACK_STDLIB) && MPACK_STDLIB && !defined(MPACK_MALLOC)
-#define MPACK_MALLOC malloc
-#define MPACK_REALLOC realloc
-#define MPACK_FREE free
+#define MPACK_MALLOC sentry_malloc
+#define MPACK_FREE sentry_free
 #endif
 
 /**

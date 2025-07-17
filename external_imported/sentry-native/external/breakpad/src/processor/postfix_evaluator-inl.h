@@ -175,7 +175,7 @@ bool PostfixEvaluator<ValueType>::EvaluateToken(
     // The identifier must name a variable, not a constant.  Variables
     // begin with '$'.
     string identifier;
-    if (PopValueOrIdentifier(NULL, &identifier) != POP_RESULT_IDENTIFIER) {
+    if (PopValueOrIdentifier(nullptr, &identifier) != POP_RESULT_IDENTIFIER) {
       BPLOG(ERROR) << "PopValueOrIdentifier returned a value, but an "
                       "identifier is needed to assign " <<
                       HexString(value) << ": " << expression;
@@ -254,7 +254,7 @@ bool PostfixEvaluator<ValueType>::EvaluateForValue(const string& expression,
   // Ensure that the stack is cleared before returning.
   AutoStackClearer clearer(&stack_);
 
-  if (!EvaluateInternal(expression, NULL))
+  if (!EvaluateInternal(expression, nullptr))
     return false;
 
   // A successful execution should leave exactly one value on the stack.

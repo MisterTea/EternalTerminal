@@ -38,11 +38,11 @@
 #include <unistd.h>
 
 #include <fstream>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "common/path_helper.h"
-#include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 #include "google_breakpad/processor/basic_source_line_resolver.h"
 #include "google_breakpad/processor/microdump.h"
@@ -69,7 +69,6 @@ using google_breakpad::Microdump;
 using google_breakpad::MicrodumpProcessor;
 using google_breakpad::ProcessResult;
 using google_breakpad::ProcessState;
-using google_breakpad::scoped_ptr;
 using google_breakpad::SimpleSymbolSupplier;
 using google_breakpad::StackFrameSymbolizer;
 
@@ -96,7 +95,7 @@ int PrintMicrodumpProcess(const Options& options) {
   file_stream.read(&bytes[0], bytes.size());
   string microdump_content(&bytes[0], bytes.size());
 
-  scoped_ptr<SimpleSymbolSupplier> symbol_supplier;
+  std::unique_ptr<SimpleSymbolSupplier> symbol_supplier;
   if (!options.symbol_paths.empty()) {
     symbol_supplier.reset(new SimpleSymbolSupplier(options.symbol_paths));
   }

@@ -28,22 +28,26 @@ SENTRY_TEST(custom_logger)
 {
     logger_test_t data = { 0, false };
 
-    sentry_options_t *options = sentry_options_new();
-    sentry_options_set_debug(options, true);
-    sentry_options_set_logger(options, test_logger, &data);
+    {
+        SENTRY_TEST_OPTIONS_NEW(options);
+        sentry_options_set_debug(options, true);
+        sentry_options_set_logger(options, test_logger, &data);
 
-    sentry_init(options);
+        sentry_init(options);
 
-    data.assert_now = true;
-    SENTRY_WARNF("Oh this is %s", "bad");
-    data.assert_now = false;
+        data.assert_now = true;
+        SENTRY_WARNF("Oh this is %s", "bad");
+        data.assert_now = false;
 
-    sentry_close();
+        sentry_close();
+    }
 
     TEST_CHECK_INT_EQUAL(data.called, 1);
 
-    // *really* clear the logger instance
-    options = sentry_options_new();
-    sentry_init(options);
-    sentry_close();
+    {
+        // *really* clear the logger instance
+        SENTRY_TEST_OPTIONS_NEW(options);
+        sentry_init(options);
+        sentry_close();
+    }
 }

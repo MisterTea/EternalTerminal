@@ -368,7 +368,7 @@ bool Reader::WalkLoadCommands(Reader::LoadCommandHandler* handler) const {
         // out. To help us handle this special case properly, give such
         // segments' contents NULL starting and ending pointers.
         if (segment.fileoff == 0 && segment.filesize == 0) {
-          segment.contents.start = segment.contents.end = NULL;
+          segment.contents.start = segment.contents.end = nullptr;
         } else {
           segment.contents.start = buffer_.start + segment.fileoff;
           segment.contents.end = segment.contents.start + segment.filesize;
@@ -507,16 +507,16 @@ bool Reader::WalkSegmentSections(const Segment& segment,
     if (section_type == S_ZEROFILL || section_type == S_THREAD_LOCAL_ZEROFILL ||
             section_type == S_GB_ZEROFILL) {
       // Zero-fill sections have a size, but no contents.
-      section.contents.start = section.contents.end = NULL;
-    } else if (segment.contents.start == NULL &&
-               segment.contents.end == NULL) {
+      section.contents.start = section.contents.end = nullptr;
+    } else if (segment.contents.start == nullptr &&
+               segment.contents.end == nullptr) {
       // Mach-O files in .dSYM bundles have the contents of the loaded
       // segments removed, and their file offsets and file sizes zeroed
       // out.  However, the sections within those segments still have
       // non-zero sizes.  There's no reason to call MisplacedSectionData in
       // this case; the caller may just need the section's load
       // address. But do set the contents' limits to NULL, for safety.
-      section.contents.start = section.contents.end = NULL;
+      section.contents.start = section.contents.end = nullptr;
     } else {
       if (offset < size_t(segment.contents.start - buffer_.start) ||
           offset > size_t(segment.contents.end - buffer_.start) ||
@@ -530,7 +530,7 @@ bool Reader::WalkSegmentSections(const Segment& segment,
           // segments partially removed. The removed sections will have zero as
           // their offset. MisplacedSectionData should not be called in this
           // case.
-          section.contents.start = section.contents.end = NULL;
+          section.contents.start = section.contents.end = nullptr;
         }
       } else {
         section.contents.start = buffer_.start + offset;

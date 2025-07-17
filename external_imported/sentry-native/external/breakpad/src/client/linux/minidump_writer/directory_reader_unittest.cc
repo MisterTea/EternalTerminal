@@ -51,7 +51,7 @@ TEST(DirectoryReaderTest, CompareResults) {
   std::set<string> dent_set;
 
   DIR* const dir = opendir("/proc/self");
-  ASSERT_TRUE(dir != NULL);
+  ASSERT_TRUE(dir != nullptr);
 
   struct dirent* dent;
   while ((dent = readdir(dir)))

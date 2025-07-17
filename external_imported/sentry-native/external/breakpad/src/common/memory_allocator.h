@@ -29,10 +29,11 @@
 #ifndef GOOGLE_BREAKPAD_COMMON_MEMORY_ALLOCATOR_H_
 #define GOOGLE_BREAKPAD_COMMON_MEMORY_ALLOCATOR_H_
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <unistd.h>
 #include <sys/mman.h>
+#include <unistd.h>
 
 #include <memory>
 #include <vector>
@@ -60,8 +61,8 @@ class PageAllocator {
  public:
   PageAllocator()
       : page_size_(getpagesize()),
-        last_(NULL),
-        current_page_(NULL),
+        last_(nullptr),
+        current_page_(nullptr),
         page_offset_(0),
         pages_allocated_(0) {
   }
@@ -70,16 +71,24 @@ class PageAllocator {
     FreeAll();
   }
 
+  // Rounds up `offset` to the closest properly aligned value. `alignment` must
+  // be positive and a power of two.
+  template <typename T>
+  static T AlignUp(T offset, size_t alignment) {
+    assert(alignment > 0 && ((alignment - 1) & alignment) == 0);
+    return (offset + (alignment - 1)) & ~(alignment - 1);
+  }
+
   void* Alloc(size_t bytes) {
     if (!bytes)
-      return NULL;
+      return nullptr;
 
     if (current_page_ && page_size_ - page_offset_ >= bytes) {
       uint8_t* const ret = current_page_ + page_offset_;
       page_offset_ += bytes;
       if (page_offset_ == page_size_) {
         page_offset_ = 0;
-        current_page_ = NULL;
+        current_page_ = nullptr;
       }
 
       return ret;
@@ -89,12 +98,12 @@ class PageAllocator {
         (bytes + sizeof(PageHeader) + page_size_ - 1) / page_size_;
     uint8_t* const ret = GetNPages(pages);
     if (!ret)
-      return NULL;
+      return nullptr;
 
     page_offset_ =
         (page_size_ - (page_size_ * pages - (bytes + sizeof(PageHeader)))) %
         page_size_;
-    current_page_ = page_offset_ ? ret + page_size_ * (pages - 1) : NULL;
+    current_page_ = page_offset_ ? ret + page_size_ * (pages - 1) : nullptr;
 
     return ret + sizeof(PageHeader);
   }
@@ -115,10 +124,10 @@ class PageAllocator {
 
  private:
   uint8_t* GetNPages(size_t num_pages) {
-    void* a = sys_mmap(NULL, page_size_ * num_pages, PROT_READ | PROT_WRITE,
+    void* a = sys_mmap(nullptr, page_size_ * num_pages, PROT_READ | PROT_WRITE,
                        MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
     if (a == MAP_FAILED)
-      return NULL;
+      return nullptr;
 
 #if defined(MEMORY_SANITIZER)
     // We need to indicate to MSan that memory allocated through sys_mmap is
@@ -167,7 +176,7 @@ struct PageStdAllocator {
   using size_type = typename AllocatorTraits::size_type;
 
   explicit PageStdAllocator(PageAllocator& allocator) : allocator_(allocator),
-                                                        stackdata_(NULL),
+                                                        stackdata_(nullptr),
                                                         stackdata_size_(0)
   {}
 

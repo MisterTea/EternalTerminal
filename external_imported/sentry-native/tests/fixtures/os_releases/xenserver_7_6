@@ -1,0 +1,8 @@
+NAME="XenServer"
+VERSION="7.6.0"
+ID="xenenterprise"
+ID_LIKE="centos rhel fedora"
+PRETTY_NAME="XenServer 7.6.0"
+ANSI_COLOR="0;31"
+HOME_URL="https://xenserver.org/"
+BUG_REPORT_URL="https://bugs.xenserver.org/"

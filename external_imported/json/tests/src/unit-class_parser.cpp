@@ -1,9 +1,9 @@
 //     __ _____ _____ _____
 //  __|  |   __|     |   | |  JSON for Modern C++ (supporting code)
-// |  |  |__   |  |  | | | |  version 3.11.3
+// |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2023 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-License-Identifier: MIT
 
 #include "doctest_compatibility.h"
@@ -75,7 +75,7 @@ class SaxEventLogger
 
     bool start_object(std::size_t elements)
     {
-        if (elements == static_cast<std::size_t>(-1))
+        if (elements == (std::numeric_limits<std::size_t>::max)())
         {
             events.emplace_back("start_object()");
         }
@@ -100,7 +100,7 @@ class SaxEventLogger
 
     bool start_array(std::size_t elements)
     {
-        if (elements == static_cast<std::size_t>(-1))
+        if (elements == (std::numeric_limits<std::size_t>::max)())
         {
             events.emplace_back("start_array()");
         }
@@ -124,7 +124,7 @@ class SaxEventLogger
         return false;
     }
 
-    std::vector<std::string> events {};
+    std::vector<std::string> events {}; // NOLINT(readability-redundant-member-init)
     bool errored = false;
 };
 
@@ -219,7 +219,7 @@ json parser_helper(const std::string& s)
     CHECK(j_nothrow == j);
 
     json j_sax;
-    nlohmann::detail::json_sax_dom_parser<json> sdp(j_sax);
+    nlohmann::detail::json_sax_dom_parser<json, nlohmann::detail::string_input_adapter_type> sdp(j_sax);
     json::sax_parse(s, &sdp);
     CHECK(j_sax == j);
 
@@ -828,7 +828,7 @@ TEST_CASE("parser class")
                     // for ranges in range of IEEE 754-2008 binary64 (double precision)
                     // this does not accommodate 64 bit integers without loss of accuracy.
                     // As 64 bit integers are now widely used in software, it is desirable
-                    // to expand support to to the full 64 bit (signed and unsigned) range
+                    // to expand support to the full 64 bit (signed and unsigned) range
                     // i.e. -(2**63) -> (2**64)-1.
 
                     // -(2**63)    ** Note: compilers see negative literals as negated positive numbers (hence the -1))

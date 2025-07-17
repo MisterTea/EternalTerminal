@@ -7,6 +7,9 @@
 
 SENTRY_TEST(module_finder)
 {
+#if defined(SENTRY_PLATFORM_NX)
+    return SKIP_TEST();
+#endif
     // make sure that we are able to do multiple cleanup cycles
     sentry_value_decref(sentry_get_modules_list());
     sentry_clear_modulecache();

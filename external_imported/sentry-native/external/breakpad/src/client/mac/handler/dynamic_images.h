@@ -110,7 +110,7 @@ class DynamicImage {
   DynamicImage(uint8_t* header,     // data is copied
                size_t header_size,  // includes load commands
                uint64_t load_address,
-               string file_path,
+               const string& file_path,
                uintptr_t image_mod_date,
                mach_port_t task,
                cpu_type_t cpu_type)
@@ -254,7 +254,7 @@ class DynamicImages {
     if (i < (int)image_list_.size()) {
       return image_list_[i];
     }
-    return NULL;
+    return nullptr;
   }
 
   // Returns the image corresponding to the main executable.

@@ -29,9 +29,13 @@
 #ifndef COMMON_STRING_VIEW_H__
 #define COMMON_STRING_VIEW_H__
 
-#include <cassert>
-#include <cstring>
+#include <assert.h>
+#include <stddef.h>
+#include <string.h>
+
+#include <cstddef>
 #include <ostream>
+
 #include "common/using_std_string.h"
 
 namespace google_breakpad {

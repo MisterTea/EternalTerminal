@@ -1,0 +1,22 @@
+1 VERSIONINFO
+FILEVERSION    @SENTRY_VERSION_MAJOR@,@SENTRY_VERSION_MINOR@,@SENTRY_VERSION_PATCH@,0
+PRODUCTVERSION @SENTRY_VERSION_MAJOR@,@SENTRY_VERSION_MINOR@,@SENTRY_VERSION_PATCH@,0
+BEGIN
+BLOCK "StringFileInfo"
+BEGIN
+    BLOCK "040904E4"
+    BEGIN
+        VALUE "FileDescription", "@FILE_DESCRIPTION@"
+        VALUE "FileVersion", "@SENTRY_VERSION@"
+        VALUE "InternalName", "sentry-native"
+        VALUE "LegalCopyright", "https://sentry.io"
+        VALUE "OriginalFilename", "$<TARGET_FILE_NAME:@TGT@>"
+        VALUE "ProductName", "Sentry Native SDK"
+        VALUE "ProductVersion", "@SENTRY_VERSION@"
+    END
+END
+BLOCK "VarFileInfo"
+BEGIN
+    VALUE "Translation", 0x409, 1252
+END
+END

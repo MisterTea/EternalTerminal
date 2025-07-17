@@ -3,4 +3,13 @@
 # Adding a manual `[paths release]` "fixes" the `crashpad_handler` leak, but leads to a use-after-free in sentry.
 # https://github.com/getsentry/crashpad/blob/9cd1a4dadb51b31665f5e50c5ffc25bb9d10571a/client/crash_report_database_mac.mm#L705
 leak:contentsOfDirectoryAtPath
+
+# This is a known issue introduced with libcurl 7.77.0 on macOS: https://github.com/getsentry/sentry-native/pull/827#issuecomment-1521956265
+# While it should have been fixed with 7.78.0, tests with SDK-packaged version 7.85.0 still detect the same leak. 
 leak:SCDynamicStoreCopyProxiesWithOptions
+
+# This is a known issue in ASAN packaged with llvm15/16 (and below): https://github.com/google/sanitizers/issues/1501
+# I cannot reproduce it with the current brew llvm package (18.1.7). TODO: remove when GHA macOS runner image updates the llvm package.
+leak:realizeClassWithoutSwift
+
+leak:Curl_getaddrinfo_ex

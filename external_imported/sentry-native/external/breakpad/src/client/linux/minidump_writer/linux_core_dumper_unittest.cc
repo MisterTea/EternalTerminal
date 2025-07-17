@@ -64,9 +64,9 @@ TEST(LinuxCoreDumperTest, BuildProcPath) {
   EXPECT_TRUE(dumper.BuildProcPath(maps_path, pid, "maps"));
   EXPECT_STREQ(maps_path_expected, maps_path);
 
-  EXPECT_FALSE(dumper.BuildProcPath(NULL, pid, "maps"));
+  EXPECT_FALSE(dumper.BuildProcPath(nullptr, pid, "maps"));
   EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, ""));
-  EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, NULL));
+  EXPECT_FALSE(dumper.BuildProcPath(maps_path, pid, nullptr));
 
   char long_node[NAME_MAX];
   size_t long_node_len = NAME_MAX - strlen(procfs_path) - 1;

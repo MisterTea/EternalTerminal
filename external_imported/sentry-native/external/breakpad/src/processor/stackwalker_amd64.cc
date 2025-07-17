@@ -38,7 +38,8 @@
 
 #include <assert.h>
 
-#include "common/scoped_ptr.h"
+#include <memory>
+
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/memory_region.h"
 #include "google_breakpad/processor/source_line_resolver_interface.h"
@@ -58,37 +59,37 @@ StackwalkerAMD64::cfi_register_map_[] = {
   // flags here really means that the walker should assume they're
   // unchanged if the CFI doesn't mention them --- clearly wrong for $rip
   // and $rsp.
-  { "$rax", NULL, false,
+  { "$rax", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_RAX, &MDRawContextAMD64::rax },
-  { "$rdx", NULL, false,
+  { "$rdx", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_RDX, &MDRawContextAMD64::rdx },
-  { "$rcx", NULL, false,
+  { "$rcx", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_RCX, &MDRawContextAMD64::rcx },
-  { "$rbx", NULL, true,
+  { "$rbx", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_RBX, &MDRawContextAMD64::rbx },
-  { "$rsi", NULL, false,
+  { "$rsi", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_RSI, &MDRawContextAMD64::rsi },
-  { "$rdi", NULL, false,
+  { "$rdi", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_RDI, &MDRawContextAMD64::rdi },
-  { "$rbp", NULL, true,
+  { "$rbp", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_RBP, &MDRawContextAMD64::rbp },
   { "$rsp", ".cfa", false,
     StackFrameAMD64::CONTEXT_VALID_RSP, &MDRawContextAMD64::rsp },
-  { "$r8", NULL, false,
+  { "$r8", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_R8,  &MDRawContextAMD64::r8 },
-  { "$r9", NULL, false,
+  { "$r9", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_R9,  &MDRawContextAMD64::r9 },
-  { "$r10", NULL, false,
+  { "$r10", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_R10, &MDRawContextAMD64::r10 },
-  { "$r11", NULL, false,
+  { "$r11", nullptr, false,
     StackFrameAMD64::CONTEXT_VALID_R11, &MDRawContextAMD64::r11 },
-  { "$r12", NULL, true,
+  { "$r12", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_R12, &MDRawContextAMD64::r12 },
-  { "$r13", NULL, true,
+  { "$r13", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_R13, &MDRawContextAMD64::r13 },
-  { "$r14", NULL, true,
+  { "$r14", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_R14, &MDRawContextAMD64::r14 },
-  { "$r15", NULL, true,
+  { "$r15", nullptr, true,
     StackFrameAMD64::CONTEXT_VALID_R15, &MDRawContextAMD64::r15 },
   { "$rip", ".ra", false,
     StackFrameAMD64::CONTEXT_VALID_RIP, &MDRawContextAMD64::rip },
@@ -113,7 +114,7 @@ uint64_t StackFrameAMD64::ReturnAddress() const {
 StackFrame* StackwalkerAMD64::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameAMD64* frame = new StackFrameAMD64();
@@ -133,22 +134,21 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByCFIFrameInfo(
     CFIFrameInfo* cfi_frame_info) {
   StackFrameAMD64* last_frame = static_cast<StackFrameAMD64*>(frames.back());
 
-  scoped_ptr<StackFrameAMD64> frame(new StackFrameAMD64());
+  std::unique_ptr<StackFrameAMD64> frame(new StackFrameAMD64());
   if (!cfi_walker_
       .FindCallerRegisters(*memory_, *cfi_frame_info,
                            last_frame->context, last_frame->context_validity,
                            &frame->context, &frame->context_validity))
-    return NULL;
+    return nullptr;
 
   // Make sure we recovered all the essentials.
   static const int essentials = (StackFrameAMD64::CONTEXT_VALID_RIP
                                  | StackFrameAMD64::CONTEXT_VALID_RSP);
   if ((frame->context_validity & essentials) != essentials)
-    return NULL;
+    return nullptr;
 
   if (!frame->context.rip || !frame->context.rsp) {
-    BPLOG(ERROR) << "invalid rip/rsp";
-    return NULL;
+    return nullptr;
   }
 
   frame->trust = StackFrame::FRAME_TRUST_CFI;
@@ -184,7 +184,7 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByFramePointerRecovery(
 
   // If rbp is not 8-byte aligned it can't be a frame pointer.
   if (last_rbp % 8 != 0) {
-    return NULL;
+    return nullptr;
   }
 
   uint64_t caller_rip, caller_rbp;
@@ -195,18 +195,18 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByFramePointerRecovery(
     // If the recovered rip is not a canonical address it can't be
     // the return address, so rbp must not have been a frame pointer.
     if (is_non_canonical(caller_rip)) {
-      return NULL;
+      return nullptr;
     }
 
     // Check that rbp is within the right frame
     if (caller_rsp <= last_rbp || caller_rbp < caller_rsp) {
-      return NULL;
+      return nullptr;
     }
 
     // Sanity check that resulting rbp is still inside stack memory.
     uint64_t unused;
     if (!memory_->GetMemoryAtAddress(caller_rbp, &unused)) {
-      return NULL;
+      return nullptr;
     }
 
     StackFrameAMD64* frame = new StackFrameAMD64();
@@ -221,7 +221,7 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByFramePointerRecovery(
     return frame;
   }
 
-  return NULL;
+  return nullptr;
 }
 
 StackFrameAMD64* StackwalkerAMD64::GetCallerBySimulatingReturn(
@@ -235,7 +235,7 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerBySimulatingReturn(
                             searchwords)) {
     // No plausible return address at the top of the stack. Unable to simulate
     // a return.
-    return NULL;
+    return nullptr;
   }
 
   // Create a new stack frame (ownership will be transferred to the caller)
@@ -263,7 +263,7 @@ StackFrameAMD64* StackwalkerAMD64::GetCallerByStackScan(
                             /*is_context_frame=*/last_frame->trust ==
                                 StackFrame::FRAME_TRUST_CONTEXT)) {
     // No plausible return address was found.
-    return NULL;
+    return nullptr;
   }
 
   // Create a new stack frame (ownership will be transferred to the caller)
@@ -308,15 +308,15 @@ StackFrame* StackwalkerAMD64::GetCallerFrame(const CallStack* stack,
                                              bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   const vector<StackFrame*>& frames = *stack->frames();
   StackFrameAMD64* last_frame = static_cast<StackFrameAMD64*>(frames.back());
-  scoped_ptr<StackFrameAMD64> new_frame;
+  std::unique_ptr<StackFrameAMD64> new_frame;
 
   // If we have CFI information, use it.
-  scoped_ptr<CFIFrameInfo> cfi_frame_info(
+  std::unique_ptr<CFIFrameInfo> cfi_frame_info(
       frame_symbolizer_->FindCFIFrameInfo(last_frame));
   if (cfi_frame_info.get())
     new_frame.reset(GetCallerByCFIFrameInfo(frames, cfi_frame_info.get()));
@@ -347,7 +347,7 @@ StackFrame* StackwalkerAMD64::GetCallerFrame(const CallStack* stack,
 
   // If nothing worked, tell the caller.
   if (!new_frame.get())
-    return NULL;
+    return nullptr;
 
   if (system_info_->os_short == "nacl") {
     // Apply constraints from Native Client's x86-64 sandbox.  These
@@ -364,7 +364,7 @@ StackFrame* StackwalkerAMD64::GetCallerFrame(const CallStack* stack,
                     last_frame->context.rsp,
                     /*first_unwind=*/last_frame->trust ==
                         StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   // new_frame->context.rip is the return address, which is the instruction

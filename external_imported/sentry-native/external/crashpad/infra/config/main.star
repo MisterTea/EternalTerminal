@@ -156,13 +156,13 @@ def crashpad_dimensions(platform, bucket):
     dimensions["pool"] = "luci.flex." + bucket
 
     if platform == "fuchsia":
-        dimensions["os"] = "Ubuntu-18.04"
+        dimensions["os"] = "Ubuntu-22.04"
     elif platform == "ios":
-        dimensions["os"] = "Mac-12"
+        dimensions["os"] = "Mac-13|Mac-14"
     elif platform == "linux":
-        dimensions["os"] = "Ubuntu-18.04"
+        dimensions["os"] = "Ubuntu-22.04"
     elif platform == "mac":
-        dimensions["os"] = "Mac-12"
+        dimensions["os"] = "Mac-13|Mac-14"
     elif platform == "win":
         dimensions["os"] = "Windows-10"
 
@@ -184,7 +184,7 @@ def crashpad_properties(platform, cpu, config, bucket):
 
     if platform == "win":
         properties["$depot_tools/windows_sdk"] = {
-            "version": "uploaded:2021-04-28",
+            "version": "uploaded:2024-01-11",
         }
 
     if bucket == "ci":

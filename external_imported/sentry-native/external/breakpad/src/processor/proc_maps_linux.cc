@@ -2,9 +2,10 @@
 // Use of this source code is governed by a BSD-style license that can be
 // found in the LICENSE file.
 
+// For <inttypes.h> PRI* macros, before anything else might #include it.
 #ifndef __STDC_FORMAT_MACROS
 #define __STDC_FORMAT_MACROS
-#endif
+#endif  /* __STDC_FORMAT_MACROS */
 
 #ifdef HAVE_CONFIG_H
 #include <config.h>  // Must come first
@@ -15,6 +16,8 @@
 #include <fcntl.h>
 #include <inttypes.h>
 #include <stdio.h>
+
+#include <utility>
 
 #include "common/using_std_string.h"
 #include "processor/logging.h"
@@ -98,7 +101,7 @@ bool ParseProcMaps(const string& input,
       return false;
 
     // Pushing then assigning saves us a string copy.
-    regions.push_back(region);
+    regions.push_back(std::move(region));
     regions.back().path.assign(line + path_index);
     regions.back().line.assign(line);
   }

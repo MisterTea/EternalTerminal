@@ -11,13 +11,36 @@ jobs:
     runs-on: ubuntu-latest
     steps:
     - name: Install requirements
-      run: sudo apt install libgtest-dev
-    - uses: actions/checkout@v2
+      run: sudo apt install libgtest-dev cmake
+    - uses: actions/checkout@v3
     - run: make all && make test
+
+    - name: test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=OFF)
+      run: |
+        cmake . -B build -DSIMPLEINI_USE_SYSTEM_GTEST=OFF
+        cmake --build build
+        ctest --test-dir build
+    - name: test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=ON)
+      run: |
+        cmake . -B build-system-gtest -DSIMPLEINI_USE_SYSTEM_GTEST=ON
+        cmake --build build-system-gtest
+        ctest --test-dir build-system-gtest
+
   MacOS:
     runs-on: macos-latest
     steps:
     - name: Install requirements
-      run: brew install googletest
-    - uses: actions/checkout@v2
+      run: brew install googletest cmake
+    - uses: actions/checkout@v3
     - run: make all && make test
+
+    - name: test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=OFF)
+      run: |
+        cmake . -B build -DSIMPLEINI_USE_SYSTEM_GTEST=OFF
+        cmake --build build
+        ctest --test-dir build
+    - name: test with CMake (-DSIMPLEINI_USE_SYSTEM_GTEST=ON)
+      run: |
+        cmake . -B build-system-gtest -DSIMPLEINI_USE_SYSTEM_GTEST=ON
+        cmake --build build-system-gtest
+        ctest --test-dir build-system-gtest

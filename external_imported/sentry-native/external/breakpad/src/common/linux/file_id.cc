@@ -48,6 +48,7 @@
 #include "common/linux/elfutils.h"
 #include "common/linux/linux_libc_support.h"
 #include "common/linux/memory_mapped_file.h"
+#include "common/memory_allocator.h"
 #include "common/using_std_string.h"
 #include "third_party/lss/linux_syscall_support.h"
 
@@ -60,7 +61,10 @@ const size_t kMDGUIDSize = sizeof(MDGUID);
 FileID::FileID(const char* path) : path_(path) {}
 
 // ELF note name and desc are 32-bits word padded.
-#define NOTE_PADDING(a) ((a + 3) & ~3)
+template <typename T>
+inline T NotePadding(T size) {
+  return PageAllocator::AlignUp(size, 4);
+}
 
 // These functions are also used inside the crashed process, so be safe
 // and use the syscall/libc wrappers instead of direct syscalls or libc.
@@ -77,9 +81,9 @@ static bool ElfClassBuildIDNoteIdentifier(const void* section, size_t length,
     if (note_header->n_type == NT_GNU_BUILD_ID)
       break;
     note_header = reinterpret_cast<const Nhdr*>(
-                  reinterpret_cast<const char*>(note_header) + sizeof(Nhdr) +
-                  NOTE_PADDING(note_header->n_namesz) +
-                  NOTE_PADDING(note_header->n_descsz));
+        reinterpret_cast<const char*>(note_header) + sizeof(Nhdr) +
+        NotePadding(note_header->n_namesz) +
+        NotePadding(note_header->n_descsz));
   }
   if (reinterpret_cast<const void*>(note_header) >= section_end ||
       note_header->n_descsz == 0) {
@@ -87,7 +91,7 @@ static bool ElfClassBuildIDNoteIdentifier(const void* section, size_t length,
   }
 
   const uint8_t* build_id = reinterpret_cast<const uint8_t*>(note_header) +
-    sizeof(Nhdr) + NOTE_PADDING(note_header->n_namesz);
+                            sizeof(Nhdr) + NotePadding(note_header->n_namesz);
   identifier.insert(identifier.end(),
                     build_id,
                     build_id + note_header->n_descsz);
@@ -99,6 +103,13 @@ static bool ElfClassBuildIDNoteIdentifier(const void* section, size_t length,
 // and copy it into |identifier|.
 static bool FindElfBuildIDNote(const void* elf_mapped_base,
                                wasteful_vector<uint8_t>& identifier) {
+  void* note_section;
+  size_t note_size;
+  if (FindElfSection(elf_mapped_base, ".note.gnu.build-id", SHT_NOTE,
+                     (const void**)&note_section, &note_size)) {
+    return ElfClassBuildIDNoteIdentifier(note_section, note_size, identifier);
+  }
+
   PageAllocator allocator;
   // lld normally creates 2 PT_NOTEs, gold normally creates 1.
   auto_wasteful_vector<ElfSegment, 2> segs(&allocator);
@@ -108,13 +119,6 @@ static bool FindElfBuildIDNote(const void* elf_mapped_base,
         return true;
       }
     }
-  }
-
-  void* note_section;
-  size_t note_size;
-  if (FindElfSection(elf_mapped_base, ".note.gnu.build-id", SHT_NOTE,
-                     (const void**)&note_section, &note_size)) {
-    return ElfClassBuildIDNoteIdentifier(note_section, note_size, identifier);
   }
 
   return false;
@@ -128,8 +132,10 @@ static bool HashElfTextSection(const void* elf_mapped_base,
 
   void* text_section;
   size_t text_size;
-  if (!FindElfSection(elf_mapped_base, ".text", SHT_PROGBITS,
-                      (const void**)&text_section, &text_size) ||
+  if ((!FindElfSection(elf_mapped_base, ".text", SHT_PROGBITS,
+                       (const void**)&text_section, &text_size) &&
+       !FindElfSection(elf_mapped_base, "text", SHT_PROGBITS,
+                       (const void**)&text_section, &text_size)) ||
       text_size == 0) {
     return false;
   }

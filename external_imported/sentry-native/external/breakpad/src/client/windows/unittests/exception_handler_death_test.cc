@@ -30,12 +30,14 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
 #include <windows.h>
 #include <dbghelp.h>
 #include <strsafe.h>
 #include <objbase.h>
 #include <shellapi.h>
 
+#include <memory>
 #include <string>
 
 #include "breakpad_googletest_includes.h"
@@ -92,7 +94,7 @@ void ExceptionHandlerDeathTest::SetUp() {
     assert(false);
   }
   StringCchPrintfW(temp_path_, MAX_PATH, L"%s%s", temp_path, test_name_wide);
-  CreateDirectory(temp_path_, NULL);
+  CreateDirectory(temp_path_, nullptr);
 }
 
 BOOL DoesPathExist(const TCHAR* path_name) {
@@ -127,18 +129,18 @@ TEST_F(ExceptionHandlerDeathTest, InProcTest) {
   // the semantics of the exception handler being inherited/not
   // inherited across CreateProcess().
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  scoped_ptr<google_breakpad::ExceptionHandler> exc(
+  std::unique_ptr<google_breakpad::ExceptionHandler> exc(
       new google_breakpad::ExceptionHandler(
           temp_path_,
-          NULL,
+          nullptr,
           &MinidumpWrittenCallback,
-          NULL,
+          nullptr,
           google_breakpad::ExceptionHandler::HANDLER_ALL));
 
   // Disable GTest SEH handler
   testing::DisableExceptionHandlerInScope disable_exception_handler;
 
-  int* i = NULL;
+  int* i = nullptr;
   ASSERT_DEATH((*i)++, kSuccessIndicator);
 }
 
@@ -152,32 +154,32 @@ void clientDumpCallback(void* dump_context,
 
 void ExceptionHandlerDeathTest::DoCrashAccessViolation(
     const OutOfProcGuarantee out_of_proc_guarantee) {
-  scoped_ptr<google_breakpad::ExceptionHandler> exc;
+  std::unique_ptr<google_breakpad::ExceptionHandler> exc;
 
   if (out_of_proc_guarantee == OUT_OF_PROC_GUARANTEED) {
     google_breakpad::CrashGenerationClient* client =
         new google_breakpad::CrashGenerationClient(kPipeName,
                                                    MiniDumpNormal,
-                                                   NULL);  // custom_info
+                                                   nullptr);  // custom_info
     ASSERT_TRUE(client->Register());
     exc.reset(new google_breakpad::ExceptionHandler(
         temp_path_,
-        NULL,   // filter
-        NULL,   // callback
-        NULL,   // callback_context
+        nullptr,   // filter
+        nullptr,   // callback
+        nullptr,   // callback_context
         google_breakpad::ExceptionHandler::HANDLER_ALL,
         client));
   } else {
     ASSERT_TRUE(out_of_proc_guarantee == OUT_OF_PROC_BEST_EFFORT);
     exc.reset(new google_breakpad::ExceptionHandler(
         temp_path_,
-        NULL,   // filter
-        NULL,   // callback
-        NULL,   // callback_context
+        nullptr,   // filter
+        nullptr,   // callback
+        nullptr,   // callback_context
         google_breakpad::ExceptionHandler::HANDLER_ALL,
         MiniDumpNormal,
         kPipeName,
-        NULL));  // custom_info
+        nullptr));  // custom_info
   }
 
   // Disable GTest SEH handler
@@ -187,7 +189,7 @@ void ExceptionHandlerDeathTest::DoCrashAccessViolation(
   // if it's not true we'll still get an error rather than the crash
   // being expected.
   ASSERT_TRUE(exc->IsOutOfProcess());
-  int* i = NULL;
+  int* i = nullptr;
   printf("%d\n", (*i)++);
 }
 
@@ -203,8 +205,8 @@ TEST_F(ExceptionHandlerDeathTest, OutOfProcTest) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
   std::wstring dump_path(temp_path_);
   google_breakpad::CrashGenerationServer server(
-      kPipeName, NULL, NULL, NULL, &clientDumpCallback, NULL, NULL, NULL, NULL,
-      NULL, true, &dump_path);
+      kPipeName, nullptr, nullptr, nullptr, &clientDumpCallback, nullptr,
+      nullptr, nullptr, nullptr, nullptr, true, &dump_path);
 
   // This HAS to be EXPECT_, because when this test case is executed in the
   // child process, the server registration will fail due to the named pipe
@@ -226,8 +228,8 @@ TEST_F(ExceptionHandlerDeathTest, OutOfProcGuaranteedTest) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
   std::wstring dump_path(temp_path_);
   google_breakpad::CrashGenerationServer server(
-      kPipeName, NULL, NULL, NULL, &clientDumpCallback, NULL, NULL, NULL, NULL,
-      NULL, true, &dump_path);
+      kPipeName, nullptr, nullptr, nullptr, &clientDumpCallback, nullptr,
+      nullptr, nullptr, nullptr, nullptr, true, &dump_path);
 
   // This HAS to be EXPECT_, because when this test case is executed in the
   // child process, the server registration will fail due to the named pipe
@@ -242,7 +244,7 @@ TEST_F(ExceptionHandlerDeathTest, InvalidParameterTest) {
   using google_breakpad::ExceptionHandler;
 
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  ExceptionHandler handler(temp_path_, NULL, NULL, NULL,
+  ExceptionHandler handler(temp_path_, nullptr, nullptr, nullptr,
                            ExceptionHandler::HANDLER_INVALID_PARAMETER);
 
   // Disable the message box for assertions
@@ -250,7 +252,7 @@ TEST_F(ExceptionHandlerDeathTest, InvalidParameterTest) {
 
   // Call with a bad argument. The invalid parameter will be swallowed
   // and a dump will be generated, the process will exit(0).
-  ASSERT_EXIT(printf(NULL), ::testing::ExitedWithCode(0), "");
+  ASSERT_EXIT(printf(nullptr), ::testing::ExitedWithCode(0), "");
 }
 
 
@@ -276,7 +278,7 @@ TEST_F(ExceptionHandlerDeathTest, PureVirtualCallTest) {
   using google_breakpad::ExceptionHandler;
 
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  ExceptionHandler handler(temp_path_, NULL, NULL, NULL,
+  ExceptionHandler handler(temp_path_, nullptr, nullptr, nullptr,
                            ExceptionHandler::HANDLER_PURECALL);
 
   // Disable the message box for assertions
@@ -314,12 +316,12 @@ wstring find_minidump_in_directory(const wstring& directory) {
 
 TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemory) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  scoped_ptr<google_breakpad::ExceptionHandler> exc(
+  std::unique_ptr<google_breakpad::ExceptionHandler> exc(
       new google_breakpad::ExceptionHandler(
           temp_path_,
-          NULL,
-          NULL,
-          NULL,
+          nullptr,
+          nullptr,
+          nullptr,
           google_breakpad::ExceptionHandler::HANDLER_ALL));
 
   // Disable GTest SEH handler
@@ -330,7 +332,7 @@ TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemory) {
   const int kOffset = kMemorySize / 2;
   // This crashes with SIGILL on x86/x86-64/arm.
   const unsigned char instructions[] = { 0xff, 0xff, 0xff, 0xff };
-  char* memory = reinterpret_cast<char*>(VirtualAlloc(NULL,
+  char* memory = reinterpret_cast<char*>(VirtualAlloc(nullptr,
                                                       kMemorySize,
                                                       MEM_COMMIT | MEM_RESERVE,
                                                       PAGE_EXECUTE_READWRITE));
@@ -406,12 +408,12 @@ TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemory) {
 
 TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemoryMinBound) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  scoped_ptr<google_breakpad::ExceptionHandler> exc(
+  std::unique_ptr<google_breakpad::ExceptionHandler> exc(
       new google_breakpad::ExceptionHandler(
           temp_path_,
-          NULL,
-          NULL,
-          NULL,
+          nullptr,
+          nullptr,
+          nullptr,
           google_breakpad::ExceptionHandler::HANDLER_ALL));
 
   // Disable GTest SEH handler
@@ -427,7 +429,7 @@ TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemoryMinBound) {
   const unsigned char instructions[] = { 0xff, 0xff, 0xff, 0xff };
   // Get some executable memory. Specifically, reserve two pages,
   // but only commit the second.
-  char* all_memory = reinterpret_cast<char*>(VirtualAlloc(NULL,
+  char* all_memory = reinterpret_cast<char*>(VirtualAlloc(nullptr,
                                                           kPageSize * 2,
                                                           MEM_RESERVE,
                                                           PAGE_NOACCESS));
@@ -499,12 +501,12 @@ TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemoryMinBound) {
 
 TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemoryMaxBound) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
-  scoped_ptr<google_breakpad::ExceptionHandler> exc(
+  std::unique_ptr<google_breakpad::ExceptionHandler> exc(
       new google_breakpad::ExceptionHandler(
           temp_path_,
-          NULL,
-          NULL,
-          NULL,
+          nullptr,
+          nullptr,
+          nullptr,
           google_breakpad::ExceptionHandler::HANDLER_ALL));
 
   // Disable GTest SEH handler
@@ -519,7 +521,7 @@ TEST_F(ExceptionHandlerDeathTest, InstructionPointerMemoryMaxBound) {
   const int kOffset = kPageSize - sizeof(instructions);
   // Get some executable memory. Specifically, reserve two pages,
   // but only commit the first.
-  char* memory = reinterpret_cast<char*>(VirtualAlloc(NULL,
+  char* memory = reinterpret_cast<char*>(VirtualAlloc(nullptr,
                                                       kPageSize * 2,
                                                       MEM_RESERVE,
                                                       PAGE_NOACCESS));

@@ -63,7 +63,7 @@ TEST(LongStringDictionary, LongStringDictionary) {
   EXPECT_EQ("", dict.GetValueForKey("key3"));
 
   // Remove by setting value to NULL
-  dict.SetKeyValue("key2", NULL);
+  dict.SetKeyValue("key2", nullptr);
 
   // Now make sure it's not there anymore
   EXPECT_EQ("", dict.GetValueForKey("key2"));

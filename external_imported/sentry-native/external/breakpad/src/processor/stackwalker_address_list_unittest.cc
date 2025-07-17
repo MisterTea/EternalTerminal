@@ -101,24 +101,38 @@ class StackwalkerAddressListTest : public testing::Test {
   void SetModuleSymbols(MockCodeModule* module, const string& info) {
     size_t buffer_size;
     char* buffer = supplier.CopySymbolDataAndOwnTheCopy(info, &buffer_size);
-    EXPECT_CALL(supplier, GetCStringSymbolData(module, NULL, _, _, _))
+    EXPECT_CALL(supplier, GetCStringSymbolData(module, nullptr, _, _, _))
       .WillRepeatedly(DoAll(SetArgumentPointee<3>(buffer),
                             SetArgumentPointee<4>(buffer_size),
                             Return(MockSymbolSupplier::FOUND)));
   }
 
-  void CheckCallStack(const CallStack& call_stack) {
+  void CheckCallStack(const CallStack& call_stack, bool allow_inline=false) {
     const std::vector<StackFrame*>* frames = call_stack.frames();
-    ASSERT_EQ(arraysize(kDummyFrames), frames->size());
-    for (size_t i = 0; i < arraysize(kDummyFrames); ++i) {
-      ASSERT_EQ(kDummyFrames[i], frames->at(i)->instruction);
-      ASSERT_EQ(StackFrame::FRAME_TRUST_PREWALKED, frames->at(i)->trust);
+    ASSERT_LE(arraysize(kDummyFrames), frames->size());
+
+    // Iterate through the produced stack frames, validating that all of the
+    // prewalked frames match the expected input frames. Inlined frames are only
+    // allowed if `allow_inline` is set to true.
+
+    size_t j = 0;
+    for (size_t i = 0; i < frames->size(); ++i) {
+      if (j <= 2) {
+        ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(i)->module);
+      } else {
+        ASSERT_EQ(static_cast<const CodeModule*>(&module1), frames->at(i)->module);
+      }
+
+      ASSERT_EQ(kDummyFrames[j], frames->at(i)->instruction);
+      if (frames->at(i)->trust == StackFrame::FRAME_TRUST_PREWALKED) {
+        // Only move on to the next "real" stack frame if this isn't an
+        // inlined stack frame.
+        ++j;
+      } else {
+        ASSERT_TRUE(allow_inline);
+        ASSERT_EQ(StackFrame::FRAME_TRUST_INLINE, frames->at(i)->trust);
+      }
     }
-    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(0)->module);
-    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(1)->module);
-    ASSERT_EQ(static_cast<const CodeModule*>(&module2), frames->at(2)->module);
-    ASSERT_EQ(static_cast<const CodeModule*>(&module1), frames->at(3)->module);
-    ASSERT_EQ(static_cast<const CodeModule*>(&module1), frames->at(4)->module);
   }
 
   MockCodeModule module1;
@@ -198,4 +212,81 @@ TEST_F(StackwalkerAddressListTest, ScanWithSymbols) {
 
   ASSERT_EQ("mod1func1", frames->at(4)->function_name);
   ASSERT_EQ(0x40001000u, frames->at(4)->function_base);
+}
+
+TEST_F(StackwalkerAddressListTest, ScanWithInlining) {
+  // File    : FILE number(dex) name
+  // Function: FUNC address(hex) size(hex) parameter_size(hex) name
+  // Inline: : INLINE_ORIGIN number(dec) name
+  //         : INLINE depth(dec) line(dec) filenum(dec) inlinenum(dec)
+  //                  address(hex) size(hex)
+  // Line    : address(hex) size(hex) line(dec) filenum(dec)
+  SetModuleSymbols(&module2,
+                   "FILE 1 module2.cc\n"
+                   "INLINE_ORIGIN 0 mod2inlinefunc1\n"
+                   "INLINE_ORIGIN 1 mod2inlinefunc2\n"
+                   "INLINE_ORIGIN 2 mod2inlinefunc3\n"
+                   "FUNC 3000 100 10 mod2func3\n"
+                   "INLINE 0 1 1 1 3000 10\n"
+                   "INLINE 1 1 1 2 3000 10\n"
+                   "3000 10 1  1\n"
+                   "FUNC 2000 200 10 mod2func2\n"
+                   "INLINE 0 1 1 0 2000 10\n"
+                   "FUNC 1000 300 10 mod2func1\n");
+  SetModuleSymbols(&module1,
+                   "FUNC 2000 200 10 mod1func2\n"
+                   "FUNC 1000 300 10 mod1func1\n");
+
+  StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
+  StackwalkerAddressList walker(kDummyFrames, arraysize(kDummyFrames),
+                         &modules, &frame_symbolizer);
+
+  CallStack call_stack;
+  vector<const CodeModule*> modules_without_symbols;
+  vector<const CodeModule*> modules_with_corrupt_symbols;
+  ASSERT_TRUE(walker.Walk(&call_stack, &modules_without_symbols,
+                          &modules_with_corrupt_symbols));
+
+  ASSERT_EQ(0u, modules_without_symbols.size());
+  ASSERT_EQ(0u, modules_with_corrupt_symbols.size());
+
+  ASSERT_NO_FATAL_FAILURE(CheckCallStack(call_stack, /*allow_inline=*/true));
+
+  const std::vector<StackFrame*>* frames = call_stack.frames();
+
+  // We have full file/line information for the first function call, including
+  // inline functions
+  ASSERT_EQ("mod2inlinefunc3", frames->at(0)->function_name);
+  ASSERT_EQ(0x50003000u, frames->at(0)->function_base);
+  ASSERT_EQ("module2.cc", frames->at(0)->source_file_name);
+  ASSERT_EQ(1, frames->at(0)->source_line);
+  ASSERT_EQ(0x50003000u, frames->at(0)->source_line_base);
+
+  ASSERT_EQ("mod2inlinefunc2", frames->at(1)->function_name);
+  ASSERT_EQ(0x50003000u, frames->at(1)->function_base);
+  ASSERT_EQ("module2.cc", frames->at(1)->source_file_name);
+  ASSERT_EQ(1, frames->at(1)->source_line);
+  ASSERT_EQ(0x50003000u, frames->at(1)->source_line_base);
+
+  ASSERT_EQ("mod2func3", frames->at(2)->function_name);
+  ASSERT_EQ(0x50003000u, frames->at(2)->function_base);
+  ASSERT_EQ("module2.cc", frames->at(2)->source_file_name);
+  ASSERT_EQ(1, frames->at(2)->source_line);
+  ASSERT_EQ(0x50003000u, frames->at(2)->source_line_base);
+
+  // Here we have inlining information, but no file/line information.
+  ASSERT_EQ("mod2inlinefunc1", frames->at(3)->function_name);
+  ASSERT_EQ(0x50002000u, frames->at(3)->function_base);
+
+  ASSERT_EQ("mod2func2", frames->at(4)->function_name);
+  ASSERT_EQ(0x50002000u, frames->at(4)->function_base);
+
+  ASSERT_EQ("mod2func1", frames->at(5)->function_name);
+  ASSERT_EQ(0x50001000u, frames->at(5)->function_base);
+
+  ASSERT_EQ("mod1func2", frames->at(6)->function_name);
+  ASSERT_EQ(0x40002000u, frames->at(6)->function_base);
+
+  ASSERT_EQ("mod1func1", frames->at(7)->function_name);
+  ASSERT_EQ(0x40001000u, frames->at(7)->function_base);
 }

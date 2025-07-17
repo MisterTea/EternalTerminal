@@ -30,17 +30,18 @@
 #include <config.h>  // Must come first
 #endif
 
+#include "client/windows/handler/exception_handler.h"
+
+#include <assert.h>
 #include <objbase.h>
+#include <stdio.h>
 
 #include <algorithm>
-#include <cassert>
-#include <cstdio>
-
-#include "common/windows/string_utils-inl.h"
+#include <memory>
 
 #include "client/windows/common/ipc_protocol.h"
-#include "client/windows/handler/exception_handler.h"
 #include "common/windows/guid_string.h"
+#include "common/windows/string_utils-inl.h"
 
 namespace google_breakpad {
 
@@ -55,7 +56,7 @@ typedef struct {
 #define DBG_PRINTEXCEPTION_WIDE_C ((DWORD)0x4001000A)
 #endif
 
-vector<ExceptionHandler*>* ExceptionHandler::handler_stack_ = NULL;
+vector<ExceptionHandler*>* ExceptionHandler::handler_stack_ = nullptr;
 LONG ExceptionHandler::handler_stack_index_ = 0;
 CRITICAL_SECTION ExceptionHandler::handler_stack_critical_section_;
 volatile LONG ExceptionHandler::instance_count_ = 0;
@@ -75,8 +76,8 @@ ExceptionHandler::ExceptionHandler(const wstring& dump_path,
              handler_types,
              dump_type,
              pipe_name,
-             NULL,  // pipe_handle
-             NULL,  // crash_generation_client
+             nullptr,  // pipe_handle
+             nullptr,  // crash_generation_client
              custom_info);
 }
 
@@ -94,9 +95,9 @@ ExceptionHandler::ExceptionHandler(const wstring& dump_path,
              callback_context,
              handler_types,
              dump_type,
-             NULL,  // pipe_name
+             nullptr,  // pipe_name
              pipe_handle,
-             NULL,  // crash_generation_client
+             nullptr,  // crash_generation_client
              custom_info);
 }
 
@@ -115,10 +116,10 @@ ExceptionHandler::ExceptionHandler(
              callback_context,
              handler_types,
              MiniDumpNormal,           // dump_type - not used
-             NULL,                     // pipe_name - not used
-             NULL,                     // pipe_handle
+             nullptr,                  // pipe_name - not used
+             nullptr,                  // pipe_handle
              crash_generation_client,
-             NULL);                    // custom_info - not used
+             nullptr);                 // custom_info - not used
 }
 
 ExceptionHandler::ExceptionHandler(const wstring& dump_path,
@@ -132,10 +133,10 @@ ExceptionHandler::ExceptionHandler(const wstring& dump_path,
              callback_context,
              handler_types,
              MiniDumpNormal,
-             NULL,   // pipe_name
-             NULL,   // pipe_handle
-             NULL,   // crash_generation_client
-             NULL);  // custom_info
+             nullptr,   // pipe_name
+             nullptr,   // pipe_handle
+             nullptr,   // crash_generation_client
+             nullptr);  // custom_info
 }
 
 void ExceptionHandler::Initialize(
@@ -153,34 +154,34 @@ void ExceptionHandler::Initialize(
   filter_ = filter;
   callback_ = callback;
   callback_context_ = callback_context;
-  dump_path_c_ = NULL;
-  next_minidump_id_c_ = NULL;
-  next_minidump_path_c_ = NULL;
-  dbghelp_module_ = NULL;
-  minidump_write_dump_ = NULL;
+  dump_path_c_ = nullptr;
+  next_minidump_id_c_ = nullptr;
+  next_minidump_path_c_ = nullptr;
+  dbghelp_module_ = nullptr;
+  minidump_write_dump_ = nullptr;
   dump_type_ = dump_type;
-  rpcrt4_module_ = NULL;
-  uuid_create_ = NULL;
+  rpcrt4_module_ = nullptr;
+  uuid_create_ = nullptr;
   handler_types_ = handler_types;
-  previous_filter_ = NULL;
+  previous_filter_ = nullptr;
 #if _MSC_VER >= 1400  // MSVC 2005/8
-  previous_iph_ = NULL;
+  previous_iph_ = nullptr;
 #endif  // _MSC_VER >= 1400
-  previous_pch_ = NULL;
-  handler_thread_ = NULL;
+  previous_pch_ = nullptr;
+  handler_thread_ = nullptr;
   is_shutdown_ = false;
-  handler_start_semaphore_ = NULL;
-  handler_finish_semaphore_ = NULL;
+  handler_start_semaphore_ = nullptr;
+  handler_finish_semaphore_ = nullptr;
   requesting_thread_id_ = 0;
-  exception_info_ = NULL;
-  assertion_ = NULL;
+  exception_info_ = nullptr;
+  assertion_ = nullptr;
   handler_return_value_ = false;
   handle_debug_exceptions_ = false;
   consume_invalid_handle_exceptions_ = false;
 
   // Attempt to use out-of-process if user has specified a pipe or a
   // crash generation client.
-  scoped_ptr<CrashGenerationClient> client;
+  std::unique_ptr<CrashGenerationClient> client;
   if (crash_generation_client) {
     client.reset(crash_generation_client);
   } else if (pipe_name) {
@@ -191,7 +192,7 @@ void ExceptionHandler::Initialize(
       new CrashGenerationClient(pipe_handle, dump_type_, custom_info));
   }
 
-  if (client.get() != NULL) {
+  if (client.get() != nullptr) {
     // If successful in registering with the monitoring process,
     // there is no need to setup in-process crash generation.
     if (client->Register()) {
@@ -210,23 +211,24 @@ void ExceptionHandler::Initialize(
     // and it allows an easy way to get a snapshot of the requesting thread's
     // context outside of an exception.
     InitializeCriticalSection(&handler_critical_section_);
-    handler_start_semaphore_ = CreateSemaphore(NULL, 0, 1, NULL);
-    assert(handler_start_semaphore_ != NULL);
+    handler_start_semaphore_ = CreateSemaphore(nullptr, 0, 1, nullptr);
+    assert(handler_start_semaphore_ != nullptr);
 
-    handler_finish_semaphore_ = CreateSemaphore(NULL, 0, 1, NULL);
-    assert(handler_finish_semaphore_ != NULL);
+    handler_finish_semaphore_ = CreateSemaphore(nullptr, 0, 1, nullptr);
+    assert(handler_finish_semaphore_ != nullptr);
 
     // Don't attempt to create the thread if we could not create the semaphores.
-    if (handler_finish_semaphore_ != NULL && handler_start_semaphore_ != NULL) {
+    if (handler_finish_semaphore_ != nullptr &&
+        handler_start_semaphore_ != nullptr) {
       DWORD thread_id;
       const int kExceptionHandlerThreadInitialStackSize = 64 * 1024;
-      handler_thread_ = CreateThread(NULL,         // lpThreadAttributes
+      handler_thread_ = CreateThread(nullptr,      // lpThreadAttributes
                                      kExceptionHandlerThreadInitialStackSize,
                                      ExceptionHandlerThreadMain,
                                      this,         // lpParameter
                                      0,            // dwCreationFlags
                                      &thread_id);
-      assert(handler_thread_ != NULL);
+      assert(handler_thread_ != nullptr);
     }
 
     dbghelp_module_ = LoadLibrary(L"dbghelp.dll");
@@ -251,7 +253,7 @@ void ExceptionHandler::Initialize(
 
   // Reserve one element for the instruction memory
   AppMemory instruction_memory;
-  instruction_memory.ptr = NULL;
+  instruction_memory.ptr = reinterpret_cast<ULONG64>(nullptr);
   instruction_memory.length = 0;
   app_memory_info_.push_back(instruction_memory);
 
@@ -338,7 +340,7 @@ ExceptionHandler::~ExceptionHandler() {
       // When destroying the last ExceptionHandler that installed a handler,
       // clean up the handler stack.
       delete handler_stack_;
-      handler_stack_ = NULL;
+      handler_stack_ = nullptr;
     }
 
     LeaveCriticalSection(&handler_stack_critical_section_);
@@ -355,7 +357,7 @@ ExceptionHandler::~ExceptionHandler() {
     // deadlock if the exception handler is destroyed while executing code
     // inside DllMain.
     is_shutdown_ = true;
-    ReleaseSemaphore(handler_start_semaphore_, 1, NULL);
+    ReleaseSemaphore(handler_start_semaphore_, 1, nullptr);
     const int kWaitForHandlerThreadMs = 60000;
     WaitForSingleObject(handler_thread_, kWaitForHandlerThreadMs);
 #else
@@ -363,7 +365,7 @@ ExceptionHandler::~ExceptionHandler() {
 #endif  // BREAKPAD_NO_TERMINATE_THREAD
 
     CloseHandle(handler_thread_);
-    handler_thread_ = NULL;
+    handler_thread_ = nullptr;
     DeleteCriticalSection(&handler_critical_section_);
     CloseHandle(handler_start_semaphore_);
     CloseHandle(handler_finish_semaphore_);
@@ -388,8 +390,8 @@ bool ExceptionHandler::RequestUpload(DWORD crash_id) {
 DWORD ExceptionHandler::ExceptionHandlerThreadMain(void* lpParameter) {
   ExceptionHandler* self = reinterpret_cast<ExceptionHandler*>(lpParameter);
   assert(self);
-  assert(self->handler_start_semaphore_ != NULL);
-  assert(self->handler_finish_semaphore_ != NULL);
+  assert(self->handler_start_semaphore_ != nullptr);
+  assert(self->handler_finish_semaphore_ != nullptr);
 
   for (;;) {
     if (WaitForSingleObject(self->handler_start_semaphore_, INFINITE) ==
@@ -406,7 +408,7 @@ DWORD ExceptionHandler::ExceptionHandlerThreadMain(void* lpParameter) {
       }
 
       // Allow the requesting thread to proceed.
-      ReleaseSemaphore(self->handler_finish_semaphore_, 1, NULL);
+      ReleaseSemaphore(self->handler_finish_semaphore_, 1, nullptr);
     }
   }
 
@@ -507,9 +509,9 @@ LONG ExceptionHandler::HandleException(EXCEPTION_POINTERS* exinfo) {
       success = current_handler->WriteMinidumpWithException(
           GetCurrentThreadId(),
           exinfo,
-          NULL);
+          nullptr);
     } else {
-      success = current_handler->WriteMinidumpOnHandlerThread(exinfo, NULL);
+      success = current_handler->WriteMinidumpOnHandlerThread(exinfo, nullptr);
     }
   }
 
@@ -707,14 +709,14 @@ bool ExceptionHandler::WriteMinidumpOnHandlerThread(
 
   // There isn't much we can do if the handler thread
   // was not successfully created.
-  if (handler_thread_ == NULL) {
+  if (handler_thread_ == nullptr) {
     LeaveCriticalSection(&handler_critical_section_);
     return false;
   }
 
   // The handler thread should only be created when the semaphores are valid.
-  assert(handler_start_semaphore_ != NULL);
-  assert(handler_finish_semaphore_ != NULL);
+  assert(handler_start_semaphore_ != nullptr);
+  assert(handler_finish_semaphore_ != nullptr);
 
   // Set up data to be passed in to the handler thread.
   requesting_thread_id_ = GetCurrentThreadId();
@@ -722,7 +724,7 @@ bool ExceptionHandler::WriteMinidumpOnHandlerThread(
   assertion_ = assertion;
 
   // This causes the handler thread to call WriteMinidumpWithException.
-  ReleaseSemaphore(handler_start_semaphore_, 1, NULL);
+  ReleaseSemaphore(handler_start_semaphore_, 1, nullptr);
 
   // Wait until WriteMinidumpWithException is done and collect its return value.
   WaitForSingleObject(handler_finish_semaphore_, INFINITE);
@@ -730,8 +732,8 @@ bool ExceptionHandler::WriteMinidumpOnHandlerThread(
 
   // Clean up.
   requesting_thread_id_ = 0;
-  exception_info_ = NULL;
-  assertion_ = NULL;
+  exception_info_ = nullptr;
+  assertion_ = nullptr;
 
   LeaveCriticalSection(&handler_critical_section_);
 
@@ -759,10 +761,10 @@ bool ExceptionHandler::WriteMinidumpForException(EXCEPTION_POINTERS* exinfo) {
   if (IsOutOfProcess()) {
     return WriteMinidumpWithException(GetCurrentThreadId(),
                                       exinfo,
-                                      NULL);
+                                      nullptr);
   }
 
-  bool success = WriteMinidumpOnHandlerThread(exinfo, NULL);
+  bool success = WriteMinidumpOnHandlerThread(exinfo, nullptr);
   UpdateNextID();
   return success;
 }
@@ -772,8 +774,8 @@ bool ExceptionHandler::WriteMinidump(const wstring& dump_path,
                                      MinidumpCallback callback,
                                      void* callback_context,
                                      MINIDUMP_TYPE dump_type) {
-  ExceptionHandler handler(dump_path, NULL, callback, callback_context,
-                           HANDLER_NONE, dump_type, (HANDLE)NULL, NULL);
+  ExceptionHandler handler(dump_path, nullptr, callback, callback_context,
+                           HANDLER_NONE, dump_type, (HANDLE)nullptr, nullptr);
   return handler.WriteMinidump();
 }
 
@@ -786,7 +788,7 @@ bool ExceptionHandler::WriteMinidumpForChild(HANDLE child,
                                              MINIDUMP_TYPE dump_type) {
   EXCEPTION_RECORD ex;
   CONTEXT ctx;
-  EXCEPTION_POINTERS exinfo = { NULL, NULL };
+  EXCEPTION_POINTERS exinfo = { nullptr, nullptr };
   // As documented on MSDN, on failure SuspendThread returns (DWORD) -1
   const DWORD kFailedToSuspendThread = static_cast<DWORD>(-1);
   DWORD last_suspend_count = kFailedToSuspendThread;
@@ -797,7 +799,7 @@ bool ExceptionHandler::WriteMinidumpForChild(HANDLE child,
                                           child_blamed_thread);
   // This thread may have died already, so not opening the handle is a
   // non-fatal error.
-  if (child_thread_handle != NULL) {
+  if (child_thread_handle != nullptr) {
     last_suspend_count = SuspendThread(child_thread_handle);
     if (last_suspend_count != kFailedToSuspendThread) {
       ctx.ContextFlags = CONTEXT_ALL;
@@ -815,12 +817,12 @@ bool ExceptionHandler::WriteMinidumpForChild(HANDLE child,
     }
   }
 
-  ExceptionHandler handler(dump_path, NULL, callback, callback_context,
-                           HANDLER_NONE, dump_type, (HANDLE)NULL, NULL);
+  ExceptionHandler handler(dump_path, nullptr, callback, callback_context,
+                           HANDLER_NONE, dump_type, (HANDLE)nullptr, nullptr);
   bool success = handler.WriteMinidumpWithExceptionForProcess(
       child_blamed_thread,
-      exinfo.ExceptionRecord ? &exinfo : NULL,
-      NULL, child, false);
+      exinfo.ExceptionRecord ? &exinfo : nullptr,
+      nullptr, child, false);
 
   if (last_suspend_count != kFailedToSuspendThread) {
     ResumeThread(child_thread_handle);
@@ -830,7 +832,7 @@ bool ExceptionHandler::WriteMinidumpForChild(HANDLE child,
 
   if (callback) {
     success = callback(handler.dump_path_c_, handler.next_minidump_id_c_,
-                       callback_context, NULL, NULL, success);
+                       callback_context, nullptr, nullptr, success);
   }
 
   return success;
@@ -923,10 +925,10 @@ bool ExceptionHandler::WriteMinidumpWithExceptionForProcess(
     HANDLE dump_file = CreateFile(next_minidump_path_c_,
                                   GENERIC_WRITE,
                                   0,  // no sharing
-                                  NULL,
+                                  nullptr,
                                   CREATE_NEW,  // fail if exists
                                   FILE_ATTRIBUTE_NORMAL,
-                                  NULL);
+                                  nullptr);
     if (dump_file != INVALID_HANDLE_VALUE) {
       MINIDUMP_EXCEPTION_INFORMATION except_info;
       except_info.ThreadId = requesting_thread_id;
@@ -1029,7 +1031,7 @@ bool ExceptionHandler::WriteMinidumpWithExceptionForProcess(
                                       GetProcessId(process),
                                       dump_file,
                                       dump_type_,
-                                      exinfo ? &except_info : NULL,
+                                      exinfo ? &except_info : nullptr,
                                       &user_streams,
                                       &callback) == TRUE);
 

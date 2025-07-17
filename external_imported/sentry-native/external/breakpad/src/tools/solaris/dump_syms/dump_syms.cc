@@ -32,10 +32,11 @@
 #include <config.h>  // Must come first
 #endif
 
-#include <string>
-#include <cstdio>
-
 #include "common/solaris/dump_symbols.h"
+
+#include <stdio.h>
+
+#include <string>
 
 using namespace google_breakpad;
 

@@ -124,7 +124,7 @@ class CUFunctionInfoHandler: public Dwarf2Handler {
         offset_to_funcinfo_(offset_to_funcinfo),
         address_to_funcinfo_(address_to_funcinfo),
         linehandler_(linehandler), sections_(sections),
-        reader_(reader), current_function_info_(NULL) { }
+        reader_(reader), current_function_info_(nullptr) { }
 
   virtual ~CUFunctionInfoHandler() { }
 

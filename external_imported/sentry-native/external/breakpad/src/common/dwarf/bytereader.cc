@@ -36,11 +36,12 @@
 
 #include "common/dwarf/bytereader-inl.h"
 #include "common/dwarf/bytereader.h"
+#include "common/memory_allocator.h"
 
 namespace google_breakpad {
 
 ByteReader::ByteReader(enum Endianness endian)
-    :offset_reader_(NULL), address_reader_(NULL), endian_(endian),
+    :offset_reader_(nullptr), address_reader_(nullptr), endian_(endian),
      address_size_(0), offset_size_(0),
      have_section_base_(), have_text_base_(), have_data_base_(),
      have_function_base_() { }
@@ -132,7 +133,7 @@ uint64_t ByteReader::ReadEncodedPointer(const uint8_t* buffer,
     // Now find the offset from that aligned address to buffer.
     uint64_t offset = skew + (buffer - buffer_base_);
     // Round up to the next boundary.
-    uint64_t aligned = (offset + AddressSize() - 1) & -AddressSize();
+    uint64_t aligned = PageAllocator::AlignUp(offset, AddressSize());
     // Convert back to a pointer.
     const uint8_t* aligned_buffer = buffer_base_ + (aligned - skew);
     // Finally, store the length and actually fetch the pointer.

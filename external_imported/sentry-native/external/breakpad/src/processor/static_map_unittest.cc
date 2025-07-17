@@ -34,12 +34,14 @@
 #include <config.h>  // Must come first
 #endif
 
-#include <climits>
+#include "processor/static_map-inl.h"
+
+#include <limits.h>
+#include <stdint.h>
+
 #include <map>
 
 #include "breakpad_googletest_includes.h"
-#include "processor/static_map-inl.h"
-
 
 typedef int ValueType;
 typedef int KeyType;
@@ -50,10 +52,10 @@ template<typename Key, typename Value>
 class SimpleMapSerializer {
  public:
   static char* Serialize(const std::map<Key, Value>& stdmap,
-                   unsigned int* size = NULL) {
+                   unsigned int* size = nullptr) {
     unsigned int size_per_node =
-        sizeof(uint32_t) + sizeof(Key) + sizeof(Value);
-    unsigned int memsize = sizeof(int32_t) + size_per_node * stdmap.size();
+        sizeof(uint64_t) + sizeof(Key) + sizeof(Value);
+    unsigned int memsize = sizeof(int64_t) + size_per_node * stdmap.size();
     if (size) *size = memsize;
 
     // Allocate memory for serialized data:
@@ -61,12 +63,12 @@ class SimpleMapSerializer {
     char* address = mem;
 
     // Writer the number of nodes:
-    new (address) uint32_t(static_cast<uint32_t>(stdmap.size()));
-    address += sizeof(uint32_t);
+    new (address) uint64_t(static_cast<uint64_t>(stdmap.size()));
+    address += sizeof(uint64_t);
 
     // Nodes' offset:
-    uint32_t* offsets = reinterpret_cast<uint32_t*>(address);
-    address += sizeof(uint32_t) * stdmap.size();
+    uint64_t* offsets = reinterpret_cast<uint64_t*>(address);
+    address += sizeof(uint64_t) * stdmap.size();
 
     // Keys:
     Key* keys = reinterpret_cast<Key*>(address);
@@ -98,16 +100,16 @@ class TestInvalidMap : public ::testing::Test {
 };
 
 TEST_F(TestInvalidMap, TestNegativeNumberNodes) {
-  memset(data, 0xff, sizeof(uint32_t));  // Set the number of nodes = -1
+  memset(data, 0xff, sizeof(uint64_t));  // Set the number of nodes = -1
   test_map = TestMap(data);
   ASSERT_FALSE(test_map.ValidateInMemoryStructure());
 }
 
 TEST_F(TestInvalidMap, TestWrongOffsets) {
-  uint32_t* header = reinterpret_cast<uint32_t*>(data);
-  const uint32_t kNumNodes = 2;
-  const uint32_t kHeaderOffset =
-        sizeof(uint32_t) + kNumNodes * (sizeof(uint32_t) + sizeof(KeyType));
+  uint64_t* header = reinterpret_cast<uint64_t*>(data);
+  const uint64_t kNumNodes = 2;
+  const uint64_t kHeaderOffset =
+        sizeof(uint64_t) + kNumNodes * (sizeof(uint64_t) + sizeof(KeyType));
 
   header[0] = kNumNodes;
   header[1] = kHeaderOffset + 3;   // Wrong offset for first node
@@ -121,16 +123,16 @@ TEST_F(TestInvalidMap, TestWrongOffsets) {
 }
 
 TEST_F(TestInvalidMap, TestUnSortedKeys) {
-  uint32_t* header = reinterpret_cast<uint32_t*>(data);
-  const uint32_t kNumNodes = 2;
-  const uint32_t kHeaderOffset =
-      sizeof(uint32_t) + kNumNodes * (sizeof(uint32_t) + sizeof(KeyType));
+  uint64_t* header = reinterpret_cast<uint64_t*>(data);
+  const uint64_t kNumNodes = 2;
+  const uint64_t kHeaderOffset =
+      sizeof(uint64_t) + kNumNodes * (sizeof(uint64_t) + sizeof(KeyType));
   header[0] = kNumNodes;
   header[1] = kHeaderOffset;
   header[2] = kHeaderOffset + sizeof(ValueType);
 
   KeyType* keys = reinterpret_cast<KeyType*>(
-      data + (kNumNodes + 1) * sizeof(uint32_t));
+      data + (kNumNodes + 1) * sizeof(uint64_t));
   // Set keys in non-increasing order.
   keys[0] = 10;
   keys[1] = 7;
@@ -174,10 +176,10 @@ class TestValidMap : public ::testing::Test {
 
     // Set correct size of memory allocation for each test case.
     unsigned int size_per_node =
-        sizeof(uint32_t) + sizeof(KeyType) + sizeof(ValueType);
+        sizeof(uint64_t) + sizeof(KeyType) + sizeof(ValueType);
     for (testcase = 0; testcase < kNumberTestCases; ++testcase) {
       correct_size[testcase] =
-          sizeof(uint32_t) + std_map[testcase].size() * size_per_node;
+          sizeof(uint64_t) + std_map[testcase].size() * size_per_node;
     }
   }
 

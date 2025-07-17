@@ -16,6 +16,7 @@
 #define CRASHPAD_UTIL_LINUX_EXCEPTION_HANDLER_PROTOCOL_H_
 
 #include <errno.h>
+#include <linux/limits.h>
 #include <signal.h>
 #include <stdint.h>
 #include <sys/types.h>
@@ -59,6 +60,10 @@ class ExceptionHandlerProtocol {
 #endif
   };
 
+  struct AttachmentInformation {
+    char path[PATH_MAX];
+  };
+
   //! \brief The signal used to indicate a crash dump is complete.
   //!
   //! When multiple clients share a single socket connection with the handler,
@@ -81,7 +86,13 @@ class ExceptionHandlerProtocol {
       kTypeCheckCredentials,
 
       //! \brief Used to request a crash dump for the sending client.
-      kTypeCrashDumpRequest
+      kTypeCrashDumpRequest,
+
+      //! \brief Request that the server add an attachment.
+      kTypeAddAttachment,
+
+      //! \brief Request that the server remove an attachment.
+      kTypeRemoveAttachment,
     };
 
     Type type;
@@ -92,6 +103,9 @@ class ExceptionHandlerProtocol {
     union {
       //! \brief Valid for type == kCrashDumpRequest
       ClientInformation client_info;
+
+      //! \brief Valid for type == kAddAttachment || type == kRemoveAttachment
+      AttachmentInformation attachment_info;
     };
   };
 

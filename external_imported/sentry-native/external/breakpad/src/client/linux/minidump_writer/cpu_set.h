@@ -79,7 +79,7 @@ public:
       size_t item_len = static_cast<size_t>(p_end - p);
       const char* item_next =
           static_cast<const char*>(my_memchr(p, ',', item_len));
-      if (item_next != NULL) {
+      if (item_next != nullptr) {
         p = item_next + 1;
         item_len = static_cast<size_t>(item_next - item);
       } else {

@@ -43,6 +43,7 @@
 #include <assert.h>
 #include <stdio.h>
 
+#include <memory>
 #include <sstream>
 #include <string>
 
@@ -67,11 +68,10 @@ using google_breakpad::CodeModule;
 using google_breakpad::MemoryRegion;
 using google_breakpad::StackFrame;
 using google_breakpad::WindowsFrameInfo;
-using google_breakpad::scoped_ptr;
 
 class TestCodeModule : public CodeModule {
  public:
-  explicit TestCodeModule(string code_file) : code_file_(code_file) {}
+  explicit TestCodeModule(const string& code_file) : code_file_(code_file) {}
   virtual ~TestCodeModule() {}
 
   virtual uint64_t base_address() const { return 0; }
@@ -170,7 +170,7 @@ static bool VerifyEmpty(const StackFrame& frame) {
 
 static void ClearSourceLineInfo(StackFrame* frame) {
   frame->function_name.clear();
-  frame->module = NULL;
+  frame->module = nullptr;
   frame->source_file_name.clear();
   frame->source_line = 0;
 }
@@ -215,10 +215,10 @@ TEST_F(TestFastSourceLineResolver, TestLoadAndResolve) {
   ASSERT_TRUE(fast_resolver.HasModule(&module2));
 
   StackFrame frame;
-  scoped_ptr<WindowsFrameInfo> windows_frame_info;
-  scoped_ptr<CFIFrameInfo> cfi_frame_info;
+  std::unique_ptr<WindowsFrameInfo> windows_frame_info;
+  std::unique_ptr<CFIFrameInfo> cfi_frame_info;
   frame.instruction = 0x1000;
-  frame.module = NULL;
+  frame.module = nullptr;
   fast_resolver.FillSourceLineInfo(&frame, nullptr);
   ASSERT_FALSE(frame.module);
   ASSERT_TRUE(frame.function_name.empty());

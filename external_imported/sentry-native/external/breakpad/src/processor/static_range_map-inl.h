@@ -102,7 +102,7 @@ bool StaticRangeMap<AddressType, EntryType>::RetrieveNearestRange(
 
 template<typename AddressType, typename EntryType>
 bool StaticRangeMap<AddressType, EntryType>::RetrieveRangeAtIndex(
-    int index, const EntryType*& entry,
+    int64_t index, const EntryType*& entry,
     AddressType* entry_base, AddressType* entry_size) const {
 
   if (index >= GetCount()) {

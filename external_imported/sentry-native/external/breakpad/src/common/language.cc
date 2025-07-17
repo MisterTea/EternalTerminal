@@ -92,7 +92,7 @@ class CPPLanguage: public Language {
 
     int status;
     char* demangled_c =
-        abi::__cxa_demangle(mangled.c_str(), NULL, NULL, &status);
+        abi::__cxa_demangle(mangled.c_str(), nullptr, nullptr, &status);
 
     DemangleResult result;
     if (status == 0) {

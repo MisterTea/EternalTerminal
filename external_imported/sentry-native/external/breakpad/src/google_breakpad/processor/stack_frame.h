@@ -59,7 +59,7 @@ struct StackFrame {
 
   StackFrame()
       : instruction(),
-        module(NULL),
+        module(nullptr),
         function_name(),
         function_base(),
         source_file_name(),

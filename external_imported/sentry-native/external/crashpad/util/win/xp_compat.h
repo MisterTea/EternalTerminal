@@ -26,6 +26,10 @@ enum {
   //! against a Vista+ SDK results in `ERROR_ACCESS_DENIED` when running on XP.
   //! See https://msdn.microsoft.com/library/ms684880.aspx.
   kXPProcessAllAccess = STANDARD_RIGHTS_REQUIRED | SYNCHRONIZE | 0xFFF,
+  
+  //  A limited access version, suitable for initial access to the process.
+  kXPProcessLimitedAccess = PROCESS_DUP_HANDLE | PROCESS_QUERY_LIMITED_INFORMATION | PROCESS_TERMINATE | SYNCHRONIZE,
+ 
 
   //! \brief This is the XP-suitable value of `THREAD_ALL_ACCESS`.
   //!

@@ -43,12 +43,12 @@ namespace google_breakpad {
 
 template<typename Key, typename Value, typename Compare>
 StaticMapIterator<Key, Value, Compare>::StaticMapIterator(const char* base,
-                                                            const int& index):
+                                                          int64_t index):
       index_(index), base_(base) {
   // See static_map.h for documentation on
   // bytes format of serialized StaticMap data.
-  num_nodes_ = *(reinterpret_cast<const int32_t*>(base_));
-  offsets_ = reinterpret_cast<const uint32_t*>(base_ + sizeof(num_nodes_));
+  num_nodes_ = *(reinterpret_cast<const int64_t*>(base_));
+  offsets_ = reinterpret_cast<const uint64_t*>(base_ + sizeof(num_nodes_));
   keys_ = reinterpret_cast<const Key*>(
       base_ + (1 + num_nodes_) * sizeof(num_nodes_));
 }
@@ -106,7 +106,7 @@ template<typename Key, typename Value, typename Compare>
 const Key* StaticMapIterator<Key, Value, Compare>::GetKeyPtr() const {
   if (!IsValid()) {
     BPLOG(ERROR) << "call GetKeyPtr() on invalid iterator";
-    return NULL;
+    return nullptr;
   }
   return &(keys_[index_]);
 }
@@ -115,7 +115,7 @@ template<typename Key, typename Value, typename Compare>
 const char* StaticMapIterator<Key, Value, Compare>::GetValueRawPtr() const {
   if (!IsValid()) {
     BPLOG(ERROR) << "call GetValuePtr() on invalid iterator";
-    return NULL;
+    return nullptr;
   }
   return base_ + offsets_[index_];
 }

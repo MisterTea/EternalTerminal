@@ -39,6 +39,8 @@
 #include <string.h>
 #include <unistd.h>
 
+#include "common/memory_allocator.h"
+
 namespace google_breakpad {
 
 // Implementation of ElfCoreDump::Note.
@@ -48,7 +50,7 @@ ElfCoreDump::Note::Note() {}
 ElfCoreDump::Note::Note(const MemoryRange& content) : content_(content) {}
 
 bool ElfCoreDump::Note::IsValid() const {
-  return GetHeader() != NULL;
+  return GetHeader() != nullptr;
 }
 
 const ElfCoreDump::Nhdr* ElfCoreDump::Note::GetHeader() const {
@@ -92,8 +94,7 @@ ElfCoreDump::Note ElfCoreDump::Note::GetNextNote() const {
 
 // static
 size_t ElfCoreDump::Note::AlignedSize(size_t size) {
-  size_t mask = sizeof(Word) - 1;
-  return (size + mask) & ~mask;
+  return PageAllocator::AlignUp(size, sizeof(Word));
 }
 
 
@@ -144,7 +145,7 @@ const ElfCoreDump::Phdr* ElfCoreDump::GetProgramHeader(unsigned index) const {
     return reinterpret_cast<const Phdr*>(content_.GetArrayElement(
         header->e_phoff, header->e_phentsize, index));
   }
-  return NULL;
+  return nullptr;
 }
 
 const ElfCoreDump::Phdr* ElfCoreDump::GetFirstProgramHeaderOfType(
@@ -155,7 +156,7 @@ const ElfCoreDump::Phdr* ElfCoreDump::GetFirstProgramHeaderOfType(
       return program;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 unsigned ElfCoreDump::GetProgramHeaderCount() const {

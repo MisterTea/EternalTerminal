@@ -160,6 +160,10 @@ class ProcessSnapshotIOSIntermediateDumpTest : public testing::Test {
       EXPECT_TRUE(writer->AddProperty(Key::kWired, &count));
       EXPECT_TRUE(writer->AddProperty(Key::kFree, &count));
     }
+
+    uint64_t crashpad_report_time_nanos = 1234567890;
+    EXPECT_TRUE(
+        writer->AddProperty(Key::kCrashpadUptime, &crashpad_report_time_nanos));
   }
 
   void WriteAnnotations(IOSIntermediateDumpWriter* writer,
@@ -491,6 +495,9 @@ class ProcessSnapshotIOSIntermediateDumpTest : public testing::Test {
     ExpectModules(
         snapshot.Modules(), expect_module_path, expect_long_annotations);
     ExpectMachException(*snapshot.Exception());
+
+    auto map = snapshot.AnnotationsSimpleMap();
+    EXPECT_EQ(map["crashpad_uptime_ns"], "1234567890");
   }
 
   void CloseWriter() { EXPECT_TRUE(writer_->Close()); }
@@ -570,6 +577,18 @@ TEST_F(ProcessSnapshotIOSIntermediateDumpTest, EmptySignalDump) {
       IOSIntermediateDumpWriter::ScopedMap map(writer(), Key::kSignalException);
       uint64_t thread_id = 1;
       EXPECT_TRUE(writer()->AddProperty(Key::kThreadID, &thread_id));
+      {
+        IOSIntermediateDumpWriter::ScopedArray contextMemoryRegions(
+            writer(), Key::kThreadContextMemoryRegions);
+        IOSIntermediateDumpWriter::ScopedArrayMap memoryMap(writer());
+
+        std::string random_data("random_data");
+        EXPECT_TRUE(writer()->AddProperty(
+            Key::kThreadContextMemoryRegionAddress, &thread_id));
+        EXPECT_TRUE(writer()->AddProperty(Key::kThreadContextMemoryRegionData,
+                                          random_data.c_str(),
+                                          random_data.length()));
+      }
     }
     {
       IOSIntermediateDumpWriter::ScopedArray threadArray(writer(),
@@ -582,6 +601,12 @@ TEST_F(ProcessSnapshotIOSIntermediateDumpTest, EmptySignalDump) {
   CloseWriter();
   ProcessSnapshotIOSIntermediateDump process_snapshot;
   ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), annotations()));
+  EXPECT_EQ(process_snapshot.Exception()->ExtraMemory().size(), 1u);
+  ReadToString delegate;
+  for (auto memory : process_snapshot.Exception()->ExtraMemory()) {
+    memory->Read(&delegate);
+    EXPECT_STREQ(delegate.result.c_str(), "random_data");
+  }
   EXPECT_FALSE(IsRegularFile(path()));
   EXPECT_TRUE(DumpSnapshot(process_snapshot));
 }
@@ -766,6 +791,22 @@ TEST_F(ProcessSnapshotIOSIntermediateDumpTest, FuzzTestCases) {
       FILE_PATH_LITERAL("snapshot/ios/testdata/crash-c44acfcbccd8c7a8"));
   crashpad::internal::ProcessSnapshotIOSIntermediateDump process_snapshot4;
   EXPECT_TRUE(process_snapshot4.InitializeWithFilePath(fuzz_path, {}));
+}
+
+TEST_F(ProcessSnapshotIOSIntermediateDumpTest, WriteNoThreads) {
+  {
+    IOSIntermediateDumpWriter::ScopedRootMap rootMap(writer());
+    uint8_t version = 1;
+    EXPECT_TRUE(writer()->AddProperty(Key::kVersion, &version));
+    WriteSystemInfo(writer());
+    WriteProcessInfo(writer());
+    WriteMachException(writer());
+  }
+  CloseWriter();
+  ProcessSnapshotIOSIntermediateDump process_snapshot;
+  ASSERT_TRUE(process_snapshot.InitializeWithFilePath(path(), annotations()));
+  EXPECT_FALSE(IsRegularFile(path()));
+  EXPECT_TRUE(DumpSnapshot(process_snapshot));
 }
 
 }  // namespace

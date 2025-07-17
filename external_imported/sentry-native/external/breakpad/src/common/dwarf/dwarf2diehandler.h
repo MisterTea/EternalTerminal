@@ -245,7 +245,7 @@ class DIEHandler {
   //
   // The default definition skips all children.
   virtual DIEHandler* FindChildHandler(uint64_t offset, enum DwarfTag tag) {
-    return NULL;
+    return nullptr;
   }
 
   // When we are done processing a DIE, we call this member function.

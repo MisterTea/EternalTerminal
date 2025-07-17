@@ -3,8 +3,10 @@
 # SPDX-License-Identifier: MIT
 
 gtest_dep = dependency('gtest', main: true)
+libcurl_dep = dependency('libcurl')
 openssl = find_program('openssl')
 test_conf = files('test.conf')
+req_x509_flag = openssl.version().version_compare('>=3.2.0') ? '-x509v1' : '-x509'
 
 key_pem = custom_target(
   'key_pem',
@@ -30,7 +32,7 @@ cert2_pem = custom_target(
   'cert2_pem',
   input: key_pem,
   output: 'cert2.pem',
-  command: [openssl, 'req', '-x509', '-config', test_conf, '-key', '@INPUT@', '-sha256', '-days', '3650', '-nodes', '-out', '@OUTPUT@', '-extensions', 'SAN']
+  command: [openssl, 'req', req_x509_flag, '-config', test_conf, '-key', '@INPUT@', '-sha256', '-days', '3650', '-nodes', '-out', '@OUTPUT@', '-extensions', 'SAN']
 )
 
 key_encrypted_pem = custom_target(
@@ -43,7 +45,7 @@ cert_encrypted_pem = custom_target(
   'cert_encrypted_pem',
   input: key_encrypted_pem,
   output: 'cert_encrypted.pem',
-  command: [openssl, 'req', '-x509', '-config', test_conf, '-key', '@INPUT@', '-sha256', '-days', '3650', '-nodes', '-out', '@OUTPUT@', '-extensions', 'SAN']
+  command: [openssl, 'req', req_x509_flag, '-config', test_conf, '-key', '@INPUT@', '-sha256', '-days', '3650', '-nodes', '-out', '@OUTPUT@', '-extensions', 'SAN']
 )
 
 rootca_key_pem = custom_target(
@@ -56,7 +58,7 @@ rootca_cert_pem = custom_target(
   'rootca_cert_pem',
   input: rootca_key_pem,
   output: 'rootCA.cert.pem',
-  command: [openssl, 'req', '-x509', '-new', '-batch', '-config', files('test.rootCA.conf'), '-key', '@INPUT@', '-days', '1024', '-out', '@OUTPUT@']
+  command: [openssl, 'req', req_x509_flag, '-new', '-batch', '-config', files('test.rootCA.conf'), '-key', '@INPUT@', '-days', '1024', '-out', '@OUTPUT@']
 )
 
 client_key_pem = custom_target(
@@ -79,12 +81,32 @@ client_cert_pem = custom_target(
   command: [openssl, 'x509', '-in', '@INPUT0@', '-days', '370', '-req', '-CA', '@INPUT1@', '-CAkey', '@INPUT2@', '-CAcreateserial', '-out', '@OUTPUT@']
 )
 
+client_encrypted_key_pem = custom_target(
+  'client_encrypted_key_pem',
+  output: 'client_encrypted.key.pem',
+  command: [openssl, 'genrsa', '-aes256', '-passout', 'pass:test012!', '-out', '@OUTPUT@', '2048']
+)
+
+client_encrypted_temp_req = custom_target(
+  'client_encrypted_temp_req',
+  input: client_encrypted_key_pem,
+  output: 'client_encrypted_temp_req',
+  command: [openssl, 'req', '-new', '-batch', '-config', test_conf, '-key', '@INPUT@', '-passin', 'pass:test012!', '-out', '@OUTPUT@']
+)
+
+client_encrypted_cert_pem = custom_target(
+  'client_encrypted_cert_pem',
+  input: [client_encrypted_temp_req, rootca_cert_pem, rootca_key_pem],
+  output: 'client_encrypted.cert.pem',
+  command: [openssl, 'x509', '-in', '@INPUT0@', '-days', '370', '-req', '-CA', '@INPUT1@', '-CAkey', '@INPUT2@', '-CAcreateserial', '-out', '@OUTPUT@']
+)
+
 # Copy test files to the build directory
 configure_file(input: 'ca-bundle.crt', output: 'ca-bundle.crt', copy: true)
 configure_file(input: 'image.jpg',     output: 'image.jpg',     copy: true)
-subdir(join_paths('www', 'dir'))
-subdir(join_paths('www2', 'dir'))
-subdir(join_paths('www3', 'dir'))
+subdir('www')
+subdir('www2'/'dir')
+subdir('www3'/'dir')
 
 # GoogleTest 1.13.0 requires C++14
 test_options = []
@@ -99,7 +121,8 @@ test(
     'test.cc',
     dependencies: [
       cpp_httplib_dep,
-      gtest_dep
+      gtest_dep,
+      libcurl_dep
     ],
     override_options: test_options
   ),
@@ -112,7 +135,9 @@ test(
     rootca_key_pem,
     rootca_cert_pem,
     client_key_pem,
-    client_cert_pem
+    client_cert_pem,
+    client_encrypted_key_pem,
+    client_encrypted_cert_pem
   ],
   workdir: meson.current_build_dir(),
   timeout: 300

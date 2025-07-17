@@ -32,14 +32,13 @@
 #include <config.h>  // Must come first
 #endif
 
-#include <cassert>
-#include <ctime>
+#include "common/solaris/guid_creator.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include <unistd.h>
-
-#include "common/solaris/guid_creator.h"
 
 //
 // GUIDGenerator
@@ -51,7 +50,7 @@
 class GUIDGenerator {
  public:
   GUIDGenerator() {
-    srandom(time(NULL));
+    srandom(time(nullptr));
   }
 
   bool CreateGUID(GUID *guid) const {

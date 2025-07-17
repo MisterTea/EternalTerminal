@@ -17,7 +17,7 @@ vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO Coin3D/coin
     REF "v${VERSION}"
-    SHA512 f913f1b1ec5819d72e054dc94702effe9ee2a28547fc9bebc2f6b2e55d8a67c6cfa05e43239461e806cbead0a7548f82b31d5b86181eed4ffc5c801d3b94aa67
+    SHA512 5e9505efda536a6687fd1cfcc4589af9bfbdbd4a8d660335c060e1678f84c5db91415e0a40ee7b4b40e5894d7330172a24f822d38c0ea276badb92fc68efeec8
     HEAD_REF master
     PATCHES
         remove-default-config.patch
@@ -35,6 +35,11 @@ elseif(VCPKG_CRT_LINKAGE STREQUAL static)
     set(COIN_BUILD_MSVC_STATIC_RUNTIME ON)
 endif()
 
+vcpkg_check_features(OUT_FEATURE_OPTIONS FEATURE_OPTIONS
+FEATURES
+  superglu USE_SUPERGLU
+)
+
 vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
@@ -43,6 +48,7 @@ vcpkg_cmake_configure(
         -DCOIN_BUILD_MSVC_STATIC_RUNTIME=${COIN_BUILD_MSVC_STATIC_RUNTIME}
         -DCOIN_BUILD_SHARED_LIBS=${COIN_BUILD_SHARED_LIBS}
         -DCOIN_BUILD_TESTS=OFF
+        ${FEATURE_OPTIONS}
 )
 
 vcpkg_cmake_install()

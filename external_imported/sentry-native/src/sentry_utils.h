@@ -8,10 +8,26 @@
 #    include <mach/mach.h>
 #endif
 #ifdef SENTRY_PLATFORM_WINDOWS
+#    include "sentry_os.h"
 #    include <winnt.h>
 #else
 #    include <sys/time.h>
 #    include <time.h>
+#endif
+
+#ifdef SENTRY_PLATFORM_PS
+#    undef MIN
+#    undef MAX
+#    define getenv(_) NULL
+#endif
+
+#define MIN(a, b) ((a) < (b) ? (a) : (b))
+#define MAX(a, b) ((a) > (b) ? (a) : (b))
+
+#if defined(_MSC_VER) && !defined(__clang__)
+#    define UNREACHABLE(reason) assert(!reason)
+#else
+#    define UNREACHABLE(reason) assert(!(bool)reason)
 #endif
 
 /**
@@ -31,8 +47,10 @@ typedef struct {
 /**
  * Parse the given `url` into the pre-allocated `url_out` parameter.
  * Returns 0 on success.
+ * `requires_path` flags whether the url needs a / after the host(:port) section
  */
-int sentry__url_parse(sentry_url_t *url_out, const char *url);
+int sentry__url_parse(
+    sentry_url_t *url_out, const char *url, bool requires_path);
 
 /**
  * This will free all the internal members of `url`, but not `url` itself, as
@@ -97,29 +115,26 @@ char *sentry__dsn_get_minidump_url(
     const sentry_dsn_t *dsn, const char *user_agent);
 
 /**
- * Returns the number of milliseconds since the unix epoch.
+ * Returns the number of microseconds since the unix epoch.
  */
 static inline uint64_t
-sentry__msec_time(void)
+sentry__usec_time(void)
 {
 #ifdef SENTRY_PLATFORM_WINDOWS
     // Contains a 64-bit value representing the number of 100-nanosecond
     // intervals since January 1, 1601 (UTC).
     FILETIME file_time;
-    SYSTEMTIME system_time;
-    GetSystemTime(&system_time);
-    SystemTimeToFileTime(&system_time, &file_time);
-
+    sentry__get_system_time(&file_time);
     uint64_t timestamp = (uint64_t)file_time.dwLowDateTime
         + ((uint64_t)file_time.dwHighDateTime << 32);
     timestamp -= 116444736000000000LL; // convert to unix epoch
-    timestamp /= 10000LL; // 100ns -> 1ms
+    timestamp /= 10LL; // 100ns -> 1us
 
     return timestamp;
 #else
     struct timeval tv;
     return (gettimeofday(&tv, NULL) == 0)
-        ? (uint64_t)tv.tv_sec * 1000 + tv.tv_usec / 1000
+        ? (uint64_t)tv.tv_sec * 1000000 + tv.tv_usec
         : 0;
 #endif
 }
@@ -151,7 +166,8 @@ sentry__monotonic_time(void)
 
     LARGE_INTEGER qpc_counter;
     QueryPerformanceCounter(&qpc_counter);
-    return qpc_counter.QuadPart * 1000 / qpc_frequency.QuadPart;
+    return (uint64_t)qpc_counter.QuadPart * 1000
+        / (uint64_t)qpc_frequency.QuadPart;
 #elif defined(SENTRY_PLATFORM_DARWIN)
 
 // try `clock_gettime` first if available,
@@ -180,16 +196,16 @@ sentry__monotonic_time(void)
 }
 
 /**
- * Formats a timestamp (milliseconds since epoch) into ISO8601 format.
+ * Formats a timestamp (microseconds since epoch) into ISO8601 format.
  */
-char *sentry__msec_time_to_iso8601(uint64_t time);
+char *sentry__usec_time_to_iso8601(uint64_t time);
 
 /**
- * Parses a ISO8601 formatted string into a millisecond resolution timestamp.
- * This only accepts the format `YYYY-MM-DD'T'hh:mm:ss(.zzz)'Z'`, which is
- * produced by the `sentry__msec_time_to_iso8601` function.
+ * Parses a ISO8601 formatted string into a microsecond resolution timestamp.
+ * This only accepts the format `YYYY-MM-DD'T'hh:mm:ss(.zzzzzz)'Z'`, which is
+ * produced by the `sentry__usec_time_to_iso8601` function.
  */
-uint64_t sentry__iso8601_to_msec(const char *iso);
+uint64_t sentry__iso8601_to_usec(const char *iso);
 
 /**
  * Locale independent (or rather, using "C" locale) `strtod`.

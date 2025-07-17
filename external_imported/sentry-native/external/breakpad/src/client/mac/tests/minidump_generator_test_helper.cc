@@ -67,7 +67,8 @@ int main(int argc, char** argv) {
     }
   } else if (argc == 3 && strcmp(argv[1], "crash") == 0) {
     // Instantiate an OOP exception handler
-    google_breakpad::ExceptionHandler eh("", NULL, NULL, NULL, true, argv[2]);
+    google_breakpad::ExceptionHandler eh("", nullptr, nullptr, nullptr, true,
+                                         argv[2]);
     // and crash.
     int *a = (int*)0x42;
     *a = 1;

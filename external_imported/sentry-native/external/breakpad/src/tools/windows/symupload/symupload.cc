@@ -47,18 +47,18 @@
 #endif
 
 #include <windows.h>
+
 #include <dbghelp.h>
+#include <stdio.h>
 #include <wininet.h>
 
-#include <cstdio>
 #include <map>
 #include <string>
 #include <vector>
 
-#include "common/windows/string_utils-inl.h"
-
 #include "common/windows/http_upload.h"
 #include "common/windows/pdb_source_line_writer.h"
+#include "common/windows/string_utils-inl.h"
 #include "common/windows/sym_upload_v2_protocol.h"
 #include "common/windows/symbol_collector_client.h"
 
@@ -87,7 +87,7 @@ static bool GetFileVersionString(const wchar_t* filename, wstring* version) {
     return false;
   }
 
-  void* file_info_buffer = NULL;
+  void* file_info_buffer = nullptr;
   unsigned int file_info_length;
   if (!VerQueryValue(&version_info[0], L"\\",
                      &file_info_buffer, &file_info_length)) {
@@ -138,7 +138,7 @@ static bool DumpSymbolsToTempFile(const wchar_t* file,
     return false;
   }
 
-  FILE* temp_file = NULL;
+  FILE* temp_file = nullptr;
 #if _MSC_VER >= 1400  // MSVC 2005/8
   if (_wfopen_s(&temp_file, temp_filename, L"w") != 0)
 #else  // _MSC_VER >= 1400
@@ -292,7 +292,7 @@ int wmain(int argc, wchar_t* argv[]) {
     while (currentarg < argc) {
       int response_code;
       if (!HTTPUpload::SendMultipartPostRequest(argv[currentarg], parameters, files,
-          timeout == -1 ? NULL : &timeout,
+          timeout == -1 ? nullptr : &timeout,
           nullptr, &response_code)) {
         success = false;
         fwprintf(stderr,
@@ -305,12 +305,12 @@ int wmain(int argc, wchar_t* argv[]) {
 
   _wunlink(symbol_file.c_str());
 
-  if (success) {
-    wprintf(L"Uploaded breakpad symbols for windows-%s/%s/%s (%s %s)\n",
-            pdb_info.cpu.c_str(), pdb_info.debug_file.c_str(),
-            pdb_info.debug_identifier.c_str(), code_file.c_str(),
-            file_version.c_str());
-  }
+  fwprintf(success ? stdout : stderr,
+           L"%S breakpad symbols for windows-%s/%s/%s (%s %s)\n",
+           success ? "Uploaded" : "Failed to upload",
+           pdb_info.cpu.c_str(), pdb_info.debug_file.c_str(),
+           pdb_info.debug_identifier.c_str(), code_file.c_str(),
+           file_version.c_str());
 
   return success ? 0 : 1;
 }

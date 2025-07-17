@@ -36,6 +36,7 @@
 
 #include "common/linux/elf_symbols_to_module.h"
 
+#include <assert.h>
 #include <cxxabi.h>
 #include <elf.h>
 #include <string.h>
@@ -168,7 +169,7 @@ bool ELFSymbolsToModule(const uint8_t* symtab_section,
 #if !defined(__ANDROID__)  // Android NDK doesn't provide abi::__cxa_demangle.
       int status = 0;
       char* demangled =
-          abi::__cxa_demangle(ext->name.c_str(), NULL, NULL, &status);
+          abi::__cxa_demangle(ext->name.c_str(), nullptr, nullptr, &status);
       if (demangled) {
         if (status == 0)
           ext->name = demangled;

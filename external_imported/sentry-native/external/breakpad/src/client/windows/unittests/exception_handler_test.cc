@@ -32,6 +32,7 @@
 
 #include "client/windows/unittests/exception_handler_test.h"
 
+#include <assert.h>
 #include <windows.h>
 #include <dbghelp.h>
 #include <strsafe.h>
@@ -130,7 +131,7 @@ void ExceptionHandlerTest::SetUp() {
     assert(false);
   }
   StringCchPrintfW(temp_path_, MAX_PATH, L"%s%s", temp_path, test_name_wide);
-  CreateDirectory(temp_path_, NULL);
+  CreateDirectory(temp_path_, nullptr);
 }
 
 void ExceptionHandlerTest::TearDown() {
@@ -179,9 +180,9 @@ bool ExceptionHandlerTest::DumpCallback(const wchar_t* dump_path,
 void ExceptionHandlerTest::DoCrashInvalidParameter() {
   google_breakpad::ExceptionHandler* exc =
       new google_breakpad::ExceptionHandler(
-          temp_path_, NULL, NULL, NULL,
+          temp_path_, nullptr, nullptr, nullptr,
           google_breakpad::ExceptionHandler::HANDLER_INVALID_PARAMETER,
-          kFullDumpType, kPipeName, NULL);
+          kFullDumpType, kPipeName, nullptr);
 
   // Disable the message box for assertions
   _CrtSetReportMode(_CRT_ASSERT, 0);
@@ -190,7 +191,7 @@ void ExceptionHandlerTest::DoCrashInvalidParameter() {
   // if it's not true we'll still get an error rather than the crash
   // being expected.
   ASSERT_TRUE(exc->IsOutOfProcess());
-  printf(NULL);
+  printf(nullptr);
 }
 
 
@@ -211,9 +212,9 @@ struct PureVirtualCall : public PureVirtualCallBase {
 void ExceptionHandlerTest::DoCrashPureVirtualCall() {
   google_breakpad::ExceptionHandler* exc =
       new google_breakpad::ExceptionHandler(
-          temp_path_, NULL, NULL, NULL,
+          temp_path_, nullptr, nullptr, nullptr,
           google_breakpad::ExceptionHandler::HANDLER_PURECALL,
-          kFullDumpType, kPipeName, NULL);
+          kFullDumpType, kPipeName, nullptr);
 
   // Disable the message box for assertions
   _CrtSetReportMode(_CRT_ASSERT, 0);
@@ -238,8 +239,8 @@ TEST_F(ExceptionHandlerTest, InvalidParameterMiniDumpTest) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
   wstring dump_path(temp_path_);
   google_breakpad::CrashGenerationServer server(
-      kPipeName, NULL, NULL, NULL, ClientDumpCallback, NULL, NULL, NULL, NULL,
-      NULL, true, &dump_path);
+      kPipeName, nullptr, nullptr, nullptr, ClientDumpCallback, nullptr,
+      nullptr, nullptr, nullptr, nullptr, true, &dump_path);
 
   ASSERT_TRUE(dump_file.empty() && full_dump_file.empty());
 
@@ -310,8 +311,8 @@ TEST_F(ExceptionHandlerTest, PureVirtualCallMiniDumpTest) {
   ASSERT_TRUE(DoesPathExist(temp_path_));
   wstring dump_path(temp_path_);
   google_breakpad::CrashGenerationServer server(
-      kPipeName, NULL, NULL, NULL, ClientDumpCallback, NULL, NULL, NULL, NULL,
-      NULL, true, &dump_path);
+      kPipeName, nullptr, nullptr, nullptr, ClientDumpCallback, nullptr,
+      nullptr, nullptr, nullptr, nullptr, true, &dump_path);
 
   ASSERT_TRUE(dump_file.empty() && full_dump_file.empty());
 
@@ -377,9 +378,9 @@ TEST_F(ExceptionHandlerTest, PureVirtualCallMiniDumpTest) {
 // some expected structures.
 TEST_F(ExceptionHandlerTest, WriteMinidumpTest) {
   ExceptionHandler handler(temp_path_,
-                           NULL,
+                           nullptr,
                            DumpCallback,
-                           NULL,
+                           nullptr,
                            ExceptionHandler::HANDLER_ALL);
 
   // Disable GTest SEH handler
@@ -415,9 +416,9 @@ TEST_F(ExceptionHandlerTest, AdditionalMemory) {
   }
 
   ExceptionHandler handler(temp_path_,
-                           NULL,
+                           nullptr,
                            DumpCallback,
-                           NULL,
+                           nullptr,
                            ExceptionHandler::HANDLER_ALL);
 
   // Disable GTest SEH handler
@@ -469,9 +470,9 @@ TEST_F(ExceptionHandlerTest, AdditionalMemoryRemove) {
   }
 
   ExceptionHandler handler(temp_path_,
-                           NULL,
+                           nullptr,
                            DumpCallback,
-                           NULL,
+                           nullptr,
                            ExceptionHandler::HANDLER_ALL);
 
   // Disable GTest SEH handler

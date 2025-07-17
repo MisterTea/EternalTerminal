@@ -145,7 +145,7 @@ TEST(MinidumpWriterTest, MappingInfo) {
 
   // Get some memory.
   char* memory =
-    reinterpret_cast<char*>(mmap(NULL,
+    reinterpret_cast<char*>(mmap(nullptr,
                                  memory_size,
                                  PROT_READ | PROT_WRITE,
                                  MAP_PRIVATE | MAP_ANON,
@@ -450,7 +450,7 @@ TEST(MinidumpWriterTest, MappingInfoContained) {
   lseek(fd, 0, SEEK_SET);
 
   char* memory =
-    reinterpret_cast<char*>(mmap(NULL,
+    reinterpret_cast<char*>(mmap(nullptr,
                                  memory_size,
                                  PROT_READ | PROT_WRITE,
                                  MAP_PRIVATE,
@@ -545,7 +545,7 @@ TEST(MinidumpWriterTest, DeletedBinary) {
           binpath.c_str(),
           pipe_fd_string,
           kNumberOfThreadsArgument.c_str(),
-          NULL);
+          nullptr);
   }
   close(fds[1]);
   // Wait for the child process to signal that it's ready.
@@ -748,9 +748,9 @@ TEST(MinidumpWriterTest, InvalidStackPointer) {
   bool found_empty_stack = false;
   for (int i = 0; i < dump_thread_list->thread_count(); i++) {
     MinidumpThread* thread = dump_thread_list->GetThreadAtIndex(i);
-    ASSERT_TRUE(thread->thread() != NULL);
+    ASSERT_TRUE(thread->thread() != nullptr);
     // When the stack size is zero bytes, GetMemory() returns NULL.
-    if (thread->GetMemory() == NULL) {
+    if (thread->GetMemory() == nullptr) {
       found_empty_stack = true;
       break;
     }
@@ -792,7 +792,7 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
           helper_path.c_str(),
           pipe_fd_string,
           number_of_threads_arg,
-          NULL);
+          nullptr);
   }
   close(fds[1]);
 
@@ -829,7 +829,7 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
     string normal_dump = temp_dir.path() +
         "/minidump-writer-unittest.dmp";
     ASSERT_TRUE(WriteMinidump(normal_dump.c_str(), -1,
-                              child_pid, NULL, 0,
+                              child_pid, nullptr, 0,
                               MappingList(), AppMemoryList()));
     struct stat st;
     ASSERT_EQ(0, stat(normal_dump.c_str(), &st));
@@ -842,10 +842,10 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
     ASSERT_TRUE(dump_thread_list);
     for (unsigned int i = 0; i < dump_thread_list->thread_count(); i++) {
       MinidumpThread* thread = dump_thread_list->GetThreadAtIndex(i);
-      ASSERT_TRUE(thread->thread() != NULL);
+      ASSERT_TRUE(thread->thread() != nullptr);
       // When the stack size is zero bytes, GetMemory() returns NULL.
       MinidumpMemoryRegion* memory = thread->GetMemory();
-      ASSERT_TRUE(memory != NULL);
+      ASSERT_TRUE(memory != nullptr);
       total_normal_stack_size += memory->GetSize();
     }
   }
@@ -860,7 +860,7 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
     string same_dump = temp_dir.path() +
         "/minidump-writer-unittest-same.dmp";
     ASSERT_TRUE(WriteMinidump(same_dump.c_str(), minidump_size_limit,
-                              child_pid, NULL, 0,
+                              child_pid, nullptr, 0,
                               MappingList(), AppMemoryList()));
     struct stat st;
     ASSERT_EQ(0, stat(same_dump.c_str(), &st));
@@ -893,7 +893,7 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
     string limit_dump = temp_dir.path() +
         "/minidump-writer-unittest-limit.dmp";
     ASSERT_TRUE(WriteMinidump(limit_dump.c_str(), minidump_size_limit,
-                              child_pid, NULL, 0,
+                              child_pid, nullptr, 0,
                               MappingList(), AppMemoryList()));
     struct stat st;
     ASSERT_EQ(0, stat(limit_dump.c_str(), &st));
@@ -910,10 +910,10 @@ TEST(MinidumpWriterTest, MinidumpSizeLimit) {
     int total_limit_stack_size = 0;
     for (unsigned int i = 0; i < dump_thread_list->thread_count(); i++) {
       MinidumpThread* thread = dump_thread_list->GetThreadAtIndex(i);
-      ASSERT_TRUE(thread->thread() != NULL);
+      ASSERT_TRUE(thread->thread() != nullptr);
       // When the stack size is zero bytes, GetMemory() returns NULL.
       MinidumpMemoryRegion* memory = thread->GetMemory();
-      ASSERT_TRUE(memory != NULL);
+      ASSERT_TRUE(memory != nullptr);
       total_limit_stack_size += memory->GetSize();
     }
 

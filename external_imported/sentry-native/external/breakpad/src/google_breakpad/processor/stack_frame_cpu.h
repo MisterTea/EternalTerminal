@@ -72,8 +72,8 @@ struct StackFrameX86 : public StackFrame {
   StackFrameX86()
      : context(),
        context_validity(CONTEXT_VALID_NONE),
-       windows_frame_info(NULL),
-       cfi_frame_info(NULL) {}
+       windows_frame_info(nullptr),
+       cfi_frame_info(nullptr) {}
   ~StackFrameX86();
 
   // Overriden to return the return address as saved on the stack.

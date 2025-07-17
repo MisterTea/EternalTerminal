@@ -105,7 +105,7 @@ sentry__run_write_envelope(
     sentry__path_free(output_path);
 
     if (rv) {
-        SENTRY_DEBUG("writing envelope to file failed");
+        SENTRY_WARN("writing envelope to file failed");
     }
 
     // the `write_to_path` returns > 0 on failure, but we would like a real bool
@@ -116,7 +116,7 @@ bool
 sentry__run_write_session(
     const sentry_run_t *run, const sentry_session_t *session)
 {
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(NULL);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
     if (!jw) {
         return false;
     }
@@ -131,7 +131,7 @@ sentry__run_write_session(
     sentry_free(buf);
 
     if (rv) {
-        SENTRY_DEBUG("writing session to file failed");
+        SENTRY_WARN("writing session to file failed");
     }
     return !rv;
 }
@@ -187,7 +187,7 @@ sentry__process_old_runs(const sentry_options_t *options, uint64_t last_crash)
         }
         sentry_pathiter_t *run_iter = sentry__path_iter_directory(run_dir);
         const sentry_path_t *file;
-        while ((file = sentry__pathiter_next(run_iter)) != NULL) {
+        while (run_iter && (file = sentry__pathiter_next(run_iter)) != NULL) {
             if (sentry__path_filename_matches(file, "session.json")) {
                 if (!session_envelope) {
                     session_envelope = sentry__envelope_new();
@@ -203,10 +203,10 @@ sentry__process_old_runs(const sentry_options_t *options, uint64_t last_crash)
                     // time.
                     if (session->status == SENTRY_SESSION_STATUS_OK) {
                         bool was_crash
-                            = last_crash && last_crash > session->started_ms;
+                            = last_crash && last_crash > session->started_us;
                         if (was_crash) {
-                            session->duration_ms
-                                = last_crash - session->started_ms;
+                            session->duration_us
+                                = last_crash - session->started_us;
                             session->errors += 1;
                             // we only set at most one unclosed session as
                             // crashed
@@ -248,7 +248,7 @@ static const char *g_last_crash_filename = "last_crash";
 bool
 sentry__write_crash_marker(const sentry_options_t *options)
 {
-    char *iso_time = sentry__msec_time_to_iso8601(sentry__msec_time());
+    char *iso_time = sentry__usec_time_to_iso8601(sentry__usec_time());
     if (!iso_time) {
         return false;
     }
@@ -266,7 +266,7 @@ sentry__write_crash_marker(const sentry_options_t *options)
     sentry__path_free(marker_path);
 
     if (rv) {
-        SENTRY_DEBUG("writing crash timestamp to file failed");
+        SENTRY_WARN("writing crash timestamp to file failed");
     }
     return !rv;
 }
@@ -297,7 +297,7 @@ sentry__clear_crash_marker(const sentry_options_t *options)
     int rv = sentry__path_remove(marker_path);
     sentry__path_free(marker_path);
     if (rv) {
-        SENTRY_DEBUG("removing the crash timestamp file has failed");
+        SENTRY_WARN("removing the crash timestamp file has failed");
     }
     return !rv;
 }

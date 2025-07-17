@@ -85,11 +85,11 @@ const struct {
   { 0, 4, 9, kBufferPointer + 36 },
   { kBufferSize - 1, 1, 0, kBufferPointer + kBufferSize - 1 },
   // Invalid array elemenets
-  { 0, 1, kBufferSize, NULL },
-  { 0, 4, 10, NULL },
-  { kBufferSize - 1, 1, 1, NULL },
-  { kBufferSize - 1, 2, 0, NULL },
-  { kBufferSize, 1, 0, NULL },
+  { 0, 1, kBufferSize, nullptr },
+  { 0, 4, 10, nullptr },
+  { kBufferSize - 1, 1, 1, nullptr },
+  { kBufferSize - 1, 2, 0, nullptr },
+  { kBufferSize, 1, 0, nullptr },
 };
 const size_t kNumElements = sizeof(kElements) / sizeof(kElements[0]);
 
@@ -97,7 +97,7 @@ const size_t kNumElements = sizeof(kElements) / sizeof(kElements[0]);
 
 TEST(MinidumpMemoryRangeTest, DefaultConstructor) {
   MinidumpMemoryRange range;
-  EXPECT_EQ(NULL, range.data());
+  EXPECT_EQ(nullptr, range.data());
   EXPECT_EQ(0U, range.length());
 }
 
@@ -110,7 +110,7 @@ TEST(MinidumpMemoryRangeTest, ConstructorWithDataAndLength) {
 TEST(MinidumpMemoryRangeTest, Reset) {
   MinidumpMemoryRange range;
   range.Reset();
-  EXPECT_EQ(NULL, range.data());
+  EXPECT_EQ(nullptr, range.data());
   EXPECT_EQ(0U, range.length());
 
   range.Set(kBuffer, kBufferSize);
@@ -118,7 +118,7 @@ TEST(MinidumpMemoryRangeTest, Reset) {
   EXPECT_EQ(kBufferSize, range.length());
 
   range.Reset();
-  EXPECT_EQ(NULL, range.data());
+  EXPECT_EQ(nullptr, range.data());
   EXPECT_EQ(0U, range.length());
 }
 
@@ -128,15 +128,15 @@ TEST(MinidumpMemoryRangeTest, Set) {
   EXPECT_EQ(kBufferPointer, range.data());
   EXPECT_EQ(kBufferSize, range.length());
 
-  range.Set(NULL, 0);
-  EXPECT_EQ(NULL, range.data());
+  range.Set(nullptr, 0);
+  EXPECT_EQ(nullptr, range.data());
   EXPECT_EQ(0U, range.length());
 }
 
 TEST(MinidumpMemoryRangeTest, SubrangeOfEmptyMemoryRange) {
   MinidumpMemoryRange range;
   MinidumpMemoryRange subrange = range.Subrange(0, 10);
-  EXPECT_EQ(NULL, subrange.data());
+  EXPECT_EQ(nullptr, subrange.data());
   EXPECT_EQ(0U, subrange.length());
 }
 
@@ -158,8 +158,8 @@ TEST(MinidumpMemoryRangeTest, SubrangeAndGetData) {
       EXPECT_EQ(sub_length, subrange.length());
     } else {
       EXPECT_FALSE(range.Covers(sub_offset, sub_length));
-      EXPECT_EQ(NULL, range.GetData(sub_offset, sub_length));
-      EXPECT_EQ(NULL, subrange.data());
+      EXPECT_EQ(nullptr, range.GetData(sub_offset, sub_length));
+      EXPECT_EQ(nullptr, subrange.data());
       EXPECT_EQ(0U, subrange.length());
     }
   }
@@ -186,8 +186,8 @@ TEST(MinidumpMemoryRangeTest, SubrangeWithMDLocationDescriptor) {
       EXPECT_EQ(sub_length, subrange.length());
     } else {
       EXPECT_FALSE(range.Covers(sub_offset, sub_length));
-      EXPECT_EQ(NULL, range.GetData(sub_offset, sub_length));
-      EXPECT_EQ(NULL, subrange.data());
+      EXPECT_EQ(nullptr, range.GetData(sub_offset, sub_length));
+      EXPECT_EQ(nullptr, subrange.data());
       EXPECT_EQ(0U, subrange.length());
     }
   }

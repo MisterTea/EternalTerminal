@@ -80,7 +80,7 @@ StabsReader::StabsReader(const uint8_t* stab,    size_t stab_size,
       handler_(handler),
       string_offset_(0),
       next_cu_string_offset_(0),
-      current_source_file_(NULL) { }
+      current_source_file_(nullptr) { }
 
 const char* StabsReader::SymbolString() {
   ptrdiff_t offset = string_offset_ + iterator_->name_offset;
@@ -138,7 +138,7 @@ bool StabsReader::ProcessCompilationUnit() {
   // There may be an N_SO entry whose name ends with a slash,
   // indicating the directory in which the compilation occurred.
   // The build directory defaults to NULL.
-  const char* build_directory = NULL;
+  const char* build_directory = nullptr;
   {
     const char* name = SymbolString();
     if (name[0] && name[strlen(name) - 1] == '/') {

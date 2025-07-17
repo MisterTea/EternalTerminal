@@ -69,12 +69,6 @@ if(WIN32)
     endif()
 endif()
 
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_handler_lib PRIVATE
-        "-Wno-multichar"
-    )
-endif()
-
 set_property(TARGET crashpad_handler_lib PROPERTY EXPORT_NAME handler)
 add_library(crashpad::handler_lib ALIAS crashpad_handler_lib)
 
@@ -89,6 +83,11 @@ if(NOT IOS)
         main.cc
     )
 
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(crashpad_handler PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-ignored-attributes>
+        )
+    endif()
     if(LINUX)
         target_sources(crashpad_handler PRIVATE
             ../client/pthread_create_linux.cc
@@ -113,6 +112,10 @@ if(NOT IOS)
         if(MSVC)
             target_link_options(crashpad_handler PRIVATE "/SUBSYSTEM:WINDOWS")
         endif()
+
+        if (COMMAND sentry_add_version_resource)
+            sentry_add_version_resource(crashpad_handler "Crashpad Handler")
+        endif()
     endif()
 
     set_property(TARGET crashpad_handler PROPERTY EXPORT_NAME crashpad_handler)
@@ -123,7 +126,7 @@ if(NOT IOS)
     )
 endif()
 
-if(CRASHPAD_WER_ENABLED)
+if (WIN32)
     add_library(crashpad_wer SHARED
         win/wer/crashpad_wer.cc
         win/wer/crashpad_wer.h
@@ -143,6 +146,10 @@ if(CRASHPAD_WER_ENABLED)
     set_property(TARGET crashpad_wer PROPERTY EXPORT_NAME crashpad_wer)
     set_property(TARGET crashpad_wer PROPERTY PREFIX "") # ensure MINGW doesn't prefix "lib" to dll name
     add_library(crashpad::wer ALIAS crashpad_wer)
+
+    if (COMMAND sentry_add_version_resource)
+        sentry_add_version_resource(crashpad_wer "Crashpad WER Module")
+    endif()
 
     install(TARGETS crashpad_wer EXPORT crashpad_export
         RUNTIME DESTINATION "${CMAKE_INSTALL_BINDIR}"

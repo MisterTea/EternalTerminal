@@ -225,4 +225,23 @@ int ExceptionHandlerClient::WaitForCrashDumpComplete() {
   return errno;
 }
 
+void ExceptionHandlerClient::AddAttachment(const base::FilePath& attachment) {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment;
+  snprintf(
+      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+}
+
+void ExceptionHandlerClient::RemoveAttachment(
+    const base::FilePath& attachment) {
+  ExceptionHandlerProtocol::ClientToServerMessage message;
+  message.type =
+      ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment;
+  snprintf(
+      message.attachment_info.path, PATH_MAX, "%s", attachment.value().c_str());
+  UnixCredentialSocket::SendMsg(server_sock_, &message, sizeof(message));
+}
+
 }  // namespace crashpad

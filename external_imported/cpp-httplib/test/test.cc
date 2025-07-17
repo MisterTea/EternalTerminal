@@ -1,16 +1,23 @@
+﻿// NOTE: This file should be saved as UTF-8 w/ BOM
 #include <httplib.h>
 #include <signal.h>
 
+#ifndef _WIN32
+#include <curl/curl.h>
+#endif
 #include <gtest/gtest.h>
 
 #include <atomic>
 #include <chrono>
+#include <fstream>
 #include <future>
+#include <limits>
 #include <memory>
 #include <sstream>
 #include <stdexcept>
 #include <thread>
 #include <type_traits>
+#include <vector>
 
 #define SERVER_CERT_FILE "./cert.pem"
 #define SERVER_CERT2_FILE "./cert2.pem"
@@ -20,6 +27,9 @@
 #define CLIENT_CA_CERT_DIR "."
 #define CLIENT_CERT_FILE "./client.cert.pem"
 #define CLIENT_PRIVATE_KEY_FILE "./client.key.pem"
+#define CLIENT_ENCRYPTED_CERT_FILE "./client_encrypted.cert.pem"
+#define CLIENT_ENCRYPTED_PRIVATE_KEY_FILE "./client_encrypted.key.pem"
+#define CLIENT_ENCRYPTED_PRIVATE_KEY_PASS "test012!"
 #define SERVER_ENCRYPTED_CERT_FILE "./cert_encrypted.pem"
 #define SERVER_ENCRYPTED_PRIVATE_KEY_FILE "./key_encrypted.pem"
 #define SERVER_ENCRYPTED_PRIVATE_KEY_PASS "test123!"
@@ -32,6 +42,10 @@ const int PORT = 1234;
 
 const string LONG_QUERY_VALUE = string(25000, '@');
 const string LONG_QUERY_URL = "/long-query-value?key=" + LONG_QUERY_VALUE;
+
+const string TOO_LONG_QUERY_VALUE = string(35000, '@');
+const string TOO_LONG_QUERY_URL =
+    "/too-long-query-value?key=" + TOO_LONG_QUERY_VALUE;
 
 const std::string JSON_DATA = "{\"hello\":\"world\"}";
 
@@ -50,9 +64,186 @@ MultipartFormData &get_file_value(MultipartFormDataItems &files,
 #endif
 }
 
-TEST(ConstructorTest, MoveConstructible) {
+static void read_file(const std::string &path, std::string &out) {
+  std::ifstream fs(path, std::ios_base::binary);
+  if (!fs) throw std::runtime_error("File not found: " + path);
+  fs.seekg(0, std::ios_base::end);
+  auto size = fs.tellg();
+  fs.seekg(0);
+  out.resize(static_cast<size_t>(size));
+  fs.read(&out[0], static_cast<std::streamsize>(size));
+}
+
+class UnixSocketTest : public ::testing::Test {
+protected:
+  void TearDown() override { std::remove(pathname_.c_str()); }
+
+  void client_GET(const std::string &addr) {
+    httplib::Client cli{addr};
+    cli.set_address_family(AF_UNIX);
+    ASSERT_TRUE(cli.is_valid());
+
+    const auto &result = cli.Get(pattern_);
+    ASSERT_TRUE(result) << "error: " << result.error();
+
+    const auto &resp = result.value();
+    EXPECT_EQ(resp.status, StatusCode::OK_200);
+    EXPECT_EQ(resp.body, content_);
+  }
+
+  const std::string pathname_{"./httplib-server.sock"};
+  const std::string pattern_{"/hi"};
+  const std::string content_{"Hello World!"};
+};
+
+TEST_F(UnixSocketTest, pathname) {
+  httplib::Server svr;
+  svr.Get(pattern_, [&](const httplib::Request &, httplib::Response &res) {
+    res.set_content(content_, "text/plain");
+  });
+
+  std::thread t{[&] {
+    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(pathname_, 80));
+  }};
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    t.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+  ASSERT_TRUE(svr.is_running());
+
+  client_GET(pathname_);
+}
+
+#if defined(__linux__) ||                                                      \
+    /* __APPLE__ */ (defined(SOL_LOCAL) && defined(SO_PEERPID))
+TEST_F(UnixSocketTest, PeerPid) {
+  httplib::Server svr;
+  std::string remote_port_val;
+  svr.Get(pattern_, [&](const httplib::Request &req, httplib::Response &res) {
+    res.set_content(content_, "text/plain");
+    remote_port_val = req.get_header_value("REMOTE_PORT");
+  });
+
+  std::thread t{[&] {
+    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(pathname_, 80));
+  }};
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    t.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+  ASSERT_TRUE(svr.is_running());
+
+  client_GET(pathname_);
+  EXPECT_EQ(std::to_string(getpid()), remote_port_val);
+}
+#endif
+
+#ifdef __linux__
+TEST_F(UnixSocketTest, abstract) {
+  constexpr char svr_path[]{"\x00httplib-server.sock"};
+  const std::string abstract_addr{svr_path, sizeof(svr_path) - 1};
+
+  httplib::Server svr;
+  svr.Get(pattern_, [&](const httplib::Request &, httplib::Response &res) {
+    res.set_content(content_, "text/plain");
+  });
+
+  std::thread t{[&] {
+    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(abstract_addr, 80));
+  }};
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    t.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+  ASSERT_TRUE(svr.is_running());
+
+  client_GET(abstract_addr);
+}
+#endif
+
+#ifndef _WIN32
+TEST(SocketStream, wait_writable_UNIX) {
+  int fds[2];
+  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+
+  const auto asSocketStream = [&](socket_t fd,
+                                  std::function<bool(Stream &)> func) {
+    return detail::process_client_socket(
+        fd, 0, 0, 0, 0, 0, std::chrono::steady_clock::time_point::min(), func);
+  };
+  asSocketStream(fds[0], [&](Stream &s0) {
+    EXPECT_EQ(s0.socket(), fds[0]);
+    EXPECT_TRUE(s0.wait_writable());
+
+    EXPECT_EQ(0, close(fds[1]));
+    EXPECT_FALSE(s0.wait_writable());
+
+    return true;
+  });
+  EXPECT_EQ(0, close(fds[0]));
+}
+
+TEST(SocketStream, wait_writable_INET) {
+  sockaddr_in addr;
+  memset(&addr, 0, sizeof(addr));
+  addr.sin_family = AF_INET;
+  addr.sin_port = htons(PORT + 1);
+  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
+
+  int disconnected_svr_sock = -1;
+  std::thread svr{[&] {
+    const int s = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_LE(0, s);
+    ASSERT_EQ(0, ::bind(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)));
+    ASSERT_EQ(0, listen(s, 1));
+    ASSERT_LE(0, disconnected_svr_sock = accept(s, nullptr, nullptr));
+    ASSERT_EQ(0, close(s));
+  }};
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  std::thread cli{[&] {
+    const int s = socket(AF_INET, SOCK_STREAM, 0);
+    ASSERT_LE(0, s);
+    ASSERT_EQ(0, connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)));
+    ASSERT_EQ(0, close(s));
+  }};
+  cli.join();
+  svr.join();
+  ASSERT_NE(disconnected_svr_sock, -1);
+
+  const auto asSocketStream = [&](socket_t fd,
+                                  std::function<bool(Stream &)> func) {
+    return detail::process_client_socket(
+        fd, 0, 0, 0, 0, 0, std::chrono::steady_clock::time_point::min(), func);
+  };
+  asSocketStream(disconnected_svr_sock, [&](Stream &ss) {
+    EXPECT_EQ(ss.socket(), disconnected_svr_sock);
+    EXPECT_FALSE(ss.wait_writable());
+
+    return true;
+  });
+
+  ASSERT_EQ(0, close(disconnected_svr_sock));
+}
+#endif // #ifndef _WIN32
+
+TEST(ClientTest, MoveConstructible) {
   EXPECT_FALSE(std::is_copy_constructible<Client>::value);
   EXPECT_TRUE(std::is_nothrow_move_constructible<Client>::value);
+}
+
+TEST(ClientTest, MoveAssignable) {
+  EXPECT_FALSE(std::is_copy_assignable<Client>::value);
+  EXPECT_TRUE(std::is_nothrow_move_assignable<Client>::value);
 }
 
 #ifdef _WIN32
@@ -68,7 +259,7 @@ TEST(DecodeURLTest, PercentCharacter) {
       detail::decode_url(
           R"(descrip=Gastos%20%C3%A1%C3%A9%C3%AD%C3%B3%C3%BA%C3%B1%C3%91%206)",
           false),
-      R"(descrip=Gastos áéíóúñÑ 6)");
+      u8"descrip=Gastos áéíóúñÑ 6");
 }
 
 TEST(DecodeURLTest, PercentCharacterNUL) {
@@ -94,9 +285,9 @@ TEST(EncodeQueryParamTest, ParseReservedCharactersTest) {
 }
 
 TEST(EncodeQueryParamTest, TestUTF8Characters) {
-  string chineseCharacters = "中国語";
-  string russianCharacters = "дом";
-  string brazilianCharacters = "óculos";
+  string chineseCharacters = u8"中国語";
+  string russianCharacters = u8"дом";
+  string brazilianCharacters = u8"óculos";
 
   EXPECT_EQ(detail::encode_query_param(chineseCharacters),
             "%E4%B8%AD%E5%9B%BD%E8%AA%9E");
@@ -111,6 +302,76 @@ TEST(TrimTests, TrimStringTests) {
   EXPECT_EQ("abc", detail::trim_copy("abc"));
   EXPECT_EQ("abc", detail::trim_copy("  abc  "));
   EXPECT_TRUE(detail::trim_copy("").empty());
+}
+
+TEST(DivideTest, DivideStringTests) {
+  auto divide = [](const std::string &str, char d) {
+    std::string lhs;
+    std::string rhs;
+
+    detail::divide(str, d,
+                   [&](const char *lhs_data, std::size_t lhs_size,
+                       const char *rhs_data, std::size_t rhs_size) {
+                     lhs.assign(lhs_data, lhs_size);
+                     rhs.assign(rhs_data, rhs_size);
+                   });
+
+    return std::make_pair(std::move(lhs), std::move(rhs));
+  };
+
+  {
+    const auto res = divide("", '=');
+    EXPECT_EQ(res.first, "");
+    EXPECT_EQ(res.second, "");
+  }
+
+  {
+    const auto res = divide("=", '=');
+    EXPECT_EQ(res.first, "");
+    EXPECT_EQ(res.second, "");
+  }
+
+  {
+    const auto res = divide(" ", '=');
+    EXPECT_EQ(res.first, " ");
+    EXPECT_EQ(res.second, "");
+  }
+
+  {
+    const auto res = divide("a", '=');
+    EXPECT_EQ(res.first, "a");
+    EXPECT_EQ(res.second, "");
+  }
+
+  {
+    const auto res = divide("a=", '=');
+    EXPECT_EQ(res.first, "a");
+    EXPECT_EQ(res.second, "");
+  }
+
+  {
+    const auto res = divide("=b", '=');
+    EXPECT_EQ(res.first, "");
+    EXPECT_EQ(res.second, "b");
+  }
+
+  {
+    const auto res = divide("a=b", '=');
+    EXPECT_EQ(res.first, "a");
+    EXPECT_EQ(res.second, "b");
+  }
+
+  {
+    const auto res = divide("a=b=", '=');
+    EXPECT_EQ(res.first, "a");
+    EXPECT_EQ(res.second, "b=");
+  }
+
+  {
+    const auto res = divide("a=b=c", '=');
+    EXPECT_EQ(res.first, "a");
+    EXPECT_EQ(res.second, "b=c");
+  }
 }
 
 TEST(SplitTest, ParseQueryString) {
@@ -153,14 +414,28 @@ TEST(SplitTest, ParseInvalidQueryTests) {
 }
 
 TEST(ParseQueryTest, ParseQueryString) {
-  string s = "key1=val1&key2=val2&key3=val3";
-  Params dic;
+  {
+    std::string s = "key1=val1&key2=val2&key3=val3";
+    Params dic;
 
-  detail::parse_query_text(s, dic);
+    detail::parse_query_text(s, dic);
 
-  EXPECT_EQ("val1", dic.find("key1")->second);
-  EXPECT_EQ("val2", dic.find("key2")->second);
-  EXPECT_EQ("val3", dic.find("key3")->second);
+    EXPECT_EQ("val1", dic.find("key1")->second);
+    EXPECT_EQ("val2", dic.find("key2")->second);
+    EXPECT_EQ("val3", dic.find("key3")->second);
+  }
+
+  {
+    std::string s = "key1&key2=val1&key3=val1=val2&key4=val1=val2=val3";
+    Params dic;
+
+    detail::parse_query_text(s, dic);
+
+    EXPECT_EQ("", dic.find("key1")->second);
+    EXPECT_EQ("val1", dic.find("key2")->second);
+    EXPECT_EQ("val1=val2", dic.find("key3")->second);
+    EXPECT_EQ("val1=val2=val3", dic.find("key4")->second);
+  }
 }
 
 TEST(ParamsToQueryTest, ConvertParamsToQuery) {
@@ -214,25 +489,25 @@ TEST(ParseMultipartBoundaryTest, ValueWithQuotesAndCharset) {
 
 TEST(GetHeaderValueTest, DefaultValue) {
   Headers headers = {{"Dummy", "Dummy"}};
-  auto val = detail::get_header_value(headers, "Content-Type", 0, "text/plain");
+  auto val = detail::get_header_value(headers, "Content-Type", "text/plain", 0);
   EXPECT_STREQ("text/plain", val);
 }
 
 TEST(GetHeaderValueTest, DefaultValueInt) {
   Headers headers = {{"Dummy", "Dummy"}};
-  auto val = detail::get_header_value_u64(headers, "Content-Length", 0, 100);
+  auto val = detail::get_header_value_u64(headers, "Content-Length", 100, 0);
   EXPECT_EQ(100ull, val);
 }
 
 TEST(GetHeaderValueTest, RegularValue) {
   Headers headers = {{"Content-Type", "text/html"}, {"Dummy", "Dummy"}};
-  auto val = detail::get_header_value(headers, "Content-Type", 0, "text/plain");
+  auto val = detail::get_header_value(headers, "Content-Type", "text/plain", 0);
   EXPECT_STREQ("text/html", val);
 }
 
 TEST(GetHeaderValueTest, RegularValueWithDifferentCase) {
   Headers headers = {{"Content-Type", "text/html"}, {"Dummy", "Dummy"}};
-  auto val = detail::get_header_value(headers, "content-type", 0, "text/plain");
+  auto val = detail::get_header_value(headers, "content-type", "text/plain", 0);
   EXPECT_STREQ("text/html", val);
 }
 
@@ -251,6 +526,15 @@ TEST(GetHeaderValueTest, RegularValueInt) {
   Headers headers = {{"Content-Length", "100"}, {"Dummy", "Dummy"}};
   auto val = detail::get_header_value_u64(headers, "Content-Length", 0, 0);
   EXPECT_EQ(100ull, val);
+}
+
+TEST(GetHeaderValueTest, RegularInvalidValueInt) {
+  Headers headers = {{"Content-Length", "x"}};
+  auto is_invalid_value = false;
+  auto val = detail::get_header_value_u64(headers, "Content-Length", 0, 0,
+                                          is_invalid_value);
+  EXPECT_EQ(0ull, val);
+  EXPECT_TRUE(is_invalid_value);
 }
 
 TEST(GetHeaderValueTest, Range) {
@@ -349,6 +633,25 @@ TEST(ParseHeaderValueTest, Range) {
     EXPECT_EQ(300u, ranges[2].first);
     EXPECT_EQ(400u, ranges[2].second);
   }
+
+  {
+    Ranges ranges;
+
+    EXPECT_FALSE(detail::parse_range_header("bytes", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=0", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=-", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes= ", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=,", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=,,", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=,,,", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=a-b", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=1-0", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=0--1", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=0- 1", ranges));
+    EXPECT_FALSE(detail::parse_range_header("bytes=0 -1", ranges));
+    EXPECT_TRUE(ranges.empty());
+  }
 }
 
 TEST(ParseAcceptEncoding1, AcceptEncoding) {
@@ -369,7 +672,7 @@ TEST(ParseAcceptEncoding1, AcceptEncoding) {
 
 TEST(ParseAcceptEncoding2, AcceptEncoding) {
   Request req;
-  req.set_header("Accept-Encoding", "gzip, deflate, br");
+  req.set_header("Accept-Encoding", "gzip, deflate, br, zstd");
 
   Response res;
   res.set_header("Content-Type", "text/plain");
@@ -380,6 +683,8 @@ TEST(ParseAcceptEncoding2, AcceptEncoding) {
   EXPECT_TRUE(ret == detail::EncodingType::Brotli);
 #elif CPPHTTPLIB_ZLIB_SUPPORT
   EXPECT_TRUE(ret == detail::EncodingType::Gzip);
+#elif CPPHTTPLIB_ZSTD_SUPPORT
+  EXPECT_TRUE(ret == detail::EncodingType::Zstd);
 #else
   EXPECT_TRUE(ret == detail::EncodingType::None);
 #endif
@@ -387,7 +692,8 @@ TEST(ParseAcceptEncoding2, AcceptEncoding) {
 
 TEST(ParseAcceptEncoding3, AcceptEncoding) {
   Request req;
-  req.set_header("Accept-Encoding", "br;q=1.0, gzip;q=0.8, *;q=0.1");
+  req.set_header("Accept-Encoding",
+                 "br;q=1.0, gzip;q=0.8, zstd;q=0.8, *;q=0.1");
 
   Response res;
   res.set_header("Content-Type", "text/plain");
@@ -398,6 +704,8 @@ TEST(ParseAcceptEncoding3, AcceptEncoding) {
   EXPECT_TRUE(ret == detail::EncodingType::Brotli);
 #elif CPPHTTPLIB_ZLIB_SUPPORT
   EXPECT_TRUE(ret == detail::EncodingType::Gzip);
+#elif CPPHTTPLIB_ZSTD_SUPPORT
+  EXPECT_TRUE(ret == detail::EncodingType::Zstd);
 #else
   EXPECT_TRUE(ret == detail::EncodingType::None);
 #endif
@@ -441,7 +749,7 @@ TEST(ChunkedEncodingTest, FromHTTPWatch_Online) {
   ASSERT_TRUE(res);
 
   std::string out;
-  detail::read_file("./image.jpg", out);
+  read_file("./image.jpg", out);
 
   EXPECT_EQ(StatusCode::OK_200, res->status);
   EXPECT_EQ(out, res->body);
@@ -494,7 +802,7 @@ TEST(ChunkedEncodingTest, WithContentReceiver_Online) {
   ASSERT_TRUE(res);
 
   std::string out;
-  detail::read_file("./image.jpg", out);
+  read_file("./image.jpg", out);
 
   EXPECT_EQ(StatusCode::OK_200, res->status);
   EXPECT_EQ(out, body);
@@ -526,7 +834,7 @@ TEST(ChunkedEncodingTest, WithResponseHandlerAndContentReceiver_Online) {
   ASSERT_TRUE(res);
 
   std::string out;
-  detail::read_file("./image.jpg", out);
+  read_file("./image.jpg", out);
 
   EXPECT_EQ(StatusCode::OK_200, res->status);
   EXPECT_EQ(out, body);
@@ -757,6 +1065,330 @@ TEST(CancelTest, WithCancelLargePayload_Online) {
   EXPECT_EQ(Error::Canceled, res.error());
 }
 
+TEST(CancelTest, NoCancelPost) {
+  Server svr;
+
+  svr.Post("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Post("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+               "application/json", [](uint64_t, uint64_t) { return true; });
+  ASSERT_TRUE(res);
+  EXPECT_EQ("Hello World!", res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST(CancelTest, WithCancelSmallPayloadPost) {
+  Server svr;
+
+  svr.Post("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Post("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+               "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, WithCancelLargePayloadPost) {
+  Server svr;
+
+  svr.Post("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content(LARGE_DATA, "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Post("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+               "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, NoCancelPut) {
+  Server svr;
+
+  svr.Put("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Put("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+              "application/json", [](uint64_t, uint64_t) { return true; });
+  ASSERT_TRUE(res);
+  EXPECT_EQ("Hello World!", res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST(CancelTest, WithCancelSmallPayloadPut) {
+  Server svr;
+
+  svr.Put("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Put("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+              "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, WithCancelLargePayloadPut) {
+  Server svr;
+
+  svr.Put("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content(LARGE_DATA, "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Put("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+              "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, NoCancelPatch) {
+  Server svr;
+
+  svr.Patch("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Patch("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                "application/json", [](uint64_t, uint64_t) { return true; });
+  ASSERT_TRUE(res);
+  EXPECT_EQ("Hello World!", res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST(CancelTest, WithCancelSmallPayloadPatch) {
+  Server svr;
+
+  svr.Patch("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Patch("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, WithCancelLargePayloadPatch) {
+  Server svr;
+
+  svr.Patch("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content(LARGE_DATA, "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Patch("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, NoCancelDelete) {
+  Server svr;
+
+  svr.Delete("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Delete("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                 "application/json", [](uint64_t, uint64_t) { return true; });
+  ASSERT_TRUE(res);
+  EXPECT_EQ("Hello World!", res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST(CancelTest, WithCancelSmallPayloadDelete) {
+  Server svr;
+
+  svr.Delete("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Delete("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                 "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+TEST(CancelTest, WithCancelLargePayloadDelete) {
+  Server svr;
+
+  svr.Delete("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content(LARGE_DATA, "text/plain");
+  });
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_connection_timeout(std::chrono::seconds(5));
+
+  auto res =
+      cli.Delete("/", Headers(), JSON_DATA.data(), JSON_DATA.size(),
+                 "application/json", [](uint64_t, uint64_t) { return false; });
+  ASSERT_TRUE(!res);
+  EXPECT_EQ(Error::Canceled, res.error());
+}
+
+static std::string remove_whitespace(const std::string &input) {
+  std::string output;
+  output.reserve(input.size());
+  std::copy_if(input.begin(), input.end(), std::back_inserter(output),
+               [](unsigned char c) { return !std::isspace(c); });
+  return output;
+}
+
 TEST(BaseAuthTest, FromHTTPWatch_Online) {
 #ifdef CPPHTTPLIB_DEFAULT_HTTPBIN
   auto host = "httpbin.org";
@@ -784,8 +1416,8 @@ TEST(BaseAuthTest, FromHTTPWatch_Online) {
     auto res =
         cli.Get(path, {make_basic_authentication_header("hello", "world")});
     ASSERT_TRUE(res);
-    EXPECT_EQ("{\n  \"authenticated\": true, \n  \"user\": \"hello\"\n}\n",
-              res->body);
+    EXPECT_EQ("{\"authenticated\":true,\"user\":\"hello\"}",
+              remove_whitespace(res->body));
     EXPECT_EQ(StatusCode::OK_200, res->status);
   }
 
@@ -793,8 +1425,8 @@ TEST(BaseAuthTest, FromHTTPWatch_Online) {
     cli.set_basic_auth("hello", "world");
     auto res = cli.Get(path);
     ASSERT_TRUE(res);
-    EXPECT_EQ("{\n  \"authenticated\": true, \n  \"user\": \"hello\"\n}\n",
-              res->body);
+    EXPECT_EQ("{\"authenticated\":true,\"user\":\"hello\"}",
+              remove_whitespace(res->body));
     EXPECT_EQ(StatusCode::OK_200, res->status);
   }
 
@@ -850,8 +1482,8 @@ TEST(DigestAuthTest, FromHTTPWatch_Online) {
     for (const auto &path : paths) {
       auto res = cli.Get(path.c_str());
       ASSERT_TRUE(res);
-      EXPECT_EQ("{\n  \"authenticated\": true, \n  \"user\": \"hello\"\n}\n",
-                res->body);
+      EXPECT_EQ("{\"authenticated\":true,\"user\":\"hello\"}",
+                remove_whitespace(res->body));
       EXPECT_EQ(StatusCode::OK_200, res->status);
     }
 
@@ -982,36 +1614,40 @@ TEST(YahooRedirectTest, Redirect_Online) {
   EXPECT_EQ("https://www.yahoo.com/", res->location);
 }
 
+// Previously "nghttp2.org" "/httpbin/redirect-to"
+#define REDIR_HOST "httpbingo.org"
+#define REDIR_PATH "/redirect-to"
+
 TEST(HttpsToHttpRedirectTest, Redirect_Online) {
-  SSLClient cli("nghttp2.org");
+  SSLClient cli(REDIR_HOST);
   cli.set_follow_location(true);
-  auto res = cli.Get(
-      "/httpbin/redirect-to?url=http%3A%2F%2Fwww.google.com&status_code=302");
+  auto res =
+      cli.Get(REDIR_PATH "?url=http%3A%2F%2Fexample.com&status_code=302");
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
 
 TEST(HttpsToHttpRedirectTest2, Redirect_Online) {
-  SSLClient cli("nghttp2.org");
+  SSLClient cli(REDIR_HOST);
   cli.set_follow_location(true);
 
   Params params;
-  params.emplace("url", "http://www.google.com");
+  params.emplace("url", "http://example.com");
   params.emplace("status_code", "302");
 
-  auto res = cli.Get("/httpbin/redirect-to", params, Headers{});
+  auto res = cli.Get(REDIR_PATH, params, Headers{});
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
 
 TEST(HttpsToHttpRedirectTest3, Redirect_Online) {
-  SSLClient cli("nghttp2.org");
+  SSLClient cli(REDIR_HOST);
   cli.set_follow_location(true);
 
   Params params;
-  params.emplace("url", "http://www.google.com");
+  params.emplace("url", "http://example.com");
 
-  auto res = cli.Get("/httpbin/redirect-to?status_code=302", params, Headers{});
+  auto res = cli.Get(REDIR_PATH "?status_code=302", params, Headers{});
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
@@ -1261,6 +1897,32 @@ TEST(PathUrlEncodeTest, PathUrlEncode) {
   }
 }
 
+TEST(PathUrlEncodeTest, IncludePercentEncodingLF) {
+  Server svr;
+
+  svr.Get("/", [](const Request &req, Response &) {
+    EXPECT_EQ("\x0A", req.get_param_value("something"));
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  {
+    Client cli(HOST, PORT);
+    cli.set_url_encode(false);
+
+    auto res = cli.Get("/?something=%0A");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::OK_200, res->status);
+  }
+}
+
 TEST(BindServerTest, DISABLED_BindDualStack) {
   Server svr;
 
@@ -1325,6 +1987,66 @@ TEST(BindServerTest, BindAndListenSeparatelySSLEncryptedKey) {
 }
 #endif
 
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+X509 *readCertificate(const std::string &strFileName) {
+  std::ifstream inStream(strFileName);
+  std::string strCertPEM((std::istreambuf_iterator<char>(inStream)),
+                         std::istreambuf_iterator<char>());
+
+  if (strCertPEM.empty()) return (nullptr);
+
+  BIO *pbCert = BIO_new(BIO_s_mem());
+  BIO_write(pbCert, strCertPEM.c_str(), (int)strCertPEM.size());
+  X509 *pCert = PEM_read_bio_X509(pbCert, NULL, 0, NULL);
+  BIO_free(pbCert);
+
+  return (pCert);
+}
+
+EVP_PKEY *readPrivateKey(const std::string &strFileName) {
+  std::ifstream inStream(strFileName);
+  std::string strPrivateKeyPEM((std::istreambuf_iterator<char>(inStream)),
+                               std::istreambuf_iterator<char>());
+
+  if (strPrivateKeyPEM.empty()) return (nullptr);
+
+  BIO *pbPrivKey = BIO_new(BIO_s_mem());
+  BIO_write(pbPrivKey, strPrivateKeyPEM.c_str(), (int)strPrivateKeyPEM.size());
+  EVP_PKEY *pPrivateKey = PEM_read_bio_PrivateKey(pbPrivKey, NULL, NULL, NULL);
+  BIO_free(pbPrivKey);
+
+  return (pPrivateKey);
+}
+
+TEST(BindServerTest, UpdateCerts) {
+  SSLServer svr(SERVER_CERT_FILE, SERVER_PRIVATE_KEY_FILE, CLIENT_CA_CERT_FILE);
+  int port = svr.bind_to_any_port("0.0.0.0");
+  ASSERT_TRUE(svr.is_valid());
+  ASSERT_TRUE(port > 0);
+
+  X509 *cert = readCertificate(SERVER_CERT_FILE);
+  X509 *ca_cert = readCertificate(CLIENT_CA_CERT_FILE);
+  EVP_PKEY *key = readPrivateKey(SERVER_PRIVATE_KEY_FILE);
+
+  ASSERT_TRUE(cert != nullptr);
+  ASSERT_TRUE(ca_cert != nullptr);
+  ASSERT_TRUE(key != nullptr);
+
+  X509_STORE *cert_store = X509_STORE_new();
+
+  X509_STORE_add_cert(cert_store, ca_cert);
+
+  svr.update_certs(cert, key, cert_store);
+
+  ASSERT_TRUE(svr.is_valid());
+  svr.stop();
+
+  X509_free(cert);
+  X509_free(ca_cert);
+  EVP_PKEY_free(key);
+}
+#endif
+
 TEST(ErrorHandlerTest, ContentLength) {
   Server svr;
 
@@ -1351,7 +2073,7 @@ TEST(ErrorHandlerTest, ContentLength) {
   {
     Client cli(HOST, PORT);
 
-    auto res = cli.Get("/hi");
+    auto res = cli.Get("/hi", {{"Accept-Encoding", ""}});
     ASSERT_TRUE(res);
     EXPECT_EQ(StatusCode::OK_200, res->status);
     EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
@@ -1361,7 +2083,46 @@ TEST(ErrorHandlerTest, ContentLength) {
 }
 
 #ifndef CPPHTTPLIB_NO_EXCEPTIONS
-TEST(ExceptionHandlerTest, ContentLength) {
+TEST(ExceptionTest, WithoutExceptionHandler) {
+  Server svr;
+
+  svr.Get("/exception", [&](const Request & /*req*/, Response & /*res*/) {
+    throw std::runtime_error("exception...");
+  });
+
+  svr.Get("/unknown", [&](const Request & /*req*/, Response & /*res*/) {
+    throw std::runtime_error("exception\r\n...");
+  });
+
+  auto listen_thread = std::thread([&svr]() { svr.listen("localhost", PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli("localhost", PORT);
+
+  {
+    auto res = cli.Get("/exception");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
+    ASSERT_TRUE(res->has_header("EXCEPTION_WHAT"));
+    EXPECT_EQ("exception...", res->get_header_value("EXCEPTION_WHAT"));
+  }
+
+  {
+    auto res = cli.Get("/unknown");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
+    ASSERT_TRUE(res->has_header("EXCEPTION_WHAT"));
+    EXPECT_EQ("exception\\r\\n...", res->get_header_value("EXCEPTION_WHAT"));
+  }
+}
+
+TEST(ExceptionTest, WithExceptionHandler) {
   Server svr;
 
   svr.set_exception_handler([](const Request & /*req*/, Response &res,
@@ -1369,7 +2130,9 @@ TEST(ExceptionHandlerTest, ContentLength) {
     EXPECT_FALSE(ep == nullptr);
     try {
       std::rethrow_exception(ep);
-    } catch (std::exception &e) { EXPECT_EQ("abc", std::string(e.what())); }
+    } catch (std::exception &e) {
+      EXPECT_EQ("abc", std::string(e.what()));
+    } catch (...) {}
     res.status = StatusCode::InternalServerError_500;
     res.set_content("abcdefghijklmnopqrstuvwxyz",
                     "text/html"); // <= Content-Length still 13 at this point
@@ -1393,7 +2156,7 @@ TEST(ExceptionHandlerTest, ContentLength) {
     Client cli(HOST, PORT);
 
     for (size_t j = 0; j < 100; j++) {
-      auto res = cli.Get("/hi");
+      auto res = cli.Get("/hi", {{"Accept-Encoding", ""}});
       ASSERT_TRUE(res);
       EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
       EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
@@ -1404,13 +2167,73 @@ TEST(ExceptionHandlerTest, ContentLength) {
     cli.set_keep_alive(true);
 
     for (size_t j = 0; j < 100; j++) {
-      auto res = cli.Get("/hi");
+      auto res = cli.Get("/hi", {{"Accept-Encoding", ""}});
       ASSERT_TRUE(res);
       EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
       EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
       EXPECT_EQ("26", res->get_header_value("Content-Length"));
       EXPECT_EQ("abcdefghijklmnopqrstuvwxyz", res->body);
     }
+  }
+}
+
+TEST(ExceptionTest, AndErrorHandler) {
+  Server svr;
+
+  svr.set_error_handler([](const Request & /*req*/, Response &res) {
+    if (res.body.empty()) { res.set_content("NOT_FOUND", "text/html"); }
+  });
+
+  svr.set_exception_handler(
+      [](const Request & /*req*/, Response &res, std::exception_ptr ep) {
+        EXPECT_FALSE(ep == nullptr);
+        try {
+          std::rethrow_exception(ep);
+        } catch (std::exception &e) {
+          res.set_content(e.what(), "text/html");
+        } catch (...) {}
+        res.status = StatusCode::InternalServerError_500;
+      });
+
+  svr.Get("/exception", [](const Request & /*req*/, Response & /*res*/) {
+    throw std::runtime_error("EXCEPTION");
+  });
+
+  svr.Get("/error", [](const Request & /*req*/, Response &res) {
+    res.set_content("ERROR", "text/html");
+    res.status = StatusCode::InternalServerError_500;
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+
+  {
+    auto res = cli.Get("/exception");
+    ASSERT_TRUE(res);
+    EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
+    EXPECT_EQ("EXCEPTION", res->body);
+  }
+
+  {
+    auto res = cli.Get("/error");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
+    EXPECT_EQ("ERROR", res->body);
+  }
+
+  {
+    auto res = cli.Get("/invalid");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::NotFound_404, res->status);
+    EXPECT_EQ("NOT_FOUND", res->body);
   }
 }
 #endif
@@ -1440,7 +2263,7 @@ TEST(NoContentTest, ContentLength) {
   }
 }
 
-TEST(RoutingHandlerTest, PreRoutingHandler) {
+TEST(RoutingHandlerTest, PreAndPostRoutingHandlers) {
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
   SSLServer svr(SERVER_CERT_FILE, SERVER_PRIVATE_KEY_FILE);
   ASSERT_TRUE(svr.is_valid());
@@ -1528,6 +2351,63 @@ TEST(RoutingHandlerTest, PreRoutingHandler) {
     EXPECT_EQ("Error", res->body);
     EXPECT_EQ(0U, res->get_header_value_count("PRE_ROUTING"));
     EXPECT_EQ(0U, res->get_header_value_count("POST_ROUTING"));
+  }
+}
+
+TEST(RequestHandlerTest, PreRequestHandler) {
+  auto route_path = "/user/:user";
+
+  Server svr;
+
+  svr.Get("/hi", [](const Request &, Response &res) {
+    res.set_content("hi", "text/plain");
+  });
+
+  svr.Get(route_path, [](const Request &req, Response &res) {
+    res.set_content(req.path_params.at("user"), "text/plain");
+  });
+
+  svr.set_pre_request_handler([&](const Request &req, Response &res) {
+    if (req.matched_route == route_path) {
+      auto user = req.path_params.at("user");
+      if (user != "john") {
+        res.status = StatusCode::Forbidden_403;
+        res.set_content("error", "text/html");
+        return Server::HandlerResponse::Handled;
+      }
+    }
+    return Server::HandlerResponse::Unhandled;
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  {
+    auto res = cli.Get("/hi");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::OK_200, res->status);
+    EXPECT_EQ("hi", res->body);
+  }
+
+  {
+    auto res = cli.Get("/user/john");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::OK_200, res->status);
+    EXPECT_EQ("john", res->body);
+  }
+
+  {
+    auto res = cli.Get("/user/invalid-user");
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::Forbidden_403, res->status);
+    EXPECT_EQ("error", res->body);
   }
 }
 
@@ -1647,6 +2527,18 @@ protected:
     svr_.Get("/hi",
              [&](const Request & /*req*/, Response &res) {
                res.set_content("Hello World!", "text/plain");
+             })
+        .Get("/file_content",
+             [&](const Request & /*req*/, Response &res) {
+               res.set_file_content("./www/dir/test.html");
+             })
+        .Get("/file_content_with_content_type",
+             [&](const Request & /*req*/, Response &res) {
+               res.set_file_content("./www/file", "text/plain");
+             })
+        .Get("/invalid_file_content",
+             [&](const Request & /*req*/, Response &res) {
+               res.set_file_content("./www/dir/invalid_file_path");
              })
         .Get("/http_response_splitting",
              [&](const Request & /*req*/, Response &res) {
@@ -1868,6 +2760,11 @@ protected:
              [&](const Request & /*req*/, Response &res) {
                res.set_content("abcdefg", "text/plain");
              })
+        .Get("/with-range-customized-response",
+             [&](const Request & /*req*/, Response &res) {
+               res.status = StatusCode::BadRequest_400;
+               res.set_content(JSON_DATA, "application/json");
+             })
         .Post("/chunked",
               [&](const Request &req, Response & /*res*/) {
                 EXPECT_EQ(req.body, "dechunked post body");
@@ -2031,6 +2928,11 @@ protected:
                EXPECT_EQ(LONG_QUERY_URL, req.target);
                EXPECT_EQ(LONG_QUERY_VALUE, req.get_param_value("key"));
              })
+        .Get("/too-long-query-value",
+             [&](const Request &req, Response & /*res*/) {
+               EXPECT_EQ(TOO_LONG_QUERY_URL, req.target);
+               EXPECT_EQ(TOO_LONG_QUERY_VALUE, req.get_param_value("key"));
+             })
         .Get("/array-param",
              [&](const Request &req, Response & /*res*/) {
                EXPECT_EQ(3u, req.get_param_value_count("array"));
@@ -2171,7 +3073,13 @@ protected:
                res.status = 401;
                res.set_header("WWW-Authenticate", "Basic realm=123456");
              })
-#if defined(CPPHTTPLIB_ZLIB_SUPPORT) || defined(CPPHTTPLIB_BROTLI_SUPPORT)
+        .Delete("/issue609",
+                [](const httplib::Request &, httplib::Response &res,
+                   const httplib::ContentReader &) {
+                  res.set_content("ok", "text/plain");
+                })
+#if defined(CPPHTTPLIB_ZLIB_SUPPORT) || defined(CPPHTTPLIB_BROTLI_SUPPORT) ||  \
+    defined(CPPHTTPLIB_ZSTD_SUPPORT)
         .Get("/compress",
              [&](const Request & /*req*/, Response &res) {
                res.set_content(
@@ -2245,6 +3153,49 @@ TEST_F(ServerTest, GetMethod200) {
   EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
   EXPECT_EQ(1U, res->get_header_value_count("Content-Type"));
   EXPECT_EQ("Hello World!", res->body);
+}
+
+TEST_F(ServerTest, GetEmptyFile) {
+  auto res = cli_.Get("/empty_file");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ("application/octet-stream", res->get_header_value("Content-Type"));
+  EXPECT_EQ(0, std::stoi(res->get_header_value("Content-Length")));
+  EXPECT_EQ("", res->body);
+}
+
+TEST_F(ServerTest, GetFileContent) {
+  auto res = cli_.Get("/file_content");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
+  EXPECT_EQ(9, std::stoi(res->get_header_value("Content-Length")));
+  EXPECT_EQ("test.html", res->body);
+}
+
+TEST_F(ServerTest, GetFileContentWithRange) {
+  auto res = cli_.Get("/file_content", {{make_range_header({{1, 3}})}});
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::PartialContent_206, res->status);
+  EXPECT_EQ("text/html", res->get_header_value("Content-Type"));
+  EXPECT_EQ("bytes 1-3/9", res->get_header_value("Content-Range"));
+  EXPECT_EQ(3, std::stoi(res->get_header_value("Content-Length")));
+  EXPECT_EQ("est", res->body);
+}
+
+TEST_F(ServerTest, GetFileContentWithContentType) {
+  auto res = cli_.Get("/file_content_with_content_type");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ(5, std::stoi(res->get_header_value("Content-Length")));
+  EXPECT_EQ("file\n", res->body);
+}
+
+TEST_F(ServerTest, GetInvalidFileContent) {
+  auto res = cli_.Get("/invalid_file_content");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::NotFound_404, res->status);
 }
 
 TEST_F(ServerTest, GetMethod200withPercentEncoding) {
@@ -2685,7 +3636,7 @@ TEST_F(ServerTest, LongRequest) {
 
 TEST_F(ServerTest, TooLongRequest) {
   std::string request;
-  for (size_t i = 0; i < 545; i++) {
+  for (size_t i = 0; i < 546; i++) {
     request += "/TooLongRequest";
   }
   request += "_NG";
@@ -2694,6 +3645,19 @@ TEST_F(ServerTest, TooLongRequest) {
 
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::UriTooLong_414, res->status);
+}
+
+TEST_F(ServerTest, AlmostTooLongRequest) {
+  // test for #2046 - URI length check shouldn't include other content on req
+  // line URI is max URI length, minus 14 other chars in req line (GET, space,
+  // leading /, space, HTTP/1.1)
+  std::string request =
+      "/" + string(CPPHTTPLIB_REQUEST_URI_MAX_LENGTH - 14, 'A');
+
+  auto res = cli_.Get(request.c_str());
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::NotFound_404, res->status);
 }
 
 TEST_F(ServerTest, LongHeader) {
@@ -2755,6 +3719,13 @@ TEST_F(ServerTest, LongQueryValue) {
 
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::UriTooLong_414, res->status);
+}
+
+TEST_F(ServerTest, TooLongQueryValue) {
+  auto res = cli_.Get(TOO_LONG_QUERY_URL.c_str());
+
+  ASSERT_FALSE(res);
+  EXPECT_EQ(Error::Read, res.error());
 }
 
 TEST_F(ServerTest, TooLongHeader) {
@@ -2988,12 +3959,29 @@ TEST_F(ServerTest, GetStreamedWithRangeError) {
 }
 
 TEST_F(ServerTest, GetRangeWithMaxLongLength) {
-  auto res =
-      cli_.Get("/with-range", {{"Range", "bytes=0-9223372036854775807"}});
-  EXPECT_EQ(StatusCode::RangeNotSatisfiable_416, res->status);
-  EXPECT_EQ("0", res->get_header_value("Content-Length"));
-  EXPECT_EQ(false, res->has_header("Content-Range"));
-  EXPECT_EQ(0U, res->body.size());
+  auto res = cli_.Get(
+      "/with-range",
+      {{"Range", "bytes=0-" + std::to_string(std::numeric_limits<long>::max())},
+       {"Accept-Encoding", ""}});
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::PartialContent_206, res->status);
+  EXPECT_EQ("7", res->get_header_value("Content-Length"));
+  EXPECT_EQ(true, res->has_header("Content-Range"));
+  EXPECT_EQ("bytes 0-6/7", res->get_header_value("Content-Range"));
+  EXPECT_EQ(std::string("abcdefg"), res->body);
+}
+
+TEST_F(ServerTest, GetRangeWithZeroToInfinite) {
+  auto res = cli_.Get("/with-range", {
+                                         {"Range", "bytes=0-"},
+                                         {"Accept-Encoding", ""},
+                                     });
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::PartialContent_206, res->status);
+  EXPECT_EQ("7", res->get_header_value("Content-Length"));
+  EXPECT_EQ(true, res->has_header("Content-Range"));
+  EXPECT_EQ("bytes 0-6/7", res->get_header_value("Content-Range"));
+  EXPECT_EQ(std::string("abcdefg"), res->body);
 }
 
 TEST_F(ServerTest, GetStreamedWithRangeMultipart) {
@@ -3083,7 +4071,10 @@ TEST_F(ServerTest, ClientStop) {
 }
 
 TEST_F(ServerTest, GetWithRange1) {
-  auto res = cli_.Get("/with-range", {{make_range_header({{3, 5}})}});
+  auto res = cli_.Get("/with-range", {
+                                         make_range_header({{3, 5}}),
+                                         {"Accept-Encoding", ""},
+                                     });
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::PartialContent_206, res->status);
   EXPECT_EQ("3", res->get_header_value("Content-Length"));
@@ -3093,7 +4084,10 @@ TEST_F(ServerTest, GetWithRange1) {
 }
 
 TEST_F(ServerTest, GetWithRange2) {
-  auto res = cli_.Get("/with-range", {{make_range_header({{1, -1}})}});
+  auto res = cli_.Get("/with-range", {
+                                         make_range_header({{1, -1}}),
+                                         {"Accept-Encoding", ""},
+                                     });
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::PartialContent_206, res->status);
   EXPECT_EQ("6", res->get_header_value("Content-Length"));
@@ -3103,7 +4097,10 @@ TEST_F(ServerTest, GetWithRange2) {
 }
 
 TEST_F(ServerTest, GetWithRange3) {
-  auto res = cli_.Get("/with-range", {{make_range_header({{0, 0}})}});
+  auto res = cli_.Get("/with-range", {
+                                         make_range_header({{0, 0}}),
+                                         {"Accept-Encoding", ""},
+                                     });
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::PartialContent_206, res->status);
   EXPECT_EQ("1", res->get_header_value("Content-Length"));
@@ -3113,7 +4110,10 @@ TEST_F(ServerTest, GetWithRange3) {
 }
 
 TEST_F(ServerTest, GetWithRange4) {
-  auto res = cli_.Get("/with-range", {{make_range_header({{-1, 2}})}});
+  auto res = cli_.Get("/with-range", {
+                                         make_range_header({{-1, 2}}),
+                                         {"Accept-Encoding", ""},
+                                     });
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::PartialContent_206, res->status);
   EXPECT_EQ("2", res->get_header_value("Content-Length"));
@@ -3144,10 +4144,37 @@ TEST_F(ServerTest, GetWithRangeMultipartOffsetGreaterThanContent) {
   EXPECT_EQ(StatusCode::RangeNotSatisfiable_416, res->status);
 }
 
+TEST_F(ServerTest, GetWithRangeCustomizedResponse) {
+  auto res = cli_.Get("/with-range-customized-response",
+                      {{make_range_header({{1, 2}})}});
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::BadRequest_400, res->status);
+  EXPECT_EQ(true, res->has_header("Content-Length"));
+  EXPECT_EQ(false, res->has_header("Content-Range"));
+  EXPECT_EQ(JSON_DATA, res->body);
+}
+
+TEST_F(ServerTest, GetWithRangeMultipartCustomizedResponseMultipleRange) {
+  auto res = cli_.Get("/with-range-customized-response",
+                      {{make_range_header({{1, 2}, {4, 5}})}});
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::BadRequest_400, res->status);
+  EXPECT_EQ(true, res->has_header("Content-Length"));
+  EXPECT_EQ(false, res->has_header("Content-Range"));
+  EXPECT_EQ(JSON_DATA, res->body);
+}
+
 TEST_F(ServerTest, Issue1772) {
   auto res = cli_.Get("/issue1772", {{make_range_header({{1000, -1}})}});
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::Unauthorized_401, res->status);
+}
+
+TEST_F(ServerTest, Issue609) {
+  auto res = cli_.Delete("/issue609");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ(std::string("ok"), res->body);
 }
 
 TEST_F(ServerTest, GetStreamedChunked) {
@@ -3407,7 +4434,10 @@ TEST_F(ServerTest, PutLargeFileWithGzip2) {
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
   EXPECT_EQ(LARGE_DATA, res->body);
-  EXPECT_EQ(101942u, res.get_request_header_value_u64("Content-Length"));
+  // The compressed size should be less than a 10th of the original. May vary
+  // depending on the zlib library.
+  EXPECT_LT(res.get_request_header_value_u64("Content-Length"),
+            static_cast<uint64_t>(10 * 1024 * 1024));
   EXPECT_EQ("gzip", res.get_request_header_value("Content-Encoding"));
 }
 
@@ -3838,7 +4868,9 @@ TEST_F(ServerTest, Gzip) {
 }
 
 TEST_F(ServerTest, GzipWithoutAcceptEncoding) {
-  auto res = cli_.Get("/compress");
+  Headers headers;
+  headers.emplace("Accept-Encoding", "");
+  auto res = cli_.Get("/compress", headers);
 
   ASSERT_TRUE(res);
   EXPECT_TRUE(res->get_header_value("Content-Encoding").empty());
@@ -3887,12 +4919,16 @@ TEST_F(ServerTest, GzipWithoutDecompressing) {
 }
 
 TEST_F(ServerTest, GzipWithContentReceiverWithoutAcceptEncoding) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "");
+
   std::string body;
-  auto res = cli_.Get("/compress", [&](const char *data, uint64_t data_length) {
-    EXPECT_EQ(100U, data_length);
-    body.append(data, data_length);
-    return true;
-  });
+  auto res = cli_.Get("/compress", headers,
+                      [&](const char *data, uint64_t data_length) {
+                        EXPECT_EQ(100U, data_length);
+                        body.append(data, data_length);
+                        return true;
+                      });
 
   ASSERT_TRUE(res);
   EXPECT_TRUE(res->get_header_value("Content-Encoding").empty());
@@ -3971,13 +5007,252 @@ TEST_F(ServerTest, Brotli) {
 }
 #endif
 
+#ifdef CPPHTTPLIB_ZSTD_SUPPORT
+TEST_F(ServerTest, Zstd) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+  auto res = cli_.Get("/compress", headers);
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ("zstd", res->get_header_value("Content-Encoding"));
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ("26", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, ZstdWithoutAcceptEncoding) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "");
+  auto res = cli_.Get("/compress", headers);
+
+  ASSERT_TRUE(res);
+  EXPECT_TRUE(res->get_header_value("Content-Encoding").empty());
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ("100", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, ZstdWithContentReceiver) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+  std::string body;
+  auto res = cli_.Get("/compress", headers,
+                      [&](const char *data, uint64_t data_length) {
+                        EXPECT_EQ(100U, data_length);
+                        body.append(data, data_length);
+                        return true;
+                      });
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ("zstd", res->get_header_value("Content-Encoding"));
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ("26", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, ZstdWithoutDecompressing) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+
+  cli_.set_decompress(false);
+  auto res = cli_.Get("/compress", headers);
+
+  unsigned char compressed[26] = {0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x64, 0x8d,
+                                  0x00, 0x00, 0x50, 0x31, 0x32, 0x33, 0x34,
+                                  0x35, 0x36, 0x37, 0x38, 0x39, 0x30, 0x01,
+                                  0x00, 0xd7, 0xa9, 0x20, 0x01};
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ("zstd", res->get_header_value("Content-Encoding"));
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ("26", res->get_header_value("Content-Length"));
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  ASSERT_EQ(26U, res->body.size());
+  EXPECT_TRUE(std::memcmp(compressed, res->body.data(), sizeof(compressed)) ==
+              0);
+}
+
+TEST_F(ServerTest, ZstdWithContentReceiverWithoutAcceptEncoding) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "");
+
+  std::string body;
+  auto res = cli_.Get("/compress", headers,
+                      [&](const char *data, uint64_t data_length) {
+                        EXPECT_EQ(100U, data_length);
+                        body.append(data, data_length);
+                        return true;
+                      });
+
+  ASSERT_TRUE(res);
+  EXPECT_TRUE(res->get_header_value("Content-Encoding").empty());
+  EXPECT_EQ("text/plain", res->get_header_value("Content-Type"));
+  EXPECT_EQ("100", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, NoZstd) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+  auto res = cli_.Get("/nocompress", headers);
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ(false, res->has_header("Content-Encoding"));
+  EXPECT_EQ("application/octet-stream", res->get_header_value("Content-Type"));
+  EXPECT_EQ("100", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            res->body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, NoZstdWithContentReceiver) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+  std::string body;
+  auto res = cli_.Get("/nocompress", headers,
+                      [&](const char *data, uint64_t data_length) {
+                        EXPECT_EQ(100U, data_length);
+                        body.append(data, data_length);
+                        return true;
+                      });
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ(false, res->has_header("Content-Encoding"));
+  EXPECT_EQ("application/octet-stream", res->get_header_value("Content-Type"));
+  EXPECT_EQ("100", res->get_header_value("Content-Length"));
+  EXPECT_EQ("123456789012345678901234567890123456789012345678901234567890123456"
+            "7890123456789012345678901234567890",
+            body);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+// TODO: How to enable zstd ??
+TEST_F(ServerTest, MultipartFormDataZstd) {
+  MultipartFormDataItems items = {
+      {"key1", "test", "", ""},
+      {"key2", "--abcdefg123", "", ""},
+  };
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+
+  cli_.set_compress(true);
+  auto res = cli_.Post("/compress-multipart", headers, items);
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+}
+
+TEST_F(ServerTest, PutWithContentProviderWithZstd) {
+  Headers headers;
+  headers.emplace("Accept-Encoding", "zstd");
+
+  cli_.set_compress(true);
+  auto res = cli_.Put(
+      "/put", headers, 3,
+      [](size_t /*offset*/, size_t /*length*/, DataSink &sink) {
+        sink.os << "PUT";
+        return true;
+      },
+      "text/plain");
+
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ("PUT", res->body);
+}
+
+TEST(ZstdDecompressor, ChunkedDecompression) {
+  std::string data;
+  for (size_t i = 0; i < 32 * 1024; ++i) {
+    data.push_back(static_cast<char>('a' + i % 26));
+  }
+
+  std::string compressed_data;
+  {
+    httplib::detail::zstd_compressor compressor;
+    bool result = compressor.compress(
+        data.data(), data.size(),
+        /*last=*/true,
+        [&](const char *compressed_data_chunk, size_t compressed_data_size) {
+          compressed_data.insert(compressed_data.size(), compressed_data_chunk,
+                                 compressed_data_size);
+          return true;
+        });
+    ASSERT_TRUE(result);
+  }
+
+  std::string decompressed_data;
+  {
+    httplib::detail::zstd_decompressor decompressor;
+
+    // Chunk size is chosen specifically to have a decompressed chunk size equal
+    // to 16384 bytes 16384 bytes is the size of decompressor output buffer
+    size_t chunk_size = 130;
+    for (size_t chunk_begin = 0; chunk_begin < compressed_data.size();
+         chunk_begin += chunk_size) {
+      size_t current_chunk_size =
+          std::min(compressed_data.size() - chunk_begin, chunk_size);
+      bool result = decompressor.decompress(
+          compressed_data.data() + chunk_begin, current_chunk_size,
+          [&](const char *decompressed_data_chunk,
+              size_t decompressed_data_chunk_size) {
+            decompressed_data.insert(decompressed_data.size(),
+                                     decompressed_data_chunk,
+                                     decompressed_data_chunk_size);
+            return true;
+          });
+      ASSERT_TRUE(result);
+    }
+  }
+  ASSERT_EQ(data, decompressed_data);
+}
+
+TEST(ZstdDecompressor, Decompress) {
+  std::string original_text = "Compressed with ZSTD";
+  unsigned char data[29] = {0x28, 0xb5, 0x2f, 0xfd, 0x20, 0x14, 0xa1, 0x00,
+                            0x00, 0x43, 0x6f, 0x6d, 0x70, 0x72, 0x65, 0x73,
+                            0x73, 0x65, 0x64, 0x20, 0x77, 0x69, 0x74, 0x68,
+                            0x20, 0x5a, 0x53, 0x54, 0x44};
+  std::string compressed_data(data, data + sizeof(data) / sizeof(data[0]));
+
+  std::string decompressed_data;
+  {
+    httplib::detail::zstd_decompressor decompressor;
+
+    bool result = decompressor.decompress(
+        compressed_data.data(), compressed_data.size(),
+        [&](const char *decompressed_data_chunk,
+            size_t decompressed_data_chunk_size) {
+          decompressed_data.insert(decompressed_data.size(),
+                                   decompressed_data_chunk,
+                                   decompressed_data_chunk_size);
+          return true;
+        });
+    ASSERT_TRUE(result);
+  }
+  ASSERT_EQ(original_text, decompressed_data);
+}
+#endif
+
 // Sends a raw request to a server listening at HOST:PORT.
 static bool send_request(time_t read_timeout_sec, const std::string &req,
                          std::string *resp = nullptr) {
   auto error = Error::Success;
 
   auto client_sock = detail::create_client_socket(
-      HOST, "", PORT, AF_UNSPEC, false, nullptr,
+      HOST, "", PORT, AF_UNSPEC, false, false, nullptr,
       /*connection_timeout_sec=*/5, 0,
       /*read_timeout_sec=*/5, 0,
       /*write_timeout_sec=*/5, 0, std::string(), error);
@@ -3985,7 +5260,8 @@ static bool send_request(time_t read_timeout_sec, const std::string &req,
   if (client_sock == INVALID_SOCKET) { return false; }
 
   auto ret = detail::process_client_socket(
-      client_sock, read_timeout_sec, 0, 0, 0, [&](Stream &strm) {
+      client_sock, read_timeout_sec, 0, 0, 0, 0,
+      std::chrono::steady_clock::time_point::min(), [&](Stream &strm) {
         if (req.size() !=
             static_cast<size_t>(strm.write(req.data(), req.size()))) {
           return false;
@@ -4029,8 +5305,10 @@ TEST(ServerRequestParsingTest, TrimWhitespaceFromHeaderValues) {
                           "Connection: close\r\n"
                           "\r\n";
 
-  ASSERT_TRUE(send_request(5, req));
-  EXPECT_EQ(header_value, "\v bar \x1B");
+  std::string res;
+  ASSERT_TRUE(send_request(5, req, &res));
+  EXPECT_EQ(header_value, "");
+  EXPECT_EQ("HTTP/1.1 400 Bad Request", res.substr(0, 24));
 }
 
 // Sends a raw request and verifies that there isn't a crash or exception.
@@ -4043,6 +5321,10 @@ static void test_raw_request(const std::string &req,
   svr.Put("/put_hi", [&](const Request & /*req*/, Response &res) {
     res.set_content("ok", "text/plain");
   });
+  svr.Get("/header_field_value_check",
+          [&](const Request & /*req*/, Response &res) {
+            res.set_content("ok", "text/plain");
+          });
 
   // Server read timeout must be longer than the client read timeout for the
   // bug to reproduce, probably to force the server to process a request
@@ -4176,6 +5458,39 @@ TEST(ServerRequestParsingTest, InvalidSpaceInURL) {
   EXPECT_EQ("HTTP/1.1 400 Bad Request", out.substr(0, 24));
 }
 
+TEST(ServerRequestParsingTest, InvalidFieldValueContains_CR_LF_NUL) {
+  std::string out;
+  std::string request(
+      "GET /header_field_value_check HTTP/1.1\r\nTest: [\r\x00\n]\r\n\r\n", 55);
+  test_raw_request(request, &out);
+  EXPECT_EQ("HTTP/1.1 400 Bad Request", out.substr(0, 24));
+}
+
+TEST(ServerRequestParsingTest, InvalidFieldValueContains_LF) {
+  std::string out;
+  std::string request(
+      "GET /header_field_value_check HTTP/1.1\r\nTest: [\n\n\n]\r\n\r\n", 55);
+  test_raw_request(request, &out);
+  EXPECT_EQ("HTTP/1.1 400 Bad Request", out.substr(0, 24));
+}
+
+TEST(ServerRequestParsingTest, InvalidFieldNameContains_PreceedingSpaces) {
+  std::string out;
+  std::string request(
+      "GET /header_field_value_check HTTP/1.1\r\n  Test: val\r\n\r\n", 55);
+  test_raw_request(request, &out);
+  EXPECT_EQ("HTTP/1.1 400 Bad Request", out.substr(0, 24));
+}
+
+TEST(ServerRequestParsingTest, EmptyFieldValue) {
+  std::string out;
+
+  test_raw_request("GET /header_field_value_check HTTP/1.1\r\n"
+                   "Test: \r\n\r\n",
+                   &out);
+  EXPECT_EQ("HTTP/1.1 200 OK", out.substr(0, 15));
+}
+
 TEST(ServerStopTest, StopServerWithChunkedTransmission) {
   Server svr;
 
@@ -4251,6 +5566,52 @@ TEST(ServerStopTest, ListenFailure) {
   t.join();
 }
 
+TEST(ServerStopTest, Decommision) {
+  Server svr;
+
+  svr.Get("/hi", [&](const Request &, Response &res) { res.body = "hi..."; });
+
+  for (int i = 0; i < 4; i++) {
+    auto is_even = !(i % 2);
+
+    std::thread t{[&] {
+      try {
+        std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+        if (is_even) {
+          throw std::runtime_error("Some thing that happens to go wrong.");
+        }
+
+        svr.listen(HOST, PORT);
+      } catch (...) { svr.decommission(); }
+    }};
+
+    svr.wait_until_ready();
+
+    // Server is up
+    {
+      Client cli(HOST, PORT);
+      auto res = cli.Get("/hi");
+      if (is_even) {
+        EXPECT_FALSE(res);
+      } else {
+        EXPECT_TRUE(res);
+        EXPECT_EQ("hi...", res->body);
+      }
+    }
+
+    svr.stop();
+    t.join();
+
+    // Server is down...
+    {
+      Client cli(HOST, PORT);
+      auto res = cli.Get("/hi");
+      EXPECT_FALSE(res);
+    }
+  }
+}
+
 TEST(StreamingTest, NoContentLengthStreaming) {
   Server svr;
 
@@ -4283,6 +5644,9 @@ TEST(StreamingTest, NoContentLengthStreaming) {
           s += std::string(data, len);
           return true;
         });
+
+    ASSERT_TRUE(res);
+    EXPECT_EQ(StatusCode::OK_200, res->status);
     EXPECT_EQ("aaabbb", s);
   });
   auto get_se = detail::scope_exit([&] { get_thread.join(); });
@@ -4332,17 +5696,8 @@ TEST(MountTest, Unmount) {
   EXPECT_EQ(StatusCode::NotFound_404, res->status);
 }
 
-#ifndef CPPHTTPLIB_NO_EXCEPTIONS
-TEST(ExceptionTest, ThrowExceptionInHandler) {
+TEST(MountTest, Redicect) {
   Server svr;
-
-  svr.Get("/exception", [&](const Request & /*req*/, Response & /*res*/) {
-    throw std::runtime_error("exception...");
-  });
-
-  svr.Get("/unknown", [&](const Request & /*req*/, Response & /*res*/) {
-    throw std::runtime_error("exception\r\n...");
-  });
 
   auto listen_thread = std::thread([&svr]() { svr.listen("localhost", PORT); });
   auto se = detail::scope_exit([&] {
@@ -4351,27 +5706,53 @@ TEST(ExceptionTest, ThrowExceptionInHandler) {
     ASSERT_FALSE(svr.is_running());
   });
 
+  svr.set_mount_point("/", "./www");
   svr.wait_until_ready();
 
   Client cli("localhost", PORT);
 
-  {
-    auto res = cli.Get("/exception");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
-    ASSERT_TRUE(res->has_header("EXCEPTION_WHAT"));
-    EXPECT_EQ("exception...", res->get_header_value("EXCEPTION_WHAT"));
-  }
+  auto res = cli.Get("/dir/");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
 
-  {
-    auto res = cli.Get("/unknown");
-    ASSERT_TRUE(res);
-    EXPECT_EQ(StatusCode::InternalServerError_500, res->status);
-    ASSERT_TRUE(res->has_header("EXCEPTION_WHAT"));
-    EXPECT_EQ("exception\\r\\n...", res->get_header_value("EXCEPTION_WHAT"));
-  }
+  res = cli.Get("/dir");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::MovedPermanently_301, res->status);
+
+  res = cli.Get("/file");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+
+  res = cli.Get("/file/");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::NotFound_404, res->status);
+
+  cli.set_follow_location(true);
+  res = cli.Get("/dir");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
 }
-#endif
+
+TEST(MountTest, MultibytesPathName) {
+  Server svr;
+
+  auto listen_thread = std::thread([&svr]() { svr.listen("localhost", PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.set_mount_point("/", "./www");
+  svr.wait_until_ready();
+
+  Client cli("localhost", PORT);
+
+  auto res = cli.Get(u8"/日本語Dir/日本語File.txt");
+  ASSERT_TRUE(res);
+  EXPECT_EQ(StatusCode::OK_200, res->status);
+  EXPECT_EQ(u8"日本語コンテンツ", res->body);
+}
 
 TEST(KeepAliveTest, ReadTimeout) {
   Server svr;
@@ -4408,6 +5789,41 @@ TEST(KeepAliveTest, ReadTimeout) {
   EXPECT_EQ("b", resb->body);
 }
 
+TEST(KeepAliveTest, MaxCount) {
+  size_t keep_alive_max_count = 3;
+
+  Server svr;
+  svr.set_keep_alive_max_count(keep_alive_max_count);
+
+  svr.Get("/hi", [](const httplib::Request &, httplib::Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+
+  auto listen_thread = std::thread([&svr] { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.set_keep_alive(true);
+
+  for (size_t i = 0; i < 5; i++) {
+    auto result = cli.Get("/hi");
+    ASSERT_TRUE(result);
+    EXPECT_EQ(StatusCode::OK_200, result->status);
+
+    if (i == keep_alive_max_count - 1) {
+      EXPECT_EQ("close", result->get_header_value("Connection"));
+    } else {
+      EXPECT_FALSE(result->has_header("Connection"));
+    }
+  }
+}
+
 TEST(KeepAliveTest, Issue1041) {
   Server svr;
   svr.set_keep_alive_timeout(3);
@@ -4437,6 +5853,41 @@ TEST(KeepAliveTest, Issue1041) {
   result = cli.Get("/hi");
   ASSERT_TRUE(result);
   EXPECT_EQ(StatusCode::OK_200, result->status);
+}
+
+TEST(KeepAliveTest, Issue1959) {
+  Server svr;
+  svr.set_keep_alive_timeout(5);
+
+  svr.Get("/a", [&](const Request & /*req*/, Response &res) {
+    res.set_content("a", "text/plain");
+  });
+
+  auto listen_thread = std::thread([&svr]() { svr.listen("localhost", PORT); });
+  auto se = detail::scope_exit([&] {
+    if (!svr.is_running()) return;
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli("localhost", PORT);
+  cli.set_keep_alive(true);
+
+  using namespace std::chrono;
+  auto start = steady_clock::now();
+
+  cli.Get("/a");
+
+  svr.stop();
+  listen_thread.join();
+
+  auto end = steady_clock::now();
+  auto elapsed = duration_cast<milliseconds>(end - start).count();
+
+  EXPECT_LT(elapsed, 5000);
 }
 
 #ifdef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -4480,6 +5931,63 @@ TEST(KeepAliveTest, SSLClientReconnection) {
   result = cli.Get("/hi");
   ASSERT_TRUE(result);
   EXPECT_EQ(StatusCode::OK_200, result->status);
+}
+
+TEST(KeepAliveTest, SSLClientReconnectionPost) {
+  SSLServer svr(SERVER_CERT_FILE, SERVER_PRIVATE_KEY_FILE);
+  ASSERT_TRUE(svr.is_valid());
+  svr.set_keep_alive_timeout(1);
+  std::string content = "reconnect";
+
+  svr.Post("/hi", [](const httplib::Request &, httplib::Response &res) {
+    res.set_content("Hello World!", "text/plain");
+  });
+
+  auto listen_thread = std::thread([&svr] { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  SSLClient cli(HOST, PORT);
+  cli.enable_server_certificate_verification(false);
+  cli.set_keep_alive(true);
+
+  auto result = cli.Post(
+      "/hi", content.size(),
+      [&content](size_t /*offset*/, size_t /*length*/, DataSink &sink) {
+        sink.write(content.c_str(), content.size());
+        return true;
+      },
+      "text/plain");
+  ASSERT_TRUE(result);
+  EXPECT_EQ(200, result->status);
+
+  std::this_thread::sleep_for(std::chrono::seconds(2));
+
+  // Recoonect
+  result = cli.Post(
+      "/hi", content.size(),
+      [&content](size_t /*offset*/, size_t /*length*/, DataSink &sink) {
+        sink.write(content.c_str(), content.size());
+        return true;
+      },
+      "text/plain");
+  ASSERT_TRUE(result);
+  EXPECT_EQ(200, result->status);
+
+  result = cli.Post(
+      "/hi", content.size(),
+      [&content](size_t /*offset*/, size_t /*length*/, DataSink &sink) {
+        sink.write(content.c_str(), content.size());
+        return true;
+      },
+      "text/plain");
+  ASSERT_TRUE(result);
+  EXPECT_EQ(200, result->status);
 }
 #endif
 
@@ -4576,6 +6084,7 @@ TEST(LongPollingTest, ClientCloseDetection) {
           auto count = 10;
           while (count > 0 && sink.is_writable()) {
             this_thread::sleep_for(chrono::milliseconds(10));
+            count--;
           }
           EXPECT_FALSE(sink.is_writable()); // the socket is closed
           return true;
@@ -5042,7 +6551,7 @@ TEST(SSLClientTest, ServerCertificateVerification4) {
 
 TEST(SSLClientTest, ServerCertificateVerification5_Online) {
   std::string cert;
-  detail::read_file(CA_CERT_FILE, cert);
+  read_file(CA_CERT_FILE, cert);
 
   SSLClient cli("google.com");
   cli.load_ca_cert_store(cert.data(), cert.size());
@@ -5095,6 +6604,18 @@ TEST(SSLClientTest, WildcardHostNameMatch_Online) {
   ASSERT_EQ(StatusCode::OK_200, res->status);
 }
 
+TEST(SSLClientTest, Issue2004_Online) {
+  Client client("https://google.com");
+  client.set_follow_location(true);
+
+  auto res = client.Get("/");
+  ASSERT_TRUE(res);
+  ASSERT_EQ(StatusCode::OK_200, res->status);
+
+  auto body = res->body;
+  EXPECT_EQ(body.substr(0, 15), "<!doctype html>");
+}
+
 #if 0
 TEST(SSLClientTest, SetInterfaceWithINET6) {
   auto cli = std::make_shared<httplib::Client>("https://httpbin.org");
@@ -5109,15 +6630,16 @@ TEST(SSLClientTest, SetInterfaceWithINET6) {
 }
 #endif
 
-TEST(SSLClientServerTest, ClientCertPresent) {
+void ClientCertPresent(
+    const std::string &client_cert_file,
+    const std::string &client_private_key_file,
+    const std::string &client_encrypted_private_key_pass = std::string()) {
   SSLServer svr(SERVER_CERT_FILE, SERVER_PRIVATE_KEY_FILE, CLIENT_CA_CERT_FILE,
                 CLIENT_CA_CERT_DIR);
   ASSERT_TRUE(svr.is_valid());
 
   svr.Get("/test", [&](const Request &req, Response &res) {
     res.set_content("test", "text/plain");
-    svr.stop();
-    ASSERT_TRUE(true);
 
     auto peer_cert = SSL_get_peer_certificate(req.ssl);
     ASSERT_TRUE(peer_cert != nullptr);
@@ -5140,13 +6662,15 @@ TEST(SSLClientServerTest, ClientCertPresent) {
 
   thread t = thread([&]() { ASSERT_TRUE(svr.listen(HOST, PORT)); });
   auto se = detail::scope_exit([&] {
+    svr.stop();
     t.join();
     ASSERT_FALSE(svr.is_running());
   });
 
   svr.wait_until_ready();
 
-  SSLClient cli(HOST, PORT, CLIENT_CERT_FILE, CLIENT_PRIVATE_KEY_FILE);
+  SSLClient cli(HOST, PORT, client_cert_file, client_private_key_file,
+                client_encrypted_private_key_pass);
   cli.enable_server_certificate_verification(false);
   cli.set_connection_timeout(30);
 
@@ -5155,35 +6679,43 @@ TEST(SSLClientServerTest, ClientCertPresent) {
   ASSERT_EQ(StatusCode::OK_200, res->status);
 }
 
-#if !defined(_WIN32) || defined(OPENSSL_USE_APPLINK)
-TEST(SSLClientServerTest, MemoryClientCertPresent) {
-  X509 *server_cert;
-  EVP_PKEY *server_private_key;
-  X509_STORE *client_ca_cert_store;
-  X509 *client_cert;
-  EVP_PKEY *client_private_key;
+TEST(SSLClientServerTest, ClientCertPresent) {
+  ClientCertPresent(CLIENT_CERT_FILE, CLIENT_PRIVATE_KEY_FILE);
+}
 
-  FILE *f = fopen(SERVER_CERT_FILE, "r+");
-  server_cert = PEM_read_X509(f, nullptr, nullptr, nullptr);
+TEST(SSLClientServerTest, ClientEncryptedCertPresent) {
+  ClientCertPresent(CLIENT_ENCRYPTED_CERT_FILE,
+                    CLIENT_ENCRYPTED_PRIVATE_KEY_FILE,
+                    CLIENT_ENCRYPTED_PRIVATE_KEY_PASS);
+}
+
+#if !defined(_WIN32) || defined(OPENSSL_USE_APPLINK)
+void MemoryClientCertPresent(
+    const std::string &client_cert_file,
+    const std::string &client_private_key_file,
+    const std::string &client_encrypted_private_key_pass = std::string()) {
+  auto f = fopen(SERVER_CERT_FILE, "r+");
+  auto server_cert = PEM_read_X509(f, nullptr, nullptr, nullptr);
   fclose(f);
 
   f = fopen(SERVER_PRIVATE_KEY_FILE, "r+");
-  server_private_key = PEM_read_PrivateKey(f, nullptr, nullptr, nullptr);
+  auto server_private_key = PEM_read_PrivateKey(f, nullptr, nullptr, nullptr);
   fclose(f);
 
   f = fopen(CLIENT_CA_CERT_FILE, "r+");
-  client_cert = PEM_read_X509(f, nullptr, nullptr, nullptr);
-  client_ca_cert_store = X509_STORE_new();
+  auto client_cert = PEM_read_X509(f, nullptr, nullptr, nullptr);
+  auto client_ca_cert_store = X509_STORE_new();
   X509_STORE_add_cert(client_ca_cert_store, client_cert);
   X509_free(client_cert);
   fclose(f);
 
-  f = fopen(CLIENT_CERT_FILE, "r+");
+  f = fopen(client_cert_file.c_str(), "r+");
   client_cert = PEM_read_X509(f, nullptr, nullptr, nullptr);
   fclose(f);
 
-  f = fopen(CLIENT_PRIVATE_KEY_FILE, "r+");
-  client_private_key = PEM_read_PrivateKey(f, nullptr, nullptr, nullptr);
+  f = fopen(client_private_key_file.c_str(), "r+");
+  auto client_private_key = PEM_read_PrivateKey(
+      f, nullptr, nullptr, (void *)client_encrypted_private_key_pass.c_str());
   fclose(f);
 
   SSLServer svr(server_cert, server_private_key, client_ca_cert_store);
@@ -5191,8 +6723,6 @@ TEST(SSLClientServerTest, MemoryClientCertPresent) {
 
   svr.Get("/test", [&](const Request &req, Response &res) {
     res.set_content("test", "text/plain");
-    svr.stop();
-    ASSERT_TRUE(true);
 
     auto peer_cert = SSL_get_peer_certificate(req.ssl);
     ASSERT_TRUE(peer_cert != nullptr);
@@ -5215,13 +6745,15 @@ TEST(SSLClientServerTest, MemoryClientCertPresent) {
 
   thread t = thread([&]() { ASSERT_TRUE(svr.listen(HOST, PORT)); });
   auto se = detail::scope_exit([&] {
+    svr.stop();
     t.join();
     ASSERT_FALSE(svr.is_running());
   });
 
   svr.wait_until_ready();
 
-  SSLClient cli(HOST, PORT, client_cert, client_private_key);
+  SSLClient cli(HOST, PORT, client_cert, client_private_key,
+                client_encrypted_private_key_pass);
   cli.enable_server_certificate_verification(false);
   cli.set_connection_timeout(30);
 
@@ -5233,6 +6765,16 @@ TEST(SSLClientServerTest, MemoryClientCertPresent) {
   EVP_PKEY_free(server_private_key);
   X509_free(client_cert);
   EVP_PKEY_free(client_private_key);
+}
+
+TEST(SSLClientServerTest, MemoryClientCertPresent) {
+  MemoryClientCertPresent(CLIENT_CERT_FILE, CLIENT_PRIVATE_KEY_FILE);
+}
+
+TEST(SSLClientServerTest, MemoryClientEncryptedCertPresent) {
+  MemoryClientCertPresent(CLIENT_ENCRYPTED_CERT_FILE,
+                          CLIENT_ENCRYPTED_PRIVATE_KEY_FILE,
+                          CLIENT_ENCRYPTED_PRIVATE_KEY_PASS);
 }
 #endif
 
@@ -5265,11 +6807,11 @@ TEST(SSLClientServerTest, TrustDirOptional) {
 
   svr.Get("/test", [&](const Request &, Response &res) {
     res.set_content("test", "text/plain");
-    svr.stop();
   });
 
   thread t = thread([&]() { ASSERT_TRUE(svr.listen(HOST, PORT)); });
   auto se = detail::scope_exit([&] {
+    svr.stop();
     t.join();
     ASSERT_FALSE(svr.is_running());
   });
@@ -5361,13 +6903,12 @@ TEST(SSLClientServerTest, CustomizeServerSSLCtx) {
         nullptr);
     return true;
   };
+
   SSLServer svr(setup_ssl_ctx_callback);
   ASSERT_TRUE(svr.is_valid());
 
   svr.Get("/test", [&](const Request &req, Response &res) {
     res.set_content("test", "text/plain");
-    svr.stop();
-    ASSERT_TRUE(true);
 
     auto peer_cert = SSL_get_peer_certificate(req.ssl);
     ASSERT_TRUE(peer_cert != nullptr);
@@ -5390,6 +6931,7 @@ TEST(SSLClientServerTest, CustomizeServerSSLCtx) {
 
   thread t = thread([&]() { ASSERT_TRUE(svr.listen(HOST, PORT)); });
   auto se = detail::scope_exit([&] {
+    svr.stop();
     t.join();
     ASSERT_FALSE(svr.is_running());
   });
@@ -5483,6 +7025,40 @@ TEST(SendAPI, SimpleInterface_Online) {
 
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::MovedPermanently_301, res->status);
+}
+
+TEST(SendAPI, WithParamsInRequest) {
+  Server svr;
+
+  svr.Get("/", [&](const Request &req, Response & /*res*/) {
+    EXPECT_TRUE(req.has_param("test"));
+    EXPECT_EQ("test_value", req.get_param_value("test"));
+  });
+
+  auto t = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    t.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+
+  {
+    Request req;
+    req.method = "GET";
+    req.path = "/";
+    req.params.emplace("test", "test_value");
+    auto res = cli.send(req);
+    ASSERT_TRUE(res);
+  }
+  {
+    auto res = cli.Get("/", {{"test", "test_value"}}, Headers{});
+    ASSERT_TRUE(res);
+  }
 }
 
 TEST(ClientImplMethods, GetSocketTest) {
@@ -5620,38 +7196,41 @@ TEST(DecodeWithChunkedEncoding, BrotliEncoding_Online) {
 }
 #endif
 
+// Previously "https://nghttp2.org" "/httpbin/redirect-to"
+#undef REDIR_HOST // Silence compiler warning
+#define REDIR_HOST "https://httpbingo.org"
+
 TEST(HttpsToHttpRedirectTest, SimpleInterface_Online) {
-  Client cli("https://nghttp2.org");
+  Client cli(REDIR_HOST);
   cli.set_follow_location(true);
   auto res =
-      cli.Get("/httpbin/"
-              "redirect-to?url=http%3A%2F%2Fwww.google.com&status_code=302");
+      cli.Get(REDIR_PATH "?url=http%3A%2F%2Fexample.com&status_code=302");
 
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
 
 TEST(HttpsToHttpRedirectTest2, SimpleInterface_Online) {
-  Client cli("https://nghttp2.org");
+  Client cli(REDIR_HOST);
   cli.set_follow_location(true);
 
   Params params;
-  params.emplace("url", "http://www.google.com");
+  params.emplace("url", "http://example.com");
   params.emplace("status_code", "302");
 
-  auto res = cli.Get("/httpbin/redirect-to", params, Headers{});
+  auto res = cli.Get(REDIR_PATH, params, Headers{});
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
 
 TEST(HttpsToHttpRedirectTest3, SimpleInterface_Online) {
-  Client cli("https://nghttp2.org");
+  Client cli(REDIR_HOST);
   cli.set_follow_location(true);
 
   Params params;
-  params.emplace("url", "http://www.google.com");
+  params.emplace("url", "http://example.com");
 
-  auto res = cli.Get("/httpbin/redirect-to?status_code=302", params, Headers{});
+  auto res = cli.Get(REDIR_PATH "?status_code=302", params, Headers{});
   ASSERT_TRUE(res);
   EXPECT_EQ(StatusCode::OK_200, res->status);
 }
@@ -6380,9 +7959,9 @@ TEST(MultipartFormDataTest, CloseDelimiterWithoutCRLF) {
              "text2"
              "\r\n------------";
 
-  std::string resonse;
-  ASSERT_TRUE(send_request(1, req, &resonse));
-  ASSERT_EQ("200", resonse.substr(9, 3));
+  std::string response;
+  ASSERT_TRUE(send_request(1, req, &response));
+  ASSERT_EQ("200", response.substr(9, 3));
 }
 
 TEST(MultipartFormDataTest, ContentLength) {
@@ -6427,172 +8006,73 @@ TEST(MultipartFormDataTest, ContentLength) {
              "text2"
              "\r\n------------\r\n";
 
-  std::string resonse;
-  ASSERT_TRUE(send_request(1, req, &resonse));
-  ASSERT_EQ("200", resonse.substr(9, 3));
+  std::string response;
+  ASSERT_TRUE(send_request(1, req, &response));
+  ASSERT_EQ("200", response.substr(9, 3));
 }
 
-#endif
+TEST(MultipartFormDataTest, AccessPartHeaders) {
+  auto handled = false;
 
-#ifndef _WIN32
-class UnixSocketTest : public ::testing::Test {
-protected:
-  void TearDown() override { std::remove(pathname_.c_str()); }
+  Server svr;
+  svr.Post("/test", [&](const Request &req, Response &) {
+    ASSERT_EQ(2u, req.files.size());
 
-  void client_GET(const std::string &addr) {
-    httplib::Client cli{addr};
-    cli.set_address_family(AF_UNIX);
-    ASSERT_TRUE(cli.is_valid());
+    auto it = req.files.begin();
+    ASSERT_EQ("text1", it->second.name);
+    ASSERT_EQ("text1", it->second.content);
+    ASSERT_EQ(1, it->second.headers.count("Content-Length"));
+    auto content_length = it->second.headers.find("CONTENT-length");
+    ASSERT_EQ("5", content_length->second);
+    ASSERT_EQ(3, it->second.headers.size());
 
-    const auto &result = cli.Get(pattern_);
-    ASSERT_TRUE(result) << "error: " << result.error();
+    ++it;
+    ASSERT_EQ("text2", it->second.name);
+    ASSERT_EQ("text2", it->second.content);
+    auto &headers = it->second.headers;
+    ASSERT_EQ(3, headers.size());
+    auto custom_header = headers.find("x-whatever");
+    ASSERT_TRUE(custom_header != headers.end());
+    ASSERT_NE("customvalue", custom_header->second);
+    ASSERT_EQ("CustomValue", custom_header->second);
+    ASSERT_TRUE(headers.find("X-Test") == headers.end()); // text1 header
 
-    const auto &resp = result.value();
-    EXPECT_EQ(resp.status, StatusCode::OK_200);
-    EXPECT_EQ(resp.body, content_);
-  }
-
-  const std::string pathname_{"./httplib-server.sock"};
-  const std::string pattern_{"/hi"};
-  const std::string content_{"Hello World!"};
-};
-
-TEST_F(UnixSocketTest, pathname) {
-  httplib::Server svr;
-  svr.Get(pattern_, [&](const httplib::Request &, httplib::Response &res) {
-    res.set_content(content_, "text/plain");
+    handled = true;
   });
 
-  std::thread t{[&] {
-    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(pathname_, 80));
-  }};
+  thread t = thread([&] { svr.listen(HOST, PORT); });
   auto se = detail::scope_exit([&] {
     svr.stop();
     t.join();
     ASSERT_FALSE(svr.is_running());
+    ASSERT_TRUE(handled);
   });
 
   svr.wait_until_ready();
-  ASSERT_TRUE(svr.is_running());
 
-  client_GET(pathname_);
-}
+  auto req = "POST /test HTTP/1.1\r\n"
+             "Content-Type: multipart/form-data;boundary=--------\r\n"
+             "Content-Length: 232\r\n"
+             "\r\n----------\r\n"
+             "Content-Disposition: form-data; name=\"text1\"\r\n"
+             "Content-Length: 5\r\n"
+             "X-Test: 1\r\n"
+             "\r\n"
+             "text1"
+             "\r\n----------\r\n"
+             "Content-Disposition: form-data; name=\"text2\"\r\n"
+             "Content-Type: text/plain\r\n"
+             "X-Whatever: CustomValue\r\n"
+             "\r\n"
+             "text2"
+             "\r\n------------\r\n"
+             "That should be disregarded. Not even read";
 
-#if defined(__linux__) ||                                                      \
-    /* __APPLE__ */ (defined(SOL_LOCAL) && defined(SO_PEERPID))
-TEST_F(UnixSocketTest, PeerPid) {
-  httplib::Server svr;
-  std::string remote_port_val;
-  svr.Get(pattern_, [&](const httplib::Request &req, httplib::Response &res) {
-    res.set_content(content_, "text/plain");
-    remote_port_val = req.get_header_value("REMOTE_PORT");
-  });
-
-  std::thread t{[&] {
-    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(pathname_, 80));
-  }};
-  auto se = detail::scope_exit([&] {
-    svr.stop();
-    t.join();
-    ASSERT_FALSE(svr.is_running());
-  });
-
-  svr.wait_until_ready();
-  ASSERT_TRUE(svr.is_running());
-
-  client_GET(pathname_);
-  EXPECT_EQ(std::to_string(getpid()), remote_port_val);
+  std::string response;
+  ASSERT_TRUE(send_request(1, req, &response));
+  ASSERT_EQ("200", response.substr(9, 3));
 }
 #endif
-
-#ifdef __linux__
-TEST_F(UnixSocketTest, abstract) {
-  constexpr char svr_path[]{"\x00httplib-server.sock"};
-  const std::string abstract_addr{svr_path, sizeof(svr_path) - 1};
-
-  httplib::Server svr;
-  svr.Get(pattern_, [&](const httplib::Request &, httplib::Response &res) {
-    res.set_content(content_, "text/plain");
-  });
-
-  std::thread t{[&] {
-    ASSERT_TRUE(svr.set_address_family(AF_UNIX).listen(abstract_addr, 80));
-  }};
-  auto se = detail::scope_exit([&] {
-    svr.stop();
-    t.join();
-    ASSERT_FALSE(svr.is_running());
-  });
-
-  svr.wait_until_ready();
-  ASSERT_TRUE(svr.is_running());
-
-  client_GET(abstract_addr);
-}
-#endif
-
-TEST(SocketStream, is_writable_UNIX) {
-  int fds[2];
-  ASSERT_EQ(0, socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
-
-  const auto asSocketStream = [&](socket_t fd,
-                                  std::function<bool(Stream &)> func) {
-    return detail::process_client_socket(fd, 0, 0, 0, 0, func);
-  };
-  asSocketStream(fds[0], [&](Stream &s0) {
-    EXPECT_EQ(s0.socket(), fds[0]);
-    EXPECT_TRUE(s0.is_writable());
-
-    EXPECT_EQ(0, close(fds[1]));
-    EXPECT_FALSE(s0.is_writable());
-
-    return true;
-  });
-  EXPECT_EQ(0, close(fds[0]));
-}
-
-TEST(SocketStream, is_writable_INET) {
-  sockaddr_in addr;
-  memset(&addr, 0, sizeof(addr));
-  addr.sin_family = AF_INET;
-  addr.sin_port = htons(PORT + 1);
-  addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
-
-  int disconnected_svr_sock = -1;
-  std::thread svr{[&] {
-    const int s = socket(AF_INET, SOCK_STREAM, 0);
-    ASSERT_LE(0, s);
-    ASSERT_EQ(0, ::bind(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)));
-    ASSERT_EQ(0, listen(s, 1));
-    ASSERT_LE(0, disconnected_svr_sock = accept(s, nullptr, nullptr));
-    ASSERT_EQ(0, close(s));
-  }};
-  std::this_thread::sleep_for(std::chrono::milliseconds(100));
-
-  std::thread cli{[&] {
-    const int s = socket(AF_INET, SOCK_STREAM, 0);
-    ASSERT_LE(0, s);
-    ASSERT_EQ(0, connect(s, reinterpret_cast<sockaddr *>(&addr), sizeof(addr)));
-    ASSERT_EQ(0, close(s));
-  }};
-  cli.join();
-  svr.join();
-  ASSERT_NE(disconnected_svr_sock, -1);
-
-  const auto asSocketStream = [&](socket_t fd,
-                                  std::function<bool(Stream &)> func) {
-    return detail::process_client_socket(fd, 0, 0, 0, 0, func);
-  };
-  asSocketStream(disconnected_svr_sock, [&](Stream &ss) {
-    EXPECT_EQ(ss.socket(), disconnected_svr_sock);
-    EXPECT_FALSE(ss.is_writable());
-
-    return true;
-  });
-
-  ASSERT_EQ(0, close(disconnected_svr_sock));
-}
-#endif // #ifndef _WIN32
 
 TEST(TaskQueueTest, IncreaseAtomicInteger) {
   static constexpr unsigned int number_of_tasks{1000000};
@@ -6906,4 +8386,503 @@ TEST(PathParamsTest, SequenceOfParams) {
       {"x", "1"}, {"y", "2"}, {"z", "3"}};
 
   EXPECT_EQ(request.path_params, expected_params);
+}
+
+TEST(PathParamsTest, SemicolonInTheMiddleIsNotAParam) {
+  const auto pattern = "/prefix:suffix";
+  detail::PathParamsMatcher matcher(pattern);
+
+  Request request;
+  request.path = "/prefix:suffix";
+  ASSERT_TRUE(matcher.match(request));
+
+  const std::unordered_map<std::string, std::string> expected_params = {};
+  EXPECT_EQ(request.path_params, expected_params);
+}
+
+TEST(UniversalClientImplTest, Ipv6LiteralAddress) {
+  // If ipv6 regex working, regex match codepath is taken.
+  // else port will default to 80 in Client impl
+  int clientImplMagicPort = 80;
+  int port = 4321;
+  // above ports must be different to avoid false negative
+  EXPECT_NE(clientImplMagicPort, port);
+
+  std::string ipV6TestURL = "http://[ff06::c3]";
+
+  Client cli(ipV6TestURL + ":" + std::to_string(port), CLIENT_CERT_FILE,
+             CLIENT_PRIVATE_KEY_FILE);
+  EXPECT_EQ(cli.port(), port);
+}
+
+TEST(FileSystemTest, FileAndDirExistenceCheck) {
+  auto file_path = "./www/dir/index.html";
+  auto dir_path = "./www/dir";
+
+  detail::FileStat stat_file(file_path);
+  EXPECT_TRUE(stat_file.is_file());
+  EXPECT_FALSE(stat_file.is_dir());
+
+  detail::FileStat stat_dir(dir_path);
+  EXPECT_FALSE(stat_dir.is_file());
+  EXPECT_TRUE(stat_dir.is_dir());
+}
+
+TEST(DirtyDataRequestTest, HeadFieldValueContains_CR_LF_NUL) {
+  Server svr;
+
+  svr.Get("/test", [&](const Request & /*req*/, Response &res) {
+    EXPECT_EQ(res.status, 400);
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  cli.Get("/test", {{"Test", "_\n\r_\n\r_"}});
+}
+
+TEST(InvalidHeaderCharsTest, is_field_name) {
+  EXPECT_TRUE(detail::fields::is_field_name("exampleToken"));
+  EXPECT_TRUE(detail::fields::is_field_name("token123"));
+  EXPECT_TRUE(detail::fields::is_field_name("!#$%&'*+-.^_`|~"));
+
+  EXPECT_FALSE(detail::fields::is_field_name("example token"));
+  EXPECT_FALSE(detail::fields::is_field_name(" example_token"));
+  EXPECT_FALSE(detail::fields::is_field_name("example_token "));
+  EXPECT_FALSE(detail::fields::is_field_name("token@123"));
+  EXPECT_FALSE(detail::fields::is_field_name(""));
+  EXPECT_FALSE(detail::fields::is_field_name("example\rtoken"));
+  EXPECT_FALSE(detail::fields::is_field_name("example\ntoken"));
+  EXPECT_FALSE(detail::fields::is_field_name(std::string("\0", 1)));
+  EXPECT_FALSE(detail::fields::is_field_name("example\ttoken"));
+}
+
+TEST(InvalidHeaderCharsTest, is_field_value) {
+  EXPECT_TRUE(detail::fields::is_field_value("exampleToken"));
+  EXPECT_TRUE(detail::fields::is_field_value("token123"));
+  EXPECT_TRUE(detail::fields::is_field_value("!#$%&'*+-.^_`|~"));
+
+  EXPECT_TRUE(detail::fields::is_field_value("example token"));
+  EXPECT_FALSE(detail::fields::is_field_value(" example_token"));
+  EXPECT_FALSE(detail::fields::is_field_value("example_token "));
+  EXPECT_TRUE(detail::fields::is_field_value("token@123"));
+  EXPECT_TRUE(detail::fields::is_field_value(""));
+  EXPECT_FALSE(detail::fields::is_field_value("example\rtoken"));
+  EXPECT_FALSE(detail::fields::is_field_value("example\ntoken"));
+  EXPECT_FALSE(detail::fields::is_field_value(std::string("\0", 1)));
+  EXPECT_TRUE(detail::fields::is_field_value("example\ttoken"));
+
+  EXPECT_TRUE(detail::fields::is_field_value("0"));
+}
+
+TEST(InvalidHeaderCharsTest, OnServer) {
+  Server svr;
+
+  svr.Get("/test_name", [&](const Request &req, Response &res) {
+    std::string header = "Not Set";
+    if (req.has_param("header")) { header = req.get_param_value("header"); }
+
+    res.set_header(header, "value");
+    res.set_content("Page Content Page Content", "text/plain");
+  });
+
+  svr.Get("/test_value", [&](const Request &req, Response &res) {
+    std::string header = "Not Set";
+    if (req.has_param("header")) { header = req.get_param_value("header"); }
+
+    res.set_header("X-Test", header);
+    res.set_content("Page Content Page Content", "text/plain");
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  Client cli(HOST, PORT);
+  {
+    auto res = cli.Get(
+        R"(/test_name?header=Value%00%0d%0aHEADER_KEY%3aHEADER_VALUE%0d%0a%0d%0aBODY_BODY_BODY)");
+
+    ASSERT_TRUE(res);
+    EXPECT_EQ("Page Content Page Content", res->body);
+    EXPECT_FALSE(res->has_header("HEADER_KEY"));
+  }
+  {
+    auto res = cli.Get(
+        R"(/test_value?header=Value%00%0d%0aHEADER_KEY%3aHEADER_VALUE%0d%0a%0d%0aBODY_BODY_BODY)");
+
+    ASSERT_TRUE(res);
+    EXPECT_EQ("Page Content Page Content", res->body);
+    EXPECT_FALSE(res->has_header("HEADER_KEY"));
+  }
+}
+
+TEST(InvalidHeaderValueTest, InvalidContentLength) {
+  auto handled = false;
+
+  Server svr;
+  svr.Post("/test", [&](const Request &, Response &) { handled = true; });
+
+  thread t = thread([&] { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    t.join();
+    ASSERT_FALSE(svr.is_running());
+    ASSERT_FALSE(handled);
+  });
+
+  svr.wait_until_ready();
+
+  auto req = "POST /test HTTP/1.1\r\n"
+             "Content-Length: x\r\n"
+             "\r\n";
+
+  std::string response;
+  ASSERT_TRUE(send_request(1, req, &response));
+  ASSERT_EQ("HTTP/1.1 400 Bad Request",
+            response.substr(0, response.find("\r\n")));
+}
+
+#ifndef _WIN32
+TEST(Expect100ContinueTest, ServerClosesConnection) {
+  static constexpr char reject[] = "Unauthorized";
+  static constexpr char accept[] = "Upload accepted";
+  constexpr size_t total_size = 10 * 1024 * 1024 * 1024ULL;
+
+  Server svr;
+
+  svr.set_expect_100_continue_handler(
+      [](const Request & /*req*/, Response &res) {
+        res.status = StatusCode::Unauthorized_401;
+        res.set_content(reject, "text/plain");
+        return res.status;
+      });
+  svr.Post("/", [&](const Request & /*req*/, Response &res) {
+    res.set_content(accept, "text/plain");
+  });
+
+  auto thread = std::thread([&]() { svr.listen(HOST, PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  {
+    const auto curl = std::unique_ptr<CURL, decltype(&curl_easy_cleanup)>{
+        curl_easy_init(), &curl_easy_cleanup};
+    ASSERT_NE(curl, nullptr);
+
+    curl_easy_setopt(curl.get(), CURLOPT_URL, HOST);
+    curl_easy_setopt(curl.get(), CURLOPT_PORT, PORT);
+    curl_easy_setopt(curl.get(), CURLOPT_POST, 1L);
+    auto list = std::unique_ptr<curl_slist, decltype(&curl_slist_free_all)>{
+        curl_slist_append(nullptr, "Content-Type: application/octet-stream"),
+        &curl_slist_free_all};
+    ASSERT_NE(list, nullptr);
+    curl_easy_setopt(curl.get(), CURLOPT_HTTPHEADER, list.get());
+
+    struct read_data {
+      size_t read_size;
+      size_t total_size;
+    } data = {0, total_size};
+    using read_callback_t =
+        size_t (*)(char *ptr, size_t size, size_t nmemb, void *userdata);
+    read_callback_t read_callback = [](char *ptr, size_t size, size_t nmemb,
+                                       void *userdata) -> size_t {
+      read_data *data = (read_data *)userdata;
+
+      if (!userdata || data->read_size >= data->total_size) { return 0; }
+
+      std::fill_n(ptr, size * nmemb, 'A');
+      data->read_size += size * nmemb;
+      return size * nmemb;
+    };
+    curl_easy_setopt(curl.get(), CURLOPT_READDATA, data);
+    curl_easy_setopt(curl.get(), CURLOPT_READFUNCTION, read_callback);
+
+    std::vector<char> buffer;
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEDATA, &buffer);
+    using write_callback_t =
+        size_t (*)(char *ptr, size_t size, size_t nmemb, void *userdata);
+    write_callback_t write_callback = [](char *ptr, size_t size, size_t nmemb,
+                                         void *userdata) -> size_t {
+      std::vector<char> *buffer = (std::vector<char> *)userdata;
+      buffer->reserve(buffer->size() + size * nmemb + 1);
+      buffer->insert(buffer->end(), (char *)ptr, (char *)ptr + size * nmemb);
+      return size * nmemb;
+    };
+    curl_easy_setopt(curl.get(), CURLOPT_WRITEFUNCTION, write_callback);
+
+    {
+      const auto res = curl_easy_perform(curl.get());
+      ASSERT_EQ(res, CURLE_OK);
+    }
+
+    {
+      auto response_code = long{};
+      const auto res =
+          curl_easy_getinfo(curl.get(), CURLINFO_RESPONSE_CODE, &response_code);
+      ASSERT_EQ(res, CURLE_OK);
+      ASSERT_EQ(response_code, StatusCode::Unauthorized_401);
+    }
+
+    {
+      auto dl = curl_off_t{};
+      const auto res =
+          curl_easy_getinfo(curl.get(), CURLINFO_SIZE_DOWNLOAD_T, &dl);
+      ASSERT_EQ(res, CURLE_OK);
+      ASSERT_EQ(dl, (curl_off_t)sizeof reject - 1);
+    }
+
+    {
+      buffer.push_back('\0');
+      ASSERT_STRCASEEQ(buffer.data(), reject);
+    }
+  }
+}
+#endif
+
+template <typename S, typename C>
+inline void max_timeout_test(S &svr, C &cli, time_t timeout, time_t threshold) {
+  svr.Get("/stream", [&](const Request &, Response &res) {
+    auto data = new std::string("01234567890123456789");
+
+    res.set_content_provider(
+        data->size(), "text/plain",
+        [&, data](size_t offset, size_t length, DataSink &sink) {
+          const size_t DATA_CHUNK_SIZE = 4;
+          const auto &d = *data;
+          std::this_thread::sleep_for(std::chrono::seconds(1));
+          sink.write(&d[offset], std::min(length, DATA_CHUNK_SIZE));
+          return true;
+        },
+        [data](bool success) {
+          EXPECT_FALSE(success);
+          delete data;
+        });
+  });
+
+  svr.Get("/stream_without_length", [&](const Request &, Response &res) {
+    auto i = new size_t(0);
+
+    res.set_content_provider(
+        "text/plain",
+        [i](size_t, DataSink &sink) {
+          if (*i < 5) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            sink.write("abcd", 4);
+            (*i)++;
+          } else {
+            sink.done();
+          }
+          return true;
+        },
+        [i](bool success) {
+          EXPECT_FALSE(success);
+          delete i;
+        });
+  });
+
+  svr.Get("/chunked", [&](const Request &, Response &res) {
+    auto i = new size_t(0);
+
+    res.set_chunked_content_provider(
+        "text/plain",
+        [i](size_t, DataSink &sink) {
+          if (*i < 5) {
+            std::this_thread::sleep_for(std::chrono::seconds(1));
+            sink.os << "abcd";
+            (*i)++;
+          } else {
+            sink.done();
+          }
+          return true;
+        },
+        [i](bool success) {
+          EXPECT_FALSE(success);
+          delete i;
+        });
+  });
+
+  auto listen_thread = std::thread([&svr]() { svr.listen("localhost", PORT); });
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+    listen_thread.join();
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  svr.wait_until_ready();
+
+  cli.set_max_timeout(std::chrono::milliseconds(timeout));
+
+  {
+    auto start = std::chrono::steady_clock::now();
+
+    auto res = cli.Get("/stream");
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    ASSERT_FALSE(res);
+    EXPECT_EQ(Error::Read, res.error());
+    EXPECT_TRUE(timeout <= elapsed && elapsed < timeout + threshold)
+        << "Timeout exceeded by " << (elapsed - timeout) << "ms";
+  }
+
+  {
+    auto start = std::chrono::steady_clock::now();
+
+    auto res = cli.Get("/stream_without_length");
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    ASSERT_FALSE(res);
+    EXPECT_EQ(Error::Read, res.error());
+    EXPECT_TRUE(timeout <= elapsed && elapsed < timeout + threshold)
+        << "Timeout exceeded by " << (elapsed - timeout) << "ms";
+  }
+
+  {
+    auto start = std::chrono::steady_clock::now();
+
+    auto res = cli.Get("/chunked", [&](const char *data, size_t data_length) {
+      EXPECT_EQ("abcd", string(data, data_length));
+      return true;
+    });
+
+    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+    ASSERT_FALSE(res);
+    EXPECT_EQ(Error::Read, res.error());
+    EXPECT_TRUE(timeout <= elapsed && elapsed < timeout + threshold)
+        << "Timeout exceeded by " << (elapsed - timeout) << "ms";
+  }
+}
+
+TEST(MaxTimeoutTest, ContentStream) {
+  time_t timeout = 2000;
+  time_t threshold = 200;
+
+  Server svr;
+  Client cli("localhost", PORT);
+  max_timeout_test(svr, cli, timeout, threshold);
+}
+
+#ifdef CPPHTTPLIB_OPENSSL_SUPPORT
+TEST(MaxTimeoutTest, ContentStreamSSL) {
+  time_t timeout = 2000;
+  time_t threshold = 1200; // SSL_shutdown is slow on some operating systems.
+
+  SSLServer svr(SERVER_CERT_FILE, SERVER_PRIVATE_KEY_FILE);
+
+  SSLClient cli("localhost", PORT);
+  cli.enable_server_certificate_verification(false);
+
+  max_timeout_test(svr, cli, timeout, threshold);
+}
+#endif
+
+class EventDispatcher {
+public:
+  EventDispatcher() {}
+
+  void wait_event(DataSink *sink) {
+    unique_lock<mutex> lk(m_);
+    int id = id_;
+    cv_.wait(lk, [&] { return cid_ == id; });
+    sink->write(message_.data(), message_.size());
+  }
+
+  void send_event(const string &message) {
+    lock_guard<mutex> lk(m_);
+    cid_ = id_++;
+    message_ = message;
+    cv_.notify_all();
+  }
+
+private:
+  mutex m_;
+  condition_variable cv_;
+  atomic_int id_{0};
+  atomic_int cid_{-1};
+  string message_;
+};
+
+TEST(ClientInThreadTest, Issue2068) {
+  EventDispatcher ed;
+
+  Server svr;
+  svr.Get("/event1", [&](const Request & /*req*/, Response &res) {
+    res.set_chunked_content_provider("text/event-stream",
+                                     [&](size_t /*offset*/, DataSink &sink) {
+                                       ed.wait_event(&sink);
+                                       return true;
+                                     });
+  });
+
+  auto listen_thread = std::thread([&svr]() { svr.listen(HOST, PORT); });
+
+  svr.wait_until_ready();
+
+  thread event_thread([&] {
+    int id = 0;
+    while (svr.is_running()) {
+      this_thread::sleep_for(chrono::milliseconds(500));
+
+      std::stringstream ss;
+      ss << "data: " << id << "\n\n";
+      ed.send_event(ss.str());
+      id++;
+    }
+  });
+
+  auto se = detail::scope_exit([&] {
+    svr.stop();
+
+    listen_thread.join();
+    event_thread.join();
+
+    ASSERT_FALSE(svr.is_running());
+  });
+
+  {
+    auto client = detail::make_unique<Client>(HOST, PORT);
+    client->set_read_timeout(std::chrono::minutes(10));
+
+    std::atomic<bool> stop{false};
+
+    std::thread t([&] {
+      client->Get("/event1",
+                  [&](const char *, size_t) -> bool { return !stop; });
+    });
+
+    std::this_thread::sleep_for(std::chrono::seconds(2));
+    stop = true;
+    client->stop();
+    client.reset();
+
+    t.join();
+  }
 }

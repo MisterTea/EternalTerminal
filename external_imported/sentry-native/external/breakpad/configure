@@ -675,7 +675,7 @@ ANDROID_HOST_TRUE
 LINUX_HOST_FALSE
 LINUX_HOST_TRUE
 WARN_CXXFLAGS
-HAVE_CXX17
+HAVE_CXX20
 HAVE_MEMFD_CREATE_FALSE
 HAVE_MEMFD_CREATE_TRUE
 HAVE_GETCONTEXT_FALSE
@@ -7594,7 +7594,7 @@ fi
 
 
 
-  ax_cxx_compile_alternatives="17 1z"    ax_cxx_compile_cxx17_required=true
+  ax_cxx_compile_alternatives="20"    ax_cxx_compile_cxx20_required=true
   ac_ext=cpp
 ac_cpp='$CXXCPP $CPPFLAGS'
 ac_compile='$CXX -c $CXXFLAGS $CPPFLAGS conftest.$ac_ext >&5'
@@ -7602,9 +7602,9 @@ ac_link='$CXX -o conftest$ac_exeext $CXXFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ex
 ac_compiler_gnu=$ac_cv_cxx_compiler_gnu
   ac_success=no
 
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++17 features by default" >&5
-printf %s "checking whether $CXX supports C++17 features by default... " >&6; }
-if test ${ax_cv_cxx_compile_cxx17+y}
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++20 features by default" >&5
+printf %s "checking whether $CXX supports C++20 features by default... " >&6; }
+if test ${ax_cv_cxx_compile_cxx20+y}
 then :
   printf %s "(cached) " >&6
 else $as_nop
@@ -8400,27 +8400,53 @@ namespace cxx17
 
 
 
+
+#ifndef __cplusplus
+
+#error "This is not a C++ compiler"
+
+#elif __cplusplus < 202002L && !defined _MSC_VER
+
+#error "This is not a C++20 compiler"
+
+#else
+
+#include <version>
+
+namespace cxx20
+{
+
+// As C++20 supports feature test macros in the standard, there is no
+// immediate need to actually test for feature availability on the
+// Autoconf side.
+
+}  // namespace cxx20
+
+#endif  // __cplusplus < 202002L && !defined _MSC_VER
+
+
+
 _ACEOF
 if ac_fn_cxx_try_compile "$LINENO"
 then :
-  ax_cv_cxx_compile_cxx17=yes
+  ax_cv_cxx_compile_cxx20=yes
 else $as_nop
-  ax_cv_cxx_compile_cxx17=no
+  ax_cv_cxx_compile_cxx20=no
 fi
 rm -f core conftest.err conftest.$ac_objext conftest.beam conftest.$ac_ext
 fi
-{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_cxx_compile_cxx17" >&5
-printf "%s\n" "$ax_cv_cxx_compile_cxx17" >&6; }
-    if test x$ax_cv_cxx_compile_cxx17 = xyes; then
+{ printf "%s\n" "$as_me:${as_lineno-$LINENO}: result: $ax_cv_cxx_compile_cxx20" >&5
+printf "%s\n" "$ax_cv_cxx_compile_cxx20" >&6; }
+    if test x$ax_cv_cxx_compile_cxx20 = xyes; then
       ac_success=yes
     fi
 
     if test x$ac_success = xno; then
     for alternative in ${ax_cxx_compile_alternatives}; do
       switch="-std=gnu++${alternative}"
-      cachevar=`printf "%s\n" "ax_cv_cxx_compile_cxx17_$switch" | $as_tr_sh`
-      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++17 features with $switch" >&5
-printf %s "checking whether $CXX supports C++17 features with $switch... " >&6; }
+      cachevar=`printf "%s\n" "ax_cv_cxx_compile_cxx20_$switch" | $as_tr_sh`
+      { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++20 features with $switch" >&5
+printf %s "checking whether $CXX supports C++20 features with $switch... " >&6; }
 if eval test \${$cachevar+y}
 then :
   printf %s "(cached) " >&6
@@ -9219,6 +9245,32 @@ namespace cxx17
 
 
 
+
+#ifndef __cplusplus
+
+#error "This is not a C++ compiler"
+
+#elif __cplusplus < 202002L && !defined _MSC_VER
+
+#error "This is not a C++20 compiler"
+
+#else
+
+#include <version>
+
+namespace cxx20
+{
+
+// As C++20 supports feature test macros in the standard, there is no
+// immediate need to actually test for feature availability on the
+// Autoconf side.
+
+}  // namespace cxx20
+
+#endif  // __cplusplus < 202002L && !defined _MSC_VER
+
+
+
 _ACEOF
 if ac_fn_cxx_try_compile "$LINENO"
 then :
@@ -9246,9 +9298,9 @@ printf "%s\n" "$ac_res" >&6; }
     if test x$ac_success = xno; then
                 for alternative in ${ax_cxx_compile_alternatives}; do
       for switch in -std=c++${alternative} +std=c++${alternative} "-h std=c++${alternative}"; do
-        cachevar=`printf "%s\n" "ax_cv_cxx_compile_cxx17_$switch" | $as_tr_sh`
-        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++17 features with $switch" >&5
-printf %s "checking whether $CXX supports C++17 features with $switch... " >&6; }
+        cachevar=`printf "%s\n" "ax_cv_cxx_compile_cxx20_$switch" | $as_tr_sh`
+        { printf "%s\n" "$as_me:${as_lineno-$LINENO}: checking whether $CXX supports C++20 features with $switch" >&5
+printf %s "checking whether $CXX supports C++20 features with $switch... " >&6; }
 if eval test \${$cachevar+y}
 then :
   printf %s "(cached) " >&6
@@ -10047,6 +10099,32 @@ namespace cxx17
 
 
 
+
+#ifndef __cplusplus
+
+#error "This is not a C++ compiler"
+
+#elif __cplusplus < 202002L && !defined _MSC_VER
+
+#error "This is not a C++20 compiler"
+
+#else
+
+#include <version>
+
+namespace cxx20
+{
+
+// As C++20 supports feature test macros in the standard, there is no
+// immediate need to actually test for feature availability on the
+// Autoconf side.
+
+}  // namespace cxx20
+
+#endif  // __cplusplus < 202002L && !defined _MSC_VER
+
+
+
 _ACEOF
 if ac_fn_cxx_try_compile "$LINENO"
 then :
@@ -10080,19 +10158,19 @@ ac_compile='$CC -c $CFLAGS $CPPFLAGS conftest.$ac_ext >&5'
 ac_link='$CC -o conftest$ac_exeext $CFLAGS $CPPFLAGS $LDFLAGS conftest.$ac_ext $LIBS >&5'
 ac_compiler_gnu=$ac_cv_c_compiler_gnu
 
-  if test x$ax_cxx_compile_cxx17_required = xtrue; then
+  if test x$ax_cxx_compile_cxx20_required = xtrue; then
     if test x$ac_success = xno; then
-      as_fn_error $? "*** A compiler with support for C++17 language features is required." "$LINENO" 5
+      as_fn_error $? "*** A compiler with support for C++20 language features is required." "$LINENO" 5
     fi
   fi
   if test x$ac_success = xno; then
-    HAVE_CXX17=0
-    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: No compiler with C++17 support was found" >&5
-printf "%s\n" "$as_me: No compiler with C++17 support was found" >&6;}
+    HAVE_CXX20=0
+    { printf "%s\n" "$as_me:${as_lineno-$LINENO}: No compiler with C++20 support was found" >&5
+printf "%s\n" "$as_me: No compiler with C++20 support was found" >&6;}
   else
-    HAVE_CXX17=1
+    HAVE_CXX20=1
 
-printf "%s\n" "#define HAVE_CXX17 1" >>confdefs.h
+printf "%s\n" "#define HAVE_CXX20 1" >>confdefs.h
 
   fi
 

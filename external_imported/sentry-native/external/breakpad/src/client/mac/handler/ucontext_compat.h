@@ -29,8 +29,14 @@
 #ifndef CLIENT_MAC_HANDLER_UCONTEXT_COMPAT_H_
 #define CLIENT_MAC_HANDLER_UCONTEXT_COMPAT_H_
 
+#include <Availability.h>
 #include <sys/ucontext.h>
 
+// do not have sense at least for mac 10.15
+#if defined(MAC_OS_X_VERSION_10_15)
+typedef ucontext_t breakpad_ucontext_t;
+#define breakpad_uc_mcontext uc_mcontext
+#else
 // The purpose of this file is to work around the fact that ucontext_t's
 // uc_mcontext member is an mcontext_t rather than an mcontext64_t on ARM64.
 #if defined(__aarch64__)
@@ -42,5 +48,6 @@ typedef ucontext64_t breakpad_ucontext_t;
 typedef ucontext_t breakpad_ucontext_t;
 #define breakpad_uc_mcontext uc_mcontext
 #endif  // defined(__aarch64__)
+#endif
 
 #endif  // CLIENT_MAC_HANDLER_UCONTEXT_COMPAT_H_

@@ -86,7 +86,7 @@ TEST(NonAllocatingMapTest, SimpleStringDictionary) {
   EXPECT_FALSE(dict.GetValueForKey("key3"));
 
   // Remove by setting value to NULL
-  dict.SetKeyValue("key2", NULL);
+  dict.SetKeyValue("key2", nullptr);
 
   // Now make sure it's not there anymore
   EXPECT_FALSE(dict.GetValueForKey("key2"));
@@ -326,13 +326,13 @@ TEST(NonAllocatingMapTest, ByIndex) {
 
 TEST(NonAllocatingMapTest, NullKey) {
   NonAllocatingMap<4, 6, 6> map;
-  ASSERT_DEATH(map.SetKeyValue(NULL, "hello"), "");
+  ASSERT_DEATH(map.SetKeyValue(nullptr, "hello"), "");
 
   map.SetKeyValue("hi", "there");
-  ASSERT_DEATH(map.GetValueForKey(NULL), "");
+  ASSERT_DEATH(map.GetValueForKey(nullptr), "");
   EXPECT_STREQ("there", map.GetValueForKey("hi"));
 
-  ASSERT_DEATH(map.GetValueForKey(NULL), "");
+  ASSERT_DEATH(map.GetValueForKey(nullptr), "");
   map.RemoveKey("hi");
   EXPECT_EQ(0u, map.GetCount());
 }

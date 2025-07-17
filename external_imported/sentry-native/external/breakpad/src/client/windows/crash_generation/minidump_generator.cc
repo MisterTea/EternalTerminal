@@ -104,9 +104,9 @@ class HandleTraceData {
 };
 
 HandleTraceData::HandleTraceData()
-    : verifier_module_(NULL),
-      enumerate_resource_(NULL),
-      handle_(NULL) {
+    : verifier_module_(nullptr),
+      enumerate_resource_(nullptr),
+      handle_(0) {
 }
 
 HandleTraceData::~HandleTraceData() {
@@ -211,7 +211,7 @@ bool HandleTraceData::ReadExceptionCode(
                          exception_pointers,
                          &pointers,
                          sizeof(pointers),
-                         NULL)) {
+                         nullptr)) {
     return false;
   }
 
@@ -219,7 +219,7 @@ bool HandleTraceData::ReadExceptionCode(
                          pointers.ExceptionRecord,
                          exception_code,
                          sizeof(*exception_code),
-                         NULL)) {
+                         nullptr)) {
     return false;
   }
 
@@ -261,10 +261,10 @@ MinidumpGenerator::MinidumpGenerator(
     MDRawAssertionInfo* assert_info,
     const MINIDUMP_TYPE dump_type,
     const bool is_client_pointers)
-    : dbghelp_module_(NULL),
-      write_dump_(NULL),
-      rpcrt4_module_(NULL),
-      create_uuid_(NULL),
+    : dbghelp_module_(nullptr),
+      write_dump_(nullptr),
+      rpcrt4_module_(nullptr),
+      create_uuid_(nullptr),
       process_handle_(process_handle),
       process_id_(process_id),
       thread_id_(thread_id),
@@ -279,8 +279,8 @@ MinidumpGenerator::MinidumpGenerator(
       full_dump_file_(INVALID_HANDLE_VALUE),
       dump_file_is_internal_(false),
       full_dump_file_is_internal_(false),
-      additional_streams_(NULL),
-      callback_info_(NULL) {
+      additional_streams_(nullptr),
+      callback_info_(nullptr) {
   uuid_ = {0};
   InitializeCriticalSection(&module_load_sync_);
   InitializeCriticalSection(&get_proc_address_sync_);
@@ -319,7 +319,7 @@ bool MinidumpGenerator::WriteMinidump() {
     return false;
   }
 
-  MINIDUMP_EXCEPTION_INFORMATION* dump_exception_pointers = NULL;
+  MINIDUMP_EXCEPTION_INFORMATION* dump_exception_pointers = nullptr;
   MINIDUMP_EXCEPTION_INFORMATION dump_exception_info;
 
   // Setup the exception information object only if it's a dump
@@ -437,7 +437,7 @@ bool MinidumpGenerator::WriteMinidump() {
                                     | MiniDumpWithHandleData),
         dump_exception_pointers,
         &user_streams,
-        NULL) != FALSE;
+        nullptr) != FALSE;
   }
 
   // Add handle operations trace stream to the minidump if it was collected.
@@ -474,10 +474,10 @@ bool MinidumpGenerator::GenerateDumpFile(wstring* dump_path) {
   dump_file_ = CreateFile(dump_file_path.c_str(),
                           GENERIC_WRITE,
                           0,
-                          NULL,
+                          nullptr,
                           CREATE_NEW,
                           FILE_ATTRIBUTE_NORMAL,
-                          NULL);
+                          nullptr);
   if (dump_file_ == INVALID_HANDLE_VALUE) {
     return false;
   }
@@ -509,10 +509,10 @@ bool MinidumpGenerator::GenerateFullDumpFile(wstring* full_dump_path) {
   full_dump_file_ = CreateFile(full_dump_file_path.c_str(),
                                GENERIC_WRITE,
                                0,
-                               NULL,
+                               nullptr,
                                CREATE_NEW,
                                FILE_ATTRIBUTE_NORMAL,
-                               NULL);
+                               nullptr);
   if (full_dump_file_ == INVALID_HANDLE_VALUE) {
     return false;
   }

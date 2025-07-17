@@ -18,8 +18,8 @@
 static const size_t MAX_READ_TO_BUFFER = 134217728;
 
 #ifndef __MINGW32__
-#    define S_ISREG(m) (((m)&_S_IFMT) == _S_IFREG)
-#    define S_ISDIR(m) (((m)&_S_IFMT) == _S_IFDIR)
+#    define S_ISREG(m) (((m) & _S_IFMT) == _S_IFREG)
+#    define S_ISDIR(m) (((m) & _S_IFMT) == _S_IFDIR)
 #endif
 
 struct sentry_pathiter_s {
@@ -84,6 +84,9 @@ static sentry_path_t *
 path_with_len(size_t len)
 {
     sentry_path_t *rv = SENTRY_MAKE(sentry_path_t);
+    if (!rv) {
+        return rv;
+    }
     rv->path = sentry_malloc(sizeof(wchar_t) * len);
     if (!rv->path) {
         sentry_free(rv);
@@ -110,7 +113,7 @@ sentry__path_current_exe(void)
     sentry_path_t *path = path_with_len(MAX_PATH);
     size_t len = GetModuleFileNameW(NULL, path->path, MAX_PATH);
     if (!len) {
-        SENTRY_DEBUG("unable to get current exe path");
+        SENTRY_WARN("unable to get current exe path");
         sentry__path_free(path);
         return NULL;
     }
@@ -164,14 +167,15 @@ sentry__path_join_wstr(const sentry_path_t *base, const wchar_t *other)
         return sentry__path_from_wstr(other);
     } else if (other[0] == L'/' || other[0] == L'\\') {
         if (isalpha(base->path[0]) && base->path[1] == L':') {
-            size_t len = wcslen(other) + 3;
-            sentry_path_t *rv = path_with_len(len);
+            size_t other_len = wcslen(other);
+            sentry_path_t *rv = path_with_len(other_len + 3);
             if (!rv) {
                 return NULL;
             }
             rv->path[0] = base->path[0];
             rv->path[1] = L':';
-            memcpy(rv->path + 2, other, sizeof(wchar_t) * len);
+            memcpy(rv->path + 2, other, sizeof(wchar_t) * other_len);
+            rv->path[other_len + 2] = L'\0';
             return rv;
         } else {
             return sentry__path_from_wstr(other);
@@ -273,6 +277,9 @@ bool
 sentry__path_filename_matches(const sentry_path_t *path, const char *filename)
 {
     sentry_path_t *fn = sentry__path_from_str(filename);
+    if (!fn) {
+        return false;
+    }
     bool matches = _wcsicmp(sentry__path_filename(path), fn->path) == 0;
     sentry__path_free(fn);
     return matches;
@@ -282,6 +289,9 @@ bool
 sentry__path_ends_with(const sentry_path_t *path, const char *suffix)
 {
     sentry_path_t *s = sentry__path_from_str(suffix);
+    if (!s) {
+        return false;
+    }
     size_t pathlen = wcslen(path->path);
     size_t suffixlen = wcslen(s->path);
     if (suffixlen > pathlen) {
@@ -399,6 +409,9 @@ sentry__path_create_dir_all(const sentry_path_t *path)
 
     size_t len = wcslen(path->path) + 1;
     p = sentry_malloc(sizeof(wchar_t) * len);
+    if (!p) {
+        return 1;
+    }
     memcpy(p, path->path, len * sizeof(wchar_t));
 
     for (ptr = p; *ptr; ptr++) {
@@ -505,12 +518,15 @@ sentry__path_read_to_buffer(const sentry_path_t *path, size_t *size_out)
     if (len == 0) {
         fclose(f);
         char *rv = sentry_malloc(1);
-        rv[0] = '\0';
+        if (rv) {
+            rv[0] = '\0';
+        }
         if (size_out) {
             *size_out = 0;
         }
         return rv;
-    } else if (len > MAX_READ_TO_BUFFER) {
+    }
+    if (len > MAX_READ_TO_BUFFER) {
         fclose(f);
         return NULL;
     }
@@ -569,4 +585,67 @@ sentry__path_append_buffer(
     const sentry_path_t *path, const char *buf, size_t buf_len)
 {
     return write_buffer_with_mode(path, buf, buf_len, L"ab");
+}
+
+struct sentry_filewriter_s {
+    size_t byte_count;
+    FILE *f;
+};
+
+MUST_USE sentry_filewriter_t *
+sentry__filewriter_new(const sentry_path_t *path)
+{
+    FILE *f = _wfopen(path->path, L"wb");
+    if (!f) {
+        return NULL;
+    }
+
+    sentry_filewriter_t *result = SENTRY_MAKE(sentry_filewriter_t);
+    if (!result) {
+        fclose(f);
+        return NULL;
+    }
+
+    result->f = f;
+    result->byte_count = 0;
+    return result;
+}
+
+size_t
+sentry__filewriter_write(
+    sentry_filewriter_t *filewriter, const char *buf, size_t buf_len)
+{
+    if (!filewriter) {
+        return 0;
+    }
+    while (buf_len > 0) {
+        size_t n = fwrite(buf, 1, buf_len, filewriter->f);
+        if (n == 0 && errno == EINVAL) {
+            continue;
+        } else if (n < buf_len) {
+            break;
+        }
+        filewriter->byte_count += n;
+        buf += n;
+        buf_len -= n;
+    }
+
+    return buf_len;
+}
+
+void
+sentry__filewriter_free(sentry_filewriter_t *filewriter)
+{
+    if (!filewriter) {
+        return;
+    }
+    fflush(filewriter->f);
+    fclose(filewriter->f);
+    sentry_free(filewriter);
+}
+
+size_t
+sentry__filewriter_byte_count(sentry_filewriter_t *filewriter)
+{
+    return filewriter->byte_count;
 }

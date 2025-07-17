@@ -161,7 +161,7 @@ void OnThreadExitInternal(void* value) {
       need_to_scan_destructors = true;
     }
     if (--remaining_attempts <= 0) {
-      NOTREACHED();  // Destructors might not have been called.
+      NOTREACHED_IN_MIGRATION();  // Destructors might not have been called.
       break;
     }
   }

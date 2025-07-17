@@ -633,6 +633,11 @@ template("ios_xcuitest_test_runner_bundle") {
       ]
     }
 
+    # XCTestSupport framework is required as of Xcode 14.3 or later.
+    if (xcode_version_int >= 1430) {
+      extra_system_frameworks += [ "$ios_sdk_platform_path/Developer/Library/PrivateFrameworks/XCTestSupport.framework" ]
+    }
+
     bundle_deps = []
     if (defined(invoker.bundle_deps)) {
       bundle_deps += invoker.bundle_deps

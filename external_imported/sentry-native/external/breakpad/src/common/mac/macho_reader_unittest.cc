@@ -35,6 +35,8 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
+
 #include <map>
 #include <string>
 #include <vector>
@@ -499,7 +501,7 @@ class WithConfiguration {
   WithConfiguration* saved_;
 };
 
-WithConfiguration* WithConfiguration::current_ = NULL;
+WithConfiguration* WithConfiguration::current_ = nullptr;
 
 // A test_assembler::Section with a size that we can cite. The start(),
 // Here() and Mark() member functions of a SizedSection always represent
@@ -1640,7 +1642,7 @@ TEST_F(LoadCommand, ZappedSegment) {
   Segment actual_segment;
   EXPECT_TRUE(reader.FindSegment("zapped", &actual_segment));
 
-  ByteBuffer zapped_extent(NULL, 0);
+  ByteBuffer zapped_extent(nullptr, 0);
   EXPECT_CALL(section_handler,
               HandleSection(MatchSection(false, "twitching", "zapped",
                                          0x696d83cc, 0, 0x93b3bd42,
@@ -1706,7 +1708,7 @@ TEST_F(LoadCommand, MapSegmentSections) {
               MatchSection(true, "cara cara", "thorax", 0x04d462e2));
   ASSERT_TRUE(section_map.find("sixteenprecisely")
               != section_map.end());
-  ByteBuffer sixteenprecisely_contents(NULL, 0);
+  ByteBuffer sixteenprecisely_contents(nullptr, 0);
   EXPECT_THAT(section_map["sixteenprecisely"],
               MatchSection(true, "sixteenprecisely", "thorax",
                            0x04d462e2 + 7, 12, S_ZEROFILL,

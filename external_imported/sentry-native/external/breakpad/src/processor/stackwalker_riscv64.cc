@@ -37,7 +37,8 @@
 #include <config.h>  // Must come first
 #endif
 
-#include "common/scoped_ptr.h"
+#include <memory>
+
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/code_modules.h"
 #include "google_breakpad/processor/memory_region.h"
@@ -63,7 +64,7 @@ StackwalkerRISCV64::StackwalkerRISCV64(const SystemInfo* system_info,
 StackFrame* StackwalkerRISCV64::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameRISCV64* frame = new StackFrameRISCV64();
@@ -153,12 +154,12 @@ StackFrameRISCV64* StackwalkerRISCV64::GetCallerByCFIFrameInfo(
   CFIFrameInfo::RegisterValueMap<uint64_t> caller_registers;
   if (!cfi_frame_info->FindCallerRegs(callee_registers, *memory_,
                                       &caller_registers)) {
-    return NULL;
+    return nullptr;
   }
 
   // Construct a new stack frame given the values the CFI recovered.
   CFIFrameInfo::RegisterValueMap<uint64_t>::iterator entry;
-  scoped_ptr<StackFrameRISCV64> frame(new StackFrameRISCV64());
+  std::unique_ptr<StackFrameRISCV64> frame(new StackFrameRISCV64());
   entry = caller_registers.find("pc");
   if (entry != caller_registers.end()) {
     frame->context_validity |= StackFrameRISCV64::CONTEXT_VALID_PC;
@@ -410,7 +411,7 @@ StackFrameRISCV64* StackwalkerRISCV64::GetCallerByCFIFrameInfo(
   static const uint64_t essentials = (StackFrameRISCV64::CONTEXT_VALID_SP
                                       | StackFrameRISCV64::CONTEXT_VALID_PC);
   if ((frame->context_validity & essentials) != essentials)
-    return NULL;
+    return nullptr;
 
   frame->trust = StackFrame::FRAME_TRUST_CFI;
   return frame.release();
@@ -426,7 +427,7 @@ StackFrameRISCV64* StackwalkerRISCV64::GetCallerByStackScan(
   if (!ScanForReturnAddress(last_sp, &caller_sp, &caller_pc,
       last_frame->trust == StackFrame::FRAME_TRUST_CONTEXT)) {
     // No plausible return address was found.
-    return NULL;
+    return nullptr;
   }
 
   // ScanForReturnAddress found a reasonable return address. Advance
@@ -459,14 +460,14 @@ StackFrameRISCV64* StackwalkerRISCV64::GetCallerByFramePointer(
   if (last_fp && !memory_->GetMemoryAtAddress(last_fp, &caller_fp)) {
     BPLOG(ERROR) << "Unable to read caller_fp from last_fp: 0x"
                  << std::hex << last_fp;
-    return NULL;
+    return nullptr;
   }
 
   uint64_t caller_ra = 0;
   if (last_fp && !memory_->GetMemoryAtAddress(last_fp + 8, &caller_ra)) {
     BPLOG(ERROR) << "Unable to read caller_ra from last_fp + 8: 0x"
                  << std::hex << (last_fp + 8);
-    return NULL;
+    return nullptr;
   }
 
   uint64_t caller_sp = last_fp ? last_fp + 16 : last_frame->context.s0;
@@ -492,16 +493,16 @@ StackFrame* StackwalkerRISCV64::GetCallerFrame(const CallStack* stack,
                                              bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   const vector<StackFrame*>& frames = *stack->frames();
   StackFrameRISCV64* last_frame =
       static_cast<StackFrameRISCV64*>(frames.back());
-  scoped_ptr<StackFrameRISCV64> frame;
+  std::unique_ptr<StackFrameRISCV64> frame;
 
   // Try to recover caller information from CFI.
-  scoped_ptr<CFIFrameInfo> cfi_frame_info(
+  std::unique_ptr<CFIFrameInfo> cfi_frame_info(
       frame_symbolizer_->FindCFIFrameInfo(last_frame));
   if (cfi_frame_info.get())
     frame.reset(GetCallerByCFIFrameInfo(frames, cfi_frame_info.get()));
@@ -516,13 +517,13 @@ StackFrame* StackwalkerRISCV64::GetCallerFrame(const CallStack* stack,
 
   // If nothing worked, tell the caller.
   if (!frame.get())
-    return NULL;
+    return nullptr;
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
   if (TerminateWalk(frame->context.pc, frame->context.sp,
                     last_frame->context.sp,
                     last_frame->trust == StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   // The new frame's context's PC is the return address, which is one

@@ -16,7 +16,7 @@ SENTRY_TEST(mpack_removed_tags)
     sentry_set_extra("int", sentry_value_new_int32(1234));
     sentry_set_extra("double", sentry_value_new_double(12.34));
 
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     SENTRY_WITH_SCOPE (scope) {
         sentry__scope_apply_to_event(scope, options, obj, SENTRY_SCOPE_NONE);
     }
@@ -30,12 +30,6 @@ SENTRY_TEST(mpack_removed_tags)
     sentry__scope_cleanup();
 }
 
-#ifdef __ANDROID__
-#    define PREFIX "/data/local/tmp/"
-#else
-#    define PREFIX ""
-#endif
-
 SENTRY_TEST(mpack_newlines)
 {
     sentry_value_t o = sentry_value_new_object();
@@ -45,13 +39,16 @@ SENTRY_TEST(mpack_newlines)
 
     size_t size;
     char *buf = sentry_value_to_msgpack(o, &size);
+    TEST_ASSERT(!!buf);
 
-    sentry_path_t *file = sentry__path_from_str(PREFIX ".mpack-buf");
+    sentry_path_t *file
+        = sentry__path_from_str(SENTRY_TEST_PATH_PREFIX ".mpack-buf");
+    TEST_ASSERT(!!file);
     sentry__path_append_buffer(file, buf, size);
 
     size_t size_rt;
     char *buf_rt = sentry__path_read_to_buffer(file, &size_rt);
-
+    TEST_ASSERT(!!buf_rt);
     TEST_CHECK_INT_EQUAL(size, size_rt);
     TEST_CHECK(!memcmp(buf, buf_rt, size));
 

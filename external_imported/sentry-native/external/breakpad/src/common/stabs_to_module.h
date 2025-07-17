@@ -66,9 +66,9 @@ class StabsToModule: public google_breakpad::StabsHandler {
       module_(module),
       in_compilation_unit_(false),
       comp_unit_base_address_(0),
-      current_function_(NULL),
-      current_source_file_(NULL),
-      current_source_file_name_(NULL) { }
+      current_function_(nullptr),
+      current_source_file_(nullptr),
+      current_source_file_name_(nullptr) { }
   ~StabsToModule();
 
   // The standard StabsHandler virtual member functions.

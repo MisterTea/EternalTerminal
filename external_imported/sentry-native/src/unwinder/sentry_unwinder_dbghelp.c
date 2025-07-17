@@ -7,6 +7,11 @@ typedef WORD(NTAPI *RtlCaptureStackBackTraceProc)(DWORD FramesToSkip,
     DWORD FramesToCapture, PVOID *BackTrace, PDWORD BackTraceHash);
 #endif
 
+#ifdef __clang__
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wmissing-prototypes"
+#endif
+
 size_t
 sentry__unwind_stack_dbghelp(
     void *addr, const sentry_ucontext_t *uctx, void **ptrs, size_t max_frames)
@@ -44,17 +49,17 @@ sentry__unwind_stack_dbghelp(
 
     size_t size = 0;
 #if defined(_M_X64)
-    int machine_type = IMAGE_FILE_MACHINE_AMD64;
+    DWORD machine_type = IMAGE_FILE_MACHINE_AMD64;
     stack_frame.AddrPC.Offset = ctx.Rip;
     stack_frame.AddrFrame.Offset = ctx.Rbp;
     stack_frame.AddrStack.Offset = ctx.Rsp;
 #elif defined(_M_IX86)
-    int machine_type = IMAGE_FILE_MACHINE_I386;
+    DWORD machine_type = IMAGE_FILE_MACHINE_I386;
     stack_frame.AddrPC.Offset = ctx.Eip;
     stack_frame.AddrFrame.Offset = ctx.Ebp;
     stack_frame.AddrStack.Offset = ctx.Esp;
 #elif defined(_M_ARM64)
-    int machine_type = IMAGE_FILE_MACHINE_ARM64;
+    DWORD machine_type = IMAGE_FILE_MACHINE_ARM64;
     stack_frame.AddrPC.Offset = ctx.Pc;
 #    if defined(NONAMELESSUNION)
     stack_frame.AddrFrame.Offset = ctx.DUMMYUNIONNAME.DUMMYSTRUCTNAME.Fp;
@@ -63,7 +68,7 @@ sentry__unwind_stack_dbghelp(
 #    endif
     stack_frame.AddrStack.Offset = ctx.Sp;
 #elif defined(_M_ARM)
-    int machine_type = IMAGE_FILE_MACHINE_ARM;
+    DWORD machine_type = IMAGE_FILE_MACHINE_ARM;
     stack_frame.AddrPC.Offset = ctx.Pc;
     stack_frame.AddrFrame.Offset = ctx.R11;
     stack_frame.AddrStack.Offset = ctx.Sp;
@@ -87,3 +92,7 @@ sentry__unwind_stack_dbghelp(
 
     return size;
 }
+
+#ifdef __clang__
+#    pragma clang diagnostic pop
+#endif

@@ -51,6 +51,7 @@ extern "C" { // needed to compile on Leopard
 #include <vector>
 
 #include "breakpad_nlist_64.h"
+#include "common/memory_allocator.h"
 
 #if !TARGET_OS_IPHONE
 #include <CoreServices/CoreServices.h>
@@ -192,7 +193,7 @@ kern_return_t ReadTaskMemory(task_port_t target_task,
   mach_vm_address_t page_address = address & (-systemPageSize);
 
   mach_vm_address_t last_page_address =
-      (address + length + (systemPageSize - 1)) & (-systemPageSize);
+      PageAllocator::AlignUp(address + length, systemPageSize);
 
   mach_vm_size_t page_size = last_page_address - page_address;
   uint8_t* local_start;
@@ -532,7 +533,7 @@ DynamicImage* DynamicImages::GetExecutableImage() {
     return GetImage(executable_index);
   }
 
-  return NULL;
+  return nullptr;
 }
 
 //==============================================================================

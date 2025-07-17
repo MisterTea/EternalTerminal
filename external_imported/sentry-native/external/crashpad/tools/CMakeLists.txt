@@ -31,6 +31,11 @@ if(CRASHPAD_BUILD_TOOLS)
             NOMINMAX
         )
     endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(dump_minidump_annotations PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+        )
+    endif()
     crashpad_install_target(dump_minidump_annotations)
 
     add_executable(crashpad_database_util
@@ -83,6 +88,18 @@ if(CRASHPAD_BUILD_TOOLS)
         target_compile_definitions(crashpad_generate_dump PRIVATE
             WIN32_LEAN_AND_MEAN
             NOMINMAX
+        )
+    endif()
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(crashpad_generate_dump PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+        )
+    endif()
+    if(LINUX)
+        target_compile_definitions(crashpad_generate_dump PRIVATE
+            _FILE_OFFSET_BITS=64
+            _LARGEFILE64_SOURCE
+            _LARGEFILE_SOURCE
         )
     endif()
     crashpad_install_target(crashpad_generate_dump)

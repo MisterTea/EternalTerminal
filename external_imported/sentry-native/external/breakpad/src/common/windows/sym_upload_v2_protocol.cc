@@ -32,7 +32,7 @@
 
 #include "common/windows/sym_upload_v2_protocol.h"
 
-#include <cstdio>
+#include <stdio.h>
 
 #include "common/windows/http_upload.h"
 #include "common/windows/symbol_collector_client.h"

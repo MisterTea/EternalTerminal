@@ -138,6 +138,11 @@ class MinidumpProcessor {
     enable_objdump_for_exploitability_ = enabled;
   }
 
+  // Sets the maximum number of threads to process.
+  void set_max_thread_count(int max_thread_count) {
+    max_thread_count_ = max_thread_count;
+  }
+
  private:
   StackFrameSymbolizer* frame_symbolizer_;
   // Indicate whether resolver_helper_ is owned by this instance.
@@ -157,6 +162,10 @@ class MinidumpProcessor {
   // purposes of disassembly. This results in significantly more overhead than
   // the enable_objdump_ flag.
   bool enable_objdump_for_exploitability_;
+
+  // The maximum number of threads to process. This can be exceeded if the
+  // requesting thread comes after the limit. Setting this to -1 means no limit.
+  int max_thread_count_;
 };
 
 }  // namespace google_breakpad

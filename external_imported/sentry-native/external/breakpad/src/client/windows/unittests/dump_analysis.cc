@@ -38,52 +38,52 @@
 #include "client/windows/unittests/dump_analysis.h"  // NOLINT
 
 DumpAnalysis::~DumpAnalysis() {
-  if (dump_file_view_ != NULL) {
+  if (dump_file_view_ != nullptr) {
     EXPECT_TRUE(::UnmapViewOfFile(dump_file_view_));
     ::CloseHandle(dump_file_mapping_);
-    dump_file_mapping_ = NULL;
+    dump_file_mapping_ = nullptr;
   }
 
-  if (dump_file_handle_ != NULL) {
+  if (dump_file_handle_ != nullptr) {
     ::CloseHandle(dump_file_handle_);
-    dump_file_handle_ = NULL;
+    dump_file_handle_ = nullptr;
   }
 }
 
 void DumpAnalysis::EnsureDumpMapped() {
-  if (dump_file_view_ == NULL) {
+  if (dump_file_view_ == nullptr) {
     dump_file_handle_ = ::CreateFile(dump_file_.c_str(),
       GENERIC_READ,
       0,
-      NULL,
+      nullptr,
       OPEN_EXISTING,
       0,
-      NULL);
-    ASSERT_TRUE(dump_file_handle_ != NULL);
-    ASSERT_TRUE(dump_file_mapping_ == NULL);
+      nullptr);
+    ASSERT_TRUE(dump_file_handle_ != nullptr);
+    ASSERT_TRUE(dump_file_mapping_ == nullptr);
 
     dump_file_mapping_ = ::CreateFileMapping(dump_file_handle_,
-      NULL,
+      nullptr,
       PAGE_READONLY,
       0,
       0,
-      NULL);
-    ASSERT_TRUE(dump_file_mapping_ != NULL);
+      nullptr);
+    ASSERT_TRUE(dump_file_mapping_ != nullptr);
 
     dump_file_view_ = ::MapViewOfFile(dump_file_mapping_,
       FILE_MAP_READ,
       0,
       0,
       0);
-    ASSERT_TRUE(dump_file_view_ != NULL);
+    ASSERT_TRUE(dump_file_view_ != nullptr);
   }
 }
 
 bool DumpAnalysis::HasTebs() const {
-  MINIDUMP_THREAD_LIST* thread_list = NULL;
+  MINIDUMP_THREAD_LIST* thread_list = nullptr;
   size_t thread_list_size = GetStream(ThreadListStream, &thread_list);
 
-  if (thread_list_size > 0 && thread_list != NULL) {
+  if (thread_list_size > 0 && thread_list != nullptr) {
     for (ULONG i = 0; i < thread_list->NumberOfThreads; ++i) {
       if (!HasMemory(thread_list->Threads[i].Teb))
         return false;
@@ -97,12 +97,12 @@ bool DumpAnalysis::HasTebs() const {
 }
 
 bool DumpAnalysis::HasPeb() const {
-  MINIDUMP_THREAD_LIST* thread_list = NULL;
+  MINIDUMP_THREAD_LIST* thread_list = nullptr;
   size_t thread_list_size = GetStream(ThreadListStream, &thread_list);
 
-  if (thread_list_size > 0 && thread_list != NULL &&
+  if (thread_list_size > 0 && thread_list != nullptr &&
       thread_list->NumberOfThreads > 0) {
-    FakeTEB* teb = NULL;
+    FakeTEB* teb = nullptr;
     if (!HasMemory(thread_list->Threads[0].Teb, &teb))
       return false;
 
@@ -113,13 +113,13 @@ bool DumpAnalysis::HasPeb() const {
 }
 
 bool DumpAnalysis::HasStream(ULONG stream_number) const {
-  void* stream = NULL;
+  void* stream = nullptr;
   size_t stream_size = GetStreamImpl(stream_number, &stream);
-  return stream_size > 0 && stream != NULL;
+  return stream_size > 0 && stream != nullptr;
 }
 
 size_t DumpAnalysis::GetStreamImpl(ULONG stream_number, void** stream) const {
-  MINIDUMP_DIRECTORY* directory = NULL;
+  MINIDUMP_DIRECTORY* directory = nullptr;
   ULONG memory_list_size = 0;
   BOOL ret = ::MiniDumpReadDumpStream(dump_file_view_,
                                       stream_number,
@@ -133,9 +133,9 @@ size_t DumpAnalysis::GetStreamImpl(ULONG stream_number, void** stream) const {
 bool DumpAnalysis::HasMemoryImpl(const void* addr_in, size_t structuresize,
                                  void** structure) const {
   uintptr_t address = reinterpret_cast<uintptr_t>(addr_in);
-  MINIDUMP_MEMORY_LIST* memory_list = NULL;
+  MINIDUMP_MEMORY_LIST* memory_list = nullptr;
   size_t memory_list_size = GetStream(MemoryListStream, &memory_list);
-  if (memory_list_size > 0 && memory_list != NULL) {
+  if (memory_list_size > 0 && memory_list != nullptr) {
     for (ULONG i = 0; i < memory_list->NumberOfMemoryRanges; ++i) {
       MINIDUMP_MEMORY_DESCRIPTOR& descr = memory_list->MemoryRanges[i];
       const uintptr_t range_start =
@@ -146,7 +146,7 @@ bool DumpAnalysis::HasMemoryImpl(const void* addr_in, size_t structuresize,
           address + structuresize < range_end) {
         // The start address falls in the range, and the end address is
         // in bounds, return a pointer to the structure if requested.
-        if (structure != NULL)
+        if (structure != nullptr)
           *structure = RVA_TO_ADDR(dump_file_view_, descr.Memory.Rva);
 
         return true;
@@ -157,9 +157,9 @@ bool DumpAnalysis::HasMemoryImpl(const void* addr_in, size_t structuresize,
   // We didn't find the range in a MINIDUMP_MEMORY_LIST, so maybe this
   // is a full dump using MINIDUMP_MEMORY64_LIST with all the memory at the
   // end of the dump file.
-  MINIDUMP_MEMORY64_LIST* memory64_list = NULL;
+  MINIDUMP_MEMORY64_LIST* memory64_list = nullptr;
   memory_list_size = GetStream(Memory64ListStream, &memory64_list);
-  if (memory_list_size > 0 && memory64_list != NULL) {
+  if (memory_list_size > 0 && memory64_list != nullptr) {
     // Keep track of where the current descriptor maps to.
     RVA64 curr_rva = memory64_list->BaseRva;
     for (ULONG i = 0; i < memory64_list->NumberOfMemoryRanges; ++i) {
@@ -172,7 +172,7 @@ bool DumpAnalysis::HasMemoryImpl(const void* addr_in, size_t structuresize,
           address + structuresize < range_end) {
         // The start address falls in the range, and the end address is
         // in bounds, return a pointer to the structure if requested.
-        if (structure != NULL)
+        if (structure != nullptr)
           *structure = RVA_TO_ADDR(dump_file_view_, curr_rva);
 
         return true;

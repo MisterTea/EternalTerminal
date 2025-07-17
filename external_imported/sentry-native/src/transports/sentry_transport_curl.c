@@ -13,14 +13,21 @@
 #include <curl/easy.h>
 #include <string.h>
 
+#ifdef SENTRY_PLATFORM_NX
+#    include "sentry_transport_curl_nx.h"
+#endif
+
 typedef struct curl_transport_state_s {
     sentry_dsn_t *dsn;
     CURL *curl_handle;
     char *user_agent;
-    char *http_proxy;
+    char *proxy;
     char *ca_certs;
     sentry_rate_limiter_t *ratelimiter;
     bool debug;
+#ifdef SENTRY_PLATFORM_NX
+    void *nx_state;
+#endif
 } curl_bgworker_state_t;
 
 struct header_info {
@@ -38,7 +45,9 @@ sentry__curl_bgworker_state_new(void)
     memset(state, 0, sizeof(curl_bgworker_state_t));
 
     state->ratelimiter = sentry__rate_limiter_new();
-
+#ifdef SENTRY_PLATFORM_NX
+    state->nx_state = sentry_nx_curl_state_new();
+#endif
     return state;
 }
 
@@ -54,7 +63,10 @@ sentry__curl_bgworker_state_free(void *_state)
     sentry__rate_limiter_free(state->ratelimiter);
     sentry_free(state->ca_certs);
     sentry_free(state->user_agent);
-    sentry_free(state->http_proxy);
+    sentry_free(state->proxy);
+#ifdef SENTRY_PLATFORM_NX
+    sentry_nx_curl_state_free(state->nx_state);
+#endif
     sentry_free(state);
 }
 
@@ -85,7 +97,7 @@ sentry__curl_transport_start(
         };
 
         if (!sentry__check_min_version(
-                curl_version, (sentry_version_t) { 7, 10, 7 })) {
+                curl_version, (sentry_version_t) { 7, 21, 7 })) {
             SENTRY_WARNF("`libcurl` is at unsupported version `%u.%u.%u`",
                 curl_version.major, curl_version.minor, curl_version.patch);
             return 1;
@@ -101,7 +113,7 @@ sentry__curl_transport_start(
     curl_bgworker_state_t *state = sentry__bgworker_get_state(bgworker);
 
     state->dsn = sentry__dsn_incref(options->dsn);
-    state->http_proxy = sentry__string_clone(options->http_proxy);
+    state->proxy = sentry__string_clone(options->proxy);
     state->user_agent = sentry__string_clone(options->user_agent);
     state->ca_certs = sentry__string_clone(options->ca_certs);
     state->curl_handle = curl_easy_init();
@@ -115,6 +127,13 @@ sentry__curl_transport_start(
         SENTRY_WARN("`curl_easy_init` failed");
         return 1;
     }
+
+#ifdef SENTRY_PLATFORM_NX
+    if (!sentry_nx_transport_start(state->nx_state, options)) {
+        return 1;
+    }
+#endif
+
     return sentry__bgworker_start(bgworker);
 }
 
@@ -170,6 +189,12 @@ sentry__curl_send_task(void *_envelope, void *_state)
     sentry_envelope_t *envelope = (sentry_envelope_t *)_envelope;
     curl_bgworker_state_t *state = (curl_bgworker_state_t *)_state;
 
+#ifdef SENTRY_PLATFORM_NX
+    if (!sentry_nx_curl_connect(state->nx_state)) {
+        return; // TODO should we dump the envelope to disk?
+    }
+#endif
+
     sentry_prepared_http_request_t *req = sentry__prepare_http_request(
         envelope, state->dsn, state->ratelimiter, state->user_agent);
     if (!req) {
@@ -215,14 +240,22 @@ sentry__curl_send_task(void *_envelope, void *_state)
     curl_easy_setopt(curl, CURLOPT_HEADERDATA, (void *)&info);
     curl_easy_setopt(curl, CURLOPT_HEADERFUNCTION, header_callback);
 
-    if (state->http_proxy) {
-        curl_easy_setopt(curl, CURLOPT_PROXY, state->http_proxy);
+    if (state->proxy) {
+        curl_easy_setopt(curl, CURLOPT_PROXY, state->proxy);
     }
     if (state->ca_certs) {
         curl_easy_setopt(curl, CURLOPT_CAINFO, state->ca_certs);
     }
 
-    CURLcode rv = curl_easy_perform(curl);
+#ifdef SENTRY_PLATFORM_NX
+    CURLcode rv = sentry_nx_curl_easy_setopt(state->nx_state, curl, req);
+#else
+    CURLcode rv = CURLE_OK;
+#endif
+
+    if (rv == CURLE_OK) {
+        rv = curl_easy_perform(curl);
+    }
 
     if (rv == CURLE_OK) {
         long response_code;
@@ -285,7 +318,7 @@ sentry__curl_dump_queue(sentry_run_t *run, void *transport_state)
 sentry_transport_t *
 sentry__transport_new_default(void)
 {
-    SENTRY_DEBUG("initializing curl transport");
+    SENTRY_INFO("initializing curl transport");
     curl_bgworker_state_t *state = sentry__curl_bgworker_state_new();
     if (!state) {
         return NULL;

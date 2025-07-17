@@ -1684,7 +1684,7 @@ inline bool Server::listen_internal()
         }
 
         // TODO: Use thread pool...
-        std::thread([=]() {
+        std::thread([=, this]() {
             {
                 std::lock_guard<std::mutex> guard(running_threads_mutex_);
                 running_threads_++;
@@ -1861,7 +1861,7 @@ inline bool Client::is_valid() const
 inline socket_t Client::create_client_socket() const
 {
     return detail::create_socket(host_.c_str(), port_,
-        [=](socket_t sock, struct addrinfo& ai) -> bool {
+        [this](socket_t sock, struct addrinfo& ai) -> bool {
             detail::set_nonblocking(sock, true);
 
             auto ret = connect(sock, ai.ai_addr, ai.ai_addrlen);

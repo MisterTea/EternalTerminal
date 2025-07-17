@@ -36,6 +36,8 @@
 
 #include "processor/synth_minidump.h"
 
+#include <assert.h>
+
 namespace google_breakpad {
 
 namespace SynthMinidump {

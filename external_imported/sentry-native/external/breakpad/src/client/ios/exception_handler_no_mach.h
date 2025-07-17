@@ -35,7 +35,6 @@
 #include <string>
 
 #include "client/mac/handler/ucontext_compat.h"
-#include "common/scoped_ptr.h"
 
 namespace google_breakpad {
 

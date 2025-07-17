@@ -164,7 +164,7 @@ const string LongStringDictionary::GetValueForKey(const char* key) const {
     const char* segment_value =
         SimpleStringDictionary::GetValueForKey(segment_key);
 
-    if (segment_value != NULL) {
+    if (segment_value != nullptr) {
       found_segment = true;
       return_value.append(segment_value);
     } else {

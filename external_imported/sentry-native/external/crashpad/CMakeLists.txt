@@ -21,7 +21,7 @@ else()
 endif()
 option(CRASHPAD_ZLIB_SYSTEM "Use system zlib library" "${CRASHPAD_ZLIB_SYSTEM_DEFAULT}")
 
-if(CRASHPAD_ZLIB_SYSTEM)
+if(CRASHPAD_ZLIB_SYSTEM AND NOT TARGET ZLIB::ZLIB)
     find_package(ZLIB REQUIRED)
 endif()
 
@@ -49,7 +49,7 @@ function(crashpad_install_dev)
     endif()
 endfunction()
 
-if(WIN32)
+if(WIN32 AND NOT (MINGW AND "${CMAKE_SYSTEM_PROCESSOR}" MATCHES "[Aa][Rr][Mm]64"))
     if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES ARM64)
         enable_language(ASM_MARMASM)
     else()
@@ -122,26 +122,35 @@ if(MSVC)
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4351> # New behavior: elements of array will be default initialized.
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4577> # 'noexcept' used with no exception handling mode specified.
         $<$<COMPILE_LANGUAGE:C,CXX>:/wd4996> # 'X' was declared deprecated.
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-missing-field-initializers> # missing field initializer
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-sign-compare> # comparison of integers of different signs
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-microsoft-cast> # implicit conversion between pointer-to-function and pointer-to-object
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-unused-parameter> # same as /wd4100
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-deprecated-declarations> # same as /wd4996
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-format> # only Clang-CL
+        $<$<AND:$<COMPILE_LANGUAGE:C,CXX>,$<C_COMPILER_ID:Clang>>:-Wno-cast-function-type-mismatch> # only Clang-CL
     )
-
-    # WER support is only available starting from Win10 build 10941
-    if("${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION}" VERSION_LESS 10.0.19041)
-        message(STATUS "WER support disabled. Needs target platform >= 10.0.19041 (actual: ${CMAKE_VS_WINDOWS_TARGET_PLATFORM_VERSION})")
-    else()
-        SET(CRASHPAD_WER_ENABLED TRUE)
-        SET(CRASHPAD_WER_ENABLED TRUE PARENT_SCOPE)
-        message(STATUS "WER support enabled")
-    endif()
 elseif(MINGW)
     # redirect to wmain
     # FIXME: cmake 3.13 added target_link_options
     set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -municode")
-    if(CRASHPAD_WER_ENABLED)
-        message(STATUS "WER support enabled")
-    else()
-        message(STATUS "WER support disabled. Define CRASHPAD_WER_ENABLED = TRUE to enable.")
-    endif()
 endif()
+
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(crashpad_interface INTERFACE
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
+        $<$<COMPILE_LANGUAGE:CXX>:-Wno-attributes>
+    )
+endif()
+
+if(LINUX)
+    target_compile_definitions(crashpad_interface INTERFACE
+        _FILE_OFFSET_BITS=64
+        _LARGEFILE64_SOURCE
+        _LARGEFILE_SOURCE
+    )
+endif()
+
 add_library(crashpad::interface ALIAS crashpad_interface)
 
 add_subdirectory(compat)

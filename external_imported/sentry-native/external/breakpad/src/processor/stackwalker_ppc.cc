@@ -37,7 +37,8 @@
 #include <config.h>  // Must come first
 #endif
 
-#include "common/scoped_ptr.h"
+#include <memory>
+
 #include "processor/stackwalker_ppc.h"
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/memory_region.h"
@@ -61,7 +62,7 @@ StackwalkerPPC::StackwalkerPPC(const SystemInfo* system_info,
     BPLOG(ERROR) << "Memory out of range for stackwalking: " <<
                     HexString(memory_->GetBase()) << "+" <<
                     HexString(memory_->GetSize());
-    memory_ = NULL;
+    memory_ = nullptr;
   }
 }
 
@@ -69,7 +70,7 @@ StackwalkerPPC::StackwalkerPPC(const SystemInfo* system_info,
 StackFrame* StackwalkerPPC::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context";
-    return NULL;
+    return nullptr;
   }
 
   StackFramePPC* frame = new StackFramePPC();
@@ -89,7 +90,7 @@ StackFrame* StackwalkerPPC::GetCallerFrame(const CallStack* stack,
                                            bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   // The instruction pointers for previous frames are saved on the stack.
@@ -111,7 +112,7 @@ StackFrame* StackwalkerPPC::GetCallerFrame(const CallStack* stack,
   if (!memory_->GetMemoryAtAddress(last_frame->context.gpr[1],
                                    &stack_pointer) ||
       stack_pointer <= last_frame->context.gpr[1]) {
-    return NULL;
+    return nullptr;
   }
 
   // Mac OS X/Darwin gives 1 as the return address from the bottom-most
@@ -122,10 +123,10 @@ StackFrame* StackwalkerPPC::GetCallerFrame(const CallStack* stack,
   uint32_t instruction;
   if (!memory_->GetMemoryAtAddress(stack_pointer + 8, &instruction) ||
       instruction <= 1) {
-    return NULL;
+    return nullptr;
   }
 
-  scoped_ptr<StackFramePPC> frame(new StackFramePPC());
+  std::unique_ptr<StackFramePPC> frame(new StackFramePPC());
 
   frame->context = last_frame->context;
   frame->context.srr0 = instruction;
@@ -138,7 +139,7 @@ StackFrame* StackwalkerPPC::GetCallerFrame(const CallStack* stack,
   if (TerminateWalk(instruction, stack_pointer, last_frame->context.gpr[1],
                     /*first_unwind=*/last_frame->trust ==
                         StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   // frame->context.srr0 is the return address, which is one instruction

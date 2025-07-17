@@ -72,7 +72,7 @@ ReportResult CrashReportSender::SendCrashReport(
 
   int http_response = 0;
   bool result = HTTPUpload::SendMultipartPostRequest(
-    url, parameters, files, NULL, report_code,
+    url, parameters, files, nullptr, report_code,
     &http_response);
 
   if (result) {
@@ -135,7 +135,7 @@ int CrashReportSender::OpenCheckpointFile(const wchar_t* mode, FILE** fd) {
   return _wfopen_s(fd, checkpoint_file_.c_str(), mode);
 #else
   *fd = _wfopen(checkpoint_file_.c_str(), mode);
-  if (*fd == NULL) {
+  if (*fd == nullptr) {
     return errno;
   }
   return 0;

@@ -73,7 +73,7 @@ uint32_t DumpContext::GetContextFlags() const {
 const MDRawContextX86* DumpContext::GetContextX86() const {
   if (GetContextCPU() != MD_CONTEXT_X86) {
     BPLOG(ERROR) << "DumpContext cannot get x86 context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.x86;
@@ -82,7 +82,7 @@ const MDRawContextX86* DumpContext::GetContextX86() const {
 const MDRawContextPPC* DumpContext::GetContextPPC() const {
   if (GetContextCPU() != MD_CONTEXT_PPC) {
     BPLOG(ERROR) << "DumpContext cannot get ppc context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.ppc;
@@ -91,7 +91,7 @@ const MDRawContextPPC* DumpContext::GetContextPPC() const {
 const MDRawContextPPC64* DumpContext::GetContextPPC64() const {
   if (GetContextCPU() != MD_CONTEXT_PPC64) {
     BPLOG(ERROR) << "DumpContext cannot get ppc64 context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.ppc64;
@@ -100,7 +100,7 @@ const MDRawContextPPC64* DumpContext::GetContextPPC64() const {
 const MDRawContextAMD64* DumpContext::GetContextAMD64() const {
   if (GetContextCPU() != MD_CONTEXT_AMD64) {
     BPLOG(ERROR) << "DumpContext cannot get amd64 context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.amd64;
@@ -109,7 +109,7 @@ const MDRawContextAMD64* DumpContext::GetContextAMD64() const {
 const MDRawContextSPARC* DumpContext::GetContextSPARC() const {
   if (GetContextCPU() != MD_CONTEXT_SPARC) {
     BPLOG(ERROR) << "DumpContext cannot get sparc context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.ctx_sparc;
@@ -118,7 +118,7 @@ const MDRawContextSPARC* DumpContext::GetContextSPARC() const {
 const MDRawContextARM* DumpContext::GetContextARM() const {
   if (GetContextCPU() != MD_CONTEXT_ARM) {
     BPLOG(ERROR) << "DumpContext cannot get arm context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.arm;
@@ -127,7 +127,7 @@ const MDRawContextARM* DumpContext::GetContextARM() const {
 const MDRawContextARM64* DumpContext::GetContextARM64() const {
   if (GetContextCPU() != MD_CONTEXT_ARM64) {
     BPLOG(ERROR) << "DumpContext cannot get arm64 context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.arm64;
@@ -137,7 +137,7 @@ const MDRawContextMIPS* DumpContext::GetContextMIPS() const {
   if ((GetContextCPU() != MD_CONTEXT_MIPS) &&
       (GetContextCPU() != MD_CONTEXT_MIPS64)) {
     BPLOG(ERROR) << "DumpContext cannot get MIPS context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.ctx_mips;
@@ -146,7 +146,7 @@ const MDRawContextMIPS* DumpContext::GetContextMIPS() const {
 const MDRawContextRISCV* DumpContext::GetContextRISCV() const {
   if (GetContextCPU() != MD_CONTEXT_RISCV) {
     BPLOG(ERROR) << "DumpContext cannot get RISCV context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.riscv;
@@ -155,7 +155,7 @@ const MDRawContextRISCV* DumpContext::GetContextRISCV() const {
 const MDRawContextRISCV64* DumpContext::GetContextRISCV64() const {
   if (GetContextCPU() != MD_CONTEXT_RISCV64) {
     BPLOG(ERROR) << "DumpContext cannot get RISCV64 context";
-    return NULL;
+    return nullptr;
   }
 
   return context_.riscv64;
@@ -356,7 +356,7 @@ void DumpContext::FreeContext() {
   }
 
   context_flags_ = 0;
-  context_.base = NULL;
+  context_.base = nullptr;
 }
 
 void DumpContext::Print() {

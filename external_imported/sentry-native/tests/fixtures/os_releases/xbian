@@ -1,0 +1,10 @@
+PRETTY_NAME="XBian 1.0 (knockout)"
+NAME=XBian
+VERSION_ID=1.0
+VERSION="1.0 (knockout)"
+ID=raspbian
+ID_LIKE=debian
+ANSI_COLOR="1;31"
+HOME_URL="http://www.xbian.org/"
+SUPPORT_URL="http://forum.xbian.org/"
+BUG_REPORT_URL="https://github.com/xbianonpi/xbian/issues"

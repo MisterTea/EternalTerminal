@@ -29,9 +29,10 @@
 //  MachIPC.mm
 //  Wrapper for mach IPC calls
 
-#import <stdio.h>
 #import "MachIPC.h"
+#import <stdio.h>
 #include "common/mac/bootstrap_compat.h"
+#include "common/memory_allocator.h"
 
 namespace google_breakpad {
 //==============================================================================
@@ -77,7 +78,7 @@ mach_msg_size_t MachMessage::CalculateSize() {
   size_t size = sizeof(mach_msg_header_t) + sizeof(mach_msg_body_t);
   
   // add space for MessageDataPacket
-  int32_t alignedDataLength = (GetDataLength() + 3) & ~0x3;
+  size_t alignedDataLength = PageAllocator::AlignUp(GetDataLength(), 4);
   size += 2*sizeof(int32_t) + alignedDataLength;
   
   // add space for descriptors

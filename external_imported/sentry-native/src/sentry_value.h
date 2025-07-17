@@ -2,7 +2,7 @@
 #define SENTRY_VALUE_H_INCLUDED
 
 #include "sentry_boot.h"
-
+#include "sentry_json.h"
 /**
  * Create a new Value from an owned string.
  */
@@ -81,13 +81,22 @@ sentry_value_t sentry__value_clone(sentry_value_t value);
 
 /**
  * This appends `v` to the List `value`.
- * It will remove the first value of the list, is case the total number if items
- * would exceed `max`.
+ *
+ * On non-full lists, exponentially reallocate space to accommodate new values
+ * (until we reach `max`). After reaching max, the oldest value is removed to
+ * make space for the new one.
+ *
+ * `max` should stay fixed over multiple invocations.
  *
  * Returns 0 on success.
  */
-int sentry__value_append_bounded(
+int sentry__value_append_ringbuffer(
     sentry_value_t value, sentry_value_t v, size_t max);
+
+/**
+ * Converts ring buffer to linear list
+ */
+sentry_value_t sentry__value_ring_buffer_to_list(sentry_value_t rb);
 
 /**
  * Deep-merges object src into dst.
@@ -106,19 +115,9 @@ int sentry__value_append_bounded(
 int sentry__value_merge_objects(sentry_value_t dst, sentry_value_t src);
 
 /**
- * Parse the given JSON string into a new Value.
- */
-sentry_value_t sentry__value_from_json(const char *buf, size_t buflen);
-
-typedef struct sentry_jsonwriter_s sentry_jsonwriter_t;
-
-/**
  * Writes the given `value` into the `jsonwriter`.
  */
 void sentry__jsonwriter_write_value(
     sentry_jsonwriter_t *jw, sentry_value_t value);
 
-sentry_value_t sentry__value_new_span_uuid(const sentry_uuid_t *uuid);
-
-sentry_value_t sentry__value_new_internal_uuid(const sentry_uuid_t *uuid);
 #endif

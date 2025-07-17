@@ -81,7 +81,7 @@ bool FindTable(REFIID iid, IDiaSession* session, void** table) {
   ULONG fetched = 0;
   while (SUCCEEDED(enum_tables->Next(1, &temp_table, &fetched)) &&
          fetched == 1) {
-    void* temp = NULL;
+    void* temp = nullptr;
     if (SUCCEEDED(temp_table->QueryInterface(iid, &temp))) {
       *table = temp;
       return true;

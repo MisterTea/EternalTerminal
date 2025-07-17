@@ -166,7 +166,7 @@ TEST_F(SanityCheck, NoResolver) {
   raw_context.eip = 0x40000200;
   raw_context.ebp = 0x80000000;
 
-  StackFrameSymbolizer frame_symbolizer(NULL, NULL);
+  StackFrameSymbolizer frame_symbolizer(nullptr, nullptr);
   StackwalkerX86 walker(&system_info, &raw_context, &stack_region, &modules,
                         &frame_symbolizer);
   // This should succeed, even without a resolver or supplier.
@@ -217,7 +217,7 @@ TEST_F(GetContextFrame, NoStackMemory) {
   raw_context.ebp = 0x80000000;
 
   StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
-  StackwalkerX86 walker(&system_info, &raw_context, NULL, &modules,
+  StackwalkerX86 walker(&system_info, &raw_context, nullptr, &modules,
                         &frame_symbolizer);
   vector<const CodeModule*> modules_without_symbols;
   vector<const CodeModule*> modules_with_corrupt_symbols;
@@ -278,7 +278,7 @@ TEST_F(GetCallerFrame, Traditional) {
     EXPECT_EQ(0x4000c7a5U, frame0->instruction);
     EXPECT_EQ(0x4000c7a5U, frame0->context.eip);
     EXPECT_EQ(frame0_ebp.Value(), frame0->context.ebp);
-    EXPECT_EQ(NULL, frame0->windows_frame_info);
+    EXPECT_EQ(nullptr, frame0->windows_frame_info);
   }
 
   {  // To avoid reusing locals by mistake
@@ -291,7 +291,7 @@ TEST_F(GetCallerFrame, Traditional) {
     EXPECT_EQ(0x40008679U, frame1->instruction + 1);
     EXPECT_EQ(0x40008679U, frame1->context.eip);
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -343,7 +343,7 @@ TEST_F(GetCallerFrame, TraditionalScan) {
     EXPECT_EQ(0x4000f49dU, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(0xd43eed6eU, frame0->context.ebp);
-    EXPECT_EQ(NULL, frame0->windows_frame_info);
+    EXPECT_EQ(nullptr, frame0->windows_frame_info);
   }
 
   {  // To avoid reusing locals by mistake
@@ -357,7 +357,7 @@ TEST_F(GetCallerFrame, TraditionalScan) {
     EXPECT_EQ(0x4000129dU, frame1->context.eip);
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -409,7 +409,7 @@ TEST_F(GetCallerFrame, TraditionalScanLongWay) {
     EXPECT_EQ(0x4000f49dU, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(0xd43eed6eU, frame0->context.ebp);
-    EXPECT_EQ(NULL, frame0->windows_frame_info);
+    EXPECT_EQ(nullptr, frame0->windows_frame_info);
   }
 
   {  // To avoid reusing locals by mistake
@@ -423,7 +423,7 @@ TEST_F(GetCallerFrame, TraditionalScanLongWay) {
     EXPECT_EQ(0x4000129dU, frame1->context.eip);
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -475,7 +475,7 @@ TEST_F(GetCallerFrame, ScanningNotAllowed) {
     EXPECT_EQ(0x4000f49dU, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(0xd43eed6eU, frame0->context.ebp);
-    EXPECT_EQ(NULL, frame0->windows_frame_info);
+    EXPECT_EQ(nullptr, frame0->windows_frame_info);
   }
 }
 
@@ -534,7 +534,7 @@ TEST_F(GetCallerFrame, WindowsFrameData) {
     EXPECT_EQ(0x4000aa85U, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(0xf052c1deU, frame0->context.ebp);
-    EXPECT_TRUE(frame0->windows_frame_info != NULL);
+    EXPECT_TRUE(frame0->windows_frame_info != nullptr);
   }
 
   {  // To avoid reusing locals by mistake
@@ -554,7 +554,7 @@ TEST_F(GetCallerFrame, WindowsFrameData) {
     EXPECT_EQ(0x9068a878U, frame1->context.ebx);
     EXPECT_EQ(0xa7120d1aU, frame1->context.esi);
     EXPECT_EQ(0x630891beU, frame1->context.edi);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -615,7 +615,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataAligned) {
     EXPECT_EQ(0x4000aa85U, frame0->context.eip);
     EXPECT_EQ(frame0_esp.Value(), frame0->context.esp);
     EXPECT_EQ(frame0_ebp.Value(), frame0->context.ebp);
-    EXPECT_TRUE(frame0->windows_frame_info != NULL);
+    EXPECT_TRUE(frame0->windows_frame_info != nullptr);
   }
 
   {  // To avoid reusing locals by mistake
@@ -629,7 +629,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataAligned) {
     EXPECT_EQ(0x5000129dU, frame1->context.eip);
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -708,7 +708,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataParameterSize) {
     EXPECT_EQ(0x40001000U, frame0->function_base);
     // The FUNC record for module1::wheedle should have produced a
     // WindowsFrameInfo structure with only the parameter size valid.
-    ASSERT_TRUE(frame0->windows_frame_info != NULL);
+    ASSERT_TRUE(frame0->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_PARAMETER_SIZE,
               frame0->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_UNKNOWN,
@@ -730,7 +730,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataParameterSize) {
     EXPECT_EQ(&module2, frame1->module);
     EXPECT_EQ("module2::whine", frame1->function_name);
     EXPECT_EQ(0x5000aa85U, frame1->function_base);
-    ASSERT_TRUE(frame1->windows_frame_info != NULL);
+    ASSERT_TRUE(frame1->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame1->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame1->windows_frame_info->type_);
@@ -752,8 +752,8 @@ TEST_F(GetCallerFrame, WindowsFrameDataParameterSize) {
     EXPECT_EQ(frame2_esp.Value(), frame2->context.esp);
     EXPECT_EQ(frame2_ebp.Value(), frame2->context.ebp);
     EXPECT_EQ(0x2558c7f3U, frame2->context.ebx);
-    EXPECT_EQ(NULL, frame2->module);
-    EXPECT_EQ(NULL, frame2->windows_frame_info);
+    EXPECT_EQ(nullptr, frame2->module);
+    EXPECT_EQ(nullptr, frame2->windows_frame_info);
   }
 }
 
@@ -803,7 +803,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataScan) {
     EXPECT_EQ(0x40000c9cU, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(0x2ae314cdU, frame0->context.ebp);
-    EXPECT_TRUE(frame0->windows_frame_info != NULL);
+    EXPECT_TRUE(frame0->windows_frame_info != nullptr);
   }
 
   {  // To avoid reusing locals by mistake
@@ -820,7 +820,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataScan) {
     EXPECT_EQ(0x50007ce9U, frame1->instruction + 1);
     EXPECT_EQ(0x50007ce9U, frame1->context.eip);
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
-    EXPECT_TRUE(frame1->windows_frame_info != NULL);
+    EXPECT_TRUE(frame1->windows_frame_info != nullptr);
   }
 }
 
@@ -892,7 +892,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataBadEIPScan) {
     EXPECT_EQ(0x40000700U, frame0->context.eip);
     EXPECT_EQ(stack_section.start().Value(), frame0->context.esp);
     EXPECT_EQ(frame0_ebp.Value(), frame0->context.ebp);
-    EXPECT_TRUE(frame0->windows_frame_info != NULL);
+    EXPECT_TRUE(frame0->windows_frame_info != nullptr);
   }
 
   {  // To avoid reusing locals by mistake
@@ -910,7 +910,7 @@ TEST_F(GetCallerFrame, WindowsFrameDataBadEIPScan) {
     EXPECT_EQ(0x5000d000U, frame1->context.eip);
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
-    EXPECT_TRUE(frame1->windows_frame_info != NULL);
+    EXPECT_TRUE(frame1->windows_frame_info != nullptr);
   }
 }
 
@@ -971,7 +971,7 @@ TEST_F(GetCallerFrame, WindowsFPOUnchangedEBP) {
     EXPECT_EQ(0x4000e8a8U, frame0->function_base);
     // The STACK WIN record for module1::discombobulated should have
     // produced a fully populated WindowsFrameInfo structure.
-    ASSERT_TRUE(frame0->windows_frame_info != NULL);
+    ASSERT_TRUE(frame0->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame0->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FPO,
               frame0->windows_frame_info->type_);
@@ -992,7 +992,7 @@ TEST_F(GetCallerFrame, WindowsFPOUnchangedEBP) {
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
     EXPECT_EQ(&module1, frame1->module);
     EXPECT_EQ("", frame1->function_name);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -1054,7 +1054,7 @@ TEST_F(GetCallerFrame, WindowsFPOUsedEBP) {
     EXPECT_EQ(0x40009aa8U, frame0->function_base);
     // The STACK WIN record for module1::RaisedByTheAliens should have
     // produced a fully populated WindowsFrameInfo structure.
-    ASSERT_TRUE(frame0->windows_frame_info != NULL);
+    ASSERT_TRUE(frame0->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame0->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FPO,
               frame0->windows_frame_info->type_);
@@ -1075,7 +1075,7 @@ TEST_F(GetCallerFrame, WindowsFPOUsedEBP) {
     EXPECT_EQ(frame1_ebp.Value(), frame1->context.ebp);
     EXPECT_EQ(&module1, frame1->module);
     EXPECT_EQ("", frame1->function_name);
-    EXPECT_EQ(NULL, frame1->windows_frame_info);
+    EXPECT_EQ(nullptr, frame1->windows_frame_info);
   }
 }
 
@@ -1332,7 +1332,7 @@ TEST_F(GetCallerFrame, WindowsFPOSystemCall) {
     EXPECT_EQ("ZwWaitForSingleObject", frame0->function_name);
     // The STACK WIN record for module3!ZwWaitForSingleObject should have
     // produced a fully populated WindowsFrameInfo structure.
-    ASSERT_TRUE(frame0->windows_frame_info != NULL);
+    ASSERT_TRUE(frame0->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame0->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FPO,
               frame0->windows_frame_info->type_);
@@ -1356,7 +1356,7 @@ TEST_F(GetCallerFrame, WindowsFPOSystemCall) {
     EXPECT_EQ("WaitForSingleObjectEx", frame1->function_name);
     // The STACK WIN record for module4!WaitForSingleObjectEx should have
     // produced a fully populated WindowsFrameInfo structure.
-    ASSERT_TRUE(frame1->windows_frame_info != NULL);
+    ASSERT_TRUE(frame1->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame1->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame1->windows_frame_info->type_);
@@ -1544,7 +1544,7 @@ TEST_F(GetCallerFrame, ReturnAddressIsNotInKnownModule) {
     EXPECT_EQ(frame0_ebp.Value(), frame0->context.ebp);
     EXPECT_EQ(&msvcrt_dll, frame0->module);
     EXPECT_EQ("wcsstr", frame0->function_name);
-    ASSERT_TRUE(frame0->windows_frame_info != NULL);
+    ASSERT_TRUE(frame0->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame0->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame0->windows_frame_info->type_);
@@ -1569,7 +1569,7 @@ TEST_F(GetCallerFrame, ReturnAddressIsNotInKnownModule) {
     EXPECT_EQ(frame2_ebp.Value(), frame1->context.ebp);
     EXPECT_EQ(&kernel32_dll, frame1->module);
     EXPECT_EQ("FindNextFileW", frame1->function_name);
-    ASSERT_TRUE(frame1->windows_frame_info != NULL);
+    ASSERT_TRUE(frame1->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame1->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame1->windows_frame_info->type_);
@@ -1593,7 +1593,7 @@ TEST_F(GetCallerFrame, ReturnAddressIsNotInKnownModule) {
     EXPECT_EQ(frame3_ebp.Value(), frame2->context.ebp);
     EXPECT_EQ(&chrome_dll, frame2->module);
     EXPECT_EQ("file_util::FileEnumerator::Next()", frame2->function_name);
-    ASSERT_TRUE(frame2->windows_frame_info != NULL);
+    ASSERT_TRUE(frame2->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame2->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame2->windows_frame_info->type_);
@@ -1747,7 +1747,7 @@ TEST_F(GetCallerFrame, HandleAlignmentInProgramString) {
     EXPECT_EQ(frame0_esp.Value(), frame->context.esp);
     EXPECT_EQ(frame0_ebp.Value(), frame->context.ebp);
     EXPECT_EQ(&chrome_dll, frame->module);
-    ASSERT_TRUE(frame->windows_frame_info != NULL);
+    ASSERT_TRUE(frame->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame->windows_frame_info->type_);
@@ -1772,7 +1772,7 @@ TEST_F(GetCallerFrame, HandleAlignmentInProgramString) {
     EXPECT_EQ(frame1_esp.Value(), frame->context.esp);
     EXPECT_EQ(frame1_ebp.Value(), frame->context.ebp);
     EXPECT_EQ(&chrome_dll, frame->module);
-    ASSERT_TRUE(frame->windows_frame_info != NULL);
+    ASSERT_TRUE(frame->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame->windows_frame_info->type_);
@@ -1794,7 +1794,7 @@ TEST_F(GetCallerFrame, HandleAlignmentInProgramString) {
     EXPECT_EQ(frame2_esp.Value(), frame->context.esp);
     EXPECT_EQ(frame2_ebp.Value(), frame->context.ebp);
     EXPECT_EQ(&chrome_dll, frame->module);
-    ASSERT_TRUE(frame->windows_frame_info != NULL);
+    ASSERT_TRUE(frame->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame->windows_frame_info->type_);
@@ -1993,9 +1993,9 @@ void GetCallerFrame::IPAddressIsNotInKnownModuleTestImpl(
     EXPECT_EQ(raw_context.eip, frame0->context.eip);
     EXPECT_EQ(raw_context.ebp, frame0->context.ebp);
     EXPECT_EQ(raw_context.esp, frame0->context.esp);
-    EXPECT_EQ(NULL, frame0->module);  // IP not in known module
+    EXPECT_EQ(nullptr, frame0->module);  // IP not in known module
     EXPECT_EQ("", frame0->function_name);
-    ASSERT_EQ(NULL, frame0->windows_frame_info);
+    ASSERT_EQ(nullptr, frame0->windows_frame_info);
   }
 
   {  // To avoid reusing locals by mistake
@@ -2009,7 +2009,7 @@ void GetCallerFrame::IPAddressIsNotInKnownModuleTestImpl(
     EXPECT_EQ(frame1_esp.Value(), frame1->context.esp);
     EXPECT_EQ(&remoting_core_dll, frame1->module);
     EXPECT_EQ("nsc_ECDSAVerifyStub", frame1->function_name);
-    ASSERT_TRUE(frame1->windows_frame_info != NULL);
+    ASSERT_TRUE(frame1->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame1->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame1->windows_frame_info->type_);
@@ -2029,7 +2029,7 @@ void GetCallerFrame::IPAddressIsNotInKnownModuleTestImpl(
     EXPECT_EQ(frame2_esp.Value(), frame2->context.esp);
     EXPECT_EQ(&remoting_core_dll, frame2->module);
     EXPECT_EQ("NSC_Verify", frame2->function_name);
-    ASSERT_TRUE(frame2->windows_frame_info != NULL);
+    ASSERT_TRUE(frame2->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame2->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame2->windows_frame_info->type_);
@@ -2049,7 +2049,7 @@ void GetCallerFrame::IPAddressIsNotInKnownModuleTestImpl(
     EXPECT_EQ(frame3_esp.Value(), frame3->context.esp);
     EXPECT_EQ(&remoting_core_dll, frame3->module);
     EXPECT_EQ("PK11_Verify", frame3->function_name);
-    ASSERT_TRUE(frame3->windows_frame_info != NULL);
+    ASSERT_TRUE(frame3->windows_frame_info != nullptr);
     EXPECT_EQ(WindowsFrameInfo::VALID_ALL, frame3->windows_frame_info->valid);
     EXPECT_EQ(WindowsFrameInfo::STACK_INFO_FRAME_DATA,
               frame3->windows_frame_info->type_);
@@ -2134,10 +2134,10 @@ struct CFIFixture: public StackwalkerX86Fixture {
       ASSERT_EQ(StackFrameX86::CONTEXT_VALID_ALL, frame0->context_validity);
       EXPECT_EQ("enchiridion", frame0->function_name);
       EXPECT_EQ(0x40004000U, frame0->function_base);
-      ASSERT_TRUE(frame0->windows_frame_info != NULL);
+      ASSERT_TRUE(frame0->windows_frame_info != nullptr);
       ASSERT_EQ(WindowsFrameInfo::VALID_PARAMETER_SIZE,
                 frame0->windows_frame_info->valid);
-      ASSERT_TRUE(frame0->cfi_frame_info != NULL);
+      ASSERT_TRUE(frame0->cfi_frame_info != nullptr);
     }
 
     {  // To avoid reusing locals by mistake

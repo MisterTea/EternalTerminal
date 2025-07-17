@@ -1,0 +1,7 @@
+NAME="SLED"
+VERSION="12-SP3"
+VERSION_ID="12.3"
+PRETTY_NAME="SUSE Linux Enterprise Desktop 12 SP3"
+ID="sled"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sled:12:sp3"

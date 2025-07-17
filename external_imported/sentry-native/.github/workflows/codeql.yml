@@ -1,0 +1,67 @@
+name: 'CodeQL'
+
+on:
+  push:
+    branches: [master]
+  pull_request:
+    # The branches below must be a subset of the branches above
+    branches: [master]
+  schedule:
+    - cron: '17 23 * * 3'
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  analyze:
+    name: Analyze
+    runs-on: ubuntu-22.04
+
+    strategy:
+      fail-fast: false
+      matrix:
+        language: ['cpp', 'java']
+
+    steps:
+      - name: Checkout Repo
+        uses: actions/checkout@v4
+        with:
+          submodules: 'recursive'
+
+      - name: Initialize CodeQL
+        uses: github/codeql-action/init@c36620d31ac7c881962c3d9dd939c40ec9434f2b # pin@v2
+        with:
+          languages: ${{ matrix.language }}
+
+      - name: Installing Linux Dependencies
+        run: |
+          sudo apt update
+          sudo apt install cmake clang-14 clang-tools llvm kcov g++-12 valgrind zlib1g-dev libcurl4-openssl-dev
+
+      - if: matrix.language == 'java'
+        name: Setup Java Version
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - if: matrix.language == 'java'
+        name: Setup Gradle
+        uses: gradle/actions/setup-gradle@bb0c460cbf5354b0cddd15bacdf0d6aaa3e5a32b # pin@v3
+        with:
+          gradle-home-cache-cleanup: true
+
+      - if: matrix.language == 'java'
+        name: Build for Android NDK
+        working-directory: ./ndk
+        run: |
+          ./gradlew compileJava
+
+      - if: matrix.language == 'cpp'
+        name: Build sentry-native
+        run: |
+          cmake -B build -DCMAKE_BUILD_TYPE=RelWithDebInfo && cmake --build build --parallel
+
+      - name: Perform CodeQL Analysis
+        uses: github/codeql-action/analyze@c36620d31ac7c881962c3d9dd939c40ec9434f2b # pin@v2

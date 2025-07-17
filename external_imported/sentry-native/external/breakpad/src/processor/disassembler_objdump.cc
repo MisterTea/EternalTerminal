@@ -73,7 +73,8 @@ bool IsOperandSize(const string& token) {
   return false;
 }
 
-bool GetSegmentAddressX86(const DumpContext& context, string segment_name,
+bool GetSegmentAddressX86(const DumpContext& context,
+                          const string& segment_name,
                           uint64_t& address) {
   if (segment_name == "ds") {
     address = context.GetContextX86()->ds;
@@ -91,7 +92,8 @@ bool GetSegmentAddressX86(const DumpContext& context, string segment_name,
   return true;
 }
 
-bool GetSegmentAddressAMD64(const DumpContext& context, string segment_name,
+bool GetSegmentAddressAMD64(const DumpContext& context,
+                            const string& segment_name,
                             uint64_t& address) {
   if (segment_name == "ds") {
     address = 0;
@@ -105,7 +107,8 @@ bool GetSegmentAddressAMD64(const DumpContext& context, string segment_name,
   return true;
 }
 
-bool GetSegmentAddress(const DumpContext& context, string segment_name,
+bool GetSegmentAddress(const DumpContext& context,
+                       const string& segment_name,
                        uint64_t& address) {
   if (context.GetContextCPU() == MD_CONTEXT_X86) {
     return GetSegmentAddressX86(context, segment_name, address);
@@ -117,7 +120,8 @@ bool GetSegmentAddress(const DumpContext& context, string segment_name,
   }
 }
 
-bool GetRegisterValueX86(const DumpContext& context, string register_name,
+bool GetRegisterValueX86(const DumpContext& context,
+                         const string& register_name,
                          uint64_t& value) {
   if (register_name == "eax") {
     value = context.GetContextX86()->eax;
@@ -145,7 +149,8 @@ bool GetRegisterValueX86(const DumpContext& context, string register_name,
   return true;
 }
 
-bool GetRegisterValueAMD64(const DumpContext& context, string register_name,
+bool GetRegisterValueAMD64(const DumpContext& context,
+                           const string& register_name,
                            uint64_t& value) {
   if (register_name == "rax") {
     value = context.GetContextAMD64()->rax;
@@ -193,7 +198,8 @@ bool GetRegisterValueAMD64(const DumpContext& context, string register_name,
 // success.
 // Support for non-full-size registers not implemented, since we're only using
 // this to evaluate address expressions.
-bool GetRegisterValue(const DumpContext& context, string register_name,
+bool GetRegisterValue(const DumpContext& context,
+                      const string& register_name,
                       uint64_t& value) {
   if (context.GetContextCPU() == MD_CONTEXT_X86) {
     return GetRegisterValueX86(context, register_name, value);

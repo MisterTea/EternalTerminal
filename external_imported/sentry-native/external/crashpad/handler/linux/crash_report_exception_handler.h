@@ -18,6 +18,7 @@
 #include <map>
 #include <string>
 
+#include "base/files/file_path.h"
 #include "client/crash_report_database.h"
 #include "handler/crash_report_upload_thread.h"
 #include "handler/linux/exception_handler_server.h"
@@ -69,7 +70,8 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       const std::vector<base::FilePath>* attachments,
       bool write_minidump_to_database,
       bool write_minidump_to_log,
-      const UserStreamDataSources* user_stream_data_sources);
+      const UserStreamDataSources* user_stream_data_sources,
+      bool wait_for_upload);
 
   CrashReportExceptionHandler(const CrashReportExceptionHandler&) = delete;
   CrashReportExceptionHandler& operator=(const CrashReportExceptionHandler&) =
@@ -93,6 +95,9 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
       int broker_sock,
       UUID* local_report_id = nullptr) override;
 
+  void AddAttachment(const base::FilePath& attachment) override;
+  void RemoveAttachment(const base::FilePath& attachment) override;
+
  private:
   bool HandleExceptionWithConnection(
       PtraceConnection* connection,
@@ -108,14 +113,21 @@ class CrashReportExceptionHandler : public ExceptionHandlerServer::Delegate {
                                UUID* local_report_id);
   bool WriteMinidumpToLog(ProcessSnapshotLinux* process_snapshot,
                           ProcessSnapshotSanitized* sanitized_snapshot);
+  // Force Crashpad Handler to wait for one upload attempt if there is a pending report
+  /**
+   * Flush upload thread. If any report is being uploaded, this will
+   * block until an upload attempt is made.
+   */
+  void FlushUploadThread();
 
   CrashReportDatabase* database_;  // weak
   CrashReportUploadThread* upload_thread_;  // weak
   const std::map<std::string, std::string>* process_annotations_;  // weak
-  const std::vector<base::FilePath>* attachments_;  // weak
+  std::vector<base::FilePath> attachments_;
   bool write_minidump_to_database_;
   bool write_minidump_to_log_;
   const UserStreamDataSources* user_stream_data_sources_;  // weak
+  bool wait_for_upload_ = false;
 };
 
 }  // namespace crashpad

@@ -1,0 +1,9 @@
+NAME=ArcoLinux
+ID=arcolinux
+ID_LIKE=arch
+BUILD_ID=rolling
+ANSI_COLOR="0;36"
+HOME_URL="https://arcolinux.info/"
+SUPPORT_URL="https://arcolinuxforum.com/"
+BUG_REPORT_URL="https://github.com/arcolinux"
+LOGO=arcolinux-hello

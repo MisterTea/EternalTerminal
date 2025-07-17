@@ -121,7 +121,7 @@ class GUIDGenerator {
     // time(NULL) is a very poor seed, so lacking anything better mix an
     // address into it. We drop the four rightmost bits as they're likely to
     // be 0 on almost all architectures.
-    srand(time(NULL) | ((uintptr_t)&once_control >> 4));
+    srand(time(nullptr) | ((uintptr_t)&once_control >> 4));
   }
 
   static pthread_once_t once_control;

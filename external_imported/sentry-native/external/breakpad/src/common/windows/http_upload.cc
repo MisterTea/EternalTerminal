@@ -30,13 +30,23 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <algorithm>
+#include <map>
+#include <memory>
+#include <string>
+
 #include <assert.h>
+#include <stdint.h>
+#include <stdlib.h>
+#include <wchar.h>
+#include <windows.h>
+
+#if defined(HAVE_ZLIB)
+#include <zlib.h>
+#endif
 
 // Disable exception handler warnings.
 #pragma warning(disable:4530)
-
-#include <fstream>
-#include <vector>
 
 #include "common/windows/string_utils-inl.h"
 
@@ -46,9 +56,64 @@ namespace {
   using std::string;
   using std::wstring;
   using std::map;
-  using std::vector;
-  using std::ifstream;
-  using std::ios;
+  using std::unique_ptr;
+
+// Silence warning C4100, which may strike when building without zlib support.
+#pragma warning(push)
+#pragma warning(disable:4100)
+
+  // Compresses the contents of `data` into `deflated` using the deflate
+  // algorithm, if supported. Returns true on success, or false if not supported
+  // or in case of any error. The contents of `deflated` are undefined in the
+  // latter case.
+  bool Deflate(const string& data, string& deflated) {
+#if defined(HAVE_ZLIB)
+    z_stream stream{};
+
+    // Start with an output buffer sufficient for 75% compression to avoid
+    // reallocations.
+    deflated.resize(data.size() / 4);
+    stream.next_in = reinterpret_cast<Bytef*>(const_cast<char*>(data.data()));
+    stream.avail_in = data.size();
+    stream.next_out = reinterpret_cast<Bytef*>(&deflated[0]);
+    stream.avail_out = deflated.size();
+    stream.data_type = Z_TEXT;
+
+    // Z_BEST_SPEED is chosen because, in practice, it offers excellent speed
+    // with comparable compression for the symbol data typically being uploaded.
+    // Z_BEST_COMPRESSION:    2151202094 bytes compressed 84.27% in 74.440s.
+    // Z_DEFAULT_COMPRESSION: 2151202094 bytes compressed 84.08% in 36.016s.
+    // Z_BEST_SPEED:          2151202094 bytes compressed 80.39% in 13.73s.
+    int result = deflateInit(&stream, Z_BEST_SPEED);
+    if (result != Z_OK) {
+      return false;
+    }
+
+    while (true) {
+      result = deflate(&stream, /*flush=*/Z_FINISH);
+      if (result == Z_STREAM_END) {  // All data processed.
+        deflated.resize(stream.total_out);
+        break;
+      }
+      if (result != Z_OK && result != Z_BUF_ERROR) {
+        fwprintf(stderr, L"Compression failed with zlib error %d\n", result);
+        break;  // Error condition.
+      }
+      // Grow `deflated` by at least 1k to accept the rest of the data.
+      deflated.resize(deflated.size() + std::max(stream.avail_in, 1024U));
+      stream.next_out = reinterpret_cast<Bytef*>(&deflated[stream.total_out]);
+      stream.avail_out = deflated.size() - stream.total_out;
+    }
+    deflateEnd(&stream);
+
+    return result == Z_STREAM_END;
+#else
+    return false;
+#endif  // defined(HAVE_ZLIB)
+  }
+
+// Restore C4100 to its previous state.
+#pragma warning(pop)
 
   const wchar_t kUserAgent[] = L"Breakpad/1.0 (Windows)";
 
@@ -74,7 +139,8 @@ namespace {
     }
 
     // compute the length of the buffer we'll need
-    int charcount = MultiByteToWideChar(CP_UTF8, 0, utf8.c_str(), -1, NULL, 0);
+    int charcount = MultiByteToWideChar(
+        CP_UTF8, 0, utf8.c_str(), -1, nullptr, 0);
 
     if (charcount == 0) {
       return wstring();
@@ -95,7 +161,7 @@ namespace {
 
     // compute the length of the buffer we'll need
     int charcount = WideCharToMultiByte(cp, 0, wide.c_str(), -1,
-        NULL, 0, NULL, NULL);
+        nullptr, 0, nullptr, nullptr);
     if (charcount == 0) {
       return string();
     }
@@ -103,45 +169,82 @@ namespace {
     // convert
     char *buf = new char[charcount];
     WideCharToMultiByte(cp, 0, wide.c_str(), -1, buf, charcount,
-        NULL, NULL);
+        nullptr, nullptr);
 
     string result(buf);
     delete[] buf;
     return result;
   }
 
-  bool GetFileContents(const wstring& filename, vector<char>* contents) {
-    bool rv = false;
-    // The "open" method on pre-MSVC8 ifstream implementations doesn't accept a
-    // wchar_t* filename, so use _wfopen directly in that case.  For VC8 and
-    // later, _wfopen has been deprecated in favor of _wfopen_s, which does
-    // not exist in earlier versions, so let the ifstream open the file itself.
-    // GCC doesn't support wide file name and opening on FILE* requires ugly
-    // hacks, so fallback to multi byte file.
-#ifdef _MSC_VER
-    ifstream file;
-    file.open(filename.c_str(), ios::binary);
-#else // GCC
-    ifstream file(WideToMBCP(filename, CP_ACP).c_str(), ios::binary);
-#endif  // _MSC_VER >= 1400
-    if (file.is_open()) {
-      file.seekg(0, ios::end);
-      std::streamoff length = file.tellg();
-      // Check for loss of data when converting lenght from std::streamoff into
-      // std::vector<char>::size_type
-      std::vector<char>::size_type vector_size =
-        static_cast<std::vector<char>::size_type>(length);
-      if (static_cast<std::streamoff>(vector_size) == length) {
-        contents->resize(vector_size);
-        if (length != 0) {
-          file.seekg(0, ios::beg);
-          file.read(&((*contents)[0]), length);
-        }
-        rv = true;
-      }
-      file.close();
+  // Returns a string representation of a given Windows error code, or null
+  // on failure.
+  using ScopedLocalString = unique_ptr<wchar_t, decltype(&LocalFree)>;
+  ScopedLocalString FormatError(DWORD error) {
+    wchar_t* message_buffer = nullptr;
+    DWORD message_length =
+        ::FormatMessageW(
+             FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+             FORMAT_MESSAGE_FROM_HMODULE | FORMAT_MESSAGE_IGNORE_INSERTS,
+             /*lpSource=*/::GetModuleHandle(L"wininet.dll"), error,
+             /*dwLanguageId=*/0, reinterpret_cast<wchar_t*>(&message_buffer),
+             /*nSize=*/0, /*Arguments=*/nullptr);
+    return ScopedLocalString(message_length ? message_buffer : nullptr,
+                             &LocalFree);
+  }
+
+  // Emits a log message to stderr for the named operation and Windows error
+  // code.
+  void LogError(const char* operation, DWORD error) {
+    ScopedLocalString message = FormatError(error);
+    fwprintf(stderr, L"%S failed with error %u: %s\n", operation, error,
+             message ? message.get() : L"");
+  }
+
+  // Invokes the Win32 CloseHandle function on `handle` if it is valid.
+  // Intended for use as a deleter for a std::unique_ptr.
+  void CloseWindowsHandle(void* handle) {
+    if (handle != INVALID_HANDLE_VALUE && handle != nullptr) {
+      ::CloseHandle(handle);
     }
-    return rv;
+  }
+
+  // Appends the contents of the file at `filename` to `contents`.
+  bool AppendFileContents(const wstring& filename, string* contents) {
+    // Use Win32 APIs rather than the STL so that files larger than 2^31-1 bytes
+    // can be read. This also allows for use of a hint to the cache manager that
+    // the file will be read sequentially, which can improve performance.
+    using ScopedWindowsHandle =
+        unique_ptr<void, decltype(&CloseWindowsHandle)>;
+    ScopedWindowsHandle file(
+        ::CreateFileW(filename.c_str(), GENERIC_READ,
+                      FILE_SHARE_DELETE | FILE_SHARE_READ,
+                      /*lpSecurityAttributes=*/nullptr, OPEN_EXISTING,
+                      FILE_ATTRIBUTE_NORMAL | FILE_FLAG_SEQUENTIAL_SCAN,
+                      /*hTemplateFile=*/nullptr), &CloseWindowsHandle);
+    BY_HANDLE_FILE_INFORMATION info = {};
+    if (file.get() != nullptr && file.get() != INVALID_HANDLE_VALUE &&
+        ::GetFileInformationByHandle(file.get(), &info)) {
+      uint64_t file_size = info.nFileSizeHigh;
+      file_size <<= 32;
+      file_size |= info.nFileSizeLow;
+      string::size_type position = contents->size();
+      contents->resize(position + file_size);
+      constexpr DWORD kChunkSize = 1024*1024;
+      while (file_size) {
+        const DWORD bytes_to_read =
+            (file_size >= kChunkSize
+                ? kChunkSize
+                : static_cast<DWORD>(file_size));
+        DWORD bytes_read = 0;
+        if (!::ReadFile(file.get(), &((*contents)[position]), bytes_to_read,
+                        &bytes_read, /*lpOverlapped=*/nullptr)) {
+          return false;
+        }
+        position += bytes_read;
+        file_size -= bytes_read;
+      }
+    }
+    return true;
   }
 
   bool CheckParameters(const map<wstring, wstring>& parameters) {
@@ -177,39 +280,48 @@ namespace {
         static_cast<LPVOID>(&content_length),
         &content_length_size, 0)) {
       has_content_length_header = true;
-      claimed_size = wcstol(content_length, NULL, 10);
+      claimed_size = wcstol(content_length, nullptr, 10);
       response_body.reserve(claimed_size);
+    } else {
+      DWORD error = ::GetLastError();
+      if (error != ERROR_HTTP_HEADER_NOT_FOUND) {
+        LogError("HttpQueryInfo", error);
+      }
     }
 
-    DWORD bytes_available;
     DWORD total_read = 0;
-    BOOL return_code;
-
-    while (((return_code = InternetQueryDataAvailable(request, &bytes_available,
-        0, 0)) != 0) && bytes_available > 0) {
-      vector<char> response_buffer(bytes_available);
-      DWORD size_read;
-
-      return_code = InternetReadFile(request,
-          &response_buffer[0],
-          bytes_available, &size_read);
-
-      if (return_code && size_read > 0) {
-        total_read += size_read;
-        response_body.append(&response_buffer[0], size_read);
+    while (true) {
+      DWORD bytes_available;
+      if (!InternetQueryDataAvailable(request, &bytes_available, 0, 0)) {
+        LogError("InternetQueryDataAvailable", ::GetLastError());
+        return false;
       }
-      else {
+      if (bytes_available == 0) {
         break;
       }
+      // Grow the output to hold the available bytes.
+      response_body.resize(total_read + bytes_available);
+      DWORD size_read;
+      if (!InternetReadFile(request, &response_body[total_read],
+                            bytes_available, &size_read)) {
+        LogError("InternetReadFile", ::GetLastError());
+        return false;
+      }
+      if (size_read == 0) {
+        break;
+      }
+      total_read += size_read;
     }
+    // The body may have been over-sized above; shrink to the actual bytes read.
+    response_body.resize(total_read);
 
-    bool succeeded = return_code && (!has_content_length_header ||
-        (total_read == claimed_size));
-    if (succeeded && response) {
+    if (has_content_length_header && (total_read != claimed_size)) {
+      return false;  // The response doesn't match the Content-Length header.
+    }
+    if (response) {
       *response = UTF8ToWide(response_body);
     }
-
-    return succeeded;
+    return true;
   }
 
   bool SendRequestInner(
@@ -237,8 +349,7 @@ namespace {
     components.dwUrlPathLength = sizeof(path) / sizeof(path[0]);
     if (!InternetCrackUrl(url.c_str(), static_cast<DWORD>(url.size()),
         0, &components)) {
-      DWORD err = GetLastError();
-      wprintf(L"%d\n", err);
+      LogError("InternetCrackUrl", ::GetLastError());
       return false;
     }
     bool secure = false;
@@ -251,22 +362,24 @@ namespace {
 
     AutoInternetHandle internet(InternetOpen(kUserAgent,
         INTERNET_OPEN_TYPE_PRECONFIG,
-        NULL,  // proxy name
-        NULL,  // proxy bypass
+        nullptr,  // proxy name
+        nullptr,  // proxy bypass
         0));   // flags
     if (!internet.get()) {
+      LogError("InternetOpen", ::GetLastError());
       return false;
     }
 
     AutoInternetHandle connection(InternetConnect(internet.get(),
         host,
         components.nPort,
-        NULL,    // user name
-        NULL,    // password
+        nullptr,    // user name
+        nullptr,    // password
         INTERNET_SERVICE_HTTP,
         0,       // flags
         0));  // context
     if (!connection.get()) {
+      LogError("InternetConnect", ::GetLastError());
       return false;
     }
 
@@ -275,20 +388,23 @@ namespace {
     AutoInternetHandle request(HttpOpenRequest(connection.get(),
         http_method.c_str(),
         path,
-        NULL,    // version
-        NULL,    // referer
-        NULL,    // agent type
+        nullptr,    // version
+        nullptr,    // referer
+        nullptr,    // agent type
         http_open_flags,
         0));  // context
     if (!request.get()) {
+      LogError("HttpOpenRequest", ::GetLastError());
       return false;
     }
 
     if (!content_type_header.empty()) {
-      HttpAddRequestHeaders(request.get(),
-          content_type_header.c_str(),
-          static_cast<DWORD>(-1),
-          HTTP_ADDREQ_FLAG_ADD);
+      if (!HttpAddRequestHeaders(request.get(),
+                                 content_type_header.c_str(),
+                                 static_cast<DWORD>(-1),
+                                 HTTP_ADDREQ_FLAG_ADD)) {
+        LogError("HttpAddRequestHeaders", ::GetLastError());
+      }
     }
 
     if (timeout_ms) {
@@ -296,20 +412,21 @@ namespace {
           INTERNET_OPTION_SEND_TIMEOUT,
           timeout_ms,
           sizeof(*timeout_ms))) {
-        fwprintf(stderr, L"Could not unset send timeout, continuing...\n");
+        LogError("InternetSetOption-send timeout", ::GetLastError());
       }
 
       if (!InternetSetOption(request.get(),
           INTERNET_OPTION_RECEIVE_TIMEOUT,
           timeout_ms,
           sizeof(*timeout_ms))) {
-        fwprintf(stderr, L"Could not unset receive timeout, continuing...\n");
+        LogError("InternetSetOption-receive timeout", ::GetLastError());
       }
     }
 
-    if (!HttpSendRequest(request.get(), NULL, 0,
+    if (!HttpSendRequest(request.get(), nullptr, 0,
         const_cast<char*>(request_body.data()),
         static_cast<DWORD>(request_body.size()))) {
+      LogError("HttpSendRequest", ::GetLastError());
       return false;
     }
 
@@ -319,10 +436,11 @@ namespace {
     if (!HttpQueryInfo(request.get(), HTTP_QUERY_STATUS_CODE,
         static_cast<LPVOID>(&http_status), &http_status_size,
         0)) {
+      LogError("HttpQueryInfo", ::GetLastError());
       return false;
     }
 
-    int http_response = wcstol(http_status, NULL, 10);
+    int http_response = wcstol(http_status, nullptr, 10);
     if (response_code) {
       *response_code = http_response;
     }
@@ -386,16 +504,7 @@ namespace {
       request_body->append("\r\n");
     }
 
-    vector<char> contents;
-    if (!GetFileContents(filename, &contents)) {
-      return false;
-    }
-
-    if (!contents.empty()) {
-      request_body->append(&(contents[0]), contents.size());
-    }
-
-    return true;
+    return AppendFileContents(filename, request_body);
   }
 
   bool GenerateRequestBody(const map<wstring, wstring>& parameters,
@@ -448,10 +557,20 @@ namespace google_breakpad {
       return false;
     }
 
+    static const wchar_t kNoEncoding[] = L"";
+    static const wchar_t kDeflateEncoding[] = L"Content-Encoding: deflate\r\n";
+    const wchar_t* encoding_header = &kNoEncoding[0];
+    string compressed_body;
+    if (Deflate(request_body, compressed_body)) {
+      request_body.swap(compressed_body);
+      encoding_header = &kDeflateEncoding[0];
+    }  // else deflate unsupported or failed; send the raw data.
+    string().swap(compressed_body);  // Free memory.
+
     return SendRequestInner(
         url,
         L"PUT",
-        L"",
+        encoding_header,
         request_body,
         timeout_ms,
         response_body,

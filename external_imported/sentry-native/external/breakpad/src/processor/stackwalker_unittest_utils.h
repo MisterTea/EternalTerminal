@@ -147,7 +147,7 @@ class MockCodeModules: public google_breakpad::CodeModules {
           address - module->base_address() < module->size())
         return module;
     }
-    return NULL;
+    return nullptr;
   };
 
   const CodeModule* GetMainModule() const { return modules_[0]; }

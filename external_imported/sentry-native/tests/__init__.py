@@ -1,3 +1,4 @@
+import gzip
 import subprocess
 import os
 import io
@@ -7,20 +8,28 @@ import urllib
 import pytest
 import pprint
 import textwrap
+import socket
 
 sourcedir = os.path.dirname(os.path.dirname(os.path.realpath(__file__)))
 
-
 # https://docs.pytest.org/en/latest/assert.html#assert-details
 pytest.register_assert_rewrite("tests.assertions")
+from tests.assertions import assert_no_proxy_request
 
 
-def make_dsn(httpserver, auth="uiaeosnrtdy", id=123456):
+def make_dsn(httpserver, auth="uiaeosnrtdy", id=123456, proxy_host=False):
     url = urllib.parse.urlsplit(httpserver.url_for("/{}".format(id)))
     # We explicitly use `127.0.0.1` here, because on Windows, `localhost` will
     # first try `::1` (the ipv6 loopback), retry a couple times and give up
     # after a timeout of 2 seconds, falling back to the ipv4 loopback instead.
     host = url.netloc.replace("localhost", "127.0.0.1")
+    if proxy_host:
+        # To avoid bypassing the proxy for requests to localhost, we need to add this mapping
+        # to the hosts file & make the DSN using this alternate hostname
+        # see https://learn.microsoft.com/en-us/windows/win32/wininet/enabling-internet-functionality#listing-the-proxy-bypass
+        host = host.replace("127.0.0.1", "sentry.native.test")
+        _check_sentry_native_resolves_to_localhost()
+
     return urllib.parse.urlunsplit(
         (
             url.scheme,
@@ -30,6 +39,14 @@ def make_dsn(httpserver, auth="uiaeosnrtdy", id=123456):
             url.fragment,
         )
     )
+
+
+def _check_sentry_native_resolves_to_localhost():
+    try:
+        resolved_ip = socket.gethostbyname("sentry.native.test")
+        assert resolved_ip == "127.0.0.1"
+    except socket.gaierror:
+        pytest.skip("sentry.native.test does not resolve to localhost")
 
 
 def run(cwd, exe, args, env=dict(os.environ), **kwargs):
@@ -71,7 +88,7 @@ def run(cwd, exe, args, env=dict(os.environ), **kwargs):
         "./{}".format(exe) if sys.platform != "win32" else "{}\\{}.exe".format(cwd, exe)
     ]
     if "asan" in os.environ.get("RUN_ANALYZER", ""):
-        env["ASAN_OPTIONS"] = "detect_leaks=1"
+        env["ASAN_OPTIONS"] = "detect_leaks=1:detect_invalid_join=0"
         env["LSAN_OPTIONS"] = "suppressions={}".format(
             os.path.join(sourcedir, "tests", "leaks.txt")
         )
@@ -162,10 +179,17 @@ class Envelope(object):
 
     @classmethod
     def deserialize(
-        cls, bytes  # type: bytes
+        cls, data  # type: bytes
     ):
         # type: (...) -> Envelope
-        return cls.deserialize_from(io.BytesIO(bytes))
+
+        # check if the data is gzip encoded and extract it before deserialization.
+        # 0x1f8b: gzip-magic, 0x08: `DEFLATE` compression method.
+        if data[:3] == b"\x1f\x8b\x08":
+            with gzip.open(io.BytesIO(data), "rb") as output:
+                return cls.deserialize_from(output)
+
+        return cls.deserialize_from(io.BytesIO(data))
 
     def print_verbose(self, indent=0):
         """Pretty prints the envelope."""
@@ -254,7 +278,7 @@ class Item(object):
         headers = json.loads(line)
         length = headers["length"]
         payload = f.read(length)
-        if headers.get("type") in ["event", "session", "transaction"]:
+        if headers.get("type") in ["event", "session", "transaction", "user_report"]:
             rv = cls(headers=headers, payload=PayloadRef(json=json.loads(payload)))
         else:
             rv = cls(headers=headers, payload=payload)

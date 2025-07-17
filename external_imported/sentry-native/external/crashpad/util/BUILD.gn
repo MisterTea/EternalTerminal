@@ -33,12 +33,6 @@ if (crashpad_is_apple) {
       "mach/mig_gen.py",
     ]
 
-    if (crashpad_is_in_fuchsia) {
-      # TODO(https://fxbug.dev/68780): Remove suppression when fixed.
-      hermetic_deps = false
-      all_outputs_fresh = false
-    }
-
     if (crashpad_is_mac) {
       sources = [
         "$sysroot/usr/include/mach/exc.defs",
@@ -319,6 +313,8 @@ crashpad_static_library("util") {
 
   if (crashpad_is_apple) {
     sources += [
+      "mac/sysctl.cc",
+      "mac/sysctl.h",
       "mac/xattr.cc",
       "mac/xattr.h",
       "mach/composite_mach_message_server.cc",
@@ -355,8 +351,6 @@ crashpad_static_library("util") {
       "mac/mac_util.h",
       "mac/service_management.cc",
       "mac/service_management.h",
-      "mac/sysctl.cc",
-      "mac/sysctl.h",
       "mach/bootstrap.cc",
       "mach/bootstrap.h",
       "mach/child_port_handshake.cc",
@@ -601,6 +595,10 @@ crashpad_static_library("util") {
       "Foundation.framework",
       "IOKit.framework",
     ]
+  }
+
+  if (crashpad_is_ios) {
+    configs += [ "../build:crashpad_is_ios_app_extension" ]
   }
 
   if (crashpad_is_win) {

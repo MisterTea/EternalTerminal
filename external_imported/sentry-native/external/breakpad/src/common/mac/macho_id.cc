@@ -53,7 +53,7 @@ using google_breakpad::MD5Update;
 using google_breakpad::MD5Final;
 
 MachoID::MachoID(const char* path)
-    : memory_(0), memory_size_(0), md5_context_(), update_function_(NULL) {
+    : memory_(0), memory_size_(0), md5_context_(), update_function_(nullptr) {
   snprintf(path_, sizeof(path_), "%s", path);
 }
 
@@ -62,7 +62,7 @@ MachoID::MachoID(void* memory, size_t size)
       memory_(memory),
       memory_size_(size),
       md5_context_(),
-      update_function_(NULL) {}
+      update_function_(nullptr) {}
 
 MachoID::~MachoID() {}
 

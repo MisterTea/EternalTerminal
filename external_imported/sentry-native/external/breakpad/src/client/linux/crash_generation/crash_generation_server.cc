@@ -105,7 +105,7 @@ CrashGenerationServer::Start()
   control_pipe_in_ = control_pipe[0];
   control_pipe_out_ = control_pipe[1];
 
-  if (pthread_create(&thread_, NULL,
+  if (pthread_create(&thread_, nullptr,
                      ThreadMain, reinterpret_cast<void*>(this)))
     return false;
 
@@ -330,7 +330,7 @@ void*
 CrashGenerationServer::ThreadMain(void* arg)
 {
   reinterpret_cast<CrashGenerationServer*>(arg)->Run();
-  return NULL;
+  return nullptr;
 }
 
 }  // namespace google_breakpad

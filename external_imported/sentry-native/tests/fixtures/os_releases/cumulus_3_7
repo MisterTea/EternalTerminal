@@ -1,0 +1,9 @@
+NAME="Cumulus Linux"
+VERSION_ID=3.7.2
+VERSION="Cumulus Linux 3.7.2"
+PRETTY_NAME="Cumulus Linux"
+ID=cumulus-linux
+ID_LIKE=debian
+CPE_NAME=cpe:/o:cumulusnetworks:cumulus_linux:3.7.2
+HOME_URL="http://www.cumulusnetworks.com/"
+SUPPORT_URL="http://support.cumulusnetworks.com/"

@@ -40,11 +40,11 @@
 #include <unistd.h>
 
 #include <limits>
+#include <memory>
 #include <string>
 #include <vector>
 
 #include "common/path_helper.h"
-#include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 #include "google_breakpad/processor/basic_source_line_resolver.h"
 #include "google_breakpad/processor/minidump.h"
@@ -74,7 +74,6 @@ using google_breakpad::MinidumpThreadList;
 using google_breakpad::MinidumpProcessor;
 using google_breakpad::ProcessState;
 using google_breakpad::SimpleSymbolSupplier;
-using google_breakpad::scoped_ptr;
 
 // Processes |options.minidump_file| using MinidumpProcessor.
 // |options.symbol_path|, if non-empty, is the base directory of a
@@ -88,7 +87,7 @@ using google_breakpad::scoped_ptr;
 // call stacks for each thread contained in the minidump.  All information
 // is printed to stdout.
 bool PrintMinidumpProcess(const Options& options) {
-  scoped_ptr<SimpleSymbolSupplier> symbol_supplier;
+  std::unique_ptr<SimpleSymbolSupplier> symbol_supplier;
   if (!options.symbol_paths.empty()) {
     // TODO(mmentovai): check existence of symbol_path if specified?
     symbol_supplier.reset(new SimpleSymbolSupplier(options.symbol_paths));

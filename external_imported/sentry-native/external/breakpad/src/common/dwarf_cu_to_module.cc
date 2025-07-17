@@ -302,9 +302,9 @@ class DwarfCUToModule::GenericDIEHandler: public DIEHandler {
         parent_context_(parent_context),
         offset_(offset),
         declaration_(false),
-        specification_(NULL),
+        specification_(nullptr),
         no_specification(false),
-        abstract_origin_(NULL),
+        abstract_origin_(nullptr),
         forward_ref_die_offset_(0), specification_offset_(0) { }
 
   // Derived classes' ProcessAttributeUnsigned can defer to this to
@@ -562,6 +562,29 @@ static bool IsEmptyRange(const vector<Module::Range>& ranges) {
   return size == 0;
 }
 
+// A handler for DW_TAG_lexical_block DIEs.
+class DwarfCUToModule::LexicalBlockHandler : public GenericDIEHandler {
+ public:
+  LexicalBlockHandler(CUContext* cu_context,
+                      uint64_t offset,
+                      int inline_nest_level,
+                      vector<unique_ptr<Module::Inline>>& inlines)
+      : GenericDIEHandler(cu_context, nullptr, offset),
+        inline_nest_level_(inline_nest_level),
+        inlines_(inlines) {}
+
+  DIEHandler* FindChildHandler(uint64_t offset, enum DwarfTag tag);
+  bool EndAttributes() { return true; }
+  void Finish();
+
+ private:
+  int inline_nest_level_;
+  // A vector of inlines in the same nest level. It's owned by its parent
+  // function/inline. At Finish(), add this inline into the vector.
+  vector<unique_ptr<Module::Inline>>& inlines_;
+  // A vector of child inlines.
+  vector<unique_ptr<Module::Inline>> child_inlines_;
+};
 
 // A handler for DW_TAG_inlined_subroutine DIEs.
 class DwarfCUToModule::InlineHandler : public GenericDIEHandler {
@@ -645,8 +668,11 @@ DIEHandler* DwarfCUToModule::InlineHandler::FindChildHandler(
     case DW_TAG_inlined_subroutine:
       return new InlineHandler(cu_context_, nullptr, offset,
                                inline_nest_level_ + 1, child_inlines_);
+    case DW_TAG_lexical_block:
+      return new LexicalBlockHandler(cu_context_, offset,
+                                     inline_nest_level_ + 1, child_inlines_);
     default:
-      return NULL;
+      return nullptr;
   }
 }
 
@@ -713,6 +739,29 @@ void DwarfCUToModule::InlineHandler::Finish() {
       new Module::Inline(origin, ranges, call_site_line_, call_site_file_id_,
                          inline_nest_level_, std::move(child_inlines_)));
   inlines_.push_back(std::move(in));
+}
+
+DIEHandler* DwarfCUToModule::LexicalBlockHandler::FindChildHandler(
+    uint64_t offset,
+    enum DwarfTag tag) {
+  switch (tag) {
+    case DW_TAG_inlined_subroutine:
+      return new InlineHandler(cu_context_, nullptr, offset, inline_nest_level_,
+                               child_inlines_);
+    case DW_TAG_lexical_block:
+      return new LexicalBlockHandler(cu_context_, offset, inline_nest_level_,
+                                     child_inlines_);
+    default:
+      return nullptr;
+  }
+}
+
+void DwarfCUToModule::LexicalBlockHandler::Finish() {
+  // Insert child inlines inside the lexical block into the inline vector from
+  // parent as if the block does not exit.
+  inlines_.insert(inlines_.end(),
+                  std::make_move_iterator(child_inlines_.begin()),
+                  std::make_move_iterator(child_inlines_.end()));
 }
 
 // A handler for DIEs that contain functions and contribute a
@@ -831,8 +880,11 @@ DIEHandler* DwarfCUToModule::FuncHandler::FindChildHandler(
     case DW_TAG_union_type:
       return new NamedScopeHandler(cu_context_, &child_context_, offset,
                                    handle_inline_);
+    case DW_TAG_lexical_block:
+      if (handle_inline_)
+        return new LexicalBlockHandler(cu_context_, offset, 0, child_inlines_);
     default:
-      return NULL;
+      return nullptr;
   }
 }
 
@@ -908,7 +960,7 @@ void DwarfCUToModule::FuncHandler::Finish() {
     StringView name = name_.empty() ? name_omitted : name_;
     // Create a Module::Function based on the data we've gathered, and
     // add it to the functions_ list.
-    scoped_ptr<Module::Function> func(new Module::Function(name, low_pc_));
+    std::unique_ptr<Module::Function> func(new Module::Function(name, low_pc_));
     func->ranges = ranges;
     func->parameter_size = 0;
     // If the name was unqualified, prefer the Extern name if there's a mismatch
@@ -949,7 +1001,7 @@ void DwarfCUToModule::FuncHandler::Finish() {
 }
 
 bool DwarfCUToModule::NamedScopeHandler::EndAttributes() {
-  child_context_.name = ComputeQualifiedName(NULL);
+  child_context_.name = ComputeQualifiedName(nullptr);
   if (child_context_.name.empty() && no_specification) {
     cu_context_->reporter->UnknownSpecification(offset_, specification_offset_);
   }
@@ -970,7 +1022,7 @@ DIEHandler* DwarfCUToModule::NamedScopeHandler::FindChildHandler(
       return new NamedScopeHandler(cu_context_, &child_context_, offset,
                                    handle_inline_);
     default:
-      return NULL;
+      return nullptr;
   }
 }
 
@@ -1180,7 +1232,7 @@ DIEHandler* DwarfCUToModule::FindChildHandler(
       return new NamedScopeHandler(cu_context_.get(), child_context_.get(),
                                    offset, handle_inline);
     default:
-      return NULL;
+      return nullptr;
   }
 }
 
@@ -1342,12 +1394,12 @@ void DwarfCUToModule::AssignLinesToFunctions() {
 
   // The last line that we used any piece of.  We use this only for
   // generating warnings.
-  const Module::Line* last_line_used = NULL;
+  const Module::Line* last_line_used = nullptr;
 
   // The last function and line we warned about --- so we can avoid
   // doing so more than once.
-  const Module::Function* last_function_cited = NULL;
-  const Module::Line* last_line_cited = NULL;
+  const Module::Function* last_function_cited = nullptr;
+  const Module::Line* last_line_cited = nullptr;
 
   // Prepare a sorted list of ranges with range-to-function mapping
   vector<FunctionRange> sorted_ranges;
@@ -1373,12 +1425,12 @@ void DwarfCUToModule::AssignLinesToFunctions() {
     line = &*line_it;
     current = std::min(range->address, line->address);
   } else if (line_it != lines_.end()) {
-    range = NULL;
+    range = nullptr;
     line = &*line_it;
     current = line->address;
   } else if (range_it != sorted_ranges.end()) {
     range = &*range_it;
-    line = NULL;
+    line = nullptr;
     current = range->address;
   } else {
     return;
@@ -1509,12 +1561,12 @@ void DwarfCUToModule::AssignLinesToFunctions() {
            && next_transition >= range_it->address
            && !within(*range_it, next_transition))
       range_it++;
-    range = (range_it != sorted_ranges.end()) ? &(*range_it) : NULL;
+    range = (range_it != sorted_ranges.end()) ? &(*range_it) : nullptr;
     while (line_it != lines_.end()
            && next_transition >= line_it->address
            && !within(*line_it, next_transition))
       line_it++;
-    line = (line_it != lines_.end()) ? &*line_it : NULL;
+    line = (line_it != lines_.end()) ? &*line_it : nullptr;
 
     // We must make progress.
     assert(next_transition > current);

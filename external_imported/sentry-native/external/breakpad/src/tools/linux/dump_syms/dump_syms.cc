@@ -32,9 +32,9 @@
 
 #include <paths.h>
 #include <stdio.h>
+#include <string.h>
 #include <unistd.h>
 
-#include <cstring>
 #include <iostream>
 #include <string>
 #include <vector>
@@ -52,11 +52,14 @@ int usage(const char* self) {
           google_breakpad::BaseName(self).c_str());
   fprintf(stderr, "Options:\n");
   fprintf(stderr, "  -i:         Output module header information only.\n");
+  fprintf(stderr, "  -a          Preserve the load address - Do not normalize "
+                                 "the load address to zero.\n");
   fprintf(stderr, "  -c          Do not generate CFI section\n");
   fprintf(stderr, "  -d          Generate INLINE/INLINE_ORIGIN records\n");
   fprintf(stderr, "  -r          Do not handle inter-compilation "
                                  "unit references\n");
   fprintf(stderr, "  -v          Print all warnings to stderr\n");
+  fprintf(stderr, "  -b <id>     Use specified id for the module id\n");
   fprintf(stderr, "  -n <name>   Use specified name for name of the object\n");
   fprintf(stderr, "  -o <os>     Use specified name for the "
                                  "operating system\n");
@@ -69,6 +72,7 @@ int usage(const char* self) {
 int main(int argc, char** argv) {
   if (argc < 2)
     return usage(argv[0]);
+  bool preserve_load_address = false;
   bool header_only = false;
   bool cfi = true;
   bool handle_inlines = false;
@@ -76,12 +80,15 @@ int main(int argc, char** argv) {
   bool log_to_stderr = false;
   bool enable_multiple_field = false;
   std::string obj_name;
+  std::string module_id;
   const char* obj_os = "Linux";
   int arg_index = 1;
   while (arg_index < argc && strlen(argv[arg_index]) > 0 &&
          argv[arg_index][0] == '-') {
     if (strcmp("-i", argv[arg_index]) == 0) {
       header_only = true;
+    } else if (strcmp("-a", argv[arg_index]) == 0) {
+      preserve_load_address = true;
     } else if (strcmp("-c", argv[arg_index]) == 0) {
       cfi = false;
     } else if (strcmp("-d", argv[arg_index]) == 0) {
@@ -90,6 +97,13 @@ int main(int argc, char** argv) {
       handle_inter_cu_refs = false;
     } else if (strcmp("-v", argv[arg_index]) == 0) {
       log_to_stderr = true;
+    } else if (strcmp("-b", argv[arg_index]) == 0) {
+      if (arg_index + 1 >= argc) {
+        fprintf(stderr, "Missing argument to -b\n");
+        return usage(argv[0]);
+      }
+      module_id = argv[arg_index + 1];
+      ++arg_index;
     } else if (strcmp("-n", argv[arg_index]) == 0) {
       if (arg_index + 1 >= argc) {
         fprintf(stderr, "Missing argument to -n\n");
@@ -135,7 +149,7 @@ int main(int argc, char** argv) {
     obj_name = binary;
 
   if (header_only) {
-    if (!WriteSymbolFileHeader(binary, obj_name, obj_os, std::cout)) {
+    if (!WriteSymbolFileHeader(binary, obj_name, obj_os, module_id, std::cout)) {
       fprintf(saved_stderr, "Failed to process file.\n");
       return 1;
     }
@@ -143,8 +157,8 @@ int main(int argc, char** argv) {
     SymbolData symbol_data = (handle_inlines ? INLINES : NO_DATA) |
                              (cfi ? CFI : NO_DATA) | SYMBOLS_AND_FILES;
     google_breakpad::DumpOptions options(symbol_data, handle_inter_cu_refs,
-                                         enable_multiple_field);
-    if (!WriteSymbolFile(binary, obj_name, obj_os, debug_dirs, options,
+                                         enable_multiple_field, preserve_load_address);
+    if (!WriteSymbolFile(binary, obj_name, obj_os, module_id, debug_dirs, options,
                          std::cout)) {
       fprintf(saved_stderr, "Failed to write symbol file.\n");
       return 1;

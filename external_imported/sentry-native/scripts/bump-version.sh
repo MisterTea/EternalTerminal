@@ -17,3 +17,5 @@ echo "Bumping version: ${NEW_VERSION}"
 perl -pi -e "s/^#define SENTRY_SDK_VERSION.*/#define SENTRY_SDK_VERSION \"${NEW_VERSION}\"/" include/sentry.h
 perl -pi -e "s/\"version\": \"[^\"]+\"/\"version\": \"${NEW_VERSION}\"/" tests/assertions.py
 perl -pi -e "s/sentry.native\/[^\"]+\"/sentry.native\/${NEW_VERSION}\"/" tests/test_integration_http.py
+perl -pi -e "s/^versionName\=.*/versionName\=${NEW_VERSION}/" ndk/gradle.properties
+perl -pi -e "s/^sentry_version \=.*/sentry_version \= \"${NEW_VERSION}\"/" tests/win_utils.py

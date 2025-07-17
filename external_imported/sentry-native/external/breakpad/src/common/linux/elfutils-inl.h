@@ -49,13 +49,13 @@ const typename ElfClass::Shdr* FindElfSectionByName(
     const char* section_names,
     const char* names_end,
     int nsection) {
-  assert(name != NULL);
-  assert(sections != NULL);
+  assert(name != nullptr);
+  assert(sections != nullptr);
   assert(nsection > 0);
 
   int name_len = my_strlen(name);
   if (name_len == 0)
-    return NULL;
+    return nullptr;
 
   for (int i = 0; i < nsection; ++i) {
     const char* section_name = section_names + sections[i].sh_name;
@@ -65,7 +65,7 @@ const typename ElfClass::Shdr* FindElfSectionByName(
       return sections + i;
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 }  // namespace google_breakpad

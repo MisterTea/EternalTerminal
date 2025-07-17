@@ -34,6 +34,7 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
 

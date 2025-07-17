@@ -1,7 +1,7 @@
 all: test
 
 update-test-discovery:
-	@perl -ne 'print if s/SENTRY_TEST\(([^)]+)\)/XX(\1)/' tests/unit/*.c | sort | grep -v define | uniq > tests/unit/tests.inc
+	@perl -ne 'print if s/SENTRY_TEST\(([^)]+)\).*/XX(\1)/' tests/unit/*.c | LC_ALL=C sort | grep -v define | uniq > tests/unit/tests.inc
 .PHONY: update-test-discovery
 
 build/Makefile: CMakeLists.txt
@@ -43,6 +43,10 @@ test-leaks: update-test-discovery CMakeLists.txt
 	@ASAN_OPTIONS=detect_leaks=1 ./leak-build/sentry_test_unit
 .PHONY: test-leaks
 
+benchmark: setup-venv
+	.venv/bin/pytest tests/benchmark.py --verbose
+.PHONY: benchmark
+
 clean: build/Makefile
 	@$(MAKE) -C build clean
 .PHONY: clean
@@ -66,7 +70,7 @@ setup-venv: .venv/bin/python
 	.venv/bin/pip install --upgrade --requirement tests/requirements.txt
 
 format: setup-venv
-	@clang-format -i \
+	@.venv/bin/clang-format -i \
 		examples/*.c \
 		include/*.h \
 		src/*.c \
@@ -80,12 +84,8 @@ format: setup-venv
 .PHONY: format
 
 style: setup-venv
-	@.venv/bin/python ./scripts/check-clang-format.py -r examples include src tests/unit
+	@.venv/bin/python ./scripts/check-clang-format.py \
+		--clang-format-executable .venv/bin/clang-format \
+		-r examples include src tests/unit
 	@.venv/bin/black --diff --check tests
 .PHONY: style
-
-# TODO: workaround for clang-format 15+ where local formatting breaks with clang-format-14 based style checks on CI
-style-15: setup-venv
-	@.venv/bin/python ./scripts/check-clang-format.py --clang-format-executable /usr/bin/clang-format-15 -r examples include src tests/unit
-	@.venv/bin/black --diff --check tests
-.PHONY: style-15

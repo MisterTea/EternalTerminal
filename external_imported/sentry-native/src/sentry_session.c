@@ -25,7 +25,7 @@ status_as_string(sentry_session_status_t status)
     case SENTRY_SESSION_STATUS_EXITED:
         return "exited";
     default:
-        assert(!"invalid session status");
+        UNREACHABLE("invalid session status");
         return "invalid";
     }
 }
@@ -76,8 +76,8 @@ sentry__session_new(void)
     rv->status = SENTRY_SESSION_STATUS_OK;
     rv->init = true;
     rv->errors = 0;
-    rv->started_ms = sentry__msec_time();
-    rv->duration_ms = (uint64_t)-1;
+    rv->started_us = sentry__usec_time();
+    rv->duration_us = (uint64_t)-1;
 
     return rv;
 }
@@ -119,17 +119,18 @@ sentry__session_to_json(
     sentry__jsonwriter_write_int32(jw, (int32_t)session->errors);
 
     sentry__jsonwriter_write_key(jw, "started");
-    sentry__jsonwriter_write_msec_timestamp(jw, session->started_ms);
+    sentry__jsonwriter_write_usec_timestamp(jw, session->started_us);
 
     // if there is a duration stored on the struct (that happens after
     // reading back from disk) we use that, otherwise we calculate the
     // difference to the start time.
     sentry__jsonwriter_write_key(jw, "duration");
     double duration;
-    if (session->duration_ms != (uint64_t)-1) {
-        duration = (double)session->duration_ms / 1000.0;
+    if (session->duration_us != (uint64_t)-1) {
+        duration = (double)session->duration_us / 1000000.0;
     } else {
-        duration = (double)(sentry__msec_time() - session->started_ms) / 1000.0;
+        duration
+            = (double)(sentry__usec_time() - session->started_us) / 1000000.0;
     }
     sentry__jsonwriter_write_double(jw, duration);
 
@@ -182,14 +183,14 @@ sentry__session_from_json(const char *buf, size_t buflen)
 
     rv->init = sentry_value_is_true(sentry_value_get_by_key(value, "init"));
 
-    rv->errors = (int64_t)sentry_value_as_int32(
+    rv->errors = (uint64_t)sentry_value_as_int32(
         sentry_value_get_by_key(value, "errors"));
-    rv->started_ms = sentry__iso8601_to_msec(
+    rv->started_us = sentry__iso8601_to_usec(
         sentry_value_as_string(sentry_value_get_by_key(value, "started")));
 
     double duration
         = sentry_value_as_double(sentry_value_get_by_key(value, "duration"));
-    rv->duration_ms = (uint64_t)(duration * 1000);
+    rv->duration_us = (uint64_t)(duration * 1000000);
 
     sentry_value_decref(value);
 

@@ -102,12 +102,12 @@ int CrashGenerationServerTest::i = 0;
 // Test that starting and stopping a server works
 TEST_F(CrashGenerationServerTest, testStartStopServer) {
   CrashGenerationServer server(mach_port_name,
-                               NULL,  // filter callback
-                               NULL,  // filter context
-                               NULL,  // dump callback
-                               NULL,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // filter callback
+                               nullptr,  // filter context
+                               nullptr,  // dump callback
+                               nullptr,  // dump context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                false, // generate dumps
                                ""); // dump path
   ASSERT_TRUE(server.Start());
@@ -118,12 +118,12 @@ TEST_F(CrashGenerationServerTest, testStartStopServer) {
 // Test without actually dumping
 TEST_F(CrashGenerationServerTest, testRequestDumpNoDump) {
   CrashGenerationServer server(mach_port_name,
-                               NULL,  // filter callback
-                               NULL,  // filter context
-                               NULL,  // dump callback
-                               NULL,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // filter callback
+                               nullptr,  // filter context
+                               nullptr,  // dump callback
+                               nullptr,  // dump context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                false, // don't generate dumps
                                temp_dir.path()); // dump path
   ASSERT_TRUE(server.Start());
@@ -144,7 +144,7 @@ TEST_F(CrashGenerationServerTest, testRequestDumpNoDump) {
   // check that no minidump was written
   string pattern = temp_dir.path() + "/*";
   glob_t dirContents;
-  ret = glob(pattern.c_str(), GLOB_NOSORT, NULL, &dirContents);
+  ret = glob(pattern.c_str(), GLOB_NOSORT, nullptr, &dirContents);
   EXPECT_EQ(GLOB_NOMATCH, ret);
   if (ret != GLOB_NOMATCH)
     globfree(&dirContents);
@@ -170,12 +170,12 @@ void* RequestDump(void* context) {
 // Test that actually writing a minidump works
 TEST_F(CrashGenerationServerTest, testRequestDump) {
   CrashGenerationServer server(mach_port_name,
-                               NULL,  // filter callback
-                               NULL,  // filter context
+                               nullptr,  // filter callback
+                               nullptr,  // filter context
                                dumpCallback,  // dump callback
                                this,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                true, //  generate dumps
                                temp_dir.path()); // dump path
   ASSERT_TRUE(server.Start());
@@ -187,7 +187,8 @@ TEST_F(CrashGenerationServerTest, testRequestDump) {
     // because MinidumpGenerator assumes the handler thread is not
     // the only thread
     pthread_t thread;
-    if (pthread_create(&thread, NULL, RequestDump, (void*)mach_port_name) != 0)
+    if (pthread_create(&thread, nullptr, RequestDump, (void*)mach_port_name)
+        != 0)
       exit(1);
     void* result;
     pthread_join(thread, &result);
@@ -220,12 +221,12 @@ static void Crasher() {
 // the parent.
 TEST_F(CrashGenerationServerTest, testChildProcessCrash) {
   CrashGenerationServer server(mach_port_name,
-                               NULL,  // filter callback
-                               NULL,  // filter context
+                               nullptr,  // filter callback
+                               nullptr,  // filter context
                                dumpCallback,  // dump callback
                                this,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                true, //  generate dumps
                                temp_dir.path()); // dump path
   ASSERT_TRUE(server.Start());
@@ -234,7 +235,7 @@ TEST_F(CrashGenerationServerTest, testChildProcessCrash) {
   ASSERT_NE(-1, pid);
   if (pid == 0) {
     // Instantiate an OOP exception handler.
-    ExceptionHandler eh("", NULL, NULL, NULL, true, mach_port_name);
+    ExceptionHandler eh("", nullptr, nullptr, nullptr, true, mach_port_name);
     Crasher();
     // not reached
     exit(0);
@@ -283,12 +284,12 @@ TEST_F(CrashGenerationServerTest, testChildProcessCrash) {
 // produces a valid minidump.
 TEST_F(CrashGenerationServerTest, testChildProcessCrashCrossArchitecture) {
   CrashGenerationServer server(mach_port_name,
-                               NULL,  // filter callback
-                               NULL,  // filter context
+                               nullptr,  // filter callback
+                               nullptr,  // filter context
                                dumpCallback,  // dump callback
                                this,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                true, //  generate dumps
                                temp_dir.path()); // dump path
   ASSERT_TRUE(server.Start());
@@ -299,7 +300,7 @@ TEST_F(CrashGenerationServerTest, testChildProcessCrashCrossArchitecture) {
     helper_path.c_str(),
     "crash",
     mach_port_name,
-    NULL
+    nullptr
   };
   pid_t pid = spawn_child_process(argv);
   ASSERT_NE(-1, pid);
@@ -372,8 +373,8 @@ TEST_F(CrashGenerationServerTest, testFilter) {
                                this,            // filter context
                                dumpCallback,  // dump callback
                                this,  // dump context
-                               NULL,  // exit callback
-                               NULL,  // exit context
+                               nullptr,  // exit callback
+                               nullptr,  // exit context
                                true, //  generate dumps
                                temp_dir.path()); // dump path
   ASSERT_TRUE(server.Start());
@@ -382,7 +383,7 @@ TEST_F(CrashGenerationServerTest, testFilter) {
   ASSERT_NE(-1, pid);
   if (pid == 0) {
     // Instantiate an OOP exception handler.
-    ExceptionHandler eh("", NULL, NULL, NULL, true, mach_port_name);
+    ExceptionHandler eh("", nullptr, nullptr, nullptr, true, mach_port_name);
     Crasher();
     // not reached
     exit(0);

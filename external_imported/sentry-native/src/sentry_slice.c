@@ -1,5 +1,6 @@
 #include "sentry_slice.h"
 #include "sentry_string.h"
+#include "sentry_utils.h"
 #include <stdlib.h>
 #include <string.h>
 
@@ -8,7 +9,7 @@ sentry__slice_from_str(const char *str)
 {
     sentry_slice_t rv;
     rv.ptr = str;
-    rv.len = str ? strlen(str) : 0;
+    rv.len = sentry__guarded_strlen(str);
     return rv;
 }
 
@@ -16,6 +17,14 @@ char *
 sentry__slice_to_owned(sentry_slice_t slice)
 {
     return sentry__string_clone_n_unchecked(slice.ptr, slice.len);
+}
+
+void
+sentry__slice_to_buffer(sentry_slice_t slice, char *buffer, size_t buffer_len)
+{
+    size_t copy_len = MIN(slice.len, buffer_len - 1);
+    strncpy(buffer, slice.ptr, copy_len);
+    buffer[copy_len] = 0;
 }
 
 bool
@@ -80,6 +89,9 @@ sentry__slice_consume_uint64(sentry_slice_t *a, uint64_t *num_out)
 {
     bool rv = false;
     char *buf = sentry_malloc(a->len + 1);
+    if (!buf) {
+        return rv;
+    }
     memcpy(buf, a->ptr, a->len);
     buf[a->len] = 0;
     char *end;

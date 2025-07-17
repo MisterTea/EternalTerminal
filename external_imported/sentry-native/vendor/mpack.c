@@ -34,6 +34,8 @@
 
 #include "mpack.h"
 
+extern void* sentry_malloc(size_t);
+extern void sentry_free(void*);
 
 /* mpack/mpack-platform.c.c */
 

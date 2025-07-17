@@ -15,6 +15,7 @@ SENTRY_TEST(slice)
     TEST_CHECK(!sentry__slice_eq(str1, my));
 
     char *owned = sentry__slice_to_owned(str1);
+    TEST_ASSERT(!!owned);
     TEST_CHECK_STRING_EQUAL(owned, "string");
     sentry_free(owned);
 }

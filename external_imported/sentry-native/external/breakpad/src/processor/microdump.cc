@@ -36,6 +36,7 @@
 
 #include "google_breakpad/processor/microdump.h"
 
+#include <assert.h>
 #include <stdio.h>
 #include <string.h>
 

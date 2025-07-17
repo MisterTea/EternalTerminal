@@ -249,22 +249,11 @@ endif()
 
 if(LINUX OR ANDROID)
     if (LINUX)
-        if(NOT CURL_FOUND) # Some other lib might bring libcurl already
+        if(NOT TARGET CURL::libcurl) # Some other lib might bring libcurl already
             find_package(CURL REQUIRED)
         endif()
 
-        if(TARGET CURL::libcurl) # Only available in cmake 3.12+
-            target_link_libraries(crashpad_util PRIVATE CURL::libcurl)
-        else()
-            # Needed for cmake < 3.12 support (cmake 3.12 introduced the target CURL::libcurl)
-            target_include_directories(crashpad_util PRIVATE ${CURL_INCLUDE_DIR})
-            # The exported sentry target must not contain any path of the build machine, therefore use generator expressions
-            string(REPLACE ";" "$<SEMICOLON>" GENEX_CURL_LIBRARIES "${CURL_LIBRARIES}")
-            string(REPLACE ";" "$<SEMICOLON>" GENEX_CURL_COMPILE_DEFINITIONS "${CURL_COMPILE_DEFINITIONS}")
-            target_link_libraries(crashpad_util PRIVATE $<BUILD_INTERFACE:${GENEX_CURL_LIBRARIES}>)
-            target_compile_definitions(crashpad_util PRIVATE $<BUILD_INTERFACE:${GENEX_CURL_COMPILE_DEFINITIONS}>)
-        endif()
-
+        target_link_libraries(crashpad_util PRIVATE CURL::libcurl)
         SET(HTTP_TRANSPORT_IMPL net/http_transport_libcurl.cc)
     else()
         find_package(OpenSSL)
@@ -379,6 +368,8 @@ if(WIN32)
         win/scoped_registry_key.h
         win/scoped_set_event.cc
         win/scoped_set_event.h
+        win/screenshot.cc
+        win/screenshot.h
         win/session_end_watcher.cc
         win/session_end_watcher.h
         win/termination_codes.h
@@ -386,9 +377,15 @@ if(WIN32)
         win/xp_compat.h
     )
     if("${CMAKE_SYSTEM_PROCESSOR}" MATCHES "arm|ARM64")
-        target_sources(crashpad_util PRIVATE
-            misc/capture_context_win_arm64.asm
-        )
+        if (MINGW)
+            target_sources(crashpad_util PRIVATE
+                misc/capture_context_win_arm64.S
+            )
+        else()
+            target_sources(crashpad_util PRIVATE
+                misc/capture_context_win_arm64.asm
+            )
+        endif()
     else()
         target_sources(crashpad_util PRIVATE
             misc/capture_context_win.asm
@@ -399,10 +396,31 @@ endif()
 
 # Copied from: https://github.com/qedsoftware/crashpad/blob/3583c50a6575857abcf140f6ea3b8d11390205b3/util/CMakeLists.txt#L196-L233
 if(APPLE)
+    function(check_and_fallback_sdk_path SDK_NAME)
+        if(NOT CMAKE_OSX_SYSROOT)
+            message("Empty CMAKE_OSX_SYSROOT. Please specify SDKROOT=${SDK_NAME} in the environment.")
+            message("Falling back to searching SDK path for `${SDK_NAME}` via `xcrun`.")
+            execute_process(
+                COMMAND xcrun --sdk ${SDK_NAME} --show-sdk-path
+                RESULT_VARIABLE XCRUN_RESULT
+                OUTPUT_VARIABLE SDK_PATH
+                OUTPUT_STRIP_TRAILING_WHITESPACE
+            )
+
+            if(NOT XCRUN_RESULT EQUAL 0)
+                message(FATAL_ERROR "Can't find ${SDK_NAME} SDK. `xcrun` failed with ${XCRUN_RESULT}.")
+            else()
+                message("Setting CMAKE_OSX_SYSROOT=${SDK_PATH}.")
+                set(CMAKE_OSX_SYSROOT "${SDK_PATH}" PARENT_SCOPE)
+            endif()
+        endif()
+    endfunction()
     if(NOT IOS)
+        check_and_fallback_sdk_path(macosx)
         set(def_relative_files "exc.defs" "mach_exc.defs" "notify.defs")
         set(input_files "${CMAKE_CURRENT_LIST_DIR}/mach/child_port.defs")
     else()
+        check_and_fallback_sdk_path(iphoneos)
         set(def_relative_files "")
         set(input_files
             "${CMAKE_CURRENT_LIST_DIR}/../third_party/xnu/osfmk/mach/exc.defs"
@@ -410,8 +428,6 @@ if(APPLE)
         )
     endif()
     foreach(x ${def_relative_files})
-        # CMAKE_OSX_SYSROOT may be empty (e.g. for Makefile generators),
-        # in this case files will be taken from root.
         set(full_path "${CMAKE_OSX_SYSROOT}/usr/include/mach/${x}")
         if(NOT EXISTS "${full_path}")
             message(FATAL_ERROR "File not found: ${full_path}")
@@ -512,6 +528,8 @@ if(APPLE)
             "-framework UIKit"
         )
     endif()
+
+    target_compile_options(crashpad_util PRIVATE "-Wno-deprecated-declarations")
 endif()
 
 if(LINUX)
@@ -549,13 +567,6 @@ if(WIN32)
         )
     endif()
 endif()
-
-if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-    target_compile_options(crashpad_util PRIVATE
-        $<$<COMPILE_LANGUAGE:CXX>:-Wno-multichar>
-    )
-endif()
-
 
 set_property(TARGET crashpad_util PROPERTY EXPORT_NAME util)
 add_library(crashpad::util ALIAS crashpad_util)

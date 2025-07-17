@@ -2,8 +2,8 @@
 
 ## Introduction
 
-The library supports **JSON Pointer** ([RFC 6901](https://tools.ietf.org/html/rfc6901)) as alternative means to address
-structured values. A JSON Pointer is a string that identifies a specific value within a JSON document.
+The library supports **JSON Pointer** ([RFC 6901](https://tools.ietf.org/html/rfc6901)) as an alternative means to
+address structured values. A JSON Pointer is a string that identifies a specific value within a JSON document.
 
 Consider the following JSON document
 
@@ -71,10 +71,10 @@ auto j = json::parse(R"({
 })");
 
 // access values
-auto val = j["/"_json_pointer];                             // {"array":["A","B","C"],...}
+auto val = j[""_json_pointer];                              // {"array":["A","B","C"],...}
 auto val1 = j["/nested/one"_json_pointer];                  // 1
-auto val2 = j.at[json::json_pointer("/nested/three/1")];    // false
-auto val3 = j.value[json::json_pointer("/nested/four", 0)]; // 0
+auto val2 = j.at(json::json_pointer("/nested/three/1"));    // false
+auto val3 = j.value(json::json_pointer("/nested/four"), 0); // 0
 ```
 
 ## Flatten / unflatten

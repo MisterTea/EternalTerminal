@@ -89,7 +89,7 @@ struct CallbackParam {
   // Callback context;
   void* context;
 
-  CallbackParam() : call_back(NULL), context(NULL) {
+  CallbackParam() : call_back(nullptr), context(nullptr) {
   }
 
   CallbackParam(CallbackFunc func, void* func_context) :

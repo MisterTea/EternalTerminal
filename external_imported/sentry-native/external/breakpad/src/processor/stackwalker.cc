@@ -40,7 +40,8 @@
 
 #include <assert.h>
 
-#include "common/scoped_ptr.h"
+#include <memory>
+
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/code_module.h"
 #include "google_breakpad/processor/code_modules.h"
@@ -82,7 +83,7 @@ Stackwalker::Stackwalker(const SystemInfo* system_info,
     : system_info_(system_info),
       memory_(memory),
       modules_(modules),
-      unloaded_modules_(NULL),
+      unloaded_modules_(nullptr),
       frame_symbolizer_(frame_symbolizer) {
   assert(frame_symbolizer_);
 }
@@ -136,7 +137,7 @@ bool Stackwalker::Walk(
   uint32_t scanned_frames = 0;
 
   // Take ownership of the pointer returned by GetContextFrame.
-  scoped_ptr<StackFrame> frame(GetContextFrame());
+  std::unique_ptr<StackFrame> frame(GetContextFrame());
 
   while (frame.get()) {
     // frame already contains a good frame with properly set instruction and
@@ -214,10 +215,10 @@ Stackwalker* Stackwalker::StackwalkerForCPU(
     StackFrameSymbolizer* frame_symbolizer) {
   if (!context) {
     BPLOG(ERROR) << "Can't choose a stackwalker implementation without context";
-    return NULL;
+    return nullptr;
   }
 
-  Stackwalker* cpu_stackwalker = NULL;
+  Stackwalker* cpu_stackwalker = nullptr;
 
   uint32_t cpu = context->GetContextCPU();
   switch (cpu) {

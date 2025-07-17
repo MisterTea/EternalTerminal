@@ -259,8 +259,8 @@ class Module: public Section {
          uint32_t time_date_stamp = 1262805309,
          uint32_t checksum = 0,
          const MDVSFixedFileInfo& version_info = Module::stock_version_info,
-         const Section* cv_record = NULL,
-         const Section* misc_record = NULL);
+         const Section* cv_record = nullptr,
+         const Section* misc_record = nullptr);
 
  private:
   // A standard MDVSFixedFileInfo structure to use as a default for

@@ -1112,7 +1112,7 @@ static void PrintModulesMachineReadable(const CodeModules* modules) {
            kOutputSeparator, base_address,
            kOutputSeparator, base_address + module->size() - 1,
            kOutputSeparator,
-           main_module != NULL && base_address == main_address ? 1 : 0);
+           main_module != nullptr && base_address == main_address ? 1 : 0);
   }
 }
 

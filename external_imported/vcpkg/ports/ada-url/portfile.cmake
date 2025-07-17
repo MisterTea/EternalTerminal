@@ -1,8 +1,12 @@
+if(VCPKG_TARGET_IS_LINUX)
+    message(WARNING "Building ${PORT} requires a C++20 compliant compiler. GCC 12 and Clang 15 are known to work.")
+endif()
+
 vcpkg_from_github(
     OUT_SOURCE_PATH SOURCE_PATH
     REPO ada-url/ada
     REF "v${VERSION}"
-    SHA512 941b522f8aec7959557a1238b23a48b7d3e4ff4035b0897d23fc7dba26cc227b2b3e48d8ecd03431c871041d52870015361ff6a595fa4872a640943b55c62617
+    SHA512 6001a7172f843100eafd05e47bbbf7b3d2703ee2c7812c2cf5155ebf765f49231a7a72236141da61dbdb63a09ae995bd9ce82d42f612df4e3148d65904732e34
     HEAD_REF main
     PATCHES
         no-cpm.patch
@@ -18,7 +22,7 @@ vcpkg_cmake_configure(
     SOURCE_PATH "${SOURCE_PATH}"
     OPTIONS
         -DADA_BENCHMARKS=OFF
-        -DBUILD_TESTING=OFF
+        -DADA_TESTING=OFF
         -DCMAKE_DISABLE_FIND_PACKAGE_Python3=ON
         ${FEATURE_OPTIONS}
     OPTIONS_DEBUG
@@ -30,6 +34,7 @@ vcpkg_cmake_install()
 vcpkg_copy_pdbs()
 
 vcpkg_cmake_config_fixup(PACKAGE_NAME ada CONFIG_PATH "lib/cmake/ada")
+vcpkg_fixup_pkgconfig()
 
 if("tools" IN_LIST FEATURES)
     vcpkg_copy_tools(TOOL_NAMES adaparse AUTO_CLEAN)

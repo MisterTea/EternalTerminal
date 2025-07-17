@@ -3,7 +3,7 @@
 
 SENTRY_TEST(options_sdk_name_defaults)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     // when nothing is set
 
     // then both sdk name and user agent should default to the build time
@@ -18,7 +18,7 @@ SENTRY_TEST(options_sdk_name_defaults)
 
 SENTRY_TEST(options_sdk_name_custom)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
 
     // when the sdk name is set to a custom string
     const int result
@@ -37,7 +37,7 @@ SENTRY_TEST(options_sdk_name_custom)
 
 SENTRY_TEST(options_sdk_name_invalid)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
 
     // when the sdk name is set to an invalid value
     const char *sdk_name = NULL;

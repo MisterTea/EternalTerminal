@@ -29,7 +29,7 @@
 #ifndef CLIENT_LINUX_MINIDUMP_WRITER_PE_STRUCTS_H_
 #define CLIENT_LINUX_MINIDUMP_WRITER_PE_STRUCTS_H_
 
-#include <cstdint>
+#include <stdint.h>
 
 namespace google_breakpad {
 

@@ -30,6 +30,7 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
 #include <mach/exc.h>
 #include <mach/mig.h>
 #include <pthread.h>
@@ -37,11 +38,13 @@
 #include <TargetConditionals.h>
 
 #include <map>
+#include <memory>
 
 #include "client/mac/handler/exception_handler.h"
 #include "client/mac/handler/minidump_generator.h"
 #include "common/mac/macho_utilities.h"
 #include "common/mac/scoped_task_suspend-inl.h"
+#include "common/macros.h"
 #include "google_breakpad/common/minidump_exception_mac.h"
 
 #ifndef __EXCEPTIONS
@@ -233,10 +236,10 @@ ExceptionHandler::ExceptionHandler(const string& dump_path,
       filter_(filter),
       callback_(callback),
       callback_context_(callback_context),
-      directCallback_(NULL),
-      handler_thread_(NULL),
+      directCallback_(nullptr),
+      handler_thread_(nullptr),
       handler_port_(MACH_PORT_NULL),
-      previous_(NULL),
+      previous_(nullptr),
       installed_exception_handler_(false),
       is_in_teardown_(false),
       last_minidump_write_result_(false),
@@ -257,13 +260,13 @@ ExceptionHandler::ExceptionHandler(DirectCallback callback,
                                    void* callback_context,
                                    bool install_handler)
     : dump_path_(),
-      filter_(NULL),
-      callback_(NULL),
+      filter_(nullptr),
+      callback_(nullptr),
       callback_context_(callback_context),
       directCallback_(callback),
-      handler_thread_(NULL),
+      handler_thread_(nullptr),
       handler_port_(MACH_PORT_NULL),
-      previous_(NULL),
+      previous_(nullptr),
       installed_exception_handler_(false),
       is_in_teardown_(false),
       last_minidump_write_result_(false),
@@ -311,8 +314,8 @@ bool ExceptionHandler::WriteMinidump(const string& dump_path,
                                      bool write_exception_stream,
                                      MinidumpCallback callback,
                                      void* callback_context) {
-  ExceptionHandler handler(dump_path, NULL, callback, callback_context, false,
-                           NULL);
+  ExceptionHandler handler(dump_path, nullptr, callback, callback_context,
+                           false, nullptr);
   return handler.WriteMinidump(write_exception_stream);
 }
 
@@ -343,8 +346,13 @@ bool ExceptionHandler::WriteMinidumpForChild(mach_port_t child,
   bool result = generator.Write(dump_filename.c_str());
 
   if (callback) {
+#ifdef SENTRY_BACKEND_BREAKPAD
+    return callback(dump_path.c_str(), dump_id.c_str(),
+                    callback_context, nullptr, result);
+#else
     return callback(dump_path.c_str(), dump_id.c_str(),
                     callback_context, result);
+#endif
   }
   return result;
 }
@@ -393,6 +401,11 @@ bool ExceptionHandler::WriteMinidumpWithException(
   } else {
     string minidump_id;
 
+    std::remove_pointer<mcontext_t>::type mctx = {};
+    breakpad_ucontext_t uctx = {};
+    uctx.uc_mcsize = sizeof(mctx);
+    uctx.uc_mcontext = &mctx;
+
     // Putting the MinidumpGenerator in its own context will ensure that the
     // destructor is executed, closing the newly created minidump file.
     if (!dump_path_.empty()) {
@@ -400,6 +413,7 @@ bool ExceptionHandler::WriteMinidumpWithException(
                            report_current_thread ? MACH_PORT_NULL :
                                                    mach_thread_self());
       md.SetTaskContext(task_context);
+
       if (exception_type && exception_code) {
         // If this is a real exception, give the filter (if any) a chance to
         // decide if this should be sent.
@@ -410,6 +424,13 @@ bool ExceptionHandler::WriteMinidumpWithException(
                                    exception_subcode, thread_name);
       }
 
+      // fill context
+      if (!task_context)
+      {
+        md.GetThreadContext(thread_name, &uctx);
+        task_context = &uctx;
+      }
+
       result = md.Write(next_minidump_path_c_);
     }
 
@@ -418,8 +439,12 @@ bool ExceptionHandler::WriteMinidumpWithException(
       // If the user callback returned true and we're handling an exception
       // (rather than just writing out the file), then we should exit without
       // forwarding the exception to the next handler.
-      if (callback_(dump_path_c_, next_minidump_id_c_, callback_context_,
+#ifdef SENTRY_BACKEND_BREAKPAD
+      if (callback_(dump_path_c_, next_minidump_id_c_, callback_context_, task_context,
                     result)) {
+#else
+      if (callback_(dump_path_c_, next_minidump_id_c_, callback_context_, result)) {
+#endif
         if (exit_after_write)
           _exit(exception_type);
       }
@@ -515,7 +540,7 @@ void* ExceptionHandler::WaitForMessage(void* exception_handler_class) {
         // Don't touch self, since this message could have been sent
         // from its destructor.
         if (receive.header.msgh_id == kShutdownMessage)
-          return NULL;
+          return nullptr;
 
         self->SuspendThreads();
 
@@ -544,7 +569,7 @@ void* ExceptionHandler::WaitForMessage(void* exception_handler_class) {
         // Write out the dump and save the result for later retrieval
         self->last_minidump_write_result_ =
           self->WriteMinidumpWithException(exception_type, exception_code,
-                                           0, NULL, thread,
+                                           0, nullptr, thread,
                                            false, false);
 
 #if USE_PROTECTED_ALLOCATIONS
@@ -579,7 +604,7 @@ void* ExceptionHandler::WaitForMessage(void* exception_handler_class) {
 
         // Generate the minidump with the exception data.
         self->WriteMinidumpWithException(receive.exception, receive.code[0],
-                                         subcode, NULL, receive.thread.name,
+                                         subcode, nullptr, receive.thread.name,
                                          true, false);
 
 #if USE_PROTECTED_ALLOCATIONS
@@ -612,7 +637,7 @@ void* ExceptionHandler::WaitForMessage(void* exception_handler_class) {
     }
   }
 
-  return NULL;
+  unreachable();
 }
 
 // static
@@ -637,7 +662,7 @@ void ExceptionHandler::SignalHandler(int sig, siginfo_t* info, void* uc) {
 
 bool ExceptionHandler::InstallHandler() {
   // If a handler is already installed, something is really wrong.
-  if (gProtectedData.handler != NULL) {
+  if (gProtectedData.handler != nullptr) {
     return false;
   }
   if (!IsOutOfProcess()) {
@@ -648,7 +673,7 @@ bool ExceptionHandler::InstallHandler() {
     sa.sa_sigaction = ExceptionHandler::SignalHandler;
     sa.sa_flags = SA_SIGINFO;
 
-    scoped_ptr<struct sigaction> old(new struct sigaction);
+    std::unique_ptr<struct sigaction> old(new struct sigaction);
     if (sigaction(SIGABRT, &sa, old.get()) == -1) {
       return false;
     }
@@ -698,13 +723,13 @@ bool ExceptionHandler::UninstallHandler(bool in_exception) {
   kern_return_t result = KERN_SUCCESS;
 
   if (old_handler_.get()) {
-    sigaction(SIGABRT, old_handler_.get(), NULL);
+    sigaction(SIGABRT, old_handler_.get(), nullptr);
 #if USE_PROTECTED_ALLOCATIONS
     mprotect(gProtectedData.protected_buffer, PAGE_SIZE,
         PROT_READ | PROT_WRITE);
 #endif
     old_handler_.reset();
-    gProtectedData.handler = NULL;
+    gProtectedData.handler = nullptr;
   }
 
   if (installed_exception_handler_) {
@@ -729,7 +754,7 @@ bool ExceptionHandler::UninstallHandler(bool in_exception) {
 #endif
     }
 
-    previous_ = NULL;
+    previous_ = nullptr;
     installed_exception_handler_ = false;
   }
 
@@ -737,7 +762,7 @@ bool ExceptionHandler::UninstallHandler(bool in_exception) {
 }
 
 bool ExceptionHandler::Setup(bool install_handler) {
-  if (pthread_mutex_init(&minidump_write_mutex_, NULL))
+  if (pthread_mutex_init(&minidump_write_mutex_, nullptr))
     return false;
 
   // Create a receive right
@@ -785,7 +810,7 @@ bool ExceptionHandler::Teardown() {
     return false;
   }
 
-  handler_thread_ = NULL;
+  handler_thread_ = nullptr;
   handler_port_ = MACH_PORT_NULL;
   pthread_mutex_destroy(&minidump_write_mutex_);
 

@@ -74,7 +74,7 @@ public:
       //   - <field-name> can contain spaces.
       //   - some fields have an empty <value>
       char* sep = static_cast<char*>(my_memchr(line, ':', line_len));
-      if (sep == NULL)
+      if (sep == nullptr)
         continue;
 
       // Record the value. Skip leading space after the column to get

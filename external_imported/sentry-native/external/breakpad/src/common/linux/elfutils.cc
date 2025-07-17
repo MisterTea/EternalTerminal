@@ -61,7 +61,7 @@ void FindElfClassSection(const char* elf_base,
   assert(elf_header->e_ident[EI_CLASS] == ElfClass::kClass);
 
   if (elf_header->e_shoff == 0) {
-    *section_start = NULL;
+    *section_start = nullptr;
     *section_size = 0;
     return;
   }
@@ -78,7 +78,7 @@ void FindElfClassSection(const char* elf_base,
                                    sections, names, names_end,
                                    elf_header->e_shnum);
 
-  if (section != NULL && section->sh_size > 0) {
+  if (section != nullptr && section->sh_size > 0) {
     *section_start = elf_base + section->sh_offset;
     *section_size = section->sh_size;
   }
@@ -135,7 +135,7 @@ bool FindElfSection(const void* elf_mapped_base,
   assert(section_start);
   assert(section_size);
 
-  *section_start = NULL;
+  *section_start = nullptr;
   *section_size = 0;
 
   if (!IsValidElf(elf_mapped_base))
@@ -148,11 +148,11 @@ bool FindElfSection(const void* elf_mapped_base,
   if (cls == ELFCLASS32) {
     FindElfClassSection<ElfClass32>(elf_base, section_name, section_type,
                                     section_start, section_size);
-    return *section_start != NULL;
+    return *section_start != nullptr;
   } else if (cls == ELFCLASS64) {
     FindElfClassSection<ElfClass64>(elf_base, section_name, section_type,
                                     section_start, section_size);
-    return *section_start != NULL;
+    return *section_start != nullptr;
   }
 
   return false;

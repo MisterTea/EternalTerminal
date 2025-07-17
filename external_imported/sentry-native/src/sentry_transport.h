@@ -2,10 +2,9 @@
 #define SENTRY_TRANSPORT_H_INCLUDED
 
 #include "sentry_boot.h"
-
-typedef struct sentry_dsn_s sentry_dsn_t;
-typedef struct sentry_run_s sentry_run_t;
-typedef struct sentry_rate_limiter_s sentry_rate_limiter_t;
+#include "sentry_database.h"
+#include "sentry_ratelimiter.h"
+#include "sentry_utils.h"
 
 /**
  * Sets the dump function of the transport.

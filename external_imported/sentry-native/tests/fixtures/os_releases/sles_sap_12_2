@@ -1,0 +1,7 @@
+NAME="SLES_SAP"
+VERSION="12-SP2"
+VERSION_ID="12.2"
+PRETTY_NAME="SUSE Linux Enterprise Server for SAP Applications 12 SP2"
+ID="sles_sap"
+ANSI_COLOR="0;32"
+CPE_NAME="cpe:/o:suse:sles_sap:12:sp2"

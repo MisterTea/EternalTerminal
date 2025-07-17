@@ -153,7 +153,7 @@ config("default") {
     ]
 
     cflags_c = [ "-std=c11" ]
-    cflags_cc = [ "-std=c++17" ]
+    cflags_cc = [ "-std=c++20" ]
     cflags_objc = cflags_c
     cflags_objcc = cflags_cc
 
@@ -256,7 +256,7 @@ config("default") {
     ]
 
     cflags_cc = [
-      "/std:c++17",
+      "/std:c++20",
       "/Zc:__cplusplus",
     ]
 

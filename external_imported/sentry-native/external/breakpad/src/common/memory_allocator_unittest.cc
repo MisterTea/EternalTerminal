@@ -30,6 +30,10 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <stdint.h>
+
+#include <limits>
+
 #include "breakpad_googletest_includes.h"
 #include "common/memory_allocator.h"
 
@@ -37,7 +41,7 @@ using namespace google_breakpad;
 
 namespace {
 typedef testing::Test PageAllocatorTest;
-}
+}  // namespace
 
 TEST(PageAllocatorTest, Setup) {
   PageAllocator allocator;
@@ -50,7 +54,7 @@ TEST(PageAllocatorTest, SmallObjects) {
   EXPECT_EQ(0U, allocator.pages_allocated());
   for (unsigned i = 1; i < 1024; ++i) {
     uint8_t* p = reinterpret_cast<uint8_t*>(allocator.Alloc(i));
-    ASSERT_FALSE(p == NULL);
+    ASSERT_FALSE(p == nullptr);
     memset(p, 0, i);
   }
 }
@@ -60,13 +64,42 @@ TEST(PageAllocatorTest, LargeObject) {
 
   EXPECT_EQ(0U, allocator.pages_allocated());
   uint8_t* p = reinterpret_cast<uint8_t*>(allocator.Alloc(10000));
-  ASSERT_FALSE(p == NULL);
+  ASSERT_FALSE(p == nullptr);
   EXPECT_EQ(3U, allocator.pages_allocated());
   for (unsigned i = 1; i < 10; ++i) {
     uint8_t* p = reinterpret_cast<uint8_t*>(allocator.Alloc(i));
-    ASSERT_FALSE(p == NULL);
+    ASSERT_FALSE(p == nullptr);
     memset(p, 0, i);
   }
+}
+
+TEST(PageAllocatorTest, AlignUp) {
+  EXPECT_EQ(PageAllocator::AlignUp(0x11U, 1), 0x11U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x11U, 2), 0x12U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x13U, 2), 0x14U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x11U, 4), 0x14U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x15U, 4), 0x18U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x11U, 8), 0x18U);
+  EXPECT_EQ(PageAllocator::AlignUp(0x19U, 8), 0x20U);
+
+  // Ensure large 64 bit values are not truncated.
+  constexpr uint64_t kUnalignedU64 = 0x8000'0000'0000'0011;
+  constexpr uint64_t kAligned8U64 = 0x8000'0000'0000'0018;
+  static_assert(kUnalignedU64 > std::numeric_limits<uint32_t>::max());
+  static_assert(kAligned8U64 > std::numeric_limits<uint32_t>::max());
+  EXPECT_EQ(PageAllocator::AlignUp(kUnalignedU64, 8), kAligned8U64);
+}
+
+namespace {
+typedef testing::Test PageAllocatorDeathTest;
+}  // namespace
+
+TEST(PageAllocatorDeathTest, AlignUpBad0) {
+  EXPECT_DEBUG_DEATH({ PageAllocator::AlignUp(0x11U, 0); }, "");
+}
+
+TEST(PageAllocatorDeathTest, AlignUpBad9) {
+  EXPECT_DEBUG_DEATH({ PageAllocator::AlignUp(0x11U, 9); }, "");
 }
 
 namespace {

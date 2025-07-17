@@ -459,7 +459,9 @@ bool HTTPTransportLibcurl::ExecuteSynchronously(std::string* response_body) {
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEFUNCTION, WriteResponseBody);
   TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_WRITEDATA, response_body);
   if (!http_proxy().empty()) {
-    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_PROXY, http_proxy().c_str());
+    // An empty string is a special value that libcurl interprets as “no proxy”.
+    const char* proxy = http_proxy() == "<empty>" ? "" : http_proxy().c_str();
+    TRY_CURL_EASY_SETOPT(curl.get(), CURLOPT_PROXY, proxy);
   }
 
 #undef TRY_CURL_EASY_SETOPT

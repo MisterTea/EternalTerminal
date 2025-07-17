@@ -87,19 +87,19 @@ static void* Junk(void* data) {
   while (!*wait) {
     usleep(10000);
   }
-  return NULL;
+  return nullptr;
 }
 
 TEST_F(MinidumpGeneratorTest, InProcess) {
   MinidumpGenerator generator;
   string dump_filename =
-      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), NULL);
+      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), nullptr);
 
   // Run an extra thread since MinidumpGenerator assumes there
   // are 2 or more threads.
   pthread_t junk_thread;
   bool quit = false;
-  ASSERT_EQ(0, pthread_create(&junk_thread, NULL, Junk, &quit));
+  ASSERT_EQ(0, pthread_create(&junk_thread, nullptr, Junk, &quit));
 
   ASSERT_TRUE(generator.Write(dump_filename.c_str()));
   // Ensure that minidump file exists and is > 0 bytes.
@@ -109,7 +109,7 @@ TEST_F(MinidumpGeneratorTest, InProcess) {
 
   // join the background thread
   quit = true;
-  pthread_join(junk_thread, NULL);
+  pthread_join(junk_thread, nullptr);
 
   // Read the minidump, sanity check some data.
   Minidump minidump(dump_filename.c_str());
@@ -184,7 +184,7 @@ TEST_F(MinidumpGeneratorTest, OutOfProcess) {
   // Write a minidump of the child process.
   MinidumpGenerator generator(child_task, MACH_PORT_NULL);
   string dump_filename =
-      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), NULL);
+      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), nullptr);
   ASSERT_TRUE(generator.Write(dump_filename.c_str()));
 
   // Ensure that minidump file exists and is > 0 bytes.
@@ -248,7 +248,7 @@ TEST_F(MinidumpGeneratorTest, CrossArchitectureDump) {
   const char* argv[] = {
     helper_path.c_str(),
     machPortName,
-    NULL
+    nullptr
   };
   pid_t pid = spawn_child_process(argv);
   ASSERT_NE(-1, pid);
@@ -263,7 +263,7 @@ TEST_F(MinidumpGeneratorTest, CrossArchitectureDump) {
   // Write a minidump of the child process.
   MinidumpGenerator generator(child_task, MACH_PORT_NULL);
   string dump_filename =
-      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), NULL);
+      MinidumpGenerator::UniqueNameInDirectory(tempDir.path(), nullptr);
   ASSERT_TRUE(generator.Write(dump_filename.c_str()));
 
   // Ensure that minidump file exists and is > 0 bytes.

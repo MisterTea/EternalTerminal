@@ -7,6 +7,9 @@
 #include <assert.h>
 #include <stdio.h>
 
+// This is a NOP for platforms that support static mutex initialization.
+#define SENTRY__MUTEX_INIT_DYN_ONCE(Mutex) ((void)0)
+
 #ifdef _MSC_VER
 #    define THREAD_FUNCTION_API __stdcall
 #else
@@ -35,10 +38,7 @@
 
 #    if _WIN32_WINNT < 0x0600
 
-#        define INIT_ONCE_STATIC_INIT                                          \
-            {                                                                  \
-                0                                                              \
-            }
+#        define INIT_ONCE_STATIC_INIT { 0 }
 
 typedef union {
     PVOID Ptr;
@@ -165,13 +165,7 @@ sentry__winmutex_lock(struct sentry__winmutex_s *mutex)
 
 typedef HANDLE sentry_threadid_t;
 typedef struct sentry__winmutex_s sentry_mutex_t;
-#    define SENTRY__MUTEX_INIT                                                 \
-        {                                                                      \
-            INIT_ONCE_STATIC_INIT,                                             \
-            {                                                                  \
-                0                                                              \
-            }                                                                  \
-        }
+#    define SENTRY__MUTEX_INIT { INIT_ONCE_STATIC_INIT, { 0 } }
 #    define sentry__mutex_init(Lock) sentry__winmutex_init(Lock)
 #    define sentry__mutex_lock(Lock) sentry__winmutex_lock(Lock)
 #    define sentry__mutex_unlock(Lock)                                         \
@@ -237,6 +231,7 @@ void sentry__leave_signal_handler(void);
 typedef pthread_t sentry_threadid_t;
 typedef pthread_mutex_t sentry_mutex_t;
 typedef pthread_cond_t sentry_cond_t;
+
 #    ifdef SENTRY_PLATFORM_LINUX
 #        ifndef PTHREAD_RECURSIVE_MUTEX_INITIALIZER_NP
 // In particular musl libc does not define a recursive initializer itself.
@@ -271,14 +266,36 @@ typedef pthread_cond_t sentry_cond_t;
                         PTHREAD_MUTEX_RECURSIVE                                \
                 }                                                              \
             }
+#    elif defined(__FreeBSD__) || defined(SENTRY_PLATFORM_NX)
+// Don't define `SENTRY__MUTEX_INIT` but instead provide a new definition that
+// can be used by platforms requiring dynamic recursive mutex initialization.
+#        define SENTRY__MUTEX_INIT_DYN(Mutex)                                  \
+            static sentry_mutex_t Mutex;                                       \
+            static pthread_once_t Mutex##_init_once = PTHREAD_ONCE_INIT;       \
+            static void init_##Mutex(void) { sentry__mutex_init(&Mutex); }
+#        undef SENTRY__MUTEX_INIT_DYN_ONCE
+// Ensures that our dynamically configured mutex is safely initialized once.
+#        define SENTRY__MUTEX_INIT_DYN_ONCE(Mutex)                             \
+            pthread_once(&Mutex##_init_once, init_##Mutex)
 #    else
 #        define SENTRY__MUTEX_INIT PTHREAD_RECURSIVE_MUTEX_INITIALIZER
 #    endif
-#    define sentry__mutex_init(Mutex)                                          \
-        do {                                                                   \
-            sentry_mutex_t tmp = SENTRY__MUTEX_INIT;                           \
-            *(Mutex) = tmp;                                                    \
-        } while (0)
+#    ifdef SENTRY__MUTEX_INIT_DYN
+#        define sentry__mutex_init(Mutex)                                      \
+            do {                                                               \
+                pthread_mutexattr_t attr;                                      \
+                pthread_mutexattr_init(&attr);                                 \
+                pthread_mutexattr_settype(&attr, PTHREAD_MUTEX_RECURSIVE);     \
+                pthread_mutex_init(Mutex, &attr);                              \
+                pthread_mutexattr_destroy(&attr);                              \
+            } while (0)
+#    else
+#        define sentry__mutex_init(Mutex)                                      \
+            do {                                                               \
+                sentry_mutex_t tmp = SENTRY__MUTEX_INIT;                       \
+                *(Mutex) = tmp;                                                \
+            } while (0)
+#    endif
 #    define sentry__mutex_lock(Mutex)                                          \
         do {                                                                   \
             if (sentry__block_for_signal_handler()) {                          \

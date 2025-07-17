@@ -133,7 +133,7 @@ class FatReader {
     *count = object_files_.size();
     if (object_files_.size() > 0)
       return &object_files_[0];
-    return NULL;
+    return nullptr;
   }
 
  private:

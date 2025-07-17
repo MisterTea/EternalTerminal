@@ -70,11 +70,11 @@ SourceLineResolverBase::~SourceLineResolverBase() {
   }
   // Delete the map of modules.
   delete modules_;
-  modules_ = NULL;
+  modules_ = nullptr;
 
   // Delete the set of corrupt modules.
   delete corrupt_modules_;
-  corrupt_modules_ = NULL;
+  corrupt_modules_ = nullptr;
 
   MemoryMap::iterator iter = memory_buffers_->begin();
   for (; iter != memory_buffers_->end(); ++iter) {
@@ -82,16 +82,16 @@ SourceLineResolverBase::~SourceLineResolverBase() {
   }
   // Delete the map of memory buffers.
   delete memory_buffers_;
-  memory_buffers_ = NULL;
+  memory_buffers_ = nullptr;
 
   delete module_factory_;
-  module_factory_ = NULL;
+  module_factory_ = nullptr;
 }
 
 bool SourceLineResolverBase::ReadSymbolFile(const string& map_file,
                                             char** symbol_data,
                                             size_t* symbol_data_size) {
-  if (symbol_data == NULL || symbol_data_size == NULL) {
+  if (symbol_data == nullptr || symbol_data_size == nullptr) {
     BPLOG(ERROR) << "Could not Read file into Null memory pointer";
     return false;
   }
@@ -113,7 +113,7 @@ bool SourceLineResolverBase::ReadSymbolFile(const string& map_file,
   *symbol_data_size = file_size + 1;
   *symbol_data = new char[file_size + 1];
 
-  if (*symbol_data == NULL) {
+  if (*symbol_data == nullptr) {
     BPLOG(ERROR) << "Could not allocate memory for " << map_file;
     return false;
   }
@@ -127,7 +127,7 @@ bool SourceLineResolverBase::ReadSymbolFile(const string& map_file,
     BPLOG(ERROR) << "Could not open " << map_file <<
         ", error " << error_code << ": " << error_string;
     delete [] (*symbol_data);
-    *symbol_data = NULL;
+    *symbol_data = nullptr;
     return false;
   }
 
@@ -143,7 +143,7 @@ bool SourceLineResolverBase::ReadSymbolFile(const string& map_file,
     BPLOG(ERROR) << "Could not slurp " << map_file <<
         ", error " << error_code << ": " << error_string;
     delete [] (*symbol_data);
-    *symbol_data = NULL;
+    *symbol_data = nullptr;
     return false;
   }
 
@@ -153,7 +153,7 @@ bool SourceLineResolverBase::ReadSymbolFile(const string& map_file,
 
 bool SourceLineResolverBase::LoadModule(const CodeModule* module,
                                         const string& map_file) {
-  if (module == NULL)
+  if (module == nullptr)
     return false;
 
   // Make sure we don't already have a module with the given name.
@@ -193,7 +193,7 @@ bool SourceLineResolverBase::LoadModuleUsingMapBuffer(
   BPLOG(INFO) << "SourceLineResolverBase::LoadModuleUsingMapBuffer(module = "
               << module->code_file()
               << ", map_buffer.size() = " << map_buffer.size() << ")";
-  if (module == NULL)
+  if (module == nullptr)
     return false;
 
   // Make sure we don't already have a module with the given name.
@@ -205,7 +205,7 @@ bool SourceLineResolverBase::LoadModuleUsingMapBuffer(
 
   size_t memory_buffer_size = map_buffer.size() + 1;
   char* memory_buffer = new char[memory_buffer_size];
-  if (memory_buffer == NULL) {
+  if (memory_buffer == nullptr) {
     BPLOG(ERROR) << "Could not allocate memory for " << module->code_file();
     return false;
   }
@@ -253,7 +253,6 @@ bool SourceLineResolverBase::LoadModuleUsingMemoryBuffer(
     // Returning false from here would be an indication that the symbols for
     // this module are missing which would be wrong.  Intentionally fall through
     // and add the module to both the modules_ and the corrupt_modules_ lists.
-    assert(basic_module->IsCorrupt());
   }
 
   modules_->insert(make_pair(module->code_file(), basic_module));
@@ -322,7 +321,7 @@ WindowsFrameInfo* SourceLineResolverBase::FindWindowsFrameInfo(
       return it->second->FindWindowsFrameInfo(frame);
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 CFIFrameInfo* SourceLineResolverBase::FindCFIFrameInfo(
@@ -333,7 +332,7 @@ CFIFrameInfo* SourceLineResolverBase::FindCFIFrameInfo(
       return it->second->FindCFIFrameInfo(frame);
     }
   }
-  return NULL;
+  return nullptr;
 }
 
 bool SourceLineResolverBase::CompareString::operator()(

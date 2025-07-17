@@ -37,6 +37,7 @@ google_converter.exe ^
     -n https://download.amd.com/dir/bin ^
     -n https://driver-symbols.nvidia.com ^
     -n https://software.intel.com/sites/downloads/symbols ^
+    -n https://www.nvaccess.org/files/nvda/symbols ^
     -l %SYMBOL_DIR% ^
     -s https://clients2.google.com/cr/staging_symbol ^
     -mf %SCRIPT_LOCATION%missing_symbols_test.txt ^
@@ -56,6 +57,7 @@ google_converter.exe ^
     -n https://download.amd.com/dir/bin ^
     -n https://driver-symbols.nvidia.com ^
     -n https://software.intel.com/sites/downloads/symbols ^
+    -n https://www.nvaccess.org/files/nvda/symbols ^
     -l %SYMBOL_DIR% ^
     -s https://clients2.google.com/cr/symbol ^
     -mf %SCRIPT_LOCATION%missing_symbols_test.txt ^

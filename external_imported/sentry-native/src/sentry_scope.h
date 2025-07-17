@@ -3,22 +3,25 @@
 
 #include "sentry_boot.h"
 
+#include "sentry_attachment.h"
 #include "sentry_session.h"
 #include "sentry_value.h"
 
 /**
  * This represents the current scope.
  */
-typedef struct sentry_scope_s {
+struct sentry_scope_s {
     char *transaction;
     sentry_value_t fingerprint;
     sentry_value_t user;
     sentry_value_t tags;
     sentry_value_t extra;
     sentry_value_t contexts;
+    sentry_value_t propagation_context;
     sentry_value_t breadcrumbs;
     sentry_level_t level;
     sentry_value_t client_sdk;
+    sentry_attachment_t *attachments;
 
     // The span attached to this scope, if any.
     //
@@ -30,7 +33,7 @@ typedef struct sentry_scope_s {
     // `name` property nested in transaction_object or span.
     sentry_transaction_t *transaction_object;
     sentry_span_t *span;
-} sentry_scope_t;
+};
 
 /**
  * When applying a scope to an event object, this specifies all the additional
@@ -71,6 +74,11 @@ void sentry__scope_cleanup(void);
 void sentry__scope_flush_unlock(void);
 
 /**
+ * Deallocates a (local) scope.
+ */
+void sentry__scope_free(sentry_scope_t *scope);
+
+/**
  * This will merge the requested data which is in the given `scope` to the given
  * `event`.
  * See `sentry_scope_mode_t` for the different types of data that can be
@@ -80,19 +88,24 @@ void sentry__scope_apply_to_event(const sentry_scope_t *scope,
     const sentry_options_t *options, sentry_value_t event,
     sentry_scope_mode_t mode);
 
+void sentry__scope_set_fingerprint_va(
+    sentry_scope_t *scope, const char *fingerprint, va_list va);
+void sentry__scope_set_fingerprint_nva(sentry_scope_t *scope,
+    const char *fingerprint, size_t fingerprint_len, va_list va);
+
 /**
- * These are convenience macros to automatically lock/unlock a scope inside a
- * code block.
+ * These are convenience macros to automatically lock/unlock the global scope
+ * inside a code block.
  */
 #define SENTRY_WITH_SCOPE(Scope)                                               \
     for (const sentry_scope_t *Scope = sentry__scope_lock(); Scope;            \
-         sentry__scope_unlock(), Scope = NULL)
+        sentry__scope_unlock(), Scope = NULL)
 #define SENTRY_WITH_SCOPE_MUT(Scope)                                           \
     for (sentry_scope_t *Scope = sentry__scope_lock(); Scope;                  \
-         sentry__scope_flush_unlock(), Scope = NULL)
+        sentry__scope_flush_unlock(), Scope = NULL)
 #define SENTRY_WITH_SCOPE_MUT_NO_FLUSH(Scope)                                  \
     for (sentry_scope_t *Scope = sentry__scope_lock(); Scope;                  \
-         sentry__scope_unlock(), Scope = NULL)
+        sentry__scope_unlock(), Scope = NULL)
 
 #endif
 

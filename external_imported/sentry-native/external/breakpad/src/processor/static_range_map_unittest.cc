@@ -34,6 +34,8 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <memory>
+
 #include "breakpad_googletest_includes.h"
 #include "common/scoped_ptr.h"
 #include "processor/range_map-inl.h"
@@ -322,7 +324,7 @@ void TestStaticRangeMap::RetrieveIndexTest(const TestMap* range_map, int set) {
     ASSERT_TRUE(range_map->RetrieveRangeAtIndex(object_index,
                                                 entry,
                                                 &base,
-                                                NULL))
+                                                nullptr))
         << "FAILED: RetrieveRangeAtIndex set " << set
         << " index " << object_index;
 
@@ -346,16 +348,16 @@ void TestStaticRangeMap::RetrieveIndexTest(const TestMap* range_map, int set) {
   // Make sure that RetrieveRangeAtIndex doesn't allow lookups at indices that
   // are too high.
   ASSERT_FALSE(range_map->RetrieveRangeAtIndex(
-      object_count, entry, NULL, NULL)) << "FAILED: RetrieveRangeAtIndex set "
-                                        << set << " index " << object_count
-                                        << " (too large)";
+      object_count, entry, nullptr, nullptr)) << "FAILED: RetrieveRangeAtIndex "
+                                              << "set " << set << " index "
+                                              << object_count << " (too large)";
 }
 
 // RunTests runs a series of test sets.
 void TestStaticRangeMap::RunTestCase(int test_case) {
   // Maintain the range map in a pointer so that deletion can be meaningfully
   // tested.
-  scoped_ptr<RMap> rmap(new RMap());
+  std::unique_ptr<RMap> rmap(new RMap());
 
   const RangeTest* range_tests = range_test_sets[test_case].range_tests;
   unsigned int range_test_count = range_test_sets[test_case].range_test_count;
@@ -373,8 +375,8 @@ void TestStaticRangeMap::RunTestCase(int test_case) {
       ++stored_count;
   }
 
-  scoped_array<char> memaddr(serializer_.Serialize(*rmap, NULL));
-  scoped_ptr<TestMap> static_range_map(new TestMap(memaddr.get()));
+  scoped_array<char> memaddr(serializer_.Serialize(*rmap, nullptr));
+  std::unique_ptr<TestMap> static_range_map(new TestMap(memaddr.get()));
 
   // The RangeMap's own count of objects should also match.
   EXPECT_EQ(static_range_map->GetCount(), stored_count);

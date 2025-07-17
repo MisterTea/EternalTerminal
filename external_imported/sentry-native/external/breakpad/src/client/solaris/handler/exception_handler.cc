@@ -32,16 +32,16 @@
 #include <config.h>  // Must come first
 #endif
 
+#include "client/solaris/handler/exception_handler.h"
+
+#include <assert.h>
 #include <signal.h>
+#include <stdlib.h>
 #include <sys/stat.h>
 #include <sys/types.h>
+#include <time.h>
 #include <unistd.h>
 
-#include <cassert>
-#include <cstdlib>
-#include <ctime>
-
-#include "client/solaris/handler/exception_handler.h"
 #include "common/solaris/guid_creator.h"
 #include "common/solaris/message_output.h"
 #include "google_breakpad/common/minidump_format.h"
@@ -57,7 +57,7 @@ static const int kSigTable[] = {
   SIGBUS
 };
 
-std::vector<ExceptionHandler*>* ExceptionHandler::handler_stack_ = NULL;
+std::vector<ExceptionHandler*>* ExceptionHandler::handler_stack_ = nullptr;
 int ExceptionHandler::handler_stack_index_ = 0;
 pthread_mutex_t ExceptionHandler::handler_stack_mutex_ =
   PTHREAD_MUTEX_INITIALIZER;
@@ -81,7 +81,7 @@ ExceptionHandler::ExceptionHandler(const string& dump_path,
   if (install_handler) {
     pthread_mutex_lock(&handler_stack_mutex_);
 
-    if (handler_stack_ == NULL)
+    if (handler_stack_ == nullptr)
       handler_stack_ = new std::vector<ExceptionHandler*>;
     handler_stack_->push_back(this);
     pthread_mutex_unlock(&handler_stack_mutex_);
@@ -109,22 +109,22 @@ ExceptionHandler::~ExceptionHandler() {
     // When destroying the last ExceptionHandler that installed a handler,
     // clean up the handler stack.
     delete handler_stack_;
-    handler_stack_ = NULL;
+    handler_stack_ = nullptr;
   }
   pthread_mutex_unlock(&handler_stack_mutex_);
 }
 
 bool ExceptionHandler::WriteMinidump() {
-  return InternalWriteMinidump(0, 0, NULL);
+  return InternalWriteMinidump(0, 0, nullptr);
 }
 
 // static
 bool ExceptionHandler::WriteMinidump(const string& dump_path,
                                      MinidumpCallback callback,
                                      void* callback_context) {
-  ExceptionHandler handler(dump_path, NULL, callback,
+  ExceptionHandler handler(dump_path, nullptr, callback,
                            callback_context, false);
-  return handler.InternalWriteMinidump(0, 0, NULL);
+  return handler.InternalWriteMinidump(0, 0, nullptr);
 }
 
 void ExceptionHandler::SetupHandler() {
@@ -132,12 +132,12 @@ void ExceptionHandler::SetupHandler() {
   // of the crashing lwp.
   struct sigaltstack sig_stack;
   sig_stack.ss_sp = malloc(MINSIGSTKSZ);
-  if (sig_stack.ss_sp == NULL)
+  if (sig_stack.ss_sp == nullptr)
     return;
   sig_stack.ss_size = MINSIGSTKSZ;
   sig_stack.ss_flags = 0;
 
-  if (sigaltstack(&sig_stack, NULL) < 0)
+  if (sigaltstack(&sig_stack, nullptr) < 0)
     return;
   for (size_t i = 0; i < sizeof(kSigTable) / sizeof(kSigTable[0]); ++i)
     SetupHandler(kSigTable[i]);
@@ -191,7 +191,7 @@ void ExceptionHandler::HandleException(int signo) {
   // Restore original handler.
   current_handler->TeardownHandler(signo);
 
-  ucontext_t* sig_ctx = NULL;
+  ucontext_t* sig_ctx = nullptr;
   if (current_handler->InternalWriteMinidump(signo, current_ebp, &sig_ctx)) {
 //  if (current_handler->InternalWriteMinidump(signo, &sig_ctx)) {
     // Fully handled this exception, safe to exit.
@@ -202,7 +202,7 @@ void ExceptionHandler::HandleException(int signo) {
     typedef void (*SignalHandler)(int signo);
     SignalHandler old_handler =
       reinterpret_cast<SignalHandler>(current_handler->old_handlers_[signo]);
-    if (old_handler != NULL)
+    if (old_handler != nullptr)
       old_handler(signo);
   }
 

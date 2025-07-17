@@ -1,0 +1,8 @@
+ID=nexus
+ID_LIKE=wrlinux
+NAME=Nexus
+HOME_URL=http://www.cisco.com
+BUILD_ID=TBD
+VERSION="7.0(BUILDER)"
+VERSION_ID="7.0(BUILDER)"
+CISCO_RELEASE_INFO="/etc/os-release"

@@ -1,7 +1,7 @@
 ﻿
 Microsoft Visual Studio Solution File, Format Version 12.00
-# Visual Studio Version 16
-VisualStudioVersion = 16.0.30204.135
+# Visual Studio Version 17
+VisualStudioVersion = 17.3.32804.467
 MinimumVisualStudioVersion = 10.0.40219.1
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Library Files", "Library Files", "{C1F8A145-78E7-42C6-95D5-23C746C2BC56}"
 	ProjectSection(SolutionItems) = preProject
@@ -18,7 +18,7 @@ Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Information Files", "Inform
 EndProject
 Project("{2150E333-8FDC-42A3-9474-1A3956D46DE8}") = "Other Files", "Other Files", "{560B512C-6D1C-4E65-83C1-049110E5DEF6}"
 	ProjectSection(SolutionItems) = preProject
-		..\other\Makefile = ..\other\Makefile
+		..\Makefile = ..\Makefile
 		..\other\package.cmd = ..\other\package.cmd
 		..\other\simpleini.doxy = ..\other\simpleini.doxy
 	EndProjectSection

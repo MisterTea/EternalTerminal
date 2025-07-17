@@ -1,0 +1,99 @@
+public final class io/sentry/ndk/BuildConfig {
+	public static final field BUILD_TYPE Ljava/lang/String;
+	public static final field DEBUG Z
+	public static final field LIBRARY_PACKAGE_NAME Ljava/lang/String;
+	public fun <init> ()V
+}
+
+public final class io/sentry/ndk/DebugImage {
+	public fun <init> ()V
+	public fun getArch ()Ljava/lang/String;
+	public fun getCodeFile ()Ljava/lang/String;
+	public fun getCodeId ()Ljava/lang/String;
+	public fun getDebugFile ()Ljava/lang/String;
+	public fun getDebugId ()Ljava/lang/String;
+	public fun getImageAddr ()Ljava/lang/String;
+	public fun getImageSize ()Ljava/lang/Long;
+	public fun getType ()Ljava/lang/String;
+	public fun getUuid ()Ljava/lang/String;
+	public fun setArch (Ljava/lang/String;)V
+	public fun setCodeFile (Ljava/lang/String;)V
+	public fun setCodeId (Ljava/lang/String;)V
+	public fun setDebugFile (Ljava/lang/String;)V
+	public fun setDebugId (Ljava/lang/String;)V
+	public fun setImageAddr (Ljava/lang/String;)V
+	public fun setImageSize (J)V
+	public fun setImageSize (Ljava/lang/Long;)V
+	public fun setType (Ljava/lang/String;)V
+	public fun setUuid (Ljava/lang/String;)V
+}
+
+public abstract interface class io/sentry/ndk/INativeScope {
+	public abstract fun addBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun removeExtra (Ljava/lang/String;)V
+	public abstract fun removeTag (Ljava/lang/String;)V
+	public abstract fun removeUser ()V
+	public abstract fun setExtra (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun setTag (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun setTrace (Ljava/lang/String;Ljava/lang/String;)V
+	public abstract fun setUser (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class io/sentry/ndk/NativeModuleListLoader {
+	public fun <init> ()V
+	public fun clearModuleList ()V
+	public fun loadModuleList ()[Lio/sentry/ndk/DebugImage;
+	public static fun nativeClearModuleList ()V
+	public static fun nativeLoadModuleList ()[Lio/sentry/ndk/DebugImage;
+}
+
+public final class io/sentry/ndk/NativeScope : io/sentry/ndk/INativeScope {
+	public fun <init> ()V
+	public fun addBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeAddBreadcrumb (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeRemoveExtra (Ljava/lang/String;)V
+	public static fun nativeRemoveTag (Ljava/lang/String;)V
+	public static fun nativeRemoveUser ()V
+	public static fun nativeSetExtra (Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeSetTag (Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeSetTrace (Ljava/lang/String;Ljava/lang/String;)V
+	public static fun nativeSetUser (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+	public fun removeExtra (Ljava/lang/String;)V
+	public fun removeTag (Ljava/lang/String;)V
+	public fun removeUser ()V
+	public fun setExtra (Ljava/lang/String;Ljava/lang/String;)V
+	public fun setTag (Ljava/lang/String;Ljava/lang/String;)V
+	public fun setTrace (Ljava/lang/String;Ljava/lang/String;)V
+	public fun setUser (Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;)V
+}
+
+public final class io/sentry/ndk/NdkHandlerStrategy : java/lang/Enum {
+	public static final field SENTRY_HANDLER_STRATEGY_CHAIN_AT_START Lio/sentry/ndk/NdkHandlerStrategy;
+	public static final field SENTRY_HANDLER_STRATEGY_DEFAULT Lio/sentry/ndk/NdkHandlerStrategy;
+	public fun getValue ()I
+	public static fun valueOf (Ljava/lang/String;)Lio/sentry/ndk/NdkHandlerStrategy;
+	public static fun values ()[Lio/sentry/ndk/NdkHandlerStrategy;
+}
+
+public final class io/sentry/ndk/NdkOptions {
+	public fun <init> (Ljava/lang/String;ZLjava/lang/String;Ljava/lang/String;Ljava/lang/String;Ljava/lang/String;ILjava/lang/String;)V
+	public fun getDist ()Ljava/lang/String;
+	public fun getDsn ()Ljava/lang/String;
+	public fun getEnvironment ()Ljava/lang/String;
+	public fun getMaxBreadcrumbs ()I
+	public fun getNdkHandlerStrategy ()I
+	public fun getOutboxPath ()Ljava/lang/String;
+	public fun getRelease ()Ljava/lang/String;
+	public fun getSdkName ()Ljava/lang/String;
+	public fun getTracesSampleRate ()F
+	public fun isDebug ()Z
+	public fun setNdkHandlerStrategy (Lio/sentry/ndk/NdkHandlerStrategy;)V
+	public fun setTracesSampleRate (F)V
+}
+
+public final class io/sentry/ndk/SentryNdk {
+	public static fun close ()V
+	public static fun init (Lio/sentry/ndk/NdkOptions;)V
+	public static fun loadNativeLibraries ()V
+}
+

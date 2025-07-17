@@ -485,11 +485,11 @@ struct SimpleCFIWalkerFixture {
 
 SimpleCFIWalkerFixture::CFIWalker::RegisterSet
 SimpleCFIWalkerFixture::register_map[7] = {
-  { "r0", NULL,   true,  R0_VALID, &RawContext::r0 },
-  { "r1", NULL,   true,  R1_VALID, &RawContext::r1 },
-  { "r2", NULL,   false, R2_VALID, &RawContext::r2 },
-  { "r3", NULL,   false, R3_VALID, &RawContext::r3 },
-  { "r4", NULL,   true,  R4_VALID, &RawContext::r4 },
+  { "r0", nullptr,   true,  R0_VALID, &RawContext::r0 },
+  { "r1", nullptr,   true,  R1_VALID, &RawContext::r1 },
+  { "r2", nullptr,   false, R2_VALID, &RawContext::r2 },
+  { "r3", nullptr,   false, R3_VALID, &RawContext::r3 },
+  { "r4", nullptr,   true,  R4_VALID, &RawContext::r4 },
   { "sp", ".cfa", true,  SP_VALID, &RawContext::sp },
   { "pc", ".ra",  true,  PC_VALID, &RawContext::pc },
 };

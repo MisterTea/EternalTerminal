@@ -91,7 +91,7 @@ enum ExploitabilityRating {
 
 class ProcessState {
  public:
-  ProcessState() : modules_(NULL), unloaded_modules_(NULL) { Clear(); }
+  ProcessState() : modules_(nullptr), unloaded_modules_(nullptr) { Clear(); }
   ~ProcessState();
 
   // Resets the ProcessState to its default values
@@ -105,6 +105,7 @@ class ProcessState {
   uint64_t crash_address() const { return crash_address_; }
   string assertion() const { return assertion_; }
   int requesting_thread() const { return requesting_thread_; }
+  int original_thread_count() const { return original_thread_count_; }
   const ExceptionRecord* exception_record() const { return &exception_record_; }
   const vector<CallStack*>* threads() const { return &threads_; }
   const vector<MemoryRegion*>* thread_memory_regions() const {
@@ -167,6 +168,11 @@ class ProcessState {
   // extended Breakpad information is present, this field will be set to -1,
   // indicating that the dump thread is not available.
   int requesting_thread_;
+
+  // Original thread count. The Processor has limit on how many threads to
+  // process, so not all threads are processed. This tells you how many threads
+  // were originally in the minudump.
+  int original_thread_count_;
 
   // Exception record details: code, flags, address, parameters.
   ExceptionRecord exception_record_;

@@ -136,7 +136,7 @@ void DoCrash(const char* message) {
     fprintf(stderr, "%s", message);
     fflush(stderr);
   }
-  int* i = NULL;
+  int* i = nullptr;
   (*i)++;
 
   ASSERT_TRUE(false);
@@ -156,23 +156,23 @@ void InstallExceptionHandlerAndCrash(bool install_filter,
         (filter_return_value ?
           &CrashHandlerFilter<true> :
           &CrashHandlerFilter<false>) :
-        NULL,
+        nullptr,
       install_callback ?
         (callback_return_value ?
           &MinidumpWrittenCallback<true> :
           &MinidumpWrittenCallback<false>) :
-        NULL,
-      NULL,  // callback_context
+        nullptr,
+      nullptr,  // callback_context
       google_breakpad::ExceptionHandler::HANDLER_EXCEPTION);
 
   // Disable GTest SEH handler
   testing::DisableExceptionHandlerInScope disable_exception_handler;
 
-  DoCrash(NULL);
+  DoCrash(nullptr);
 }
 
 TEST(AssertDeathSanity, Simple) {
-  ASSERT_DEATH(DoCrash(NULL), "");
+  ASSERT_DEATH(DoCrash(nullptr), "");
 }
 
 TEST(AssertDeathSanity, Regex) {
@@ -264,7 +264,7 @@ TEST(ExceptionHandlerNesting, Skip_From_Inner_Filter) {
       temp_path,
       &CrashHandlerFilter<true>,
       &MinidumpWrittenCallback<false>,
-      NULL,  // callback_context
+      nullptr,  // callback_context
       google_breakpad::ExceptionHandler::HANDLER_EXCEPTION);
 
   ASSERT_DEATH(
@@ -288,7 +288,7 @@ TEST(ExceptionHandlerNesting, Skip_From_Inner_Callback) {
       temp_path,
       &CrashHandlerFilter<true>,
       &MinidumpWrittenCallback<false>,
-      NULL,  // callback_context
+      nullptr,  // callback_context
       google_breakpad::ExceptionHandler::HANDLER_EXCEPTION);
 
   ASSERT_DEATH(
@@ -313,7 +313,7 @@ TEST(ExceptionHandlerNesting, Handled_By_Inner_Handler) {
       temp_path,
       &CrashHandlerFilter<true>,
       &MinidumpWrittenCallback<true>,
-      NULL,  // callback_context
+      nullptr,  // callback_context
       google_breakpad::ExceptionHandler::HANDLER_EXCEPTION);
 
   ASSERT_DEATH(

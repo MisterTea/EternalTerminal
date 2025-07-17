@@ -48,14 +48,17 @@ class Module;
 struct DumpOptions {
   DumpOptions(SymbolData symbol_data,
               bool handle_inter_cu_refs,
-              bool enable_multiple_field)
+              bool enable_multiple_field,
+              bool preserve_load_address)
       : symbol_data(symbol_data),
         handle_inter_cu_refs(handle_inter_cu_refs),
-        enable_multiple_field(enable_multiple_field) {}
+        enable_multiple_field(enable_multiple_field),
+        preserve_load_address(preserve_load_address) {}
 
   SymbolData symbol_data;
   bool handle_inter_cu_refs;
   bool enable_multiple_field;
+  bool preserve_load_address;
 };
 
 // Find all the debugging information in OBJ_FILE, an ELF executable
@@ -67,6 +70,7 @@ struct DumpOptions {
 bool WriteSymbolFile(const string& load_path,
                      const string& obj_file,
                      const string& obj_os,
+                     const string& module_id,
                      const std::vector<string>& debug_dirs,
                      const DumpOptions& options,
                      std::ostream& sym_stream);
@@ -78,6 +82,7 @@ bool WriteSymbolFile(const string& load_path,
 bool WriteSymbolFileHeader(const string& load_path,
                            const string& obj_file,
                            const string& obj_os,
+                           const string& module_id,
                            std::ostream& sym_stream);
 
 // As above, but simply return the debugging information in MODULE
@@ -86,6 +91,7 @@ bool WriteSymbolFileHeader(const string& load_path,
 bool ReadSymbolData(const string& load_path,
                     const string& obj_file,
                     const string& obj_os,
+                    const string& module_id,
                     const std::vector<string>& debug_dirs,
                     const DumpOptions& options,
                     Module** module);

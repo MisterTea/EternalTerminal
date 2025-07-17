@@ -1,0 +1,63 @@
+name: Benchmark
+
+on:
+  push:
+    branches:
+      - master
+    paths-ignore:
+      - "*.md"
+  pull_request:
+    paths-ignore:
+      - "*.md"
+
+permissions:
+  deployments: write
+  contents: write
+
+jobs:
+  benchmark:
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: Linux
+            os: ubuntu-latest
+          - name: macOS
+            os: macos-latest
+          - name: Windows
+            os: windows-latest
+
+    name: ${{ matrix.name }}
+    runs-on: ${{ matrix.os }}
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: "pip"
+
+      - name: Install Linux dependencies
+        if: ${{ runner.os == 'Linux' }}
+        run: |
+          sudo apt update
+          sudo apt install -y libcurl4-openssl-dev
+
+      - name: Benchmark
+        shell: bash
+        run: |
+          pip install --upgrade --requirement tests/requirements.txt
+          pytest --verbose --benchmark_out=benchmark.json tests/benchmark.py
+
+      - uses: benchmark-action/github-action-benchmark@v1
+        if: ${{ github.event_name == 'push' }}
+        with:
+          name: ${{ runner.os }}
+          tool: customSmallerIsBetter
+          output-file-path: benchmark.json
+          github-token: ${{ secrets.GITHUB_TOKEN }}
+          benchmark-data-dir-path: ./
+          auto-push: true

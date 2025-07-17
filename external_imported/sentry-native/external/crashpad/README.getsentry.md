@@ -6,6 +6,7 @@
   libc versions.
 - Build System Changes Listed Below.
 - MinGW build support.
+- Screenshot support for Windows.
 
 # Build System Changes
 

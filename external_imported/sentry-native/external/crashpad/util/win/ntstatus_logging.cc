@@ -17,7 +17,10 @@
 #include <iterator>
 #include <string>
 
+#include "base/immediate_crash.h"
+#include "base/scoped_clear_last_error.h"
 #include "base/strings/stringprintf.h"
+#include "build/build_config.h"
 
 namespace {
 
@@ -68,8 +71,29 @@ NtstatusLogMessage::NtstatusLogMessage(
 }
 
 NtstatusLogMessage::~NtstatusLogMessage() {
+  AppendError();
+}
+
+void NtstatusLogMessage::AppendError() {
+  // Don't let actions from this method affect the system error after returning.
+  base::ScopedClearLastError scoped_clear_last_error;
+
   stream() << ": " << FormatNtstatus(ntstatus_)
            << base::StringPrintf(" (0x%08lx)", ntstatus_);
 }
+
+#if defined(COMPILER_MSVC)
+// Ignore warning that ~NtStatusLogMessageFatal never returns.
+#pragma warning(push)
+#pragma warning(disable : 4722)
+#endif  // COMPILER_MSVC
+NtstatusLogMessageFatal::~NtstatusLogMessageFatal() {
+  AppendError();
+  Flush();
+  base::ImmediateCrash();
+}
+#if defined(COMPILER_MSVC)
+#pragma warning(pop)  // C4722
+#endif  // COMPILER_MSVC
 
 }  // namespace logging

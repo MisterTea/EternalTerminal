@@ -176,6 +176,31 @@ TYPED_TEST(FileIDTest, ElfClass) {
   EXPECT_EQ(expected_identifier_string, identifier_string);
 }
 
+TYPED_TEST(FileIDTest, ZephyrTextSection) {
+  const char expected_identifier_string[] =
+      "80808080808000000000008080808080";
+  const size_t kTextSectionSize = 128;
+
+  ELF elf(EM_386, TypeParam::kClass, kLittleEndian);
+  Section text(kLittleEndian);
+  for (size_t i = 0; i < kTextSectionSize; ++i) {
+    text.D8(i * 3);
+  }
+  // Some binaries, namely Zephyr firmware binaries (https://www.zephyrproject.org/),
+  // refer to the `.text` section as `text`. They are logically identical however
+  // and should be handled the same.
+  elf.AddSection("text", text, SHT_PROGBITS);
+  elf.Finish();
+  this->GetElfContents(elf);
+
+  id_vector identifier(this->make_vector());
+  EXPECT_TRUE(FileID::ElfFileIdentifierFromMappedFile(this->elfdata,
+                                                      identifier));
+
+  string identifier_string = FileID::ConvertIdentifierToUUIDString(identifier);
+  EXPECT_EQ(expected_identifier_string, identifier_string);
+}
+
 TYPED_TEST(FileIDTest, BuildID) {
   const uint8_t kExpectedIdentifierBytes[] =
     {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
@@ -314,6 +339,45 @@ TYPED_TEST(FileIDTest, BuildIDMultiplePH) {
   int note2_idx = elf.AddSection(".note2", notes2, SHT_NOTE);
   elf.AddSegment(note1_idx, note1_idx, PT_NOTE);
   elf.AddSegment(note2_idx, note2_idx, PT_NOTE);
+  elf.Finish();
+  this->GetElfContents(elf);
+
+  id_vector identifier(this->make_vector());
+  EXPECT_TRUE(FileID::ElfFileIdentifierFromMappedFile(this->elfdata,
+                                                      identifier));
+  EXPECT_EQ(sizeof(kExpectedIdentifierBytes), identifier.size());
+
+  string identifier_string = FileID::ConvertIdentifierToUUIDString(identifier);
+  EXPECT_EQ(expected_identifier_string, identifier_string);
+}
+
+TYPED_TEST(FileIDTest, BuildIDMultiplePHPreferGNU) {
+  const uint8_t kExpectedIdentifierBytes[] =
+    {0x00, 0x01, 0x02, 0x03, 0x04, 0x05, 0x06, 0x07,
+     0x08, 0x09, 0x0A, 0x0B, 0x0C, 0x0D, 0x0E, 0x0F,
+     0x10, 0x11, 0x12, 0x13};
+  const string expected_identifier_string =
+      this->get_file_id(kExpectedIdentifierBytes);
+
+  ELF elf(EM_386, TypeParam::kClass, kLittleEndian);
+  Section text(kLittleEndian);
+  text.Append(4096, 0);
+  elf.AddSection(".text", text, SHT_PROGBITS);
+  Notes notes1(kLittleEndian);
+  notes1.AddNote(0, "Linux",
+                reinterpret_cast<const uint8_t*>("\0x42\0x02\0\0"), 4);
+  Notes notes2(kLittleEndian);
+  notes2.AddNote(NT_GNU_BUILD_ID, "GNU",
+                reinterpret_cast<const uint8_t*>("\0x42\0x02\0\0"), 4);
+  Notes notes3(kLittleEndian);
+  notes3.AddNote(NT_GNU_BUILD_ID, "GNU", kExpectedIdentifierBytes,
+                 sizeof(kExpectedIdentifierBytes));
+  int note1_idx = elf.AddSection(".note1", notes1, SHT_NOTE);
+  int note2_idx = elf.AddSection(".note2", notes2, SHT_NOTE);
+  int note3_idx = elf.AddSection(".note.gnu.build-id", notes3, SHT_NOTE);
+  elf.AddSegment(note1_idx, note1_idx, PT_NOTE);
+  elf.AddSegment(note2_idx, note2_idx, PT_NOTE);
+  elf.AddSegment(note3_idx, note3_idx, PT_NOTE);
   elf.Finish();
   this->GetElfContents(elf);
 

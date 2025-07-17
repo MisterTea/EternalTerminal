@@ -5,7 +5,7 @@
 
 /* on unix platforms we add support for a simplistic page allocator that can
    be enabled to make code async safe */
-#ifdef SENTRY_PLATFORM_UNIX
+#if defined(SENTRY_PLATFORM_UNIX)
 #    include "sentry_unix_pageallocator.h"
 #    define WITH_PAGE_ALLOCATOR
 #endif

@@ -54,7 +54,7 @@ template<typename Key, typename Value>
 size_t StdMapSerializer<Key, Value>::SizeOf(
     const std::map<Key, Value>& m) const {
   size_t size = 0;
-  size_t header_size = (1 + m.size()) * sizeof(uint32_t);
+  size_t header_size = (1 + m.size()) * sizeof(uint64_t);
   size += header_size;
 
   typename std::map<Key, Value>::const_iterator iter;
@@ -70,25 +70,25 @@ char* StdMapSerializer<Key, Value>::Write(const std::map<Key, Value>& m,
                                           char* dest) const {
   if (!dest) {
     BPLOG(ERROR) << "StdMapSerializer failed: write to NULL address.";
-    return NULL;
+    return nullptr;
   }
   char* start_address = dest;
 
   // Write header:
   // Number of nodes.
-  dest = SimpleSerializer<uint32_t>::Write(m.size(), dest);
+  dest = SimpleSerializer<uint64_t>::Write(m.size(), dest);
   // Nodes offsets.
-  uint32_t* offsets = reinterpret_cast<uint32_t*>(dest);
-  dest += sizeof(uint32_t) * m.size();
+  uint64_t* offsets = reinterpret_cast<uint64_t*>(dest);
+  dest += sizeof(uint64_t) * m.size();
 
   char* key_address = dest;
   dest += sizeof(Key) * m.size();
 
   // Traverse map.
   typename std::map<Key, Value>::const_iterator iter;
-  int index = 0;
+  int64_t index = 0;
   for (iter = m.begin(); iter != m.end(); ++iter, ++index) {
-    offsets[index] = static_cast<uint32_t>(dest - start_address);
+    offsets[index] = static_cast<uint64_t>(dest - start_address);
     key_address = key_serializer_.Write(iter->first, key_address);
     dest = value_serializer_.Write(iter->second, dest);
   }
@@ -97,15 +97,15 @@ char* StdMapSerializer<Key, Value>::Write(const std::map<Key, Value>& m,
 
 template<typename Key, typename Value>
 char* StdMapSerializer<Key, Value>::Serialize(
-    const std::map<Key, Value>& m, unsigned int* size) const {
+    const std::map<Key, Value>& m, uint64_t* size) const {
   // Compute size of memory to be allocated.
-  unsigned int size_to_alloc = SizeOf(m);
+  uint64_t size_to_alloc = SizeOf(m);
   // Allocate memory.
   char* serialized_data = new char[size_to_alloc];
   if (!serialized_data) {
     BPLOG(INFO) << "StdMapSerializer memory allocation failed.";
     if (size) *size = 0;
-    return NULL;
+    return nullptr;
   }
   // Write serialized data into memory.
   Write(m, serialized_data);
@@ -118,7 +118,7 @@ template<typename Address, typename Entry>
 size_t RangeMapSerializer<Address, Entry>::SizeOf(
     const RangeMap<Address, Entry>& m) const {
   size_t size = 0;
-  size_t header_size = (1 + m.map_.size()) * sizeof(uint32_t);
+  size_t header_size = (1 + m.map_.size()) * sizeof(uint64_t);
   size += header_size;
 
   typename std::map<Address, Range>::const_iterator iter;
@@ -138,25 +138,25 @@ char* RangeMapSerializer<Address, Entry>::Write(
     const RangeMap<Address, Entry>& m, char* dest) const {
   if (!dest) {
     BPLOG(ERROR) << "RangeMapSerializer failed: write to NULL address.";
-    return NULL;
+    return nullptr;
   }
   char* start_address = dest;
 
   // Write header:
   // Number of nodes.
-  dest = SimpleSerializer<uint32_t>::Write(m.map_.size(), dest);
+  dest = SimpleSerializer<uint64_t>::Write(m.map_.size(), dest);
   // Nodes offsets.
-  uint32_t* offsets = reinterpret_cast<uint32_t*>(dest);
-  dest += sizeof(uint32_t) * m.map_.size();
+  uint64_t* offsets = reinterpret_cast<uint64_t*>(dest);
+  dest += sizeof(uint64_t) * m.map_.size();
 
   char* key_address = dest;
   dest += sizeof(Address) * m.map_.size();
 
   // Traverse map.
   typename std::map<Address, Range>::const_iterator iter;
-  int index = 0;
+  int64_t index = 0;
   for (iter = m.map_.begin(); iter != m.map_.end(); ++iter, ++index) {
-    offsets[index] = static_cast<uint32_t>(dest - start_address);
+    offsets[index] = static_cast<uint64_t>(dest - start_address);
     key_address = address_serializer_.Write(iter->first, key_address);
     dest = address_serializer_.Write(iter->second.base(), dest);
     dest = entry_serializer_.Write(iter->second.entry(), dest);
@@ -166,15 +166,15 @@ char* RangeMapSerializer<Address, Entry>::Write(
 
 template<typename Address, typename Entry>
 char* RangeMapSerializer<Address, Entry>::Serialize(
-    const RangeMap<Address, Entry>& m, unsigned int* size) const {
+    const RangeMap<Address, Entry>& m, uint64_t* size) const {
   // Compute size of memory to be allocated.
-  unsigned int size_to_alloc = SizeOf(m);
+  uint64_t size_to_alloc = SizeOf(m);
   // Allocate memory.
   char* serialized_data = new char[size_to_alloc];
   if (!serialized_data) {
     BPLOG(INFO) << "RangeMapSerializer memory allocation failed.";
     if (size) *size = 0;
-    return NULL;
+    return nullptr;
   }
 
   // Write serialized data into memory.
@@ -191,12 +191,12 @@ size_t ContainedRangeMapSerializer<AddrType, EntryType>::SizeOf(
   size_t size = 0;
   size_t header_size = addr_serializer_.SizeOf(m->base_)
                        + entry_serializer_.SizeOf(m->entry_)
-                       + sizeof(uint32_t);
+                       + sizeof(uint64_t);
   size += header_size;
   // In case m.map_ == NULL, we treat it as an empty map:
-  size += sizeof(uint32_t);
+  size += sizeof(uint64_t);
   if (m->map_) {
-    size += m->map_->size() * sizeof(uint32_t);
+    size += m->map_->size() * sizeof(uint64_t);
     typename Map::const_iterator iter;
     for (iter = m->map_->begin(); iter != m->map_->end(); ++iter) {
       size += addr_serializer_.SizeOf(iter->first);
@@ -212,30 +212,30 @@ char* ContainedRangeMapSerializer<AddrType, EntryType>::Write(
     const ContainedRangeMap<AddrType, EntryType>* m, char* dest) const {
   if (!dest) {
     BPLOG(ERROR) << "StdMapSerializer failed: write to NULL address.";
-    return NULL;
+    return nullptr;
   }
   dest = addr_serializer_.Write(m->base_, dest);
-  dest = SimpleSerializer<uint32_t>::Write(entry_serializer_.SizeOf(m->entry_),
+  dest = SimpleSerializer<uint64_t>::Write(entry_serializer_.SizeOf(m->entry_),
                                             dest);
   dest = entry_serializer_.Write(m->entry_, dest);
 
   // Write map<<AddrType, ContainedRangeMap*>:
   char* map_address = dest;
-  if (m->map_ == NULL) {
-    dest = SimpleSerializer<uint32_t>::Write(0, dest);
+  if (m->map_ == nullptr) {
+    dest = SimpleSerializer<uint64_t>::Write(0, dest);
   } else {
-    dest = SimpleSerializer<uint32_t>::Write(m->map_->size(), dest);
-    uint32_t* offsets = reinterpret_cast<uint32_t*>(dest);
-    dest += sizeof(uint32_t) * m->map_->size();
+    dest = SimpleSerializer<uint64_t>::Write(m->map_->size(), dest);
+    uint64_t* offsets = reinterpret_cast<uint64_t*>(dest);
+    dest += sizeof(uint64_t) * m->map_->size();
 
     char* key_address = dest;
     dest += sizeof(AddrType) * m->map_->size();
 
     // Traverse map.
     typename Map::const_iterator iter;
-    int index = 0;
+    int64_t index = 0;
     for (iter = m->map_->begin(); iter != m->map_->end(); ++iter, ++index) {
-      offsets[index] = static_cast<uint32_t>(dest - map_address);
+      offsets[index] = static_cast<uint64_t>(dest - map_address);
       key_address = addr_serializer_.Write(iter->first, key_address);
       // Recursively write.
       dest = Write(iter->second, dest);
@@ -246,14 +246,14 @@ char* ContainedRangeMapSerializer<AddrType, EntryType>::Write(
 
 template<class AddrType, class EntryType>
 char* ContainedRangeMapSerializer<AddrType, EntryType>::Serialize(
-    const ContainedRangeMap<AddrType, EntryType>* m, unsigned int* size) const {
-  unsigned int size_to_alloc = SizeOf(m);
+    const ContainedRangeMap<AddrType, EntryType>* m, uint64_t* size) const {
+  uint64_t size_to_alloc = SizeOf(m);
   // Allocating memory.
   char* serialized_data = new char[size_to_alloc];
   if (!serialized_data) {
     BPLOG(INFO) << "ContainedRangeMapSerializer memory allocation failed.";
     if (size) *size = 0;
-    return NULL;
+    return nullptr;
   }
   Write(m, serialized_data);
   if (size) *size = size_to_alloc;

@@ -15,6 +15,8 @@
 DEFINE_UNWINDER(libunwindstack);
 DEFINE_UNWINDER(libbacktrace);
 DEFINE_UNWINDER(dbghelp);
+DEFINE_UNWINDER(libunwind);
+DEFINE_UNWINDER(psunwind);
 
 static size_t
 unwind_stack(
@@ -28,6 +30,12 @@ unwind_stack(
 #endif
 #ifdef SENTRY_WITH_UNWINDER_DBGHELP
     TRY_UNWINDER(dbghelp);
+#endif
+#ifdef SENTRY_WITH_UNWINDER_LIBUNWIND
+    TRY_UNWINDER(libunwind);
+#endif
+#ifdef SENTRY_WITH_UNWINDER_PS
+    TRY_UNWINDER(psunwind);
 #endif
     return 0;
 }

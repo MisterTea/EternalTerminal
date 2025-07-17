@@ -132,7 +132,7 @@ const char* my_strchr(const char* haystack, char needle) {
 }
 
 const char* my_strrchr(const char* haystack, char needle) {
-  const char* ret = NULL;
+  const char* ret = nullptr;
   while (*haystack) {
     if (*haystack == needle)
       ret = haystack;
@@ -148,7 +148,7 @@ void* my_memchr(const void* src, int needle, size_t src_len) {
     if (*p == needle)
       return (void*)p;
   }
-  return NULL;
+  return nullptr;
 }
 
 // Read a hex value

@@ -9,12 +9,25 @@
 #if defined(_MSC_VER)
 #    pragma warning(push)
 #    pragma warning(disable : 4127) // conditional expression is constant
+#    if defined(__clang__) // clang-cl
+#        pragma clang diagnostic push
+#        pragma clang diagnostic ignored "-Wdocumentation"
+#        pragma clang diagnostic ignored "-Wpre-c11-compat"
+#    endif
+#elif defined(__clang__)
+#    pragma clang diagnostic push
+#    pragma clang diagnostic ignored "-Wstatic-in-inline"
 #endif
 
 #include "../vendor/mpack.h"
 
 #if defined(_MSC_VER)
 #    pragma warning(pop)
+#    ifdef __clang__ // clang-cl
+#        pragma clang diagnostic pop
+#    endif
+#elif defined(__clang__)
+#    pragma clang diagnostic pop
 #endif
 
 #include "sentry_alloc.h"
@@ -418,6 +431,46 @@ sentry__value_new_object_with_size(size_t size)
     }
 }
 
+sentry_value_t
+sentry_value_new_user_n(const char *id, size_t id_len, const char *username,
+    size_t username_len, const char *email, size_t email_len,
+    const char *ip_address, size_t ip_address_len)
+{
+    sentry_value_t rv = sentry_value_new_object();
+    if (id && id_len) {
+        sentry_value_set_by_key(
+            rv, "id", sentry_value_new_string_n(id, id_len));
+    }
+    if (username && username_len) {
+        sentry_value_set_by_key(
+            rv, "username", sentry_value_new_string_n(username, username_len));
+    }
+    if (email && email_len) {
+        sentry_value_set_by_key(
+            rv, "email", sentry_value_new_string_n(email, email_len));
+    }
+    if (ip_address && ip_address_len) {
+        sentry_value_set_by_key(rv, "ip_address",
+            sentry_value_new_string_n(ip_address, ip_address_len));
+    }
+    if (!sentry_value_is_true(rv)) {
+        SENTRY_WARN(
+            "sentry_value_new_user needs at least one non-null argument");
+        sentry_value_decref(rv);
+        return sentry_value_new_null();
+    }
+    return rv;
+}
+
+sentry_value_t
+sentry_value_new_user(const char *id, const char *username, const char *email,
+    const char *ip_address)
+{
+    return sentry_value_new_user_n(id, id ? strlen(id) : 0, username,
+        username ? strlen(username) : 0, email, email ? strlen(email) : 0,
+        ip_address, ip_address ? strlen(ip_address) : 0);
+}
+
 sentry_value_type_t
 sentry_value_get_type(sentry_value_t value)
 {
@@ -436,13 +489,13 @@ sentry_value_get_type(sentry_value_t value)
         case THING_TYPE_DOUBLE:
             return SENTRY_VALUE_TYPE_DOUBLE;
         }
-        assert(!"unreachable");
+        UNREACHABLE("invalid thing type");
     } else if ((value._bits & TAG_MASK) == TAG_CONST) {
         return SENTRY_VALUE_TYPE_BOOL;
     } else if ((value._bits & TAG_MASK) == TAG_INT32) {
         return SENTRY_VALUE_TYPE_INT32;
     }
-    assert(!"unreachable");
+    UNREACHABLE("invalid value type");
     return SENTRY_VALUE_TYPE_NULL;
 }
 
@@ -581,6 +634,8 @@ sentry__value_stringify(sentry_value_t value)
             sentry_value_is_true(value) ? "true" : "false");
     case SENTRY_VALUE_TYPE_STRING:
         return sentry__string_clone(sentry_value_as_string(value));
+    case SENTRY_VALUE_TYPE_INT32:
+    case SENTRY_VALUE_TYPE_DOUBLE:
     default: {
         char buf[24];
         size_t written = (size_t)sentry__snprintf_c(
@@ -629,8 +684,22 @@ sentry__value_clone(sentry_value_t value)
     }
 }
 
+/**
+ * This appends `v` to the List `value`.
+ * To make this work properly as a ring buffer, the value list needs to have
+ * the ring buffer start index as the first element
+ * (e.g, 1 until max is exceeded, then it will update for each added item)
+ *
+ * It will remove the oldest value in the list, in case the total number of
+ * items would exceed `max`.
+ *
+ * The list is of size `max + 1` to store the start index.
+ *
+ * Returns 0 on success.
+ */
 int
-sentry__value_append_bounded(sentry_value_t value, sentry_value_t v, size_t max)
+sentry__value_append_ringbuffer(
+    sentry_value_t value, sentry_value_t v, size_t max)
 {
     thing_t *thing = value_as_unfrozen_thing(value);
     if (!thing || thing_get_type(thing) != THING_TYPE_LIST) {
@@ -638,31 +707,24 @@ sentry__value_append_bounded(sentry_value_t value, sentry_value_t v, size_t max)
     }
 
     list_t *l = thing->payload._ptr;
-
-    if (l->len < max) {
+    if (l->len == 0) {
+        sentry_value_append(value, sentry_value_new_int32(1));
+    }
+    if (l->len < max + 1) {
         return sentry_value_append(value, v);
     }
+    if (l->len > max + 1) {
+        SENTRY_WARNF("Cannot reduce Ringbuffer list size from %d to %d.",
+            l->len - 1, max);
+        goto fail;
+    }
+    const int32_t start_idx = sentry_value_as_int32(l->items[0]);
 
-    // len: 120
-    // max: 100
-    // move to 0
-    //   move 99 items (len - 1)
-    //   from 20
+    sentry_value_decref(l->items[start_idx]);
+    l->items[start_idx] = v;
+    l->items[0] = sentry_value_new_int32((start_idx % (int32_t)max) + 1);
 
-    size_t to_move = max >= 1 ? max - 1 : 0;
-    size_t to_shift = l->len - to_move;
-    for (size_t i = 0; i < to_shift; i++) {
-        sentry_value_decref(l->items[i]);
-    }
-    if (to_move) {
-        memmove(l->items, l->items + to_shift, to_move * sizeof(l->items[0]));
-    }
-    if (max >= 1) {
-        l->items[max - 1] = v;
-    } else {
-        sentry_value_decref(v);
-    }
-    l->len = max;
+    l->len = max + 1;
     return 0;
 
 fail:
@@ -742,8 +804,7 @@ sentry_value_get_by_key_n(sentry_value_t value, const char *k, size_t k_len)
 sentry_value_t
 sentry_value_get_by_key(sentry_value_t value, const char *k)
 {
-    const size_t k_len = k ? strlen(k) : 0;
-    return sentry_value_get_by_key_n(value, k, k_len);
+    return sentry_value_get_by_key_n(value, k, sentry__guarded_strlen(k));
 }
 
 sentry_value_t
@@ -819,14 +880,14 @@ double
 sentry_value_as_double(sentry_value_t value)
 {
     if ((value._bits & TAG_MASK) == TAG_INT32) {
-        return (double)sentry_value_as_int32(value);
+        return (double)(int64_t)sentry_value_as_int32(value);
     }
 
     const thing_t *thing = value_as_thing(value);
     if (thing && thing_get_type(thing) == THING_TYPE_DOUBLE) {
         return thing->payload._double;
     } else {
-        return NAN;
+        return (double)NAN;
     }
 }
 
@@ -839,6 +900,28 @@ sentry_value_as_string(sentry_value_t value)
     } else {
         return "";
     }
+}
+
+sentry_value_t
+sentry__value_ring_buffer_to_list(const sentry_value_t rb)
+{
+    const thing_t *thing = value_as_thing(rb);
+    if (!thing || thing_get_type(thing) != THING_TYPE_LIST) {
+        return sentry_value_new_null();
+    }
+    const list_t *rb_list = thing->payload._ptr;
+    if (rb_list->len == 0) {
+        return sentry_value_new_list();
+    }
+    const size_t start_idx = (size_t)sentry_value_as_int32(rb_list->items[0]);
+
+    sentry_value_t rv = sentry_value_new_list();
+    for (size_t i = 0; i < rb_list->len - 1; i++) {
+        const size_t idx = (start_idx - 1 + i) % (rb_list->len - 1) + 1;
+        sentry_value_incref(rb_list->items[idx]);
+        sentry_value_append(rv, rb_list->items[idx]);
+    }
+    return rv;
 }
 
 int
@@ -855,6 +938,9 @@ sentry_value_is_true(sentry_value_t value)
         return sentry_value_as_int32(value) != 0;
     case SENTRY_VALUE_TYPE_DOUBLE:
         return sentry_value_as_double(value) != 0.0;
+    case SENTRY_VALUE_TYPE_STRING:
+    case SENTRY_VALUE_TYPE_LIST:
+    case SENTRY_VALUE_TYPE_OBJECT:
     default:
         return sentry_value_get_length(value) > 0;
     }
@@ -891,7 +977,7 @@ sentry__value_merge_objects(sentry_value_t dst, sentry_value_t src)
             if (sentry__value_merge_objects(dst_val, src_val) != 0) {
                 return 1;
             }
-        } else {
+        } else if (sentry_value_is_null(dst_val)) {
             if (sentry_value_set_by_key(dst, key, src_val) != 0) {
                 return 1;
             }
@@ -945,7 +1031,7 @@ sentry__jsonwriter_write_value(sentry_jsonwriter_t *jw, sentry_value_t value)
 char *
 sentry_value_to_json(sentry_value_t value)
 {
-    sentry_jsonwriter_t *jw = sentry__jsonwriter_new(NULL);
+    sentry_jsonwriter_t *jw = sentry__jsonwriter_new_sb(NULL);
     if (!jw) {
         return NULL;
     }
@@ -1121,7 +1207,7 @@ sentry_value_new_event(void)
 
     sentry_value_set_by_key(rv, "timestamp",
         sentry__value_new_string_owned(
-            sentry__msec_time_to_iso8601(sentry__msec_time())));
+            sentry__usec_time_to_iso8601(sentry__usec_time())));
 
     sentry_value_set_by_key(rv, "platform", sentry_value_new_string("native"));
 
@@ -1151,10 +1237,8 @@ sentry_value_t
 sentry_value_new_message_event(
     sentry_level_t level, const char *logger, const char *text)
 {
-    size_t logger_len = logger ? strlen(logger) : 0;
-    size_t text_len = text ? strlen(text) : 0;
-    return sentry_value_new_message_event_n(
-        level, logger, logger_len, text, text_len);
+    return sentry_value_new_message_event_n(level, logger,
+        sentry__guarded_strlen(logger), text, sentry__guarded_strlen(text));
 }
 
 static void
@@ -1162,7 +1246,7 @@ timestamp_value(sentry_value_t value)
 {
     sentry_value_set_by_key(value, "timestamp",
         sentry__value_new_string_owned(
-            sentry__msec_time_to_iso8601(sentry__msec_time())));
+            sentry__usec_time_to_iso8601(sentry__usec_time())));
 }
 
 sentry_value_t
@@ -1186,9 +1270,8 @@ sentry_value_new_breadcrumb_n(
 sentry_value_t
 sentry_value_new_breadcrumb(const char *type, const char *message)
 {
-    const size_t type_len = type ? strlen(type) : 0;
-    const size_t message_len = message ? strlen(message) : 0;
-    return sentry_value_new_breadcrumb_n(type, type_len, message, message_len);
+    return sentry_value_new_breadcrumb_n(type, sentry__guarded_strlen(type),
+        message, sentry__guarded_strlen(message));
 }
 
 sentry_value_t
@@ -1206,9 +1289,8 @@ sentry_value_new_exception_n(
 sentry_value_t
 sentry_value_new_exception(const char *type, const char *value)
 {
-    const size_t type_len = type ? strlen(type) : 0;
-    const size_t value_len = value ? strlen(value) : 0;
-    return sentry_value_new_exception_n(type, type_len, value, value_len);
+    return sentry_value_new_exception_n(type, sentry__guarded_strlen(type),
+        value, sentry__guarded_strlen(value));
 }
 
 sentry_value_t
@@ -1236,8 +1318,7 @@ sentry_value_new_thread_n(uint64_t id, const char *name, size_t name_len)
 sentry_value_t
 sentry_value_new_thread(uint64_t id, const char *name)
 {
-    const size_t name_len = name ? strlen(name) : 0;
-    return sentry_value_new_thread_n(id, name, name_len);
+    return sentry_value_new_thread_n(id, name, sentry__guarded_strlen(name));
 }
 
 sentry_value_t
@@ -1263,6 +1344,40 @@ sentry_value_new_stacktrace(void **ips, size_t len)
     sentry_value_set_by_key(stacktrace, "frames", frames);
 
     return stacktrace;
+}
+
+sentry_value_t
+sentry_value_new_user_feedback(const sentry_uuid_t *uuid, const char *name,
+    const char *email, const char *comments)
+{
+    return sentry_value_new_user_feedback_n(uuid, name,
+        sentry__guarded_strlen(name), email, sentry__guarded_strlen(email),
+        comments, sentry__guarded_strlen(comments));
+}
+
+sentry_value_t
+sentry_value_new_user_feedback_n(const sentry_uuid_t *uuid, const char *name,
+    size_t name_len, const char *email, size_t email_len, const char *comments,
+    size_t comments_len)
+{
+    sentry_value_t rv = sentry_value_new_object();
+
+    sentry_value_set_by_key(rv, "event_id", sentry__value_new_uuid(uuid));
+
+    if (name) {
+        sentry_value_set_by_key(
+            rv, "name", sentry_value_new_string_n(name, name_len));
+    }
+    if (email) {
+        sentry_value_set_by_key(
+            rv, "email", sentry_value_new_string_n(email, email_len));
+    }
+    if (comments) {
+        sentry_value_set_by_key(
+            rv, "comments", sentry_value_new_string_n(comments, comments_len));
+    }
+
+    return rv;
 }
 
 static sentry_value_t

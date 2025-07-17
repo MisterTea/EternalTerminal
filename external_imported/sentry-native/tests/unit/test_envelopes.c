@@ -18,7 +18,7 @@ static char *const SERIALIZED_ENVELOPE_STR
 
 SENTRY_TEST(basic_http_request_preparation_for_event)
 {
-    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.invalid/42");
+    SENTRY_TEST_DSN_NEW_DEFAULT(dsn);
 
     sentry_uuid_t event_id
         = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
@@ -33,10 +33,12 @@ SENTRY_TEST(basic_http_request_preparation_for_event)
     TEST_CHECK_STRING_EQUAL(req->method, "POST");
     TEST_CHECK_STRING_EQUAL(
         req->url, "https://sentry.invalid:443/api/42/envelope/");
+#ifndef SENTRY_TRANSPORT_COMPRESSION
     TEST_CHECK_STRING_EQUAL(req->body,
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}\n"
         "{\"type\":\"event\",\"length\":51}\n"
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}");
+#endif
     sentry__prepared_http_request_free(req);
     sentry_envelope_free(envelope);
 
@@ -45,7 +47,7 @@ SENTRY_TEST(basic_http_request_preparation_for_event)
 
 SENTRY_TEST(basic_http_request_preparation_for_transaction)
 {
-    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.invalid/42");
+    SENTRY_TEST_DSN_NEW_DEFAULT(dsn);
 
     sentry_uuid_t event_id
         = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
@@ -62,14 +64,46 @@ SENTRY_TEST(basic_http_request_preparation_for_transaction)
     TEST_CHECK_STRING_EQUAL(req->method, "POST");
     TEST_CHECK_STRING_EQUAL(
         req->url, "https://sentry.invalid:443/api/42/envelope/");
+#ifndef SENTRY_TRANSPORT_COMPRESSION
     TEST_CHECK_STRING_EQUAL(req->body,
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\",\"sent_at\":"
         "\"2021-12-16T05:53:59.343Z\"}\n"
         "{\"type\":\"transaction\",\"length\":72}\n"
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\",\"type\":"
         "\"transaction\"}");
-
+#endif
     sentry__prepared_http_request_free(req);
+    sentry_envelope_free(envelope);
+
+    sentry__dsn_decref(dsn);
+}
+
+SENTRY_TEST(basic_http_request_preparation_for_user_feedback)
+{
+    SENTRY_TEST_DSN_NEW_DEFAULT(dsn);
+
+    sentry_uuid_t event_id
+        = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
+    sentry_envelope_t *envelope = sentry__envelope_new();
+    sentry_value_t user_feedback = sentry_value_new_user_feedback(
+        &event_id, "some-name", "some-email", "some-comment");
+    sentry__envelope_add_user_feedback(envelope, user_feedback);
+
+    sentry_prepared_http_request_t *req
+        = sentry__prepare_http_request(envelope, dsn, NULL, NULL);
+    TEST_CHECK_STRING_EQUAL(req->method, "POST");
+    TEST_CHECK_STRING_EQUAL(
+        req->url, "https://sentry.invalid:443/api/42/envelope/");
+#ifndef SENTRY_TRANSPORT_COMPRESSION
+    TEST_CHECK_STRING_EQUAL(req->body,
+        "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}\n"
+        "{\"type\":\"user_report\",\"length\":117}\n"
+        "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\",\"name\":"
+        "\"some-name\",\"email\":\"some-email\",\"comments\":"
+        "\"some-comment\"}");
+#endif
+    sentry__prepared_http_request_free(req);
+    sentry_value_decref(user_feedback);
     sentry_envelope_free(envelope);
 
     sentry__dsn_decref(dsn);
@@ -77,7 +111,7 @@ SENTRY_TEST(basic_http_request_preparation_for_transaction)
 
 SENTRY_TEST(basic_http_request_preparation_for_event_with_attachment)
 {
-    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.invalid/42");
+    SENTRY_TEST_DSN_NEW_DEFAULT(dsn);
 
     sentry_uuid_t event_id
         = sentry_uuid_from_string("c993afb6-b4ac-48a6-b61b-2558e601d65d");
@@ -95,12 +129,14 @@ SENTRY_TEST(basic_http_request_preparation_for_event_with_attachment)
     TEST_CHECK_STRING_EQUAL(req->method, "POST");
     TEST_CHECK_STRING_EQUAL(
         req->url, "https://sentry.invalid:443/api/42/envelope/");
+#ifndef SENTRY_TRANSPORT_COMPRESSION
     TEST_CHECK_STRING_EQUAL(req->body,
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}\n"
         "{\"type\":\"event\",\"length\":51}\n"
         "{\"event_id\":\"c993afb6-b4ac-48a6-b61b-2558e601d65d\"}\n"
         "{\"type\":\"attachment\",\"length\":12}\n"
         "Hello World!");
+#endif
     sentry__prepared_http_request_free(req);
     sentry_envelope_free(envelope);
 
@@ -109,7 +145,7 @@ SENTRY_TEST(basic_http_request_preparation_for_event_with_attachment)
 
 SENTRY_TEST(basic_http_request_preparation_for_minidump)
 {
-    sentry_dsn_t *dsn = sentry__dsn_new("https://foo@sentry.invalid/42");
+    SENTRY_TEST_DSN_NEW_DEFAULT(dsn);
 
     sentry_envelope_t *envelope = sentry__envelope_new();
     char dmp[] = "MDMP";
@@ -124,12 +160,14 @@ SENTRY_TEST(basic_http_request_preparation_for_minidump)
     TEST_CHECK_STRING_EQUAL(req->method, "POST");
     TEST_CHECK_STRING_EQUAL(
         req->url, "https://sentry.invalid:443/api/42/envelope/");
+#ifndef SENTRY_TRANSPORT_COMPRESSION
     TEST_CHECK_STRING_EQUAL(req->body,
         "{}\n"
         "{\"type\":\"minidump\",\"length\":4}\n"
         "MDMP\n"
         "{\"type\":\"attachment\",\"length\":12}\n"
         "Hello World!");
+#endif
     sentry__prepared_http_request_free(req);
     sentry_envelope_free(envelope);
 
@@ -139,7 +177,7 @@ SENTRY_TEST(basic_http_request_preparation_for_minidump)
 sentry_envelope_t *
 create_test_envelope()
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
     sentry_init(options);
 
@@ -169,6 +207,7 @@ SENTRY_TEST(serialize_envelope)
     sentry__stringbuilder_init(&sb);
     sentry__envelope_serialize_into_stringbuilder(envelope, &sb);
     char *str = sentry__stringbuilder_into_string(&sb);
+    TEST_ASSERT(!!str);
 
     TEST_CHECK_STRING_EQUAL(str, SERIALIZED_ENVELOPE_STR);
 
@@ -181,7 +220,7 @@ SENTRY_TEST(serialize_envelope)
 SENTRY_TEST(basic_write_envelope_to_file)
 {
     sentry_envelope_t *envelope = create_test_envelope();
-    const char *test_file_str = "sentry_test_envelope";
+    const char *test_file_str = SENTRY_TEST_PATH_PREFIX "sentry_test_envelope";
     sentry_path_t *test_file_path = sentry__path_from_str(test_file_str);
     int rv = sentry_envelope_write_to_file(envelope, test_file_str);
     TEST_CHECK_INT_EQUAL(rv, 0);
@@ -214,4 +253,46 @@ SENTRY_TEST(write_envelope_to_file_null)
         sentry_envelope_write_to_file_n(empty_envelope, NULL, 0), 1);
 
     sentry_envelope_free(empty_envelope);
+}
+
+SENTRY_TEST(write_envelope_to_invalid_path)
+{
+    sentry_envelope_t *envelope = create_test_envelope();
+    const char *test_file_str = SENTRY_TEST_PATH_PREFIX
+        "./directory_that_does_not_exist/sentry_test_envelope";
+    sentry_path_t *test_file_path = sentry__path_from_str(test_file_str);
+    int rv = sentry_envelope_write_to_file(envelope, test_file_str);
+    TEST_CHECK_INT_EQUAL(rv, 1);
+
+    sentry__path_remove(test_file_path);
+    sentry__path_free(test_file_path);
+    sentry_envelope_free(envelope);
+    sentry_close();
+}
+
+SENTRY_TEST(write_raw_envelope_to_file)
+{
+    sentry_envelope_t *envelope = create_test_envelope();
+    const char *test_file_str = SENTRY_TEST_PATH_PREFIX "sentry_test_envelope";
+    sentry_path_t *test_file_path = sentry__path_from_str(test_file_str);
+    TEST_CHECK_INT_EQUAL(
+        sentry_envelope_write_to_file(envelope, test_file_str), 0);
+
+    sentry_envelope_t *raw_envelope
+        = sentry__envelope_from_path(test_file_path);
+    TEST_CHECK_INT_EQUAL(
+        sentry_envelope_write_to_file(raw_envelope, test_file_str), 0);
+
+    size_t test_file_size;
+    char *test_file_content
+        = sentry__path_read_to_buffer(test_file_path, &test_file_size);
+    TEST_CHECK_INT_EQUAL(test_file_size, strlen(SERIALIZED_ENVELOPE_STR));
+    TEST_CHECK_STRING_EQUAL(test_file_content, SERIALIZED_ENVELOPE_STR);
+    TEST_CHECK_INT_EQUAL(sentry__path_remove(test_file_path), 0);
+
+    sentry_free(test_file_content);
+    sentry__path_free(test_file_path);
+    sentry_envelope_free(envelope);
+    sentry_envelope_free(raw_envelope);
+    sentry_close();
 }

@@ -21,7 +21,7 @@ sentry_transport_t *
 sentry_new_function_transport(
     void (*func)(const sentry_envelope_t *envelope, void *data), void *data)
 {
-    SENTRY_DEBUG("initializing function transport");
+    SENTRY_INFO("initializing function transport");
     struct transport_state *state = SENTRY_MAKE(struct transport_state);
     if (!state) {
         return NULL;

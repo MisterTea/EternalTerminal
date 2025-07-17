@@ -21,3 +21,13 @@ CodeChecker
 
 # Coverage
 coverage
+
+# Gradle / Java
+local.properties
+.gradle
+.cxx
+build
+
+# .NET
+bin/
+obj/

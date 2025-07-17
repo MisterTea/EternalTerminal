@@ -101,7 +101,7 @@ class CrashGenerationClientImpl : public CrashGenerationClient {
 // static
 CrashGenerationClient* CrashGenerationClient::TryCreate(int server_fd) {
   if (server_fd < 0)
-    return NULL;
+    return nullptr;
   return new CrashGenerationClientImpl(server_fd);
 }
 

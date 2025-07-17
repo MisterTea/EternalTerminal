@@ -1,0 +1,19 @@
+pluginManagement {
+    repositories {
+        mavenCentral()
+        gradlePluginPortal()
+    }
+}
+
+enableFeaturePreview("TYPESAFE_PROJECT_ACCESSORS")
+
+rootProject.name = "ndk"
+rootProject.buildFileName = "build.gradle.kts"
+
+include(
+    "sentry-native-ndk", "sample"
+)
+
+// prefab uses the module name for determining the package name used by cmake find_package()
+// thus rename the module to something better
+project(':sentry-native-ndk').projectDir = new File("lib")

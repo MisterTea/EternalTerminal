@@ -55,6 +55,7 @@ namespace google_breakpad {
 bool ReadSymbolDataInternal(const uint8_t* obj_file,
                             const string& obj_filename,
                             const string& obj_os,
+                            const string& module_id,
                             const std::vector<string>& debug_dir,
                             const DumpOptions& options,
                             Module** module);
@@ -95,10 +96,11 @@ TYPED_TEST(DumpSymbols, Invalid) {
   Elf32_Ehdr header;
   memset(&header, 0, sizeof(header));
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true, false);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false, false);
   EXPECT_FALSE(ReadSymbolDataInternal(reinterpret_cast<uint8_t*>(&header),
                                       "foo",
                                       "Linux",
+                                      "",
                                       vector<string>(),
                                       options,
                                       &module));
@@ -132,10 +134,11 @@ TYPED_TEST(DumpSymbols, SimplePublic) {
   this->GetElfContents(elf);
 
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true, false);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false, false);
   EXPECT_TRUE(ReadSymbolDataInternal(this->elfdata,
                                      "foo",
                                      "Linux",
+                                     "",
                                      vector<string>(),
                                      options,
                                      &module));
@@ -145,6 +148,54 @@ TYPED_TEST(DumpSymbols, SimplePublic) {
   const string expected =
     string("MODULE Linux ") + TypeParam::kMachineName
     + " 000000000000000000000000000000000 foo\n"
+    "INFO CODE_ID 00000000000000000000000000000000\n"
+    "PUBLIC 1000 0 superfunc\n";
+  EXPECT_EQ(expected, s.str());
+  delete module;
+}
+
+TYPED_TEST(DumpSymbols, ModuleIdOverride) {
+  ELF elf(TypeParam::kMachine, TypeParam::kClass, kLittleEndian);
+  // Zero out text section for simplicity.
+  Section text(kLittleEndian);
+  text.Append(4096, 0);
+  elf.AddSection(".text", text, SHT_PROGBITS);
+
+  // Add a public symbol.
+  StringTable table(kLittleEndian);
+  SymbolTable syms(kLittleEndian, TypeParam::kAddrSize, table);
+  syms.AddSymbol("superfunc",
+                   (typename TypeParam::Addr)0x1000,
+                   (typename TypeParam::Addr)0x10,
+                 // ELF32_ST_INFO works for 32-or 64-bit.
+                 ELF32_ST_INFO(STB_GLOBAL, STT_FUNC),
+                 SHN_UNDEF + 1);
+  int index = elf.AddSection(".dynstr", table, SHT_STRTAB);
+  elf.AddSection(".dynsym", syms,
+                 SHT_DYNSYM,          // type
+                 SHF_ALLOC,           // flags
+                 0,                   // addr
+                 index,               // link
+                 sizeof(typename TypeParam::Sym));  // entsize
+
+  elf.Finish();
+  this->GetElfContents(elf);
+
+  Module* module;
+  DumpOptions options(ALL_SYMBOL_DATA, true, false, false);
+  EXPECT_TRUE(ReadSymbolDataInternal(this->elfdata,
+                                     "foo",
+                                     "Linux",
+                                     "some_module_id",
+                                     vector<string>(),
+                                     options,
+                                     &module));
+
+  stringstream s;
+  module->Write(s, ALL_SYMBOL_DATA);
+  const string expected =
+    string("MODULE Linux ") + TypeParam::kMachineName
+    + " some_module_id foo\n"
     "INFO CODE_ID 00000000000000000000000000000000\n"
     "PUBLIC 1000 0 superfunc\n";
   EXPECT_EQ(expected, s.str());
@@ -189,10 +240,11 @@ TYPED_TEST(DumpSymbols, SimpleBuildID) {
   this->GetElfContents(elf);
 
   Module* module;
-  DumpOptions options(ALL_SYMBOL_DATA, true, false);
+  DumpOptions options(ALL_SYMBOL_DATA, true, false, false);
   EXPECT_TRUE(ReadSymbolDataInternal(this->elfdata,
                                      "foo",
                                      "Linux",
+                                     "",
                                      vector<string>(),
                                      options,
                                      &module));

@@ -95,7 +95,8 @@ bool MemoryMappedFile::Map(const char* path, size_t offset) {
   }
 
   size_t content_len = file_len - offset;
-  void* data = sys_mmap(NULL, content_len, PROT_READ, MAP_PRIVATE, fd, offset);
+  void* data = sys_mmap(nullptr, content_len, PROT_READ, MAP_PRIVATE, fd,
+                        offset);
   sys_close(fd);
   if (data == MAP_FAILED) {
     return false;
@@ -108,7 +109,7 @@ bool MemoryMappedFile::Map(const char* path, size_t offset) {
 void MemoryMappedFile::Unmap() {
   if (content_.data()) {
     sys_munmap(const_cast<uint8_t*>(content_.data()), content_.length());
-    content_.Set(NULL, 0);
+    content_.Set(nullptr, 0);
   }
 }
 

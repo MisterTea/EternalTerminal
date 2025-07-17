@@ -21,9 +21,9 @@
   <PropertyGroup Label="Globals">
     <ProjectGuid>{8f30a5dc-b942-4c9a-ba75-91c906ff85fa}</ProjectGuid>
     <Keyword>Win32Proj</Keyword>
-    <WindowsTargetPlatformVersion>10.0.18362.0</WindowsTargetPlatformVersion>
+    <WindowsTargetPlatformVersion>10.0</WindowsTargetPlatformVersion>
     <ConfigurationType>Application</ConfigurationType>
-    <PlatformToolset>v142</PlatformToolset>
+    <PlatformToolset>v143</PlatformToolset>
     <CharacterSet>Unicode</CharacterSet>
     <ProjectName>tests</ProjectName>
   </PropertyGroup>
@@ -53,6 +53,7 @@
   </ItemGroup>
   <ItemGroup>
     <None Include="example.ini" />
+    <None Include="Makefile" />
     <None Include="packages.config" />
     <None Include="tests.ini" />
   </ItemGroup>

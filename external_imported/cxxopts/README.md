@@ -85,9 +85,6 @@ result["opt"].as<type>()
 to get its value. If "opt" doesn't exist, or isn't of the right type, then an
 exception will be thrown.
 
-Note that the result of `options.parse` should only be used as long as the
-`options` object that created it is in scope.
-
 ## Unrecognised arguments
 
 You can allow unrecognised arguments to be skipped. This applies to both
@@ -196,8 +193,8 @@ therefore, `-o false` does not work.
 
 ## `std::vector<T>` values
 
-Parsing of list of values in form of an `std::vector<T>` is also supported, as long as `T`
-can be parsed. To separate single values in a list the definition `CXXOPTS_VECTOR_DELIMITER`
+Parsing a list of values into a `std::vector<T>` is also supported, as long as `T`
+can be parsed. To separate single values in a list the define symbol `CXXOPTS_VECTOR_DELIMITER`
 is used, which is ',' by default. Ensure that you use no whitespaces between values because
 those would be interpreted as the next command line option. Example for a command line option
 that can be parsed as a `std::vector<double>`:
@@ -278,7 +275,3 @@ GCC >= 4.9 or clang >= 3.1 with libc++ are known to work.
 The following compilers are known not to work:
 
 * MSVC 2013
-
-# TODO list
-
-* Allow unrecognised options.

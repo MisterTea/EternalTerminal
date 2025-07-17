@@ -1,9 +1,9 @@
 //     __ _____ _____ _____
 //  __|  |   __|     |   | |  JSON for Modern C++ (supporting code)
-// |  |  |__   |  |  | | | |  version 3.11.3
+// |  |  |__   |  |  | | | |  version 3.12.0
 // |_____|_____|_____|_|___|  https://github.com/nlohmann/json
 //
-// SPDX-FileCopyrightText: 2013-2023 Niels Lohmann <https://nlohmann.me>
+// SPDX-FileCopyrightText: 2013 - 2025 Niels Lohmann <https://nlohmann.me>
 // SPDX-License-Identifier: MIT
 
 #include "doctest_compatibility.h"
@@ -55,7 +55,7 @@ struct alt_string_iter
         return *this;
     }
 
-    std::string impl{};
+    std::string impl{}; // NOLINT(readability-redundant-member-init)
 };
 
 struct alt_string_data
@@ -91,7 +91,7 @@ struct alt_string_data
         return *this;
     }
 
-    std::string impl{};
+    std::string impl{}; // NOLINT(readability-redundant-member-init)
 };
 
 void check_escaped(const char* original, const char* escaped = "", bool ensure_ascii = false);

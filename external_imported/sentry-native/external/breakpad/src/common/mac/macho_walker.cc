@@ -53,11 +53,11 @@ namespace MacFileUtilities {
 MachoWalker::MachoWalker(const char* path, LoadCommandCallback callback,
                          void* context)
     : file_(-1),
-      memory_(NULL),
+      memory_(nullptr),
       memory_size_(0),
       callback_(callback),
       callback_context_(context),
-      current_header_(NULL),
+      current_header_(nullptr),
       current_header_size_(0),
       current_header_offset_(0) {
   file_ = open(path, O_RDONLY);
@@ -70,7 +70,7 @@ MachoWalker::MachoWalker(void* memory, size_t size,
       memory_size_(size),
       callback_(callback),
       callback_context_(context),
-      current_header_(NULL),
+      current_header_(nullptr),
       current_header_size_(0),
       current_header_offset_(0) {
 }
@@ -221,7 +221,7 @@ bool MachoWalker::WalkHeaderAtOffset(off_t offset) {
   current_header_offset_ = offset;
   offset += current_header_size_;
   bool result = WalkHeaderCore(offset, header.ncmds, swap);
-  current_header_ = NULL;
+  current_header_ = nullptr;
   current_header_size_ = 0;
   current_header_offset_ = 0;
   return result;
@@ -241,7 +241,7 @@ bool MachoWalker::WalkHeader64AtOffset(off_t offset) {
   current_header_offset_ = offset;
   offset += current_header_size_;
   bool result = WalkHeaderCore(offset, header.ncmds, swap);
-  current_header_ = NULL;
+  current_header_ = nullptr;
   current_header_size_ = 0;
   current_header_offset_ = 0;
   return result;

@@ -32,7 +32,7 @@ SENTRY_TEST(uninitialized)
 
 SENTRY_TEST(empty_transport)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_transport(options, NULL);
 
     TEST_CHECK(sentry_init(options) == 0);
@@ -47,7 +47,7 @@ SENTRY_TEST(empty_transport)
 
 SENTRY_TEST(invalid_dsn)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "not a valid dsn");
 
     TEST_CHECK(sentry_init(options) == 0);
@@ -62,8 +62,8 @@ SENTRY_TEST(invalid_dsn)
 
 SENTRY_TEST(invalid_proxy)
 {
-    sentry_options_t *options = sentry_options_new();
-    sentry_options_set_http_proxy(options, "invalid");
+    SENTRY_TEST_OPTIONS_NEW(options);
+    sentry_options_set_proxy(options, "invalid");
 
     TEST_CHECK(sentry_init(options) == 0);
 

@@ -97,6 +97,7 @@ add_library(unwindstack STATIC
 )
 target_link_libraries(unwindstack log)
 set_property(TARGET unwindstack PROPERTY CXX_STANDARD 17)
+target_compile_options(unwindstack PRIVATE -Wunknown-warning-option -Wno-c99-designator -Wno-reorder-init-list)
 
 if(CMAKE_CXX_COMPILER_ID MATCHES "Clang")
     target_compile_options(unwindstack PRIVATE $<BUILD_INTERFACE:-Wno-unknown-attributes>)

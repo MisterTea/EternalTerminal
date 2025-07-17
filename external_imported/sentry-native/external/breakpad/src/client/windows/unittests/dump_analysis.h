@@ -40,8 +40,10 @@ struct FakeTEB {
 class DumpAnalysis {
  public:
   explicit DumpAnalysis(const std::wstring& file_path)
-      : dump_file_(file_path), dump_file_view_(NULL), dump_file_mapping_(NULL),
-        dump_file_handle_(NULL) {
+      : dump_file_(file_path),
+        dump_file_view_(nullptr),
+        dump_file_mapping_(nullptr),
+        dump_file_handle_(nullptr) {
     EnsureDumpMapped();
   }
   ~DumpAnalysis();
@@ -59,15 +61,15 @@ class DumpAnalysis {
   bool HasTebs() const;
   bool HasPeb() const;
   bool HasMemory(ULONG64 address) const {
-    return HasMemory<BYTE>(address, NULL);
+    return HasMemory<BYTE>(address, nullptr);
   }
 
   bool HasMemory(const void* address) const {
-    return HasMemory<BYTE>(address, NULL);
+    return HasMemory<BYTE>(address, nullptr);
   }
 
   template <class StructureType>
-  bool HasMemory(ULONG64 address, StructureType** structure = NULL) const {
+  bool HasMemory(ULONG64 address, StructureType** structure = nullptr) const {
     // We can't cope with 64 bit addresses for now.
     if (address > 0xFFFFFFFFUL)
       return false;
@@ -76,7 +78,8 @@ class DumpAnalysis {
   }
 
   template <class StructureType>
-  bool HasMemory(const void* addr_in, StructureType** structure = NULL) const {
+  bool HasMemory(const void* addr_in,
+                 StructureType** structure = nullptr) const {
     return HasMemoryImpl(addr_in, sizeof(StructureType),
                              reinterpret_cast<void**>(structure));
   }

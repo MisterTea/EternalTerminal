@@ -106,10 +106,10 @@
 
 #include "common/windows/omap.h"
 
+#include <assert.h>
 #include <atlbase.h>
 
 #include <algorithm>
-#include <cassert>
 #include <set>
 
 #include "common/windows/dia_util.h"
@@ -174,14 +174,14 @@ bool EndpointIndexLess(const EndpointIndex& ei1, const EndpointIndex& ei2) {
 bool FindAndLoadOmapTable(const wchar_t* name,
                           IDiaSession* session,
                           OmapTable* table) {
-  assert(name != NULL);
-  assert(session != NULL);
-  assert(table != NULL);
+  assert(name != nullptr);
+  assert(session != nullptr);
+  assert(table != nullptr);
 
   CComPtr<IDiaEnumDebugStreamData> stream;
   if (!FindDebugStream(name, session, &stream))
     return false;
-  assert(stream.p != NULL);
+  assert(stream.p != nullptr);
 
   LONG count = 0;
   if (FAILED(stream->get_Count(&count))) {
@@ -193,7 +193,7 @@ bool FindAndLoadOmapTable(const wchar_t* name,
   // Get the length of the stream in bytes.
   DWORD bytes_read = 0;
   ULONG count_read = 0;
-  if (FAILED(stream->Next(count, 0, &bytes_read, NULL, &count_read))) {
+  if (FAILED(stream->Next(count, 0, &bytes_read, nullptr, &count_read))) {
     fprintf(stderr, "IDiaEnumDebugStreamData::Next failed while reading "
                     "length of stream \"%ws\"\n", name);
     return false;
@@ -224,20 +224,20 @@ bool FindAndLoadOmapTable(const wchar_t* name,
 // This determines the original image length by looking through the segment
 // table.
 bool GetOriginalImageLength(IDiaSession* session, DWORD* image_length) {
-  assert(session != NULL);
-  assert(image_length != NULL);
+  assert(session != nullptr);
+  assert(image_length != nullptr);
 
   CComPtr<IDiaEnumSegments> enum_segments;
   if (!FindTable(session, &enum_segments))
     return false;
-  assert(enum_segments.p != NULL);
+  assert(enum_segments.p != nullptr);
 
   DWORD temp_image_length = 0;
   CComPtr<IDiaSegment> segment;
   ULONG fetched = 0;
   while (SUCCEEDED(enum_segments->Next(1, &segment, &fetched)) &&
          fetched == 1) {
-    assert(segment.p != NULL);
+    assert(segment.p != nullptr);
 
     DWORD rva = 0;
     DWORD length = 0;
@@ -266,7 +266,7 @@ bool GetOriginalImageLength(IDiaSession* session, DWORD* image_length) {
 // immediately preceding a gap. The mapped ranges must be sorted by
 // 'rva_original'.
 void FillInRemovedLengths(Mapping* mapping) {
-  assert(mapping != NULL);
+  assert(mapping != nullptr);
 
   // Find and fill gaps. We do this with two sweeps. We first sweep forward
   // looking for gaps. When we identify a gap we then sweep forward with a
@@ -319,7 +319,7 @@ void FillInRemovedLengths(Mapping* mapping) {
 // Builds a unified view of the mapping between the original and transformed
 // image space by merging OMAPTO and OMAPFROM data.
 void BuildMapping(const OmapData& omap_data, Mapping* mapping) {
-  assert(mapping != NULL);
+  assert(mapping != nullptr);
 
   mapping->clear();
 
@@ -407,7 +407,7 @@ void BuildMapping(const OmapData& omap_data, Mapping* mapping) {
 }
 
 void BuildEndpointIndexMap(ImageMap* image_map) {
-  assert(image_map != NULL);
+  assert(image_map != nullptr);
 
   if (image_map->mapping.size() == 0)
     return;
@@ -477,7 +477,7 @@ void BuildSubsequentRVAMap(const OmapData& omap_data,
 // Clips the given mapped range.
 void ClipMappedRangeOriginal(const AddressRange& clip_range,
                              MappedRange* mapped_range) {
-  assert(mapped_range != NULL);
+  assert(mapped_range != nullptr);
 
   // The clipping range is entirely outside of the mapped range.
   if (clip_range.end() <= mapped_range->rva_original ||
@@ -547,15 +547,15 @@ int AddressRange::Compare(const AddressRange& rhs) const {
 
 bool GetOmapDataAndDisableTranslation(IDiaSession* session,
                                       OmapData* omap_data) {
-  assert(session != NULL);
-  assert(omap_data != NULL);
+  assert(session != nullptr);
+  assert(omap_data != nullptr);
 
   CComPtr<IDiaAddressMap> address_map;
   if (FAILED(session->QueryInterface(&address_map))) {
     fprintf(stderr, "IDiaSession::QueryInterface(IDiaAddressMap) failed\n");
     return false;
   }
-  assert(address_map.p != NULL);
+  assert(address_map.p != nullptr);
 
   BOOL omap_enabled = FALSE;
   if (FAILED(address_map->get_addressMapEnabled(&omap_enabled))) {
@@ -597,7 +597,7 @@ bool GetOmapDataAndDisableTranslation(IDiaSession* session,
 }
 
 void BuildImageMap(const OmapData& omap_data, ImageMap* image_map) {
-  assert(image_map != NULL);
+  assert(image_map != nullptr);
 
   BuildMapping(omap_data, &image_map->mapping);
   BuildEndpointIndexMap(image_map);
@@ -607,7 +607,7 @@ void BuildImageMap(const OmapData& omap_data, ImageMap* image_map) {
 void MapAddressRange(const ImageMap& image_map,
                      const AddressRange& original_range,
                      AddressRangeVector* mapped_ranges) {
-  assert(mapped_ranges != NULL);
+  assert(mapped_ranges != nullptr);
 
   const Mapping& map = image_map.mapping;
 

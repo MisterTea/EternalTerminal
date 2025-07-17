@@ -282,62 +282,86 @@ bool HTTPTransportMac::ExecuteProxyRequest(NSMutableURLRequest* request,
     NSString* hostNS = base::SysUTF8ToNSString(host);
     NSNumber* proxy_port = @(std::stoi(port));
 
-    NSDictionary* proxyDict = @{
-      (__bridge id)kCFNetworkProxiesHTTPEnable : @YES,
-      (__bridge id)kCFNetworkProxiesHTTPPort : proxy_port,
-      (__bridge id)kCFNetworkProxiesHTTPProxy : hostNS,
-      @"HTTPSEnable" : @YES,
-      @"HTTPSPort" : proxy_port,
-      @"HTTPSProxy" : hostNS,
-    };
+    NSDictionary* proxyDict;
+
+    if ([schemeNS isEqualToString:@"http"] || [schemeNS isEqualToString:@"https"]) {
+        // The keys in this dictionary refer to the target URL,
+        // whereas `schemeNS` refers to the proxy URL.
+        proxyDict = @{
+          @"HTTPEnable" : @YES,
+          @"HTTPPort" : proxy_port,
+          @"HTTPProxy" : hostNS,
+          @"HTTPSEnable" : @YES,
+          @"HTTPSPort" : proxy_port,
+          @"HTTPSProxy" : hostNS
+        };
+    } else if ([schemeNS isEqualToString:@"socks5"]) {
+        proxyDict = @{
+          @"SOCKSEnable" : @YES,
+          @"SOCKSPort" : proxy_port,
+          @"SOCKSProxy" : hostNS
+        };
+    }
     sessionConfig.connectionProxyDictionary = proxyDict;
     NSURLSession* session =
         [NSURLSession sessionWithConfiguration:sessionConfig];
     dispatch_semaphore_t semaphore = dispatch_semaphore_create(0);
-    [[session dataTaskWithRequest:request
-                completionHandler:^(
-                    NSData* body, NSURLResponse* response, NSError* error) {
-                  if (error) {
-                    Metrics::CrashUploadErrorCode(error.code);
-                    LOG(ERROR) << [[error localizedDescription] UTF8String]
-                               << " (" << [[error domain] UTF8String] << " "
-                               << [error code] << ")";
-                    sync_rv = false;
-                    dispatch_semaphore_signal(semaphore);
-                    return;
-                  }
-                  if (!response) {
-                    LOG(ERROR) << "no response";
-                    sync_rv = false;
-                    dispatch_semaphore_signal(semaphore);
-                    return;
-                  }
-                  auto http_response =
-                      base::apple::ObjCCast<NSHTTPURLResponse>(response);
-                  if (!http_response) {
-                    LOG(ERROR) << "no http_response";
-                    sync_rv = false;
-                    dispatch_semaphore_signal(semaphore);
-                    return;
-                  }
-                  NSInteger http_status = [http_response statusCode];
-                  if (http_status < 200 || http_status > 203) {
-                    LOG(ERROR) << base::StringPrintf(
-                        "HTTP status %ld", implicit_cast<long>(http_status));
-                    sync_rv = false;
-                    dispatch_semaphore_signal(semaphore);
-                    return;
-                  }
+    NSURLSessionDataTask* task = [session
+        dataTaskWithRequest:request
+          completionHandler:^(
+              NSData* body, NSURLResponse* response, NSError* error) {
+            if (error) {
+              Metrics::CrashUploadErrorCode(error.code);
+              LOG(ERROR) << [[error localizedDescription] UTF8String] << " (" <<
+                  [[error domain] UTF8String] << " " << [error code] << ")";
+              sync_rv = false;
+              dispatch_semaphore_signal(semaphore);
+              return;
+            }
+            if (!response) {
+              LOG(ERROR) << "no response";
+              sync_rv = false;
+              dispatch_semaphore_signal(semaphore);
+              return;
+            }
+            auto http_response =
+                base::apple::ObjCCast<NSHTTPURLResponse>(response);
+            if (!http_response) {
+              LOG(ERROR) << "no http_response";
+              sync_rv = false;
+              dispatch_semaphore_signal(semaphore);
+              return;
+            }
+            NSInteger http_status = [http_response statusCode];
+            if (http_status < 200 || http_status > 203) {
+              LOG(ERROR) << base::StringPrintf(
+                  "HTTP status %ld", implicit_cast<long>(http_status));
+              sync_rv = false;
+              dispatch_semaphore_signal(semaphore);
+              return;
+            }
 
-                  if (response_body) {
-                    response_body->assign(
-                        static_cast<const char*>([body bytes]), [body length]);
-                  }
-                  sync_rv = true;
-                  dispatch_semaphore_signal(semaphore);
-                }] resume];
+            if (response_body) {
+              response_body->assign(static_cast<const char*>([body bytes]),
+                                    [body length]);
+            }
+            sync_rv = true;
+            dispatch_semaphore_signal(semaphore);
+          }];
 
-    dispatch_semaphore_wait(semaphore, (dispatch_time_t)(10 * NSEC_PER_SEC));
+    if (task == nil) {
+      LOG(ERROR) << "Failed to create upload task.";
+      return false;
+    }
+
+    [task resume];
+
+    if (0 !=
+        dispatch_semaphore_wait(
+            semaphore, dispatch_time(DISPATCH_TIME_NOW, 10 * NSEC_PER_SEC))) {
+      LOG(ERROR) << "Upload task semaphore wait timed out";
+      sync_rv = false;
+    }
   }
   return sync_rv;
 }

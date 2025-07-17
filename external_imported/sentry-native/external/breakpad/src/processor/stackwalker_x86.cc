@@ -37,9 +37,10 @@
 #endif
 
 #include <assert.h>
+
+#include <memory>
 #include <string>
 
-#include "common/scoped_ptr.h"
 #include "google_breakpad/processor/call_stack.h"
 #include "google_breakpad/processor/code_modules.h"
 #include "google_breakpad/processor/memory_region.h"
@@ -71,19 +72,19 @@ StackwalkerX86::cfi_register_map_[] = {
     StackFrameX86::CONTEXT_VALID_EIP, &MDRawContextX86::eip },
   { "$esp", ".cfa", false,
     StackFrameX86::CONTEXT_VALID_ESP, &MDRawContextX86::esp },
-  { "$ebp", NULL,   true,
+  { "$ebp", nullptr,   true,
     StackFrameX86::CONTEXT_VALID_EBP, &MDRawContextX86::ebp },
-  { "$eax", NULL,   false,
+  { "$eax", nullptr,   false,
     StackFrameX86::CONTEXT_VALID_EAX, &MDRawContextX86::eax },
-  { "$ebx", NULL,   true,
+  { "$ebx", nullptr,   true,
     StackFrameX86::CONTEXT_VALID_EBX, &MDRawContextX86::ebx },
-  { "$ecx", NULL,   false,
+  { "$ecx", nullptr,   false,
     StackFrameX86::CONTEXT_VALID_ECX, &MDRawContextX86::ecx },
-  { "$edx", NULL,   false,
+  { "$edx", nullptr,   false,
     StackFrameX86::CONTEXT_VALID_EDX, &MDRawContextX86::edx },
-  { "$esi", NULL,   true,
+  { "$esi", nullptr,   true,
     StackFrameX86::CONTEXT_VALID_ESI, &MDRawContextX86::esi },
-  { "$edi", NULL,   true,
+  { "$edi", nullptr,   true,
     StackFrameX86::CONTEXT_VALID_EDI, &MDRawContextX86::edi },
 };
 
@@ -102,17 +103,17 @@ StackwalkerX86::StackwalkerX86(const SystemInfo* system_info,
     BPLOG(ERROR) << "Memory out of range for stackwalking: " <<
                     HexString(memory_->GetBase()) << "+" <<
                     HexString(memory_->GetSize());
-    memory_ = NULL;
+    memory_ = nullptr;
   }
 }
 
 StackFrameX86::~StackFrameX86() {
   if (windows_frame_info)
     delete windows_frame_info;
-  windows_frame_info = NULL;
+  windows_frame_info = nullptr;
   if (cfi_frame_info)
     delete cfi_frame_info;
-  cfi_frame_info = NULL;
+  cfi_frame_info = nullptr;
 }
 
 uint64_t StackFrameX86::ReturnAddress() const {
@@ -123,7 +124,7 @@ uint64_t StackFrameX86::ReturnAddress() const {
 StackFrame* StackwalkerX86::GetContextFrame() {
   if (!context_) {
     BPLOG(ERROR) << "Can't get context frame without context";
-    return NULL;
+    return nullptr;
   }
 
   StackFrameX86* frame = new StackFrameX86();
@@ -157,7 +158,7 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
   // last_frame_info is VALID_PARAMETER_SIZE-only, then we should
   // assume the traditional frame format or use some other strategy.
   if (last_frame_info->valid != WindowsFrameInfo::VALID_ALL)
-    return NULL;
+    return nullptr;
 
   // This stackwalker sets each frame's %esp to its value immediately prior
   // to the CALL into the callee.  This means that %esp points to the last
@@ -254,7 +255,7 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
   // for calculation of the value of .raSearchStart are available.
   if (ScanForReturnAddress(raSearchStart, &raSearchStart, &found, 3) &&
       last_frame->trust == StackFrame::FRAME_TRUST_CONTEXT &&
-      last_frame->windows_frame_info != NULL &&
+      last_frame->windows_frame_info != nullptr &&
       last_frame_info->type_ == WindowsFrameInfo::STACK_INFO_FPO &&
       raSearchStartOld == raSearchStart &&
       found == last_frame->context.eip) {
@@ -403,7 +404,7 @@ StackFrameX86* StackwalkerX86::GetCallerByWindowsFrameInfo(
                                   StackFrame::FRAME_TRUST_CONTEXT)) {
       // if we can't find an instruction pointer even with stack scanning,
       // give up.
-      return NULL;
+      return nullptr;
     }
 
     // This seems like a reasonable return address. Since program string
@@ -536,19 +537,19 @@ StackFrameX86* StackwalkerX86::GetCallerByCFIFrameInfo(
   StackFrameX86* last_frame = static_cast<StackFrameX86*>(frames.back());
   last_frame->cfi_frame_info = cfi_frame_info;
 
-  scoped_ptr<StackFrameX86> frame(new StackFrameX86());
+  std::unique_ptr<StackFrameX86> frame(new StackFrameX86());
   if (!cfi_walker_
       .FindCallerRegisters(*memory_, *cfi_frame_info,
                            last_frame->context, last_frame->context_validity,
                            &frame->context, &frame->context_validity))
-    return NULL;
+    return nullptr;
 
   // Make sure we recovered all the essentials.
   static const int essentials = (StackFrameX86::CONTEXT_VALID_EIP
                                  | StackFrameX86::CONTEXT_VALID_ESP
                                  | StackFrameX86::CONTEXT_VALID_EBP);
   if ((frame->context_validity & essentials) != essentials)
-    return NULL;
+    return nullptr;
 
   frame->trust = StackFrame::FRAME_TRUST_CFI;
 
@@ -607,7 +608,7 @@ StackFrameX86* StackwalkerX86::GetCallerByEBPAtBase(
                                   StackFrame::FRAME_TRUST_CONTEXT)) {
       // if we can't find an instruction pointer even with stack scanning,
       // give up.
-      return NULL;
+      return nullptr;
     }
 
     // ScanForReturnAddress found a reasonable return address. Advance %esp to
@@ -650,7 +651,7 @@ StackFrame* StackwalkerX86::GetCallerFrame(const CallStack* stack,
                                            bool stack_scan_allowed) {
   if (!memory_ || !stack) {
     BPLOG(ERROR) << "Can't get caller frame without memory or stack";
-    return NULL;
+    return nullptr;
   }
 
   const vector<StackFrame*>& frames = *stack->frames();
@@ -658,7 +659,7 @@ StackFrame* StackwalkerX86::GetCallerFrame(const CallStack* stack,
   // The last frame can never be inline. A sequence of inline frames always
   // finishes with a conventional frame.
   assert(last_frame->trust != StackFrame::FRAME_TRUST_INLINE);
-  scoped_ptr<StackFrameX86> new_frame;
+  std::unique_ptr<StackFrameX86> new_frame;
 
   // If the resolver has Windows stack walking information, use that.
   WindowsFrameInfo* windows_frame_info
@@ -681,14 +682,14 @@ StackFrame* StackwalkerX86::GetCallerFrame(const CallStack* stack,
 
   // If nothing worked, tell the caller.
   if (!new_frame.get())
-    return NULL;
+    return nullptr;
 
   // Should we terminate the stack walk? (end-of-stack or broken invariant)
   if (TerminateWalk(new_frame->context.eip, new_frame->context.esp,
                     last_frame->context.esp,
                     /*first_unwind=*/last_frame->trust ==
                         StackFrame::FRAME_TRUST_CONTEXT)) {
-    return NULL;
+    return nullptr;
   }
 
   // new_frame->context.eip is the return address, which is the instruction

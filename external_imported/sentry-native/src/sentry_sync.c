@@ -9,7 +9,7 @@
 #ifdef SENTRY_PLATFORM_WINDOWS
 typedef HRESULT(WINAPI *pSetThreadDescription)(
     HANDLE hThread, PCWSTR lpThreadDescription);
-const DWORD MS_VC_EXCEPTION = 0x406D1388;
+static const DWORD MS_VC_EXCEPTION = 0x406D1388;
 
 #    pragma pack(push, 8)
 typedef struct {
@@ -20,14 +20,14 @@ typedef struct {
 } THREADNAME_INFO;
 #    pragma pack(pop)
 
-sentry_threadid_t
-sentry__thread_get_current_threadid(void)
+static sentry_threadid_t
+thread_get_current_threadid(void)
 {
     return GetCurrentThread();
 }
 
-int
-sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
+static int
+thread_setname(sentry_threadid_t thread_id, const char *thread_name)
 {
     if (!thread_id || !thread_name) {
         return 0;
@@ -52,7 +52,10 @@ sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
     threadnameInfo.dwThreadID
         = GetThreadId(thread_id); // only available on Windows Vista+
     threadnameInfo.dwFlags = 0;
-
+#        ifdef __clang__
+#            pragma clang diagnostic push
+#            pragma clang diagnostic ignored "-Wlanguage-extension-token"
+#        endif
 #        pragma warning(push)
 #        pragma warning(disable : 6320 6322)
     __try {
@@ -62,19 +65,22 @@ sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
     } __except (EXCEPTION_EXECUTE_HANDLER) {
     }
 #        pragma warning(pop)
+#        ifdef __clang__
+#            pragma clang diagnostic pop
+#        endif
 #    endif
 
     return 0;
 }
 #else
-sentry_threadid_t
-sentry__thread_get_current_threadid(void)
+static sentry_threadid_t
+thread_get_current_threadid(void)
 {
     return pthread_self();
 }
 
-int
-sentry__thread_setname(sentry_threadid_t thread_id, const char *thread_name)
+static int
+thread_setname(sentry_threadid_t thread_id, const char *thread_name)
 {
     if (!thread_id || !thread_name) {
         return 0;
@@ -226,7 +232,7 @@ SENTRY_THREAD_FN
 worker_thread(void *data)
 {
     sentry_bgworker_t *bgw = data;
-    SENTRY_TRACE("background worker thread started");
+    SENTRY_DEBUG("background worker thread started");
 
     // should be called inside thread itself because of MSVC issues and mac
     // https://randomascii.wordpress.com/2015/10/26/thread-naming-in-windows-time-for-something-better/
@@ -234,8 +240,7 @@ worker_thread(void *data)
     // subject to initialization race condition: current thread might be running
     // before `bgw->thread_id` is initialized in the thread that started the
     // background worker.
-    if (sentry__thread_setname(
-            sentry__thread_get_current_threadid(), bgw->thread_name)) {
+    if (thread_setname(thread_get_current_threadid(), bgw->thread_name)) {
         SENTRY_WARN("failed to set background worker thread name");
     }
 
@@ -258,7 +263,7 @@ worker_thread(void *data)
         sentry__task_incref(task);
         sentry__mutex_unlock(&bgw->task_lock);
 
-        SENTRY_TRACE("executing task on worker thread");
+        SENTRY_DEBUG("executing task on worker thread");
         task->exec_func(task->task_data, bgw->state);
         // the task can have a refcount of 2, this `decref` here corresponds
         // to the `incref` above which signifies that the task _is being
@@ -277,7 +282,7 @@ worker_thread(void *data)
             sentry__task_decref(task);
         }
     }
-    SENTRY_TRACE("background worker thread shut down");
+    SENTRY_DEBUG("background worker thread shut down");
     // this decref corresponds to the one done below in `sentry__bgworker_start`
     sentry__bgworker_decref(bgw);
     return 0;
@@ -286,7 +291,7 @@ worker_thread(void *data)
 int
 sentry__bgworker_start(sentry_bgworker_t *bgw)
 {
-    SENTRY_TRACE("starting background worker thread");
+    SENTRY_DEBUG("starting background worker thread");
     sentry__atomic_store(&bgw->running, 1);
     // this incref moves the reference into the background thread
     sentry__bgworker_incref(bgw);
@@ -332,7 +337,7 @@ sentry__bgworker_flush(sentry_bgworker_t *bgw, uint64_t timeout)
         SENTRY_WARN("trying to flush non-running thread");
         return 0;
     }
-    SENTRY_TRACE("flushing background worker thread");
+    SENTRY_DEBUG("flushing background worker thread");
 
     sentry_flush_task_t *flush_task
         = sentry_malloc(sizeof(sentry_flush_task_t));
@@ -384,7 +389,7 @@ sentry__bgworker_shutdown(sentry_bgworker_t *bgw, uint64_t timeout)
         SENTRY_WARN("trying to shut down non-running thread");
         return 0;
     }
-    SENTRY_TRACE("shutting down background worker thread");
+    SENTRY_DEBUG("shutting down background worker thread");
 
     /* submit a task to shut down the queue */
     sentry__bgworker_submit(bgw, shutdown_task, NULL, bgw);
@@ -431,7 +436,7 @@ sentry__bgworker_submit(sentry_bgworker_t *bgw,
     task->cleanup_func = cleanup_func;
     task->task_data = task_data;
 
-    SENTRY_TRACE("submitting task to background worker thread");
+    SENTRY_DEBUG("submitting task to background worker thread");
     sentry__mutex_lock(&bgw->task_lock);
     if (!bgw->first_task) {
         bgw->first_task = task;
@@ -490,7 +495,7 @@ sentry__bgworker_setname(sentry_bgworker_t *bgw, const char *thread_name)
     bgw->thread_name = sentry__string_clone(thread_name);
 }
 
-#ifdef SENTRY_PLATFORM_UNIX
+#if defined(SENTRY_PLATFORM_UNIX) || defined(SENTRY_PLATFORM_NX)
 #    include "sentry_unix_spinlock.h"
 
 static sig_atomic_t g_in_signal_handler = 0;

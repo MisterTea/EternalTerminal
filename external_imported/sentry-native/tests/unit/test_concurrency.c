@@ -20,7 +20,7 @@ send_envelope_test_concurrent(const sentry_envelope_t *envelope, void *data)
 static void
 init_framework(long *called)
 {
-    sentry_options_t *options = sentry_options_new();
+    SENTRY_TEST_OPTIONS_NEW(options);
     sentry_options_set_dsn(options, "https://foo@sentry.invalid/42");
     sentry_options_set_transport(options,
         sentry_new_function_transport(send_envelope_test_concurrent, called));
@@ -75,7 +75,11 @@ SENTRY_TEST(concurrent_init)
 {
     long called = 0;
 
-#define THREADS_NUM 100
+#ifdef SENTRY_PLATFORM_NX
+#    define THREADS_NUM 90
+#else
+#    define THREADS_NUM 100
+#endif
     sentry_threadid_t threads[THREADS_NUM];
 
     for (size_t i = 0; i < THREADS_NUM; i++) {

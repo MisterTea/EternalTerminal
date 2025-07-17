@@ -58,6 +58,20 @@ class ExceptionHandlerServer {
         WinVMAddress exception_information_address,
         WinVMAddress debug_critical_section_address) = 0;
 
+    //! \brief Called when the server has received a request to add an
+    //! attachment.
+    //!
+    //! \param[in] attachment The path of the attachment.
+    virtual void ExceptionHandlerServerAttachmentAdded(
+        const base::FilePath& attachment) = 0;
+
+    //! \brief Called when the server has received a request to remove an
+    //! attachment.
+    //!
+    //! \param[in] attachment The path of the attachment.
+    virtual void ExceptionHandlerServerAttachmentRemoved(
+        const base::FilePath& attachment) = 0;
+
    protected:
     ~Delegate();
   };

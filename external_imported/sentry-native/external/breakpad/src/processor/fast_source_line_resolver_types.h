@@ -36,7 +36,8 @@
 #ifndef PROCESSOR_FAST_SOURCE_LINE_RESOLVER_TYPES_H__
 #define PROCESSOR_FAST_SOURCE_LINE_RESOLVER_TYPES_H__
 
-#include <cstdint>
+#include <stdint.h>
+
 #include <map>
 #include <string>
 
@@ -107,7 +108,7 @@ struct FastSourceLineResolver::Inline : public SourceLineResolverBase::Inline {
 
   // De-serialize the memory data of a Inline.
   void CopyFrom(const char* raw) {
-    DESERIALIZE(raw, has_call_site_file_id);
+    raw = SimpleSerializer<bool>::Read(raw, &has_call_site_file_id);
     DESERIALIZE(raw, inline_nest_level);
     DESERIALIZE(raw, call_site_line);
     DESERIALIZE(raw, call_site_file_id);

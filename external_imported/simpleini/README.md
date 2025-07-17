@@ -2,7 +2,6 @@ simpleini
 =========
 
 ![Test Results Linux](https://github.com/brofield/simpleini/actions/workflows/test.yml/badge.svg)
-![Test Results Windows](https://ci.appveyor.com/api/projects/status/github/brofield/simpleini?svg=true)
 
 A cross-platform library that provides a simple API to read and write INI-style configuration files. It supports data files in ASCII, MBCS and Unicode. It is designed explicitly to be portable to any platform and has been tested on Windows, WinCE and Linux. Released as open-source and free using the MIT licence.
 

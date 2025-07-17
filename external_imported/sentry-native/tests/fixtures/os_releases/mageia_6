@@ -1,0 +1,11 @@
+NAME="Mageia"
+VERSION="6"
+ID=mageia
+VERSION_ID=6
+ID_LIKE="mandriva fedora"
+PRETTY_NAME="Mageia 6"
+ANSI_COLOR="1;36"
+HOME_URL="http://www.mageia.org/"
+SUPPORT_URL="http://www.mageia.org/support/"
+BUG_REPORT_URL="https://bugs.mageia.org/"
+PRIVACY_POLICY_URL="https://wiki.mageia.org/en/Privacy_policy"

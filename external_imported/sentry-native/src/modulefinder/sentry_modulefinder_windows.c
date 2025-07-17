@@ -4,7 +4,11 @@
 #include "sentry_uuid.h"
 #include "sentry_value.h"
 
-#include <dbghelp.h>
+#ifndef SENTRY_PLATFORM_XBOX_SCARLETT
+#    include <dbghelp.h>
+#else
+#    include <Psapi.h>
+#endif
 #include <tlhelp32.h>
 
 static bool g_initialized = false;
@@ -33,13 +37,13 @@ extract_pdb_info(uintptr_t module_addr, sentry_value_t module)
     }
 
     PIMAGE_NT_HEADERS nt_headers
-        = (PIMAGE_NT_HEADERS)(module_addr + dos_header->e_lfanew);
+        = (PIMAGE_NT_HEADERS)(module_addr + (uintptr_t)dos_header->e_lfanew);
     if (nt_headers->Signature != IMAGE_NT_SIGNATURE) {
         return;
     }
 
     char id_buf[50];
-    snprintf(id_buf, sizeof(id_buf), "%08x%X",
+    snprintf(id_buf, sizeof(id_buf), "%08lx%lX",
         nt_headers->FileHeader.TimeDateStamp,
         nt_headers->OptionalHeader.SizeOfImage);
     sentry_value_set_by_key(module, "code_id", sentry_value_new_string(id_buf));
@@ -91,6 +95,7 @@ extract_pdb_info(uintptr_t module_addr, sentry_value_t module)
 static void
 load_modules(void)
 {
+#ifndef SENTRY_PLATFORM_XBOX_SCARLETT
     HANDLE snapshot
         = CreateToolhelp32Snapshot(TH32CS_SNAPMODULE, GetCurrentProcessId());
     MODULEENTRY32W module = { 0 };
@@ -126,6 +131,43 @@ load_modules(void)
     CloseHandle(snapshot);
 
     sentry_value_freeze(g_modules);
+#else
+    HMODULE hMods[1024];
+    HANDLE hProcess = GetCurrentProcess();
+    DWORD cbNeeded;
+
+    g_modules = sentry_value_new_list();
+    if (EnumProcessModules(hProcess, hMods, sizeof(hMods), &cbNeeded)) {
+        for (unsigned int i = 0; i < (cbNeeded / sizeof(HMODULE)); i++) {
+            wchar_t szModName[MAX_PATH];
+            if (GetModuleFileNameW(
+                    hMods[i], szModName, sizeof(szModName) / sizeof(wchar_t))) {
+                HMODULE handle
+                    = LoadLibraryExW(szModName, NULL, LOAD_LIBRARY_AS_DATAFILE);
+                MEMORY_BASIC_INFORMATION vmem_info = { 0 };
+                if (handle
+                    && sizeof(vmem_info)
+                        == VirtualQuery(hMods[i], &vmem_info, sizeof(vmem_info))
+                    && vmem_info.State == MEM_COMMIT) {
+                    sentry_value_t rv = sentry_value_new_object();
+                    sentry_value_set_by_key(
+                        rv, "type", sentry_value_new_string("pe"));
+                    sentry_value_set_by_key(rv, "image_addr",
+                        sentry__value_new_addr((uint64_t)handle));
+
+                    sentry_value_set_by_key(rv, "code_file",
+                        sentry__value_new_string_from_wstr(szModName));
+                    extract_pdb_info((uintptr_t)handle, rv);
+                    sentry_value_append(g_modules, rv);
+
+                    FreeLibrary(handle);
+                }
+            }
+        }
+    }
+
+    sentry_value_freeze(g_modules);
+#endif // SENTRY_PLATFORM_XBOX_SCARLETT
 }
 
 sentry_value_t

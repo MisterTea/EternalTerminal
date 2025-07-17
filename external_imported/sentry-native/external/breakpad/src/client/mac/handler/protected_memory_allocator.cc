@@ -69,7 +69,7 @@ char *ProtectedMemoryAllocator::Allocate(vm_size_t bytes) {
     return p;
   }
   
-  return NULL;  // ran out of memory in our allocation block
+  return nullptr;  // ran out of memory in our allocation block
 }
 
 //~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

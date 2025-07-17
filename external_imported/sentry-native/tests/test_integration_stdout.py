@@ -135,16 +135,20 @@ def test_multi_process(cmake):
     assert len(runs) == 0
 
 
-def run_crash_stdout_for(backend, cmake, example_args):
-    tmp_path = cmake(
-        ["sentry_example"],
-        {"SENTRY_BACKEND": backend, "SENTRY_TRANSPORT": "none"},
-    )
+def run_stdout_for(backend, cmake, example_args, build_args=None):
+    build_args = dict(build_args or {})
+    build_args.update({"SENTRY_BACKEND": backend, "SENTRY_TRANSPORT": "none"})
 
-    child = run(tmp_path, "sentry_example", ["attachment", "crash"] + example_args)
+    tmp_path = cmake(["sentry_example"], build_args)
+
+    child = run(tmp_path, "sentry_example", example_args)
     assert child.returncode  # well, it's a crash after all
 
     return tmp_path, check_output(tmp_path, "sentry_example", ["stdout", "no-setup"])
+
+
+def run_crash_stdout_for(backend, cmake, example_args):
+    return run_stdout_for(backend, cmake, ["attachment", "crash"] + example_args)
 
 
 def test_inproc_crash_stdout(cmake):
@@ -190,6 +194,34 @@ def test_inproc_crash_stdout_before_send_and_on_crash(cmake):
     envelope = Envelope.deserialize(output)
     # but we expect no event modification from before_send() since setting on_crash() disables before_send()
     assert_no_before_send(envelope)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="inproc")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
+    assert_inproc_crash(envelope)
+
+
+@pytest.mark.parametrize(
+    "build_args",
+    [
+        ({}),  # uses default of 64KiB
+        # no test with 16KiB since `inproc` fails with that handler stack size
+        pytest.param(
+            {"SENTRY_HANDLER_STACK_SIZE": "32"},
+            marks=pytest.mark.skipif(
+                sys.platform != "win32",
+                reason="handler stack size parameterization tests stack guarantee on windows only",
+            ),
+        ),
+    ],
+)
+def test_inproc_stack_overflow_stdout(cmake, build_args):
+    tmp_path, output = run_stdout_for(
+        "inproc", cmake, ["attachment", "stack-overflow"], build_args
+    )
+
+    envelope = Envelope.deserialize(output)
 
     assert_crash_timestamp(has_files, tmp_path)
     assert_meta(envelope, integration="inproc")
@@ -252,4 +284,40 @@ def test_breakpad_crash_stdout_before_send_and_on_crash(cmake):
     assert_meta(envelope, integration="breakpad")
     assert_breadcrumb(envelope)
     assert_attachment(envelope)
+    assert_breakpad_crash(envelope)
+
+
+@pytest.mark.parametrize(
+    "build_args",
+    [
+        ({}),  # uses default of 64KiB
+        pytest.param(
+            {"SENTRY_HANDLER_STACK_SIZE": "16"},
+            marks=pytest.mark.skipif(
+                sys.platform != "win32",
+                reason="handler stack size parameterization tests stack guarantee on windows only",
+            ),
+        ),
+        pytest.param(
+            {"SENTRY_HANDLER_STACK_SIZE": "32"},
+            marks=pytest.mark.skipif(
+                sys.platform != "win32",
+                reason="handler stack size parameterization tests stack guarantee on windows only",
+            ),
+        ),
+    ],
+)
+@pytest.mark.skipif(not has_breakpad, reason="test needs breakpad backend")
+def test_breakpad_stack_overflow_stdout(cmake, build_args):
+    tmp_path, output = run_stdout_for(
+        "breakpad", cmake, ["attachment", "stack-overflow"], build_args
+    )
+
+    envelope = Envelope.deserialize(output)
+
+    assert_crash_timestamp(has_files, tmp_path)
+    assert_meta(envelope, integration="breakpad")
+    assert_breadcrumb(envelope)
+    assert_attachment(envelope)
+    assert_minidump(envelope)
     assert_breakpad_crash(envelope)

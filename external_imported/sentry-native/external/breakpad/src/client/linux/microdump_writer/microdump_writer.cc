@@ -35,6 +35,8 @@
 
 #include "client/linux/microdump_writer/microdump_writer.h"
 
+#include <assert.h>
+
 #include <limits>
 
 #include <sys/utsname.h>
@@ -140,9 +142,9 @@ class MicrodumpWriter {
                   bool sanitize_stack,
                   const MicrodumpExtraInfo& microdump_extra_info,
                   LinuxDumper* dumper)
-      : ucontext_(context ? &context->context : NULL),
+      : ucontext_(context ? &context->context : nullptr),
 #if GOOGLE_BREAKPAD_CRASH_CONTEXT_HAS_FLOAT_STATE
-        float_state_(context ? &context->float_state : NULL),
+        float_state_(context ? &context->float_state : nullptr),
 #endif
         dumper_(dumper),
         mapping_list_(mappings),
@@ -151,8 +153,8 @@ class MicrodumpWriter {
         address_within_principal_mapping_(address_within_principal_mapping),
         sanitize_stack_(sanitize_stack),
         microdump_extra_info_(microdump_extra_info),
-        log_line_(NULL),
-        stack_copy_(NULL),
+        log_line_(nullptr),
+        stack_copy_(nullptr),
         stack_len_(0),
         stack_lower_bound_(0),
         stack_pointer_(0) {
@@ -603,7 +605,7 @@ class MicrodumpWriter {
         continue;
       }
 
-      DumpModule(mapping, true, i, NULL);
+      DumpModule(mapping, true, i, nullptr);
     }
     // Next write all the mappings provided by the caller
     for (MappingList::const_iterator iter = mapping_list_.begin();
@@ -654,7 +656,7 @@ bool WriteMicrodump(pid_t crashing_process,
                     bool sanitize_stack,
                     const MicrodumpExtraInfo& microdump_extra_info) {
   LinuxPtraceDumper dumper(crashing_process);
-  const ExceptionHandler::CrashContext* context = NULL;
+  const ExceptionHandler::CrashContext* context = nullptr;
   if (blob) {
     if (blob_size != sizeof(ExceptionHandler::CrashContext))
       return false;

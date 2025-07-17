@@ -151,7 +151,7 @@ class SanityCheck: public StackwalkerRISCVFixture, public Test { };
 TEST_F(SanityCheck, NoResolver) {
   // Since the context's frame pointer is garbage, the stack walk will end after
   // the first frame.
-  StackFrameSymbolizer frame_symbolizer(NULL, NULL);
+  StackFrameSymbolizer frame_symbolizer(nullptr, nullptr);
   StackwalkerRISCV walker(&system_info, &raw_context, &stack_region,
                           &modules, &frame_symbolizer);
   // This should succeed even without a resolver or supplier.
@@ -175,7 +175,7 @@ class GetContextFrame: public StackwalkerRISCVFixture, public Test { };
 // without stack memory present.
 TEST_F(GetContextFrame, NoStackMemory) {
   StackFrameSymbolizer frame_symbolizer(&supplier, &resolver);
-  StackwalkerRISCV walker(&system_info, &raw_context, NULL, &modules,
+  StackwalkerRISCV walker(&system_info, &raw_context, nullptr, &modules,
                           &frame_symbolizer);
   vector<const CodeModule*> modules_without_symbols;
   vector<const CodeModule*> modules_with_corrupt_symbols;

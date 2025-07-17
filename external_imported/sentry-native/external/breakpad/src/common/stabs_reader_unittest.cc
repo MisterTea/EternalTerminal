@@ -135,7 +135,7 @@ class StabsAssembler: public Section {
         string_assembler_(string_assembler),
         value_size_(0),
         entry_count_(0),
-        cu_header_(NULL) { }
+        cu_header_(nullptr) { }
   ~StabsAssembler() { assert(!cu_header_); }
 
   // Accessor and setter for value_size_.
@@ -188,7 +188,7 @@ class StabsAssembler: public Section {
     cu_header_->final_entry_count = entry_count_;
     cu_header_->final_string_size = string_assembler_->EndCU();
     delete cu_header_;
-    cu_header_ = NULL;
+    cu_header_ = nullptr;
     return *this;
   }
 
@@ -320,7 +320,7 @@ TEST_F(Stabs, MockStabsInput) {
     EXPECT_CALL(mock_handler, EndCompilationUnit(0xd04b7448U))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, StartCompilationUnit(StrEq("file3.c"),
-                                                   0x11759f10U, NULL))
+                                                   0x11759f10U, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, EndCompilationUnit(0x11cfe4b5U))
         .WillOnce(Return(true));
@@ -338,7 +338,7 @@ TEST_F(Stabs, AbruptCU) {
     InSequence s;
 
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("file2-1.c"), 0xbf10d5e4, NULL))
+                StartCompilationUnit(StrEq("file2-1.c"), 0xbf10d5e4, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, EndCompilationUnit(0))
         .WillOnce(Return(true));
@@ -358,7 +358,7 @@ TEST_F(Stabs, AbruptFunction) {
     InSequence s;
 
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("file3-1.c"), 0xb83ddf10U, NULL))
+                StartCompilationUnit(StrEq("file3-1.c"), 0xb83ddf10U, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, StartFunction(StrEq("fun3_1"), 0xbbd4a145U))
         .WillOnce(Return(true));
@@ -395,12 +395,12 @@ TEST_F(Stabs, NoCUEnd) {
     InSequence s;
 
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("file5-1.c"), 0x2f7493c9U, NULL))
+                StartCompilationUnit(StrEq("file5-1.c"), 0x2f7493c9U, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, EndCompilationUnit(0))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("file5-2.c"), 0xf9f1d50fU, NULL))
+                StartCompilationUnit(StrEq("file5-2.c"), 0xf9f1d50fU, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, EndCompilationUnit(0))
         .WillOnce(Return(true));
@@ -430,7 +430,7 @@ TEST_F(Stabs, Unitized) {
   {
     InSequence s;
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("antimony"), 0x7e259f1aU, NULL))
+                StartCompilationUnit(StrEq("antimony"), 0x7e259f1aU, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, StartFunction(Eq("arsenic"), 0x7fbcccaeU))
         .WillOnce(Return(true));
@@ -439,7 +439,7 @@ TEST_F(Stabs, Unitized) {
     EXPECT_CALL(mock_handler, EndCompilationUnit(0x80b0014cU))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler,
-                StartCompilationUnit(StrEq("aluminum"), 0x86756839U, NULL))
+                StartCompilationUnit(StrEq("aluminum"), 0x86756839U, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, StartFunction(Eq("selenium"), 0xa8e120b0U))
         .WillOnce(Return(true));
@@ -469,7 +469,7 @@ TEST_F(Stabs, NonUnitized) {
     InSequence s;
     EXPECT_CALL(mock_handler,
                 StartCompilationUnit(StrEq("Tanzania"),
-                                     0x11a97352, NULL))
+                                     0x11a97352, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler, EndCompilationUnit(0x21a97352))
         .WillOnce(Return(true));
@@ -497,7 +497,7 @@ TEST_F(Stabs, FunctionEnd) {
     InSequence s;
     EXPECT_CALL(mock_handler,
                 StartCompilationUnit(StrEq("compilation unit"),
-                                     0x52a830d644cd6942ULL, NULL))
+                                     0x52a830d644cd6942ULL, nullptr))
         .WillOnce(Return(true));
     EXPECT_CALL(mock_handler,
                 StartFunction(Eq("function 1"), 0xbb5ab70ecdd23bfeULL))

@@ -114,7 +114,7 @@ SymbolSupplier::SymbolResult SimpleSymbolSupplier::GetCStringSymbolData(
   if (s == FOUND) {
     *symbol_data_size = symbol_data_string.size() + 1;
     *symbol_data = new char[*symbol_data_size];
-    if (*symbol_data == NULL) {
+    if (*symbol_data == nullptr) {
       BPLOG(ERROR) << "Memory allocation for size " << *symbol_data_size
                    << " failed";
       return INTERRUPT;

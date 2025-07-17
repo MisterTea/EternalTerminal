@@ -2,6 +2,13 @@
 
 # Release notes
 **Contents**<br>
+[3.8.1](#381)<br>
+[3.8.0](#380)<br>
+[3.7.1](#371)<br>
+[3.7.0](#370)<br>
+[3.6.0](#360)<br>
+[3.5.4](#354)<br>
+[3.5.3](#353)<br>
 [3.5.2](#352)<br>
 [3.5.1](#351)<br>
 [3.5.0](#350)<br>
@@ -60,7 +67,152 @@
 [Even Older versions](#even-older-versions)<br>
 
 
-## 3.5.1
+## 3.8.1
+
+### Fixes
+* Fixed bug where catch_discover_tests fails when no TEST_CASEs are present (#2962)
+* Fixed Clang 19 -Wc++20-extensions warning (#2968)
+
+
+## 3.8.0
+
+### Improvements
+* Added `std::initializer_list` overloads for `(Unordered)RangeEquals` matcher (#2915, #2919)
+* Added explicit casts to silence GCC's `Wconversion` (#2875)
+* Made the use of `builtin_constant_p` tricks in assertion macros configurable (#2925)
+  * It is used to prod GCC-like compilers into providing warnings for the asserted expressions, but the compilers miscompile it annoyingly often.
+* Cleaned out Clang-Tidy's `performance-enum-size` warnings
+* Added support for using `from_range` generator with iterators with `value_type = const T` (#2926)
+  * This is not correct `value_type` typedef, but it is used in the wild and the change does not make the code meaningfully worse.
+
+### Fixes
+* Fixed crash when stringifying pre-1970 (epoch) dates on Windows (#2944)
+
+### Miscellaneous
+* Fixes and improvements for `catch_discover_tests` CMake helper
+  * Removed redundant `CTEST_FILE` param when creating the indirection file for `PRE_TEST` discovery mode (#2936)
+  * Rewrote the test discovery logic to use output from the JSON reporter
+    * This means that `catch_discover_tests` now requires CMake 3.19 or newer
+  * Added `ADD_TAGS_AS_LABELS` option. If specified, each CTest test will be labeled with corrensponding Catch2's test tag
+* Bumped up the minimum required CMake version to build Catch2 to 3.16
+* Meson build now provides option to avoid installing Catch2
+* Bazel build is moved to Bzlmod.
+
+
+## 3.7.1
+
+### Improvements
+* Applied the JUnit reporter's optimization from last release to the SonarQube reporter
+* Suppressed `-Wuseless-cast` in `CHECK_THROWS_MATCHES` (#2904)
+* Standardize exit codes for various failures
+  * Running no tests is now guaranteed to exit with 2 (without the `--allow-running-no-tests` flag)
+  * All tests skipped is now always 4 (...)
+  * Assertion failures are now always 42
+  * and so on
+
+### Fixes
+* Fixed out-of-bounds access when the arg parser encounters single `-` as an argument (#2905)
+
+### Miscellaneous
+* Added `catch_config_prefix_messages.hpp` to meson build (#2903)
+* `catch_discover_tests` now supports skipped tests (#2873)
+  * You can get the old behaviour by calling `catch_discover_tests` with `SKIP_IS_FAILURE` option.
+
+
+## 3.7.0
+
+### Improvements
+* Slightly improved compile times of benchmarks
+* Made the resolution estimation in benchmarks slightly more precise
+* Added new test case macro, `TEST_CASE_PERSISTENT_FIXTURE` (#2885, #1602)
+  * Unlike `TEST_CASE_METHOD`, the same underlying instance is used for all partial runs of that test case
+* **MASSIVELY** improved performance of the JUnit reporter when handling successful assertions (#2897)
+  * For 1 test case and 10M assertions, the new reporter runs 3x faster and uses up only 8 MB of memory, while the old one needs 7 GB of memory.
+* Reworked how output redirects works.
+  * Combining a reporter writing to stdout with capturing reporter no longer leads to the capturing reporter seeing all of the other reporter's output.
+  * The file based redirect no longer opens up a new temporary file for each partial test case run, so it will not run out of temporary files when running many tests in single process.
+
+### Miscellaneous
+* Better documentation for matchers on thrown exceptions (`REQUIRE_THROWS_MATCHES`)
+* Improved `catch_discover_tests`'s handling of environment paths (#2878)
+  * It won't reorder paths in `DL_PATHS` or `DYLD_FRAMEWORK_PATHS` args
+  * It won't overwrite the environment paths for test discovery
+
+
+## 3.6.0
+
+### Fixes
+* Fixed Windows ARM64 build by fixing the preprocessor condition guarding use `_umul128` intrinsic.
+* Fixed Windows ARM64EC build by removing intrinsic pragma it does not understand. (#2858)
+  * Why doesn't the x64-emulation build mode understand x64 pragmas? Don't ask me, ask the MSVC guys.
+* Fixed the JUnit reporter sometimes crashing when reporting a fatal error. (#1210, #2855)
+  * The binary will still exit, but through the original error, rather than secondary error inside the reporter.
+  * The underlying fix applies to all reporters, not just the JUnit one, but only JUnit was currently causing troubles.
+
+### Improvements
+* Disable `-Wnon-virtual-dtor` in Decomposer and Matchers (#2854)
+* `precision` in floating point stringmakers defaults to `max_digits10`.
+  * This means that floating point values will be printed with enough precision to disambiguate any two floats.
+* Column wrapping ignores ansi colour codes when calculating string width (#2833, #2849)
+  * This makes the output much more readable when the provided messages contain colour codes.
+
+### Miscellaneous
+* Conan support improvements
+  * `compatibility_cppstr` is set to False. (#2860)
+    * This means that Conan won't let you mix library and project with different C++ standard settings.
+  * The implementation library CMake target name through Conan is properly set to `Catch2::Catch2` (#2861)
+* `SelfTest` target can be built through Bazel (#2857)
+
+
+## 3.5.4
+
+### Fixes
+* Fixed potential compilation error when asked to generate random integers whose type did not match `std::(u)int*_t`.
+  * This manifested itself when generating random `size_t`s on MacOS
+* Added missing outlined destructor causing `Wdelete-incomplete` when compiling against libstdc++ in C++23 mode (#2852)
+* Fixed regression where decomposing assertion with const instance of `std::foo_ordering` would not compile
+
+### Improvements
+* Reintroduced support for GCC 5 and 6 (#2836)
+  * As with VS2017, if they start causing trouble again, they will be dropped again.
+* Added workaround for targetting newest MacOS (Sonoma) using GCC (#2837, #2839)
+* `CATCH_CONFIG_DEFAULT_REPORTER` can now be an arbitrary reporter spec
+  * Previously it could only be a plain reporter name, so it was impossible to compile in custom arguments to the reporter.
+* Improved performance of generating 64bit random integers by 20+%
+
+### Miscellaneous
+* Significantly improved Conan in-tree recipe (#2831)
+* `DL_PATHS` in `catch_discover_tests` now supports multiple arguments (#2852, #2736)
+* Fixed preprocessor logic for checking whether we expect reproducible floating point results in tests.
+* Improved the floating point tests structure to avoid `Wunused` when the reproducibility tests are disabled (#2845)
+
+
+## 3.5.3
+
+### Fixes
+* Fixed OOB access when computing filename tag (from the `-#` flag) for file without extension (#2798)
+* Fixed the linking against `log` on Android to be `PRIVATE` (#2815)
+* Fixed `Wuseless-cast` in benchmarking internals (#2823)
+
+### Improvements
+* Restored compatibility with VS2017 (#2792, #2822)
+  * The baseline for Catch2 is still C++14 with some reasonable workarounds for specific compilers, so if VS2017 starts acting up again, the support will be dropped again.
+* Suppressed clang-tidy's `bugprone-chained-comparison` in assertions (#2801)
+* Improved the static analysis mode to evaluate arguments to `TEST_CASE` and `SECTION` (#2817)
+  * Clang-tidy should no longer warn about runtime arguments to these macros being unused in static analysis mode.
+  * Clang-tidy can warn on issues involved arguments to these macros.
+* Added support for literal-zero detectors based on `consteval` constructors
+  * This is required for compiling `REQUIRE((a <=> b) == 0)` against MSVC's stdlib.
+  * Sadly, MSVC still cannot compile this assertion as it does not implement C++20 correctly.
+  * You can use `clang-cl` with MSVC's stdlib instead.
+  * If for some godforsaken reasons you want to understand this better, read the two relevant commits: [`dc51386b9fd61f99ea9c660d01867e6ad489b403`](https://github.com/catchorg/Catch2/commit/dc51386b9fd61f99ea9c660d01867e6ad489b403), and [`0787132fc82a75e3fb255aa9484ca1dc1eff2a30`](https://github.com/catchorg/Catch2/commit/0787132fc82a75e3fb255aa9484ca1dc1eff2a30).
+
+### Miscellaneous
+* Disabled tests for FP random generator reproducibility on non-SSE2 x86 targets (#2796)
+* Modified the in-tree Conan recipe to support Conan 2 (#2805)
+
+
+## 3.5.2
 
 ### Fixes
 * Fixed `-Wsubobject-linkage` in the Console reporter (#2794)

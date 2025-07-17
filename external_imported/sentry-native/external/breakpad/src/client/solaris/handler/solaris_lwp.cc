@@ -32,11 +32,16 @@
 #include <config.h>  // Must come first
 #endif
 
+#include "client/solaris/handler/solaris_lwp.h"
+
+#include <assert.h>
 #include <dirent.h>
 #include <elf.h>
 #include <errno.h>
 #include <fcntl.h>
 #include <limits.h>
+#include <stdio.h>
+#include <stdlib.h>
 #include <sys/frame.h>
 #include <sys/stat.h>
 #include <sys/types.h>
@@ -44,12 +49,8 @@
 #include <unistd.h>
 
 #include <algorithm>
-#include <cassert>
-#include <cstdio>
-#include <cstdlib>
 #include <functional>
 
-#include "client/solaris/handler/solaris_lwp.h"
 #include "common/solaris/message_output.h"
 
 using namespace google_breakpad;
@@ -73,9 +74,9 @@ struct AddressValidatingContext {
 
 // Convert from string to int.
 static bool LocalAtoi(char* s, int* r) {
-  assert(s != NULL);
-  assert(r != NULL);
-  char* endptr = NULL;
+  assert(s != nullptr);
+  assert(r != nullptr);
+  char* endptr = nullptr;
   int ret = strtol(s, &endptr, 10);
   if (endptr == s)
     return false;
@@ -106,11 +107,11 @@ static int IterateLwpAll(int pid,
   int count = 0;
 
   snprintf(lwp_path, sizeof (lwp_path), "/proc/%d/lwp", (int)pid);
-  if ((dir = opendir(lwp_path)) == NULL)
+  if ((dir = opendir(lwp_path)) == nullptr)
     return -1;
 
-  struct dirent* entry = NULL;
-  while ((entry = readdir(dir)) != NULL) {
+  struct dirent* entry = nullptr;
+  while ((entry = readdir(dir)) != nullptr) {
     if ((strcmp(entry->d_name, ".") != 0) &&
         (strcmp(entry->d_name, "..") != 0)) {
       int lwpid = 0;
@@ -134,11 +135,11 @@ static int IterateLwpAll(int pid,
 void* GetNextFrame(void** last_ebp) {
   void* sp = *last_ebp;
   if ((unsigned long)sp == (unsigned long)last_ebp)
-    return NULL;
+    return nullptr;
   if ((unsigned long)sp & (sizeof(void*) - 1))
-    return NULL;
+    return nullptr;
   if ((unsigned long)sp - (unsigned long)last_ebp > 100000)
-    return NULL;
+    return nullptr;
   return sp;
 }
 #elif defined(__sparc)
@@ -241,7 +242,7 @@ int SolarisLwp::ControlAllLwps(bool suspend) {
 }
 
 int SolarisLwp::GetLwpCount() const {
-  return IterateLwpAll(pid_, NULL);
+  return IterateLwpAll(pid_, nullptr);
 }
 
 int SolarisLwp::Lwp_iter_all(int pid,
@@ -261,9 +262,9 @@ int SolarisLwp::Lwp_iter_all(int pid,
    * The /proc/pid/lstatus file has the array of lwpstatus_t's and the
    * /proc/pid/lpsinfo file has the array of lwpsinfo_t's.
    */
-  if (read_lfile(pid, "lstatus", Lhp) == NULL)
+  if (read_lfile(pid, "lstatus", Lhp) == nullptr)
     return -1;
-  if (read_lfile(pid, "lpsinfo", Lphp) == NULL) {
+  if (read_lfile(pid, "lpsinfo", Lphp) == nullptr) {
     return -1;
   }
 
@@ -275,7 +276,7 @@ int SolarisLwp::Lwp_iter_all(int pid,
       sp = Lsp;
       Lsp = (lwpstatus_t*)((uintptr_t)Lsp + Lhp->pr_entsize);
     } else {
-      sp = NULL;
+      sp = nullptr;
     }
     if (callback_param &&
         !(callback_param->call_back)(sp, callback_param->context))
@@ -297,7 +298,7 @@ uintptr_t SolarisLwp::GetLwpStackBottom(uintptr_t current_esp) const {
 }
 
 int SolarisLwp::GetModuleCount() const {
-  return ListModules(NULL);
+  return ListModules(nullptr);
 }
 
 int SolarisLwp::ListModules(
@@ -320,7 +321,7 @@ int SolarisLwp::ListModules(
     return -1;
 
   /*
-   * Determine number of mappings, this value must be 
+   * Determine number of mappings, this value must be
    * larger than the actual module count
    */
   size = status.st_size;
@@ -337,7 +338,7 @@ int SolarisLwp::ListModules(
   prmap_t* _maps;
   int _num;
   int module_count = 0;
-  
+
   /*
    * Scan each mapping - note it is assummed that the mappings are
    * presented in order.  We fill holes between mappings.  On intel

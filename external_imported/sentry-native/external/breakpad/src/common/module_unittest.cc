@@ -175,6 +175,49 @@ TEST(Module, WriteRelativeLoadAddress) {
                contents.c_str());
 }
 
+TEST(Module, WritePreserveLoadAddress) {
+  stringstream s;
+  Module m(MODULE_NAME, MODULE_OS, MODULE_ARCH, MODULE_ID);
+  // Set the load address to something. Doesn't matter what.
+  // The goal of this test is to demonstrate that the load
+  // address does not impact any of the generated addresses
+  // when the preserve_load_address option is equal to true.
+  m.SetLoadAddress(0x1337ULL);
+
+  Module::File* file = m.FindFile("filename-a.cc");
+  Module::Function* function = new Module::Function(
+      "do_stuff", 0x110ULL);
+  Module::Range range(0x110ULL, 0x210ULL);
+  function->ranges.push_back(range);
+  function->parameter_size = 0x50ULL;
+  Module::Line line1 = { 0x110ULL, 0x1ULL,
+                         file, 20ULL };
+  function->lines.push_back(line1);
+  m.AddFunction(function);
+
+  // Some stack information.
+  auto entry = std::make_unique<Module::StackFrameEntry>();
+  entry->address = 0x200ULL;
+  entry->size = 0x55ULL;
+  entry->initial_rules[".cfa"] = "some call frame info";
+  entry->rule_changes[0x201ULL][".s0"] =
+    "some rules change call frame info";
+  m.AddStackFrameEntry(std::move(entry));
+
+  bool preserve_load_address = true;
+  m.Write(s, ALL_SYMBOL_DATA, preserve_load_address);
+  string contents = s.str();
+  EXPECT_STREQ("MODULE os-name architecture id-string name with spaces\n"
+               "FILE 0 filename-a.cc\n"
+               "FUNC 110 210 50 do_stuff\n"
+               "110 1 20 0\n"
+               "STACK CFI INIT 200 55"
+               " .cfa: some call frame info\n"
+               "STACK CFI 201"
+               " .s0: some rules change call frame info\n",
+               contents.c_str());
+}
+
 TEST(Module, WriteOmitUnusedFiles) {
   Module m(MODULE_NAME, MODULE_OS, MODULE_ARCH, MODULE_ID);
 
@@ -461,7 +504,7 @@ TEST(Module, ConstructUniqueFiles) {
   EXPECT_EQ(file1, file3);
   EXPECT_EQ(file2, file4);
   EXPECT_EQ(file1, m.FindExistingFile("foo"));
-  EXPECT_TRUE(m.FindExistingFile("baz") == NULL);
+  EXPECT_TRUE(m.FindExistingFile("baz") == nullptr);
 }
 
 TEST(Module, ConstructDuplicateFunctions) {

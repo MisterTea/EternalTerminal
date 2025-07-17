@@ -38,12 +38,12 @@
 #include <stdio.h>
 
 #include <map>
+#include <memory>
 #include <queue>
 #include <vector>
 
 #include "common/dwarf/functioninfo.h"
 #include "common/dwarf/bytereader.h"
-#include "common/scoped_ptr.h"
 #include "common/using_std_string.h"
 
 namespace google_breakpad {
@@ -164,7 +164,7 @@ void CUFunctionInfoHandler::ProcessAttributeUnsigned(uint64_t offset,
         GetSectionByName(sections_, ".debug_line");
     assert(iter != sections_.end());
 
-    scoped_ptr<LineInfo> lireader(new LineInfo(iter->second.first + data,
+    std::unique_ptr<LineInfo> lireader(new LineInfo(iter->second.first + data,
                                                iter->second.second  - data,
                                                reader_, linehandler_));
     lireader->Start();

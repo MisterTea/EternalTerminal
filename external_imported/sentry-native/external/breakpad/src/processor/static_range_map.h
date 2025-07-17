@@ -73,12 +73,12 @@ class StaticRangeMap {
   // range.
   //
   // RetrieveRangeAtIndex is not optimized for speedy operation.
-  bool RetrieveRangeAtIndex(int index, const EntryType*& entry,
+  bool RetrieveRangeAtIndex(int64_t index, const EntryType*& entry,
                             AddressType* entry_base, AddressType* entry_size)
                             const;
 
   // Returns the number of ranges stored in the RangeMap.
-  inline int GetCount() const { return map_.size(); }
+  inline int64_t GetCount() const { return map_.size(); }
 
  private:
   friend class ModuleComparer;

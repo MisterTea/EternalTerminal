@@ -36,7 +36,7 @@ namespace google_breakpad {
 // that has been marked with __attribute__((warn_unused_result)), wrap it with
 // this. Example:
 //
-//   scoped_ptr<MyType> my_var = ...;
+//   std::unique_ptr<MyType> my_var = ...;
 //   if (TakeOwnership(my_var.get()) == SUCCESS)
 //     ignore_result(my_var.release());
 //

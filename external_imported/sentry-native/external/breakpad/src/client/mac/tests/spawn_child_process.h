@@ -129,9 +129,9 @@ pid_t spawn_child_process(const char** argv) {
     argv_v.push_back(strdup(*argv));
     argv++;
   }
-  argv_v.push_back(NULL);
+  argv_v.push_back(nullptr);
   pid_t new_pid = 0;
-  int result = posix_spawnp(&new_pid, argv_v[0], NULL, &spawnattr,
+  int result = posix_spawnp(&new_pid, argv_v[0], nullptr, &spawnattr,
                             &argv_v[0], *_NSGetEnviron());
   posix_spawnattr_destroy(&spawnattr);
   

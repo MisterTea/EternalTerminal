@@ -4,10 +4,15 @@
 #include "sentry_string.h"
 #include "sentry_utils.h"
 
-#include <dirent.h>
+#ifdef SENTRY_PLATFORM_PS
+#    include <sys/dirent.h>
+#else
+#    include <dirent.h>
+#    include <libgen.h>
+#endif
+
 #include <errno.h>
 #include <fcntl.h>
-#include <libgen.h>
 #include <limits.h>
 #include <stdlib.h>
 #include <string.h>
@@ -26,11 +31,13 @@
 // only read this many bytes to memory ever
 static const size_t MAX_READ_TO_BUFFER = 134217728;
 
+#ifndef SENTRY_PLATFORM_PS
 struct sentry_pathiter_s {
     const sentry_path_t *parent;
     sentry_path_t *current;
     DIR *dir_handle;
 };
+#endif
 
 static size_t
 write_loop(int fd, const char *buf, size_t buf_len)
@@ -52,6 +59,10 @@ write_loop(int fd, const char *buf, size_t buf_len)
 bool
 sentry__filelock_try_lock(sentry_filelock_t *lock)
 {
+#ifdef SENTRY_PLATFORM_NX
+    // Nothing to do, other processes shouldn't be running at the same time.
+    return true;
+#endif
     lock->is_locked = false;
 
     int fd = open(lock->path->path, O_RDWR | O_CREAT | O_TRUNC,
@@ -87,6 +98,10 @@ sentry__filelock_try_lock(sentry_filelock_t *lock)
 void
 sentry__filelock_unlock(sentry_filelock_t *lock)
 {
+#ifdef SENTRY_PLATFORM_NX
+    // Nothing to do, see sentry__filelock_try_lock.
+    return;
+#endif
     if (!lock->is_locked) {
         return;
     }
@@ -96,6 +111,8 @@ sentry__filelock_unlock(sentry_filelock_t *lock)
     lock->is_locked = false;
 }
 
+// Defined in a downstream SDK.
+#if !defined(SENTRY_PLATFORM_NX) && !defined(SENTRY_PLATFORM_PS)
 sentry_path_t *
 sentry__path_absolute(const sentry_path_t *path)
 {
@@ -105,6 +122,7 @@ sentry__path_absolute(const sentry_path_t *path)
     }
     return sentry__path_from_str(full);
 }
+#endif
 
 sentry_path_t *
 sentry__path_current_exe(void)
@@ -150,6 +168,8 @@ sentry__path_current_exe(void)
     return NULL;
 }
 
+// Defined in a downstream SDK.
+#if !defined(SENTRY_PLATFORM_PS)
 sentry_path_t *
 sentry__path_dir(const sentry_path_t *path)
 {
@@ -167,6 +187,7 @@ sentry__path_dir(const sentry_path_t *path)
     }
     return sentry__path_from_str_owned(newpathbuf);
 }
+#endif
 
 sentry_path_t *
 sentry__path_from_str_n(const char *s, size_t s_len)
@@ -351,6 +372,8 @@ done:
     return rv;
 }
 
+// Defined in a downstream SDK.
+#if !defined(SENTRY_PLATFORM_PS)
 sentry_pathiter_t *
 sentry__path_iter_directory(const sentry_path_t *path)
 {
@@ -403,6 +426,7 @@ sentry__pathiter_free(sentry_pathiter_t *piter)
     sentry__path_free(piter->current);
     sentry_free(piter);
 }
+#endif
 
 int
 sentry__path_touch(const sentry_path_t *path)
@@ -428,12 +452,15 @@ sentry__path_read_to_buffer(const sentry_path_t *path, size_t *size_out)
     if (len == 0) {
         close(fd);
         char *rv = sentry_malloc(1);
-        rv[0] = '\0';
-        if (size_out) {
-            *size_out = 0;
+        if (rv) {
+            rv[0] = '\0';
+            if (size_out) {
+                *size_out = 0;
+            }
         }
         return rv;
-    } else if (len > MAX_READ_TO_BUFFER) {
+    }
+    if (len > MAX_READ_TO_BUFFER) {
         close(fd);
         return NULL;
     }
@@ -474,7 +501,7 @@ write_buffer_with_flags(
     int fd = open(
         path->path, flags, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
     if (fd < 0) {
-        SENTRY_TRACEF(
+        SENTRY_WARNF(
             "failed to open file \"%s\" for writing (errno %d, flags %x)",
             path->path, errno, flags);
         return 1;
@@ -500,4 +527,68 @@ sentry__path_append_buffer(
 {
     return write_buffer_with_flags(
         path, buf, buf_len, O_RDWR | O_CREAT | O_APPEND);
+}
+
+struct sentry_filewriter_s {
+    size_t byte_count;
+    int fd;
+};
+
+MUST_USE sentry_filewriter_t *
+sentry__filewriter_new(const sentry_path_t *path)
+{
+    int fd = open(path->path, O_RDWR | O_CREAT | O_TRUNC,
+        S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH);
+    if (fd < 0) {
+        return NULL;
+    }
+
+    sentry_filewriter_t *result = SENTRY_MAKE(sentry_filewriter_t);
+    if (!result) {
+        close(fd);
+        return NULL;
+    }
+
+    result->fd = fd;
+    result->byte_count = 0;
+    return result;
+}
+
+size_t
+sentry__filewriter_write(
+    sentry_filewriter_t *filewriter, const char *buf, size_t buf_len)
+{
+    if (!filewriter) {
+        return 0;
+    }
+    while (buf_len > 0) {
+        ssize_t n = write(filewriter->fd, buf, buf_len);
+        if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
+            continue;
+        } else if (n <= 0) {
+            break;
+        }
+        filewriter->byte_count += n;
+        buf += n;
+        buf_len -= n;
+    }
+
+    return buf_len;
+}
+
+void
+sentry__filewriter_free(sentry_filewriter_t *filewriter)
+{
+    if (!filewriter) {
+        return;
+    }
+
+    close(filewriter->fd);
+    sentry_free(filewriter);
+}
+
+size_t
+sentry__filewriter_byte_count(sentry_filewriter_t *filewriter)
+{
+    return filewriter->byte_count;
 }

@@ -431,6 +431,14 @@ bool ExceptionHandlerServer::ReceiveClientMessage(Event* event) {
           message.requesting_thread_stack_address,
           event->fd.get(),
           event->type == Event::Type::kSharedSocketMessage);
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeAddAttachment:
+      delegate_->AddAttachment(base::FilePath(message.attachment_info.path));
+      return true;
+
+    case ExceptionHandlerProtocol::ClientToServerMessage::kTypeRemoveAttachment:
+      delegate_->RemoveAttachment(base::FilePath(message.attachment_info.path));
+      return true;
   }
 
   DCHECK(false);

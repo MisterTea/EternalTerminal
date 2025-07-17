@@ -33,7 +33,6 @@
 #include <string>
 #include "client/windows/common/ipc_protocol.h"
 #include "client/windows/crash_generation/minidump_generator.h"
-#include "common/scoped_ptr.h"
 
 namespace google_breakpad {
 class ClientInfo;

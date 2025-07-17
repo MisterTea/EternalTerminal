@@ -1,0 +1,42 @@
+name: Docker
+
+on:
+  push:
+    branches:
+      - master
+    paths:
+      - '.github/docker/**'
+  workflow_dispatch:
+
+jobs:
+  alpine:
+    name: Build alpine:${{ matrix.version }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        version:
+          - '3.21'
+
+    permissions:
+      contents: read
+      packages: write
+
+    env:
+      IMAGE_NAME: ghcr.io/${{ github.repository_owner }}/sentry-native-alpine:${{ matrix.version }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build ${{ env.IMAGE_NAME }}
+        run: docker build --build-arg BASE=alpine:${{ matrix.version }} -t ${{ env.IMAGE_NAME }} .
+        working-directory: .github/docker/alpine
+
+      - name: Push ${{ env.IMAGE_NAME }}
+        run: docker push ${{ env.IMAGE_NAME }}

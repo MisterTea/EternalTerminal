@@ -13,10 +13,12 @@ sentry_rate_limiter_t *
 sentry__rate_limiter_new(void)
 {
     sentry_rate_limiter_t *rl = SENTRY_MAKE(sentry_rate_limiter_t);
-    rl->disabled_until[SENTRY_RL_CATEGORY_ANY] = 0;
-    rl->disabled_until[SENTRY_RL_CATEGORY_ERROR] = 0;
-    rl->disabled_until[SENTRY_RL_CATEGORY_SESSION] = 0;
-    rl->disabled_until[SENTRY_RL_CATEGORY_TRANSACTION] = 0;
+    if (rl) {
+        rl->disabled_until[SENTRY_RL_CATEGORY_ANY] = 0;
+        rl->disabled_until[SENTRY_RL_CATEGORY_ERROR] = 0;
+        rl->disabled_until[SENTRY_RL_CATEGORY_SESSION] = 0;
+        rl->disabled_until[SENTRY_RL_CATEGORY_TRANSACTION] = 0;
+    }
     return rl;
 }
 

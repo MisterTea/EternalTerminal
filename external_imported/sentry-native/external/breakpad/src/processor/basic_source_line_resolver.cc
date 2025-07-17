@@ -170,7 +170,7 @@ bool BasicSourceLineResolver::Module::LoadMapFromMemory(
   char* buffer;
   buffer = strtok_r(memory_buffer, "\r\n", &save_ptr);
 
-  while (buffer != NULL) {
+  while (buffer != nullptr) {
     ++line_number;
 
     if (strncmp(buffer, "FILE ", 5) == 0) {
@@ -237,7 +237,7 @@ bool BasicSourceLineResolver::Module::LoadMapFromMemory(
     if (num_errors > kMaxErrorsBeforeBailing) {
       break;
     }
-    buffer = strtok_r(NULL, "\r\n", &save_ptr);
+    buffer = strtok_r(nullptr, "\r\n", &save_ptr);
   }
   is_corrupt_ = num_errors > 0;
   return true;
@@ -318,7 +318,7 @@ void BasicSourceLineResolver::Module::LookupAddress(
   MemAddr function_size;
   MemAddr public_address;
   if (functions_.RetrieveNearestRange(address, &func, &function_base,
-                                      NULL /* delta */, &function_size) &&
+                                      nullptr /* delta */, &function_size) &&
       address >= function_base && address - function_base < function_size) {
     frame->function_name = func->name;
     frame->function_base = frame->module->base_address() + function_base;
@@ -326,8 +326,8 @@ void BasicSourceLineResolver::Module::LookupAddress(
 
     linked_ptr<Line> line;
     MemAddr line_base;
-    if (func->lines.RetrieveRange(address, &line, &line_base, NULL /* delta */,
-                                  NULL /* size */)) {
+    if (func->lines.RetrieveRange(address, &line, &line_base,
+                                  nullptr /* delta */, nullptr /* size */)) {
       FileMap::const_iterator it = files_.find(line->source_file_id);
       if (it != files_.end()) {
         frame->source_file_name = files_.find(line->source_file_id)->second;
@@ -352,7 +352,7 @@ void BasicSourceLineResolver::Module::LookupAddress(
 WindowsFrameInfo* BasicSourceLineResolver::Module::FindWindowsFrameInfo(
     const StackFrame* frame) const {
   MemAddr address = frame->instruction - frame->module->base_address();
-  scoped_ptr<WindowsFrameInfo> result(new WindowsFrameInfo());
+  std::unique_ptr<WindowsFrameInfo> result(new WindowsFrameInfo());
 
   // We only know about WindowsFrameInfo::STACK_INFO_FRAME_DATA and
   // WindowsFrameInfo::STACK_INFO_FPO. Prefer them in this order.
@@ -379,7 +379,7 @@ WindowsFrameInfo* BasicSourceLineResolver::Module::FindWindowsFrameInfo(
   linked_ptr<Function> function;
   MemAddr function_base, function_size;
   if (functions_.RetrieveNearestRange(address, &function, &function_base,
-                                      NULL /* delta */, &function_size) &&
+                                      nullptr /* delta */, &function_size) &&
       address >= function_base && address - function_base < function_size) {
     result->parameter_size = function->parameter_size;
     result->valid |= WindowsFrameInfo::VALID_PARAMETER_SIZE;
@@ -395,7 +395,7 @@ WindowsFrameInfo* BasicSourceLineResolver::Module::FindWindowsFrameInfo(
     result->parameter_size = public_symbol->parameter_size;
   }
 
-  return NULL;
+  return nullptr;
 }
 
 CFIFrameInfo* BasicSourceLineResolver::Module::FindCFIFrameInfo(
@@ -409,15 +409,15 @@ CFIFrameInfo* BasicSourceLineResolver::Module::FindCFIFrameInfo(
   // forward from the initial rule's starting address to frame's
   // instruction address, applying delta rules.
   if (!cfi_initial_rules_.RetrieveRange(address, &initial_rules, &initial_base,
-                                        NULL /* delta */, &initial_size)) {
-    return NULL;
+                                        nullptr /* delta */, &initial_size)) {
+    return nullptr;
   }
 
   // Create a frame info structure, and populate it with the rules from
   // the STACK CFI INIT record.
-  scoped_ptr<CFIFrameInfo> rules(new CFIFrameInfo());
+  std::unique_ptr<CFIFrameInfo> rules(new CFIFrameInfo());
   if (!ParseCFIRuleSet(initial_rules, rules.get()))
-    return NULL;
+    return nullptr;
 
   // Find the first delta rule that falls within the initial rule's range.
   map<MemAddr, string>::const_iterator delta =
@@ -488,7 +488,7 @@ BasicSourceLineResolver::Module::ParseFunction(char* function_line) {
                                        &size, &stack_param_size, &name)) {
     return new Function(name, address, size, stack_param_size, is_multiple);
   }
-  return NULL;
+  return nullptr;
 }
 
 BasicSourceLineResolver::Line* BasicSourceLineResolver::Module::ParseLine(
@@ -502,7 +502,7 @@ BasicSourceLineResolver::Line* BasicSourceLineResolver::Module::ParseLine(
                                    &source_file)) {
     return new Line(address, size, source_file, line_number);
   }
-  return NULL;
+  return nullptr;
 }
 
 bool BasicSourceLineResolver::Module::ParsePublicSymbol(char* public_line) {
@@ -553,7 +553,7 @@ bool BasicSourceLineResolver::Module::ParseStackInfo(char* stack_info_line) {
                                                          type,
                                                          rva,
                                                          code_size));
-    if (stack_frame_info == NULL)
+    if (stack_frame_info == nullptr)
       return false;
 
     // TODO(mmentovai): I wanted to use StoreRange's return value as this
@@ -598,26 +598,26 @@ bool BasicSourceLineResolver::Module::ParseCFIFrameInfo(
 
   if (strcmp(init_or_address, "INIT") == 0) {
     // This record has the form "STACK INIT <address> <size> <rules...>".
-    char* address_field = strtok_r(NULL, " \r\n", &cursor);
+    char* address_field = strtok_r(nullptr, " \r\n", &cursor);
     if (!address_field) return false;
 
-    char* size_field = strtok_r(NULL, " \r\n", &cursor);
+    char* size_field = strtok_r(nullptr, " \r\n", &cursor);
     if (!size_field) return false;
 
-    char* initial_rules = strtok_r(NULL, "\r\n", &cursor);
+    char* initial_rules = strtok_r(nullptr, "\r\n", &cursor);
     if (!initial_rules) return false;
 
-    MemAddr address = strtoul(address_field, NULL, 16);
-    MemAddr size    = strtoul(size_field,    NULL, 16);
+    MemAddr address = strtoul(address_field, nullptr, 16);
+    MemAddr size    = strtoul(size_field,    nullptr, 16);
     cfi_initial_rules_.StoreRange(address, size, initial_rules);
     return true;
   }
 
   // This record has the form "STACK <address> <rules...>".
   char* address_field = init_or_address;
-  char* delta_rules = strtok_r(NULL, "\r\n", &cursor);
+  char* delta_rules = strtok_r(nullptr, "\r\n", &cursor);
   if (!delta_rules) return false;
-  MemAddr address = strtoul(address_field, NULL, 16);
+  MemAddr address = strtoul(address_field, nullptr, 16);
   cfi_delta_rules_[address] = delta_rules;
   return true;
 }
@@ -921,7 +921,8 @@ bool SymbolParseHelper::ParsePublicSymbol(char* public_line, bool* is_multiple,
 
 // static
 bool SymbolParseHelper::IsValidAfterNumber(char* after_number) {
-  if (after_number != NULL && strchr(kWhitespace, *after_number) != NULL) {
+  if (after_number != nullptr &&
+      strchr(kWhitespace, *after_number) != nullptr) {
     return true;
   }
   return false;

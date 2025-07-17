@@ -37,6 +37,8 @@
 #include <config.h>  // Must come first
 #endif
 
+#include <assert.h>
+
 #include <memory>
 #include <sstream>
 #include <utility>

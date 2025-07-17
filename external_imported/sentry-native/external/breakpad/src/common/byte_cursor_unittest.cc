@@ -733,7 +733,7 @@ TEST(Strings, PointTo) {
   EXPECT_EQ(data + 0, received1);
   EXPECT_EQ(data + 3, received2);
   EXPECT_EQ(data + 6, received3);
-  EXPECT_EQ(NULL, received4);
+  EXPECT_EQ(nullptr, received4);
 }
 
 TEST(Strings, CString) {

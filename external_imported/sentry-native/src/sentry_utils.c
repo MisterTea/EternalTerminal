@@ -33,7 +33,7 @@ is_scheme_valid(const char *scheme_name)
 }
 
 int
-sentry__url_parse(sentry_url_t *url_out, const char *url)
+sentry__url_parse(sentry_url_t *url_out, const char *url, bool requires_path)
 {
     bool has_username;
     int result = 0;
@@ -63,7 +63,8 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
     if (!tmp) {
         goto error;
     }
-    url_out->scheme = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+    url_out->scheme
+        = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
 
     if (!url_out->scheme || !is_scheme_valid(url_out->scheme)) {
         goto error;
@@ -96,14 +97,15 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
     tmp = ptr;
     if (has_username) {
         SKIP_WHILE_NOT2(tmp, '@', ':');
-        url_out->username = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+        url_out->username
+            = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
         ptr = tmp;
         if (*ptr == ':') {
             ptr++;
             tmp = ptr;
             SKIP_WHILE_NOT(tmp, '@');
             url_out->password
-                = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+                = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
             ptr = tmp;
         }
         if (*ptr != '@') {
@@ -126,7 +128,7 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
         tmp++;
     }
 
-    url_out->host = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+    url_out->host = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
 
     /* port */
     ptr = tmp;
@@ -134,7 +136,7 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
         ptr++;
         tmp = ptr;
         SKIP_WHILE_NOT(tmp, '/');
-        aux_buf = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+        aux_buf = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
         char *end;
         url_out->port = (int)strtol(aux_buf, &end, 10);
         if (end != aux_buf + strlen(aux_buf)) {
@@ -145,8 +147,20 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
         ptr = tmp;
     }
 
+    if (url_out->port == 0) {
+        if (sentry__string_eq(url_out->scheme, "https")) {
+            url_out->port = 443;
+        } else if (sentry__string_eq(url_out->scheme, "http")) {
+            url_out->port = 80;
+        }
+    }
+
     if (!*ptr) {
-        goto error;
+        if (requires_path) {
+            goto error;
+        }
+        result = 0;
+        goto cleanup;
     }
 
     /* end of netloc */
@@ -157,7 +171,7 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
     /* path */
     tmp = ptr;
     SKIP_WHILE_NOT2(tmp, '#', '?');
-    url_out->path = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+    url_out->path = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
     ptr = tmp;
 
     /* query */
@@ -165,7 +179,8 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
         ptr++;
         tmp = ptr;
         SKIP_WHILE_NOT(tmp, '#');
-        url_out->query = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
+        url_out->query
+            = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
         ptr = tmp;
     }
 
@@ -174,15 +189,8 @@ sentry__url_parse(sentry_url_t *url_out, const char *url)
         ptr++;
         tmp = ptr;
         SKIP_WHILE_NOT(tmp, 0);
-        url_out->fragment = sentry__string_clone_n_unchecked(ptr, tmp - ptr);
-    }
-
-    if (url_out->port == 0) {
-        if (sentry__string_eq(url_out->scheme, "https")) {
-            url_out->port = 443;
-        } else if (sentry__string_eq(url_out->scheme, "http")) {
-            url_out->port = 80;
-        }
+        url_out->fragment
+            = sentry__string_clone_n_unchecked(ptr, (size_t)(tmp - ptr));
     }
 
     result = 0;
@@ -228,7 +236,8 @@ sentry__dsn_new_n(const char *raw_dsn, size_t raw_dsn_len)
     dsn->refcount = 1;
 
     dsn->raw = sentry__string_clone_n(raw_dsn, raw_dsn_len);
-    if (!dsn->raw || !dsn->raw[0] || sentry__url_parse(&url, dsn->raw) != 0) {
+    if (!dsn->raw || !dsn->raw[0]
+        || sentry__url_parse(&url, dsn->raw, true) != 0) {
         goto exit;
     }
 
@@ -374,13 +383,13 @@ sentry__dsn_get_minidump_url(const sentry_dsn_t *dsn, const char *user_agent)
 }
 
 char *
-sentry__msec_time_to_iso8601(uint64_t time)
+sentry__usec_time_to_iso8601(uint64_t time)
 {
     char buf[64];
     size_t buf_len = sizeof(buf);
-    time_t secs = time / 1000;
+    time_t secs = time / 1000000;
     struct tm *tm;
-#ifdef SENTRY_PLATFORM_WINDOWS
+#if defined(SENTRY_PLATFORM_WINDOWS) || defined(SENTRY_PLATFORM_PS)
     tm = gmtime(&secs);
 #else
     struct tm tm_buf;
@@ -397,10 +406,10 @@ sentry__msec_time_to_iso8601(uint64_t time)
         return NULL;
     }
 
-    int msecs = time % 1000;
-    if (msecs) {
+    int usecs = time % 1000000;
+    if (usecs) {
         size_t rv = (size_t)snprintf(
-            buf + written, buf_len - written, ".%03d", msecs);
+            buf + written, buf_len - written, ".%06d", usecs);
         if (rv >= buf_len - written) {
             return NULL;
         }
@@ -415,15 +424,16 @@ sentry__msec_time_to_iso8601(uint64_t time)
     return sentry__string_clone(buf);
 }
 
+#ifndef SENTRY_PLATFORM_PS
 uint64_t
-sentry__iso8601_to_msec(const char *iso)
+sentry__iso8601_to_usec(const char *iso)
 {
-    size_t len = strlen(iso);
-    if (len != 20 && len != 24) {
+    size_t len = sentry__guarded_strlen(iso);
+    if (len != 20 && len != 27) {
         return 0;
     }
     // The code is adapted from: https://stackoverflow.com/a/26896792
-    int y, M, d, h, m, s, msec = 0;
+    int y, M, d, h, m, s, usec = 0;
     int consumed = 0;
     if (sscanf(iso, "%d-%d-%dT%d:%d:%d%n", &y, &M, &d, &h, &m, &s, &consumed)
             < 6
@@ -431,9 +441,10 @@ sentry__iso8601_to_msec(const char *iso)
         return 0;
     }
     iso += consumed;
-    // we optionally have millisecond precision
+    // we optionally have microsecond precision
     if (iso[0] == '.') {
-        if (sscanf(iso, ".%d%n", &msec, &consumed) < 1 || consumed != 4) {
+        if (sscanf(iso, ".%d%n", &usec, &consumed) < 1 || consumed != 7) {
+            printf("consumed = %d\n", consumed);
             return 0;
         }
         iso += consumed;
@@ -450,9 +461,9 @@ sentry__iso8601_to_msec(const char *iso)
     tm.tm_hour = h;
     tm.tm_min = m;
     tm.tm_sec = s;
-#ifdef SENTRY_PLATFORM_WINDOWS
+#    ifdef SENTRY_PLATFORM_WINDOWS
     time_t time = _mkgmtime(&tm);
-#elif defined(SENTRY_PLATFORM_AIX)
+#    elif defined(SENTRY_PLATFORM_AIX)
     /*
      * timegm is a GNU extension that AIX doesn't support. We'll have to fake
      * it by setting TZ instead w/ mktime, then unsets it. Changes global env.
@@ -475,15 +486,16 @@ sentry__iso8601_to_msec(const char *iso)
         unsetenv("TZ");
     }
     tzset();
-#else
+#    else
     time_t time = timegm(&tm);
-#endif
+#    endif
     if (time == -1) {
         return 0;
     }
 
-    return (uint64_t)time * 1000 + msec;
+    return (uint64_t)time * 1000000 + (uint64_t)usec;
 }
+#endif
 
 #ifdef SENTRY_PLATFORM_WINDOWS
 #    define sentry__locale_t _locale_t
@@ -495,7 +507,13 @@ sentry__iso8601_to_msec(const char *iso)
 // forwards to `stdtod`, but it does not define `vsnprintf_l` sadly.  This means
 // if Android ever adds locale support in NDK we will have to revisit this code
 // to ensure the C locale is also used there.
-#if !defined(SENTRY_PLATFORM_ANDROID) && !defined(SENTRY_PLATFORM_IOS)
+#if !defined(SENTRY_PLATFORM_ANDROID) && !defined(SENTRY_PLATFORM_IOS)         \
+    && !defined(SENTRY_PLATFORM_AIX) && !defined(SENTRY_PLATFORM_NX)           \
+    && !defined(SENTRY_PLATFORM_PS)
+#    define HAS_C_LOCALE
+#endif
+
+#ifdef HAS_C_LOCALE
 static sentry__locale_t
 c_locale(void)
 {
@@ -517,8 +535,7 @@ sentry__strtod_c(const char *ptr, char **endptr)
 {
 #ifdef SENTRY_PLATFORM_WINDOWS
     return _strtod_l(ptr, endptr, c_locale());
-#elif defined(SENTRY_PLATFORM_ANDROID) || defined(SENTRY_PLATFORM_IOS)         \
-    || defined(SENTRY_PLATFORM_AIX)
+#elif !defined(HAS_C_LOCALE)
     return strtod(ptr, endptr);
 #else
     return strtod_l(ptr, endptr, c_locale());
@@ -534,8 +551,7 @@ sentry__snprintf_c(char *buf, size_t buf_size, const char *fmt, ...)
     int rv;
 #ifdef SENTRY_PLATFORM_WINDOWS
     rv = _vsnprintf_l(buf, buf_size, fmt, c_locale(), args);
-#elif defined(SENTRY_PLATFORM_ANDROID) || defined(SENTRY_PLATFORM_IOS)         \
-    || defined(SENTRY_PLATFORM_AIX)
+#elif !defined(HAS_C_LOCALE)
     rv = vsnprintf(buf, buf_size, fmt, args);
 #elif defined(SENTRY_PLATFORM_DARWIN)
     rv = vsnprintf_l(buf, buf_size, c_locale(), fmt, args);

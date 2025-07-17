@@ -207,16 +207,30 @@ class SignalHandler {
   static void HandleOrReraiseSignal(int signo,
                                     siginfo_t* siginfo,
                                     void* context) {
-    if (handler_->first_chance_handler_ &&
-        handler_->first_chance_handler_(
-            signo, siginfo, static_cast<ucontext_t*>(context))) {
-      return;
-    }
-
     // Only handle the first fatal signal observed. If another thread receives a
     // crash signal, it waits for the first dump to complete instead of
     // requesting another.
     if (!handler_->disabled_.test_and_set()) {
+      // but we also need to ensure that a handling thread that gets preempted
+      // with a non-masked signal, can proceed to handle that signal.
+      SignalHandler::handling_signal_on_thread_ = true;
+    }
+    if (SignalHandler::handling_signal_on_thread_) {
+      // TODO(supervacuus):
+      //  On Linux the first-chance handler is executed in the context of a
+      //  signal-handler, which can be asynchronous (crashpad handles `SIGQUIT`)
+      //  and even interrupt itself if the first-chance handler crashes with a
+      //  non-masked synchronous signal. This means we not only need to be safe
+      //  with multiple threads raising signals with thread-specific signal-
+      //  masks, but also with reentrancy from the same thread. Adapting our
+      //  first-chance handler to this would mean to adapt the pipeline, because
+      //  even if the handler was safe wrt the above scenarios, there is
+      //  currently no way in the event model to correlate crashes this way.
+     if (handler_->first_chance_handler_ &&
+          handler_->first_chance_handler_(
+              signo, siginfo, static_cast<ucontext_t*>(context))) {
+        return;
+      }
       handler_->HandleCrash(signo, siginfo, context);
       handler_->WakeThreads();
       if (handler_->last_chance_handler_ &&
@@ -274,10 +288,12 @@ class SignalHandler {
 #else
   std::atomic_flag disabled_;
 #endif
+  thread_local static bool handling_signal_on_thread_;
 
   static SignalHandler* handler_;
 };
 SignalHandler* SignalHandler::handler_ = nullptr;
+thread_local bool SignalHandler::handling_signal_on_thread_ = false;
 
 // Launches a single use handler to snapshot this process.
 class LaunchAtCrashHandler : public SignalHandler {
@@ -420,6 +436,16 @@ class RequestCrashDumpHandler : public SignalHandler {
   }
 #endif
 
+  void AddAttachment(const base::FilePath& attachment) {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    client.AddAttachment(attachment);
+  }
+
+  void RemoveAttachment(const base::FilePath& attachment) {
+    ExceptionHandlerClient client(sock_to_handler_.get(), true);
+    client.RemoveAttachment(attachment);
+  }
+
  private:
   RequestCrashDumpHandler() = default;
 
@@ -461,7 +487,9 @@ bool CrashpadClient::StartHandler(
     const std::vector<std::string>& arguments,
     bool restartable,
     bool asynchronous_start,
-    const std::vector<base::FilePath>& attachments) {
+    const std::vector<base::FilePath>& attachments,
+    const base::FilePath& screenshot,
+    bool wait_for_upload) {
   DCHECK(!asynchronous_start);
 
   ScopedFileHandle client_sock, handler_sock;
@@ -470,11 +498,20 @@ bool CrashpadClient::StartHandler(
     return false;
   }
 
-  std::vector<std::string> argv = BuildHandlerArgvStrings(
-      handler, database, metrics_dir, url, http_proxy, annotations, arguments, attachments);
+  std::vector<std::string> argv = BuildHandlerArgvStrings(handler,
+                                                          database,
+                                                          metrics_dir,
+                                                          url,
+                                                          http_proxy,
+                                                          annotations,
+                                                          arguments,
+                                                          attachments);
 
   argv.push_back(FormatArgumentInt("initial-client-fd", handler_sock.get()));
   argv.push_back("--shared-client-connection");
+  if(wait_for_upload) {
+    argv.push_back("--wait-for-upload");
+  }
   if (!SpawnSubprocess(argv, nullptr, handler_sock.get(), false, nullptr)) {
     return false;
   }
@@ -694,8 +731,14 @@ bool CrashpadClient::StartHandlerAtCrash(
     const std::map<std::string, std::string>& annotations,
     const std::vector<std::string>& arguments,
     const std::vector<base::FilePath>& attachments) {
-  std::vector<std::string> argv = BuildHandlerArgvStrings(
-      handler, database, metrics_dir, url, http_proxy, annotations, arguments, attachments);
+  std::vector<std::string> argv = BuildHandlerArgvStrings(handler,
+                                                          database,
+                                                          metrics_dir,
+                                                          url,
+                                                          http_proxy,
+                                                          annotations,
+                                                          arguments,
+                                                          attachments);
 
   auto signal_handler = LaunchAtCrashHandler::Get();
   return signal_handler->Initialize(&argv, nullptr, &unhandled_signals_);
@@ -773,5 +816,15 @@ void CrashpadClient::SetCrashLoopBefore(uint64_t crash_loop_before_time) {
   request_crash_dump_handler->SetCrashLoopBefore(crash_loop_before_time);
 }
 #endif
+
+void CrashpadClient::AddAttachment(const base::FilePath& attachment) {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  signal_handler->AddAttachment(attachment);
+}
+
+void CrashpadClient::RemoveAttachment(const base::FilePath& attachment) {
+  auto signal_handler = RequestCrashDumpHandler::Get();
+  signal_handler->RemoveAttachment(attachment);
+}
 
 }  // namespace crashpad

@@ -40,6 +40,7 @@
 #define PROCESSOR_RANGE_MAP_H__
 
 
+#include <stdint.h>
 #include <map>
 
 
@@ -109,12 +110,12 @@ class RangeMap {
   // entry was shrunk down (original start address was increased by delta).
   //
   // RetrieveRangeAtIndex is not optimized for speedy operation.
-  bool RetrieveRangeAtIndex(int index, EntryType* entry,
+  bool RetrieveRangeAtIndex(int64_t index, EntryType* entry,
                             AddressType* entry_base, AddressType* entry_delta,
                             AddressType* entry_size) const;
 
   // Returns the number of ranges stored in the RangeMap.
-  int GetCount() const;
+  int64_t GetCount() const;
 
   // Empties the range map, restoring it to the state it was when it was
   // initially created.

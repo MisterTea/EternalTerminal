@@ -101,7 +101,7 @@ void* thread_function(void* data) {
 namespace google_breakpad {
 
 CrashGenerator::CrashGenerator()
-    : shared_memory_(NULL),
+    : shared_memory_(nullptr),
       shared_memory_size_(0) {
 }
 
@@ -154,7 +154,7 @@ bool CrashGenerator::UnmapSharedMemory() {
     return true;
 
   if (munmap(shared_memory_, shared_memory_size_) == 0) {
-    shared_memory_ = NULL;
+    shared_memory_ = nullptr;
     shared_memory_size_ = 0;
     return true;
   }
@@ -312,7 +312,7 @@ void CrashGenerator::CreateThreadsInChildProcess(unsigned num_threads) {
   }
 
   pthread_barrier_t thread_barrier;
-  if (pthread_barrier_init(&thread_barrier, NULL, num_threads) != 0) {
+  if (pthread_barrier_init(&thread_barrier, nullptr, num_threads) != 0) {
     fprintf(stderr, "CrashGenerator: Failed to initialize thread barrier\n");
     exit(1);
   }

@@ -1,0 +1,14 @@
+{
+  "rendering_system":"android_view_system",
+  "windows":[
+    {
+      "type": "com.android.internal.policy.DecorView",
+      "width": 768.0,
+      "height": 1280.0,
+      "x": 0.0,
+      "y": 0.0,
+      "visibility": "visible",
+      "alpha": 1.0
+    }
+  ]
+}

@@ -229,6 +229,7 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
       thread->id ==
       reinterpret_cast<process_types::TEB<Traits>*>(NtCurrentTeb())
           ->ClientId.UniqueThread;
+  bool did_suspend_thread = true;
 
   if (is_current_thread) {
     DCHECK(suspension_state == ProcessSuspensionState::kRunning);
@@ -243,7 +244,9 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
     DWORD previous_suspend_count = SuspendThread(thread_handle);
     if (previous_suspend_count == static_cast<DWORD>(-1)) {
       PLOG(ERROR) << "SuspendThread";
-      return false;
+      // Must assume thread was already suspended, so we can still try to read
+      did_suspend_thread = false;
+      previous_suspend_count = 1;
     }
     if (previous_suspend_count <= 0 &&
         suspension_state == ProcessSuspensionState::kSuspended) {
@@ -281,7 +284,7 @@ bool FillThreadContextAndSuspendCount(HANDLE process,
     DoStackWalk(thread, process, thread_handle, is_64_reading_32);
 #endif
 
-    if (!ResumeThread(thread_handle)) {
+    if (did_suspend_thread && !ResumeThread(thread_handle)) {
       PLOG(ERROR) << "ResumeThread";
       return false;
     }

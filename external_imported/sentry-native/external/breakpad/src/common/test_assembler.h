@@ -134,7 +134,7 @@ class Label {
 
   // Return true if this label's value is known. If VALUE_P is given,
   // set *VALUE_P to the known value if returning true.
-  bool IsKnownConstant(uint64_t* value_p = NULL) const;
+  bool IsKnownConstant(uint64_t* value_p = nullptr) const;
 
   // Return true if the offset from LABEL to this label is known. If
   // OFFSET_P is given, set *OFFSET_P to the offset when returning true.
@@ -154,7 +154,8 @@ class Label {
   //   l-m                              // -10
   //   m-l                              // 10
   //   m.Value()                        // error: m's value is not known
-  bool IsKnownOffsetFrom(const Label& label, uint64_t* offset_p = NULL) const;
+  bool IsKnownOffsetFrom(const Label& label,
+                         uint64_t* offset_p = nullptr) const;
 
  private:
   // A label's value, or if that is not yet known, how the value is

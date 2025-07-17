@@ -11,3 +11,6 @@
 	path = external/crashpad
 	url = https://github.com/getsentry/crashpad.git
 	branch = getsentry
+[submodule "external/benchmark"]
+	path = external/benchmark
+	url = https://github.com/google/benchmark.git

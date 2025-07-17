@@ -1,6 +1,8 @@
 sentry_target_sources_cwd(sentry
 	sentry_alloc.c
 	sentry_alloc.h
+	sentry_attachment.c
+	sentry_attachment.h
 	sentry_backend.c
 	sentry_backend.h
 	sentry_boot.h
@@ -20,12 +22,12 @@ sentry_target_sources_cwd(sentry
 	sentry_os.c
 	sentry_os.h
 	sentry_path.h
-	sentry_random.c
-	sentry_random.h
 	sentry_ratelimiter.c
 	sentry_ratelimiter.h
+	sentry_sampling_context.h
 	sentry_scope.c
 	sentry_scope.h
+	sentry_screenshot.h
 	sentry_session.c
 	sentry_session.h
 	sentry_slice.c
@@ -46,6 +48,7 @@ sentry_target_sources_cwd(sentry
 	sentry_tracing.c
 	sentry_tracing.h
 	path/sentry_path.c
+	screenshot/sentry_screenshot.c
 	transports/sentry_disk_transport.c
 	transports/sentry_disk_transport.h
 	transports/sentry_function_transport.c
@@ -55,18 +58,27 @@ sentry_target_sources_cwd(sentry
 # generic platform / path / symbolizer
 if(WIN32)
 	sentry_target_sources_cwd(sentry
+		sentry_random.c
+		sentry_random.h
 		sentry_windows_dbghelp.c
 		sentry_windows_dbghelp.h
 		path/sentry_path_windows.c
 		symbolizer/sentry_symbolizer_windows.c
 	)
+elseif(NX OR PROSPERO)
+	sentry_target_sources_cwd(sentry
+		sentry_unix_spinlock.h
+		path/sentry_path_unix.c
+	)
 else()
 	sentry_target_sources_cwd(sentry
+		sentry_random.c
+		sentry_random.h
 		sentry_unix_pageallocator.c
 		sentry_unix_pageallocator.h
 		sentry_unix_spinlock.h
-		path/sentry_path_unix.c
 		symbolizer/sentry_symbolizer_unix.c
+		path/sentry_path_unix.c
 	)
 endif()
 
@@ -106,24 +118,24 @@ endif()
 
 # backends
 if(SENTRY_BACKEND_CRASHPAD)
-    target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_CRASHPAD)
-    sentry_target_sources_cwd(sentry
-        backends/sentry_backend_crashpad.cpp
-    )
+	target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_CRASHPAD)
+	sentry_target_sources_cwd(sentry
+		backends/sentry_backend_crashpad.cpp
+	)
 elseif(SENTRY_BACKEND_BREAKPAD)
-    target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_BREAKPAD)
-    sentry_target_sources_cwd(sentry
-        backends/sentry_backend_breakpad.cpp
-    )
+	target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_BREAKPAD)
+	sentry_target_sources_cwd(sentry
+		backends/sentry_backend_breakpad.cpp
+	)
 elseif(SENTRY_BACKEND_INPROC)
-    target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_INPROC)
-    sentry_target_sources_cwd(sentry
-        backends/sentry_backend_inproc.c
-    )
+	target_compile_definitions(sentry PRIVATE SENTRY_BACKEND_INPROC)
+	sentry_target_sources_cwd(sentry
+		backends/sentry_backend_inproc.c
+	)
 elseif(SENTRY_BACKEND_NONE)
-    sentry_target_sources_cwd(sentry
-        backends/sentry_backend_none.c
-    )
+	sentry_target_sources_cwd(sentry
+		backends/sentry_backend_none.c
+	)
 endif()
 
 # unwinder
@@ -133,17 +145,30 @@ if(SENTRY_WITH_LIBBACKTRACE)
 		unwinder/sentry_unwinder_libbacktrace.c
 	)
 endif()
+
+if(SENTRY_WITH_LIBUNWIND)
+	target_compile_definitions(sentry PRIVATE SENTRY_WITH_UNWINDER_LIBUNWIND)
+	sentry_target_sources_cwd(sentry
+		unwinder/sentry_unwinder_libunwind.c
+	)
+endif()
+
 if(SENTRY_WITH_LIBUNWINDSTACK)
 	target_compile_definitions(sentry PRIVATE SENTRY_WITH_UNWINDER_LIBUNWINDSTACK)
 	sentry_target_sources_cwd(sentry
 		unwinder/sentry_unwinder_libunwindstack.cpp
 	)
 endif()
+
 if(WIN32)
 	target_compile_definitions(sentry PRIVATE SENTRY_WITH_UNWINDER_DBGHELP)
 	sentry_target_sources_cwd(sentry
 		unwinder/sentry_unwinder_dbghelp.c
 	)
+endif()
+
+if(PROSPERO)
+	target_compile_definitions(sentry PRIVATE SENTRY_WITH_UNWINDER_PS)
 endif()
 
 # integrations
@@ -152,5 +177,16 @@ if(SENTRY_INTEGRATION_QT)
 	sentry_target_sources_cwd(sentry
 		integrations/sentry_integration_qt.cpp
 		integrations/sentry_integration_qt.h
+	)
+endif()
+
+# screenshot
+if(WIN32)
+	sentry_target_sources_cwd(sentry
+		screenshot/sentry_screenshot_windows.c
+	)
+else()
+	sentry_target_sources_cwd(sentry
+		screenshot/sentry_screenshot_none.c
 	)
 endif()

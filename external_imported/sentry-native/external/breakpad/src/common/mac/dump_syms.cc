@@ -49,6 +49,7 @@
 #include <sys/types.h>
 #include <unistd.h>
 
+#include <memory>
 #include <ostream>
 #include <string>
 #include <vector>
@@ -88,7 +89,6 @@ using google_breakpad::mach_o::Segment;
 using google_breakpad::Module;
 using google_breakpad::StabsReader;
 using google_breakpad::StabsToModule;
-using google_breakpad::scoped_ptr;
 using std::make_pair;
 using std::pair;
 using std::string;
@@ -109,7 +109,7 @@ vector<string> list_directory(const string& directory) {
     path += '/';
   }
 
-  struct dirent* entry = NULL;
+  struct dirent* entry = nullptr;
   while ((entry = readdir(dir))) {
     if (strcmp(entry->d_name, ".") != 0 && strcmp(entry->d_name, "..") != 0) {
       entries.push_back(path + entry->d_name);
@@ -265,8 +265,12 @@ SuperFatArch* DumpSymbols::FindBestMatchForArchitecture(
   return nullptr;
 }
 
+void DumpSymbols::SetReportWarnings(bool report_warnings) {
+    report_warnings_ = report_warnings;
+}
+
 string DumpSymbols::Identifier() {
-  scoped_ptr<FileID> file_id;
+  std::unique_ptr<FileID> file_id;
 
   if (from_disk_) {
     file_id.reset(new FileID(object_filename_.c_str()));
@@ -274,7 +278,7 @@ string DumpSymbols::Identifier() {
     file_id.reset(new FileID(contents_.get(), size_));
   }
   unsigned char identifier_bytes[16];
-  scoped_ptr<Module> module;
+  std::unique_ptr<Module> module;
   if (!selected_object_file_) {
     if (!CreateEmptyModule(module))
       return string();
@@ -350,8 +354,9 @@ class DumpSymbols::DumperLineToModule:
                    vector<Module::Line>* lines,
                    std::map<uint32_t, Module::File*>* files) {
     DwarfLineToModule handler(module, compilation_dir_, lines, files);
-    LineInfo parser(program, length, byte_reader_, nullptr, 0,
-                                  nullptr, 0, &handler);
+    LineInfo parser(program, length, byte_reader_, string_section,
+                                  string_section_length, line_string_section,
+                                  line_string_section_length, &handler);
     parser.Start();
   }
  private:
@@ -359,7 +364,7 @@ class DumpSymbols::DumperLineToModule:
   ByteReader* byte_reader_;  // WEAK
 };
 
-bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
+bool DumpSymbols::CreateEmptyModule(std::unique_ptr<Module>& module) {
   // Select an object file, if SetArchitecture hasn't been called to set one
   // explicitly.
   if (!selected_object_file_) {
@@ -390,7 +395,7 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
   // In certain cases, it is possible that architecture info can't be reliably
   // determined, e.g. new architectures that breakpad is unware of. In that
   // case, avoid crashing and return false instead.
-  if (selected_arch_name == kUnknownArchName) {
+  if (strcmp(selected_arch_name, kUnknownArchName) == 0) {
     return false;
   }
 
@@ -402,7 +407,7 @@ bool DumpSymbols::CreateEmptyModule(scoped_ptr<Module>& module) {
   selected_object_name_ = object_filename_;
   if (object_files_.size() > 1) {
     selected_object_name_ += ", architecture ";
-    selected_object_name_ + selected_arch_name;
+    selected_object_name_ += selected_arch_name;
   }
 
   // Compute a module name, to appear in the MODULE record.
@@ -524,10 +529,17 @@ void DumpSymbols::ReadDwarf(google_breakpad::Module* module,
   for (uint64_t offset = 0; offset < debug_info_length;) {
     // Make a handler for the root DIE that populates MODULE with the
     // debug info.
-    DwarfCUToModule::WarningReporter reporter(selected_object_name_,
-                                              offset);
+    std::unique_ptr<DwarfCUToModule::WarningReporter> reporter;
+    if (report_warnings_) {
+      reporter = std::make_unique<DwarfCUToModule::WarningReporter>(
+        selected_object_name_, offset);
+    } else {
+      reporter = std::make_unique<DwarfCUToModule::NullWarningReporter>(
+        selected_object_name_, offset);
+    }
     DwarfCUToModule root_handler(&file_context, &line_to_module,
-                                 &ranges_handler, &reporter, handle_inline);
+                                 &ranges_handler, reporter.get(),
+                                 handle_inline);
     // Make a Dwarf2Handler that drives our DIEHandler.
     DIEDispatcher die_dispatcher(&root_handler);
     // Make a DWARF parser for the compilation unit at OFFSET.
@@ -687,7 +699,7 @@ bool DumpSymbols::LoadCommandDumper::SymtabCommand(const ByteBuffer& entries,
 }
 
 bool DumpSymbols::ReadSymbolData(Module** out_module) {
-  scoped_ptr<Module> module;
+  std::unique_ptr<Module> module;
   if (!CreateEmptyModule(module))
     return false;
 
@@ -716,7 +728,7 @@ bool DumpSymbols::ReadSymbolData(Module** out_module) {
 // header only to |stream|. Return true on success; if an error occurs, report
 // it and return false.
 bool DumpSymbols::WriteSymbolFileHeader(std::ostream& stream) {
-  scoped_ptr<Module> module;
+  std::unique_ptr<Module> module;
   if (!CreateEmptyModule(module))
     return false;
 

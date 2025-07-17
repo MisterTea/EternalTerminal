@@ -30,10 +30,12 @@
 #include <config.h>  // Must come first
 #endif
 
-#include <cassert>
-#include <vector>
-
 #include "common/windows/string_utils-inl.h"
+
+#include <assert.h>
+#include <stdlib.h>
+
+#include <vector>
 
 namespace google_breakpad {
 
@@ -55,13 +57,14 @@ bool WindowsStringUtils::safe_mbstowcs(const string& mbs, wstring* wcs) {
   size_t wcs_length;
 
 #if _MSC_VER >= 1400  // MSVC 2005/8
-  errno_t err;
-  if ((err = mbstowcs_s(&wcs_length, NULL, 0, mbs.c_str(), _TRUNCATE)) != 0) {
+  errno_t err = mbstowcs_s(&wcs_length, nullptr, 0, mbs.c_str(), _TRUNCATE);
+  if (err != 0) {
     return false;
   }
   assert(wcs_length > 0);
 #else  // _MSC_VER >= 1400
-  if ((wcs_length = mbstowcs(NULL, mbs.c_str(), mbs.length())) == (size_t)-1) {
+  wcs_length = mbstowcs(nullptr, mbs.c_str(), mbs.length());
+  if (wcs_length == (size_t)-1) {
     return false;
   }
 
@@ -73,7 +76,7 @@ bool WindowsStringUtils::safe_mbstowcs(const string& mbs, wstring* wcs) {
 
   // Now, convert.
 #if _MSC_VER >= 1400  // MSVC 2005/8
-  if ((err = mbstowcs_s(NULL, &wcs_v[0], wcs_length, mbs.c_str(),
+  if ((err = mbstowcs_s(nullptr, &wcs_v[0], wcs_length, mbs.c_str(),
                         _TRUNCATE)) != 0) {
     return false;
   }
@@ -98,13 +101,14 @@ bool WindowsStringUtils::safe_wcstombs(const wstring& wcs, string* mbs) {
   size_t mbs_length;
 
 #if _MSC_VER >= 1400  // MSVC 2005/8
-  errno_t err;
-  if ((err = wcstombs_s(&mbs_length, NULL, 0, wcs.c_str(), _TRUNCATE)) != 0) {
+  errno_t err = wcstombs_s(&mbs_length, nullptr, 0, wcs.c_str(), _TRUNCATE);
+  if (err != 0) {
     return false;
   }
   assert(mbs_length > 0);
 #else  // _MSC_VER >= 1400
-  if ((mbs_length = wcstombs(NULL, wcs.c_str(), wcs.length())) == (size_t)-1) {
+  mbs_length = wcstombs(nullptr, wcs.c_str(), wcs.length());
+  if (mbs_length == (size_t)-1) {
     return false;
   }
 
@@ -116,7 +120,7 @@ bool WindowsStringUtils::safe_wcstombs(const wstring& wcs, string* mbs) {
 
   // Now, convert.
 #if _MSC_VER >= 1400  // MSVC 2005/8
-  if ((err = wcstombs_s(NULL, &mbs_v[0], mbs_length, wcs.c_str(),
+  if ((err = wcstombs_s(nullptr, &mbs_v[0], mbs_length, wcs.c_str(),
                         _TRUNCATE)) != 0) {
     return false;
   }

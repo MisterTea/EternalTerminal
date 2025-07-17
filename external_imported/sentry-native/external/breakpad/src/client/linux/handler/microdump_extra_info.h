@@ -40,10 +40,10 @@ struct MicrodumpExtraInfo {
   const char* process_type;
 
   MicrodumpExtraInfo()
-      : build_fingerprint(NULL),
-        product_info(NULL),
-        gpu_fingerprint(NULL),
-        process_type(NULL) {}
+      : build_fingerprint(nullptr),
+        product_info(nullptr),
+        gpu_fingerprint(nullptr),
+        process_type(nullptr) {}
 };
 
 }
