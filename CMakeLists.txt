@@ -8,7 +8,7 @@ endif()
 
 if(APPLE)
   if(NOT CMAKE_OSX_SYSROOT)
-      set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
+    set(CMAKE_OSX_SYSROOT "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk")
   endif()
 endif()
 
@@ -57,26 +57,6 @@ else()
     endif()
   endif()
 
-  # Some hacks to fix vcpkg
-  if(WIN32)
-    # set(Protobuf_PROTOC_EXECUTABLE
-    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc.exe"
-    # )
-    # set(ZLIB_INCLUDE_DIR
-    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/include" CACHE PATH
-    # )
-    # set(ZLIB_LIBRARY_RELEASE
-    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/lib/zlib.lib" CACHE FILEPATH
-    # )
-    # set(ZLIB_LIBRARY_DEBUG
-    #   "${CMAKE_CURRENT_BINARY_DIR}/vcpkg_installed/${VCPKG_TARGET_TRIPLET}/debug/lib/zlibd.lib" CACHE FILEPATH
-    # )
-  else()
-    # set(Protobuf_PROTOC_EXECUTABLE
-    #   "${EXTERNAL_DIR}/vcpkg/packages/protobuf_${VCPKG_TARGET_TRIPLET}/tools/protobuf/protoc"
-    # )
-  endif()
-
   # Make BoostConfig.cmake able to check its inputs
   cmake_policy(SET CMP0057 NEW)
 
@@ -92,7 +72,7 @@ endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-project(EternalTCP VERSION 6.2.10 LANGUAGES C CXX)
+project(EternalTCP VERSION 6.2.11 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
@@ -114,24 +94,24 @@ find_package(Protobuf REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
-add_subdirectory(${EXTERNAL_DIR}/Catch2)
-add_subdirectory(${EXTERNAL_DIR}/cxxopts)
-add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
-add_subdirectory(${EXTERNAL_DIR}/json)
-include_directories(
-  SYSTEM ${EXTERNAL_DIR}/cpp-httplib
-)
-include_directories(
-  ${EXTERNAL_DIR}/simpleini
-  ${EXTERNAL_DIR}/json/include
-  ${EXTERNAL_DIR}/cxxopts/include
-)
+  add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  add_subdirectory(${EXTERNAL_DIR}/cxxopts)
+  add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
+  add_subdirectory(${EXTERNAL_DIR}/json)
+  include_directories(
+    SYSTEM ${EXTERNAL_DIR}/cpp-httplib
+  )
+  include_directories(
+    ${EXTERNAL_DIR}/simpleini
+    ${EXTERNAL_DIR}/json/include
+    ${EXTERNAL_DIR}/cxxopts/include
+  )
 else()
-find_package(Catch2 CONFIG REQUIRED)
-find_package(httplib CONFIG REQUIRED)
-find_package(cxxopts CONFIG REQUIRED)
-find_package(nlohmann_json CONFIG REQUIRED)
-find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
+  find_package(Catch2 CONFIG REQUIRED)
+  find_package(httplib CONFIG REQUIRED)
+  find_package(cxxopts CONFIG REQUIRED)
+  find_package(nlohmann_json CONFIG REQUIRED)
+  find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
 endif()
 
 # Optional packages
@@ -238,6 +218,12 @@ if(WIN32)
 endif()
 
 set(PROTOBUF_LIBS protobuf::libprotobuf)
+
+if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
+  find_package(absl REQUIRED)
+
+  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
+endif()
 
 if(SELINUX_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
@@ -628,6 +614,7 @@ set(CPACK_RESOURCE_FILE_LICENSE "${CMAKE_CURRENT_SOURCE_DIR}/LICENSE")
 if(NOT CPACK_GENERATOR)
   SET(CPACK_GENERATOR "STGZ;TGZ;TZ;DEB")
 endif()
+
 SET(CPACK_DEBIAN_PACKAGE_CONTROL_EXTRA "${CMAKE_SOURCE_DIR}/debian/postinst;${CMAKE_SOURCE_DIR}/debian/postrm;${CMAKE_SOURCE_DIR}/debian/prerm")
 SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/lib/systemd/system" "${CMAKE_SOURCE_DIR}/etc;/etc")
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
