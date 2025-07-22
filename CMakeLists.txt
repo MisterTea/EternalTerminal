@@ -239,6 +239,12 @@ endif()
 
 set(PROTOBUF_LIBS protobuf::libprotobuf)
 
+if (Protobuf_VERSION VERSION_GREATER_EQUAL 4)
+    find_package(absl REQUIRED)
+
+    set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
+endif()
+
 if(SELINUX_FOUND)
   set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DWITH_SELINUX")
 else()
