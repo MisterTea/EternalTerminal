@@ -1,3 +1,9 @@
+et (6.2.10-##DISTRO##1) ##DISTRO##; urgency=medium
+
+  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.9
+
+ -- Jason Gauci <jgmath2000@gmail.com>  Mon, 21 Jul 2025 10:06:54 -0800
+
 et (6.2.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
   * Update deps in external to match vcpkg
