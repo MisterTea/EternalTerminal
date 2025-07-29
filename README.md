@@ -297,7 +297,7 @@ Alternatively, open the file /etc/systemd/system/et.service in an editor and cor
 
 
 ```
-ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg
+ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg --logtostdout
 ```
 
 Reload systemd configs:
