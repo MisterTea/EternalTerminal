@@ -6,8 +6,7 @@
 // #include <string.h>
 // #include <unistd.h>
 
-#include <glob.h>
-
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
@@ -1250,14 +1249,19 @@ static int ssh_config_parse_line(const char *targethost,
       if (p) {
         char *filename = ssh_path_expand_tilde(p);
         if (filename) {
-          glob_t g;
           if (strchr(filename, '*') || strchr(filename, '?')) {
-            if (glob(filename, 0, NULL, &g) == 0) {
-              for (size_t i = 0; i < g.gl_pathc; ++i) {
-                local_parse_file(targethost, options, g.gl_pathv[i], parsing,
-                                 seen);
+            std::string dir = fs::path(filename).parent_path().string();
+            std::string pattern = fs::path(filename).filename().string();
+            std::regex pattern_regex(std::regex_replace(
+                std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
+                std::regex(R"(\*)"), ".*"));
+            for (const auto &entry :
+                 fs::directory_iterator(dir.empty() ? "." : dir)) {
+              if (std::regex_match(entry.path().filename().string(),
+                                   pattern_regex)) {
+                local_parse_file(targethost, options,
+                                 entry.path().string().c_str(), parsing, seen);
               }
-              globfree(&g);
             }
           } else {
             local_parse_file(targethost, options, filename, parsing, seen);
