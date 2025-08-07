@@ -204,6 +204,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
       LOG(WARNING) << "Error binding " << p->ai_family << "/" << p->ai_socktype
                    << "/" << p->ai_protocol << ": " << localErrno << " "
                    << strerror(localErrno);
+      CLOG(INFO, "stdout") << "Error binding " << p->ai_family << "/"
+                           << p->ai_socktype << "/" << p->ai_protocol << ": "
+                           << localErrno << " " << strerror(localErrno) << endl;
       stringstream oss;
       oss << "Error binding port " << port << ": " << localErrno << " "
           << strerror(localErrno);
