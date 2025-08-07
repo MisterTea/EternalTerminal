@@ -28,13 +28,22 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
                                const string &path, const string &filenamePrefix,
                                bool logToStdout, bool redirectStderrToFile,
                                bool appendPid, string maxlogsize) {
-  time_t rawtime;
-  struct tm *timeinfo;
+  auto now = std::chrono::system_clock::now();
+  time_t rawtime = std::chrono::system_clock::to_time_t(now);
+  struct tm *timeinfo = std::localtime(&rawtime);
+
   char buffer[80];
-  time(&rawtime);
-  timeinfo = localtime(&rawtime);
-  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S.%f", timeinfo);
+  strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
   string current_time(buffer);
+
+  auto duration = now.time_since_epoch();
+  auto microseconds =
+      std::chrono::duration_cast<std::chrono::microseconds>(duration) %
+      std::chrono::seconds(1);
+  std::stringstream ss;
+  ss << std::setw(6) << std::setfill('0') << microseconds.count();
+  current_time += "." + ss.str();
+
   string logFilename = filenamePrefix + "-" + current_time;
   string stderrFilename = filenamePrefix + "-stderr-" + current_time;
   if (appendPid) {
