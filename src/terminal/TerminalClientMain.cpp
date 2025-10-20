@@ -295,7 +295,8 @@ int main(int argc, char** argv) {
       is_jumphost = true;
       LOG(INFO) << "Setting port to jumphost port";
 
-      // Extract hostname from [user@]host[:sshport] format for ET socket connection
+      // Extract hostname from [user@]host[:sshport] format for ET socket
+      // connection
       string jumphostName = jumphost;
 
       // Strip user@ prefix if present
@@ -314,13 +315,15 @@ int main(int argc, char** argv) {
       }
 
       // Resolve jumphost alias to actual hostname via SSH config
-      // jumphostName might be a Host alias (e.g., "telie") that needs resolution
+      // jumphostName might be a Host alias (e.g., "telie") that needs
+      // resolution
       {
         char* jumphost_home_dir = ssh_get_user_home_dir();
-        Options jumphostOptions = {
-            NULL, NULL, NULL, NULL, NULL, NULL, 0, 0, 0, 0, 0,
-            NULL, NULL, 0, 0, NULL, {}};
-        ssh_options_set(&jumphostOptions, SSH_OPTIONS_HOST, jumphostName.c_str());
+        Options jumphostOptions = {NULL, NULL, NULL, NULL, NULL, NULL,
+                                   0,    0,    0,    0,    0,    NULL,
+                                   NULL, 0,    0,    NULL, {}};
+        ssh_options_set(&jumphostOptions, SSH_OPTIONS_HOST,
+                        jumphostName.c_str());
         parse_ssh_config_file(jumphostName.c_str(), &jumphostOptions,
                               string(jumphost_home_dir) + USER_SSH_CONFIG_PATH);
         parse_ssh_config_file(jumphostName.c_str(), &jumphostOptions,
