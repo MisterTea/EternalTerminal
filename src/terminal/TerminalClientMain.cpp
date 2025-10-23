@@ -298,14 +298,15 @@ int main(int argc, char** argv) {
       // Extract hostname from [user@]host[:sshport] format for ET socket
       // connection
       string jumphostName = jumphost;
+      string jumphostUser = "";
+      string jumphostHostPort = jumphost;  // Preserve host[:port] portion
 
       // Strip user@ prefix if present
       size_t atIndex = jumphostName.find("@");
       if (atIndex != string::npos) {
+        jumphostUser = jumphostName.substr(0, atIndex);
         jumphostName = jumphostName.substr(atIndex + 1);
-      } else {
-        // If no user@ prefix, add it to jumphost for SSH
-        jumphost = username + "@" + jumphost;
+        jumphostHostPort = jumphostName;  // host[:port] without user@
       }
 
       // Strip :port suffix if present (SSH port, not ET port)
@@ -314,7 +315,7 @@ int main(int argc, char** argv) {
         jumphostName = jumphostName.substr(0, colonIndex);
       }
 
-      // Resolve jumphost alias to actual hostname via SSH config
+      // Resolve jumphost alias to actual hostname and username via SSH config
       // jumphostName might be a Host alias (e.g., "telie") that needs
       // resolution
       {
@@ -334,6 +335,12 @@ int main(int argc, char** argv) {
           jumphostName = string(jumphostOptions.host);
           SAFE_FREE(jumphostOptions.host);
         }
+        // Extract username from SSH config if not already specified
+        if (jumphostUser.empty() && jumphostOptions.username) {
+          jumphostUser = string(jumphostOptions.username);
+          LOG(INFO) << "Using jumphost username from SSH config: "
+                    << jumphostUser;
+        }
         // Clean up other allocated fields in jumphostOptions
         SAFE_FREE(jumphostOptions.username);
         SAFE_FREE(jumphostOptions.sshdir);
@@ -345,6 +352,17 @@ int main(int argc, char** argv) {
         SAFE_FREE(jumphostOptions.identity_agent);
         free(jumphost_home_dir);
       }
+
+      // If still no username, use local username as fallback
+      if (jumphostUser.empty()) {
+        char* localUsernamePtr = ssh_get_local_username();
+        jumphostUser = string(localUsernamePtr);
+        SAFE_FREE(localUsernamePtr);
+      }
+
+      // Reconstruct jumphost with correct username for SSH -J flag
+      // Preserve the original host[:port] format
+      jumphost = jumphostUser + "@" + jumphostHostPort;
 
       socketEndpoint.set_name(jumphostName);
       socketEndpoint.set_port(result["jport"].as<int>());
