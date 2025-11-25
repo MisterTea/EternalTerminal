@@ -4,6 +4,10 @@
 #include "Headers.hpp"
 
 namespace et {
+/**
+ * @brief Executes a shell command and captures all stdout into a string.
+ * @param cmd Null-terminated command string passed to popen.
+ */
 inline std::string SystemToStr(const char* cmd) {
   std::array<char, 128> buffer;
   std::string result;
@@ -16,6 +20,9 @@ inline std::string SystemToStr(const char* cmd) {
   return result;
 }
 
+/**
+ * @brief Runs a command with arguments while capturing its stdout without a shell.
+ */
 string SubprocessToStringInteractive(const string& command,
                                      const vector<string>& args);
 }  // namespace et

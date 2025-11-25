@@ -5,6 +5,12 @@
 #include "Headers.hpp"
 
 namespace et {
+/**
+ * @brief Represents the server-side state for a single authenticated client.
+ *
+ * Allows a reconnecting client to replay buffered packets and validates
+ * passkeys without exposing timing differences.
+ */
 class ServerClientConnection : public Connection {
  public:
   explicit ServerClientConnection(
@@ -13,8 +19,14 @@ class ServerClientConnection : public Connection {
 
   virtual ~ServerClientConnection();
 
+  /**
+   * @brief Tears down the old socket (if any) and attempts recovery on the new fd.
+   */
   bool recoverClient(int newSocketFd);
 
+  /**
+   * @brief Constant-time comparison of the stored key and a supplied passkey.
+   */
   bool verifyPasskey(const string& targetKey);
 
  protected:

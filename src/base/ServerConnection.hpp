@@ -11,6 +11,12 @@ struct IdKeyPair {
   string key;
 };
 
+/**
+ * @brief Base class for servers that accept clients over sockets and track them.
+ *
+ * Holds registered client keys and creates `ServerClientConnection` instances
+ * for each authenticated client that connects.
+ */
 class ServerConnection {
  public:
   explicit ServerConnection(std::shared_ptr<SocketHandler> socketHandler,
@@ -30,8 +36,15 @@ class ServerConnection {
 
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
+  /**
+   * @brief Accepts a pending connection on the listening fd and starts a handler.
+   * @param fd Listening socket descriptor returned by `listen()`.
+   */
   bool acceptNewConnection(int fd);
 
+  /**
+   * @brief Stops accepting new clients and shuts down existing connections.
+   */
   void shutdown();
 
   inline void addClientKey(const string& id, const string& passkey) {
@@ -39,8 +52,14 @@ class ServerConnection {
     clientKeys[id] = passkey;
   }
 
+  /**
+   * @brief Entry point invoked on the thread pool for each client connection.
+   */
   void clientHandler(int clientSocketFd);
 
+  /**
+   * @brief Removes a registered client and terminates its active connection.
+   */
   bool removeClient(const string& id);
 
   shared_ptr<ServerClientConnection> getClientConnection(
@@ -53,19 +72,33 @@ class ServerConnection {
     return it->second;
   }
 
+  /**
+   * @brief Callback that derived classes use to integrate newly authenticated
+   *        clients into higher level server behavior.
+   */
   virtual bool newClient(
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 
  protected:
+  /**
+   * @brief Discards a partially initialized connection if its thread fails.
+   */
   void destroyPartialConnection(const string& clientId);
 
+  /** @brief Socket helper used by the server. */
   shared_ptr<SocketHandler> socketHandler;
+  /** @brief Endpoint the server listens on. */
   SocketEndpoint serverEndpoint;
+  /** @brief Map of client IDs to their registered passkeys. */
   std::unordered_map<string, string> clientKeys;
+  /** @brief Active client connections indexed by ID. */
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;
+  /** @brief Thread pool used to handle incoming client sockets. */
   std::unique_ptr<ThreadPool> clientHandlerThreadPool;
+  /** @brief Guards server state, including the client maps. */
   recursive_mutex classMutex;
+  /** @brief Serializes connect/disconnect events. */
   mutex connectMutex;
 };
 }  // namespace et
