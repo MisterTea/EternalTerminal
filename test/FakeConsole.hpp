@@ -158,7 +158,7 @@ class FakeUserTerminal : public UserTerminal {
     return getFd();
   };
 
-  virtual void runTerminal() {
+  virtual void runTerminal(){
 
   };
 

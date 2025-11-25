@@ -218,7 +218,8 @@ TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
   REQUIRE(pfsrs_named[0].has_environmentvariable());
 }
 
-TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest", "[EndToEndTest][integration]") {
+TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
+                 "[EndToEndTest][integration]") {
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
                 serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
                 fakeConsole, routerEndpoint);

@@ -294,7 +294,8 @@ void runConnectionTestCase(bool flaky,
   ctx.serverConnection.reset(
       new TestServerConnection(ctx.serverSocketHandler, ctx.endpoint));
 
-  ctx.serverFd = *(ctx.serverSocketHandler->getEndpointFds(ctx.endpoint).begin());
+  ctx.serverFd =
+      *(ctx.serverSocketHandler->getEndpointFds(ctx.endpoint).begin());
   {
     lock_guard<recursive_mutex> lock(testMutex);
     ctx.stopListening = false;
@@ -328,50 +329,46 @@ void runConnectionTestCase(bool flaky,
 }
 
 TEST_CASE("ConnectionTest_ReadWrite", "[ConnectionTest][integration]") {
-  runConnectionTestCase(
-      false, [](ConnectionTestContext& ctx) {
-        readWriteTest("1234567890123456", ctx.clientSocketHandler,
-                      ctx.serverConnection, ctx.endpoint);
-      });
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    readWriteTest("1234567890123456", ctx.clientSocketHandler,
+                  ctx.serverConnection, ctx.endpoint);
+  });
 }
 
 TEST_CASE("ConnectionTest_ReadWrite_Flaky", "[ConnectionTest][integration]") {
-  runConnectionTestCase(
-      true, [](ConnectionTestContext& ctx) {
-        readWriteTest("1234567890123456", ctx.clientSocketHandler,
-                      ctx.serverConnection, ctx.endpoint);
-      });
+  runConnectionTestCase(true, [](ConnectionTestContext& ctx) {
+    readWriteTest("1234567890123456", ctx.clientSocketHandler,
+                  ctx.serverConnection, ctx.endpoint);
+  });
 }
 
 TEST_CASE("ConnectionTest_MultiReadWrite", "[ConnectionTest][integration]") {
-  runConnectionTestCase(
-      false, [](ConnectionTestContext& ctx) {
-        multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
-                           ctx.endpoint);
-      });
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
+                       ctx.endpoint);
+  });
 }
 
-TEST_CASE("ConnectionTest_MultiReadWrite_Flaky", "[ConnectionTest][integration]") {
-  runConnectionTestCase(
-      true, [](ConnectionTestContext& ctx) {
-        multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
-                           ctx.endpoint);
-      });
+TEST_CASE("ConnectionTest_MultiReadWrite_Flaky",
+          "[ConnectionTest][integration]") {
+  runConnectionTestCase(true, [](ConnectionTestContext& ctx) {
+    multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
+                       ctx.endpoint);
+  });
 }
 
 TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
-  runConnectionTestCase(
-      false, [](ConnectionTestContext& ctx) {
-        for (int a = 0; a < 128; a++) {
-          string junk(16 * 1024 * 1024, 't');
-          for (int b = 0; b < 16 * 1024 * 1024; b++) {
-            junk[b] = rand() % 256;
-          }
-          int fd = ctx.clientSocketHandler->connect(ctx.endpoint);
-          int retval = ctx.clientSocketHandler->writeAllOrReturn(
-              fd, &junk[0], junk.length());
-          REQUIRE(retval == -1);
-          ctx.clientSocketHandler->close(fd);
-        }
-      });
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    for (int a = 0; a < 128; a++) {
+      string junk(16 * 1024 * 1024, 't');
+      for (int b = 0; b < 16 * 1024 * 1024; b++) {
+        junk[b] = rand() % 256;
+      }
+      int fd = ctx.clientSocketHandler->connect(ctx.endpoint);
+      int retval = ctx.clientSocketHandler->writeAllOrReturn(fd, &junk[0],
+                                                             junk.length());
+      REQUIRE(retval == -1);
+      ctx.clientSocketHandler->close(fd);
+    }
+  });
 }

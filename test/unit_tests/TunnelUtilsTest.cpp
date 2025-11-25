@@ -42,9 +42,9 @@ TEST_CASE("Parses environment variable forward", "[TunnelUtils]") {
 
 TEST_CASE("Rejects malformed port forward input", "[TunnelUtils]") {
   SECTION("Mismatched range lengths") {
-    REQUIRE_THROWS_WITH(parseRangesToRequests("8000-8002:9000-9001"),
-                        ContainsSubstring(
-                            "source/destination port range must have same"));
+    REQUIRE_THROWS_WITH(
+        parseRangesToRequests("8000-8002:9000-9001"),
+        ContainsSubstring("source/destination port range must have same"));
   }
 
   SECTION("Range paired with single port") {

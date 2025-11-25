@@ -1,9 +1,9 @@
-#include "ClientConnection.hpp"
-#include "ServerConnection.hpp"
-#include "ServerClientConnection.hpp"
-#include "TestHeaders.hpp"
-
 #include <queue>
+
+#include "ClientConnection.hpp"
+#include "ServerClientConnection.hpp"
+#include "ServerConnection.hpp"
+#include "TestHeaders.hpp"
 
 namespace et {
 namespace {
@@ -48,7 +48,8 @@ class RecordingServerConnection : public ServerConnection {
                             const SocketEndpoint& endpoint)
       : ServerConnection(std::move(socketHandler), endpoint) {}
 
-  bool newClient(shared_ptr<ServerClientConnection> serverClientState) override {
+  bool newClient(
+      shared_ptr<ServerClientConnection> serverClientState) override {
     newClientCalled = true;
     lastConnection = std::move(serverClientState);
     return allowNewClients;
@@ -62,8 +63,8 @@ class RecordingServerConnection : public ServerConnection {
 class RecoverableConnection : public Connection {
  public:
   RecoverableConnection(shared_ptr<SocketHandler> sh,
-                        shared_ptr<BackedReader> r,
-                        shared_ptr<BackedWriter> w, int fd, const string& key)
+                        shared_ptr<BackedReader> r, shared_ptr<BackedWriter> w,
+                        int fd, const string& key)
       : Connection(std::move(sh), "recoverable", key) {
     reader = std::move(r);
     writer = std::move(w);
@@ -106,7 +107,8 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
   handler->close(fds[1]);
 }
 
-TEST_CASE("ClientConnection surfaces handshake failures", "[ClientConnection]") {
+TEST_CASE("ClientConnection surfaces handshake failures",
+          "[ClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int fds[2];
   REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
@@ -196,8 +198,7 @@ TEST_CASE("ServerClientConnection verifies passkeys",
   handler->close(fds[1]);
 }
 
-TEST_CASE("Connection recover exchanges sequence and catchup",
-          "[Connection]") {
+TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
   REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);

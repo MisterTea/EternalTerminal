@@ -110,7 +110,8 @@ class FakeForwardSocketHandler : public SocketHandler {
 };
 }  // namespace
 
-TEST_CASE("ForwardDestinationHandler processes data and closure", "[integration]") {
+TEST_CASE("ForwardDestinationHandler processes data and closure",
+          "[integration]") {
   auto socketHandler = make_shared<FakeForwardSocketHandler>();
   const int fd = 5;
   const int socketId = 42;
@@ -131,7 +132,8 @@ TEST_CASE("ForwardDestinationHandler processes data and closure", "[integration]
   CHECK(socketHandler->closedFds[0] == fd);
 }
 
-TEST_CASE("ForwardDestinationHandler stops when socket would block", "[integration]") {
+TEST_CASE("ForwardDestinationHandler stops when socket would block",
+          "[integration]") {
   auto socketHandler = make_shared<FakeForwardSocketHandler>();
   const int fd = 6;
   socketHandler->queueRead(fd, -1, "", EAGAIN);
@@ -145,7 +147,8 @@ TEST_CASE("ForwardDestinationHandler stops when socket would block", "[integrati
   CHECK(socketHandler->closedFds.empty());
 }
 
-TEST_CASE("ForwardSourceHandler accepts, assigns, and routes data", "[integration]") {
+TEST_CASE("ForwardSourceHandler accepts, assigns, and routes data",
+          "[integration]") {
   auto socketHandler = make_shared<FakeForwardSocketHandler>();
   SocketEndpoint sourceEndpoint;
   sourceEndpoint.set_name("source.sock");
@@ -156,7 +159,7 @@ TEST_CASE("ForwardSourceHandler accepts, assigns, and routes data", "[integratio
 
   {
     ForwardSourceHandler sourceHandler(socketHandler, sourceEndpoint,
-                                      destinationEndpoint);
+                                       destinationEndpoint);
     auto fds = socketHandler->getEndpointFds(sourceEndpoint);
     REQUIRE_FALSE(fds.empty());
     listenFd = *(fds.begin());

@@ -1,10 +1,10 @@
 #define CATCH_CONFIG_RUNNER
 
+#include <cstring>
+
 #include "LogHandler.hpp"
 #include "TelemetryService.hpp"
 #include "TestHeaders.hpp"
-
-#include <cstring>
 
 using namespace et;
 

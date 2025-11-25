@@ -1,12 +1,12 @@
+#include <atomic>
+#include <thread>
+
 #include "BackedReader.hpp"
 #include "BackedWriter.hpp"
 #include "Connection.hpp"
 #include "RawSocketUtils.hpp"
 #include "SocketHandler.hpp"
 #include "TestHeaders.hpp"
-
-#include <atomic>
-#include <thread>
 
 using namespace et;
 using Catch::Matchers::Equals;
@@ -183,7 +183,9 @@ TEST_CASE("RawSocketUtils readAll waits for data then returns fully",
   REQUIRE(::pipe(fds) == 0);
 
   const string payload = "socketutils";
-  std::thread writer([&]() { RawSocketUtils::writeAll(fds[1], payload.data(), payload.size()); });
+  std::thread writer([&]() {
+    RawSocketUtils::writeAll(fds[1], payload.data(), payload.size());
+  });
 
   string buffer(payload.size(), '\0');
   RawSocketUtils::readAll(fds[0], &buffer[0], buffer.size());
@@ -194,7 +196,8 @@ TEST_CASE("RawSocketUtils readAll waits for data then returns fully",
   ::close(fds[1]);
 }
 
-TEST_CASE("SocketHandler helpers read/write encoded payloads", "[SocketHandler]") {
+TEST_CASE("SocketHandler helpers read/write encoded payloads",
+          "[SocketHandler]") {
   FdSocketHandler handler;
   int fds[2];
   REQUIRE(::pipe(fds) == 0);
@@ -232,10 +235,8 @@ TEST_CASE("Connection writes and reads packets with backing buffers",
   auto encryptCrypto = make_shared<CryptoHandler>(key, 0);
   auto decryptCrypto = make_shared<CryptoHandler>(key, 0);
 
-  auto reader =
-      make_shared<BackedReader>(handler, decryptCrypto, fd);
-  auto writer =
-      make_shared<BackedWriter>(handler, encryptCrypto, fd);
+  auto reader = make_shared<BackedReader>(handler, decryptCrypto, fd);
+  auto writer = make_shared<BackedWriter>(handler, encryptCrypto, fd);
   TestConnection conn(handler, reader, writer, fd, key);
 
   Packet pkt(55, "connection-roundtrip");
