@@ -33,6 +33,8 @@ inline int close(int fd) { return ::closesocket(fd); }
 #endif
 
 #ifdef WIN32
+using uid_t = int;
+using gid_t = int;
 #else
 #include <arpa/inet.h>
 #include <grp.h>

@@ -31,8 +31,6 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
   }
 }
 
-#ifdef WIN32
-#else
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
@@ -49,9 +47,14 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       // Make a random file to forward the pipe
       string sourcePattern =
           GetTempDirectory() + string("et_forward_sock_XXXXXX");
+#ifndef WIN32
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
       FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
+#else
+      string sourceDirectory = mktemp(&sourcePattern[0]);
+      FATAL_FAIL(mkdir(&sourceDirectory[0]));
+#endif
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
@@ -78,8 +81,10 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
+#ifndef WIN32
       FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+#endif
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     }
@@ -89,7 +94,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     return pfsr;
   }
 }
-#endif
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {

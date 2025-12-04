@@ -116,8 +116,8 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
 }
 
 int UnixSocketHandler::accept(int sockFd) {
-  sockaddr_in client;
-  socklen_t c = sizeof(sockaddr_in);
+  sockaddr_storage client;
+  socklen_t c = sizeof(client);
   int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
   auto acceptErrno = GetErrno();
   while (true) {
