@@ -3,7 +3,7 @@
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
-#include "PsuedoTerminalConsole.hpp"
+#include "PseudoTerminalConsole.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
 #include "TunnelUtils.hpp"
@@ -361,7 +361,7 @@ int main(int argc, char** argv) {
     }
     shared_ptr<Console> console;
     if (!result.count("N")) {
-      console.reset(new PsuedoTerminalConsole());
+      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("f") > 0;

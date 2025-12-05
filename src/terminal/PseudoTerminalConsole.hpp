@@ -6,9 +6,9 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
-class PsuedoTerminalConsole : public Console {
+class PseudoTerminalConsole : public Console {
  public:
-  PsuedoTerminalConsole() {
+  PseudoTerminalConsole() {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
     GetConsoleMode(hstdin, &inputMode);
@@ -21,7 +21,7 @@ class PsuedoTerminalConsole : public Console {
 #endif
   }
 
-  virtual ~PsuedoTerminalConsole() {}
+  virtual ~PseudoTerminalConsole() {}
 
   virtual void setup() {
 #ifdef WIN32

@@ -22,9 +22,9 @@
 #include "UserTerminal.hpp"
 
 namespace et {
-class PsuedoUserTerminal : public UserTerminal {
+class PseudoUserTerminal : public UserTerminal {
  public:
-  virtual ~PsuedoUserTerminal() {}
+  virtual ~PseudoUserTerminal() {}
 
   virtual int setup(int routerFd) {
     pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
@@ -46,7 +46,7 @@ class PsuedoUserTerminal : public UserTerminal {
 #ifdef WITH_UTEMPTER
     {
       char buf[1024];
-      sprintf(buf, "et [%lld]", (long long)getpid());
+      sprintf(buf, "etterminal [%lld]", (long long)getpid());
       utempter_add_record(masterFd, buf);
     }
 #endif
