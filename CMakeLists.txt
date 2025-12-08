@@ -175,6 +175,8 @@ option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
 option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
+option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 
@@ -598,6 +600,30 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+
+  if(INSTALL_BASH_COMPLETION)
+    find_package(BashCompletion QUIET)
+    if(NOT BASH_COMPLETION_COMPLETIONSDIR)
+      find_package(PkgConfig QUIET)
+      if(PKG_CONFIG_FOUND)
+        pkg_get_variable(BASH_COMPLETION_COMPLETIONSDIR bash-completion completionsdir)
+      endif()
+    endif()
+
+    if(BASH_COMPLETION_COMPLETIONSDIR)
+      install(FILES scripts/et-completion.bash RENAME et DESTINATION ${BASH_COMPLETION_COMPLETIONSDIR})
+    else()
+      message(WARNING "Could not find bash completion directory. Skipping installation of bash completion script.")
+    endif()
+  endif()
+
+  if(INSTALL_ZSH_COMPLETION)
+    if(NOT ZSH_COMPLETIONS_DIR)
+        include(GNUInstallDirs)
+        set(ZSH_COMPLETIONS_DIR "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions")
+    endif()
+    install(FILES scripts/et-completion.zsh RENAME _et DESTINATION ${ZSH_COMPLETIONS_DIR})
+  endif()
 endif()
 
 set(CPACK_PACKAGE_NAME "EternalTerminal")
