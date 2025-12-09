@@ -151,6 +151,12 @@ bool Connection::read(Packet* packet) {
   VLOG(4) << "Before read get connectionMutex";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   VLOG(4) << "After read get connectionMutex";
+
+  if (!reader) {
+    VLOG(3) << "Cannot read: reader not initialized";
+    return false;
+  }
+
   ssize_t messagesRead = reader->read(packet);
   auto localErrno = GetErrno();
   if (messagesRead == -1) {
@@ -174,6 +180,11 @@ bool Connection::read(Packet* packet) {
 bool Connection::write(const Packet& packet) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (socketFd == -1) {
+    return false;
+  }
+
+  if (!writer) {
+    VLOG(3) << "Cannot write: writer not initialized";
     return false;
   }
 
