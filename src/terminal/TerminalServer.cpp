@@ -301,8 +301,16 @@ void TerminalServer::runTerminal(
           tb.set_buffer(s);
           serverClientState->writePacket(
               Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-        } else {
+        } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          run = false;
+          break;
+        } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+          LOG(INFO) << "Socket temporarily unavailable, trying again...";
+          sleep(1);
+          continue;
+        } else {
+          LOG(ERROR) << "Error reading from socket: " << errno << " " << strerror(errno);
           run = false;
           break;
         }
