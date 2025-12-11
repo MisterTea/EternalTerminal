@@ -310,7 +310,8 @@ void TerminalServer::runTerminal(
           sleep(1);
           continue;
         } else {
-          LOG(ERROR) << "Error reading from socket: " << errno << " " << strerror(errno);
+          LOG(ERROR) << "Error reading from socket: " << errno << " "
+                     << strerror(errno);
           run = false;
           break;
         }
