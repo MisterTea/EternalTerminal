@@ -48,6 +48,86 @@ T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
   exit(0);
 }
 
+// Parsed components of a [user@]host[:port] string
+struct ParsedHostString {
+  string user;
+  string host;
+  string portSuffix;  // includes colon, e.g. ":22"
+};
+
+// Parse a host string in [user@]host[:port] format
+// Handles IPv6 addresses in bracket notation: [::1], [::1]:22, user@[::1]:22
+ParsedHostString parseHostString(const string& hostString) {
+  ParsedHostString result;
+  string remaining = hostString;
+
+  // Extract user@ prefix if present
+  size_t atIndex = remaining.find("@");
+  if (atIndex != string::npos) {
+    result.user = remaining.substr(0, atIndex);
+    remaining = remaining.substr(atIndex + 1);
+  }
+
+  // Handle IPv6 addresses in bracket notation: [ipv6]:port
+  if (!remaining.empty() && remaining[0] == '[') {
+    size_t closeBracket = remaining.find(']');
+    if (closeBracket != string::npos) {
+      // Extract IPv6 address including brackets
+      result.host = remaining.substr(0, closeBracket + 1);
+      // Check for :port after the closing bracket
+      if (closeBracket + 1 < remaining.length() &&
+          remaining[closeBracket + 1] == ':') {
+        result.portSuffix = remaining.substr(closeBracket + 1);
+      }
+    } else {
+      // Malformed: opening bracket without closing, treat as-is
+      result.host = remaining;
+    }
+  } else {
+    // Non-IPv6: extract :port suffix if present
+    size_t colonIndex = remaining.find(":");
+    if (colonIndex != string::npos) {
+      result.portSuffix = remaining.substr(colonIndex);  // ":port"
+      remaining = remaining.substr(0, colonIndex);
+    }
+    result.host = remaining;
+  }
+
+  return result;
+}
+
+// Resolved SSH config information for a host
+struct ResolvedSshConfig {
+  string hostname;  // Resolved HostName (or original if not an alias)
+  string username;  // Username from SSH config (empty if not specified)
+};
+
+// Resolve a host alias via SSH config lookup
+ResolvedSshConfig resolveSshConfigHost(const string& hostAlias) {
+  ResolvedSshConfig result;
+  result.hostname = hostAlias;  // Default to original if not resolved
+
+  char* home_dir = ssh_get_user_home_dir();
+  Options opts = {NULL, NULL, NULL, NULL, NULL, NULL, 0,    0, 0,
+                  0,    0,    NULL, NULL, 0,    0,    NULL, {}};
+
+  ssh_options_set(&opts, SSH_OPTIONS_HOST, hostAlias.c_str());
+  parse_ssh_config_file(hostAlias.c_str(), &opts,
+                        string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(hostAlias.c_str(), &opts, SYSTEM_SSH_CONFIG_PATH);
+
+  if (opts.host) {
+    result.hostname = string(opts.host);
+  }
+  if (opts.username) {
+    result.username = string(opts.username);
+  }
+
+  freeOptionsFields(&opts);
+  free(home_dir);
+  return result;
+}
+
 int main(int argc, char** argv) {
   WinsockContext context;
   string tmpDir = GetTempDirectory();
@@ -286,12 +366,8 @@ int main(int argc, char** argv) {
     // Parse jumphost: cmd > sshconfig
     if (sshConfigOptions.ProxyJump && jumphost.length() == 0) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
-      size_t colonIndex = proxyjump.find(":");
-      if (colonIndex != string::npos) {
-        jumphost = proxyjump.substr(0, colonIndex);
-      } else {
-        jumphost = proxyjump;
-      }
+      // Keep full ProxyJump value including SSH port for ssh -J command
+      jumphost = proxyjump;
       LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
     }
 
@@ -300,13 +376,34 @@ int main(int argc, char** argv) {
     if (!jumphost.empty()) {
       is_jumphost = true;
       LOG(INFO) << "Setting port to jumphost port";
-      size_t atIndex = jumphost.find("@");
-      if (atIndex != string::npos) {
-        socketEndpoint.set_name(jumphost.substr(atIndex + 1));
-      } else {
-        socketEndpoint.set_name(jumphost);
-        jumphost = username + "@" + jumphost;
+
+      // Parse [user@]host[:sshport] format
+      ParsedHostString parsed = parseHostString(jumphost);
+
+      // Resolve jumphost alias to actual hostname via SSH config
+      ResolvedSshConfig resolved = resolveSshConfigHost(parsed.host);
+      if (resolved.hostname != parsed.host) {
+        LOG(INFO) << "Resolved jumphost alias '" << parsed.host
+                  << "' to hostname: " << resolved.hostname;
       }
+
+      // Determine username: command-line > SSH config > local user
+      string jumphostUser = parsed.user;
+      if (jumphostUser.empty() && !resolved.username.empty()) {
+        jumphostUser = resolved.username;
+        LOG(INFO) << "Using jumphost username from SSH config: "
+                  << jumphostUser;
+      }
+      if (jumphostUser.empty()) {
+        char* localUsernamePtr = ssh_get_local_username();
+        jumphostUser = string(localUsernamePtr);
+        SAFE_FREE(localUsernamePtr);
+      }
+
+      // Reconstruct jumphost with resolved hostname for SSH -J flag
+      jumphost = jumphostUser + "@" + resolved.hostname + parsed.portSuffix;
+
+      socketEndpoint.set_name(resolved.hostname);
       socketEndpoint.set_port(result["jport"].as<int>());
     } else {
       socketEndpoint.set_name(destinationHost);
@@ -399,15 +496,7 @@ int main(int argc, char** argv) {
   }
 
   // Clean up ssh config options
-  SAFE_FREE(sshConfigOptions.username);
-  SAFE_FREE(sshConfigOptions.host);
-  SAFE_FREE(sshConfigOptions.sshdir);
-  SAFE_FREE(sshConfigOptions.knownhosts);
-  SAFE_FREE(sshConfigOptions.ProxyCommand);
-  SAFE_FREE(sshConfigOptions.ProxyJump);
-  SAFE_FREE(sshConfigOptions.gss_server_identity);
-  SAFE_FREE(sshConfigOptions.gss_client_identity);
-  SAFE_FREE(sshConfigOptions.identity_agent);
+  freeOptionsFields(&sshConfigOptions);
 
 #ifdef WIN32
   WSACleanup();
