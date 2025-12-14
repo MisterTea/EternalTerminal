@@ -91,7 +91,7 @@ jobs:
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
       
-      - uses: actions/upload-artifact@v4
+      - uses: actions/upload-artifact@v6
         with:
           name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}
