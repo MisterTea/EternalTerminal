@@ -4,7 +4,7 @@
 #include "LogHandler.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
-#include "PsuedoUserTerminal.hpp"
+#include "PseudoUserTerminal.hpp"
 #include "ServerFifoPath.hpp"
 #include "TcpSocketHandler.hpp"
 #include "UserJumphostHandler.hpp"
@@ -74,7 +74,7 @@ int main(int argc, char** argv) {
     }
 
     shared_ptr<SocketHandler> ipcSocketHandler(new PipeSocketHandler());
-    shared_ptr<PsuedoUserTerminal> term(new PsuedoUserTerminal());
+    shared_ptr<PseudoUserTerminal> term(new PseudoUserTerminal());
 
     string idpasskey;
     if (result.count("idpasskey") == 0 && result.count("idpasskeyfile") == 0) {
