@@ -17,17 +17,17 @@ jobs:
         os: [ubuntu-latest, macos-latest, windows-latest]
         gcc: [11, 12, 13]
         include:
-        - os: windows-latest
-          extension: .exe
+          - os: windows-latest
+            extension: .exe
         exclude:
           #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
-            #gcc: 11
+          #gcc: 11
           - os: macos-latest
             gcc: 12
           - os: macos-latest
             gcc: 13
           #- os: windows-latest
-            #gcc: 11
+          #gcc: 11
           - os: windows-latest
             gcc: 12
           - os: windows-latest
@@ -122,7 +122,8 @@ jobs:
       - name: Build
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
-      
+          ctest --parallel
+
       - uses: actions/upload-artifact@v6
         with:
           name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
