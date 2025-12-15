@@ -15,10 +15,11 @@
 
 namespace et {
 /**
- * @brief Eternal terminal server that accepts clients and routes them to jump hosts or terminals.
+ * @brief Eternal terminal server that accepts clients and routes them to jump
+ * hosts or terminals.
  *
- * Manages a router socket, per-client terminal threads, and forwards new connections
- * to `runTerminal` or `runJumpHost`.
+ * Manages a router socket, per-client terminal threads, and forwards new
+ * connections to `runTerminal` or `runJumpHost`.
  */
 class TerminalServer : public ServerConnection {
  public:
@@ -37,10 +38,12 @@ class TerminalServer : public ServerConnection {
                    const InitialPayload &payload);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
-  /** @brief Callback from ServerConnection when a new client is authenticated. */
+  /** @brief Callback from ServerConnection when a new client is authenticated.
+   */
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
 
-  /** @brief Main loop that accepts client connections and relays to handlers. */
+  /** @brief Main loop that accepts client connections and relays to handlers.
+   */
   void run();
   /** @brief Signals the server loop to stop accepting new work. */
   void shutdown() {

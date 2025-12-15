@@ -2,10 +2,11 @@
 #define __ET_HEADERS__
 
 /**
- * @brief Central header that pulls in platform libraries, protobufs, and utility helpers.
+ * @brief Central header that pulls in platform libraries, protobufs, and
+ * utility helpers.
  *
- * Pulls in OS-specific headers, third-party dependencies, and defines constants/macros
- * that are shared by the Eternal Terminal binaries.
+ * Pulls in OS-specific headers, third-party dependencies, and defines
+ * constants/macros that are shared by the Eternal Terminal binaries.
  */
 
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
@@ -192,7 +193,8 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #endif
 
 /**
- * @brief Normalizes platform-specific errno values (translates Win32 WSA errors).
+ * @brief Normalizes platform-specific errno values (translates Win32 WSA
+ * errors).
  */
 inline int GetErrno() {
 #ifdef WIN32

@@ -18,7 +18,8 @@ class Packet {
   Packet(uint8_t _header, const string& _payload)
       : encrypted(false), header(_header), payload(_payload) {}
   /**
-   * @brief Allows callers to explicitly set the encrypted flag when constructing.
+   * @brief Allows callers to explicitly set the encrypted flag when
+   * constructing.
    */
   Packet(bool _encrypted, uint8_t _header, const string& _payload)
       : encrypted(_encrypted), header(_header), payload(_payload) {}
@@ -78,7 +79,7 @@ class Packet {
     return s;
   }
 
-  protected:
+ protected:
   /** @brief Size of the non-payload portion of the serialized packet. */
   static const int HEADER_SIZE = 2;
   /** @brief Tracks whether the payload has been encrypted. */

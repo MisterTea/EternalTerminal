@@ -6,21 +6,25 @@
 
 namespace et {
 /**
- * @brief Accepts incoming connections on a local endpoint and tracks open sockets.
+ * @brief Accepts incoming connections on a local endpoint and tracks open
+ * sockets.
  */
 class ForwardSourceHandler {
  public:
-  /** @brief Creates source/destination handlers used for local port forwarding. */
+  /** @brief Creates source/destination handlers used for local port forwarding.
+   */
   ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
                        const SocketEndpoint& _source,
                        const SocketEndpoint& _destination);
 
   ~ForwardSourceHandler();
 
-  /** @brief Starts listening on the source endpoint and returns the server fd. */
+  /** @brief Starts listening on the source endpoint and returns the server fd.
+   */
   int listen();
 
-  /** @brief Polls all active sockets and stages `PortForwardData` for destinations. */
+  /** @brief Polls all active sockets and stages `PortForwardData` for
+   * destinations. */
   void update(vector<PortForwardData>* data);
 
   /** @brief Returns true if an accepted socket is pending assignment. */

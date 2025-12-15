@@ -8,7 +8,8 @@ namespace et {
 extern const int NULL_CLIENT_ID;
 
 /**
- * @brief Connection implementation used by clients that connect to a remote server.
+ * @brief Connection implementation used by clients that connect to a remote
+ * server.
  *
  * Handles reconnect logic by spawning a dedicated thread that waits for the
  * server to become reachable again.
@@ -37,7 +38,7 @@ class ClientConnection : public Connection {
    */
   void waitReconnect();
 
-  protected:
+ protected:
   /**
    * @brief Background loop used to re-establish a connection when lost.
    */

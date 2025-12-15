@@ -20,7 +20,8 @@ class ServerClientConnection : public Connection {
   virtual ~ServerClientConnection();
 
   /**
-   * @brief Tears down the old socket (if any) and attempts recovery on the new fd.
+   * @brief Tears down the old socket (if any) and attempts recovery on the new
+   * fd.
    */
   bool recoverClient(int newSocketFd);
 

@@ -8,7 +8,8 @@
 
 namespace et {
 /**
- * @brief Represents a buffered client/server connection with automatic recovery.
+ * @brief Represents a buffered client/server connection with automatic
+ * recovery.
  *
  * Connection owns {@link BackedReader} and {@link BackedWriter} instances to
  * read/write encrypted packets while keeping replay buffers for reconnects.
@@ -16,7 +17,8 @@ namespace et {
 class Connection {
  public:
   /**
-   * @brief Creates the shared reader/writer pair and assigns the connection id/key.
+   * @brief Creates the shared reader/writer pair and assigns the connection
+   * id/key.
    */
   Connection(shared_ptr<SocketHandler> _socketHandler, const string& _id,
              const string& _key);
@@ -63,9 +65,7 @@ class Connection {
    * @brief Override to trigger reconnect behavior after closing the socket.
    *        The default simply closes the socket and does not reconnect.
    */
-  virtual void closeSocketAndMaybeReconnect() {
-    closeSocket();
-  }
+  virtual void closeSocketAndMaybeReconnect() { closeSocket(); }
 
   /**
    * @brief Signals that the connection should stop and tears down resources.
@@ -77,10 +77,11 @@ class Connection {
     return shuttingDown;
   }
 
-  protected:
+ protected:
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
-   * @return true if recovery succeeds and the new socket is owned by this object.
+   * @return true if recovery succeeds and the new socket is owned by this
+   * object.
    */
   bool recover(int newSocketFd);
 

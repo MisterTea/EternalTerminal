@@ -6,15 +6,18 @@
 
 namespace et {
 /**
- * @brief Provides an abstract API for socket reads/writes and lifecycle management.
+ * @brief Provides an abstract API for socket reads/writes and lifecycle
+ * management.
  */
 class SocketHandler {
  public:
-  /** @brief Ensures derived handlers can clean up platform-specific resources. */
+  /** @brief Ensures derived handlers can clean up platform-specific resources.
+   */
   virtual ~SocketHandler() {}
 
   /**
-   * @brief Returns true when the kernel reports data ready to read on a descriptor.
+   * @brief Returns true when the kernel reports data ready to read on a
+   * descriptor.
    */
   virtual bool hasData(int fd) = 0;
   /**
@@ -27,8 +30,10 @@ class SocketHandler {
   virtual ssize_t write(int fd, const void* buf, size_t count) = 0;
 
   /**
-   * @brief Reads exactly `count` bytes, retrying on EAGAIN until the buffer fills.
-   * @param timeout Whether to enforce the internal transfer timeout while waiting.
+   * @brief Reads exactly `count` bytes, retrying on EAGAIN until the buffer
+   * fills.
+   * @param timeout Whether to enforce the internal transfer timeout while
+   * waiting.
    */
   void readAll(int fd, void* buf, size_t count, bool timeout);
   /**
@@ -37,7 +42,8 @@ class SocketHandler {
    */
   int writeAllOrReturn(int fd, const void* buf, size_t count);
   /**
-   * @brief Attempts to write all bytes, throwing if the operation times out or fails.
+   * @brief Attempts to write all bytes, throwing if the operation times out or
+   * fails.
    */
   void writeAllOrThrow(int fd, const void* buf, size_t count, bool timeout);
 
@@ -130,7 +136,8 @@ class SocketHandler {
   /** @brief Reads a fixed amount of base64-encoded data and decodes it. */
   void readB64(int fd, char* buf, size_t count);
   /**
-   * @brief Reads an explicitly encoded length string and decodes it into @p out.
+   * @brief Reads an explicitly encoded length string and decodes it into @p
+   * out.
    * @param encodedLength Byte count of the supplied base64 string.
    */
   void readB64EncodedLength(int fd, string* out, size_t encodedLength);
@@ -145,7 +152,8 @@ class SocketHandler {
    */
   virtual set<int> listen(const SocketEndpoint& endpoint) = 0;
   /**
-   * @brief Returns any fds associated with the endpoint (listening or otherwise).
+   * @brief Returns any fds associated with the endpoint (listening or
+   * otherwise).
    */
   virtual set<int> getEndpointFds(const SocketEndpoint& endpoint) = 0;
   /**

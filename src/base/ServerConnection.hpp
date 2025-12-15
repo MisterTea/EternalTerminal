@@ -12,7 +12,8 @@ struct IdKeyPair {
 };
 
 /**
- * @brief Base class for servers that accept clients over sockets and track them.
+ * @brief Base class for servers that accept clients over sockets and track
+ * them.
  *
  * Holds registered client keys and creates `ServerClientConnection` instances
  * for each authenticated client that connects.
@@ -37,7 +38,8 @@ class ServerConnection {
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
   /**
-   * @brief Accepts a pending connection on the listening fd and starts a handler.
+   * @brief Accepts a pending connection on the listening fd and starts a
+   * handler.
    * @param fd Listening socket descriptor returned by `listen()`.
    */
   bool acceptNewConnection(int fd);

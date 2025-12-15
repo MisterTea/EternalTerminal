@@ -37,7 +37,8 @@ namespace et {
  */
 class ServerFifoPath {
  public:
-  /** @brief Initializes helper state used by server/clients to locate the server fifo. */
+  /** @brief Initializes helper state used by server/clients to locate the
+   * server fifo. */
   ServerFifoPath();
 
   /**

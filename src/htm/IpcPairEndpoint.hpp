@@ -17,7 +17,8 @@ class IpcPairEndpoint {
    * @brief Associates the shared socket handler with the specified pipe fd.
    */
   IpcPairEndpoint(shared_ptr<SocketHandler> _socketHandler, int _endpointFd);
-  /** @brief Ensures the IPC descriptor is closed when the endpoint is destroyed. */
+  /** @brief Ensures the IPC descriptor is closed when the endpoint is
+   * destroyed. */
   virtual ~IpcPairEndpoint();
   /** @brief Returns the currently tracked pipe descriptor. */
   inline int getEndpointFd() { return endpointFd; }

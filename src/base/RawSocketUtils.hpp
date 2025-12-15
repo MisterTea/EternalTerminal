@@ -10,7 +10,8 @@ namespace et {
 class RawSocketUtils {
  public:
   /**
-   * @brief Writes the entire buffer to the given descriptor, retrying on EAGAIN.
+   * @brief Writes the entire buffer to the given descriptor, retrying on
+   * EAGAIN.
    */
   static void writeAll(int fd, const char* buf, size_t count);
 

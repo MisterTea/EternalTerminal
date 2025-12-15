@@ -16,12 +16,14 @@
 
 namespace et {
 /**
- * @brief Coordinates the lifecycle of a client connection, console, and tunnels.
+ * @brief Coordinates the lifecycle of a client connection, console, and
+ * tunnels.
  */
 class TerminalClient {
  public:
   /**
-   * @brief Configures the client with the required sockets, console, and tunnels.
+   * @brief Configures the client with the required sockets, console, and
+   * tunnels.
    */
   TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
                  std::shared_ptr<SocketHandler> _pipeSocketHandler,
@@ -30,9 +32,11 @@ class TerminalClient {
                  bool jumphost, const string& tunnels,
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration);
-  /** @brief Tears down the client, closing sockets and stopping background threads. */
+  /** @brief Tears down the client, closing sockets and stopping background
+   * threads. */
   virtual ~TerminalClient();
-  /** @brief Runs the interactive session for `command`, optionally staying alive. */
+  /** @brief Runs the interactive session for `command`, optionally staying
+   * alive. */
   void run(const string& command, const bool noexit);
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
@@ -42,7 +46,7 @@ class TerminalClient {
     shuttingDown = true;
   }
 
-protected:
+ protected:
   /** @brief Console wrapper used for local terminal input/output. */
   shared_ptr<Console> console;
   /** @brief Client connection that talks to the ET server. */

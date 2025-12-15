@@ -6,7 +6,8 @@
 
 namespace et {
 /**
- * @brief Server-side helper that listens on a pipe and accepts a single endpoint.
+ * @brief Server-side helper that listens on a pipe and accepts a single
+ * endpoint.
  */
 class IpcPairServer : public IpcPairEndpoint {
  public:
@@ -17,7 +18,8 @@ class IpcPairServer : public IpcPairEndpoint {
                 const SocketEndpoint &_endpoint);
   /** @brief Tears down listeners and closes the server fd. */
   virtual ~IpcPairServer();
-  /** @brief Accepts a new HTM client and stores its descriptor in `endpointFd`. */
+  /** @brief Accepts a new HTM client and stores its descriptor in `endpointFd`.
+   */
   virtual void pollAccept();
   /** @brief Accessor for the server's listening descriptor. */
   inline int getServerFd() { return serverFd; }

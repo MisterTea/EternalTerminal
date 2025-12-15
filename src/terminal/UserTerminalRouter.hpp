@@ -10,9 +10,11 @@
 namespace et {
 
 /**
- * @brief Routes authenticated clients to pre-established terminal/user sessions.
+ * @brief Routes authenticated clients to pre-established terminal/user
+ * sessions.
  *
- * Exposes a pipe listener for new connections and maps client IDs to `TerminalUserInfo`.
+ * Exposes a pipe listener for new connections and maps client IDs to
+ * `TerminalUserInfo`.
  */
 class UserTerminalRouter {
  public:
@@ -21,13 +23,16 @@ class UserTerminalRouter {
    */
   UserTerminalRouter(shared_ptr<PipeSocketHandler> _socketHandler,
                      const SocketEndpoint& _routerEndpoint);
-  /** @brief Returns the active server side descriptor that accepts router clients. */
+  /** @brief Returns the active server side descriptor that accepts router
+   * clients. */
   inline int getServerFd() { return serverFd; }
-  /** @brief Blocks until a new router client connects and returns its id/key info. */
+  /** @brief Blocks until a new router client connects and returns its id/key
+   * info. */
   IdKeyPair acceptNewConnection();
 
   /**
-   * @brief Returns the previously-registered `TerminalUserInfo` for a reconnecting client.
+   * @brief Returns the previously-registered `TerminalUserInfo` for a
+   * reconnecting client.
    */
   std::optional<TerminalUserInfo> tryGetInfoForConnection(
       const shared_ptr<ServerClientConnection>& serverClientState);
@@ -37,7 +42,7 @@ class UserTerminalRouter {
     return socketHandler;
   }
 
-protected:
+ protected:
   /** @brief File descriptor used by external clients to reach the router. */
   int serverFd;
   /** @brief Terminal metadata registered by `handleConnection` clients. */

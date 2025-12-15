@@ -98,7 +98,7 @@ class PseudoTerminalConsole : public Console {
 #endif
   }
 
-protected:
+ protected:
 #ifdef WIN32
   /** @brief Saved console input mode so `teardown()` can restore it. */
   DWORD inputMode;

@@ -5,7 +5,8 @@
 
 namespace et {
 /**
- * @brief Implements IPv4/IPv6 socket operations built on top of UnixSocketHandler.
+ * @brief Implements IPv4/IPv6 socket operations built on top of
+ * UnixSocketHandler.
  */
 class TcpSocketHandler : public UnixSocketHandler {
  public:
@@ -13,7 +14,8 @@ class TcpSocketHandler : public UnixSocketHandler {
   virtual ~TcpSocketHandler() {}
 
   /**
-   * @brief Resolves the hostname/port and connects non-blockingly to the server.
+   * @brief Resolves the hostname/port and connects non-blockingly to the
+   * server.
    */
   virtual int connect(const SocketEndpoint& endpoint);
   /**
@@ -29,12 +31,13 @@ class TcpSocketHandler : public UnixSocketHandler {
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
 
-  protected:
+ protected:
   /** @brief Tracks all listening sockets created per TCP port. */
   map<int, set<int>> portServerSockets;
 
   /**
-   * @brief Performs additional TCP-specific socket configuration (NODELAY/linger).
+   * @brief Performs additional TCP-specific socket configuration
+   * (NODELAY/linger).
    */
   virtual void initSocket(int fd);
 };

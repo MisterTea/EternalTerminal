@@ -16,16 +16,22 @@ class DaemonCreator {
   static int createSessionLeader();
 
   /**
-   * @brief Forks twice, optionally exiting the parent, and redirects stdio/devnull.
-   * @param terminateParent Whether the parent should exit immediately after forking.
-   * @param childPidFile Optional path to a pid file that is written by the daemon.
-   * @return PARENT when running inside the original parent, CHILD inside the daemon.
+   * @brief Forks twice, optionally exiting the parent, and redirects
+   * stdio/devnull.
+   * @param terminateParent Whether the parent should exit immediately after
+   * forking.
+   * @param childPidFile Optional path to a pid file that is written by the
+   * daemon.
+   * @return PARENT when running inside the original parent, CHILD inside the
+   * daemon.
    */
   static int create(bool terminateParent, string childPidFile);
 
-  /** @brief Returned from `create()` when still running inside the original parent. */
+  /** @brief Returned from `create()` when still running inside the original
+   * parent. */
   static const int PARENT = 1;
-  /** @brief Returned from `create()` when the call is executing inside the daemon. */
+  /** @brief Returned from `create()` when the call is executing inside the
+   * daemon. */
   static const int CHILD = 2;
 };
 }  // namespace et

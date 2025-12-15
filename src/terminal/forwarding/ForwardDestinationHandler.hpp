@@ -11,7 +11,8 @@ namespace et {
  */
 class ForwardDestinationHandler {
  public:
-  /** @brief Binds the handler to a destination fd so data can be sent downstream. */
+  /** @brief Binds the handler to a destination fd so data can be sent
+   * downstream. */
   ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
                             int _socketId);
   /** @brief Sends bytes that need to travel to the destination socket. */

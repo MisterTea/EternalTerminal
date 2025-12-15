@@ -8,7 +8,8 @@
 
 namespace et {
 /**
- * @brief Describes whether a write succeeded, was skipped, or partially lost data.
+ * @brief Describes whether a write succeeded, was skipped, or partially lost
+ * data.
  */
 enum class BackedWriterWriteState {
   /** @brief Write attempt skipped because no socket is available. */
@@ -20,25 +21,30 @@ enum class BackedWriterWriteState {
 };
 
 /**
- * @brief Writes packets to a socket while maintaining an in-memory backup for recovery.
+ * @brief Writes packets to a socket while maintaining an in-memory backup for
+ * recovery.
  */
 class BackedWriter {
  public:
   /**
-   * @brief Creates a writer bound to a socket and crypto pair, starting with the given fd.
+   * @brief Creates a writer bound to a socket and crypto pair, starting with
+   * the given fd.
    */
   BackedWriter(shared_ptr<SocketHandler> socketHandler,
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
   /**
    * @brief Encrypts and transmits the packet while keeping a backup copy.
-   * @return State describing whether bytes were fully sent or buffered for recovery.
+   * @return State describing whether bytes were fully sent or buffered for
+   * recovery.
    */
   BackedWriterWriteState write(Packet packet);
 
   /**
-   * @brief Returns serialized packets that the remote side still needs after reconnect.
-   * @param lastValidSequenceNumber Sequence number acknowledged by the remote peer.
+   * @brief Returns serialized packets that the remote side still needs after
+   * reconnect.
+   * @param lastValidSequenceNumber Sequence number acknowledged by the remote
+   * peer.
    */
   vector<std::string> recover(int64_t lastValidSequenceNumber);
 
@@ -48,7 +54,8 @@ class BackedWriter {
   void revive(int newSocketFd);
 
   /**
-   * @brief Mutex guarding recovery operations so callers can hold it when needed.
+   * @brief Mutex guarding recovery operations so callers can hold it when
+   * needed.
    */
   mutex& getRecoverMutex() { return recoverMutex; }
 
@@ -70,7 +77,7 @@ class BackedWriter {
    */
   inline int64_t getSequenceNumber() { return sequenceNumber; }
 
-  protected:
+ protected:
   /** @brief Synchronizes access to socket state and backup buffer. */
   mutex recoverMutex;
   /** @brief Platform socket helper. */
@@ -84,7 +91,8 @@ class BackedWriter {
   static const int MAX_BACKUP_BYTES = 64 * 1024 * 1024;
   /** @brief Buffer of encrypted packets that may need to be replayed. */
   std::deque<Packet> backupBuffer;
-  /** @brief Running size of the backup buffer to keep the total under MAX_BACKUP_BYTES. */
+  /** @brief Running size of the backup buffer to keep the total under
+   * MAX_BACKUP_BYTES. */
   int64_t backupSize;
   /** @brief Sequence number that increments each time a packet is backed up. */
   int64_t sequenceNumber;

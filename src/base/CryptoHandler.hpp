@@ -15,7 +15,8 @@ class CryptoHandler {
   /**
    * @brief Initializes libsodium, copies the provided key, and seeds the nonce.
    * @param key Exactly crypto_secretbox_KEYBYTES bytes of shared key material.
-   * @param nonceMSB Most significant byte used to distinguish client/server streams.
+   * @param nonceMSB Most significant byte used to distinguish client/server
+   * streams.
    */
   explicit CryptoHandler(const string& key, unsigned char nonceMSB);
   ~CryptoHandler();
@@ -36,7 +37,8 @@ class CryptoHandler {
 
  protected:
   /**
-   * @brief Increments the nonce to guarantee a unique per-message secretbox input.
+   * @brief Increments the nonce to guarantee a unique per-message secretbox
+   * input.
    */
   void incrementNonce();
   /** @brief Nonce used for the next encryption/decryption call. */

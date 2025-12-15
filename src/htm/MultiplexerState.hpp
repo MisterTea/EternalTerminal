@@ -24,17 +24,20 @@ class MultiplexerState {
  public:
   /** @brief Initializes the multiplexer using the supplied IPC handler. */
   MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
-  /** @brief Serializes the current tabs/panes/splits into JSON for INIT_STATE. */
+  /** @brief Serializes the current tabs/panes/splits into JSON for INIT_STATE.
+   */
   string toJsonString();
   /** @brief Sends keystrokes from the client into the pane's terminal. */
   void appendData(const string& uid, const string& data);
   /** @brief Creates a new tab that is backed by a newly spawned terminal. */
   void newTab(const string& tabId, const string& paneId);
-  /** @brief Adds a split alongside `sourceId` using the requested orientation. */
+  /** @brief Adds a split alongside `sourceId` using the requested orientation.
+   */
   void newSplit(const string& sourceId, const string& paneId, bool vertical);
   /** @brief Stops and removes a pane, collapsing its split/tab as needed. */
   void closePane(const string& paneId);
-  /** @brief Reads from every `TerminalHandler` and streams data to the client. */
+  /** @brief Reads from every `TerminalHandler` and streams data to the client.
+   */
   void update(int endpointFd);
   /** @brief Dumps the current terminal buffers whenever a client reconnects. */
   void sendTerminalBuffers(int endpointFd);
@@ -52,7 +55,7 @@ class MultiplexerState {
   map<string, shared_ptr<Pane>> panes;
   /** @brief Split nodes identified by their UUID. */
   map<string, shared_ptr<Split>> splits;
-  /** @brief IDs that have already been closed to prevent re-use. */
+  /** @brief IDs that have already been closed to prevent reuse. */
   set<string> closed;
 
   /** @brief Fetches a tab object, verifying it exists. */

@@ -5,7 +5,8 @@
 
 namespace et {
 /**
- * @brief Handles UNIX domain socket connections that are represented as named pipes.
+ * @brief Handles UNIX domain socket connections that are represented as named
+ * pipes.
  */
 class PipeSocketHandler : public UnixSocketHandler {
  public:

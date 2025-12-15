@@ -7,12 +7,14 @@
 
 namespace et {
 /**
- * @brief Manages the lifespan of a `UserTerminal`, feeding data through sockets.
+ * @brief Manages the lifespan of a `UserTerminal`, feeding data through
+ * sockets.
  */
 class UserTerminalHandler {
  public:
   /**
-   * @brief Initializes the handler with the router endpoint and terminal implementation.
+   * @brief Initializes the handler with the router endpoint and terminal
+   * implementation.
    */
   UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
                       shared_ptr<UserTerminal> _term, bool noratelimit,
@@ -26,7 +28,7 @@ class UserTerminalHandler {
     shuttingDown = true;
   }
 
-protected:
+ protected:
   /** @brief Router pipe descriptor supplied when the handler was created. */
   int routerFd;
   /** @brief Socket helper used for routing terminal data. */

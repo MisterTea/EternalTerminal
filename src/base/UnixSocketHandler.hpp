@@ -5,7 +5,8 @@
 
 namespace et {
 /**
- * @brief Default SocketHandler implementation using POSIX sockets with mutex guards.
+ * @brief Default SocketHandler implementation using POSIX sockets with mutex
+ * guards.
  */
 class UnixSocketHandler : public SocketHandler {
  public:
@@ -31,7 +32,7 @@ class UnixSocketHandler : public SocketHandler {
   /** @brief Returns all actively tracked sockets. */
   virtual vector<int> getActiveSockets();
 
-  protected:
+ protected:
   /**
    * @brief Ensures that a descriptor is tracked and has its own mutex.
    */

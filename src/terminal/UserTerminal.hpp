@@ -6,7 +6,8 @@
 
 namespace et {
 /**
- * @brief Abstract terminal that can be started, resized, and observed through a fd.
+ * @brief Abstract terminal that can be started, resized, and observed through a
+ * fd.
  */
 class UserTerminal {
  public:
@@ -14,13 +15,16 @@ class UserTerminal {
 
   /**
    * @brief Prepares the terminal and configures it using the router endpoint.
-   * @param routerFd File descriptor that should be linked to the terminal session.
-   * @returns File descriptor used for reading incoming data (typically a master pty).
+   * @param routerFd File descriptor that should be linked to the terminal
+   * session.
+   * @returns File descriptor used for reading incoming data (typically a master
+   * pty).
    */
   virtual int setup(int routerFd) = 0;
   /** @brief Drives the interactive shell loop until the session exits. */
   virtual void runTerminal() = 0;
-  /** @brief Blocks until the terminal child process ends and any cleanup finishes. */
+  /** @brief Blocks until the terminal child process ends and any cleanup
+   * finishes. */
   virtual void handleSessionEnd() = 0;
   /** @brief Reclaims resources allocated by the terminal implementation. */
   virtual void cleanup() = 0;

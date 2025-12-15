@@ -9,7 +9,8 @@ namespace et {
 /**
  * @brief Client-specific IPC wrapper that connects to the HTM server endpoint.
  *
- * Holds the `SocketEndpoint` fd that `HtmClient` uses for STDIN/STDOUT bridging.
+ * Holds the `SocketEndpoint` fd that `HtmClient` uses for STDIN/STDOUT
+ * bridging.
  */
 class IpcPairClient : public IpcPairEndpoint {
  public:

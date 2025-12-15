@@ -6,7 +6,8 @@
 
 namespace et {
 /**
- * @brief IPC client that sends local stdin keystrokes to `htmd` and prints its output.
+ * @brief IPC client that sends local stdin keystrokes to `htmd` and prints its
+ * output.
  *
  * `run()` uses `select()` to multiplex between STDIN and the connected pipe fd.
  */

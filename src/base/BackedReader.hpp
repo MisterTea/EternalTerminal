@@ -14,21 +14,26 @@ namespace et {
 class BackedReader {
  public:
   /**
-   * @brief Constructs a reader bound to the supplied socket and crypto handlers.
-   * @param socketHandler Handler that performs the underlying socket operations.
-   * @param cryptoHandler Handler used to decrypt packets once they are received.
+   * @brief Constructs a reader bound to the supplied socket and crypto
+   * handlers.
+   * @param socketHandler Handler that performs the underlying socket
+   * operations.
+   * @param cryptoHandler Handler used to decrypt packets once they are
+   * received.
    * @param socketFd Initial socket file descriptor to read from.
    */
   BackedReader(shared_ptr<SocketHandler> socketHandler,
                shared_ptr<CryptoHandler> cryptoHandler, int socketFd);
 
   /**
-   * @brief Returns true if there is buffered data or the current socket is readable.
+   * @brief Returns true if there is buffered data or the current socket is
+   * readable.
    */
   bool hasData();
 
   /**
-   * @brief Reads the next packet from the local buffer or socket, decrypting it.
+   * @brief Reads the next packet from the local buffer or socket, decrypting
+   * it.
    * @param packet Output packet that is filled when the read completes.
    * @return 1 when a complete packet was read, 0 if more bytes are required,
    *         and -1 on fatal socket error.
@@ -36,7 +41,8 @@ class BackedReader {
   int read(Packet* packet);
 
   /**
-   * @brief Exposes the mutex guarding recovery mutators so callers can synchronize.
+   * @brief Exposes the mutex guarding recovery mutators so callers can
+   * synchronize.
    */
   mutex& getRecoverMutex() { return recoverMutex; }
 
@@ -57,7 +63,8 @@ class BackedReader {
   }
 
   /**
-   * @brief Returns the number of packets digested so far (used for recovery tracking).
+   * @brief Returns the number of packets digested so far (used for recovery
+   * tracking).
    */
   inline int64_t getSequenceNumber() { return sequenceNumber; }
 
@@ -72,9 +79,11 @@ class BackedReader {
   volatile int socketFd;
   /** @brief Packet sequence counter that increments for every read packet. */
   int64_t sequenceNumber;
-  /** @brief Serialized packets cached to be drained before resuming live reads. */
+  /** @brief Serialized packets cached to be drained before resuming live reads.
+   */
   deque<string> localBuffer;
-  /** @brief Buffer for accumulating length-prefixed packet data from the socket. */
+  /** @brief Buffer for accumulating length-prefixed packet data from the
+   * socket. */
   string partialMessage;
 
   /**

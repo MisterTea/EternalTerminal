@@ -14,16 +14,18 @@ class TerminalHandler {
  public:
   /** @brief Sets up internal buffers/state before launching a PTY. */
   TerminalHandler();
-  /** @brief Forks a child shell connected to a pty for interactive input/output. */
+  /** @brief Forks a child shell connected to a pty for interactive
+   * input/output. */
   void start();
   /**
-   * @brief Drains available bytes from the pty, buffering them and returning the
-   *        raw bytes that were just read.
+   * @brief Drains available bytes from the pty, buffering them and returning
+   * the raw bytes that were just read.
    */
   string pollUserTerminal();
   /** @brief Updates the terminal window size using TIOCSWINSZ. */
   void updateTerminalSize(int col, int row);
-  /** @brief Writes raw bytes into the running terminal (e.g., from the client). */
+  /** @brief Writes raw bytes into the running terminal (e.g., from the client).
+   */
   void appendData(const string &data);
   /** @brief Indicates whether the PTY child is still alive. */
   inline bool isRunning() { return run; }

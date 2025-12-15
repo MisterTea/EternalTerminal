@@ -24,7 +24,8 @@ const char NEW_SPLIT = '9';
 const char RESIZE_PANE = 'A';
 /** @brief Server -> client: send debug log lines to the terminal. */
 const char DEBUG_LOG = 'B';
-/** @brief Server -> client: listen for developer commands (shutdown, escape). */
+/** @brief Server -> client: listen for developer commands (shutdown, escape).
+ */
 const char INSERT_DEBUG_KEYS = 'C';
 /** @brief Closes the HTM session (handshake end-of-stream). */
 const char SESSION_END = 'D';

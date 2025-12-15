@@ -10,8 +10,8 @@ namespace et {
 /**
  * @brief Sends anonymized logs to Datadog/Sentry when telemetry is permitted.
  *
- * Uses a singleton accessible via `create()`/`get()` and buffers logs before sending
- * them on a background thread.
+ * Uses a singleton accessible via `create()`/`get()` and buffers logs before
+ * sending them on a background thread.
  */
 class TelemetryService {
  public:
@@ -35,7 +35,8 @@ class TelemetryService {
 
   static void destroy() { telemetryServiceInstance.reset(); }
 
-  /** @brief Gracefully stops the background thread and flushes the log buffer. */
+  /** @brief Gracefully stops the background thread and flushes the log buffer.
+   */
   void shutdown();
 
   static bool exists() { return telemetryServiceInstance.get() != NULL; }
@@ -48,7 +49,7 @@ class TelemetryService {
     return NULL;
   }
 
-protected:
+ protected:
   /** @brief Singleton instance returned by `get()`. */
   static shared_ptr<TelemetryService> telemetryServiceInstance;
   /** @brief Indicates whether telemetry payloads are permitted. */

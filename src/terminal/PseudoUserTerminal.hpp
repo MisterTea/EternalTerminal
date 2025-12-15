@@ -119,7 +119,7 @@ class PseudoUserTerminal : public UserTerminal {
 
   virtual int getFd() { return masterFd; }
 
-protected:
+ protected:
   /** @brief PID of the child shell spawned by `forkpty`. */
   pid_t pid;
   /** @brief Master PTY file descriptor shared with the router. */

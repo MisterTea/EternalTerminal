@@ -32,7 +32,8 @@ class LogHandler {
   static void rolloutHandler(const char *filename, std::size_t size);
 
   /**
-   * @brief Reconfigures the easylogging stdout logger so it just writes messages.
+   * @brief Reconfigures the easylogging stdout logger so it just writes
+   * messages.
    */
   static void setupStdoutLogger();
 

@@ -4,12 +4,14 @@
 
 namespace et {
 /**
- * @brief Proxies jumphost traffic between the router pipe and a remote endpoint.
+ * @brief Proxies jumphost traffic between the router pipe and a remote
+ * endpoint.
  */
 class UserJumphostHandler {
  public:
   /**
-   * @brief Bridges a jumphost client over the router pipe to the destination endpoint.
+   * @brief Bridges a jumphost client over the router pipe to the destination
+   * endpoint.
    */
   UserJumphostHandler(shared_ptr<SocketHandler> _jumpClientSocketHandler,
                       const string &_idpasskey,
@@ -30,7 +32,8 @@ class UserJumphostHandler {
   shared_ptr<SocketHandler> routerSocketHandler;
   /** @brief File descriptor for the router pipe endpoint. */
   int routerFd;
-  /** @brief Client connection used when forwarding traffic to the destination. */
+  /** @brief Client connection used when forwarding traffic to the destination.
+   */
   shared_ptr<ClientConnection> jumpclient;
   /** @brief Optional handler that accepts requests from the jumphost. */
   shared_ptr<SocketHandler> jumpClientSocketHandler;

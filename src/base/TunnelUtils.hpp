@@ -12,7 +12,8 @@ namespace et {
 vector<PortForwardSourceRequest> parseRangesToRequests(const string& input);
 
 /**
- * @brief Thrown when an invalid tunnel source/destination string is encountered.
+ * @brief Thrown when an invalid tunnel source/destination string is
+ * encountered.
  */
 class TunnelParseException : public std::exception {
  public:

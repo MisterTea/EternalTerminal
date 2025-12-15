@@ -21,7 +21,8 @@ inline std::string SystemToStr(const char* cmd) {
 }
 
 /**
- * @brief Runs a command with arguments while capturing its stdout without a shell.
+ * @brief Runs a command with arguments while capturing its stdout without a
+ * shell.
  */
 string SubprocessToStringInteractive(const string& command,
                                      const vector<string>& args);
