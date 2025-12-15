@@ -22,6 +22,9 @@
 #include "UserTerminal.hpp"
 
 namespace et {
+/**
+ * @brief Forks a pseudo-terminal, runs the user's shell, and proxies the fd.
+ */
 class PseudoUserTerminal : public UserTerminal {
  public:
   virtual ~PseudoUserTerminal() {}
@@ -53,6 +56,9 @@ class PseudoUserTerminal : public UserTerminal {
     return masterFd;
   }
 
+  /**
+   * @brief Executes the login shell after setting up the PTY child process.
+   */
   virtual void runTerminal() {
     passwd* pwd = getpwuid(getuid());
     chdir(pwd->pw_dir);
@@ -83,12 +89,14 @@ class PseudoUserTerminal : public UserTerminal {
     FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "-l", NULL));
   }
 
+  /** @brief Removes any temporary PTY bookkeeping (utempter). */
   virtual void cleanup() {
 #ifdef WITH_UTEMPTER
     utempter_remove_record(masterFd);
 #endif
   }
 
+  /** @brief Waits for the child shell to exit before returning. */
   virtual void handleSessionEnd() {
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
                 // least -CURRENT) sadness for now :/
@@ -100,6 +108,9 @@ class PseudoUserTerminal : public UserTerminal {
 #endif
   }
 
+  /**
+   * @brief Applies terminal resize changes via `ioctl(TIOCSWINSZ)`.
+   */
   virtual void setInfo(const winsize& tmpwin) {
     ioctl(masterFd, TIOCSWINSZ, &tmpwin);
   }
@@ -109,7 +120,9 @@ class PseudoUserTerminal : public UserTerminal {
   virtual int getFd() { return masterFd; }
 
  protected:
+  /** @brief PID of the child shell spawned by `forkpty`. */
   pid_t pid;
+  /** @brief Master PTY file descriptor shared with the router. */
   int masterFd;
 };
 }  // namespace et

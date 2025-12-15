@@ -1,17 +1,34 @@
-rm -Rf build
-mkdir build
-pushd ./build
+#!/bin/bash
+set -euo pipefail
+
+if [ -d cov_build ]; then
+    NEW_BUILD=0
+else
+    NEW_BUILD=1
+fi
+
+mkdir -p cov_build
+pushd ./cov_build
+if [ $NEW_BUILD -eq 1 ]; then
 cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=ON -G Ninja
+fi
+find . -name "*.gcda" -print0 | xargs -0 rm -f
 ninja
-find . -name "*.gcda" -print0 | xargs -0 rm
+ctest -LE integration --parallel # Do not count integration tests towards coverage
 popd
-./build/test/et-test
-lcov --directory ./build --capture --output-file ./code-coverage.info -rc lcov_branch_coverage=1
-genhtml code-coverage.info --branch-coverage --output-directory ./code_coverage_report/
+lcov --directory ./cov_build --capture --output-file ./code-coverage.info -rc lcov_branch_coverage=1
+lcov --remove ./code-coverage.info \
+    '/usr/include/*' \
+    '/home/*/miniconda3/*' \
+    '*/vcpkg_installed/*' \
+    '*/external/*' \
+    '*/test/integration_tests/*' \
+    '*/test/unit_tests/*' \
+    '*/test/*' \
+    '*/proto/*' \
+    '*/cov_build/ET.pb*' \
+    '*/cov_build/ETerminal.pb*' \
+    --output-file ./filtered.info -rc lcov_branch_coverage=1
+genhtml filtered.info --branch-coverage --output-directory ./code_coverage_report/
 echo "Report generated in code_coverage_report"
-open code_coverage_report/index.html
-rm -Rf build
-mkdir build
-pushd ./build
-cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=OFF -G Ninja
-popd
+echo "html report at code_coverage_report/index.html"

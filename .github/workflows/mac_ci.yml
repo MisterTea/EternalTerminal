@@ -41,14 +41,13 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
-
       - name: Test with ubsan
         run: |
           mkdir build
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
@@ -92,7 +91,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
@@ -136,7 +135,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
@@ -180,6 +179,6 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build

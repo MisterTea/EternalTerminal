@@ -147,7 +147,7 @@ IF(APPLE)
 ENDIF(APPLE)
 
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY OR DISABLE_TELEMETRY)
-# Sentry doesn't work on BSD
+  # Sentry doesn't work on BSD
 else()
   # Enable sentry
   set(USE_SENTRY TRUE)
@@ -284,6 +284,7 @@ else()
     resolv
     atomic
     stdc++fs
+    anl
   )
 endif()
 
@@ -521,14 +522,22 @@ else(WIN32)
     ${CORE_LIBRARIES})
   decorate_target(htmd)
 
+  include(CTest)
+
   if(BUILD_TESTING)
     enable_testing()
+    include(Catch)
 
-    file(GLOB TEST_SRCS test/*Test.cpp)
+    file(GLOB TEST_SRCS test/**/*Test.cpp)
     add_executable(
       et-test
       ${TEST_SRCS}
       test/Main.cpp
+    )
+    include_directories(
+      test
+      test/integration_tests
+      test/unit_tests
     )
 
     add_dependencies(et-test generated-code TerminalCommon et-lib)
@@ -545,8 +554,16 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    add_test(et-test et-test)
+    catch_discover_tests(
+      et-test
+      TEST_PREFIX "et-test."
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ADD_TAGS_AS_LABELS
+    )
     add_sanitizers(et-test)
+    if(TARGET test)
+      add_dependencies(test et-test)
+    endif()
   endif()
 
   if(BUILD_TESTING AND FUZZING)

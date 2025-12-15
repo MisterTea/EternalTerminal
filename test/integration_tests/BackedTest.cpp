@@ -99,7 +99,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
   *serverClientFd = fd;
 }
 
-TEST_CASE("BackedTest", "[BackedTest]") {
+TEST_CASE("BackedTest", "[BackedTest][integration]") {
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
   serverSocketHandler.reset(new PipeSocketHandler());

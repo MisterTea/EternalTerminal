@@ -2,6 +2,13 @@
  * libssh */
 #pragma once
 #include "Headers.hpp"
+
+/**
+ * @brief Helper utilities adapted from libssh to parse ssh_config files.
+ *
+ * This file exposes the structures and parsing logic used by the SSH setup
+ * routines in EternalTerminal.
+ */
 // #include <netdb.h>
 // #include <string.h>
 // #include <unistd.h>
@@ -67,6 +74,9 @@ typedef int socket_t;
 #define strcasecmp _stricmp
 #endif
 
+/**
+ * @brief Enumerates keywords recognized when parsing ~/.ssh/config.
+ */
 enum ssh_config_opcode_e {
   SOC_UNSUPPORTED = -1,
   SOC_HOST,
@@ -90,6 +100,9 @@ enum ssh_config_opcode_e {
   SOC_END /* Keep this one last in the list */
 };
 
+/**
+ * @brief Enumerates configuration options exposed through the public API.
+ */
 enum ssh_options_e {
   SSH_OPTIONS_HOST,
   SSH_OPTIONS_PORT,
@@ -128,6 +141,9 @@ enum ssh_options_e {
   SSH_OPTIONS_LOCALFORWARD
 };
 
+/**
+ * @brief Minimal structure mirroring libssh's `Options`.
+ */
 struct Options {
   char *username;
   char *host;
@@ -148,6 +164,9 @@ struct Options {
   vector<pair<int, int>> local_forwards;
 };
 
+/**
+ * @brief Maps keyword strings to their opcodes for parser lookup.
+ */
 struct ssh_config_keyword_table_s {
   const char *name;
   enum ssh_config_opcode_e opcode;
@@ -174,6 +193,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"localforward", SOC_LOCALFORWARD},
     {NULL, SOC_UNSUPPORTED}};
 
+/** @brief Returns the opcode associated with the given keyword string. */
 static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   int i;
 
@@ -186,6 +206,7 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   return SOC_UNSUPPORTED;
 }
 
+/** @brief Parses a single line of ssh config, updating the provided Options. */
 static int ssh_config_parse_line(const char *targethost,
                                  struct Options *options, const char *line,
                                  unsigned int count, int *parsing, int seen[]);

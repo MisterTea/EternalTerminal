@@ -257,95 +257,118 @@ void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
   }
 }
 
-TEST_CASE("ConnectionTest", "[ConnectionTest]") {
-  srand(1);
-
-  shared_ptr<FlakySocketHandler> serverSocketHandler(new FlakySocketHandler(
-      shared_ptr<SocketHandler>(new PipeSocketHandler()), false));
-  shared_ptr<FlakySocketHandler> clientSocketHandler(new FlakySocketHandler(
-      shared_ptr<SocketHandler>(new PipeSocketHandler()), false));
-
+struct ConnectionTestContext {
+  shared_ptr<FlakySocketHandler> serverSocketHandler;
+  shared_ptr<FlakySocketHandler> clientSocketHandler;
   shared_ptr<ServerConnection> serverConnection;
-  shared_ptr<std::thread> serverListenThread;
+  SocketEndpoint endpoint;
   string pipeDirectory;
   string pipePath;
-  SocketEndpoint endpoint;
-  bool stopListening;
+  shared_ptr<std::thread> serverListenThread;
+  int serverFd{-1};
+  bool stopListening{false};
+};
+
+void runConnectionTestCase(bool flaky,
+                           const function<void(ConnectionTestContext&)>& body) {
+  srand(1);
+
+  ConnectionTestContext ctx;
+  ctx.serverSocketHandler.reset(new FlakySocketHandler(
+      shared_ptr<SocketHandler>(new PipeSocketHandler()), false));
+  ctx.clientSocketHandler.reset(new FlakySocketHandler(
+      shared_ptr<SocketHandler>(new PipeSocketHandler()), false));
+  if (flaky) {
+    ctx.serverSocketHandler->setFlake(true);
+    ctx.clientSocketHandler->setFlake(true);
+  }
 
   el::Helpers::setThreadName("Main");
 
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
-  pipeDirectory = string(mkdtemp(&tmpPath[0]));
-  pipePath = string(pipeDirectory) + "/pipe";
-  endpoint = SocketEndpoint();
-  endpoint.set_name(pipePath);
+  ctx.pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  ctx.pipePath = string(ctx.pipeDirectory) + "/pipe";
+  ctx.endpoint = SocketEndpoint();
+  ctx.endpoint.set_name(ctx.pipePath);
 
-  serverConnection.reset(
-      new TestServerConnection(serverSocketHandler, endpoint));
+  ctx.serverConnection.reset(
+      new TestServerConnection(ctx.serverSocketHandler, ctx.endpoint));
 
-  int serverFd = *(serverSocketHandler->getEndpointFds(endpoint).begin());
+  ctx.serverFd =
+      *(ctx.serverSocketHandler->getEndpointFds(ctx.endpoint).begin());
   {
     lock_guard<recursive_mutex> lock(testMutex);
-    stopListening = false;
+    ctx.stopListening = false;
   }
 
-  SECTION("ReadWrite") {
-    SECTION("Not Flaky") {}
-    SECTION("Flaky") {
-      serverSocketHandler->setFlake(true);
-      clientSocketHandler->setFlake(true);
-    }
-    serverListenThread.reset(
-        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
-    readWriteTest("1234567890123456", clientSocketHandler, serverConnection,
-                  endpoint);
-  }
+  ctx.serverListenThread.reset(new std::thread(
+      listenFn, &ctx.stopListening, ctx.serverFd, ctx.serverConnection));
 
-  SECTION("MultiReadWrite") {
-    SECTION("Not Flaky") {}
-    SECTION("Flaky") {
-      serverSocketHandler->setFlake(true);
-      clientSocketHandler->setFlake(true);
-    }
-    serverListenThread.reset(
-        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
-    multiReadWriteTest(clientSocketHandler, serverConnection, endpoint);
-  }
+  body(ctx);
 
-  SECTION("InvalidClient") {
-    serverListenThread.reset(
-        new std::thread(listenFn, &stopListening, serverFd, serverConnection));
+  {
+    lock_guard<recursive_mutex> lock(testMutex);
+    ctx.stopListening = true;
+  }
+  ctx.serverListenThread->join();
+  ctx.serverListenThread.reset();
+  serverClientConnections.clear();
+  ctx.serverConnection->shutdown();
+  ctx.serverConnection.reset();
+  FATAL_FAIL(::remove(ctx.pipePath.c_str()));
+  FATAL_FAIL(::remove(ctx.pipeDirectory.c_str()));
+
+  auto v = ctx.serverSocketHandler->getActiveSockets();
+  if (!v.empty()) {
+    STFATAL << "Dangling socket fd (first): " << v[0];
+  }
+  v = ctx.clientSocketHandler->getActiveSockets();
+  if (!v.empty()) {
+    STFATAL << "Dangling socket fd (first): " << v[0];
+  }
+}
+
+TEST_CASE("ConnectionTest_ReadWrite", "[ConnectionTest][integration]") {
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    readWriteTest("1234567890123456", ctx.clientSocketHandler,
+                  ctx.serverConnection, ctx.endpoint);
+  });
+}
+
+TEST_CASE("ConnectionTest_ReadWrite_Flaky", "[ConnectionTest][integration]") {
+  runConnectionTestCase(true, [](ConnectionTestContext& ctx) {
+    readWriteTest("1234567890123456", ctx.clientSocketHandler,
+                  ctx.serverConnection, ctx.endpoint);
+  });
+}
+
+TEST_CASE("ConnectionTest_MultiReadWrite", "[ConnectionTest][integration]") {
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
+                       ctx.endpoint);
+  });
+}
+
+TEST_CASE("ConnectionTest_MultiReadWrite_Flaky",
+          "[ConnectionTest][integration]") {
+  runConnectionTestCase(true, [](ConnectionTestContext& ctx) {
+    multiReadWriteTest(ctx.clientSocketHandler, ctx.serverConnection,
+                       ctx.endpoint);
+  });
+}
+
+TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
     for (int a = 0; a < 128; a++) {
       string junk(16 * 1024 * 1024, 't');
       for (int b = 0; b < 16 * 1024 * 1024; b++) {
         junk[b] = rand() % 256;
       }
-      int fd = clientSocketHandler->connect(endpoint);
-      int retval =
-          clientSocketHandler->writeAllOrReturn(fd, &junk[0], junk.length());
+      int fd = ctx.clientSocketHandler->connect(ctx.endpoint);
+      int retval = ctx.clientSocketHandler->writeAllOrReturn(fd, &junk[0],
+                                                             junk.length());
       REQUIRE(retval == -1);
-      clientSocketHandler->close(fd);
+      ctx.clientSocketHandler->close(fd);
     }
-  }
-
-  {
-    lock_guard<recursive_mutex> lock(testMutex);
-    stopListening = true;
-  }
-  serverListenThread->join();
-  serverListenThread.reset();
-  serverClientConnections.clear();
-  serverConnection->shutdown();
-  serverConnection.reset();
-  FATAL_FAIL(::remove(pipePath.c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
-
-  auto v = serverSocketHandler->getActiveSockets();
-  if (!v.empty()) {
-    STFATAL << "Dangling socket fd (first): " << v[0];
-  }
-  v = clientSocketHandler->getActiveSockets();
-  if (!v.empty()) {
-    STFATAL << "Dangling socket fd (first): " << v[0];
-  }
+  });
 }

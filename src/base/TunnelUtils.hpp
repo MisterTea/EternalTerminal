@@ -5,11 +5,19 @@
 
 namespace et {
 
+/**
+ * @brief Parses a comma-separated list of tunnel arguments into proto messages.
+ * @throws TunnelParseException when the syntax is invalid.
+ */
 vector<PortForwardSourceRequest> parseRangesToRequests(const string& input);
 
+/**
+ * @brief Thrown when an invalid tunnel source/destination string is
+ * encountered.
+ */
 class TunnelParseException : public std::exception {
  public:
-  TunnelParseException(const string& msg) : message(msg) {}
+  explicit TunnelParseException(const string& msg) : message(msg) {}
   const char* what() const noexcept override { return message.c_str(); }
 
  private:

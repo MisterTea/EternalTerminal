@@ -6,6 +6,9 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
+/**
+ * @brief Configures the local console into raw mode and exposes terminal info.
+ */
 class PseudoTerminalConsole : public Console {
  public:
   PseudoTerminalConsole() {
@@ -23,6 +26,7 @@ class PseudoTerminalConsole : public Console {
 
   virtual ~PseudoTerminalConsole() {}
 
+  /** @brief Switches stdin/out to raw mode for terminal I/O. */
   virtual void setup() {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
@@ -38,6 +42,7 @@ class PseudoTerminalConsole : public Console {
 #endif
   }
 
+  /** @brief Restores the terminal state saved during construction. */
   virtual void teardown() {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
@@ -49,6 +54,7 @@ class PseudoTerminalConsole : public Console {
 #endif
   }
 
+  /** @brief Queries the current terminal window dimensions. */
   virtual TerminalInfo getTerminalInfo() {
 #ifdef WIN32
     CONSOLE_SCREEN_BUFFER_INFO csbi;
@@ -83,6 +89,7 @@ class PseudoTerminalConsole : public Console {
 #endif
   }
 
+  /** @brief Returns the file descriptor linked to stdout. */
   virtual int getFd() {
 #ifdef WIN32
     return _fileno(stdout);
@@ -93,9 +100,12 @@ class PseudoTerminalConsole : public Console {
 
  protected:
 #ifdef WIN32
+  /** @brief Saved console input mode so `teardown()` can restore it. */
   DWORD inputMode;
+  /** @brief Saved console output mode for restoration. */
   DWORD outputMode;
 #else
+  /** @brief Backup of the terminal's `termios` state for teardown. */
   termios terminal_backup;
 #endif
 
