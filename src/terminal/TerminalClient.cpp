@@ -11,7 +11,8 @@ TerminalClient::TerminalClient(
     const SocketEndpoint& _socketEndpoint, const string& id,
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
-    const string& identityAgent, int _keepaliveDuration)
+    const string& identityAgent, int _keepaliveDuration,
+    const vector<pair<string, string>>& envVars)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration) {
@@ -19,6 +20,10 @@ TerminalClient::TerminalClient(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+
+  for (const auto& envVar : envVars) {
+    (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;
+  }
 
   try {
     if (tunnels.length()) {
