@@ -30,9 +30,15 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   thread uthThread([uth]() { uth->run(); });
   sleep(1);
 
+  vector<pair<string, string>> envVars = {
+      {"ET_TEST_VAR1", "test_value_1"},
+      {"ET_TEST_VAR2_EMPTY", ""},
+  };
+
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
       clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
-      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION,
+      envVars));
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
@@ -60,6 +66,13 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
 
   REQUIRE(resultConcat == s);
 
+  const char* var1 = getenv("ET_TEST_VAR1");
+  REQUIRE(var1 != nullptr);
+  REQUIRE(string(var1) == "test_value_1");
+  const char* var2 = getenv("ET_TEST_VAR2_EMPTY");
+  REQUIRE(var2 != nullptr);
+  REQUIRE(string(var2) == "");
+
   terminalClient->shutdown();
   terminalClientThread.join();
   terminalClient.reset();
@@ -67,6 +80,9 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   uth->shutdown();
   uthThread.join();
   uth.reset();
+
+  unsetenv("ET_TEST_VAR1");
+  unsetenv("ET_TEST_VAR2_EMPTY");
 }
 
 class LogInterceptHandler : public el::LogDispatchCallback {
