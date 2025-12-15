@@ -148,6 +148,19 @@ struct Options {
   vector<pair<int, int>> local_forwards;
 };
 
+// Free all allocated fields in an Options struct
+inline void freeOptionsFields(Options *opts) {
+  SAFE_FREE(opts->username);
+  SAFE_FREE(opts->host);
+  SAFE_FREE(opts->sshdir);
+  SAFE_FREE(opts->knownhosts);
+  SAFE_FREE(opts->ProxyCommand);
+  SAFE_FREE(opts->ProxyJump);
+  SAFE_FREE(opts->gss_server_identity);
+  SAFE_FREE(opts->gss_client_identity);
+  SAFE_FREE(opts->identity_agent);
+}
+
 struct ssh_config_keyword_table_s {
   const char *name;
   enum ssh_config_opcode_e opcode;
