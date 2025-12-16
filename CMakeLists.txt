@@ -147,7 +147,7 @@ IF(APPLE)
 ENDIF(APPLE)
 
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY OR DISABLE_TELEMETRY)
-# Sentry doesn't work on BSD
+  # Sentry doesn't work on BSD
 else()
   # Enable sentry
   set(USE_SENTRY TRUE)
@@ -175,6 +175,8 @@ option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
 option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
+option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 
@@ -282,6 +284,7 @@ else()
     resolv
     atomic
     stdc++fs
+    anl
   )
 endif()
 
@@ -519,14 +522,22 @@ else(WIN32)
     ${CORE_LIBRARIES})
   decorate_target(htmd)
 
+  include(CTest)
+
   if(BUILD_TESTING)
     enable_testing()
+    include(Catch)
 
-    file(GLOB TEST_SRCS test/*Test.cpp)
+    file(GLOB TEST_SRCS test/**/*Test.cpp)
     add_executable(
       et-test
       ${TEST_SRCS}
       test/Main.cpp
+    )
+    include_directories(
+      test
+      test/integration_tests
+      test/unit_tests
     )
 
     add_dependencies(et-test generated-code TerminalCommon et-lib)
@@ -543,8 +554,16 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    add_test(et-test et-test)
+    catch_discover_tests(
+      et-test
+      TEST_PREFIX "et-test."
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ADD_TAGS_AS_LABELS
+    )
     add_sanitizers(et-test)
+    if(TARGET test)
+      add_dependencies(test et-test)
+    endif()
   endif()
 
   if(BUILD_TESTING AND FUZZING)
@@ -598,6 +617,30 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+
+  if(INSTALL_BASH_COMPLETION)
+    find_package(BashCompletion QUIET)
+    if(NOT BASH_COMPLETION_COMPLETIONSDIR)
+      find_package(PkgConfig QUIET)
+      if(PKG_CONFIG_FOUND)
+        pkg_get_variable(BASH_COMPLETION_COMPLETIONSDIR bash-completion completionsdir)
+      endif()
+    endif()
+
+    if(BASH_COMPLETION_COMPLETIONSDIR)
+      install(FILES scripts/et-completion.bash RENAME et DESTINATION ${BASH_COMPLETION_COMPLETIONSDIR})
+    else()
+      message(WARNING "Could not find bash completion directory. Skipping installation of bash completion script.")
+    endif()
+  endif()
+
+  if(INSTALL_ZSH_COMPLETION)
+    if(NOT ZSH_COMPLETIONS_DIR)
+        include(GNUInstallDirs)
+        set(ZSH_COMPLETIONS_DIR "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions")
+    endif()
+    install(FILES scripts/et-completion.zsh RENAME _et DESTINATION ${ZSH_COMPLETIONS_DIR})
+  endif()
 endif()
 
 set(CPACK_PACKAGE_NAME "EternalTerminal")

@@ -77,7 +77,7 @@ void readWriteTest(const string& clientId,
   ujh.reset();
 }
 
-TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest]") {
+TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest][integration]") {
   shared_ptr<PipeSocketHandler> consoleSocketHandler(new PipeSocketHandler());
   shared_ptr<PipeSocketHandler> terminalUserSocketHandler(
       new PipeSocketHandler());
@@ -130,13 +130,13 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest]") {
       new TerminalServer(serverSocketHandler, serverEndpoint,
                          routerSocketHandler, routerEndpoint));
   thread t_server([server]() { server->run(); });
-  sleep(3);
+  sleep(1);
 
   auto jumphost = shared_ptr<TerminalServer>(
       new TerminalServer(jumphostSocketHandler, jumphostEndpoint,
                          jumphostRouterSocketHandler, jumphostRouterEndpoint));
   thread t_jumphost([jumphost]() { jumphost->run(); });
-  sleep(3);
+  sleep(1);
 
   readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
                 serverEndpoint, clientSocketHandler, clientPipeSocketHandler,

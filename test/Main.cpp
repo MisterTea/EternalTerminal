@@ -1,5 +1,7 @@
 #define CATCH_CONFIG_RUNNER
 
+#include <cstring>
+
 #include "LogHandler.hpp"
 #include "TelemetryService.hpp"
 #include "TestHeaders.hpp"
@@ -8,6 +10,14 @@ using namespace et;
 
 int main(int argc, char **argv) {
   srand(1);
+
+  bool listOnly = false;
+  for (int i = 1; i < argc; ++i) {
+    if (strcmp(argv[i], "--list-tests") == 0 || strcmp(argv[i], "-l") == 0) {
+      listOnly = true;
+      break;
+    }
+  }
 
   // Setup easylogging configurations
   el::Configurations defaultConf =
@@ -19,7 +29,9 @@ int main(int argc, char **argv) {
 
   string logDirectoryPattern = GetTempDirectory() + string("et_test_XXXXXXXX");
   string logDirectory = string(mkdtemp(&logDirectoryPattern[0]));
-  CLOG(INFO, "stdout") << "Writing log to " << logDirectory << endl;
+  if (!listOnly) {
+    CLOG(INFO, "stdout") << "Writing log to " << logDirectory << endl;
+  }
   et::LogHandler::setupLogFiles(&defaultConf, logDirectory, "log", true, true);
 
   // Reconfigure default logger to apply settings above

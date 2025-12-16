@@ -16,13 +16,13 @@ jobs:
         gcc: [11, 12, 13]
         exclude:
           #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
-            #gcc: 11
+          #gcc: 11
           - os: macos-latest
             gcc: 12
           - os: macos-latest
             gcc: 13
           #- os: windows-latest
-            #gcc: 11
+          #gcc: 11
           - os: windows-latest
             gcc: 12
           - os: windows-latest
@@ -67,7 +67,7 @@ jobs:
           version: ${{ matrix.gcc }}
           platform: x64
         if: matrix.os == 'ubuntu-latest'
-    
+
         # Run CMake to generate Ninja project files.
       - name: Install dependencies and generate project files (mac)
         run: |
@@ -75,8 +75,8 @@ jobs:
         if: matrix.os == 'macos-latest'
       - name: Install dependencies and generate project files (linux)
         env:
-            CC: gcc-${{ matrix.gcc }}
-            CXX: g++-${{ matrix.gcc }}
+          CC: gcc-${{ matrix.gcc }}
+          CXX: g++-${{ matrix.gcc }}
         run: |
           cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'ubuntu-latest'
@@ -88,8 +88,9 @@ jobs:
       - name: Build
         run: |
           cmake --build "${{ env.CMAKE_BUILD_DIR }}"
-      
-      - uses: actions/upload-artifact@v4
+          ctest --parallel
+
+      - uses: actions/upload-artifact@v6
         with:
           name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

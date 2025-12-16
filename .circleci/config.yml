@@ -2,7 +2,7 @@ version: 2
 jobs:
   connect_to_initial_version:
     machine:
-      image: ubuntu-2204:current
+      image: ubuntu-2404:current
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -13,7 +13,7 @@ jobs:
       - checkout
       - run:
           name: Set up ssh & known_hosts
-          command: sudo sed -i -e 's/#ListenAddress/ListenAddress/' /etc/ssh/sshd_config; sudo sed -i -e 's/AddressFamily inet/AddressFamily any/' /etc/ssh/sshd_config; sudo /etc/init.d/ssh restart; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls; ssh -o "StrictHostKeyChecking no" 0:0:0:0:0:0:0:1 ls
+          command: sudo systemctl disable --now ssh.socket; sudo systemctl enable --now ssh.service; sudo sed -i -e 's/#ListenAddress/ListenAddress/' /etc/ssh/sshd_config; sudo sed -i -e 's/AddressFamily inet/AddressFamily any/' /etc/ssh/sshd_config; sudo cat /etc/ssh/sshd_config; sudo /etc/init.d/ssh restart; sudo ss -lptn | grep 22; rm -f ~/.ssh/id_rsa*; ssh-keygen -q -N "" -f ~/.ssh/id_rsa; sudo rm -f ~/.ssh/authorized_keys; cp ~/.ssh/id_rsa.pub ~/.ssh/authorized_keys; rm -f ~/.ssh/known_hosts; ssh -o "StrictHostKeyChecking no" localhost ls; ssh -o "StrictHostKeyChecking no" 0:0:0:0:0:0:0:1 ls
 
       - run:
           name: Init submodules
@@ -22,8 +22,8 @@ jobs:
           name: vcpkg
           command: if [ $CIRCLE_BRANCH != "release" ]; then external/vcpkg/bootstrap-vcpkg.sh; mkdir build; ./external/vcpkg/vcpkg --x-install-root=$PWD/build/vcpkg_installed --triplet=x64-linux --feature-flags="manifests" install; fi
       - run:
-          name: Build the root version of the project
-          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout v6; git submodule update --init --recursive; cd build; cmake ../; make -j4
+          name: Build the old version of the project
+          command: mkdir ../root_version; cp -Rf .git * ../root_version/; cd ../root_version; git checkout et-v6.2.10; git submodule update --init --recursive; cd build; cmake ../; make -j4
           no_output_timeout: 60m
       - run:
           name: Build the project
@@ -60,7 +60,7 @@ jobs:
 
   connect_with_jumphost:
     machine:
-      image: ubuntu-2204:current
+      image: ubuntu-2404:current
     steps:
       - run:
           name: Avoid hosts unknown for github
@@ -84,7 +84,7 @@ jobs:
           no_output_timeout: 60m
       - run:
           name: Start Servers
-          command: sudo build/etserver --daemon; sudo build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; sleep 3; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 localhost:2023
+          command: sudo build/etserver --daemon; sudo build/etserver --port 2023 --serverfifo=/tmp/etserver.idpasskey.fifo2 --daemon; sleep 3; build/et -c "ls" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --verbose=9 --jumphost localhost --jport 2022 127.0.0.1:2023
       - run:
           name: Kill servers
           command: sudo pkill etserver

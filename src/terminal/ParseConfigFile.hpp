@@ -7,6 +7,8 @@
 #include <fstream>
 #include <iostream>
 #include <string>
+#include <utility>
+#include <vector>
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
@@ -63,6 +65,9 @@ typedef int socket_t;
 #define strcasecmp _stricmp
 #endif
 
+/**
+ * @brief Enumerates keywords recognized when parsing ~/.ssh/config.
+ */
 enum ssh_config_opcode_e {
   SOC_UNSUPPORTED = -1,
   SOC_HOST,
@@ -82,9 +87,13 @@ enum ssh_config_opcode_e {
   SOC_PROXYJUMP,
   SOC_FORWARDAGENT,
   SOC_IDENTITYAGENT,
+  SOC_LOCALFORWARD,
   SOC_END /* Keep this one last in the list */
 };
 
+/**
+ * @brief Enumerates configuration options exposed through the public API.
+ */
 enum ssh_options_e {
   SSH_OPTIONS_HOST,
   SSH_OPTIONS_PORT,
@@ -119,9 +128,13 @@ enum ssh_options_e {
   SSH_OPTIONS_HMAC_S_C,
   SSH_OPTIONS_PROXYJUMP,
   SSH_OPTIONS_FORWARDAGENT,
-  SSH_OPTIONS_IDENTITYAGENT
+  SSH_OPTIONS_IDENTITYAGENT,
+  SSH_OPTIONS_LOCALFORWARD
 };
 
+/**
+ * @brief Minimal structure mirroring libssh's `Options`.
+ */
 struct Options {
   char *username;
   char *host;
@@ -139,8 +152,12 @@ struct Options {
   int gss_delegate_creds;
   int forward_agent;
   char *identity_agent;
+  vector<pair<int, int>> local_forwards;
 };
 
+/**
+ * @brief Maps keyword strings to their opcodes for parser lookup.
+ */
 struct ssh_config_keyword_table_s {
   const char *name;
   enum ssh_config_opcode_e opcode;
@@ -164,8 +181,10 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"proxyjump", SOC_PROXYJUMP},
     {"forwardagent", SOC_FORWARDAGENT},
     {"identityagent", SOC_IDENTITYAGENT},
+    {"localforward", SOC_LOCALFORWARD},
     {NULL, SOC_UNSUPPORTED}};
 
+/** @brief Returns the opcode associated with the given keyword string. */
 static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   int i;
 
@@ -178,6 +197,7 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char *keyword) {
   return SOC_UNSUPPORTED;
 }
 
+/** @brief Parses a single line of ssh config, updating the provided Options. */
 static int ssh_config_parse_line(const char *targethost,
                                  struct Options *options, const char *line,
                                  unsigned int count, int *parsing, int seen[]);
@@ -1034,6 +1054,36 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
         }
       }
       break;
+    case SSH_OPTIONS_LOCALFORWARD:
+      v = static_cast<const char *>(value);
+      if (v == NULL || v[0] == '\0') {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        char *forward_entry = strdup(v);
+        if (forward_entry == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+
+        // Format is [bind_address:]port host:hostport
+        char *local_port_str = strtok(forward_entry, " ");
+        char *remote_part = strtok(NULL, " ");
+
+        // TODO: Support bind_address before the local port.
+        if (local_port_str && remote_part) {
+          int local_port = atoi(local_port_str);
+          char *colon_pos = strrchr(remote_part, ':');
+          if (colon_pos) {
+            int remote_port = atoi(colon_pos + 1);
+            options->local_forwards.push_back(
+                make_pair(local_port, remote_port));
+          }
+        }
+
+        SAFE_FREE(forward_entry);
+      }
+      break;
 
     default:
       CLOG(INFO, "stdout") << "Unknown ssh option" << endl;
@@ -1231,7 +1281,8 @@ static int ssh_config_parse_line(const char *targethost,
 
   opcode = ssh_config_get_opcode(keyword);
   if (*parsing == 1 && opcode != SOC_HOST && opcode != SOC_MATCH &&
-      opcode != SOC_UNSUPPORTED && opcode != SOC_INCLUDE) {
+      opcode != SOC_UNSUPPORTED && opcode != SOC_INCLUDE &&
+      opcode != SOC_LOCALFORWARD) {
     if (seen[opcode] != 0) {
       SAFE_FREE(x);
       return 0;
@@ -1413,6 +1464,17 @@ static int ssh_config_parse_line(const char *targethost,
           ssh_options_set(options, SSH_OPTIONS_IDENTITYAGENT, filename);
         }
         SAFE_FREE(filename);
+      }
+      break;
+    case SOC_LOCALFORWARD:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        const char *remote_part = ssh_config_get_str_tok(&s, NULL);
+        if (remote_part) {
+          char forward_str[1024];
+          snprintf(forward_str, sizeof(forward_str), "%s %s", p, remote_part);
+          ssh_options_set(options, SSH_OPTIONS_LOCALFORWARD, forward_str);
+        }
       }
       break;
     case SOC_UNSUPPORTED:

@@ -24,15 +24,15 @@ TerminalClient::TerminalClient(
     if (tunnels.length()) {
       auto pfsrs = parseRangesToRequests(tunnels);
       for (auto& pfsr : pfsrs) {
-#ifdef WIN32
-        STFATAL << "Source tunnel not supported on windows yet";
-#else
         auto pfsresponse =
             portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
-          throw std::runtime_error(pfsresponse.error());
+          LOG(WARNING) << "Failed to establish port forward "
+                       << pfsr.source().port() << ":"
+                       << pfsr.destination().port() << " - "
+                       << pfsresponse.error();
+          continue;
         }
-#endif
       }
     }
     if (reverseTunnels.length()) {

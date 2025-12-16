@@ -1,6 +1,14 @@
 #ifndef __ET_HEADERS__
 #define __ET_HEADERS__
 
+/**
+ * @brief Central header that pulls in platform libraries, protobufs, and
+ * utility helpers.
+ *
+ * Pulls in OS-specific headers, third-party dependencies, and defines
+ * constants/macros that are shared by the Eternal Terminal binaries.
+ */
+
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
 #define CPPHTTPLIB_OPENSSL_SUPPORT (1)
 #endif
@@ -33,6 +41,8 @@ inline int close(int fd) { return ::closesocket(fd); }
 #endif
 
 #ifdef WIN32
+using uid_t = int;
+using gid_t = int;
 #else
 #include <arpa/inet.h>
 #include <grp.h>
@@ -182,6 +192,10 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
 #endif
 
+/**
+ * @brief Normalizes platform-specific errno values (translates Win32 WSA
+ * errors).
+ */
 inline int GetErrno() {
 #ifdef WIN32
   auto retval = WSAGetLastError();

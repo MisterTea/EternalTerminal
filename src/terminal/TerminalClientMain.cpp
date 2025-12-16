@@ -3,7 +3,7 @@
 #include "Headers.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
-#include "PsuedoTerminalConsole.hpp"
+#include "PseudoTerminalConsole.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
 #include "TunnelUtils.hpp"
@@ -75,7 +75,8 @@ int main(int argc, char** argv) {
       NULL,  // gss_client_identity
       0,     // gss_delegate_creds
       0,     // forward_agent
-      NULL   // identity_agent
+      NULL,  // identity_agent
+      {}     // local_forwards (empty vector)
   };
 
   // Parse command line arguments
@@ -360,7 +361,7 @@ int main(int argc, char** argv) {
     }
     shared_ptr<Console> console;
     if (!result.count("N")) {
-      console.reset(new PsuedoTerminalConsole());
+      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("f") > 0;
@@ -380,6 +381,19 @@ int main(int argc, char** argv) {
         extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
     string r_tunnel_arg = extractSingleOptionWithDefault<string>(
         result, options, "reversetunnel", "");
+
+    for (const auto& localForward : sshConfigOptions.local_forwards) {
+      string tunnelEntry =
+          to_string(localForward.first) + ":" + to_string(localForward.second);
+      LOG(INFO) << "Adding tunnel from SSH config LocalForward: "
+                << tunnelEntry;
+      if (tunnel_arg.empty()) {
+        tunnel_arg = tunnelEntry;
+      } else {
+        tunnel_arg += "," + tunnelEntry;
+      }
+    }
+
     TerminalClient terminalClient(clientSocket, clientPipeSocket,
                                   socketEndpoint, id, passkey, console,
                                   is_jumphost, tunnel_arg, r_tunnel_arg,

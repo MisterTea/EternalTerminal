@@ -38,7 +38,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
@@ -61,9 +61,9 @@ jobs:
           pushd build
           cmake -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           ./test/system_tests/connect_with_jumphost.sh
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'ubsan'
 
       - name: Build with asan
@@ -72,9 +72,9 @@ jobs:
           pushd build
           cmake -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           ./test/system_tests/connect_with_jumphost.sh
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'asan'
 
       - name: Build with msan
@@ -83,9 +83,9 @@ jobs:
           pushd build
           cmake -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           ./test/system_tests/connect_with_jumphost.sh
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'msan'
 
       - name: Build with tsan
@@ -94,7 +94,7 @@ jobs:
           pushd build
           cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           ./test/system_tests/connect_with_jumphost.sh
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./build/et-test
         if: matrix.sanitize == 'tsan'
