@@ -140,8 +140,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           if (readErrno == EAGAIN || readErrno == EINTR) {
             continue;  // Transient error, retry
           }
-          throw std::runtime_error(
-              string("Router read error: ") + strerror(readErrno));
+          throw std::runtime_error(string("Router read error: ") + strerror(readErrno));
         }
         if (rc == 0) {
           throw std::runtime_error(
