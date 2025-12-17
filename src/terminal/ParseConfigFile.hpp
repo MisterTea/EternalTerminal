@@ -1,23 +1,14 @@
 /* Acknowledgement: this file gathers config file parsing related functions in
  * libssh */
 #pragma once
-#include "Headers.hpp"
-
-/**
- * @brief Helper utilities adapted from libssh to parse ssh_config files.
- *
- * This file exposes the structures and parsing logic used by the SSH setup
- * routines in EternalTerminal.
- */
-// #include <netdb.h>
-// #include <string.h>
-// #include <unistd.h>
-
+#include <filesystem>
 #include <fstream>
 #include <iostream>
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "Headers.hpp"
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
@@ -1306,7 +1297,23 @@ static int ssh_config_parse_line(const char *targethost,
       if (p) {
         char *filename = ssh_path_expand_tilde(p);
         if (filename) {
-          local_parse_file(targethost, options, filename, parsing, seen);
+          if (strchr(filename, '*') || strchr(filename, '?')) {
+            std::string dir = fs::path(filename).parent_path().string();
+            std::string pattern = fs::path(filename).filename().string();
+            std::regex pattern_regex(std::regex_replace(
+                std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
+                std::regex(R"(\*)"), ".*"));
+            for (const auto &entry :
+                 fs::directory_iterator(dir.empty() ? "." : dir)) {
+              if (std::regex_match(entry.path().filename().string(),
+                                   pattern_regex)) {
+                local_parse_file(targethost, options,
+                                 entry.path().string().c_str(), parsing, seen);
+              }
+            }
+          } else {
+            local_parse_file(targethost, options, filename, parsing, seen);
+          }
         }
         SAFE_FREE(filename);
       }
