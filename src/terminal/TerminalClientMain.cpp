@@ -109,11 +109,11 @@ int main(int argc, char** argv) {
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
          "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
-         "10080:80,10443:443, 10090-10092:8000-8002)",
+         "10080:80,10443:443, 10090-10092:8000-8002) or ssh-style -L/-R "
+         "argument. Defaults to localhost for bind address unless ssh-style "
+         "tunnel argument is used.",
          cxxopts::value<std::string>())  //
-        ("r,reversetunnel",
-         "Reverse Tunnel: Array of source:destination ports or "
-         "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges",
+        ("r,reversetunnel", "Reverse Tunnel: See doc for -t/--tunnel.",
          cxxopts::value<std::string>())  //
         ("jumphost", "jumphost between localhost and destination",
          cxxopts::value<std::string>())  //

@@ -29,6 +29,54 @@ TEST_CASE("Parses matching port ranges", "[TunnelUtils]") {
   }
 }
 
+TEST_CASE("Combo pair plus range", "[TunnelUtils]") {
+  auto requests = parseRangesToRequests("1000:2000,8000-8002:9000-9002");
+
+  REQUIRE(requests.size() == 4);
+
+  REQUIRE(requests[0].has_source());
+  REQUIRE(requests[0].source().name() == "localhost");
+  REQUIRE(requests[0].source().port() == 1000);
+  REQUIRE(requests[0].has_destination());
+  REQUIRE(requests[0].destination().port() == 2000);
+  for (int i = 1; i < 4; ++i) {
+    INFO("Checking element " << i);
+    REQUIRE(requests[i].has_source());
+    REQUIRE(requests[i].source().port() == 8000 + i - 1);
+    REQUIRE(requests[i].has_destination());
+    REQUIRE(requests[i].destination().port() == 9000 + i - 1);
+  }
+}
+
+TEST_CASE("Parses ssh style -L/-R arg", "[TunnelUtils]") {
+  // ipv4
+  auto ssh_parts = parseSshTunnelArg("localhost:8888:0.0.0.0:9999");
+  REQUIRE(ssh_parts.size() == 4);
+  REQUIRE(ssh_parts[0] == "localhost");
+  REQUIRE(ssh_parts[1] == "8888");
+  REQUIRE(ssh_parts[2] == "0.0.0.0");
+  REQUIRE(ssh_parts[3] == "9999");
+
+  // ipv6
+  ssh_parts =
+      parseSshTunnelArg("[::1]:8888:[2001:db8:85a3:0:0:8a2e:370:7334]:9999");
+  REQUIRE(ssh_parts.size() == 4);
+  REQUIRE(ssh_parts[0] == "::1");
+  REQUIRE(ssh_parts[1] == "8888");
+  REQUIRE(ssh_parts[2] == "2001:db8:85a3:0:0:8a2e:370:7334");
+  REQUIRE(ssh_parts[3] == "9999");
+
+  auto requests = parseRangesToRequests("localhost:8888:0.0.0.0:9999");
+
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].has_source());
+  REQUIRE(requests[0].source().name() == "localhost");
+  REQUIRE(requests[0].source().port() == 8888);
+  REQUIRE(requests[0].has_destination());
+  REQUIRE(requests[0].destination().name() == "0.0.0.0");
+  REQUIRE(requests[0].destination().port() == 9999);
+}
+
 TEST_CASE("Parses environment variable forward", "[TunnelUtils]") {
   auto requests = parseRangesToRequests("SSH_AUTH_SOCK:/tmp/agent.sock");
 
@@ -70,6 +118,17 @@ TEST_CASE("Rejects malformed port forward input", "[TunnelUtils]") {
         parseRangesToRequests("8080"),
         ContainsSubstring(
             "Tunnel argument must have source and destination between a ':'"));
+  }
+
+  SECTION("Ssh-style tunneling arg must be 4 parts") {
+    REQUIRE_THROWS_WITH(parseRangesToRequests("8888:0.0.0.0:9999"),
+                        ContainsSubstring("The 4 part ssh-style"));
+  }
+
+  SECTION("Ssh-style tunneling arg must use brackets for ipv6 addresses") {
+    REQUIRE_THROWS_WITH(
+        parseRangesToRequests("::1:8888:0.0.0.0:9999"),
+        ContainsSubstring("Ipv6 addresses must be inside of square brackets"));
   }
 }
 
