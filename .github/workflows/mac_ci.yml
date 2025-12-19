@@ -9,7 +9,11 @@ on:
 jobs:
   ubsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -53,7 +57,11 @@ jobs:
 
   asan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -97,7 +105,11 @@ jobs:
 
   msan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -141,7 +153,11 @@ jobs:
 
   tsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
