@@ -10,7 +10,7 @@ fi
 mkdir -p cov_build
 pushd ./cov_build
 if [ $NEW_BUILD -eq 1 ]; then
-cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=ON -G Ninja
+cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=ON -DDISABLE_TELEMETRY=ON -G Ninja
 fi
 find . -name "*.gcda" -print0 | xargs -0 rm -f
 ninja
