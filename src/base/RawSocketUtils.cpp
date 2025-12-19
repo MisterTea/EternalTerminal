@@ -2,6 +2,10 @@
 
 namespace et {
 void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
+  if (count == 0) {
+    return;
+  }
+
   size_t bytesWritten = 0;
   do {
 #ifdef WIN32
@@ -27,6 +31,10 @@ void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
 }
 
 void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
+  if (count == 0) {
+    return;
+  }
+
   size_t bytesRead = 0;
   do {
     if (!waitOnSocketData(fd)) {

@@ -170,10 +170,7 @@ TelemetryService::TelemetryService(const bool _allow,
         SIGFPE,
 #endif
 #ifdef SIGSEGV
-        SIGSEGV,
-#endif
-#ifdef SIGKILL
-        SIGKILL,
+        SIGSEGV
 #endif
     };
     for (auto it : signalsToCatch) {

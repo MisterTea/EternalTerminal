@@ -65,7 +65,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       *sourceName = sourcePath;
       LOG(INFO) << "Creating pipe at " << sourcePath;
     }
-    if (pfsr.source().has_port()) {
+    if (source.has_port()) {
       if (sourceName != nullptr) {
         STFATAL << "Tried to create a port forward but with a place to put "
                    "the name!";

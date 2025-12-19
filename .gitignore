@@ -1,3 +1,7 @@
+# Code Coverage
+filtered.info
+test-coverage.info
+
 # Build artifacts
 deps
 out

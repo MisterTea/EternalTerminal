@@ -14,7 +14,7 @@ cmake ../ -DBUILD_TEST=ON -DBUILD_GTEST=ON -DCODE_COVERAGE=ON -G Ninja
 fi
 find . -name "*.gcda" -print0 | xargs -0 rm -f
 ninja
-ctest -LE integration --parallel # Do not count integration tests towards coverage
+ctest --parallel
 popd
 lcov --directory ./cov_build --capture --output-file ./code-coverage.info -rc lcov_branch_coverage=1
 lcov --remove ./code-coverage.info \
