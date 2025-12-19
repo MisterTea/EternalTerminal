@@ -71,18 +71,18 @@ jobs:
         # Run CMake to generate Ninja project files.
       - name: Install dependencies and generate project files (mac)
         run: |
-          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -DDISABLE_TELEMETRY -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'macos-latest'
       - name: Install dependencies and generate project files (linux)
         env:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          cmake -DDISABLE_TELEMETRY -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'ubuntu-latest'
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          cmake -DDISABLE_TELEMETRY -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'windows-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
