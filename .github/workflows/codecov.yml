@@ -68,7 +68,7 @@ jobs:
         run: |
           ./build/et-test
           ./test/system_tests/connect_with_jumphost.sh
-          lcov --capture --directory . --output-file ./filtered.info
+          lcov --capture --directory . --output-file ./code-coverage.info
           lcov --remove ./code-coverage.info \
               '/usr/include/*' \
               '/home/*/miniconda3/*' \
