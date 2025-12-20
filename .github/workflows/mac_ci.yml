@@ -47,7 +47,7 @@ jobs:
 
       - name: Test with ubsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
@@ -95,7 +95,7 @@ jobs:
 
       - name: Test with asan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
@@ -143,7 +143,7 @@ jobs:
 
       - name: Test with msan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
@@ -191,7 +191,7 @@ jobs:
 
       - name: Test with tsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`

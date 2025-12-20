@@ -58,7 +58,7 @@ jobs:
 
       - name: Build
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DCODE_COVERAGE=ON ../
           make -j`nproc`
