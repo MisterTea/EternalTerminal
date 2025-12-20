@@ -559,6 +559,7 @@ else(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
+      PROPERTIES TIMEOUT 300
     )
     add_sanitizers(et-test)
     if(TARGET test)
