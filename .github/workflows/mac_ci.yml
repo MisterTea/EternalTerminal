@@ -9,7 +9,11 @@ on:
 jobs:
   ubsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -43,9 +47,9 @@ jobs:
 
       - name: Test with ubsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
@@ -53,7 +57,11 @@ jobs:
 
   asan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -87,9 +95,9 @@ jobs:
 
       - name: Test with asan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_ADDRESS=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
@@ -97,7 +105,11 @@ jobs:
 
   msan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -131,9 +143,9 @@ jobs:
 
       - name: Test with msan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_MEMORY=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
@@ -141,7 +153,11 @@ jobs:
 
   tsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -175,9 +191,9 @@ jobs:
 
       - name: Test with tsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd

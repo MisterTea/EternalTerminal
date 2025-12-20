@@ -9,7 +9,11 @@ on:
 jobs:
   codecov:
     runs-on: ubuntu-22.04
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -54,9 +58,9 @@ jobs:
 
       - name: Build
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DCODE_COVERAGE=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCODE_COVERAGE=ON ../
           make -j`nproc`
           popd
 
@@ -64,15 +68,26 @@ jobs:
         run: |
           ./build/et-test
           ./test/system_tests/connect_with_jumphost.sh
-          lcov --capture --directory . --output-file ./coverage.info
-          lcov --remove ./coverage.info '/usr/*' --output-file coverage.info # filter system-files
-          lcov --list ./coverage.info # debug info
+          lcov --capture --directory . --output-file ./code-coverage.info
+          lcov --remove ./code-coverage.info \
+              '/usr/include/*' \
+              '/home/*/miniconda3/*' \
+              '*/vcpkg_installed/*' \
+              '*/external/*' \
+              '*/test/integration_tests/*' \
+              '*/test/unit_tests/*' \
+              '*/test/*' \
+              '*/proto/*' \
+              '*/cov_build/ET.pb*' \
+              '*/cov_build/ETerminal.pb*' \
+              --output-file ./filtered.info -rc lcov_branch_coverage=1
+          lcov --list ./filtered.info # debug info
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
         with:
           directory: ./
           fail_ci_if_error: true
-          files: ./coverage.info
+          files: ./filtered.info
           token: ${{ secrets.CODECOV_TOKEN }}
           verbose: true
