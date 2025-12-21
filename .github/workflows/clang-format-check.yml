@@ -11,7 +11,7 @@ jobs:
           - 'test'
           - 'proto'
     steps:
-    - uses: actions/checkout@v4
+    - uses: actions/checkout@v6
     - name: Run clang-format style check for C/C++/Protobuf source code.
       uses: jidicula/clang-format-action@v4.16.0
       with:

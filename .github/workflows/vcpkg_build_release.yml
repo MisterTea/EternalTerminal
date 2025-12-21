@@ -67,7 +67,7 @@ jobs:
         run: brew update && brew install ninja cmake automake autoconf libtool
         if: matrix.os == 'macos-latest'
 
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         with:
           submodules: false
 
