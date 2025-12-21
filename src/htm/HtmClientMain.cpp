@@ -8,7 +8,7 @@
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
 #include "RawSocketUtils.hpp"
-#include "SubprocessToString.hpp"
+#include "SubprocessUtils.hpp"
 
 using namespace et;
 

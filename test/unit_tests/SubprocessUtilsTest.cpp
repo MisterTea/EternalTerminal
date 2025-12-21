@@ -1,6 +1,6 @@
-#include "SubprocessUtils.hpp"
-
 #include <catch2/catch_test_macros.hpp>
+
+#include "SubprocessUtils.hpp"
 
 using namespace et;
 
@@ -8,7 +8,8 @@ TEST_CASE("SubprocessUtils SubprocessToStringInteractive executes command",
           "[SubprocessUtils]") {
   // Test simple echo command
   SubprocessUtils utils;
-  string result = utils.SubprocessToStringInteractive("echo", {"hello", "world"});
+  string result =
+      utils.SubprocessToStringInteractive("echo", {"hello", "world"});
 
   // The output should contain "hello world" (with possible whitespace/newline)
   REQUIRE(result.find("hello") != string::npos);

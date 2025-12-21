@@ -1,7 +1,5 @@
 #include "SshSetupHandler.hpp"
 
-#include "SubprocessToString.hpp"
-
 namespace et {
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
 

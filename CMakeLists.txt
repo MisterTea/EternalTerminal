@@ -420,8 +420,6 @@ add_library(
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
   src/base/WinsockContext.hpp
-  src/base/SubprocessToString.hpp
-  src/base/SubprocessToString.cpp
   src/base/SubprocessUtils.hpp
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
