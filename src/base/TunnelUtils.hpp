@@ -11,6 +11,8 @@ namespace et {
  */
 vector<PortForwardSourceRequest> parseRangesToRequests(const string& input);
 
+vector<string> parseSshTunnelArg(const string& input);
+
 /**
  * @brief Thrown when an invalid tunnel source/destination string is
  * encountered.
