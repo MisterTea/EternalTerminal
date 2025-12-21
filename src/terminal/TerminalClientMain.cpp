@@ -4,6 +4,8 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SshSetupHandler.hpp"
+#include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
 #include "TunnelUtils.hpp"
@@ -340,25 +342,7 @@ int main(int argc, char** argv) {
     if (result.count("terminal-path")) {
       etterminal_path = result["terminal-path"].as<string>();
     }
-    string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
 
-    string id = "", passkey = "";
-    // Trim whitespace
-    idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
-    size_t slashIndex = idpasskeypair.find("/");
-    if (slashIndex == string::npos) {
-      STFATAL << "Invalid idPasskey id/key pair: " << idpasskeypair;
-    } else {
-      id = idpasskeypair.substr(0, slashIndex);
-      passkey = idpasskeypair.substr(slashIndex + 1);
-    }
-    if (passkey.length() != 32) {
-      STFATAL << "Invalid/missing passkey: " << passkey << " "
-              << passkey.length();
-    }
     shared_ptr<Console> console;
     if (!result.count("N")) {
       console.reset(new PseudoTerminalConsole());
@@ -394,10 +378,17 @@ int main(int argc, char** argv) {
       }
     }
 
-    TerminalClient terminalClient(clientSocket, clientPipeSocket,
-                                  socketEndpoint, id, passkey, console,
-                                  is_jumphost, tunnel_arg, r_tunnel_arg,
-                                  forwardAgent, sshSocket, keepaliveDuration);
+    auto subprocessUtils = make_shared<SubprocessUtils>();
+    SshSetupHandler sshSetupHandler(subprocessUtils);
+    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
+        username, destinationHost, host_alias, destinationPort, jumphost,
+        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+        etterminal_path, serverFifo, ssh_options);
+
+    TerminalClient terminalClient(
+        clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
+        idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
+        forwardAgent, sshSocket, keepaliveDuration);
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));

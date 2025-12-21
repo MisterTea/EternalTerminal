@@ -1,4 +1,4 @@
-#include "SubprocessToString.hpp"
+#include "SubprocessUtils.hpp"
 
 namespace et {
 #ifdef WIN32
@@ -6,8 +6,8 @@ namespace et {
 
 void ErrorExit(PTSTR);
 
-string SubprocessToStringInteractive(const string& command,
-                                     const vector<string>& args) {
+string SubprocessUtils::SubprocessToStringInteractive(
+    const string& command, const vector<string>& args) {
   SECURITY_ATTRIBUTES saAttr;
   HANDLE g_hChildStd_IN_Rd = NULL;
   HANDLE g_hChildStd_IN_Wr = NULL;
@@ -156,8 +156,8 @@ void ErrorExit(PTSTR lpszFunction)
   ExitProcess(1);
 }
 #else
-string SubprocessToStringInteractive(const string& command,
-                                     const vector<string>& args) {
+string SubprocessUtils::SubprocessToStringInteractive(
+    const string& command, const vector<string>& args) {
   int link_client[2];
   char buf_client[4096];
   if (pipe(link_client) == -1) {

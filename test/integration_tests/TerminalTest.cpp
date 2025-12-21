@@ -1,6 +1,9 @@
 #include <atomic>
 
 #include "FakeConsole.hpp"
+#include "FakeSshSetupHandler.hpp"
+#include "SshSetupHandler.hpp"
+#include "SubprocessUtils.hpp"
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
@@ -8,27 +11,28 @@
 
 namespace et {
 
-const string CRYPTO_KEY = "12345678901234567890123456789012";
-const string CRYPTO_KEY2 = "98765432109876543210987654321098";
-
-void readWriteTest(const string& clientId,
-                   shared_ptr<PipeSocketHandler> routerSocketHandler,
+void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
                    shared_ptr<SocketHandler> clientSocketHandler,
                    shared_ptr<SocketHandler> clientPipeSocketHandler,
                    shared_ptr<FakeConsole> fakeConsole,
                    const SocketEndpoint& routerEndpoint) {
+  // Use SshSetupHandler with a fake SubprocessUtils to get id/passkey.
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
   auto uth = shared_ptr<UserTerminalHandler>(
       new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
-                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+                              routerEndpoint, id + "/" + passkey));
   thread uthThread([uth]() { uth->run(); });
   sleep(1);
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
-      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
-      MAX_CLIENT_KEEP_ALIVE_DURATION));
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION));
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
@@ -220,13 +224,12 @@ TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
 
 TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
                  "[EndToEndTest][integration]") {
-  readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
-                serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-                fakeConsole, routerEndpoint);
+  readWriteTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
+                clientSocketHandler, clientPipeSocketHandler, fakeConsole,
+                routerEndpoint);
 }
 
 void simultaneousTerminalConnectionTest(
-    const string& clientId, const string& simultaneousTerminalPasskey,
     LogInterceptHandler& logInterceptHandler,
     shared_ptr<PipeSocketHandler> routerSocketHandler,
     shared_ptr<PipeSocketHandler> userTerminalSocketHandler,
@@ -235,6 +238,19 @@ void simultaneousTerminalConnectionTest(
     shared_ptr<SocketHandler> clientSocketHandler,
     shared_ptr<SocketHandler> clientPipeSocketHandler,
     shared_ptr<FakeConsole> fakeConsole, const SocketEndpoint& routerEndpoint) {
+  // Use SshSetupHandler with a fake SubprocessUtils to get id/passkey.
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  SshSetupHandler sshSetupHandler(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler.SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  // Get id/passkey for simultaneous terminals (use different credentials)
+  auto fakeSubprocessUtilsSimultaneous = make_shared<FakeSubprocessUtils>();
+  SshSetupHandler sshSetupHandlerSimultaneous(fakeSubprocessUtilsSimultaneous);
+  auto [simultaneousId, simultaneousPasskey] =
+      sshSetupHandlerSimultaneous.SetupSsh("", "localhost", "localhost", 2022,
+                                           "", "", false, 0, "", "", {});
+
   struct SimultaneousTerminalState {
     const string& clientId;
     const string& passkey;
@@ -282,12 +298,12 @@ void simultaneousTerminalConnectionTest(
 
   auto uth = shared_ptr<UserTerminalHandler>(
       new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
-                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+                              routerEndpoint, id + "/" + passkey));
 
   constexpr int kNumSimultaneousTerminals = 4;
   std::vector<SimultaneousTerminalState> otherTerminals;
   for (int i = 0; i < kNumSimultaneousTerminals; ++i) {
-    otherTerminals.emplace_back(clientId, simultaneousTerminalPasskey,
+    otherTerminals.emplace_back(simultaneousId, simultaneousPasskey,
                                 routerSocketHandler, userTerminalSocketHandler,
                                 fakeUserTerminal, routerEndpoint);
   }
@@ -304,9 +320,8 @@ void simultaneousTerminalConnectionTest(
   sleep(1);
 
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
-      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
-      MAX_CLIENT_KEEP_ALIVE_DURATION));
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION));
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
@@ -345,18 +360,16 @@ TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
                  "[EndToEndTest][integration]") {
   SECTION("Valid passkey") {
     simultaneousTerminalConnectionTest(
-        "1234567890123456", CRYPTO_KEY, logInterceptHandler,
-        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
-        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-        fakeConsole, routerEndpoint);
+        logInterceptHandler, routerSocketHandler, userTerminalSocketHandler,
+        fakeUserTerminal, serverEndpoint, clientSocketHandler,
+        clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 
   SECTION("Different passkey") {
     simultaneousTerminalConnectionTest(
-        "1234567890123456", CRYPTO_KEY2, logInterceptHandler,
-        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
-        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-        fakeConsole, routerEndpoint);
+        logInterceptHandler, routerSocketHandler, userTerminalSocketHandler,
+        fakeUserTerminal, serverEndpoint, clientSocketHandler,
+        clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 }
 

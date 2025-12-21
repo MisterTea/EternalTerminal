@@ -176,12 +176,16 @@ void reportConnectionError() {
         << "Error:  The Eternal Terminal daemon is not running.  Please "
            "(re)start the et daemon on the server."
         << endl;
+    throw std::runtime_error(
+        "The Eternal Terminal daemon is not running. Please (re)start the et "
+        "daemon on the server.");
   } else {
     CLOG(INFO, "stdout")
         << "Error:  Connection error communicating with et daemon: "
         << strerror(localErrno) << "." << endl;
+    throw std::runtime_error("Connection error communicating with et daemon: " +
+                             string(strerror(localErrno)));
   }
-  exit(1);
 }
 
 int ServerFifoPath::detectAndConnect(

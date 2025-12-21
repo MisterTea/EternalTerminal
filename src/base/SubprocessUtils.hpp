@@ -1,5 +1,5 @@
-#ifndef __ET_SUBPROCESS_TO_STRING__
-#define __ET_SUBPROCESS_TO_STRING__
+#ifndef __ET_SUBPROCESS_UTILS__
+#define __ET_SUBPROCESS_UTILS__
 
 #include "Headers.hpp"
 
@@ -21,11 +21,19 @@ inline std::string SystemToStr(const char* cmd) {
 }
 
 /**
- * @brief Runs a command with arguments while capturing its stdout without a
- * shell.
+ * @brief Utility class for executing subprocesses and capturing output.
  */
-string SubprocessToStringInteractive(const string& command,
-                                     const vector<string>& args);
+class SubprocessUtils {
+ public:
+  virtual ~SubprocessUtils() = default;
+
+  /**
+   * @brief Runs a command with arguments while capturing its stdout without a
+   * shell.
+   */
+  virtual string SubprocessToStringInteractive(const string& command,
+                                               const vector<string>& args);
+};
 }  // namespace et
 
-#endif  // __ET_SUBPROCESS_TO_STRING__
+#endif  // __ET_SUBPROCESS_UTILS__
