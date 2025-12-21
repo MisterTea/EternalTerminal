@@ -110,6 +110,8 @@ class FakeUserTerminal : public UserTerminal {
  public:
   FakeUserTerminal(shared_ptr<PipeSocketHandler> _socketHandler)
       : socketHandler(_socketHandler),
+        serverClientFd(-1),
+        clientServerFd(-1),
         didCleanUp(false),
         didHandleSessionEnd(false) {
     memset(&lastWinInfo, 0, sizeof(winsize));

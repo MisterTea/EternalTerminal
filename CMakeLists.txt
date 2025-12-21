@@ -1,5 +1,42 @@
 cmake_minimum_required(VERSION 3.16.3)
 
+# Prevent conda/miniconda compilers from being used
+# This must happen before the project() command to ensure system compilers are used
+if(DEFINED ENV{CONDA_PREFIX})
+  message(STATUS "Conda environment detected at: $ENV{CONDA_PREFIX}")
+  message(STATUS "Forcing use of system compilers instead of conda compilers")
+
+  # If compilers are already cached with conda paths, clear them
+  if(DEFINED CMAKE_C_COMPILER AND CMAKE_C_COMPILER MATCHES "conda|miniconda")
+    message(STATUS "Clearing cached conda C compiler: ${CMAKE_C_COMPILER}")
+    unset(CMAKE_C_COMPILER CACHE)
+  endif()
+  if(DEFINED CMAKE_CXX_COMPILER AND CMAKE_CXX_COMPILER MATCHES "conda|miniconda")
+    message(STATUS "Clearing cached conda C++ compiler: ${CMAKE_CXX_COMPILER}")
+    unset(CMAKE_CXX_COMPILER CACHE)
+  endif()
+
+  # Find and set system compilers (will be used by project() command)
+  find_program(SYSTEM_C_COMPILER NAMES gcc cc PATHS /usr/bin /bin NO_DEFAULT_PATH REQUIRED)
+  find_program(SYSTEM_CXX_COMPILER NAMES g++ c++ PATHS /usr/bin /bin NO_DEFAULT_PATH REQUIRED)
+
+  set(CMAKE_C_COMPILER "${SYSTEM_C_COMPILER}" CACHE FILEPATH "C compiler" FORCE)
+  set(CMAKE_CXX_COMPILER "${SYSTEM_CXX_COMPILER}" CACHE FILEPATH "C++ compiler" FORCE)
+
+  message(STATUS "Using C compiler: ${CMAKE_C_COMPILER}")
+  message(STATUS "Using C++ compiler: ${CMAKE_CXX_COMPILER}")
+
+  # Unset conda environment variables to prevent them from affecting the build
+  unset(ENV{CC})
+  unset(ENV{CXX})
+  unset(ENV{CFLAGS})
+  unset(ENV{CXXFLAGS})
+  unset(ENV{LDFLAGS})
+  unset(ENV{AR})
+  unset(ENV{RANLIB})
+  unset(ENV{NM})
+endif()
+
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external")
 
 if(MSVC)
@@ -385,6 +422,8 @@ add_library(
   src/base/WinsockContext.hpp
   src/base/SubprocessToString.hpp
   src/base/SubprocessToString.cpp
+  src/base/SubprocessUtils.hpp
+  src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
 

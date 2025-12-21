@@ -6,33 +6,53 @@
 
 include (FindPackageHandleStandardArgs)
 
-find_path (Unwind_INCLUDE_DIR NAMES unwind.h libunwind.h DOC "unwind include directory")
-find_library (Unwind_LIBRARY NAMES unwind DOC "unwind library")
+# Try to use pkg-config to get hints
+find_package(PkgConfig QUIET)
+if (PKG_CONFIG_FOUND)
+  pkg_check_modules(PC_UNWIND QUIET libunwind)
+endif()
+
+find_path (Unwind_INCLUDE_DIR
+  NAMES unwind.h libunwind.h
+  HINTS ${PC_UNWIND_INCLUDE_DIRS}
+  DOC "unwind include directory"
+)
+
+find_library (Unwind_LIBRARY
+  NAMES unwind
+  HINTS ${PC_UNWIND_LIBRARY_DIRS}
+  DOC "unwind library"
+)
 
 if (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
-    set (Unwind_ARCH "unwind-arm")
+    set (Unwind_ARCH "unwind-arm" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^aarch64")
-    set (Unwind_ARCH "unwind-aarch64")
+    set (Unwind_ARCH "unwind-aarch64" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "x86_64" OR
         CMAKE_SYSTEM_PROCESSOR STREQUAL "amd64" OR
         CMAKE_SYSTEM_PROCESSOR STREQUAL "corei7-64")
-    set (Unwind_ARCH "unwind-x86_64" "unwind-x86")
+    set (Unwind_ARCH "unwind-x86_64" "unwind-x86" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^i.86$")
-    set (Unwind_ARCH "unwind-x86" "unwind-x86_64")
+    set (Unwind_ARCH "unwind-x86" "unwind-x86_64" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc64|ppc64)")
-    set (Unwind_ARCH "unwind-ppc64")
+    set (Unwind_ARCH "unwind-ppc64" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^(powerpc|ppc)")
-    set (Unwind_ARCH "unwind-ppc32")
+    set (Unwind_ARCH "unwind-ppc32" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^mips")
-    set (Unwind_ARCH "unwind-mips")
+    set (Unwind_ARCH "unwind-mips" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^hppa")
-    set (Unwind_ARCH "unwind-hppa")
+    set (Unwind_ARCH "unwind-hppa" "unwind-generic")
 elseif (CMAKE_SYSTEM_PROCESSOR MATCHES "^ia64")
-    set (Unwind_ARCH "unwind-ia64")
+    set (Unwind_ARCH "unwind-ia64" "unwind-generic")
+else()
+    set (Unwind_ARCH "unwind-generic")
 endif (CMAKE_SYSTEM_PROCESSOR MATCHES "^arm")
 
-find_library (Unwind_PLATFORM_LIBRARY NAMES ${Unwind_ARCH}
-  DOC "unwind library platform")
+find_library (Unwind_PLATFORM_LIBRARY
+  NAMES ${Unwind_ARCH}
+  HINTS ${PC_UNWIND_LIBRARY_DIRS}
+  DOC "unwind library platform"
+)
 
 mark_as_advanced (Unwind_INCLUDE_DIR Unwind_LIBRARY Unwind_PLATFORM_LIBRARY)
 

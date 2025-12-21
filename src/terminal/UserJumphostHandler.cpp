@@ -92,7 +92,8 @@ void UserJumphostHandler::run() {
               if (initialResponse.has_error()) {
                 CLOG(INFO, "stdout") << "Error initializing connection: "
                                      << initialResponse.error() << endl;
-                exit(1);
+                throw std::runtime_error("Error initializing connection: " +
+                                         initialResponse.error());
               }
               fail = false;
               break;
@@ -111,7 +112,10 @@ void UserJumphostHandler::run() {
       LOG(INFO) << "Could not make initial connection to dst server";
       CLOG(INFO, "stdout") << "Could not make initial connection to "
                            << dstSocketEndpoint << ": " << err.what() << endl;
-      exit(1);
+      std::ostringstream oss;
+      oss << "Could not make initial connection to " << dstSocketEndpoint
+          << ": " << err.what();
+      throw std::runtime_error(oss.str());
     }
     break;
   }
