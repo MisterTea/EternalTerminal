@@ -60,6 +60,7 @@ message PortForwardData {
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
+  map<string, string> environmentvariables = 3;
 }
 
 message InitialResponse {

@@ -213,6 +213,12 @@ void TerminalServer::runTerminal(
   shared_ptr<PortForwardHandler> portForwardHandler(
       new PortForwardHandler(serverSocketHandler, pipeSocketHandler));
   map<string, string> environmentVariables;
+
+  for (const auto &envVar : payload.environmentvariables()) {
+    environmentVariables[envVar.first] = envVar.second;
+    LOG(INFO) << "SetEnv: " << envVar.first << "=" << envVar.second;
+  }
+
   vector<string> pipePaths;
   for (const PortForwardSourceRequest &pfsr : payload.reversetunnels()) {
     string sourceName;

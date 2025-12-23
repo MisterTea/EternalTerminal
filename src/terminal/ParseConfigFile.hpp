@@ -88,6 +88,7 @@ enum ssh_config_opcode_e {
   SOC_FORWARDAGENT,
   SOC_IDENTITYAGENT,
   SOC_LOCALFORWARD,
+  SOC_SETENV,
   SOC_END /* Keep this one last in the list */
 };
 
@@ -129,7 +130,8 @@ enum ssh_options_e {
   SSH_OPTIONS_PROXYJUMP,
   SSH_OPTIONS_FORWARDAGENT,
   SSH_OPTIONS_IDENTITYAGENT,
-  SSH_OPTIONS_LOCALFORWARD
+  SSH_OPTIONS_LOCALFORWARD,
+  SSH_OPTIONS_SETENV
 };
 
 /**
@@ -153,6 +155,7 @@ struct Options {
   int forward_agent;
   char *identity_agent;
   vector<pair<int, int>> local_forwards;
+  vector<pair<string, string>> env_vars;
 };
 
 /**
@@ -182,6 +185,7 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"forwardagent", SOC_FORWARDAGENT},
     {"identityagent", SOC_IDENTITYAGENT},
     {"localforward", SOC_LOCALFORWARD},
+    {"setenv", SOC_SETENV},
     {NULL, SOC_UNSUPPORTED}};
 
 /** @brief Returns the opcode associated with the given keyword string. */
@@ -1084,6 +1088,27 @@ int ssh_options_set(struct Options *options, enum ssh_options_e type,
         SAFE_FREE(forward_entry);
       }
       break;
+    case SSH_OPTIONS_SETENV:
+      v = static_cast<const char *>(value);
+      if (v == NULL || v[0] == '\0') {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        char *setenv_entry = strdup(v);
+        if (setenv_entry == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+
+        char *eq_pos = strchr(setenv_entry, '=');
+        if (eq_pos) {
+          *eq_pos = '\0';
+          options->env_vars.push_back(make_pair(setenv_entry, eq_pos + 1));
+        }
+
+        SAFE_FREE(setenv_entry);
+      }
+      break;
 
     default:
       CLOG(INFO, "stdout") << "Unknown ssh option" << endl;
@@ -1282,7 +1307,7 @@ static int ssh_config_parse_line(const char *targethost,
   opcode = ssh_config_get_opcode(keyword);
   if (*parsing == 1 && opcode != SOC_HOST && opcode != SOC_MATCH &&
       opcode != SOC_UNSUPPORTED && opcode != SOC_INCLUDE &&
-      opcode != SOC_LOCALFORWARD) {
+      opcode != SOC_LOCALFORWARD && opcode != SOC_SETENV) {
     if (seen[opcode] != 0) {
       SAFE_FREE(x);
       return 0;
@@ -1475,6 +1500,12 @@ static int ssh_config_parse_line(const char *targethost,
           snprintf(forward_str, sizeof(forward_str), "%s %s", p, remote_part);
           ssh_options_set(options, SSH_OPTIONS_LOCALFORWARD, forward_str);
         }
+      }
+      break;
+    case SOC_SETENV:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_SETENV, p);
       }
       break;
     case SOC_UNSUPPORTED:
