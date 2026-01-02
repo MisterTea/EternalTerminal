@@ -103,16 +103,28 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         // Read from terminal and write to client, with a limit in rows/sec
         memset(b, 0, BUF_SIZE);
         int rc = read(masterFd, b, BUF_SIZE);
-        VLOG(4) << "Read from terminal";
-        FATAL_FAIL(rc);
+        int readErrno = errno;  // Save errno before any logging
         if (rc > 0) {
+          VLOG(4) << "Read from terminal";
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
           socketHandler->writeAllOrThrow(routerFd, b, rc, false);
           VLOG(4) << "Write to client: "
                   << std::count(s.begin(), s.end(), '\n');
-        } else {
+        } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          term->handleSessionEnd();
+          lock_guard<recursive_mutex> guard(shutdownMutex);
+          shuttingDown = true;
+          break;
+        } else if (readErrno == EAGAIN || readErrno == EWOULDBLOCK) {
+          // Transient error, retry
+          LOG(INFO) << "Terminal read temporarily unavailable, retrying...";
+          continue;
+        } else {
+          // Fatal read error - log with correct errno and exit gracefully
+          LOG(ERROR) << "Terminal read error: " << readErrno << " "
+                     << strerror(readErrno);
           term->handleSessionEnd();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
@@ -123,7 +135,14 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
       if (FD_ISSET(routerFd, &rfd)) {
         char packetType;
         int rc = read(routerFd, &packetType, 1);
-        FATAL_FAIL(rc);
+        int readErrno = errno;  // Save errno before any logging
+        if (rc == -1) {
+          if (readErrno == EAGAIN || readErrno == EINTR) {
+            continue;  // Transient error, retry
+          }
+          throw std::runtime_error(string("Router read error: ") +
+                                   strerror(readErrno));
+        }
         if (rc == 0) {
           throw std::runtime_error(
               "Router has ended abruptly.  Killing terminal session.");
