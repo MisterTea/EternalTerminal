@@ -33,7 +33,7 @@ RUN makepkg -si --noconfirm
 RUN yay -Syu --noconfirm eternalterminal || true
 WORKDIR /home/et
 
-#RUN git clone ssh://aur@aur.archlinux.org/eternalterminal.git arch_et
+RUN git clone ssh://aur@aur.archlinux.org/eternalterminal.git arch_et
 RUN git clone --branch `curl https://api.github.com/repos/mistertea/EternalTerminal/releases/latest | jq '.tag_name' | sed 's/"//g'` git@github.com:MisterTea/EternalTerminal.git
 RUN mkdir -p EternalTerminal/build
 WORKDIR /home/et/EternalTerminal/build

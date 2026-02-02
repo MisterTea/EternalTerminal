@@ -1,323 +1,329 @@
+et (6.2.11-##DISTRO##1) ##DISTRO##; urgency=medium
+
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.11
+
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 21 Jul 2025 11:06:54 -0800
+
 et (6.2.10-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.9
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.9
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 21 Jul 2025 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 21 Jul 2025 10:06:54 -0800
 
 et (6.2.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Update deps in external to match vcpkg
+* Update deps in external to match vcpkg
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 1 May 2024 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 1 May 2024 10:06:54 -0800
 
 et (6.2.8-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * Remove ncurses/libtinfo
+* Remove ncurses/libtinfo
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 4 Mar 2024 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 4 Mar 2024 10:06:54 -0800
 
 et (6.2.8-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.8
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.8
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 1 Sep 2023 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Fri, 1 Sep 2023 10:06:54 -0800
 
 et (6.2.7-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.7
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.7
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 31 Aug 2023 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 31 Aug 2023 10:06:54 -0800
 
 et (6.2.6-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.6
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.6
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 29 Aug 2023 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 29 Aug 2023 10:06:54 -0800
 
 et (6.2.4-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.4
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.4
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 19 Jan 2023 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 19 Jan 2023 10:06:54 -0800
 
 et (6.2.1-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.1
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 9 Sep 2022 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 9 Sep 2022 10:06:54 -0800
 
 et (6.2.1-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.1
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 5 May 2022 10:06:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 5 May 2022 10:06:54 -0800
 
 et (6.2.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.2.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 4 May 2022 10:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 4 May 2022 10:36:54 -0800
 
 et (6.1.11-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Build fixes for later versions of gcc
+* Build fixes for later versions of gcc
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 11 Jan 2022 10:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 11 Jan 2022 10:36:54 -0800
 
 et (6.1.10-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Fixes for macos
+* Fixes for macos
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 10 Jan 2022 16:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 10 Jan 2022 16:36:54 -0800
 
 et (6.1.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Security, Compatibility, and bug fixes
+* Security, Compatibility, and bug fixes
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 3 Nov 2021 16:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 3 Nov 2021 16:36:54 -0800
 
 et (6.1.8-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * ssh config fixes
+* ssh config fixes
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 28 May 2021 16:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Fri, 28 May 2021 16:36:54 -0800
 
 et (6.1.7-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * Disable tests
+* Disable tests
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:54 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:54 -0800
 
 et (6.1.7-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.7
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.7
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:53 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 1 Apr 2021 16:36:53 -0800
 
 et (6.1.6-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.6
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.6
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 23 Mar 2021 16:36:53 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 23 Mar 2021 16:36:53 -0800
 
 et (6.1.5-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.5
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.5
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 23 Mar 2021 16:36:52 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 23 Mar 2021 16:36:52 -0800
 
 et (6.1.4-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.4
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.4
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sat, 13 Mar 2021 16:36:52 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sat, 13 Mar 2021 16:36:52 -0800
 
 et (6.1.3-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.3
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.3
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sun, 7 Mar 2021 16:36:52 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sun, 7 Mar 2021 16:36:52 -0800
 
 et (6.1.2-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.2
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.2
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sat, 6 Mar 2021 16:36:52 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sat, 6 Mar 2021 16:36:52 -0800
 
 et (6.1.1-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.1
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sat, 6 Mar 2021 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sat, 6 Mar 2021 16:36:51 -0800
 
 et (6.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.1.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 4 Mar 2021 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 4 Mar 2021 16:36:51 -0800
 
 et (6.0.13-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.13
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.13
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 18 Nov 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 18 Nov 2020 16:36:51 -0800
 
 et (6.0.11-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.11
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.11
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 30 Jul 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 30 Jul 2020 16:36:51 -0800
 
 et (6.0.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.9
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.9
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 30 Jul 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 30 Jul 2020 16:36:51 -0800
 
 et (6.0.8-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.8
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.8
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 29 Jul 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 29 Jul 2020 16:36:51 -0800
 
 et (6.0.7-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.7
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.7
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 3 Mar 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 3 Mar 2020 16:36:51 -0800
 
 et (6.0.6-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.6
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.6
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sat, 25 Jan 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sat, 25 Jan 2020 16:36:51 -0800
 
 et (6.0.5-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * Add arm64 build on Ubuntu
+* Add arm64 build on Ubuntu
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sat, 25 Jan 2020 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sat, 25 Jan 2020 16:36:51 -0800
 
 et (6.0.5-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Various compatibility fixes
+* Various compatibility fixes
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 14 Oct 2019 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 14 Oct 2019 16:36:51 -0800
 
 et (6.0.4-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * Fix bug in et.service
+* Fix bug in et.service
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 14 Oct 2019 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 14 Oct 2019 16:36:51 -0800
 
 et (6.0.4-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.4
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.4
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 8 Oct 2019 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 8 Oct 2019 16:36:51 -0800
 
 et (6.0.3-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.3
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.1
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.3
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v6.0.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 24 Sep 2019 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 24 Sep 2019 16:36:51 -0800
 
 et (5.1.9-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.9
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.9
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 16 Oct 2019 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 16 Oct 2019 16:36:51 -0800
 
 et (5.1.8-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.8
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.7
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.6
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.8
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.7
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.6
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 30 Oct 2018 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 30 Oct 2018 16:36:51 -0800
 
 et (5.1.5-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.5
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.4
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.3
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.2
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.5
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.4
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.3
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.2
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.1
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 9 Oct 2018 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 9 Oct 2018 16:36:51 -0800
 
 et (5.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.1.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 24 Aug 2018 16:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Fri, 24 Aug 2018 16:36:51 -0800
 
 et (5.0.7-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.7
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.7
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sun, 27 May 2018 18:36:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sun, 27 May 2018 18:36:51 -0800
 
 et (5.0.5-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.5
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.4
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.3
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.5
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.4
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.3
 
- -- Jason Gauci <jgmath2000@gmail.com>  Sun, 27 May 2018 18:35:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Sun, 27 May 2018 18:35:51 -0800
 
 et (5.0.2-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.2
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.1
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.2
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v5.0.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 25 May 2018 18:35:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Fri, 25 May 2018 18:35:51 -0800
 
 et (4.2.1-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.2.1
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.2.1
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 28 Feb 2018 18:34:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 28 Feb 2018 18:34:51 -0800
 
 et (4.2.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.2.0
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.2.0
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 8 Feb 2018 18:34:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 8 Feb 2018 18:34:51 -0800
 
 et (4.1.2-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.1.2
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v4.1.2
 
- -- Jason Gauci <jgmath2000@gmail.com>  Wed, 13 Dec 2017 18:34:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Wed, 13 Dec 2017 18:34:51 -0800
 
 et (4.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Fix IP tunneling crash
-  * Add support for jumphosts
-  * Read host aliases from ssh_config
+* Fix IP tunneling crash
+* Add support for jumphosts
+* Read host aliases from ssh_config
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 26 Oct 2017 18:34:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 26 Oct 2017 18:34:51 -0800
 
 et (4.0.4-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Fix window resize issue
+* Fix window resize issue
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:34:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:34:51 -0800
 
 et (4.0.3-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Fix compile issue under Debian
+* Fix compile issue under Debian
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:33:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:33:51 -0800
 
 et (4.0.2-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Make version mismatch errors more readable
-  * Automatically exit when running et with -c
-  * Client sessions now run in user space and are subject to PAM.
-  * Set utmp correctly on platforms that support it.
+* Make version mismatch errors more readable
+* Automatically exit when running et with -c
+* Client sessions now run in user space and are subject to PAM.
+* Set utmp correctly on platforms that support it.
 
- -- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:32:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 25 Jul 2017 18:32:51 -0800
 
 et (3.1.1-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Fixes a bug where the psuedoterminal was still owned by root after login.
+* Fixes a bug where the psuedoterminal was still owned by root after login.
 
- -- Jason Gauci <jgmath2000@gmail.com>  Thu, 6 Jul 2017 18:32:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Thu, 6 Jul 2017 18:32:51 -0800
 
 et (3.1.0-##DISTRO##2) ##DISTRO##; urgency=medium
 
-  * Change to dev versions of google libs since they are unversioned
+* Change to dev versions of google libs since they are unversioned
 
- -- Jason Gauci <jgmath2000@gmail.com>  Mon, 3 Jul 2017 18:32:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Mon, 3 Jul 2017 18:32:51 -0800
 
 et (3.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
-  * Initial support for TCP tunneling
-  * Various bug fixes and performance improvements
+* Initial support for TCP tunneling
+* Various bug fixes and performance improvements
 
- -- Jason Gauci <jgmath2000@gmail.com>  Fri, 30 Jun 2017 18:32:51 -0800
+-- Jason Gauci <jgmath2000@gmail.com>  Fri, 30 Jun 2017 18:32:51 -0800
