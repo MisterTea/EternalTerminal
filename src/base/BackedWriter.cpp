@@ -1,8 +1,8 @@
 #include "BackedWriter.hpp"
 
 namespace et {
-BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
-                           std::shared_ptr<CryptoHandler> cryptoHandler_,  //
+BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,
+                           std::shared_ptr<CryptoHandler> cryptoHandler_,
                            int socketFd_)
     : socketHandler(socketHandler_),
       cryptoHandler(cryptoHandler_),
@@ -13,25 +13,31 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,  //
 BackedWriterWriteState BackedWriter::write(Packet packet) {
   // If recover started, Wait until finished
   lock_guard<std::mutex> guard(recoverMutex);
-  {
-    if (socketFd < 0) {
-      // We have no socket to write to, don't bother trying to write
-      return BackedWriterWriteState::SKIPPED;
-    }
 
-    // Once we encrypt and the encryption state is updated, there's no
-    // going back.
-    packet.encrypt(cryptoHandler);
+  // If no socket and buffer exceeds disconnect limit, signal caller to wait
+  // This prevents blocking during normal disconnects while preserving data
+  if (socketFd < 0 && backupSize + packet.length() > DISCONNECT_BUFFER_BYTES) {
+    return BackedWriterWriteState::SKIPPED;
+  }
 
-    // Backup the buffer
-    backupBuffer.push_front(packet);
-    backupSize += packet.length();
-    sequenceNumber++;
-    // Cleanup old values
-    while (backupSize > MAX_BACKUP_BYTES) {
-      backupSize -= backupBuffer.back().length();
-      backupBuffer.pop_back();
-    }
+  // Always encrypt and buffer first, even if no socket.
+  // This allows data to be recovered on reconnect.
+  packet.encrypt(cryptoHandler);
+
+  // Backup the buffer
+  backupBuffer.push_front(packet);
+  backupSize += packet.length();
+  sequenceNumber++;
+  // Cleanup old values (only when connected - never drop data when
+  // disconnected)
+  while (socketFd >= 0 && backupSize > MAX_BACKUP_BYTES) {
+    backupSize -= backupBuffer.back().length();
+    backupBuffer.pop_back();
+  }
+
+  // If no socket, data is buffered for later recovery
+  if (socketFd < 0) {
+    return BackedWriterWriteState::BUFFERED_ONLY;
   }
 
   // Size before we add the header
@@ -50,7 +56,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
   VLOG(2) << "Message length with header: " << count;
 
   while (true) {
-    // We have a socket, let's try to use it.
+    // We have a socket, let us try to use it.
     if (socketFd < 0) {
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
     }
@@ -63,8 +69,8 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
       }
       std::this_thread::sleep_for(std::chrono::microseconds(1000));
     } else {
-      // Error, we don't know how many bytes were written but it
-      // doesn't matter because the reader is going to have to
+      // Error, we do not know how many bytes were written but it
+      // does not matter because the reader is going to have to
       // reconnect anyways.  The important thing is for the caller to
       // think that the bytes were written and not call again.
       return BackedWriterWriteState::WROTE_WITH_FAILURE;
@@ -74,7 +80,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
 
 vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   if (socketFd >= 0) {
-    throw std::runtime_error("Can't recover when the fd is still alive");
+    throw std::runtime_error("Cannot recover when the fd is still alive");
   }
   VLOG(1) << int64_t(this) << ": Manually locking recover mutex!";
 
