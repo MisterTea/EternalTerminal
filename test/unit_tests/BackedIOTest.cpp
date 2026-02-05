@@ -312,3 +312,44 @@ TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
 
   handler->close(fd);
 }
+
+TEST_CASE("BackedWriter trims old data when connected and buffer exceeds 64MB",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const int fd = handler->createChannel();
+  const string key = "12345678901234567890123456789012";
+  auto crypto = make_shared<CryptoHandler>(key, 0);
+
+  auto writer = make_shared<BackedWriter>(handler, crypto, fd);
+
+  // Write 70MB of data while connected (exceeds 64MB MAX_BACKUP_BYTES)
+  string chunk(1024 * 1024, 'x');  // 1MB chunks
+  for (int i = 0; i < 70; i++) {
+    Packet p(i, chunk);
+    auto result = writer->write(p);
+    REQUIRE(result == BackedWriterWriteState::SUCCESS);
+  }
+
+  // Verify sequence number reflects all writes
+  REQUIRE(writer->getSequenceNumber() == 70);
+
+  // Disconnect and try to recover - should only have ~64MB worth of messages
+  writer->invalidateSocket();
+
+  // Request recovery of all 70 messages - should throw because old ones were
+  // trimmed
+  bool threw = false;
+  try {
+    writer->recover(0);  // Try to recover from sequence 0
+  } catch (const std::runtime_error& e) {
+    // Expected: "Client is too far behind server"
+    threw = true;
+  }
+  REQUIRE(threw);
+
+  // Recovery from a recent sequence should work
+  auto recovered = writer->recover(writer->getSequenceNumber() - 10);
+  REQUIRE(recovered.size() == 10);
+
+  handler->close(fd);
+}
