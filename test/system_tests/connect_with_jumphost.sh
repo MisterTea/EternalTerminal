@@ -45,23 +45,28 @@ cleanup_ssh_config() {
 }
 trap cleanup_ssh_config EXIT
 
+# Detect the effective SSH port for localhost (may be overridden in SSH config)
+SSH_PORT=$(ssh -G localhost 2>/dev/null | awk '/^port /{print $2}')
+SSH_PORT=${SSH_PORT:-22}
+echo "Detected SSH port for localhost: $SSH_PORT"
+
 # Append test configuration to SSH config
 cat >> ~/.ssh/config <<EOF
 
 # Temporary ET test configuration
 Host et_test_jumphost_alias
     HostName localhost
-    Port 22
+    Port $SSH_PORT
     User $USER
 
 Host et_test_destination_with_port
     HostName 127.0.0.1
-    ProxyJump et_test_jumphost_alias:22
+    ProxyJump et_test_jumphost_alias:$SSH_PORT
     User $USER
 EOF
 
 # Test 4: ProxyJump with alias resolution and explicit SSH port
-# This tests that the alias "et_test_jumphost_alias:22" is resolved to "localhost:22"
+# This tests that the alias "et_test_jumphost_alias:<port>" is resolved to "localhost:<port>"
 # and that the port specification is preserved in the ssh -J command
 echo "Test 4: ProxyJump with alias and explicit SSH port (testing alias resolution + port preservation)"
 TEST4_OUTPUT=$(mktemp)
