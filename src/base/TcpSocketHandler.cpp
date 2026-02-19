@@ -177,8 +177,17 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   }
 
   set<int> serverSockets;
+  set<string> seenAddresses;
   // loop through all the results and bind to the first we can
   for (p = servinfo; p != NULL; p = p->ai_next) {
+    // Deduplicate addresses from getaddrinfo — "localhost" can resolve to
+    // the same address more than once.
+    string addrKey(reinterpret_cast<const char *>(p->ai_addr), p->ai_addrlen);
+    if (!seenAddresses.insert(addrKey).second) {
+      LOG(INFO) << "Skipping duplicate address for family " << p->ai_family;
+      continue;
+    }
+
     int sockFd;
     if ((sockFd = socket(p->ai_family, p->ai_socktype, p->ai_protocol)) == -1) {
       auto localErrno = GetErrno();
