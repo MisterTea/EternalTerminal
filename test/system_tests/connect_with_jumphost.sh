@@ -23,5 +23,70 @@ build/et -c "echo 'Hello World 2!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 -
 
 build/et -c "echo 'Hello World 3!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jumphost localhost --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 127.0.0.1:9901 # We can't use 'localhost' for both the jumphost and the destination because ssh doesn't support keeping them the same.
 
+# Test SSH config ProxyJump with alias and port specification
+# Backup existing SSH config if present, or track that we created it
+mkdir -p ~/.ssh
+SSH_CONFIG_BACKUP=""
+SSH_CONFIG_CREATED=false
+if [ -f ~/.ssh/config ]; then
+  SSH_CONFIG_BACKUP=$(mktemp)
+  cp ~/.ssh/config "$SSH_CONFIG_BACKUP"
+else
+  SSH_CONFIG_CREATED=true
+fi
+
+# Cleanup function to restore SSH config on exit (including failures)
+cleanup_ssh_config() {
+  if [ -n "$SSH_CONFIG_BACKUP" ]; then
+    mv "$SSH_CONFIG_BACKUP" ~/.ssh/config
+  elif [ "$SSH_CONFIG_CREATED" = true ]; then
+    rm -f ~/.ssh/config
+  fi
+}
+trap cleanup_ssh_config EXIT
+
+# Detect the effective SSH port for localhost (may be overridden in SSH config)
+SSH_PORT=$(ssh -G localhost 2>/dev/null | awk '/^port /{print $2}')
+SSH_PORT=${SSH_PORT:-22}
+echo "Detected SSH port for localhost: $SSH_PORT"
+
+# Append test configuration to SSH config
+cat >> ~/.ssh/config <<EOF
+
+# Temporary ET test configuration
+Host et_test_jumphost_alias
+    HostName localhost
+    Port $SSH_PORT
+    User $USER
+
+Host et_test_destination_with_port
+    HostName 127.0.0.1
+    ProxyJump et_test_jumphost_alias:$SSH_PORT
+    User $USER
+EOF
+
+# Test 4: ProxyJump with alias resolution and explicit SSH port
+# This tests that the alias "et_test_jumphost_alias:<port>" is resolved to "localhost:<port>"
+# and that the port specification is preserved in the ssh -J command
+echo "Test 4: ProxyJump with alias and explicit SSH port (testing alias resolution + port preservation)"
+TEST4_OUTPUT=$(mktemp)
+if build/et -c "echo 'Hello World 4!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 et_test_destination_with_port 2>&1 | tee "$TEST4_OUTPUT" | grep -q "Hello World 4!"; then
+  # Verify alias was resolved in logs
+  if grep -q "Resolved jumphost alias 'et_test_jumphost_alias' to hostname: localhost" "$TEST4_OUTPUT"; then
+    echo "Test 4 passed: Alias resolution confirmed"
+  else
+    echo "Test 4 failed: Connection succeeded but alias resolution log not found"
+    cat "$TEST4_OUTPUT"
+    rm -f "$TEST4_OUTPUT"
+    exit 1
+  fi
+else
+  echo "Test 4 failed: Connection or output verification failed"
+  cat "$TEST4_OUTPUT"
+  rm -f "$TEST4_OUTPUT"
+  exit 1
+fi
+rm -f "$TEST4_OUTPUT"
+
 kill -9 $first_server_pid
 kill -9 $second_server_pid
