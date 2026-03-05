@@ -287,6 +287,13 @@ void TerminalServer::runTerminal(
       FD_SET(serverClientFd, &rfd);
       maxfd = max(maxfd, serverClientFd);
     }
+    // Include port forward sockets in select for low-latency forwarding.
+    set<int> pfFds;
+    portForwardHandler->getForwardFds(&pfFds);
+    for (int fd : pfFds) {
+      FD_SET(fd, &rfd);
+      maxfd = max(maxfd, fd);
+    }
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);

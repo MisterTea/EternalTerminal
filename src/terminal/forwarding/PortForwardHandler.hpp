@@ -41,6 +41,7 @@ class PortForwardHandler {
   /** @brief Sends data back to the listener that originally accepted the source
    * socket. */
   void sendDataToSourceOnSocket(int socketId, const string& data);
+  void getForwardFds(set<int>* fds);
 
  protected:
   /** @brief Handler used for the SSH/network-facing sockets. */
