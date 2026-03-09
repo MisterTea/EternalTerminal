@@ -656,6 +656,95 @@ TEST_CASE("PortForwardHandler closeSourceSocketId", "[PortForwardHandler]") {
                   clientFd) != networkHandler->closedFds.end());
 }
 
+TEST_CASE("PortForwardHandler getForwardFds with no handlers",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  set<int> fds;
+  handler.getForwardFds(&fds);
+
+  CHECK(fds.empty());
+}
+
+TEST_CASE(
+    "PortForwardHandler getForwardFds includes source and destination fds",
+    "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  // Create a source (this creates a listener fd via listen())
+  PortForwardSourceRequest sourceRequest;
+  SocketEndpoint source;
+  source.set_port(8080);
+  *sourceRequest.mutable_source() = source;
+  SocketEndpoint destination;
+  destination.set_port(9090);
+  *sourceRequest.mutable_destination() = destination;
+  handler.createSource(sourceRequest, nullptr, 1000, 1000);
+
+  // Create a destination
+  networkHandler->setConnectResult(42);
+  PortForwardDestinationRequest destRequest;
+  SocketEndpoint dest2;
+  dest2.set_port(3000);
+  *destRequest.mutable_destination() = dest2;
+  destRequest.set_fd(200);
+  PortForwardDestinationResponse destResponse =
+      handler.createDestination(destRequest);
+  REQUIRE_FALSE(destResponse.has_error());
+
+  set<int> fds;
+  handler.getForwardFds(&fds);
+
+  // Should include the source listener fd (assigned by
+  // FakePortForwardSocketHandler)
+  auto sourceFds = networkHandler->getEndpointFds(source);
+  for (int fd : sourceFds) {
+    CHECK(fds.count(fd) == 1);
+  }
+
+  // Should include the destination fd (42)
+  CHECK(fds.count(42) == 1);
+}
+
+TEST_CASE("PortForwardHandler getForwardFds excludes closed destination fds",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+  auto connection = make_shared<FakeConnection>();
+
+  // Create a destination
+  networkHandler->setConnectResult(42);
+  PortForwardDestinationRequest destRequest;
+  SocketEndpoint dest;
+  dest.set_port(3000);
+  *destRequest.mutable_destination() = dest;
+  destRequest.set_fd(200);
+  PortForwardDestinationResponse destResponse =
+      handler.createDestination(destRequest);
+  REQUIRE_FALSE(destResponse.has_error());
+  int socketId = destResponse.socketid();
+
+  // Close the destination via a close packet
+  PortForwardData data;
+  data.set_sourcetodestination(true);
+  data.set_socketid(socketId);
+  data.set_closed(true);
+  Packet packet(uint8_t(TerminalPacketType::PORT_FORWARD_DATA),
+                protoToString(data));
+  handler.handlePacket(packet, connection);
+
+  set<int> fds;
+  handler.getForwardFds(&fds);
+
+  // Destination fd should be -1 after close, so not included
+  CHECK(fds.count(42) == 0);
+}
+
 TEST_CASE("PortForwardHandler sendDataToSourceOnSocket",
           "[PortForwardHandler]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();

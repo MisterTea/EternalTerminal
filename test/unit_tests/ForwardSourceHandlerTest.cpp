@@ -362,6 +362,63 @@ TEST_CASE("ForwardSourceHandler sendDataOnSocket writes to socket",
   REQUIRE(socketHandler->writes[0] == "test data");
 }
 
+TEST_CASE("ForwardSourceHandler getActiveFds returns all fd types",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100, 101});
+  socketHandler->enqueueAccept(42);
+  socketHandler->enqueueAccept(43);
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  // Accept two connections: assign one, leave other unassigned
+  int fd1 = handler.listen();
+  REQUIRE(fd1 == 42);
+  int fd2 = handler.listen();
+  REQUIRE(fd2 == 43);
+
+  handler.addSocket(123, fd1);  // fd1 (42) moves to socketFdMap
+
+  // fd2 (43) remains in unassignedFds
+  set<int> fds;
+  handler.getActiveFds(&fds);
+
+  // Should contain: endpoint fds (100, 101), socketFdMap fd (42),
+  // unassigned fd (43)
+  CHECK(fds.count(100) == 1);
+  CHECK(fds.count(101) == 1);
+  CHECK(fds.count(42) == 1);
+  CHECK(fds.count(43) == 1);
+  CHECK(fds.size() == 4);
+}
+
+TEST_CASE("ForwardSourceHandler getActiveFds with no sockets",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  set<int> fds;
+  handler.getActiveFds(&fds);
+
+  // Should contain only the endpoint fd
+  CHECK(fds.count(100) == 1);
+  CHECK(fds.size() == 1);
+}
+
 TEST_CASE("ForwardSourceHandler closeSocket closes and removes socket",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
