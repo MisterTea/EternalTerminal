@@ -13,10 +13,10 @@ status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg?exclude
 
 ### macOS
 
-The easiest way to install is using Homebrew:
+The easiest way to install `et`is by using Homebrew:
 
 ```bash
-brew install MisterTea/et/et
+brew install et
 ```
 
 If the install fails on including csignal, see https://github.com/MisterTea/EternalTerminal/issues/662#issuecomment-2408889829
@@ -200,7 +200,7 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ### macOS
 
-To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
+To build Eternal Terminal on Mac, install its dependencies with Homebrew:
 
 ```bash
 brew install autoconf automake libtool
