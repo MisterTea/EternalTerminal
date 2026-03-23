@@ -8,7 +8,7 @@ title: Download ET
 The easiest way to install, is using [Homebrew](https://brew.sh):
 
 ```bash
-brew install MisterTea/et/et
+brew install et
 ```
 
 # Ubuntu
