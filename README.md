@@ -16,7 +16,7 @@ status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg?exclude
 The easiest way to install is using Homebrew:
 
 ```bash
-brew install MisterTea/et/et
+brew install et
 ```
 
 If the install fails on including csignal, see https://github.com/MisterTea/EternalTerminal/issues/662#issuecomment-2408889829
