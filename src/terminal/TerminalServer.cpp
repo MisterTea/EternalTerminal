@@ -2,6 +2,7 @@
 #include "TerminalServer.hpp"
 
 #include "TelemetryService.hpp"
+#include "WriteBuffer.hpp"
 
 #define BUF_SIZE (16 * 1024)
 
@@ -124,6 +125,11 @@ void TerminalServer::runJumpHost(
       terminalFd,
       Packet(TerminalPacketType::JUMPHOST_INIT, protoToString(payload)));
 
+  // Flow control: buffer for pending jumphost output to client
+  std::deque<Packet> pendingPackets;
+  size_t pendingBytes = 0;
+  const size_t MAX_PENDING_BYTES = 256 * 1024;  // 256KB limit
+
   while (true) {
     {
       lock_guard<std::mutex> guard(terminalThreadMutex);
@@ -132,27 +138,55 @@ void TerminalServer::runJumpHost(
       }
     }
 
-    fd_set rfd;
+    fd_set rfd, wfd;
     timeval tv;
 
     FD_ZERO(&rfd);
-    FD_SET(terminalFd, &rfd);
+    FD_ZERO(&wfd);
+
+    // Only read from terminal if we have room in the buffer
+    if (pendingBytes < MAX_PENDING_BYTES) {
+      FD_SET(terminalFd, &rfd);
+    }
+
     int maxfd = terminalFd;
     int serverClientFd = serverClientState->getSocketFd();
     if (serverClientFd > 0) {
       FD_SET(serverClientFd, &rfd);
       maxfd = max(maxfd, serverClientFd);
+
+      // Monitor write availability if we have pending packets
+      if (!pendingPackets.empty()) {
+        FD_SET(serverClientFd, &wfd);
+      }
     }
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
-    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+    select(maxfd + 1, &rfd, &wfd, NULL, &tv);
 
     try {
-      if (FD_ISSET(terminalFd, &rfd)) {
+      // First, drain pending packets when socket is writable
+      if (serverClientFd > 0 && FD_ISSET(serverClientFd, &wfd) &&
+          !pendingPackets.empty()) {
+        while (!pendingPackets.empty()) {
+          serverClientState->writePacket(pendingPackets.front());
+          pendingBytes -= pendingPackets.front().length();
+          pendingPackets.pop_front();
+
+          // Check if socket is still writable for more writes
+          if (!waitOnSocketWritable(serverClientFd)) {
+            break;
+          }
+        }
+      }
+
+      // Read from terminal if buffer has room
+      if (FD_ISSET(terminalFd, &rfd) && pendingBytes < MAX_PENDING_BYTES) {
         try {
           Packet packet;
           if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
-            serverClientState->writePacket(packet);
+            pendingPackets.push_back(packet);
+            pendingBytes += packet.length();
           }
         } catch (const std::runtime_error &ex) {
           LOG(INFO) << "Terminal session ended" << ex.what();
@@ -266,6 +300,10 @@ void TerminalServer::runTerminal(
       terminalFd,
       Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
 
+  // Flow control: buffer for pending terminal output to client
+  // This creates backpressure when the client is slow to consume data
+  WriteBuffer terminalOutputBuffer;
+
   while (run) {
     {
       lock_guard<std::mutex> guard(terminalThreadMutex);
@@ -276,37 +314,72 @@ void TerminalServer::runTerminal(
 
     // Data structures needed for select() and
     // non-blocking I/O.
-    fd_set rfd;
+    fd_set rfd, wfd;
     timeval tv;
 
     FD_ZERO(&rfd);
-    FD_SET(terminalFd, &rfd);
+    FD_ZERO(&wfd);
+
+    // Only read from terminal if we have room in the output buffer
+    // This is key for backpressure: if client is slow, we stop reading
+    if (terminalOutputBuffer.canAcceptMore()) {
+      FD_SET(terminalFd, &rfd);
+    }
+
     int maxfd = terminalFd;
     int serverClientFd = serverClientState->getSocketFd();
     if (serverClientFd > 0) {
       FD_SET(serverClientFd, &rfd);
       maxfd = max(maxfd, serverClientFd);
+
+      // Monitor write availability if we have pending data
+      if (terminalOutputBuffer.hasPendingData()) {
+        FD_SET(serverClientFd, &wfd);
+      }
     }
     tv.tv_sec = 0;
     tv.tv_usec = 100000;
-    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+    select(maxfd + 1, &rfd, &wfd, NULL, &tv);
 
     try {
-      // Check for data to receive; the received
-      // data includes also the data previously sent
-      // on the same master descriptor (line 90).
-      if (FD_ISSET(terminalFd, &rfd)) {
-        // Read from terminal and write to client
+      // First, try to drain the output buffer when socket is writable
+      // This should be done before reading more data
+      if (serverClientFd > 0 && FD_ISSET(serverClientFd, &wfd) &&
+          terminalOutputBuffer.hasPendingData()) {
+        // Drain as much as possible from the buffer
+        while (terminalOutputBuffer.hasPendingData()) {
+          size_t count;
+          const char *data = terminalOutputBuffer.peekData(&count);
+          if (data == nullptr || count == 0) break;
+
+          // Create a TerminalBuffer packet and send it
+          string s(data, count);
+          et::TerminalBuffer tb;
+          tb.set_buffer(s);
+          VLOG(2) << "Draining buffered bytes to client: " << count << " "
+                  << serverClientState->getWriter()->getSequenceNumber();
+          serverClientState->writePacket(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          terminalOutputBuffer.consume(count);
+
+          // Check if socket is still writable for more writes
+          if (!waitOnSocketWritable(serverClientFd)) {
+            break;  // Socket would block, stop draining
+          }
+        }
+      }
+
+      // Check for data to receive from terminal
+      // Only if we have room in the buffer (backpressure)
+      if (FD_ISSET(terminalFd, &rfd) && terminalOutputBuffer.canAcceptMore()) {
+        // Read from terminal and buffer for later write to client
         memset(b, 0, BUF_SIZE);
         int rc = read(terminalFd, b, BUF_SIZE);
         if (rc > 0) {
-          VLOG(2) << "Sending bytes from terminal: " << rc << " "
-                  << serverClientState->getWriter()->getSequenceNumber();
-          string s(b, rc);
-          et::TerminalBuffer tb;
-          tb.set_buffer(s);
-          serverClientState->writePacket(
-              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          VLOG(2) << "Read bytes from terminal: " << rc
+                  << " buffer size: " << terminalOutputBuffer.size();
+          // Buffer the data for flow-controlled sending
+          terminalOutputBuffer.enqueue(string(b, rc));
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
           run = false;
