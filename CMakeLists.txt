@@ -128,10 +128,13 @@ find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
+find_package(utf8_range CONFIG REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
-  add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  if(BUILD_TESTING)
+    add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  endif()
   add_subdirectory(${EXTERNAL_DIR}/cxxopts)
   add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
   add_subdirectory(${EXTERNAL_DIR}/json)
@@ -144,7 +147,9 @@ if(DISABLE_VCPKG)
     ${EXTERNAL_DIR}/cxxopts/include
   )
 else()
-  find_package(Catch2 CONFIG REQUIRED)
+  if(BUILD_TESTING)
+    find_package(Catch2 CONFIG REQUIRED)
+  endif()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
@@ -260,8 +265,57 @@ set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
+  set(PROTOBUF_ABSL_LIBS
+    absl::absl_check
+    absl::absl_log
+    absl::algorithm
+    absl::base
+    absl::bind_front
+    absl::bits
+    absl::btree
+    absl::cleanup
+    absl::cord
+    absl::core_headers
+    absl::debugging
+    absl::die_if_null
+    absl::dynamic_annotations
+    absl::flags
+    absl::flat_hash_map
+    absl::flat_hash_set
+    absl::function_ref
+    absl::hash
+    absl::layout
+    absl::log_globals
+    absl::log_initialize
+    absl::log_internal_check_op
+    absl::log_severity
+    absl::memory
+    absl::node_hash_map
+    absl::node_hash_set
+    absl::optional
+    absl::random_distributions
+    absl::random_random
+    absl::span
+    absl::status
+    absl::statusor
+    absl::strings
+    absl::synchronization
+    absl::time
+    absl::utility
+    utf8_range::utf8_validity
+    utf8_range::utf8_range
+  )
 
-  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
+  if(Protobuf_USE_STATIC_LIBS)
+    set(PROTOBUF_LIBS
+      -Wl,--start-group
+      ${PROTOBUF_LIBS}
+      ${PROTOBUF_ABSL_LIBS}
+      -Wl,--end-group
+    )
+  else()
+    set(PROTOBUF_LIBS ${PROTOBUF_LIBS} ${PROTOBUF_ABSL_LIBS})
+  endif()
 endif()
 
 if(SELINUX_FOUND)
@@ -321,7 +375,6 @@ else()
     resolv
     atomic
     stdc++fs
-    anl
   )
 endif()
 

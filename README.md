@@ -130,6 +130,34 @@ make
 sudo make install
 ```
 
+### NixOS
+
+If you use flakes, you can import the bundled NixOS module and let it manage
+the package, `/etc/et.cfg`, and the `etserver` service:
+
+```nix
+{
+  inputs.et.url = "github:MisterTea/EternalTerminal";
+
+  outputs = { nixpkgs, et, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        et.nixosModules.default
+        ({ ... }: {
+          services.eternalTerminal = {
+            enable = true;
+            openFirewall = true;
+            port = 2022;
+            settings.Networking.bind_ip = "0.0.0.0";
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
 ### Windows
 
 Eternal Terminal works under WSL (Windows Subsystem for Linux). Follow the ubuntu instructions.
@@ -148,7 +176,10 @@ You are ready to start using ET!
 
 ## Configuring
 
-If you'd like to modify the server settings (e.g. to change the listening port), edit /etc/et.cfg.
+If you'd like to modify the server settings (e.g. to change the listening
+port), edit `/etc/et.cfg`. On NixOS, set `services.eternalTerminal.settings`
+instead so the generated `/etc/et.cfg` stays in sync with your system
+configuration.
 
 ## Using
 
