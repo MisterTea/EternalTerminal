@@ -179,21 +179,26 @@ bool Connection::read(Packet* packet) {
 
 bool Connection::write(const Packet& packet) {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
-  if (socketFd == -1) {
-    return false;
-  }
 
   if (!writer) {
     VLOG(3) << "Cannot write: writer not initialized";
     return false;
   }
 
+  // Let the writer buffer even if no socket - data will be recovered on
+  // reconnect
   BackedWriterWriteState bwws = writer->write(packet);
   auto writeErrno = GetErrno();
 
   if (bwws == BackedWriterWriteState::SKIPPED) {
     VLOG(4) << "Write skipped";
     return false;
+  }
+
+  if (bwws == BackedWriterWriteState::BUFFERED_ONLY) {
+    // Data buffered but no socket to send - this is success for the caller
+    VLOG(4) << "Write buffered (no socket)";
+    return true;
   }
 
   if (bwws == BackedWriterWriteState::WROTE_WITH_FAILURE) {
