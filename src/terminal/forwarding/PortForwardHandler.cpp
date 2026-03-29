@@ -248,6 +248,18 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
   socketIdSourceHandlerMap.erase(socketId);
 }
 
+void PortForwardHandler::getForwardFds(set<int>* fds) {
+  for (auto& handler : sourceHandlers) {
+    handler->getActiveFds(fds);
+  }
+  for (auto& it : destinationHandlers) {
+    int fd = it.second->getFd();
+    if (fd >= 0) {
+      fds->insert(fd);
+    }
+  }
+}
+
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
                                                   const string& data) {
   auto it = socketIdSourceHandlerMap.find(socketId);

@@ -42,6 +42,8 @@ class ForwardSourceHandler {
   /** @brief Sends bytes from the remote side down the local source socket. */
   void sendDataOnSocket(int socketId, const string& data);
 
+  void getActiveFds(set<int>* fds);
+
   inline SocketEndpoint getDestination() { return destination; }
 
  protected:
