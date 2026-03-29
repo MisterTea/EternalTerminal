@@ -1,5 +1,7 @@
 #include "SshSetupHandler.hpp"
 
+#include "HostParsing.hpp"
+
 namespace et {
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
 
@@ -122,8 +124,36 @@ pair<string, string> SshSetupHandler::SetupSsh(
     string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
                                         cmd_prefix, jump_cmdoptions);
 
-    string sshLinkBuffer = subprocessUtils_->SubprocessToStringInteractive(
-        "ssh", {jumphost, SSH_SCRIPT_JUMP});
+    // Parse jumphost to extract port for -p flag (ssh destination doesn't
+    // support user@host:port, only -J does)
+    ParsedHostString parsedJump = parseHostString(jumphost);
+
+    // Strip brackets from IPv6 addresses for ssh destination
+    // (ssh [::1] fails, but ssh ::1 works)
+    string jumphostAddr = parsedJump.host;
+    if (jumphostAddr.length() >= 2 && jumphostAddr.front() == '[' &&
+        jumphostAddr.back() == ']') {
+      jumphostAddr = jumphostAddr.substr(1, jumphostAddr.length() - 2);
+    }
+
+    string jumphostDest = parsedJump.user.empty()
+                              ? jumphostAddr
+                              : parsedJump.user + "@" + jumphostAddr;
+
+    std::vector<std::string> jump_ssh_args;
+    if (!parsedJump.portSuffix.empty()) {
+      // portSuffix includes the colon, e.g. ":22"
+      jump_ssh_args.push_back("-p");
+      jump_ssh_args.push_back(parsedJump.portSuffix.substr(1));
+    }
+    for (const auto& opt : ssh_options) {
+      jump_ssh_args.push_back("-o" + opt);
+    }
+    jump_ssh_args.push_back(jumphostDest);
+    jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
+
+    string sshLinkBuffer =
+        subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
     if (sshLinkBuffer.length() <= 0) {
       // At this point "ssh -J jumphost dst" already works.
       CLOG(INFO, "stdout") << "etserver jumpclient failed to start" << endl;
