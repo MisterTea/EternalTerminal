@@ -252,7 +252,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
 #else
           if (console) {
             int rc = ::read(consoleFd, b, BUF_SIZE);
-            FATAL_FAIL(rc);
+            int savedErrno = errno;  // Save errno before any logging
             if (rc > 0) {
               // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " "
               // << connection->getWriter()->getSequenceNumber();
@@ -263,6 +263,17 @@ void TerminalClient::run(const string& command, const bool noexit) {
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
               keepaliveTime = time(NULL) + keepaliveDuration;
+            } else if (rc == 0) {
+              LOG(INFO) << "Console EOF";
+              break;
+            } else {
+              if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
+                // Transient error, retry
+              } else {
+                LOG(INFO) << "Console read error: (" << savedErrno
+                          << "): " << strerror(savedErrno);
+                break;
+              }
             }
           }
 #endif
