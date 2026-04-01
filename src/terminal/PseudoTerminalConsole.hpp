@@ -31,8 +31,10 @@ class PseudoTerminalConsole : public Console {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
     SetConsoleMode(hstdin, ENABLE_VIRTUAL_TERMINAL_INPUT);
-    // auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    // SetConsoleMode(hstdout, 0/*ENABLE_VIRTUAL_TERMINAL_PROCESSING*/);
+    auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+    SetConsoleMode(hstdout, ENABLE_PROCESSED_OUTPUT |
+                                ENABLE_VIRTUAL_TERMINAL_PROCESSING |
+                                DISABLE_NEWLINE_AUTO_RETURN);
 #else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
