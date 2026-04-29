@@ -70,7 +70,7 @@ EOF
 # and that the port specification is preserved in the ssh -J command
 echo "Test 4: ProxyJump with alias and explicit SSH port (testing alias resolution + port preservation)"
 TEST4_OUTPUT=$(mktemp)
-if build/et -c "echo 'Hello World 4!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 et_test_destination_with_port 2>&1 | tee "$TEST4_OUTPUT" | grep -q "Hello World 4!"; then
+if build/et -c "echo 'Hello World 4!'" --port 9901 --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 et_test_destination_with_port 2>&1 | tee "$TEST4_OUTPUT" | grep -q "Hello World 4!"; then
   # Verify alias was resolved in logs
   if grep -q "Resolved jumphost alias 'et_test_jumphost_alias' to hostname: localhost" "$TEST4_OUTPUT"; then
     echo "Test 4 passed: Alias resolution confirmed"
