@@ -374,6 +374,31 @@ inline bool waitOnSocketData(int fd) {
   return FD_ISSET(fd, &fdset);
 }
 
+/**
+ * Wait on a fd to be writable (non-blocking check).
+ *
+ * @return true if the fd is writable, or false if it would block.
+ */
+inline bool waitOnSocketWritable(int fd, int64_t sec = 0, int64_t usec = 0) {
+  fd_set fdset;
+  FD_ZERO(&fdset);
+  FD_SET(fd, &fdset);
+  timeval tv;
+  tv.tv_sec = sec;
+  tv.tv_usec = usec;
+  VLOG(4) << "Before selecting sockFd for write";
+  const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
+  if (selectResult < 0) {
+    if (errno == EINTR) {
+      // Interrupted by the signal, the caller will retry.
+      return false;
+    } else {
+      FATAL_FAIL(selectResult);
+    }
+  }
+  return FD_ISSET(fd, &fdset);
+}
+
 inline string genRandomAlphaNum(int len) {
   static const char alphanum[] =
       "0123456789"

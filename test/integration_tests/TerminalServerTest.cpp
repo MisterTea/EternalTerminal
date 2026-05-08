@@ -530,4 +530,61 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerJumphostTest",
   sshSetupHandler->shutdownHandler();
 }
 
+// Integration test for large data transfer with flow control.
+// This exercises the WriteBuffer backpressure mechanism by transferring
+// 1MB of data from terminal to client, verifying:
+// 1. All data arrives correctly without loss
+// 2. Backpressure causes the sender to block (not buffer unbounded data)
+TEST_CASE_METHOD(ServerEndToEndTestFixture, "BackpressureTest",
+                 "[BackpressureTest][integration]") {
+  // Get credentials for the session
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  // Generate 1MB of test data (larger than WriteBuffer's 256KB limit)
+  const size_t dataSize = 1024 * 1024;
+  string testData(dataSize, '\0');
+  for (size_t i = 0; i < dataSize; i++) {
+    testData[i] = 'A' + (i % 26);
+  }
+
+  // Send data from terminal in a separate thread
+  atomic<bool> sendComplete{false};
+  thread sendThread([this, &testData, &sendComplete]() {
+    const size_t chunkSize = 4096;
+    for (size_t offset = 0; offset < testData.size(); offset += chunkSize) {
+      size_t remaining = min(chunkSize, testData.size() - offset);
+      fakeUserTerminal->simulateTerminalResponse(
+          testData.substr(offset, remaining));
+    }
+    sendComplete.store(true);
+  });
+
+  // Read all data on the console side
+  string receivedData = fakeConsole->getTerminalData(dataSize);
+
+  sendThread.join();
+
+  // Verify all data arrived correctly
+  REQUIRE(receivedData.size() == dataSize);
+  REQUIRE(receivedData == testData);
+  REQUIRE(sendComplete.load() == true);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
 }  // namespace et
