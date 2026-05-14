@@ -35,7 +35,7 @@ Eternal TCP is an implementation of resumable TCP that can be used by any applic
 
 # The Eternal Terminal (ET).
 
-![E.T. Communicator](https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/ET_Communicator_Cropped.jpg/550px-ET_Communicator_Cropped.jpg "E.T. Communicator")
+![E.T. Communicator](https://upload.wikimedia.org/wikipedia/commons/thumb/4/4c/ET_Communicator_Cropped.jpg/500px-ET_Communicator_Cropped.jpg "E.T. Communicator")
 
 E.T. the Extra-Terrestrial was a movie about an alien and a boy that
 together build a device to "phone home" and send the alien back to his
