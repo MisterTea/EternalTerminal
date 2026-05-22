@@ -5,6 +5,10 @@
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 
+#ifdef WIN32
+#include <iostream>
+#endif
+
 namespace et {
 /**
  * @brief Configures the local console into raw mode and exposes terminal info.
@@ -30,11 +34,17 @@ class PseudoTerminalConsole : public Console {
   virtual void setup() {
 #ifdef WIN32
     auto hstdin = GetStdHandle(STD_INPUT_HANDLE);
-    SetConsoleMode(hstdin, ENABLE_VIRTUAL_TERMINAL_INPUT);
+    SetConsoleMode(hstdin, inputMode | ENABLE_VIRTUAL_TERMINAL_INPUT);
     auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-    SetConsoleMode(hstdout, ENABLE_PROCESSED_OUTPUT |
+    SetConsoleMode(hstdout, outputMode | ENABLE_PROCESSED_OUTPUT |
+                                ENABLE_WRAP_AT_EOL_OUTPUT |
                                 ENABLE_VIRTUAL_TERMINAL_PROCESSING |
                                 DISABLE_NEWLINE_AUTO_RETURN);
+    // DISABLE_NEWLINE_AUTO_RETURN is needed to keep full-screen terminal apps
+    // like tmux from scrolling incorrectly, but some Windows terminal hosts can
+    // leave long interactive input repainting over one visual row after this
+    // mode change. Reassert DECAWM so readline-style input wraps normally.
+    std::cout << "\033[?7h" << std::flush;
 #else
     termios terminal_local;
     tcgetattr(0, &terminal_local);
