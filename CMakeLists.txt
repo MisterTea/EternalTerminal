@@ -113,6 +113,8 @@ project(EternalTCP VERSION 6.2.11 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
+option(BUILD_TESTING "Build tests" ON)
+
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
@@ -215,7 +217,6 @@ endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
-option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
