@@ -142,12 +142,28 @@ int UnixSocketHandler::accept(int sockFd) {
     initSocket(client_sock);
     VLOG(3) << "Client_socket inserted to activeSockets";
     return client_sock;
-  } else if (acceptErrno != EAGAIN && acceptErrno != EWOULDBLOCK) {
+  } else if (isTransientAcceptError(acceptErrno)) {
+    // Transient, per-connection failure: fall through and return -1; the
+    // server loop simply retries on the next iteration.
+  } else {
     FATAL_FAIL(-1);  // STFATAL with the error
   }
 
   SetErrno(acceptErrno);
   return -1;
+}
+
+bool UnixSocketHandler::isTransientAcceptError(int err) {
+  // accept(2) routinely fails for benign, per-connection reasons that must
+  // not abort the whole server:
+  //  - EAGAIN/EWOULDBLOCK: non-blocking socket with no pending connection.
+  //  - ECONNABORTED: the peer reset the connection between landing in the
+  //    listen queue and our accept() call.  Surfaced readily on FreeBSD by
+  //    clients that connect and immediately disconnect (keepalive/reconnect
+  //    churn) and previously aborted etserver.
+  //  - EINTR: the call was interrupted by a signal.
+  return err == EAGAIN || err == EWOULDBLOCK || err == ECONNABORTED ||
+         err == EINTR;
 }
 
 void UnixSocketHandler::close(int fd) {

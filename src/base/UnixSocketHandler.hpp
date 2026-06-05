@@ -27,6 +27,12 @@ class UnixSocketHandler : public SocketHandler {
    * @brief Accepts a pending connection on the provided listening socket.
    */
   virtual int accept(int fd);
+  /**
+   * @brief Returns true if an accept() errno is a transient, per-connection
+   * failure that must be reported to the caller rather than aborting the
+   * server (EAGAIN/EWOULDBLOCK, ECONNABORTED, EINTR).
+   */
+  static bool isTransientAcceptError(int err);
   /** @brief Closes the descriptor and removes it from the tracked set. */
   virtual void close(int fd);
   /** @brief Returns all actively tracked sockets. */
