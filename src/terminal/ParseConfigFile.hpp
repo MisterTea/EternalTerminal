@@ -158,6 +158,19 @@ struct Options {
   vector<pair<string, string>> env_vars;
 };
 
+// Free all allocated fields in an Options struct
+inline void freeOptionsFields(Options *opts) {
+  SAFE_FREE(opts->username);
+  SAFE_FREE(opts->host);
+  SAFE_FREE(opts->sshdir);
+  SAFE_FREE(opts->knownhosts);
+  SAFE_FREE(opts->ProxyCommand);
+  SAFE_FREE(opts->ProxyJump);
+  SAFE_FREE(opts->gss_server_identity);
+  SAFE_FREE(opts->gss_client_identity);
+  SAFE_FREE(opts->identity_agent);
+}
+
 /**
  * @brief Maps keyword strings to their opcodes for parser lookup.
  */
@@ -1433,12 +1446,18 @@ static int ssh_config_parse_line(const char *targethost,
         SAFE_FREE(b);
       }
       break;
-    case SOC_TIMEOUT:
-      i = ssh_config_get_int(&s, -1);
-      if (i >= 0 && *parsing) {
-        ssh_options_set(options, SSH_OPTIONS_TIMEOUT, &i);
+    case SOC_TIMEOUT: {
+      // SSH_OPTIONS_TIMEOUT is documented as `long` and the handler casts
+      // value to `long *`. Passing `int *` made the handler read 8 bytes
+      // from a 4-byte slot on LP64 (arm64 macOS, x86_64 Linux), so
+      // uninitialized upper bits could flip the sign and trigger a bogus
+      // "invalid error" message. See issue #737.
+      long timeout = ssh_config_get_int(&s, -1);
+      if (timeout >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_TIMEOUT, &timeout);
       }
       break;
+    }
     case SOC_STRICTHOSTKEYCHECK:
       i = ssh_config_get_yesno(&s, -1);
       if (i >= 0 && *parsing) {

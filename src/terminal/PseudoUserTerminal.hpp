@@ -104,7 +104,11 @@ class PseudoUserTerminal : public UserTerminal {
     FATAL_FAIL(waitpid(getPid(), &throwaway, WUNTRACED));
 #else
     siginfo_t childInfo;
-    FATAL_FAIL(waitid(P_PID, getPid(), &childInfo, WEXITED));
+    if (getPid() > 0) {
+      if (waitid(P_PID, getPid(), &childInfo, WEXITED) == -1) {
+        LOG(ERROR) << "waitid failed, child already reaped.";
+      }
+    }
 #endif
   }
 

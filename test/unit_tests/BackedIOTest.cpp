@@ -264,7 +264,92 @@ TEST_CASE("Connection closeSocket updates disconnected state", "[Connection]") {
   REQUIRE_FALSE(conn.isDisconnected());
   conn.closeSocket();
   REQUIRE(conn.isDisconnected());
-  REQUIRE(conn.write(Packet(1, "ignored")) == false);
+  REQUIRE(conn.write(Packet(1, "ignored")) ==
+          true);  // Data is buffered even when disconnected
 
   conn.shutdown();
+}
+
+TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const int fd = handler->createChannel();
+  const string key = "12345678901234567890123456789012";
+  auto crypto = make_shared<CryptoHandler>(key, 0);
+
+  auto writer = make_shared<BackedWriter>(handler, crypto, fd);
+
+  // Disconnect
+  writer->invalidateSocket();
+
+  // Small writes should succeed (BUFFERED_ONLY)
+  Packet small1(1, "small");
+  REQUIRE(writer->write(small1) == BackedWriterWriteState::BUFFERED_ONLY);
+
+  // Fill most of the 4MB disconnect buffer (leave room for overhead)
+  string chunk(64 * 1024, 'x');   // 64KB chunks
+  for (int i = 0; i < 60; i++) {  // 60 * 64KB = 3.75MB, under 4MB limit
+    Packet p(i, chunk);
+    REQUIRE(writer->write(p) == BackedWriterWriteState::BUFFERED_ONLY);
+  }
+
+  // Fill remaining buffer to just under limit
+  string smallChunk(1024, 'y');
+  for (int i = 0; i < 250; i++) {  // ~250KB more
+    Packet p(i + 100, smallChunk);
+    auto result = writer->write(p);
+    if (result == BackedWriterWriteState::SKIPPED) {
+      // Hit the limit - this is expected
+      REQUIRE(true);
+      handler->close(fd);
+      return;
+    }
+    REQUIRE(result == BackedWriterWriteState::BUFFERED_ONLY);
+  }
+
+  // If we get here, force overflow with one more write
+  Packet overflow(999, chunk);
+  REQUIRE(writer->write(overflow) == BackedWriterWriteState::SKIPPED);
+
+  handler->close(fd);
+}
+
+TEST_CASE("BackedWriter trims old data when connected and buffer exceeds 64MB",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const int fd = handler->createChannel();
+  const string key = "12345678901234567890123456789012";
+  auto crypto = make_shared<CryptoHandler>(key, 0);
+
+  auto writer = make_shared<BackedWriter>(handler, crypto, fd);
+
+  // Write 70MB of data while connected (exceeds 64MB MAX_BACKUP_BYTES)
+  string chunk(1024 * 1024, 'x');  // 1MB chunks
+  for (int i = 0; i < 70; i++) {
+    Packet p(i, chunk);
+    auto result = writer->write(p);
+    REQUIRE(result == BackedWriterWriteState::SUCCESS);
+  }
+
+  // Verify sequence number reflects all writes
+  REQUIRE(writer->getSequenceNumber() == 70);
+
+  // Disconnect and try to recover - should only have ~64MB worth of messages
+  writer->invalidateSocket();
+
+  // Request recovery of all 70 messages - should throw because old ones were
+  // trimmed
+  bool threw = false;
+  try {
+    writer->recover(0);  // Try to recover from sequence 0
+  } catch (const std::runtime_error& e) {
+    // Expected: "Client is too far behind server"
+    threw = true;
+  }
+  REQUIRE(threw);
+
+  // Recovery from a recent sequence should work
+  auto recovered = writer->recover(writer->getSequenceNumber() - 10);
+  REQUIRE(recovered.size() == 10);
+
+  handler->close(fd);
 }

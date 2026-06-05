@@ -282,6 +282,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
       if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
         VLOG(4) << "Clientfd is selected";
+        // Accumulate terminal output across all available packets so we can
+        // write it in a single call.  Writing each packet individually causes
+        // intermediate renders in the client terminal (e.g. a screen-clear
+        // arriving in one write followed by the repaint in the next), which
+        // produces visible flicker.
+        string coalesced;
         while (connection->hasData()) {
           VLOG(4) << "connection has data";
           Packet packet;
@@ -303,15 +309,10 @@ void TerminalClient::run(const string& command, const bool noexit) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
               if (console) {
                 VLOG(3) << "Got terminal buffer";
-                // Read from the server and write to our fake terminal
                 et::TerminalBuffer tb =
                     stringToProto<et::TerminalBuffer>(packet.getPayload());
-                const string& s = tb.buffer();
-                // VLOG(5) << "Got message: " << s;
-                // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
-                // connection->getReader()->getSequenceNumber();
+                coalesced += tb.buffer();
                 keepaliveTime = time(NULL) + keepaliveDuration;
-                console->write(s);
               }
               break;
             }
@@ -324,6 +325,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
+        }
+        if (console && !coalesced.empty()) {
+          console->write(coalesced);
         }
       }
 
