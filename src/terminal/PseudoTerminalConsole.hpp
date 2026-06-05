@@ -37,8 +37,8 @@ class PseudoTerminalConsole : public Console {
     // Disable processed input so Ctrl-C is delivered as terminal input instead
     // of terminating the local client. This matches the Unix raw-mode path.
     DWORD rawInputMode =
-        (inputMode & ~(ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT |
-                       ENABLE_ECHO_INPUT)) |
+        (inputMode &
+         ~(ENABLE_PROCESSED_INPUT | ENABLE_LINE_INPUT | ENABLE_ECHO_INPUT)) |
         ENABLE_VIRTUAL_TERMINAL_INPUT;
     SetConsoleMode(hstdin, rawInputMode);
     auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
