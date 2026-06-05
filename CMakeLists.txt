@@ -130,7 +130,6 @@ find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(utf8_range CONFIG REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
@@ -266,6 +265,7 @@ set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
+  find_package(utf8_range CONFIG REQUIRED)
   set(PROTOBUF_ABSL_LIBS
     absl::absl_check
     absl::absl_log
