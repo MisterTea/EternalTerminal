@@ -18,6 +18,7 @@ jobs:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      SSH_PORT: 2222
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -25,12 +26,13 @@ jobs:
         run: |
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
 
-          echo "Host localhost\n  Port 2222\n\n" >> ~/.ssh/config
+          echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
-          sudo /usr/sbin/sshd -p 2222
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -p "${SSH_PORT}"
 
           ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
@@ -68,7 +70,6 @@ jobs:
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
-          ./test/system_tests/connect_with_jumphost.sh
         if: matrix.sanitize == 'ubsan'
 
       - name: Build with asan
@@ -79,7 +80,6 @@ jobs:
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
-          ./test/system_tests/connect_with_jumphost.sh
         if: matrix.sanitize == 'asan'
 
       - name: Build with msan
@@ -90,7 +90,6 @@ jobs:
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
-          ./test/system_tests/connect_with_jumphost.sh
         if: matrix.sanitize == 'msan'
 
       - name: Build with tsan
@@ -101,5 +100,110 @@ jobs:
           make -j`nproc`
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
-          ./test/system_tests/connect_with_jumphost.sh
         if: matrix.sanitize == 'tsan'
+
+  linux_jumphost_system_test:
+    runs-on: ubuntu-22.04
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      SSH_PORT: 2223
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+
+          echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
+
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -p "${SSH_PORT}"
+
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
+          ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
+
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
+
+      - name: Restore vcpkg and its artifacts.
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
+            ${{ env.VCPKG_ROOT }}
+            !${{ env.VCPKG_ROOT }}/buildtrees
+            !${{ env.VCPKG_ROOT }}/packages
+            !${{ env.VCPKG_ROOT }}/downloads
+          key: |
+            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+
+      - name: Build for jumphost system test
+        run: |
+          mkdir -p build
+          pushd build
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake --build . --target et etserver etterminal --parallel `nproc`
+          popd
+
+      - name: Connect with jumphost
+        run: ./test/system_tests/connect_with_jumphost.sh
+
+  linux_backwards_compatibility:
+    runs-on: ubuntu-22.04
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      SSH_PORT: 2224
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+
+          echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
+
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -p "${SSH_PORT}"
+
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
+          ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
+          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
+
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
+
+      - name: Restore vcpkg and its artifacts.
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
+            ${{ env.VCPKG_ROOT }}
+            !${{ env.VCPKG_ROOT }}/buildtrees
+            !${{ env.VCPKG_ROOT }}/packages
+            !${{ env.VCPKG_ROOT }}/downloads
+          key: |
+            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+
+      - name: Build for backwards compatibility system test
+        run: |
+          mkdir -p build
+          pushd build
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake --build . --target et etserver etterminal --parallel `nproc`
+          popd
+
+      - name: Backwards compatibility with et-v6.2.10
+        run: ./test/system_tests/backwards_compatibility.sh
