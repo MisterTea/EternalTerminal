@@ -3,12 +3,25 @@
 
 using namespace et;
 
+TEST_CASE("AcceptTransientErrorClassification", "[UnixSocketHandler]") {
+  // The errnos that must be tolerated rather than aborting the server.
+  // ECONNABORTED is the case that crashed etserver on FreeBSD.
+  REQUIRE(UnixSocketHandler::isTransientAcceptError(EAGAIN));
+  REQUIRE(UnixSocketHandler::isTransientAcceptError(EWOULDBLOCK));
+  REQUIRE(UnixSocketHandler::isTransientAcceptError(ECONNABORTED));
+  REQUIRE(UnixSocketHandler::isTransientAcceptError(EINTR));
+
+  // Genuine logic errors must still be treated as fatal.
+  REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(EBADF));
+  REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(EINVAL));
+  REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(ENOTSOCK));
+  REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(EFAULT));
+}
+
 TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
-  // Regression test for the etserver crash on FreeBSD: accept() on a
-  // non-blocking listening socket with no pending connection fails with
-  // EAGAIN/EWOULDBLOCK.  Previously every errno other than those two hit
-  // FATAL_FAIL and aborted the whole server (the same path ECONNABORTED took
-  // on FreeBSD).  accept() must instead return -1 to its caller.
+  // End-to-end check: accept() on a non-blocking listening socket with no
+  // pending connection fails with EAGAIN/EWOULDBLOCK and must return -1 to the
+  // caller instead of hitting FATAL_FAIL.
   shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
 
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
@@ -22,12 +35,13 @@ TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
   REQUIRE(!serverFds.empty());
   int serverFd = *serverFds.begin();
 
-  // No client has connected and the listening socket is non-blocking, so
-  // accept() returns -1 rather than aborting the process.
   int clientFd = socketHandler->accept(serverFd);
   REQUIRE(clientFd == -1);
   REQUIRE((GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK));
 
   socketHandler->stopListening(endpoint);
+  // stopListening() only closes the fd; the bound socket file remains, so
+  // remove it before the (now empty) directory.
+  FATAL_FAIL(::remove(pipePath.c_str()));
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
