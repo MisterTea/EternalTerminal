@@ -260,8 +260,9 @@ set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
+  find_package(utf8_range CONFIG REQUIRED)
 
-  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
+  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op utf8_range::utf8_validity utf8_range::utf8_range)
 endif()
 
 if(SELINUX_FOUND)
