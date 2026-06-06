@@ -307,7 +307,7 @@ TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
   }
 
   // If we get here, force overflow with one more write
-  Packet overflow(999, chunk);
+  Packet overflow(255, chunk);
   REQUIRE(writer->write(overflow) == BackedWriterWriteState::SKIPPED);
 
   handler->close(fd);

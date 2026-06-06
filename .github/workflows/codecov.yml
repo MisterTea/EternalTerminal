@@ -24,8 +24,9 @@ jobs:
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov libtool libtool-bin autoconf
 
-          echo "Host localhost\n  Port 2222\n\n" >> ~/.ssh/config
+          echo -e "Host localhost 127.0.0.1\n  Port 2222\n\n" >> ~/.ssh/config
 
+          sudo mkdir -p /run/sshd
           sudo /usr/sbin/sshd -p 2222
 
           ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""

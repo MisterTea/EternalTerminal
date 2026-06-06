@@ -1,3 +1,6 @@
+# act (for running locally)
+.actrc
+
 # Code Coverage
 filtered.info
 test-coverage.info
