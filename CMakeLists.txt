@@ -266,57 +266,8 @@ set(PROTOBUF_LIBS protobuf::libprotobuf)
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
   find_package(utf8_range CONFIG REQUIRED)
-  set(PROTOBUF_ABSL_LIBS
-    absl::absl_check
-    absl::absl_log
-    absl::algorithm
-    absl::base
-    absl::bind_front
-    absl::bits
-    absl::btree
-    absl::cleanup
-    absl::cord
-    absl::core_headers
-    absl::debugging
-    absl::die_if_null
-    absl::dynamic_annotations
-    absl::flags
-    absl::flat_hash_map
-    absl::flat_hash_set
-    absl::function_ref
-    absl::hash
-    absl::layout
-    absl::log_globals
-    absl::log_initialize
-    absl::log_internal_check_op
-    absl::log_severity
-    absl::memory
-    absl::node_hash_map
-    absl::node_hash_set
-    absl::optional
-    absl::random_distributions
-    absl::random_random
-    absl::span
-    absl::status
-    absl::statusor
-    absl::strings
-    absl::synchronization
-    absl::time
-    absl::utility
-    utf8_range::utf8_validity
-    utf8_range::utf8_range
-  )
 
-  if(Protobuf_USE_STATIC_LIBS)
-    set(PROTOBUF_LIBS
-      -Wl,--start-group
-      ${PROTOBUF_LIBS}
-      ${PROTOBUF_ABSL_LIBS}
-      -Wl,--end-group
-    )
-  else()
-    set(PROTOBUF_LIBS ${PROTOBUF_LIBS} ${PROTOBUF_ABSL_LIBS})
-  endif()
+  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op utf8_range::utf8_validity utf8_range::utf8_range)
 endif()
 
 if(SELINUX_FOUND)
