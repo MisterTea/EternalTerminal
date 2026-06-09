@@ -113,6 +113,8 @@ project(EternalTCP VERSION 6.2.11 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
+option(BUILD_TESTING "Build tests" ON)
+
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
 set(CMAKE_MODULE_PATH "${EXTERNAL_DIR}/sanitizers-cmake/cmake" ${CMAKE_MODULE_PATH})
@@ -131,7 +133,9 @@ find_package(Protobuf REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
-  add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  if(BUILD_TESTING)
+    add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  endif()
   add_subdirectory(${EXTERNAL_DIR}/cxxopts)
   add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
   add_subdirectory(${EXTERNAL_DIR}/json)
@@ -144,7 +148,9 @@ if(DISABLE_VCPKG)
     ${EXTERNAL_DIR}/cxxopts/include
   )
 else()
-  find_package(Catch2 CONFIG REQUIRED)
+  if(BUILD_TESTING)
+    find_package(Catch2 CONFIG REQUIRED)
+  endif()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
@@ -210,7 +216,6 @@ endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
-option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
@@ -322,7 +327,6 @@ else()
     resolv
     atomic
     stdc++fs
-    anl
   )
 endif()
 

@@ -12,6 +12,13 @@ if (PKG_CONFIG_FOUND)
   pkg_check_modules(PC_UNWIND QUIET libunwind)
 endif()
 
+if (PC_UNWIND_FOUND)
+  set(Unwind_EXTRA_LIBRARIES ${PC_UNWIND_LINK_LIBRARIES})
+  if (PC_UNWIND_STATIC_LINK_LIBRARIES)
+    set(Unwind_STATIC_EXTRA_LIBRARIES ${PC_UNWIND_STATIC_LINK_LIBRARIES})
+  endif()
+endif()
+
 find_path (Unwind_INCLUDE_DIR
   NAMES unwind.h libunwind.h
   HINTS ${PC_UNWIND_INCLUDE_DIRS}
@@ -89,13 +96,23 @@ find_package_handle_standard_args (Unwind REQUIRED_VARS Unwind_INCLUDE_DIR
 
 if (Unwind_FOUND)
   if (NOT TARGET unwind::unwind)
+    set(_Unwind_LINK_LIBRARIES ${Unwind_LIBRARY} ${Unwind_PLATFORM_LIBRARY})
+    if (Unwind_LIBRARY MATCHES "\\.a$")
+      list(APPEND _Unwind_LINK_LIBRARIES ${Unwind_STATIC_EXTRA_LIBRARIES})
+      if (UNIX)
+        list(APPEND _Unwind_LINK_LIBRARIES lzma)
+      endif()
+    else()
+      list(APPEND _Unwind_LINK_LIBRARIES ${Unwind_EXTRA_LIBRARIES})
+    endif()
+
     add_library (unwind::unwind INTERFACE IMPORTED)
 
     set_property (TARGET unwind::unwind PROPERTY
       INTERFACE_INCLUDE_DIRECTORIES ${Unwind_INCLUDE_DIR}
     )
     set_property (TARGET unwind::unwind PROPERTY
-      INTERFACE_LINK_LIBRARIES ${Unwind_LIBRARY} ${Unwind_PLATFORM_LIBRARY}
+      INTERFACE_LINK_LIBRARIES ${_Unwind_LINK_LIBRARIES}
     )
     set_property (TARGET unwind::unwind PROPERTY
       IMPORTED_CONFIGURATIONS RELEASE
