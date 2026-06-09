@@ -8,15 +8,17 @@ BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,
       cryptoHandler(cryptoHandler_),
       socketFd(socketFd_),
       backupSize(0),
+      disconnectedBytes(0),
       sequenceNumber(0) {}
 
 BackedWriterWriteState BackedWriter::write(Packet packet) {
   // If recover started, Wait until finished
   lock_guard<std::mutex> guard(recoverMutex);
 
-  // If no socket and buffer exceeds disconnect limit, signal caller to wait
-  // This prevents blocking during normal disconnects while preserving data
-  if (socketFd < 0 && backupSize + packet.length() > DISCONNECT_BUFFER_BYTES) {
+  // If no socket and the data buffered since the disconnect exceeds the
+  // limit, signal caller to wait
+  if (socketFd < 0 &&
+      disconnectedBytes + packet.length() > DISCONNECT_BUFFER_BYTES) {
     return BackedWriterWriteState::SKIPPED;
   }
 
@@ -37,6 +39,7 @@ BackedWriterWriteState BackedWriter::write(Packet packet) {
 
   // If no socket, data is buffered for later recovery
   if (socketFd < 0) {
+    disconnectedBytes += packet.length();
     return BackedWriterWriteState::BUFFERED_ONLY;
   }
 
@@ -106,5 +109,8 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
   throw std::runtime_error("Client is too far behind server.");
 }
 
-void BackedWriter::revive(int newSocketFd) { socketFd = newSocketFd; }
+void BackedWriter::revive(int newSocketFd) {
+  socketFd = newSocketFd;
+  disconnectedBytes = 0;
+}
 }  // namespace et

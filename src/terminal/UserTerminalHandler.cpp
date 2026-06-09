@@ -80,8 +80,14 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     fd_set rfd;
     timeval tv;
 
+    // Only read terminal output when the router can accept it, so
+    // backpressure reaches the shell instead of killing the session
+    const bool routerWritable = isSocketWritable(routerFd);
+
     FD_ZERO(&rfd);
-    FD_SET(masterFd, &rfd);
+    if (routerWritable) {
+      FD_SET(masterFd, &rfd);
+    }
     FD_SET(routerFd, &rfd);
     int maxfd = max(masterFd, routerFd);
     tv.tv_sec = 0;

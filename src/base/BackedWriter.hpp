@@ -30,8 +30,8 @@ class BackedWriter {
  public:
   /** @brief Maximum bytes to buffer for recovery (64MB). */
   static const int64_t MAX_BACKUP_BYTES = 64 * 1024 * 1024;
-  /** @brief Max buffer before blocking when disconnected (4MB). */
-  static const int64_t DISCONNECT_BUFFER_BYTES = 4 * 1024 * 1024;
+  /** @brief Max bytes buffered while disconnected before blocking (64MB). */
+  static const int64_t DISCONNECT_BUFFER_BYTES = 64 * 1024 * 1024;
 
   /**
    * @brief Creates a writer bound to a socket and crypto pair.
@@ -59,6 +59,16 @@ class BackedWriter {
    * @brief Points the writer at a new socket fd so writes can resume.
    */
   void revive(int newSocketFd);
+
+  /**
+   * @brief Returns true when writing `bytes` more will not block the caller:
+   * either a socket is attached or the disconnect buffer still has room.
+   */
+  bool hasBufferCapacity(int64_t bytes) {
+    lock_guard<std::mutex> guard(recoverMutex);
+    return socketFd >= 0 ||
+           disconnectedBytes + bytes <= DISCONNECT_BUFFER_BYTES;
+  }
 
   /**
    * @brief Mutex guarding recovery operations so callers can hold it when
@@ -98,6 +108,8 @@ class BackedWriter {
   std::deque<Packet> backupBuffer;
   /** @brief Running size of the backup buffer. */
   int64_t backupSize;
+  /** @brief Bytes buffered since the socket was lost; reset on revive. */
+  int64_t disconnectedBytes;
   /** @brief Sequence number that increments each time a packet is backed up. */
   int64_t sequenceNumber;
 };
