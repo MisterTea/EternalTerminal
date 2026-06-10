@@ -68,8 +68,8 @@ catching up with the communications.
 ## No SSH Protocol
 
 ET does not implement any of the SSH protocol.  Instead ET simply
-creates a psuedo-terminal on the server side and connect this
-psuedo-terminal to the client's terminal.  There's no concept of
+creates a pseudo-terminal on the server side and connect this
+pseudo-terminal to the client's terminal.  There's no concept of
 channels, etc..  While it may be possible to implement the SSH
 protocol on top of ET and thus support X-forwarding and other
 features, it's not implemented at the moment.
