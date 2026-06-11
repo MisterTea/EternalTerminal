@@ -278,39 +278,110 @@ TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
 
   auto writer = make_shared<BackedWriter>(handler, crypto, fd);
 
+  string chunk(1024 * 1024, 'x');  // 1MB chunks
+
+  // Deliver some data while connected; this backup of already-delivered data
+  // must not eat into the disconnect headroom.
+  for (int i = 0; i < 8; i++) {
+    REQUIRE(writer->write(Packet(i, chunk)) == BackedWriterWriteState::SUCCESS);
+  }
+
   // Disconnect
   writer->invalidateSocket();
+  REQUIRE(writer->hasBufferCapacity(1024));
 
-  // Small writes should succeed (BUFFERED_ONLY)
-  Packet small1(1, "small");
-  REQUIRE(writer->write(small1) == BackedWriterWriteState::BUFFERED_ONLY);
-
-  // Fill most of the 4MB disconnect buffer (leave room for overhead)
-  string chunk(64 * 1024, 'x');   // 64KB chunks
-  for (int i = 0; i < 60; i++) {  // 60 * 64KB = 3.75MB, under 4MB limit
-    Packet p(i, chunk);
-    REQUIRE(writer->write(p) == BackedWriterWriteState::BUFFERED_ONLY);
-  }
-
-  // Fill remaining buffer to just under limit
-  string smallChunk(1024, 'y');
-  for (int i = 0; i < 250; i++) {  // ~250KB more
-    Packet p(i + 100, smallChunk);
-    auto result = writer->write(p);
+  // The full disconnect buffer should be available for post-disconnect data.
+  int buffered = 0;
+  while (true) {
+    auto result = writer->write(Packet(buffered % 256, chunk));
     if (result == BackedWriterWriteState::SKIPPED) {
-      // Hit the limit - this is expected
-      REQUIRE(true);
-      handler->close(fd);
-      return;
+      break;
     }
     REQUIRE(result == BackedWriterWriteState::BUFFERED_ONLY);
+    buffered++;
+    // Must hit the cap by DISCONNECT_BUFFER_BYTES worth of payload.
+    REQUIRE(buffered <= BackedWriter::DISCONNECT_BUFFER_BYTES / (1024 * 1024));
   }
+  // Nearly all of the headroom was usable despite the pre-disconnect backup.
+  REQUIRE(buffered >=
+          BackedWriter::DISCONNECT_BUFFER_BYTES / (1024 * 1024) - 1);
+  REQUIRE(!writer->hasBufferCapacity(2 * 1024 * 1024));
 
-  // If we get here, force overflow with one more write
-  Packet overflow(255, chunk);
-  REQUIRE(writer->write(overflow) == BackedWriterWriteState::SKIPPED);
+  // Reviving on a new socket resets the disconnect accounting.
+  const int newFd = handler->createChannel();
+  writer->revive(newFd);
+  REQUIRE(writer->hasBufferCapacity(1024));
+  writer->invalidateSocket();
+  REQUIRE(writer->write(Packet(1, chunk)) ==
+          BackedWriterWriteState::BUFFERED_ONLY);
 
   handler->close(fd);
+}
+
+TEST_CASE("writeAllOrThrow retries ETIMEDOUT when patient", "[SocketHandler]") {
+  // On macOS, a unix socket whose peer stops draining for a long time
+  // surfaces ETIMEDOUT from send() even though the connection is intact.
+  class TimeoutThenOkHandler : public InMemorySocketHandler {
+   public:
+    int failures = 0;
+    ssize_t write(int fd, const void* buf, size_t count) override {
+      if (failures > 0) {
+        failures--;
+        SetErrno(ETIMEDOUT);
+        return -1;
+      }
+      return InMemorySocketHandler::write(fd, buf, count);
+    }
+  };
+  auto handler = make_shared<TimeoutThenOkHandler>();
+  const int fd = handler->createChannel();
+  const string data = "hello";
+
+  // With timeout disabled (infinite patience), ETIMEDOUT is retried.
+  handler->failures = 3;
+  REQUIRE_NOTHROW(
+      handler->writeAllOrThrow(fd, data.data(), data.length(), false));
+  string echoed(data.length(), '\0');
+  REQUIRE(handler->read(fd, &echoed[0], echoed.length()) ==
+          (ssize_t)data.length());
+  REQUIRE(echoed == data);
+
+  // With a timeout requested, ETIMEDOUT still fails fast.
+  handler->failures = 3;
+  REQUIRE_THROWS(
+      handler->writeAllOrThrow(fd, data.data(), data.length(), true));
+}
+
+TEST_CASE("Connection severs instead of dying on unexpected read errno",
+          "[Connection]") {
+  // A client waking from sleep can see errnos like ENETDOWN; the connection
+  // must sever (and later reconnect) rather than tear down the session.
+  class ErrnoReadHandler : public InMemorySocketHandler {
+   public:
+    int err = ENETDOWN;
+    bool hasData(int) override { return true; }
+    ssize_t read(int, void*, size_t) override {
+      SetErrno(err);
+      return -1;
+    }
+  };
+  const string key = "12345678901234567890123456789012";
+
+  for (int err : {ENETDOWN, ENETUNREACH, EINVAL}) {
+    auto handler = make_shared<ErrnoReadHandler>();
+    handler->err = err;
+    const int fd = handler->createChannel();
+    auto reader = make_shared<BackedReader>(
+        handler, make_shared<CryptoHandler>(key, 0), fd);
+    auto writer = make_shared<BackedWriter>(
+        handler, make_shared<CryptoHandler>(key, 0), fd);
+    TestConnection connection(handler, reader, writer, fd, key);
+
+    Packet packet;
+    REQUIRE_NOTHROW(connection.readPacket(&packet));
+    REQUIRE(connection.isDisconnected());
+    connection.shutdown();
+  }
 }
 
 TEST_CASE("BackedWriter trims old data when connected and buffer exceeds 64MB",

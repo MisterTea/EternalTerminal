@@ -23,6 +23,15 @@ inline bool isSkippableError(int err_no) {
   return (err_no == EAGAIN || err_no == ECONNRESET || err_no == ETIMEDOUT ||
           err_no == EWOULDBLOCK || err_no == EHOSTUNREACH || err_no == EPIPE ||
           err_no == ENOTCONN || err_no == ECONNABORTED ||
+          err_no == ENETDOWN ||     // Laptop woke up with the network down
+          err_no == ENETUNREACH ||  // Network still coming up after a wake
+          err_no == ENETRESET ||
+#ifdef EHOSTDOWN
+          err_no == EHOSTDOWN ||
+#endif
+#ifdef EPROTOTYPE
+          err_no == EPROTOTYPE ||  // macOS: send() racing a socket teardown
+#endif
           err_no == EBADF  // Bad file descriptor can happen when
                            // there's a race condition between a thread
                            // closing a connection and one
@@ -167,10 +176,12 @@ bool Connection::read(Packet* packet) {
       closeSocketAndMaybeReconnect();
       return 0;
     } else {
-      // Throw the error
+      // Sever the connection instead of throwing; reconnect/recover will
+      // take over and the session survives
       STERROR << "Got a serious error trying to read: " << localErrno << " / "
               << strerror(localErrno);
-      throw std::runtime_error("Failed a call to read");
+      closeSocketAndMaybeReconnect();
+      return 0;
     }
   } else {
     return messagesRead > 0;
@@ -212,8 +223,11 @@ bool Connection::write(const Packet& packet) {
       // The connection has been severed, handle and hide from the caller
       closeSocketAndMaybeReconnect();
     } else {
-      STFATAL << "Unexpected socket error: " << writeErrno << " "
+      // Sever the connection instead of crashing the process, which on a
+      // server would kill every session
+      STERROR << "Unexpected socket error: " << writeErrno << " "
               << strerror(writeErrno);
+      closeSocketAndMaybeReconnect();
     }
   }
 
