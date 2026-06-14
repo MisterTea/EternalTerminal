@@ -128,7 +128,8 @@ int main(int argc, char** argv) {
     options.add_options()             //
         ("h,help", "Print help")      //
         ("version", "Print version")  //
-        ("u,username", "Username")    //
+        ("u,username", "Username",
+         cxxopts::value<std::string>())  //
         ("host", "Remote host name",
          cxxopts::value<std::string>())  //
         ("p,port", "Remote machine etserver port",
