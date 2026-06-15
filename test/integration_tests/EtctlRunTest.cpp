@@ -1,8 +1,8 @@
 // Drives the real etctl binary against a real bash wired behind a ControlConsole
 // + ControlListener via pipes.  bash stands in for the remote shell, so this
 // verifies the full interactive data plane end-to-end: run() clean output + exit
-// codes, writeln, read, readln, and expect, all against a program that actually
-// executes commands.  Skipped if etctl or bash is unavailable.
+// codes, writeln, read, and expect, all against a program that actually executes
+// commands.  Skipped if etctl or bash is unavailable.
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -133,8 +133,18 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
     INFO("run echo -> code=" << r.code << " out=[" << r.out << "]");
     CHECK(r.code == 0);
     CHECK(r.out.find("hello_shell") != string::npos);
-    CHECK(r.out.find("ETCTL_S_") == string::npos);  // no sentinel leakage
-    CHECK(r.out.find("ETCTL_E_") == string::npos);
+    CHECK(r.out.find("ETCTL_") == string::npos);  // no marker leakage
+  }
+  {
+    // Multi-line command: the body runs as one unit (eval of a here-doc), so a var
+    // set on the first line is still visible on the last (no early line submission).
+    RunResult r = runEtctl("run " + name +
+                           " 'a=2\necho row1\necho row2\necho n=$a' --timeout 10");
+    INFO("run multiline -> code=" << r.code << " out=[" << r.out << "]");
+    CHECK(r.code == 0);
+    CHECK(r.out.find("row1") != string::npos);
+    CHECK(r.out.find("row2") != string::npos);
+    CHECK(r.out.find("n=2") != string::npos);
   }
   {
     RunResult r = runEtctl("run " + name + " '(exit 7)' --timeout 10");
@@ -155,24 +165,36 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
     CHECK(r.code == 1);
   }
   {
+    // Frame robustness: a body that fails to *parse* must not desync the frame.
+    // The body is here-doc data fed to eval, so the parse error surfaces at eval
+    // runtime; the end marker still prints and run returns a real, non-timeout
+    // code.  The old brace-group wrap let a body parse error swallow the trailing
+    // '}; echo <mark>:$?', so run hung until timeout (124).
+    RunResult r = runEtctl("run " + name + " 'echo before; for' --timeout 10");
+    INFO("run parse-error -> code=" << r.code << " out=[" << r.out << "]");
+    CHECK(r.code != 0);    // the syntax error surfaces
+    CHECK(r.code != 124);  // but did NOT time out / desync the frame
+    CHECK(r.out.find("ETCTL_") == string::npos);  // no marker leakage
+  }
+  {
+    // Frame robustness: brace / bang / quote metacharacters in the body are inert,
+    // since it is quoted here-doc data, not source the line reader parses.  (A bare
+    // '}' or '!' in the body used to be able to break the brace-group wrap.)
+    RunResult r = runEtctl("run " + name + " 'echo \"a!b{c}d\"' --timeout 10");
+    INFO("run metachars -> code=" << r.code << " out=[" << r.out << "]");
+    CHECK(r.code == 0);
+    CHECK(r.out.find("a!b{c}d") != string::npos);
+  }
+  {
     RunResult w = runEtctl("writeln " + name + " 'echo via_writeline'");
     INFO("writeln -> code=" << w.code << " out=[" << w.out << "]");
     CHECK(w.code == 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    RunResult r = runEtctl("read " + name + " --strip");
+    RunResult r = runEtctl("read " + name);
     INFO("read -> out=[" << r.out << "]");
     CHECK(r.out.find("via_writeline") != string::npos);
   }
   {
-    CHECK(runEtctl("writeln " + name + " 'echo MARKER_zzz'").code == 0);
-    RunResult r = runEtctl("expect " + name + " MARKER_zzz --timeout 10 --from-start");
-    INFO("expect -> code=" << r.code << " out=[" << r.out << "]");
-    CHECK(r.code == 0);
-  }
-  {
-    // readln returns a single newline-terminated line of output.  Capture the
-    // head cursor first (the documented pattern) so we read the new line, not
-    // the oldest retained one.
     long long head = 0;
     {
       RunResult i = runEtctl("info " + name);
@@ -180,32 +202,11 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
       REQUIRE(p != string::npos);
       head = std::stoll(i.out.substr(p + strlen("headCursor=")));
     }
-    CHECK(runEtctl("writeln " + name + " 'echo RL_line'").code == 0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    RunResult r = runEtctl("readln " + name + " --cursor " +
-                           std::to_string(head) + " --strip --timeout 10");
-    INFO("readln -> code=" << r.code << " out=[" << r.out << "]");
+    CHECK(runEtctl("writeln " + name + " 'echo MARKER_zzz'").code == 0);
+    RunResult r = runEtctl("expect " + name + " MARKER_zzz --timeout 10 --cursor " +
+                           std::to_string(head));
+    INFO("expect -> code=" << r.code << " out=[" << r.out << "]");
     CHECK(r.code == 0);
-    CHECK(r.out.find("RL_line") != string::npos);
-  }
-  {
-    // Multi-line script injected from a file runs line by line.
-    char tmpl[] = "/tmp/etctl_script_XXXXXX";
-    int fd = mkstemp(tmpl);
-    REQUIRE(fd >= 0);
-    const char* body = "echo sl_one\necho sl_two\n";
-    REQUIRE(::write(fd, body, strlen(body)) == (ssize_t)strlen(body));
-    ::close(fd);
-
-    RunResult w = runEtctl(string("script ") + name + " " + tmpl);
-    INFO("script -> code=" << w.code);
-    CHECK(w.code == 0);
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    RunResult r = runEtctl("read " + name + " --strip");
-    INFO("script read -> out=[" << r.out << "]");
-    CHECK(r.out.find("sl_one") != string::npos);
-    CHECK(r.out.find("sl_two") != string::npos);
-    ::unlink(tmpl);
   }
 
   done = true;
