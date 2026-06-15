@@ -732,6 +732,23 @@ else(WIN32)
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
 
+  add_executable(etctl src/terminal/EtctlMain.cpp)
+  target_link_libraries(
+    etctl
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etctl generated-code et-lib)
+  decorate_target(etctl)
+
+
   include(CTest)
 
   if(BUILD_TESTING)
@@ -900,7 +917,7 @@ else(WIN32)
   endif(BUILD_TESTING AND FUZZING)
 
   install(
-    TARGETS etserver etterminal et htm htmd
+    TARGETS etserver etterminal et etctl htm htmd
     PERMISSIONS
     OWNER_EXECUTE
     OWNER_WRITE
