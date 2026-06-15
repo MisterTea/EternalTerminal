@@ -276,6 +276,32 @@ command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
 disable both user and system SSH configuration entirely. The two options are
 mutually exclusive.
 
+## Programmatic control (etctl)
+
+Normally `et` drives a terminal for a human. `et --ctl` instead backgrounds a
+session with no local terminal and serves it on a per-user unix socket, and the
+companion `etctl` command drives that session by name from a script or program.
+You get a command's clean output and real exit code, instead of scraping a
+rendered screen.
+
+```bash
+et --ctl --name main user@hostname   # background a named session (idempotent via: etctl open main user@hostname)
+etctl run    main 'uname -a'         # run a command; clean stdout + the real exit code
+etctl read   main                    # new output since the last read (non-destructive)
+etctl expect main 'Password:'        # wait for a prompt
+etctl writeln main --secret          # answer it without echoing the password
+etctl key     main eof               # send Ctrl-D to end the session cleanly
+```
+
+`etctl open` is an idempotent wrapper over `et --ctl` and forwards any extra `et`
+arguments, so `etctl open main user@hostname -c '<cmd>'` runs a startup command
+on connect (for example, to drop into a bare, prompt-free shell for cleaner
+capture). The socket lives at `~/.et/ctl/<name>.sock` (`0700` dir, `0600`
+socket, owning-uid only); set `$ETCTL_HOME` to relocate it.
+
+Run `etctl` with no arguments for the full verb list, and `etctl <verb> --help`
+for any verb's options. `--ctl` is not available on Windows.
+
 ## Building from Source
 
 ### macOS
