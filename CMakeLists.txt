@@ -523,6 +523,8 @@ add_library(
   src/terminal/MuxClient.cpp
   src/terminal/TitleParser.hpp
   src/terminal/TitleParser.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
   src/terminal/SessionScrollback.hpp
   src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
