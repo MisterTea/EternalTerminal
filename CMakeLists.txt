@@ -508,6 +508,8 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
   src/terminal/SessionScrollback.hpp
   src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
