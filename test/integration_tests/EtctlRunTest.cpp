@@ -1,8 +1,8 @@
 // Drives the real etctl binary against a real bash wired behind a ControlConsole
 // + ControlListener via pipes.  bash stands in for the remote shell, so this
 // verifies the full interactive data plane end-to-end: run() clean output + exit
-// codes, writeln, read, and expect, all against a program that actually executes
-// commands.  Skipped if etctl or bash is unavailable.
+// codes, writeln, read, and expect, all against a program that actually
+// executes commands.  Skipped if etctl or bash is unavailable.
 #include <algorithm>
 #include <array>
 #include <atomic>
@@ -190,21 +190,13 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
     INFO("writeln -> code=" << w.code << " out=[" << w.out << "]");
     CHECK(w.code == 0);
     std::this_thread::sleep_for(std::chrono::milliseconds(200));
-    RunResult r = runEtctl("read " + name);
+    RunResult r = runEtctl("read " + name + " --strip");
     INFO("read -> out=[" << r.out << "]");
     CHECK(r.out.find("via_writeline") != string::npos);
   }
   {
-    long long head = 0;
-    {
-      RunResult i = runEtctl("info " + name);
-      size_t p = i.out.find("headCursor=");
-      REQUIRE(p != string::npos);
-      head = std::stoll(i.out.substr(p + strlen("headCursor=")));
-    }
     CHECK(runEtctl("writeln " + name + " 'echo MARKER_zzz'").code == 0);
-    RunResult r = runEtctl("expect " + name + " MARKER_zzz --timeout 10 --cursor " +
-                           std::to_string(head));
+    RunResult r = runEtctl("expect " + name + " MARKER_zzz --timeout 10 --from-start");
     INFO("expect -> code=" << r.code << " out=[" << r.out << "]");
     CHECK(r.code == 0);
   }
