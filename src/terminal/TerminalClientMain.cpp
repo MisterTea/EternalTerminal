@@ -7,6 +7,10 @@
 
 #include "BinaryStdioConsole.hpp"
 #include "ClientArgParsing.hpp"
+#include "ControlConsole.hpp"
+#include "ControlListener.hpp"
+#include "ControlPaths.hpp"
+#include "DaemonCreator.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "MuxClient.hpp"
@@ -25,6 +29,17 @@
 #include "WinsockContext.hpp"
 
 using namespace et;
+
+// A short random suffix for an unnamed --ctl session's socket name.
+static string genRandomHandle() {
+  static const char* kHex = "0123456789abcdef";
+  std::random_device rd;
+  string handle;
+  for (int i = 0; i < 6; i++) {
+    handle.push_back(kHex[rd() % 16]);
+  }
+  return handle;
+}
 
 bool ping(SocketEndpoint socketEndpoint,
           shared_ptr<SocketHandler> clientSocketHandler) {
@@ -472,7 +487,15 @@ int main(int argc, char** argv) {
         ("T,no-pty",
          "Run the remote command on pipes instead of a pty (binary stdio, "
          "separate stderr, no shell injection). -t requests a pty and wins "
-         "when it appears later.")                         //
+         "when it appears later.")  //
+        ("ctl",
+         "Run as a background control session driven by etctl (no local "
+         "terminal); name it with --name, relocate its socket with "
+         "--ctl-socket. With --command, that command runs once on "
+         "connect and the session stays alive.")  //
+        ("ctl-socket",
+         "Path for the --ctl socket (default ~/.et/sessions/<name>.sock)",
+         cxxopts::value<std::string>())                   //
         ("forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
@@ -1267,8 +1290,15 @@ int main(int argc, char** argv) {
       }
       exit(1);
     }
-    if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand ||
-        result.count("no-terminal")) {
+    shared_ptr<ControlConsole> controlConsole;
+    if (result.count("ctl")) {
+      // Programmatic control mode: drive the session through a local socket
+      // instead of a TTY.  ControlConsole is a Console, so TerminalClient is
+      // unchanged.
+      controlConsole.reset(new ControlConsole());
+      console = controlConsole;
+    } else if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand ||
+               result.count("no-terminal")) {
       // -W and -N do not attach a local shell. --no-terminal only hides the
       // local console; the remote shell still starts.
     } else if (noPty) {
@@ -1410,9 +1440,65 @@ int main(int argc, char** argv) {
         exit(1);
       }
     }
-    const int remoteExitStatus =
-        terminalClient.run(command, result.count("noexit"));
-    sessionEndedByServer = terminalClient.sessionEndedByServer();
+    int remoteExitStatus = 0;
+    if (controlConsole) {
+#ifdef WIN32
+      CLOG(INFO, "stdout") << "--ctl is not supported on Windows" << endl;
+      exit(1);
+#else
+      // Resolve a stable session name and its local control socket, announce
+      // them on the real stdout, then detach and serve etctl requests.  A
+      // persisted session is already named, so the control socket takes that
+      // name and the two cannot drift apart; only --no-persist needs a
+      // locally generated one.
+      string ctlName = sessionName.empty()
+                           ? (destinationHost + "-" + genRandomHandle())
+                           : sessionName;
+      string socketPath;
+      try {
+        if (result.count("ctl-socket")) {
+          // Explicit location: honor it verbatim, creating parent dirs as
+          // needed. Such a session won't appear in `etctl sessions` (it lives
+          // outside the control dir); address it by path.
+          socketPath = result["ctl-socket"].as<string>();
+          size_t slash = socketPath.find_last_of('/');
+          if (slash != string::npos && slash > 0) {
+            control_paths::mkdirp0700(socketPath.substr(0, slash));
+          }
+        } else {
+          control_paths::ensureControlDir();
+          socketPath = control_paths::socketPathForName(ctlName);
+        }
+      } catch (const std::exception& e) {
+        CLOG(INFO, "stdout")
+            << "Could not prepare control socket: " << e.what() << endl;
+        exit(1);
+      }
+      CLOG(INFO, "stdout") << "et control session: " << ctlName << endl;
+      CLOG(INFO, "stdout") << "control socket: " << socketPath << endl;
+
+      // Double-fork into the background; the parent exits here.
+      DaemonCreator::create(true, "");
+
+      ControlListener listener(
+          controlConsole, socketPath,
+          [&terminalClient]() { terminalClient.shutdown(); },
+          [&terminalClient]() { return terminalClient.isConnected(); },
+          username.empty() ? destinationHost
+                           : (username + "@" + destinationHost));
+      listener.start();
+      // A control session is always persistent, so honor --command as a
+      // one-shot startup command run on connect (e.g. to set up a clean-room
+      // shell) instead of silently dropping it.  noexit is implied, so run()
+      // injects "<command>\n" and does not append "; exit".
+      remoteExitStatus = terminalClient.run(command, /*noexit=*/true);
+      sessionEndedByServer = terminalClient.sessionEndedByServer();
+      listener.shutdown();
+#endif
+    } else {
+      remoteExitStatus = terminalClient.run(command, result.count("noexit"));
+      sessionEndedByServer = terminalClient.sessionEndedByServer();
+    }
 
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
