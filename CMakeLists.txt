@@ -483,6 +483,10 @@ add_library(
   src/terminal/TerminalClient.cpp
   src/terminal/ControlConsole.hpp
   src/terminal/ControlConsole.cpp
+  src/terminal/ControlListener.hpp
+  src/terminal/ControlListener.cpp
+  src/terminal/ControlProtocol.hpp
+  src/terminal/ControlPaths.hpp
   src/terminal/SessionScrollback.hpp
   src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
