@@ -744,6 +744,10 @@ int main(int argc, char** argv) {
     printOverview();
     return 0;
   }
+  if (cmd == "-v" || cmd == "--version" || cmd == "version") {
+    printf("etctl version %s\n", ET_VERSION);
+    return 0;
+  }
   if (cmd == "help") {
     if (argc > 2 && !descFor(argv[2]).empty()) {
       fputs(buildOptions(argv[2]).help({""}).c_str(), stdout);
