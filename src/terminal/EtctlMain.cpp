@@ -637,6 +637,8 @@ int cmdOpen(int argc, char** argv) {
   // reusing a name that points at a different host.
   string checkTarget = name;
   string requestedDest;
+  string userCommand;
+  vector<bool> skip(argc, false);
   for (int i = 3; i < argc; i++) {
     string a = argv[i];
     if (a == "--ctl-socket" && i + 1 < argc) {
@@ -646,6 +648,18 @@ int cmdOpen(int argc, char** argv) {
       checkTarget = a.substr(strlen("--ctl-socket="));
     } else if (a == "--name" && i + 1 < argc) {
       i++;  // skip et's --name value, it isn't the destination
+    } else if ((a == "-c" || a == "--command") && i + 1 < argc) {
+      // Pull out a user-supplied connect command so we can merge it with our
+      // own setup (below) rather than fight over et's single -c.  Marking its
+      // tokens to skip also keeps the value from being mistaken for the
+      // destination by the bare-positional branch.
+      userCommand = argv[i + 1];
+      skip[i] = true;
+      skip[i + 1] = true;
+      i++;
+    } else if (a.rfind("--command=", 0) == 0) {
+      userCommand = a.substr(strlen("--command="));
+      skip[i] = true;
     } else if (!a.empty() && a[0] != '-') {
       requestedDest = a;  // last bare positional wins (et's destination)
     }
@@ -687,14 +701,26 @@ int cmdOpen(int argc, char** argv) {
       etPath = sibling;  // prefer the et next to this etctl (dev/build trees)
     }
   }
+  // Stamp every control session with ETCTL_SESSION=<name> via et's connect-time
+  // command (which runs once in the persistent --ctl shell).  This lets the
+  // remote shell -- prompt, scripts, anything -- know it is being driven by
+  // etctl, and which session it is.  A user-supplied -c is merged in after it.
+  string setupCommand = "export ETCTL_SESSION='" + name + "'";
+  if (!userCommand.empty()) {
+    setupCommand += "; " + userCommand;
+  }
+
   vector<char*> args;
   args.push_back(strdup(etPath.c_str()));
   args.push_back(strdup("--ctl"));
   args.push_back(strdup("--name"));
   args.push_back(strdup(name.c_str()));
   for (int i = 3; i < argc; i++) {
+    if (skip[i]) continue;  // user's -c is folded into setupCommand below
     args.push_back(strdup(argv[i]));
   }
+  args.push_back(strdup("--command"));
+  args.push_back(strdup(setupCommand.c_str()));
   args.push_back(nullptr);
   execvp(args[0], args.data());
   fprintf(stderr, "etctl open: could not exec et (%s): %s\n", etPath.c_str(),
