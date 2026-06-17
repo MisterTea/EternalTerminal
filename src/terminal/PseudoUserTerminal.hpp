@@ -1,6 +1,7 @@
 #ifndef __PSUEDO_USER_TERMINAL_HPP__
 #define __PSUEDO_USER_TERMINAL_HPP__
 
+#include <fcntl.h>
 #include <stdlib.h>
 #include <sys/types.h>
 #include <sys/wait.h>
@@ -53,6 +54,16 @@ class PseudoUserTerminal : public UserTerminal {
       utempter_add_record(masterFd, buf);
     }
 #endif
+
+    // The handler polls this fd with select() and does non-blocking reads and
+    // writes, so make the master non-blocking here, where it is created.  If it
+    // stayed blocking, a large input burst would block the handler's single
+    // write() call and deadlock against the shell's echo (see
+    // UserTerminal::setup and UserTerminalHandler::runUserTerminal).
+    int flags = fcntl(masterFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+    }
     return masterFd;
   }
 
