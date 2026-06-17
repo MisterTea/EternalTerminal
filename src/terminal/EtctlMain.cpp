@@ -46,6 +46,8 @@ string descFor(const string& cmd) {
   if (cmd == "open")
     return "Start a control session in the background (idempotent).";
   if (cmd == "sessions") return "List local control sessions.";
+  if (cmd == "gc")
+    return "Remove dead session sockets (and, with --idle, end idle sessions).";
   if (cmd == "info") return "Show session status (liveness, link, size, cursor).";
   if (cmd == "kill") return "Force-stop a session's local daemon.";
   if (cmd == "read") return "Read session output without consuming it.";
@@ -122,6 +124,14 @@ cxxopts::Options buildOptions(const string& cmd) {
         "PATTERN", "regex (or literal with --exact)", cxxopts::value<string>());
     o.parse_positional({"NAME", "PATTERN"});
     synopsis = "NAME PATTERN [OPTION...]";
+  } else if (cmd == "gc") {
+    o.add_options()
+        ("idle",
+         "Also end live sessions idle longer than DUR (e.g. 30m, 6h; "
+         "default 8h)",
+         cxxopts::value<string>()->implicit_value("8h"))
+        ("force", "Stop idle sessions outright, skipping the graceful eof");
+    synopsis = "[--idle [DUR]] [--force]";
   }
   o.positional_help("");
   o.custom_help(synopsis);
@@ -150,7 +160,8 @@ void printOverview() {
           "  expect      wait for a pattern in the output\n"
           "  info        show session status\n"
           "  sessions    list local control sessions\n"
-          "  kill        force-stop a session daemon\n");
+          "  kill        force-stop a session daemon\n"
+          "  gc          remove dead session sockets\n");
 }
 
 string resolveSocketPath(const string& nameOrPath) {
@@ -270,6 +281,8 @@ bool waitSessionGone(const string& name, double secs) {
 }
 
 int64_t sessionField(const string& name, const string& key);  // defined below
+int cmdWrite(const string& name, const string& bytes, bool secret);  // defined below
+int cmdKill(const string& name, double waitSecs);                    // defined below
 
 // Fetch a session's full info as a key=value map (one CTL_INFO round-trip).
 std::map<string, string> sessionInfo(const string& name) {
@@ -307,6 +320,85 @@ string humanizeDuration(int64_t s) {
     snprintf(buf, sizeof(buf), "%llds", (long long)sec);
   }
   return string(buf);
+}
+
+// Parse a duration like "30m", "6h", "2d", "90s", or a bare number (seconds).
+int64_t parseDuration(const string& s, int64_t fallback) {
+  if (s.empty()) return fallback;
+  char* end = nullptr;
+  const double n = strtod(s.c_str(), &end);
+  if (end == s.c_str()) return fallback;
+  int64_t mult = 1;
+  switch (*end) {
+    case 'm': mult = 60; break;
+    case 'h': mult = 3600; break;
+    case 'd': mult = 86400; break;
+    default: mult = 1; break;  // 's' or none
+  }
+  return (int64_t)(n * (double)mult);
+}
+
+int cmdGc(int argc, char** argv) {
+  bool idle = false, force = false;
+  int64_t idleSecs = 8 * 3600;  // default --idle threshold (8h)
+  for (int i = 2; i < argc; i++) {
+    const string a = argv[i];
+    if (a == "-h" || a == "--help") {
+      printf(
+          "etctl gc [--idle [DUR]] [--force]\n"
+          "  Remove dead session sockets (a daemon that has exited leaves a\n"
+          "  stale socket).  With --idle, also end live sessions idle longer\n"
+          "  than DUR (default 8h; e.g. 30m, 6h, 2d): eof first, then a forced\n"
+          "  stop if it doesn't exit within a few seconds.  --force skips the\n"
+          "  graceful eof and stops idle sessions outright.\n");
+      return 0;
+    } else if (a == "--idle") {
+      idle = true;
+      if (i + 1 < argc && argv[i + 1][0] != '-') {
+        idleSecs = parseDuration(argv[++i], idleSecs);
+      }
+    } else if (a.rfind("--idle=", 0) == 0) {
+      idle = true;
+      idleSecs = parseDuration(a.substr(strlen("--idle=")), idleSecs);
+    } else if (a == "--force" || a == "--kill") {
+      force = true;
+    }
+  }
+
+  // First, reap live sessions idle past the threshold (so their sockets go
+  // dead and get swept below). eof is graceful; fall back to a forced stop.
+  if (idle) {
+    const string eof(1, '\004');  // Ctrl-D ends the remote shell cleanly
+    const int64_t now = (int64_t)time(NULL);
+    for (const string& name : control_paths::listSessionNames()) {
+      if (!sessionAlive(name)) continue;
+      const int64_t last = sessionField(name, "lastActivity");
+      if (last <= 0 || (now - last) < idleSecs) continue;
+      if (force) {
+        printf("stopping idle session: %s\n", name.c_str());
+        cmdKill(name, 0.0);
+      } else {
+        printf("ending idle session: %s\n", name.c_str());
+        cmdWrite(name, eof, false);
+        if (!waitSessionGone(name, 3.0)) {
+          cmdKill(name, 0.0);  // didn't exit gracefully: force-stop
+        }
+      }
+    }
+  }
+
+  // Sweep dead sockets: originally-dangling ones plus any just reaped.
+  for (const string& name : control_paths::listSessionNames()) {
+    if (sessionAlive(name)) continue;
+    const string path = control_paths::socketPathForName(name);
+    if (::unlink(path.c_str()) == 0) {
+      printf("removed dead socket: %s\n", name.c_str());
+    } else if (errno != ENOENT) {
+      fprintf(stderr, "etctl gc: could not remove %s: %s\n", path.c_str(),
+              strerror(errno));
+    }
+  }
+  return 0;
 }
 
 int cmdSessions() {
@@ -778,6 +870,9 @@ int main(int argc, char** argv) {
       }
     }
     return cmdOpen(argc, argv);
+  }
+  if (cmd == "gc") {
+    return cmdGc(argc, argv);
   }
   if (descFor(cmd).empty()) {
     fprintf(stderr, "etctl: unknown command '%s'\n", cmd.c_str());
