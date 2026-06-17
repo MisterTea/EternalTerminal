@@ -161,7 +161,10 @@ void printOverview() {
           "  info        show session status\n"
           "  sessions    list local control sessions\n"
           "  kill        force-stop a session daemon\n"
-          "  gc          remove dead session sockets\n");
+          "  gc          remove dead session sockets\n"
+          "\n"
+          "  -h, --help     show this overview (or `etctl <command> --help`)\n"
+          "  -v, --version  print the etctl version\n");
 }
 
 string resolveSocketPath(const string& nameOrPath) {
