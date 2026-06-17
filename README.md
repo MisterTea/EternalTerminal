@@ -296,11 +296,14 @@ etctl key     main eof               # send Ctrl-D to end the session cleanly
 `etctl open` is an idempotent wrapper over `et --ctl` and forwards any extra `et`
 arguments, so `etctl open main user@hostname -c '<cmd>'` runs a startup command
 on connect (for example, to drop into a bare, prompt-free shell for cleaner
-capture). The socket lives at `~/.et/ctl/<name>.sock` (`0700` dir, `0600`
-socket, owning-uid only); set `$ETCTL_HOME` to relocate it.
+capture). The session's remote shell is stamped with `ETCTL_SESSION=<name>`, so a
+process can tell which named control session it is running under. The socket
+lives at `~/.et/ctl/<name>.sock` (`0700` dir, `0600` socket, owning-uid only);
+set `$ETCTL_HOME` to relocate it.
 
-Run `etctl` with no arguments for the full verb list, and `etctl <verb> --help`
-for any verb's options. `--ctl` is not available on Windows.
+Run `etctl` with no arguments for the full verb list, `etctl <verb> --help` for
+any verb's options, and `etctl --version` for the version. `--ctl` is not
+available on Windows.
 
 ## Building from Source
 
