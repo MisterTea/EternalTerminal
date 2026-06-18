@@ -1,6 +1,9 @@
 #include "TunnelUtils.hpp"
 
 namespace et {
+
+bool isSocketPath(const string& s) { return !s.empty() && s[0] == '/'; }
+
 void processEtStyleTunnelArg(vector<PortForwardSourceRequest>& pfsrs,
                              const vector<string> sourceDestination,
                              const string& input) {
@@ -9,8 +12,29 @@ void processEtStyleTunnelArg(vector<PortForwardSourceRequest>& pfsrs,
         "Tunnel argument must have source and destination between a ':'");
   }
   try {
-    if (sourceDestination[0].find_first_not_of("0123456789-") != string::npos &&
-        sourceDestination[1].find_first_not_of("0123456789-") != string::npos) {
+    bool srcIsSocket = isSocketPath(sourceDestination[0]);
+    bool srcIsNumeric =
+        sourceDestination[0].find_first_not_of("0123456789-") == string::npos;
+    bool dstIsSocket = isSocketPath(sourceDestination[1]);
+
+    if (srcIsSocket || (dstIsSocket && srcIsNumeric)) {
+      PortForwardSourceRequest pfsr;
+      if (srcIsSocket) {
+        pfsr.mutable_source()->set_name(sourceDestination[0]);
+      } else {
+        pfsr.mutable_source()->set_name("localhost");
+        pfsr.mutable_source()->set_port(stoi(sourceDestination[0]));
+      }
+      if (dstIsSocket) {
+        pfsr.mutable_destination()->set_name(sourceDestination[1]);
+      } else {
+        pfsr.mutable_destination()->set_port(stoi(sourceDestination[1]));
+      }
+      pfsrs.push_back(pfsr);
+    } else if (sourceDestination[0].find_first_not_of("0123456789-") !=
+                   string::npos &&
+               sourceDestination[1].find_first_not_of("0123456789-") !=
+                   string::npos) {
       // forwarding named pipes with environment variables (don't set source)
       PortForwardSourceRequest pfsr;
       pfsr.set_environmentvariable(sourceDestination[0]);

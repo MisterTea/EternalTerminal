@@ -75,15 +75,13 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     } else {
-      if (userid < 0 || groupid < 0) {
-        STFATAL
-            << "Tried to create a unix socket forward with no userid/groupid";
-      }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
 #ifndef WIN32
-      FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
-      FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+      if (userid >= 0 && groupid >= 0) {
+        FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
+        FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+      }
 #endif
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
