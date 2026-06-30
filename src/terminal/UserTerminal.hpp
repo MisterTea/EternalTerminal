@@ -18,7 +18,9 @@ class UserTerminal {
    * @param routerFd File descriptor that should be linked to the terminal
    * session.
    * @returns File descriptor used for reading incoming data (typically a master
-   * pty).
+   * pty).  It must be non-blocking: the handler polls it with select() and does
+   * non-blocking reads and writes, so a large input burst can never block the
+   * single-threaded pump (which would deadlock against the shell's echo).
    */
   virtual int setup(int routerFd) = 0;
   /** @brief Drives the interactive shell loop until the session exits. */
