@@ -88,6 +88,57 @@ TEST_CASE("Parses environment variable forward", "[TunnelUtils]") {
   REQUIRE_FALSE(requests[0].has_source());
 }
 
+TEST_CASE("Parses Unix socket to Unix socket forward", "[TunnelUtils]") {
+  auto requests = parseRangesToRequests("/tmp/local.sock:/tmp/remote.sock");
+
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].has_source());
+  REQUIRE(requests[0].source().name() == "/tmp/local.sock");
+  REQUIRE_FALSE(requests[0].source().has_port());
+  REQUIRE(requests[0].has_destination());
+  REQUIRE(requests[0].destination().name() == "/tmp/remote.sock");
+  REQUIRE_FALSE(requests[0].destination().has_port());
+}
+
+TEST_CASE("Parses Unix socket source to TCP destination", "[TunnelUtils]") {
+  auto requests = parseRangesToRequests("/tmp/local.sock:8080");
+
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].has_source());
+  REQUIRE(requests[0].source().name() == "/tmp/local.sock");
+  REQUIRE_FALSE(requests[0].source().has_port());
+  REQUIRE(requests[0].has_destination());
+  REQUIRE(requests[0].destination().port() == 8080);
+}
+
+TEST_CASE("Parses TCP source to Unix socket destination", "[TunnelUtils]") {
+  auto requests = parseRangesToRequests("8080:/tmp/remote.sock");
+
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].has_source());
+  REQUIRE(requests[0].source().name() == "localhost");
+  REQUIRE(requests[0].source().port() == 8080);
+  REQUIRE(requests[0].has_destination());
+  REQUIRE(requests[0].destination().name() == "/tmp/remote.sock");
+  REQUIRE_FALSE(requests[0].destination().has_port());
+}
+
+TEST_CASE("Parses mixed socket and port comma-separated", "[TunnelUtils]") {
+  auto requests =
+      parseRangesToRequests("/tmp/local.sock:8080,9090:/tmp/remote.sock");
+
+  REQUIRE(requests.size() == 2);
+
+  REQUIRE(requests[0].source().name() == "/tmp/local.sock");
+  REQUIRE_FALSE(requests[0].source().has_port());
+  REQUIRE(requests[0].destination().port() == 8080);
+
+  REQUIRE(requests[1].source().name() == "localhost");
+  REQUIRE(requests[1].source().port() == 9090);
+  REQUIRE(requests[1].destination().name() == "/tmp/remote.sock");
+  REQUIRE_FALSE(requests[1].destination().has_port());
+}
+
 TEST_CASE("Rejects malformed port forward input", "[TunnelUtils]") {
   SECTION("Mismatched range lengths") {
     REQUIRE_THROWS_WITH(
