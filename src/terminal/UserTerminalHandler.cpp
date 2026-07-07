@@ -11,7 +11,7 @@ namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
     bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,
-    const string &idPasskey)
+    const string& idPasskey)
     : socketHandler(_socketHandler),
       term(_term),
       noratelimit(_noratelimit),
@@ -32,7 +32,7 @@ UserTerminalHandler::UserTerminalHandler(
         routerFd,
         Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
 
-  } catch (const std::runtime_error &re) {
+  } catch (const std::runtime_error& re) {
     STFATAL << "Error connecting to router: " << re.what();
   }
 }
@@ -221,7 +221,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           break;
         }
       }
-    } catch (const std::exception &ex) {
+    } catch (const std::exception& ex) {
       LOG(INFO) << ex.what();
       lock_guard<recursive_mutex> guard(shutdownMutex);
       shuttingDown = true;

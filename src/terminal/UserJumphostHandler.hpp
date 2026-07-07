@@ -14,8 +14,8 @@ class UserJumphostHandler {
    * endpoint.
    */
   UserJumphostHandler(shared_ptr<SocketHandler> _jumpClientSocketHandler,
-                      const string &_idpasskey,
-                      const SocketEndpoint &_dstSocketEndpoint,
+                      const string& _idpasskey,
+                      const SocketEndpoint& _dstSocketEndpoint,
                       shared_ptr<SocketHandler> routerSocketHandler,
                       const optional<SocketEndpoint> routerEndpoint);
 

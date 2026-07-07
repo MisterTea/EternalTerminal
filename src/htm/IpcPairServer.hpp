@@ -15,7 +15,7 @@ class IpcPairServer : public IpcPairEndpoint {
    * @brief Binds a listening socket for HTM clients that this server accepts.
    */
   IpcPairServer(shared_ptr<SocketHandler> _socketHandler,
-                const SocketEndpoint &_endpoint);
+                const SocketEndpoint& _endpoint);
   /** @brief Tears down listeners and closes the server fd. */
   virtual ~IpcPairServer();
   /** @brief Accepts a new HTM client and stores its descriptor in `endpointFd`.

@@ -19,7 +19,7 @@ class UserTerminalHandler {
   UserTerminalHandler(shared_ptr<SocketHandler> _socketHandler,
                       shared_ptr<UserTerminal> _term, bool noratelimit,
                       const optional<SocketEndpoint> _routerEndpoint,
-                      const string &idPasskey);
+                      const string& idPasskey);
   /** @brief Drives the terminal session until cleanup is requested. */
   void run();
   /** @brief Sets a flag to stop the loop and shut down the terminal. */

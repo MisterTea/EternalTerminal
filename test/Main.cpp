@@ -8,7 +8,7 @@
 
 using namespace et;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   srand(1);
 
   bool listOnly = false;

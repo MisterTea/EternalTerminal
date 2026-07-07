@@ -3,11 +3,11 @@
 namespace et {
 TcpSocketHandler::TcpSocketHandler() {}
 
-int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
+int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
   int sockFd = -1;
-  addrinfo *results = NULL;
-  addrinfo *p = NULL;
+  addrinfo* results = NULL;
+  addrinfo* p = NULL;
   addrinfo hints;
   memset(&hints, 0, sizeof(addrinfo));
   hints.ai_family = AF_UNSPEC;
@@ -89,7 +89,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
       socklen_t len = sizeof so_error;
 
       FATAL_FAIL(
-          ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char *)&so_error, &len));
+          ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -148,7 +148,7 @@ int TcpSocketHandler::connect(const SocketEndpoint &endpoint) {
   return sockFd;
 }
 
-set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
+set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
@@ -163,7 +163,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   hints.ai_family = AF_UNSPEC;
   hints.ai_socktype = SOCK_STREAM;
   hints.ai_flags = AI_PASSIVE;  // use any IP address
-  const char *bindIp = NULL;
+  const char* bindIp = NULL;
   if (endpoint.has_name()) {
     bindIp = endpoint.name().c_str();
   }
@@ -182,7 +182,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   for (p = servinfo; p != NULL; p = p->ai_next) {
     // Deduplicate addresses from getaddrinfo — "localhost" can resolve to
     // the same address more than once.
-    string addrKey(reinterpret_cast<const char *>(p->ai_addr), p->ai_addrlen);
+    string addrKey(reinterpret_cast<const char*>(p->ai_addr), p->ai_addrlen);
     if (!seenAddresses.insert(addrKey).second) {
       LOG(INFO) << "Skipping duplicate address for family " << p->ai_family;
       continue;
@@ -203,7 +203,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
       // interfaces.  We will create another socket object for IPV4
       // if it doesn't already exist.
       int flag = 1;
-      FATAL_FAIL(setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char *)&flag,
+      FATAL_FAIL(setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
                             sizeof(int)));
     }
 
@@ -231,7 +231,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
     // Listen
     FATAL_FAIL(::listen(sockFd, 32));
     LOG(INFO) << "Listening on "
-              << inet_ntoa(((sockaddr_in *)p->ai_addr)->sin_addr) << ":" << port
+              << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"
               << p->ai_protocol;
 
@@ -247,7 +247,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint &endpoint) {
   return serverSockets;
 }
 
-set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
+set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
@@ -258,7 +258,7 @@ set<int> TcpSocketHandler::getEndpointFds(const SocketEndpoint &endpoint) {
   return portServerSockets[port];
 }
 
-void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
+void TcpSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
@@ -266,7 +266,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint &endpoint) {
   if (it == portServerSockets.end()) {
     STFATAL << "Tried to stop listening to a port that we weren't listening on";
   }
-  auto &serverSockets = it->second;
+  auto& serverSockets = it->second;
   for (int sockFd : serverSockets) {
 #ifdef _MSC_VER
     FATAL_FAIL(::closesocket(sockFd));
@@ -282,7 +282,7 @@ void TcpSocketHandler::initSocket(int fd) {
   {
     int flag = 1;
     FATAL_FAIL_UNLESS_EINVAL(
-        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char *)&flag, sizeof(int)));
+        setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int)));
   }
   {
     // Set linger if possible
@@ -290,7 +290,7 @@ void TcpSocketHandler::initSocket(int fd) {
     so_linger.l_onoff = 1;
     so_linger.l_linger = 5;
     FATAL_FAIL_UNLESS_EINVAL(setsockopt(
-        fd, SOL_SOCKET, SO_LINGER, (const char *)&so_linger, sizeof so_linger));
+        fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
   }
 }
 }  // namespace et

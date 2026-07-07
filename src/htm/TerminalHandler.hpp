@@ -26,13 +26,13 @@ class TerminalHandler {
   void updateTerminalSize(int col, int row);
   /** @brief Writes raw bytes into the running terminal (e.g., from the client).
    */
-  void appendData(const string &data);
+  void appendData(const string& data);
   /** @brief Indicates whether the PTY child is still alive. */
   inline bool isRunning() { return run; }
   /** @brief Sends SIGTERM/Cleanup to stop the handler's child process. */
   void stop();
   /** @brief Returns the buffered output that should be sent to the client. */
-  const deque<string> &getBuffer() { return buffer; }
+  const deque<string>& getBuffer() { return buffer; }
 
  protected:
   /** @brief Master fd used to read/write the PTY. */

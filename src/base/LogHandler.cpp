@@ -3,7 +3,7 @@
 INITIALIZE_EASYLOGGINGPP
 
 namespace et {
-el::Configurations LogHandler::setupLogHandler(int *argc, char ***argv) {
+el::Configurations LogHandler::setupLogHandler(int* argc, char*** argv) {
   // easylogging parses verbose arguments, see [Application Arguments]
   // in https://github.com/muflihun/easyloggingpp/blob/master/README.md
   // but it is non-intuitive so we explicitly set verbosity based on cxxopts
@@ -24,13 +24,13 @@ el::Configurations LogHandler::setupLogHandler(int *argc, char ***argv) {
   return defaultConf;
 }
 
-void LogHandler::setupLogFiles(el::Configurations *defaultConf,
-                               const string &path, const string &filenamePrefix,
+void LogHandler::setupLogFiles(el::Configurations* defaultConf,
+                               const string& path, const string& filenamePrefix,
                                bool logToStdout, bool redirectStderrToFile,
                                bool appendPid, string maxlogsize) {
   auto now = std::chrono::system_clock::now();
   time_t rawtime = std::chrono::system_clock::to_time_t(now);
-  struct tm *timeinfo = std::localtime(&rawtime);
+  struct tm* timeinfo = std::localtime(&rawtime);
 
   char buffer[80];
   strftime(buffer, sizeof(buffer), "%Y-%m-%d_%H-%M-%S", timeinfo);
@@ -72,14 +72,14 @@ void LogHandler::setupLogFiles(el::Configurations *defaultConf,
   }
 }
 
-void LogHandler::rolloutHandler(const char *filename, std::size_t size) {
+void LogHandler::rolloutHandler(const char* filename, std::size_t size) {
   // SHOULD NOT LOG ANYTHING HERE BECAUSE LOG FILE IS CLOSED!
   // REMOVE OLD LOG
   remove(filename);
 }
 
 void LogHandler::setupStdoutLogger() {
-  el::Logger *stdoutLogger = el::Loggers::getLogger("stdout");
+  el::Logger* stdoutLogger = el::Loggers::getLogger("stdout");
   // Easylogging configurations
   el::Configurations stdoutConf;
   stdoutConf.setToDefault();
@@ -90,11 +90,11 @@ void LogHandler::setupStdoutLogger() {
   el::Loggers::reconfigureLogger(stdoutLogger, stdoutConf);
 }
 
-string LogHandler::createLogFile(const string &path, const string &filename) {
+string LogHandler::createLogFile(const string& path, const string& filename) {
   string fullFname = path + "/" + filename;
   try {
     fs::create_directories(path);
-  } catch (const fs::filesystem_error &fse) {
+  } catch (const fs::filesystem_error& fse) {
     CLOG(ERROR, "stdout") << "Cannot create logfile directory: " << fse.what()
                           << endl;
     throw std::runtime_error("Cannot create logfile directory: " +
@@ -109,10 +109,10 @@ string LogHandler::createLogFile(const string &path, const string &filename) {
   return fullFname;
 }
 
-void LogHandler::stderrToFile(const string &path,
-                              const string &stderrFilename) {
+void LogHandler::stderrToFile(const string& path,
+                              const string& stderrFilename) {
   string fullFname = createLogFile(path, stderrFilename);
-  FILE *stderr_stream = freopen(fullFname.c_str(), "w", stderr);
+  FILE* stderr_stream = freopen(fullFname.c_str(), "w", stderr);
   if (!stderr_stream) {
     STFATAL << "Invalid filename " << stderrFilename;
   }

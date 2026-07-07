@@ -26,7 +26,7 @@ bool UnixSocketHandler::waitForData(int fd, int64_t sec, int64_t usec) {
 
 bool UnixSocketHandler::hasData(int fd) { return waitForData(fd, 0, 0); }
 
-ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
+ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   if (fd <= 0) {
     STFATAL << "Tried to read from an invalid socket: " << fd;
   }
@@ -44,7 +44,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   lock_guard<recursive_mutex> guard(*(it->second));
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
 #ifdef WIN32
-  ssize_t readBytes = ::recv(fd, (char *)buf, count, 0);
+  ssize_t readBytes = ::recv(fd, (char*)buf, count, 0);
 #else
   ssize_t readBytes = ::read(fd, buf, count);
 #endif
@@ -57,7 +57,7 @@ ssize_t UnixSocketHandler::read(int fd, void *buf, size_t count) {
   return readBytes;
 }
 
-ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
+ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   VLOG(4) << "Unixsocket handler write to fd: " << fd;
   if (fd <= 0) {
     STFATAL << "Tried to write to an invalid socket: " << fd;
@@ -79,13 +79,13 @@ ssize_t UnixSocketHandler::write(int fd, const void *buf, size_t count) {
     lock_guard<recursive_mutex> guard(*(it->second));
     int w;
 #ifdef WIN32
-    w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten, 0);
+    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
 #else
 #ifdef MSG_NOSIGNAL
-    w = ::send(fd, ((const char *)buf) + bytesWritten, count - bytesWritten,
+    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten,
                MSG_NOSIGNAL);
 #else
-    w = ::write(fd, ((const char *)buf) + bytesWritten, count - bytesWritten);
+    w = ::write(fd, ((const char*)buf) + bytesWritten, count - bytesWritten);
 #endif
 #endif
     auto localErrno = GetErrno();
@@ -118,7 +118,7 @@ void UnixSocketHandler::addToActiveSockets(int fd) {
 int UnixSocketHandler::accept(int sockFd) {
   sockaddr_storage client;
   socklen_t c = sizeof(client);
-  int client_sock = ::accept(sockFd, (sockaddr *)&client, &c);
+  int client_sock = ::accept(sockFd, (sockaddr*)&client, &c);
   auto acceptErrno = GetErrno();
   while (true) {
     {
@@ -216,7 +216,7 @@ void UnixSocketHandler::initServerSocket(int fd) {
   {
     int flag = 1;
     FATAL_FAIL(
-        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char *)&flag, sizeof(int)));
+        setsockopt(fd, SOL_SOCKET, SO_REUSEADDR, (char*)&flag, sizeof(int)));
   }
 }
 
