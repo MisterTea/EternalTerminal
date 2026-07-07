@@ -1,0 +1,182 @@
+name: Portability CI
+
+on:
+  push:
+    branches:
+      - master
+      - release
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  linux_distros:
+    name: build-${{ matrix.distro }}
+    runs-on: ubuntu-latest
+    container:
+      image: ${{ matrix.container }}
+    strategy:
+      fail-fast: true
+      max-parallel: 1
+      matrix:
+        include:
+          - distro: debian
+            container: debian:stable
+            install: |
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+                autoconf \
+                automake \
+                build-essential \
+                ca-certificates \
+                cmake \
+                curl \
+                debhelper \
+                git \
+                libcurl4-openssl-dev \
+                libprotobuf-dev \
+                libsodium-dev \
+                libssl-dev \
+                libtool \
+                libunwind-dev \
+                libutempter-dev \
+                ninja-build \
+                pkg-config \
+                protobuf-compiler \
+                tar \
+                unzip \
+                zip
+          - distro: fedora
+            container: fedora:latest
+            install: |
+              dnf install -y \
+                @development-tools \
+                ca-certificates \
+                cmake \
+                curl \
+                gcc \
+                gcc-c++ \
+                git \
+                libatomic \
+                libcurl-devel \
+                libsodium-devel \
+                libunwind-devel \
+                ninja-build \
+                openssl-devel \
+                pkgconf-pkg-config \
+                protobuf-compiler \
+                protobuf-devel \
+                tar \
+                unzip \
+                zip
+          - distro: archlinux
+            container: archlinux:latest
+            install: |
+              pacman -Syu --disable-sandbox --noconfirm --needed \
+                autoconf \
+                automake \
+                base-devel \
+                ca-certificates \
+                cmake \
+                curl \
+                git \
+                jq \
+                libtool \
+                libunwind \
+                libutempter \
+                libsodium \
+                namcap \
+                ninja \
+                openssh \
+                openssl \
+                pkgconf \
+                protobuf \
+                tar \
+                unzip \
+                zip
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+    steps:
+      - name: Install dependencies
+        shell: bash
+        run: ${{ matrix.install }}
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Generate project files
+        shell: bash
+        run: |
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      - name: Build and test
+        shell: bash
+        run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-4}"
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+
+  freebsd:
+    name: build-freebsd
+    runs-on: ubuntu-latest
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Install act QEMU dependencies
+        if: ${{ env.ACT }}
+        shell: bash
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            qemu-efi-aarch64 \
+            qemu-system-arm \
+            rsync
+          sudo rm -rf /root/work
+          sudo ln -s "${GITHUB_WORKSPACE}" /root/work
+
+      - name: Start FreeBSD VM
+        uses: vmactions/freebsd-vm@v1
+        with:
+          usesh: true
+
+      - name: Expose FreeBSD shell for act
+        if: ${{ env.ACT }}
+        shell: bash
+        run: |
+          sudo ln -sf "${HOME}/.local/bin/freebsd" /usr/local/bin/freebsd
+
+      - name: Build and test on FreeBSD
+        shell: freebsd {0}
+        run: |
+          if [ -f /root/work/CMakeLists.txt ]; then
+            cd /root/work
+          else
+            cd "${GITHUB_WORKSPACE}"
+          fi
+
+          pkg install -y \
+            autoconf \
+            automake \
+            ca_root_nss \
+            cmake \
+            curl \
+            git \
+            libtool \
+            libunwind \
+            libsodium \
+            ninja \
+            openssl \
+            protobuf \
+            unzip \
+            zip
+
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          parallel_level="${CI_PARALLEL_LEVEL:-4}"
+          cmake --build "$(pwd)/build" --parallel "${parallel_level}"
+          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure

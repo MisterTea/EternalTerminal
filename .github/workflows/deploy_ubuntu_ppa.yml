@@ -1,0 +1,199 @@
+name: Deploy Ubuntu PPA
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy. Leave blank to use the latest GitHub release."
+        required: false
+        default: ""
+      deployment_ref:
+        description: "Ref containing the deployment packaging templates."
+        required: true
+        default: "deployment"
+      ppa:
+        description: "Launchpad PPA target."
+        required: true
+        default: "ppa:jgmath2000/et"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_ubuntu_ppa:
+    name: deploy-ubuntu-ppa
+    runs-on: ubuntu-latest
+    env:
+      DEBFULLNAME: Jason Gauci
+      DEBEMAIL: jgmath2000@gmail.com
+    steps:
+      - name: Install packaging dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            build-essential \
+            ca-certificates \
+            cmake \
+            curl \
+            debhelper \
+            devscripts \
+            distro-info \
+            dput \
+            git \
+            gnupg \
+            jq \
+            libcurl4-openssl-dev \
+            libprotobuf-dev \
+            libsodium-dev \
+            libssl-dev \
+            libtool \
+            libunwind-dev \
+            libutempter-dev \
+            protobuf-compiler \
+            python3 \
+            wget
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [[ -z "${GPG_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret GPG_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${GPG_PASSPHRASE}" ]]; then
+            echo "Missing required secret GPG_PASSPHRASE" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${HOME}/.gnupg"
+          {
+            echo "use-agent"
+            echo "pinentry-mode loopback"
+          } > "${HOME}/.gnupg/gpg.conf"
+          echo "allow-loopback-pinentry" > "${HOME}/.gnupg/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+
+          printf '%s\n' "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ -z "${key_fingerprint}" ]]; then
+            echo "No GPG secret key was imported" >&2
+            exit 1
+          fi
+
+          passphrase_file="${RUNNER_TEMP}/gpg-passphrase"
+          printf '%s' "${GPG_PASSPHRASE}" > "${passphrase_file}"
+          chmod 600 "${passphrase_file}"
+
+          printf 'gpg signing smoke test\n' > "${RUNNER_TEMP}/gpg-smoke-test"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "${passphrase_file}" \
+            --local-user "${key_fingerprint}" \
+            --detach-sign --armor \
+            --output "${RUNNER_TEMP}/gpg-smoke-test.asc" \
+            "${RUNNER_TEMP}/gpg-smoke-test"
+
+          {
+            echo "GPG_KEY_ID=${key_fingerprint}"
+            echo "GPG_PASSPHRASE_FILE=${passphrase_file}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Resolve release
+        env:
+          INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+        run: |
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            tarball_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${release_tag}"
+          else
+            latest_release="$(curl --fail --silent --show-error --location "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")"
+            release_tag="$(jq --raw-output ".tag_name" <<<"${latest_release}")"
+            tarball_url="$(jq --raw-output ".tarball_url" <<<"${latest_release}")"
+          fi
+
+          if [[ -z "${release_tag}" || "${release_tag}" == "null" ]]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+
+          version="${release_tag#et-v}"
+          if [[ "${version}" == "${release_tag}" ]]; then
+            echo "Expected release tag to start with et-v, got ${release_tag}" >&2
+            exit 1
+          fi
+
+          {
+            echo "RELEASE_TAG=${release_tag}"
+            echo "RELEASE_VERSION=${version}"
+            echo "TARBALL_URL=${tarball_url}"
+            echo "ORIG_TARBALL=et_${version}.orig.tar.gz"
+          } >> "${GITHUB_ENV}"
+
+      - name: Check out deployment packaging
+        env:
+          DEPLOYMENT_REF: ${{ inputs.deployment_ref }}
+        run: |
+          git clone --depth 1 --branch "${DEPLOYMENT_REF}" "https://github.com/${GITHUB_REPOSITORY}.git" deployment-branch
+
+      - name: Download original release tarball
+        run: |
+          wget "${TARBALL_URL}" -O "${ORIG_TARBALL}"
+
+      - name: Extract release source
+        run: |
+          mkdir EternalTerminal
+          tar -xzf "${ORIG_TARBALL}" --strip-components=1 -C EternalTerminal
+
+      - name: Build source packages and dry-run upload
+        env:
+          PPA: ${{ inputs.ppa }}
+        run: |
+          rm -f ./*.changes
+
+          readarray -t ubuntu_series < <(distro-info --supported)
+          if [[ "${#ubuntu_series[@]}" -eq 0 ]]; then
+            echo "distro-info --supported did not return any Ubuntu series" >&2
+            exit 1
+          fi
+
+          pushd EternalTerminal
+          for distro in "${ubuntu_series[@]}"; do
+            rm -rf debian
+            cp -a ../deployment-branch/deployment/debian/debian_SOURCE debian
+            python3 -c 'import pathlib, sys; path = pathlib.Path("debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
+            sed -i -E 's/^\* /  * /; s/^-- / -- /' debian/changelog
+            debuild -S -us -uc
+
+            changes_files=(../*"${distro}"*.changes)
+            if [[ ! -e "${changes_files[0]}" ]]; then
+              echo "No .changes file generated for ${distro}" >&2
+              exit 1
+            fi
+            dsc_files=(../*"${distro}"*.dsc)
+            if [[ ! -e "${dsc_files[0]}" ]]; then
+              echo "No .dsc file generated for ${distro}" >&2
+              exit 1
+            fi
+
+            debsign \
+              -k"${GPG_KEY_ID}" \
+              -p"gpg --batch --yes --pinentry-mode loopback --passphrase-file ${GPG_PASSPHRASE_FILE}" \
+              "${changes_files[0]}"
+
+            gpg --batch --verify "${changes_files[0]}"
+            gpg --batch --verify "${dsc_files[0]}"
+            dput --simulate --unchecked -f "${PPA}" "${changes_files[0]}"
+          done
+          popd
+
+      - name: Upload generated source packages
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: ubuntu-ppa-source-packages-${{ env.RELEASE_TAG }}
+          path: |
+            *.changes
+            *.dsc
+            *.debian.tar.*
+            *.orig.tar.gz

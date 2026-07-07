@@ -102,6 +102,13 @@ jobs:
           popd
         if: matrix.sanitize == 'tsan'
 
+      - name: Stop sshd for act
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${ACT:-}" ]]; then
+            sudo pkill -x sshd || true
+          fi
+
   linux_jumphost_system_test:
     runs-on: ubuntu-22.04
     env:
@@ -155,6 +162,13 @@ jobs:
       - name: Connect with jumphost
         run: ./test/system_tests/connect_with_jumphost.sh
 
+      - name: Stop sshd for act
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${ACT:-}" ]]; then
+            sudo pkill -x sshd || true
+          fi
+
   linux_backwards_compatibility:
     runs-on: ubuntu-22.04
     env:
@@ -207,3 +221,10 @@ jobs:
 
       - name: Backwards compatibility with et-v6.2.10
         run: ./test/system_tests/backwards_compatibility.sh
+
+      - name: Stop sshd for act
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${ACT:-}" ]]; then
+            sudo pkill -x sshd || true
+          fi

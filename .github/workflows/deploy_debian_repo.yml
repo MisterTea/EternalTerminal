@@ -1,0 +1,304 @@
+name: Deploy Debian Repo
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy. Leave blank to use the latest GitHub release."
+        required: false
+        default: ""
+      deployment_ref:
+        description: "Ref containing the deployment packaging templates."
+        required: true
+        default: "deployment"
+      debian_repo:
+        description: "Git repository containing the published Debian repo."
+        required: true
+        default: "git@github.com:MisterTea/debian-et.git"
+      push_changes:
+        description: "Commit and push generated repository contents."
+        required: true
+        type: boolean
+        default: true
+      debian_suites:
+        description: "Space-separated Debian suites to build. Leave blank for oldstable, stable, and testing."
+        required: false
+        default: ""
+      debian_arches:
+        description: "Space-separated Debian architectures to build. Leave blank for amd64 and arm64."
+        required: false
+        default: ""
+      verbose_build:
+        description: "Run debhelper in verbose mode."
+        required: true
+        type: boolean
+        default: true
+      quiet_cowbuilder:
+        description: "Redirect cowbuilder logs to files unless a cowbuilder command fails."
+        required: true
+        type: boolean
+        default: false
+      deb_build_jobs:
+        description: "Parallel jobs passed to Debian package builds."
+        required: true
+        default: "2"
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_debian_repo:
+    name: deploy-debian-repo
+    runs-on: ubuntu-latest
+    timeout-minutes: 360
+    env:
+      DEBFULLNAME: Jason Gauci
+      DEBEMAIL: jgmath2000@gmail.com
+      DEPLOYMENT_REF: ${{ inputs.deployment_ref }}
+      DEBIAN_REPO: ${{ inputs.debian_repo }}
+      DEBIAN_ARCHES: ${{ inputs.debian_arches }}
+      DEBIAN_SUITES: ${{ inputs.debian_suites }}
+      DEB_BUILD_JOBS: ${{ inputs.deb_build_jobs }}
+      INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
+      QUIET_COWBUILDER: ${{ inputs.quiet_cowbuilder }}
+      PUSH_CHANGES: ${{ inputs.push_changes }}
+      VERBOSE_BUILD: ${{ inputs.verbose_build }}
+    steps:
+      - name: Install build and publishing dependencies
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            aptly \
+            arch-test \
+            binfmt-support \
+            build-essential \
+            ca-certificates \
+            cmake \
+            cowbuilder \
+            curl \
+            debhelper \
+            debian-archive-keyring \
+            debootstrap \
+            devscripts \
+            distro-info \
+            git \
+            jq \
+            libcurl4-openssl-dev \
+            libprotobuf-dev \
+            libsodium-dev \
+            libssl-dev \
+            libtool \
+            libunwind-dev \
+            libutempter-dev \
+            ninja-build \
+            openssh-client \
+            protobuf-compiler \
+            python3 \
+            qemu-user-static \
+            rsync \
+            ubuntu-dev-tools \
+            wget
+
+          sudo update-binfmts --enable || true
+          echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > "${HOME}/.pbuilderrc"
+
+      - name: Resolve release
+        run: |
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            tarball_url="https://api.github.com/repos/${GITHUB_REPOSITORY}/tarball/${release_tag}"
+          else
+            latest_release="$(curl --fail --silent --show-error --location "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")"
+            release_tag="$(jq --raw-output ".tag_name" <<<"${latest_release}")"
+            tarball_url="$(jq --raw-output ".tarball_url" <<<"${latest_release}")"
+          fi
+
+          if [[ -z "${release_tag}" || "${release_tag}" == "null" ]]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+
+          version="${release_tag#et-v}"
+          if [[ "${version}" == "${release_tag}" ]]; then
+            echo "Expected release tag to start with et-v, got ${release_tag}" >&2
+            exit 1
+          fi
+
+          {
+            echo "RELEASE_TAG=${release_tag}"
+            echo "RELEASE_VERSION=${version}"
+            echo "TARBALL_URL=${tarball_url}"
+            echo "ORIG_TARBALL=et_${version}.orig.tar.gz"
+          } >> "${GITHUB_ENV}"
+
+      - name: Check out deployment packaging
+        run: |
+          git clone --depth 1 --branch "${DEPLOYMENT_REF}" "https://github.com/${GITHUB_REPOSITORY}.git" deployment-branch
+
+      - name: Download original release tarball
+        run: |
+          wget "${TARBALL_URL}" -O "${ORIG_TARBALL}"
+
+      - name: Build Debian packages and publish local repositories
+        run: |
+          debbuildopts="-j${DEB_BUILD_JOBS}"
+
+          run_cowbuilder() {
+            local log_file="$1"
+            shift
+
+            if [[ "${QUIET_COWBUILDER}" == "true" ]]; then
+              echo "Running cowbuilder command; full log: ${log_file}"
+              if ! "$@" >"${log_file}" 2>&1; then
+                echo "cowbuilder command failed; matching error lines:" >&2
+                awk 'tolower($0) ~ /(error:|fatal:|failed|killed|undefined reference|cannot|no such file|returned exit status)/ { print }' "${log_file}" >&2 || true
+                echo "cowbuilder command failed; last 200 log lines:" >&2
+                tail -n 400 "${log_file}" >&2 || true
+                return 1
+              fi
+            else
+              "$@"
+            fi
+          }
+
+          if [[ -n "${DEBIAN_SUITES}" ]]; then
+            read -r -a debian_suites <<<"${DEBIAN_SUITES}"
+          else
+            mapfile -t debian_suites < <(
+              {
+                debian-distro-info --oldstable
+                debian-distro-info --stable
+                debian-distro-info --testing
+              } | awk 'NF' | sort -u
+            )
+          fi
+
+          if [[ "${#debian_suites[@]}" -eq 0 ]]; then
+            echo "No Debian suites discovered" >&2
+            exit 1
+          fi
+
+          if [[ -n "${DEBIAN_ARCHES}" ]]; then
+            read -r -a debian_arches <<<"${DEBIAN_ARCHES}"
+          else
+            debian_arches=(amd64 arm64)
+          fi
+
+          if [[ "${#debian_arches[@]}" -eq 0 ]]; then
+            echo "No Debian architectures configured" >&2
+            exit 1
+          fi
+
+          for distro in "${debian_suites[@]}"; do
+            rm -rf EternalTerminal
+            mkdir EternalTerminal
+            tar -xzf "${ORIG_TARBALL}" --strip-components=1 -C EternalTerminal
+
+            rm -rf EternalTerminal/debian
+            cp -a deployment-branch/deployment/debian/debian_SOURCE EternalTerminal/debian
+            python3 -c 'import pathlib; path = pathlib.Path("EternalTerminal/debian/rules"); path.write_text(path.read_text().replace("-DDISABLE_VCPKG:BOOL=ON", "-DDISABLE_VCPKG:BOOL=ON -DDISABLE_TELEMETRY:BOOL=ON"))'
+            if [[ "${VERBOSE_BUILD}" != "true" ]]; then
+              python3 -c 'import pathlib; path = pathlib.Path("EternalTerminal/debian/rules"); path.write_text(path.read_text().replace("export DH_VERBOSE = 1", "export DH_VERBOSE = 0"))'
+            fi
+            python3 -c 'import pathlib, sys; path = pathlib.Path("EternalTerminal/debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
+            sed -i -E 's/^\* /  * /; s/^-- / -- /' EternalTerminal/debian/changelog
+            printf '\nexport DEB_BUILD_OPTIONS += noautodbgsym\n\noverride_dh_strip:\n\tdh_strip --no-automatic-dbgsym\n' >> EternalTerminal/debian/rules
+
+            rm -f ./*.dsc ./*.changes ./*.buildinfo ./*.debian.tar.* ./*.upload
+            pushd EternalTerminal
+            debuild -S -us -uc
+            popd
+
+            for arch in "${debian_arches[@]}"; do
+              cow_dir="${HOME}/pbuilder/${distro}-${arch}.cow"
+              result_dir="${HOME}/pbuilder/${distro}-${arch}_result"
+
+              if [[ ! -d "${cow_dir}" ]]; then
+                run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
+                  cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd
+              fi
+
+              run_cowbuilder "cowbuilder-${distro}-${arch}-update.log" \
+                cowbuilder-dist "${distro}" "${arch}" update
+              run_cowbuilder "cowbuilder-${distro}-${arch}-build.log" \
+                cowbuilder-dist "${distro}" "${arch}" build \
+                --debbuildopts "${debbuildopts}" \
+                ./*.dsc
+
+              mkdir -p "debian-packages/${distro}-${arch}"
+              result_dirs=("${result_dir}" "${HOME}/pbuilder/${distro}_result")
+              package_files=()
+              for candidate_result_dir in "${result_dirs[@]}"; do
+                if [[ -d "${candidate_result_dir}" ]]; then
+                  shopt -s nullglob
+                  package_files+=("${candidate_result_dir}"/*.deb)
+                  cp -a "${candidate_result_dir}"/*.buildinfo "debian-packages/${distro}-${arch}/" || true
+                  cp -a "${candidate_result_dir}"/*.changes "debian-packages/${distro}-${arch}/" || true
+                  shopt -u nullglob
+                fi
+              done
+
+              if [[ "${#package_files[@]}" -eq 0 ]]; then
+                echo "No Debian packages found in expected result directories:" >&2
+                printf '  %s\n' "${result_dirs[@]}" >&2
+                exit 1
+              fi
+
+              cp -a "${package_files[@]}" "debian-packages/${distro}-${arch}/"
+            done
+
+            aptly repo create -distribution="${distro}" -component=main "et-${distro}" || true
+            aptly repo add -force-replace=true "et-${distro}" debian-packages/"${distro}"-*/*.deb
+            aptly publish drop "${distro}" || true
+            aptly publish repo -skip-signing "et-${distro}"
+          done
+
+      - name: Upload built Debian packages
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-packages-${{ env.RELEASE_TAG }}
+          path: debian-packages/
+
+      - name: Upload published Debian repository
+        if: ${{ !env.ACT }}
+        uses: actions/upload-artifact@v4
+        with:
+          name: debian-repository-${{ env.RELEASE_TAG }}
+          path: ~/.aptly/public/
+
+      - name: Configure SSH for Debian repository push
+        if: ${{ inputs.push_changes }}
+        env:
+          DEBIAN_REPO_SSH_PRIVATE_KEY: ${{ secrets.DEBIAN_REPO_SSH_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${DEBIAN_REPO_SSH_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret DEBIAN_REPO_SSH_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${HOME}/.ssh"
+          printf '%s\n' "${DEBIAN_REPO_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
+          chmod 600 "${HOME}/.ssh/id_ed25519"
+          ssh-keyscan github.com >> "${HOME}/.ssh/known_hosts"
+
+          git config --global user.name "Jason Gauci"
+          git config --global user.email "jgmath2000@gmail.com"
+
+      - name: Commit and push Debian repository
+        if: ${{ inputs.push_changes }}
+        run: |
+          git clone "${DEBIAN_REPO}" debian-et
+          mkdir -p debian-et/debian-source
+          rsync -raz --delete ~/.aptly/public/ debian-et/debian-source/
+
+          pushd debian-et
+          if git diff --quiet -- debian-source; then
+            echo "Debian repository is already up to date"
+            exit 0
+          fi
+
+          git add debian-source
+          git commit -m "Update Debian packages for ${RELEASE_TAG}"
+          git push origin HEAD
+          popd
