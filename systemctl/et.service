@@ -5,7 +5,7 @@ After=syslog.target network.target
 [Service]
 Type=simple
 Restart=on-failure
-ExecStart=/usr/bin/etserver --cfgfile=/etc/et.cfg
+ExecStart=/usr/bin/etserver --cfgfile=/etc/et.cfg --logtostdout
 
 [Install]
 WantedBy=multi-user.target

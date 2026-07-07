@@ -94,6 +94,19 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
   unassignedFds.erase(sourceFd);
   socketFdMap[socketId] = sourceFd;
 }
+
+void ForwardSourceHandler::getActiveFds(set<int>* fds) {
+  for (int fd : socketHandler->getEndpointFds(source)) {
+    fds->insert(fd);
+  }
+  for (auto& it : socketFdMap) {
+    fds->insert(it.second);
+  }
+  for (int fd : unassignedFds) {
+    fds->insert(fd);
+  }
+}
+
 void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
   if (socketFdMap.find(socketId) == socketFdMap.end()) {
     LOG(INFO) << "Tried to write to a socket that no longer exists!";

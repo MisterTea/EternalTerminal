@@ -2,4 +2,4 @@
 skip = .git,*.pdf,*.svg,.codespellrc
 check-hidden = true
 ignore-regex = \bhenrik@gassmann.onl\b
-ignore-words-list = te
+ignore-words-list = te,fpr,buildd

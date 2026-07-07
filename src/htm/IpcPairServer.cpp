@@ -2,7 +2,7 @@
 
 namespace et {
 IpcPairServer::IpcPairServer(shared_ptr<SocketHandler> _socketHandler,
-                             const SocketEndpoint &_endpoint)
+                             const SocketEndpoint& _endpoint)
     : IpcPairEndpoint(_socketHandler, -1), endpoint(_endpoint) {
   serverFd = *(socketHandler->listen(endpoint).begin());
 }

@@ -13,10 +13,10 @@ status](https://repology.org/badge/vertical-allrepos/eternalterminal.svg?exclude
 
 ### macOS
 
-The easiest way to install is using Homebrew:
+The easiest way to install `et`is by using Homebrew:
 
 ```bash
-brew install MisterTea/et/et
+brew install et
 ```
 
 If the install fails on including csignal, see https://github.com/MisterTea/EternalTerminal/issues/662#issuecomment-2408889829
@@ -130,6 +130,34 @@ make
 sudo make install
 ```
 
+### NixOS
+
+If you use flakes, you can import the bundled NixOS module and let it manage
+the package, `/etc/et.cfg`, and the `etserver` service:
+
+```nix
+{
+  inputs.et.url = "github:MisterTea/EternalTerminal";
+
+  outputs = { nixpkgs, et, ... }: {
+    nixosConfigurations.my-host = nixpkgs.lib.nixosSystem {
+      system = "x86_64-linux";
+      modules = [
+        et.nixosModules.default
+        ({ ... }: {
+          services.eternalTerminal = {
+            enable = true;
+            openFirewall = true;
+            port = 2022;
+            settings.Networking.bind_ip = "0.0.0.0";
+          };
+        })
+      ];
+    };
+  };
+}
+```
+
 ### Windows
 
 Eternal Terminal works under WSL (Windows Subsystem for Linux). Follow the ubuntu instructions.
@@ -148,7 +176,10 @@ You are ready to start using ET!
 
 ## Configuring
 
-If you'd like to modify the server settings (e.g. to change the listening port), edit /etc/et.cfg.
+If you'd like to modify the server settings (e.g. to change the listening
+port), edit `/etc/et.cfg`. On NixOS, set `services.eternalTerminal.settings`
+instead so the generated `/etc/et.cfg` stays in sync with your system
+configuration.
 
 ## Using
 
@@ -200,7 +231,7 @@ et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 
 ### macOS
 
-To build Eternal Terminal on Mac, the easiest way is to grab dependencies with Homebrew:
+To build Eternal Terminal on Mac, install its dependencies with Homebrew:
 
 ```bash
 brew install autoconf automake libtool
@@ -297,7 +328,7 @@ Alternatively, open the file /etc/systemd/system/et.service in an editor and cor
 
 
 ```
-ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg
+ExecStart=/usr/local/bin/etserver --cfgfile=/etc/et.cfg --logtostdout
 ```
 
 Reload systemd configs:

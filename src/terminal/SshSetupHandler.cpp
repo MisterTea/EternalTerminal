@@ -1,6 +1,6 @@
 #include "SshSetupHandler.hpp"
 
-#include "SubprocessToString.hpp"
+#include "HostParsing.hpp"
 
 namespace et {
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
@@ -25,13 +25,11 @@ string genCommand(const string& passkey, const string& id,
   return ssh_script_prefix + command;
 }
 
-string SshSetupHandler::SetupSsh(const string& user, const string& host,
-                                 const string& host_alias, int port,
-                                 const string& jumphost,
-                                 const string& jServerFifo, bool kill,
-                                 int vlevel, const string& cmd_prefix,
-                                 const string& serverFifo,
-                                 const std::vector<std::string>& ssh_options) {
+pair<string, string> SshSetupHandler::SetupSsh(
+    const string& user, const string& host, const string& host_alias, int port,
+    const string& jumphost, const string& jServerFifo, bool kill, int vlevel,
+    const string& cmd_prefix, const string& serverFifo,
+    const std::vector<std::string>& ssh_options) {
   string clientTerm("xterm-256color");
   auto envString = getenv("TERM");
   if (envString != NULL) {
@@ -76,7 +74,8 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
   std::string ssh_concat;
   for (const auto& piece : ssh_args) ssh_concat += piece + " ";
   VLOG(1) << "Trying ssh with args: " << ssh_concat << endl;
-  auto sshBuffer = SubprocessToStringInteractive("ssh", ssh_args);
+  auto sshBuffer =
+      subprocessUtils_->SubprocessToStringInteractive("ssh", ssh_args);
 
   try {
     if (sshBuffer.length() <= 0) {
@@ -85,7 +84,9 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
           << "Error starting ET process through ssh, please make sure your "
              "ssh works first"
           << endl;
-      exit(1);
+      throw std::runtime_error(
+          "Error starting ET process through ssh, please make sure your ssh "
+          "works first");
     }
     auto passKeyIndex = sshBuffer.find(string("IDPASSKEY:"));
     if (passKeyIndex == string::npos) {
@@ -95,7 +96,10 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
           << ", please make sure you don't print anything in server's "
              ".bashrc/.zshrc"
           << endl;
-      exit(1);
+      throw std::runtime_error(
+          "Error in authentication with etserver, please make sure you don't "
+          "print anything in server's .bashrc/.zshrc. Server output: " +
+          sshBuffer);
     }
     auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
     auto idpasskey_splited = split(idpasskey, '/');
@@ -120,12 +124,40 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     string SSH_SCRIPT_JUMP = genCommand(passkey, id, clientTerm, user, kill,
                                         cmd_prefix, jump_cmdoptions);
 
+    // Parse jumphost to extract port for -p flag (ssh destination doesn't
+    // support user@host:port, only -J does)
+    ParsedHostString parsedJump = parseHostString(jumphost);
+
+    // Strip brackets from IPv6 addresses for ssh destination
+    // (ssh [::1] fails, but ssh ::1 works)
+    string jumphostAddr = parsedJump.host;
+    if (jumphostAddr.length() >= 2 && jumphostAddr.front() == '[' &&
+        jumphostAddr.back() == ']') {
+      jumphostAddr = jumphostAddr.substr(1, jumphostAddr.length() - 2);
+    }
+
+    string jumphostDest = parsedJump.user.empty()
+                              ? jumphostAddr
+                              : parsedJump.user + "@" + jumphostAddr;
+
+    std::vector<std::string> jump_ssh_args;
+    if (!parsedJump.portSuffix.empty()) {
+      // portSuffix includes the colon, e.g. ":22"
+      jump_ssh_args.push_back("-p");
+      jump_ssh_args.push_back(parsedJump.portSuffix.substr(1));
+    }
+    for (const auto& opt : ssh_options) {
+      jump_ssh_args.push_back("-o" + opt);
+    }
+    jump_ssh_args.push_back(jumphostDest);
+    jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
+
     string sshLinkBuffer =
-        SubprocessToStringInteractive("ssh", {jumphost, SSH_SCRIPT_JUMP});
+        subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
     if (sshLinkBuffer.length() <= 0) {
       // At this point "ssh -J jumphost dst" already works.
       CLOG(INFO, "stdout") << "etserver jumpclient failed to start" << endl;
-      exit(1);
+      throw std::runtime_error("etserver jumpclient failed to start");
     }
     try {
       auto idpasskey = split(sshLinkBuffer, ':')[1];
@@ -144,6 +176,6 @@ string SshSetupHandler::SetupSsh(const string& user, const string& host,
     STFATAL << "Somehow missing id or passkey: " << id.length() << " "
             << passkey.length();
   }
-  return id + "/" + passkey;
+  return {id, passkey};
 }
 }  // namespace et

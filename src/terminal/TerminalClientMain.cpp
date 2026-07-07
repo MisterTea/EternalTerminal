@@ -1,9 +1,12 @@
 #include <cxxopts.hpp>
 
 #include "Headers.hpp"
+#include "HostParsing.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
-#include "PsuedoTerminalConsole.hpp"
+#include "PseudoTerminalConsole.hpp"
+#include "SshSetupHandler.hpp"
+#include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TerminalClient.hpp"
 #include "TunnelUtils.hpp"
@@ -46,6 +49,38 @@ T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
   exit(0);
 }
 
+// Resolved SSH config information for a host
+struct ResolvedSshConfig {
+  string hostname;  // Resolved HostName (or original if not an alias)
+  string username;  // Username from SSH config (empty if not specified)
+};
+
+// Resolve a host alias via SSH config lookup
+ResolvedSshConfig resolveSshConfigHost(const string& hostAlias) {
+  ResolvedSshConfig result;
+  result.hostname = hostAlias;  // Default to original if not resolved
+
+  char* home_dir = ssh_get_user_home_dir();
+  Options opts = {NULL, NULL, NULL, NULL, NULL, NULL, 0,    0, 0,
+                  0,    0,    NULL, NULL, 0,    0,    NULL, {}};
+
+  ssh_options_set(&opts, SSH_OPTIONS_HOST, hostAlias.c_str());
+  parse_ssh_config_file(hostAlias.c_str(), &opts,
+                        string(home_dir) + USER_SSH_CONFIG_PATH);
+  parse_ssh_config_file(hostAlias.c_str(), &opts, SYSTEM_SSH_CONFIG_PATH);
+
+  if (opts.host) {
+    result.hostname = string(opts.host);
+  }
+  if (opts.username) {
+    result.username = string(opts.username);
+  }
+
+  freeOptionsFields(&opts);
+  free(home_dir);
+  return result;
+}
+
 int main(int argc, char** argv) {
   WinsockContext context;
   string tmpDir = GetTempDirectory();
@@ -75,7 +110,8 @@ int main(int argc, char** argv) {
       NULL,  // gss_client_identity
       0,     // gss_delegate_creds
       0,     // forward_agent
-      NULL   // identity_agent
+      NULL,  // identity_agent
+      {}     // local_forwards (empty vector)
   };
 
   // Parse command line arguments
@@ -92,7 +128,8 @@ int main(int argc, char** argv) {
     options.add_options()             //
         ("h,help", "Print help")      //
         ("version", "Print version")  //
-        ("u,username", "Username")    //
+        ("u,username", "Username",
+         cxxopts::value<std::string>())  //
         ("host", "Remote host name",
          cxxopts::value<std::string>())  //
         ("p,port", "Remote machine etserver port",
@@ -108,11 +145,14 @@ int main(int argc, char** argv) {
         ("t,tunnel",
          "Tunnel: Array of source:destination ports or "
          "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
-         "10080:80,10443:443, 10090-10092:8000-8002)",
+         "10080:80,10443:443, 10090-10092:8000-8002), ssh-style -L/-R "
+         "argument, or Unix socket paths (e.g. "
+         "/tmp/local.sock:/tmp/remote.sock, 8080:/tmp/remote.sock, "
+         "/tmp/local.sock:8080). Defaults to localhost for bind address "
+         "unless ssh-style tunnel argument is used.",
          cxxopts::value<std::string>())  //
         ("r,reversetunnel",
-         "Reverse Tunnel: Array of source:destination ports or "
-         "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges",
+         "Reverse Tunnel: Same syntax as -t/--tunnel but reversed.",
          cxxopts::value<std::string>())  //
         ("jumphost", "jumphost between localhost and destination",
          cxxopts::value<std::string>())  //
@@ -283,12 +323,8 @@ int main(int argc, char** argv) {
     // Parse jumphost: cmd > sshconfig
     if (sshConfigOptions.ProxyJump && jumphost.length() == 0) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
-      size_t colonIndex = proxyjump.find(":");
-      if (colonIndex != string::npos) {
-        jumphost = proxyjump.substr(0, colonIndex);
-      } else {
-        jumphost = proxyjump;
-      }
+      // Keep full ProxyJump value including SSH port for ssh -J command
+      jumphost = proxyjump;
       LOG(INFO) << "ProxyJump found for dst in ssh config: " << proxyjump;
     }
 
@@ -297,13 +333,34 @@ int main(int argc, char** argv) {
     if (!jumphost.empty()) {
       is_jumphost = true;
       LOG(INFO) << "Setting port to jumphost port";
-      size_t atIndex = jumphost.find("@");
-      if (atIndex != string::npos) {
-        socketEndpoint.set_name(jumphost.substr(atIndex + 1));
-      } else {
-        socketEndpoint.set_name(jumphost);
-        jumphost = username + "@" + jumphost;
+
+      // Parse [user@]host[:sshport] format
+      ParsedHostString parsed = parseHostString(jumphost);
+
+      // Resolve jumphost alias to actual hostname via SSH config
+      ResolvedSshConfig resolved = resolveSshConfigHost(parsed.host);
+      if (resolved.hostname != parsed.host) {
+        LOG(INFO) << "Resolved jumphost alias '" << parsed.host
+                  << "' to hostname: " << resolved.hostname;
       }
+
+      // Determine username: command-line > SSH config > local user
+      string jumphostUser = parsed.user;
+      if (jumphostUser.empty() && !resolved.username.empty()) {
+        jumphostUser = resolved.username;
+        LOG(INFO) << "Using jumphost username from SSH config: "
+                  << jumphostUser;
+      }
+      if (jumphostUser.empty()) {
+        char* localUsernamePtr = ssh_get_local_username();
+        jumphostUser = string(localUsernamePtr);
+        SAFE_FREE(localUsernamePtr);
+      }
+
+      // Reconstruct jumphost with resolved hostname for SSH -J flag
+      jumphost = jumphostUser + "@" + resolved.hostname + parsed.portSuffix;
+
+      socketEndpoint.set_name(resolved.hostname);
       socketEndpoint.set_port(result["jport"].as<int>());
     } else {
       socketEndpoint.set_name(destinationHost);
@@ -339,28 +396,10 @@ int main(int argc, char** argv) {
     if (result.count("terminal-path")) {
       etterminal_path = result["terminal-path"].as<string>();
     }
-    string idpasskeypair = SshSetupHandler::SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
 
-    string id = "", passkey = "";
-    // Trim whitespace
-    idpasskeypair.erase(idpasskeypair.find_last_not_of(" \n\r\t") + 1);
-    size_t slashIndex = idpasskeypair.find("/");
-    if (slashIndex == string::npos) {
-      STFATAL << "Invalid idPasskey id/key pair: " << idpasskeypair;
-    } else {
-      id = idpasskeypair.substr(0, slashIndex);
-      passkey = idpasskeypair.substr(slashIndex + 1);
-    }
-    if (passkey.length() != 32) {
-      STFATAL << "Invalid/missing passkey: " << passkey << " "
-              << passkey.length();
-    }
     shared_ptr<Console> console;
     if (!result.count("N")) {
-      console.reset(new PsuedoTerminalConsole());
+      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("f") > 0;
@@ -380,10 +419,30 @@ int main(int argc, char** argv) {
         extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
     string r_tunnel_arg = extractSingleOptionWithDefault<string>(
         result, options, "reversetunnel", "");
-    TerminalClient terminalClient(clientSocket, clientPipeSocket,
-                                  socketEndpoint, id, passkey, console,
-                                  is_jumphost, tunnel_arg, r_tunnel_arg,
-                                  forwardAgent, sshSocket, keepaliveDuration);
+
+    for (const auto& localForward : sshConfigOptions.local_forwards) {
+      string tunnelEntry =
+          to_string(localForward.first) + ":" + to_string(localForward.second);
+      LOG(INFO) << "Adding tunnel from SSH config LocalForward: "
+                << tunnelEntry;
+      if (tunnel_arg.empty()) {
+        tunnel_arg = tunnelEntry;
+      } else {
+        tunnel_arg += "," + tunnelEntry;
+      }
+    }
+
+    auto subprocessUtils = make_shared<SubprocessUtils>();
+    SshSetupHandler sshSetupHandler(subprocessUtils);
+    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
+        username, destinationHost, host_alias, destinationPort, jumphost,
+        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+        etterminal_path, serverFifo, ssh_options);
+
+    TerminalClient terminalClient(
+        clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
+        idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
+        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
@@ -394,15 +453,7 @@ int main(int argc, char** argv) {
   }
 
   // Clean up ssh config options
-  SAFE_FREE(sshConfigOptions.username);
-  SAFE_FREE(sshConfigOptions.host);
-  SAFE_FREE(sshConfigOptions.sshdir);
-  SAFE_FREE(sshConfigOptions.knownhosts);
-  SAFE_FREE(sshConfigOptions.ProxyCommand);
-  SAFE_FREE(sshConfigOptions.ProxyJump);
-  SAFE_FREE(sshConfigOptions.gss_server_identity);
-  SAFE_FREE(sshConfigOptions.gss_client_identity);
-  SAFE_FREE(sshConfigOptions.identity_agent);
+  freeOptionsFields(&sshConfigOptions);
 
 #ifdef WIN32
   WSACleanup();

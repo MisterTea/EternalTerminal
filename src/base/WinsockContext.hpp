@@ -4,6 +4,9 @@
 #include "Headers.hpp"
 
 namespace et {
+/**
+ * @brief RAII helper that ensures `WSAStartup`/`WSACleanup` run on Windows.
+ */
 class WinsockContext {
  public:
   WinsockContext() {

@@ -11,7 +11,8 @@ TerminalClient::TerminalClient(
     const SocketEndpoint& _socketEndpoint, const string& id,
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
-    const string& identityAgent, int _keepaliveDuration)
+    const string& identityAgent, int _keepaliveDuration,
+    const vector<pair<string, string>>& envVars)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration) {
@@ -20,19 +21,22 @@ TerminalClient::TerminalClient(
   InitialPayload payload;
   payload.set_jumphost(jumphost);
 
+  for (const auto& envVar : envVars) {
+    (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;
+  }
+
   try {
     if (tunnels.length()) {
       auto pfsrs = parseRangesToRequests(tunnels);
       for (auto& pfsr : pfsrs) {
-#ifdef WIN32
-        STFATAL << "Source tunnel not supported on windows yet";
-#else
         auto pfsresponse =
             portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
-          throw std::runtime_error(pfsresponse.error());
+          LOG(WARNING) << "Failed to establish port forward " << pfsr.source()
+                       << " -> " << pfsr.destination() << " - "
+                       << pfsresponse.error();
+          continue;
         }
-#endif
       }
     }
     if (reverseTunnels.length()) {
@@ -199,7 +203,13 @@ void TerminalClient::run(const string& command, const bool noexit) {
       FD_SET(clientFd, &rfd);
       maxfd = max(maxfd, clientFd);
     }
-    // TODO: set port forward sockets as well for performance reasons.
+    // Include port forward sockets in select for low-latency forwarding.
+    set<int> pfFds;
+    portForwardHandler->getForwardFds(&pfFds);
+    for (int fd : pfFds) {
+      FD_SET(fd, &rfd);
+      maxfd = max(maxfd, fd);
+    }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
@@ -241,7 +251,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
 #else
           if (console) {
             int rc = ::read(consoleFd, b, BUF_SIZE);
-            FATAL_FAIL(rc);
+            int savedErrno = errno;  // Save errno before any logging
             if (rc > 0) {
               // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " "
               // << connection->getWriter()->getSequenceNumber();
@@ -252,6 +262,17 @@ void TerminalClient::run(const string& command, const bool noexit) {
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
               keepaliveTime = time(NULL) + keepaliveDuration;
+            } else if (rc == 0) {
+              LOG(INFO) << "Console EOF";
+              break;
+            } else {
+              if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
+                // Transient error, retry
+              } else {
+                LOG(INFO) << "Console read error: (" << savedErrno
+                          << "): " << strerror(savedErrno);
+                break;
+              }
             }
           }
 #endif
@@ -260,6 +281,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
       if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
         VLOG(4) << "Clientfd is selected";
+        // Accumulate terminal output across all available packets so we can
+        // write it in a single call.  Writing each packet individually causes
+        // intermediate renders in the client terminal (e.g. a screen-clear
+        // arriving in one write followed by the repaint in the next), which
+        // produces visible flicker.
+        string coalesced;
         while (connection->hasData()) {
           VLOG(4) << "connection has data";
           Packet packet;
@@ -281,15 +308,10 @@ void TerminalClient::run(const string& command, const bool noexit) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
               if (console) {
                 VLOG(3) << "Got terminal buffer";
-                // Read from the server and write to our fake terminal
                 et::TerminalBuffer tb =
                     stringToProto<et::TerminalBuffer>(packet.getPayload());
-                const string& s = tb.buffer();
-                // VLOG(5) << "Got message: " << s;
-                // VLOG(1) << "Got byte: " << int(b) << " " << char(b) << " " <<
-                // connection->getReader()->getSequenceNumber();
+                coalesced += tb.buffer();
                 keepaliveTime = time(NULL) + keepaliveDuration;
-                console->write(s);
               }
               break;
             }
@@ -302,6 +324,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
+        }
+        if (console && !coalesced.empty()) {
+          console->write(coalesced);
         }
       }
 
@@ -326,9 +351,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
         TerminalInfo ti = console->getTerminalInfo();
 
         if (ti != lastTerminalInfo) {
-          LOG(INFO) << "Window size changed: row: " << ti.row()
-                    << " column: " << ti.column() << " width: " << ti.width()
-                    << " height: " << ti.height();
+          VLOG(1) << "Window size changed: row: " << ti.row()
+                  << " column: " << ti.column() << " width: " << ti.width()
+                  << " height: " << ti.height();
           lastTerminalInfo = ti;
           connection->writePacket(
               Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));

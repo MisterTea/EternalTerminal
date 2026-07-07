@@ -1,6 +1,14 @@
 #ifndef __ET_HEADERS__
 #define __ET_HEADERS__
 
+/**
+ * @brief Central header that pulls in platform libraries, protobufs, and
+ * utility helpers.
+ *
+ * Pulls in OS-specific headers, third-party dependencies, and defines
+ * constants/macros that are shared by the Eternal Terminal binaries.
+ */
+
 #ifndef CPPHTTPLIB_OPENSSL_SUPPORT
 #define CPPHTTPLIB_OPENSSL_SUPPORT (1)
 #endif
@@ -33,6 +41,8 @@ inline int close(int fd) { return ::closesocket(fd); }
 #endif
 
 #ifdef WIN32
+using uid_t = int;
+using gid_t = int;
 #else
 #include <arpa/inet.h>
 #include <grp.h>
@@ -182,6 +192,10 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
 #endif
 
+/**
+ * @brief Normalizes platform-specific errno values (translates Win32 WSA
+ * errors).
+ */
 inline int GetErrno() {
 #ifdef WIN32
   auto retval = WSAGetLastError();
@@ -349,6 +363,31 @@ inline bool waitOnSocketData(int fd) {
   tv.tv_usec = 0;
   VLOG(4) << "Before selecting sockFd";
   const int selectResult = select(fd + 1, &fdset, NULL, NULL, &tv);
+  if (selectResult < 0) {
+    if (errno == EINTR) {
+      // Interrupted by the signal, the caller will retry.
+      return false;
+    } else {
+      FATAL_FAIL(selectResult);
+    }
+  }
+  return FD_ISSET(fd, &fdset);
+}
+
+/**
+ * Check whether a fd would accept a write right now without blocking.
+ *
+ * @return true if the fd is writable, or false if its buffer is full or the
+ *   check is interrupted by a syscall.
+ */
+inline bool isSocketWritable(int fd) {
+  fd_set fdset;
+  FD_ZERO(&fdset);
+  FD_SET(fd, &fdset);
+  timeval tv;
+  tv.tv_sec = 0;
+  tv.tv_usec = 0;
+  const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
   if (selectResult < 0) {
     if (errno == EINTR) {
       // Interrupted by the signal, the caller will retry.

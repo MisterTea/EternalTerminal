@@ -1,6 +1,8 @@
 #ifndef __FAKE_CONSOLE_HPP__
 #define __FAKE_CONSOLE_HPP__
 
+#include <fcntl.h>
+
 #include "Console.hpp"
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
@@ -110,6 +112,8 @@ class FakeUserTerminal : public UserTerminal {
  public:
   FakeUserTerminal(shared_ptr<PipeSocketHandler> _socketHandler)
       : socketHandler(_socketHandler),
+        serverClientFd(-1),
+        clientServerFd(-1),
         didCleanUp(false),
         didHandleSessionEnd(false) {
     memset(&lastWinInfo, 0, sizeof(winsize));
@@ -155,6 +159,11 @@ class FakeUserTerminal : public UserTerminal {
     FATAL_FAIL(clientServerFd);
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
+    // Honor the UserTerminal contract: the handler polls this fd non-blocking.
+    int flags = fcntl(clientServerFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
+    }
     return getFd();
   };
 

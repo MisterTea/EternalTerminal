@@ -2,6 +2,19 @@
 set -x
 set -e
 
+first_server_pid=""
+second_server_pid=""
+
+cleanup() {
+  if [ -n "$first_server_pid" ]; then
+    kill -9 "$first_server_pid" 2>/dev/null || true
+  fi
+  if [ -n "$second_server_pid" ]; then
+    kill -9 "$second_server_pid" 2>/dev/null || true
+  fi
+}
+trap cleanup EXIT
+
 ssh -o 'PreferredAuthentications=publickey' localhost "echo" || exit 1 # Fails if we can't ssh into localhost without a password
 
 # Bypass host check
@@ -24,4 +37,6 @@ build/et -c "echo 'Hello World 2!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 -
 build/et -c "echo 'Hello World 3!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jumphost localhost --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 127.0.0.1:9901 # We can't use 'localhost' for both the jumphost and the destination because ssh doesn't support keeping them the same.
 
 kill -9 $first_server_pid
+first_server_pid=""
 kill -9 $second_server_pid
+second_server_pid=""

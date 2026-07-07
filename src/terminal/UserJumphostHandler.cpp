@@ -7,7 +7,7 @@
 namespace et {
 UserJumphostHandler::UserJumphostHandler(
     shared_ptr<SocketHandler> _jumpClientSocketHandler,
-    const string &_idpasskey, const SocketEndpoint &_dstSocketEndpoint,
+    const string& _idpasskey, const SocketEndpoint& _dstSocketEndpoint,
     shared_ptr<SocketHandler> _routerSocketHandler,
     const optional<SocketEndpoint> routerEndpoint)
     : routerSocketHandler(_routerSocketHandler),
@@ -33,7 +33,7 @@ void UserJumphostHandler::run() {
     routerSocketHandler->writePacket(
         routerFd,
         Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
-  } catch (const std::runtime_error &re) {
+  } catch (const std::runtime_error& re) {
     STFATAL << "Cannot send idpasskey to router: " << re.what();
   }
 
@@ -92,7 +92,8 @@ void UserJumphostHandler::run() {
               if (initialResponse.has_error()) {
                 CLOG(INFO, "stdout") << "Error initializing connection: "
                                      << initialResponse.error() << endl;
-                exit(1);
+                throw std::runtime_error("Error initializing connection: " +
+                                         initialResponse.error());
               }
               fail = false;
               break;
@@ -107,11 +108,14 @@ void UserJumphostHandler::run() {
           throw std::runtime_error("Connect Timeout");
         }
       }
-    } catch (const runtime_error &err) {
+    } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to dst server";
       CLOG(INFO, "stdout") << "Could not make initial connection to "
                            << dstSocketEndpoint << ": " << err.what() << endl;
-      exit(1);
+      std::ostringstream oss;
+      oss << "Could not make initial connection to " << dstSocketEndpoint
+          << ": " << err.what();
+      throw std::runtime_error(oss.str());
     }
     break;
   }
@@ -191,7 +195,7 @@ void UserJumphostHandler::run() {
         jumpclient->closeSocket();
         is_reconnecting = false;
       }
-    } catch (const runtime_error &re) {
+    } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();
       CLOG(INFO, "stdout") << "Connection closing because of error: "
                            << re.what() << endl;

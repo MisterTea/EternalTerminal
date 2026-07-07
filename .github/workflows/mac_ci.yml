@@ -9,7 +9,11 @@ on:
 jobs:
   ubsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -24,7 +28,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
@@ -41,20 +45,23 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
-
       - name: Test with ubsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
   asan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -69,7 +76,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
@@ -88,17 +95,21 @@ jobs:
 
       - name: Test with asan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_ADDRESS=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
   msan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -113,7 +124,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
@@ -132,17 +143,21 @@ jobs:
 
       - name: Test with msan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_MEMORY=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
 
   tsan:
     runs-on: macos-latest
-
+    env:
+      # Indicates the CMake build directory where project files and binaries are being produced.
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      # Indicates the location of the vcpkg as a Git submodule of the project repository.
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -157,7 +172,7 @@ jobs:
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v4
+        uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
@@ -176,10 +191,10 @@ jobs:
 
       - name: Test with tsan
         run: |
-          mkdir build
+          mkdir -p build
           pushd build
-          cmake -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ./et-test
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build

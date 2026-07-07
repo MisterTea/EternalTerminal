@@ -31,8 +31,6 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
   }
 }
 
-#ifdef WIN32
-#else
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
@@ -49,9 +47,14 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       // Make a random file to forward the pipe
       string sourcePattern =
           GetTempDirectory() + string("et_forward_sock_XXXXXX");
+#ifndef WIN32
       string sourceDirectory = string(mkdtemp(&sourcePattern[0]));
       FATAL_FAIL(::chmod(sourceDirectory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
       FATAL_FAIL(::chown(sourceDirectory.c_str(), userid, groupid));
+#else
+      string sourceDirectory = mktemp(&sourcePattern[0]);
+      FATAL_FAIL(mkdir(&sourceDirectory[0]));
+#endif
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
@@ -62,7 +65,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       *sourceName = sourcePath;
       LOG(INFO) << "Creating pipe at " << sourcePath;
     }
-    if (pfsr.source().has_port()) {
+    if (source.has_port()) {
       if (sourceName != nullptr) {
         STFATAL << "Tried to create a port forward but with a place to put "
                    "the name!";
@@ -72,14 +75,14 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     } else {
-      if (userid < 0 || groupid < 0) {
-        STFATAL
-            << "Tried to create a unix socket forward with no userid/groupid";
-      }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
-      FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
-      FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+#ifndef WIN32
+      if (userid >= 0 && groupid >= 0) {
+        FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
+        FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+      }
+#endif
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     }
@@ -89,7 +92,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     return pfsr;
   }
 }
-#endif
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
@@ -242,6 +244,18 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
   }
   it->second->closeSocket(socketId);
   socketIdSourceHandlerMap.erase(socketId);
+}
+
+void PortForwardHandler::getForwardFds(set<int>* fds) {
+  for (auto& handler : sourceHandlers) {
+    handler->getActiveFds(fds);
+  }
+  for (auto& it : destinationHandlers) {
+    int fd = it.second->getFd();
+    if (fd >= 0) {
+      fds->insert(fd);
+    }
+  }
 }
 
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,

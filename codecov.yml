@@ -5,8 +5,8 @@ ignore:
   - "src/htm" # HTM not tested yet
   - "src/terminal/ParseConfigFile.hpp"
   - "src/terminal/TelemetryService*"
-  - "src/terminal/PsuedoTerminalConsole.hpp"
-  - "src/terminal/PsuedoUserTerminal.hpp"
+  - "src/terminal/PseudoTerminalConsole.hpp"
+  - "src/terminal/PseudoUserTerminal.hpp"
   - "src/terminal/*Main.cpp"
   - "src/base/Headers.hpp"
   - "src/base/TcpSocketHandler*"

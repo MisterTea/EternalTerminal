@@ -6,7 +6,7 @@
 namespace et {
 UserTerminalRouter::UserTerminalRouter(
     shared_ptr<PipeSocketHandler> _socketHandler,
-    const SocketEndpoint &_routerEndpoint)
+    const SocketEndpoint& _routerEndpoint)
     : socketHandler(_socketHandler) {
   serverFd = *(socketHandler->listen(_routerEndpoint).begin());
   FATAL_FAIL(::chown(_routerEndpoint.name().c_str(), getuid(), getgid()));
@@ -49,7 +49,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     }
 
     return IdKeyPair({tui.id(), tui.passkey()});
-  } catch (const std::runtime_error &re) {
+  } catch (const std::runtime_error& re) {
     LOG(ERROR) << "Router can't talk to terminal: " << re.what();
     socketHandler->close(terminalFd);
     return IdKeyPair({"", ""});
@@ -60,7 +60,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
 }
 
 std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
-    const shared_ptr<ServerClientConnection> &serverClientState) {
+    const shared_ptr<ServerClientConnection>& serverClientState) {
   lock_guard<recursive_mutex> guard(routerMutex);
   auto it = idInfoMap.find(serverClientState->getId());
   if (it == idInfoMap.end()) {

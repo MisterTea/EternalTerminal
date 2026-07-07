@@ -1,109 +1,57 @@
 #include <atomic>
+#include <chrono>
+#include <future>
+
+#if __APPLE__
+#include <util.h>
+#elif __FreeBSD__
+#include <libutil.h>
+#else
+#include <pty.h>
+#endif
+#include <fcntl.h>
+#include <sys/wait.h>
+#include <termios.h>
 
 #include "FakeConsole.hpp"
+#include "FakeSshSetupHandler.hpp"
+#include "SshSetupHandler.hpp"
+#include "SubprocessUtils.hpp"
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
 #include "TunnelUtils.hpp"
 
 namespace et {
-TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
-  shared_ptr<PipeSocketHandler> socketHandler;
-  shared_ptr<FakeConsole> fakeConsole;
-  socketHandler.reset(new PipeSocketHandler());
-  fakeConsole.reset(new FakeConsole(socketHandler));
-  fakeConsole->setup();
 
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
-    s[a] = rand() % 26 + 'A';
-  }
-  s[64 * 1024 - 1] = 0;
-
-  REQUIRE(!socketHandler->hasData(fakeConsole->getFd()));
-
-  thread t([fakeConsole, s]() { fakeConsole->simulateKeystrokes(s); });
-  sleep(1);
-
-  REQUIRE(socketHandler->hasData(fakeConsole->getFd()));
-
-  string s2(64 * 1024, '\0');
-  socketHandler->readAll(fakeConsole->getFd(), &s2[0], s2.length(), false);
-
-  t.join();
-
-  REQUIRE(s == s2);
-
-  thread t2([fakeConsole, s]() { fakeConsole->write(s); });
-
-  string s3 = fakeConsole->getTerminalData(s.length());
-  REQUIRE(s == s3);
-
-  t2.join();
-
-  fakeConsole->teardown();
-  fakeConsole.reset();
-  socketHandler.reset();
-}
-
-TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
-  shared_ptr<PipeSocketHandler> socketHandler;
-  shared_ptr<FakeUserTerminal> fakeUserTerminal;
-  socketHandler.reset(new PipeSocketHandler());
-  fakeUserTerminal.reset(new FakeUserTerminal(socketHandler));
-  fakeUserTerminal->setup(-1);
-
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
-    s[a] = rand() % 26 + 'A';
-  }
-  s[64 * 1024 - 1] = 0;
-
-  thread t([fakeUserTerminal, s]() {
-    RawSocketUtils::writeAll(fakeUserTerminal->getFd(), &s[0], s.length());
-  });
-
-  string s2 = fakeUserTerminal->getKeystrokes(s.length());
-  REQUIRE(s == s2);
-  t.join();
-
-  REQUIRE(!socketHandler->hasData(fakeUserTerminal->getFd()));
-  thread t2([fakeUserTerminal, s]() {
-    fakeUserTerminal->simulateTerminalResponse(s);
-  });
-
-  string s3(64 * 1024, '\0');
-  socketHandler->readAll(fakeUserTerminal->getFd(), &s3[0], s3.length(), false);
-
-  t2.join();
-  REQUIRE(s == s3);
-
-  fakeUserTerminal->cleanup();
-  fakeUserTerminal.reset();
-  socketHandler.reset();
-}
-
-const string CRYPTO_KEY = "12345678901234567890123456789012";
-const string CRYPTO_KEY2 = "98765432109876543210987654321098";
-
-void readWriteTest(const string& clientId,
-                   shared_ptr<PipeSocketHandler> routerSocketHandler,
+void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
                    shared_ptr<SocketHandler> clientSocketHandler,
                    shared_ptr<SocketHandler> clientPipeSocketHandler,
                    shared_ptr<FakeConsole> fakeConsole,
                    const SocketEndpoint& routerEndpoint) {
+  // Use SshSetupHandler with a fake SubprocessUtils to get id/passkey.
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
   auto uth = shared_ptr<UserTerminalHandler>(
       new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
-                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+                              routerEndpoint, id + "/" + passkey));
   thread uthThread([uth]() { uth->run(); });
   sleep(1);
 
+  vector<pair<string, string>> envVars = {
+      {"ET_TEST_VAR1", "test_value_1"},
+      {"ET_TEST_VAR2_EMPTY", ""},
+  };
+
   shared_ptr<TerminalClient> terminalClient(new TerminalClient(
-      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
-      MAX_CLIENT_KEEP_ALIVE_DURATION));
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION,
+      envVars));
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
@@ -130,6 +78,183 @@ void readWriteTest(const string& clientId,
   typeKeysThread.join();
 
   REQUIRE(resultConcat == s);
+
+  const char* var1 = getenv("ET_TEST_VAR1");
+  REQUIRE(var1 != nullptr);
+  REQUIRE(string(var1) == "test_value_1");
+  const char* var2 = getenv("ET_TEST_VAR2_EMPTY");
+  REQUIRE(var2 != nullptr);
+  REQUIRE(string(var2) == "");
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
+
+  unsetenv("ET_TEST_VAR1");
+  unsetenv("ET_TEST_VAR2_EMPTY");
+}
+
+// A UserTerminal backed by a *real* pty running `cat`, so the test exercises
+// real pty buffer + backpressure semantics.  FakeUserTerminal is a socket pair
+// and cannot reproduce the input-write deadlock -- which is exactly why that
+// bug went unnoticed.  `cat` echoes input back byte-for-byte; the pty is raw +
+// no-echo so the round-trip is exactly 1:1.
+class RealPtyEchoTerminal : public UserTerminal {
+ public:
+  RealPtyEchoTerminal() : masterFd(-1), childPid(-1) {}
+  virtual ~RealPtyEchoTerminal() {}
+
+  virtual int setup(int routerFd) {
+    struct termios tios;
+    memset(&tios, 0, sizeof(tios));
+    cfmakeraw(&tios);
+    tios.c_cc[VMIN] = 1;
+    tios.c_cc[VTIME] = 0;
+    childPid = forkpty(&masterFd, NULL, &tios, NULL);
+    if (childPid == -1) {
+      FATAL_FAIL(childPid);
+    }
+    if (childPid == 0) {
+      execl("/bin/cat", "cat", (char*)NULL);
+      _exit(127);
+    }
+    // Honor the UserTerminal contract: the handler polls this fd non-blocking.
+    int flags = fcntl(masterFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+    }
+    return masterFd;
+  }
+  virtual void runTerminal() {}
+  virtual void handleSessionEnd() {}
+  virtual void cleanup() {
+    if (masterFd >= 0) {
+      close(masterFd);
+      masterFd = -1;
+    }
+    if (childPid > 0) {
+      int status = 0;
+      waitpid(childPid, &status, 0);
+      childPid = -1;
+    }
+  }
+  virtual int getFd() { return masterFd; }
+  virtual void setInfo(const winsize& tmpwin) {}
+
+ private:
+  int masterFd;
+  pid_t childPid;
+};
+
+// Pushes a payload much larger than one pty buffer through the real handler and
+// a real pty, and requires that every byte echoes back within a deadline.  The
+// pre-fix handler wrote input with a *blocking* writeAll(masterFd, ...); while
+// blocked there it stopped draining output, so the echo filled the pty output
+// buffer, the shell stalled, and the input write never completed -- a deadlock
+// that hung past ~one pty buffer of input.  This test times out on that code
+// and passes with the buffered non-blocking input drain.
+void largeInputNoDeadlockTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                              SocketEndpoint serverEndpoint,
+                              shared_ptr<SocketHandler> clientSocketHandler,
+                              shared_ptr<SocketHandler> clientPipeSocketHandler,
+                              shared_ptr<FakeConsole> fakeConsole,
+                              const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto realPty = make_shared<RealPtyEchoTerminal>();
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  // Before the bulk test, confirm the full client -> pty(`cat`) -> client echo
+  // pipe is actually live, and drain anything the connection produced during
+  // setup.  The fixed sleeps above are not a reliable readiness signal on a
+  // slow build -- under a sanitizer run with `ctest --parallel`, typing could
+  // start before the pipeline was fully wired, which made this test flaky in
+  // CI.  The sentinel is far smaller than one pty buffer, so it round-trips
+  // even on the pre-fix handler; only the large payload below can trigger the
+  // deadlock, so the warmup cannot mask a regression.
+  const string sentinel = "ET_WARMUP_SENTINEL";
+  fakeConsole->simulateKeystrokes(sentinel);
+  {
+    std::promise<bool> warmPromise;
+    auto warmFuture = warmPromise.get_future();
+    thread warmThread([&warmPromise, fakeConsole, sentinel]() {
+      // Read one byte at a time until the rolling tail matches the sentinel,
+      // discarding any bytes that preceded the echo.
+      string seen;
+      while (seen.size() < sentinel.size() ||
+             seen.compare(seen.size() - sentinel.size(), sentinel.size(),
+                          sentinel) != 0) {
+        seen += fakeConsole->getTerminalData(1);
+      }
+      warmPromise.set_value(true);
+    });
+    bool warm = warmFuture.wait_for(std::chrono::seconds(30)) ==
+                std::future_status::ready;
+    REQUIRE(warm);  // the echo pipe must be live before the bulk test
+    if (warm) {
+      warmThread.join();
+    } else {
+      warmThread.detach();
+    }
+  }
+
+  // A payload well past one pty buffer (~1KB macOS, ~8KB Linux) -- enough to
+  // deadlock the pre-fix handler -- but small enough not to stress the
+  // pipe-based test transport.
+  const int kSize = 8 * 1024;
+  string payload(kSize, '\0');
+  for (int a = 0; a < kSize; a++) {
+    payload[a] = 'a' + (rand() % 26);
+  }
+
+  thread typeThread([payload, fakeConsole]() {
+    for (size_t off = 0; off < payload.size(); off += 1024) {
+      fakeConsole->simulateKeystrokes(payload.substr(off, 1024));
+    }
+  });
+
+  // Read the echo back under a watchdog; the deadlocking code never delivers
+  // it.  The deadline is generous so a slow (sanitizer) build still cleanly
+  // distinguishes a wedge (never delivers) from success, without flaking.
+  std::promise<string> donePromise;
+  auto doneFuture = donePromise.get_future();
+  thread readThread([&donePromise, fakeConsole, kSize]() {
+    donePromise.set_value(fakeConsole->getTerminalData(kSize));
+  });
+
+  bool completed = doneFuture.wait_for(std::chrono::seconds(60)) ==
+                   std::future_status::ready;
+  REQUIRE(completed);  // would time out (FAIL) on the pre-fix deadlock
+
+  if (completed) {
+    string got = doneFuture.get();
+    REQUIRE(got.size() == (size_t)kSize);
+    REQUIRE(got == payload);
+    typeThread.join();
+    readThread.join();
+  } else {
+    // Don't hang the suite on a regression; teardown unblocks the threads.
+    typeThread.detach();
+    readThread.detach();
+  }
 
   terminalClient->shutdown();
   terminalClientThread.join();
@@ -293,14 +418,21 @@ TEST_CASE("ValidTunnelArgParsing", "[ValidTunnelArgParsing]") {
   REQUIRE(pfsrs_named[0].has_environmentvariable());
 }
 
-TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest", "[EndToEndTest]") {
-  readWriteTest("1234567890123456", routerSocketHandler, fakeUserTerminal,
-                serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-                fakeConsole, routerEndpoint);
+TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
+                 "[EndToEndTest][integration]") {
+  readWriteTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
+                clientSocketHandler, clientPipeSocketHandler, fakeConsole,
+                routerEndpoint);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "LargeInputNoDeadlock",
+                 "[EndToEndTest][integration]") {
+  largeInputNoDeadlockTest(routerSocketHandler, serverEndpoint,
+                           clientSocketHandler, clientPipeSocketHandler,
+                           fakeConsole, routerEndpoint);
 }
 
 void simultaneousTerminalConnectionTest(
-    const string& clientId, const string& simultaneousTerminalPasskey,
     LogInterceptHandler& logInterceptHandler,
     shared_ptr<PipeSocketHandler> routerSocketHandler,
     shared_ptr<PipeSocketHandler> userTerminalSocketHandler,
@@ -309,6 +441,19 @@ void simultaneousTerminalConnectionTest(
     shared_ptr<SocketHandler> clientSocketHandler,
     shared_ptr<SocketHandler> clientPipeSocketHandler,
     shared_ptr<FakeConsole> fakeConsole, const SocketEndpoint& routerEndpoint) {
+  // Use SshSetupHandler with a fake SubprocessUtils to get id/passkey.
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  SshSetupHandler sshSetupHandler(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler.SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  // Get id/passkey for simultaneous terminals (use different credentials)
+  auto fakeSubprocessUtilsSimultaneous = make_shared<FakeSubprocessUtils>();
+  SshSetupHandler sshSetupHandlerSimultaneous(fakeSubprocessUtilsSimultaneous);
+  auto [simultaneousId, simultaneousPasskey] =
+      sshSetupHandlerSimultaneous.SetupSsh("", "localhost", "localhost", 2022,
+                                           "", "", false, 0, "", "", {});
+
   struct SimultaneousTerminalState {
     const string& clientId;
     const string& passkey;
@@ -356,12 +501,12 @@ void simultaneousTerminalConnectionTest(
 
   auto uth = shared_ptr<UserTerminalHandler>(
       new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
-                              routerEndpoint, clientId + "/" + CRYPTO_KEY));
+                              routerEndpoint, id + "/" + passkey));
 
   constexpr int kNumSimultaneousTerminals = 4;
   std::vector<SimultaneousTerminalState> otherTerminals;
   for (int i = 0; i < kNumSimultaneousTerminals; ++i) {
-    otherTerminals.emplace_back(clientId, simultaneousTerminalPasskey,
+    otherTerminals.emplace_back(simultaneousId, simultaneousPasskey,
                                 routerSocketHandler, userTerminalSocketHandler,
                                 fakeUserTerminal, routerEndpoint);
   }
@@ -377,10 +522,10 @@ void simultaneousTerminalConnectionTest(
   thread uthThread([uth]() { REQUIRE_NOTHROW(uth->run()); });
   sleep(1);
 
-  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
-      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, clientId,
-      CRYPTO_KEY, fakeConsole, false, "", "", false, "",
-      MAX_CLIENT_KEEP_ALIVE_DURATION));
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
@@ -416,21 +561,19 @@ void simultaneousTerminalConnectionTest(
 }
 
 TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
-                 "[EndToEndTest]") {
+                 "[EndToEndTest][integration]") {
   SECTION("Valid passkey") {
     simultaneousTerminalConnectionTest(
-        "1234567890123456", CRYPTO_KEY, logInterceptHandler,
-        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
-        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-        fakeConsole, routerEndpoint);
+        logInterceptHandler, routerSocketHandler, userTerminalSocketHandler,
+        fakeUserTerminal, serverEndpoint, clientSocketHandler,
+        clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 
   SECTION("Different passkey") {
     simultaneousTerminalConnectionTest(
-        "1234567890123456", CRYPTO_KEY2, logInterceptHandler,
-        routerSocketHandler, userTerminalSocketHandler, fakeUserTerminal,
-        serverEndpoint, clientSocketHandler, clientPipeSocketHandler,
-        fakeConsole, routerEndpoint);
+        logInterceptHandler, routerSocketHandler, userTerminalSocketHandler,
+        fakeUserTerminal, serverEndpoint, clientSocketHandler,
+        clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 }
 

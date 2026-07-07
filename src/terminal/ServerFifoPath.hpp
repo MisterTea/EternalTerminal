@@ -37,6 +37,8 @@ namespace et {
  */
 class ServerFifoPath {
  public:
+  /** @brief Initializes helper state used by server/clients to locate the
+   * server fifo. */
   ServerFifoPath();
 
   /**
@@ -81,6 +83,7 @@ class ServerFifoPath {
       const shared_ptr<SocketHandler>& socketHandler);
 
  private:
+  /** @brief User-overridden fifo path that bypasses auto-detection. */
   optional<string> pathOverride;
 };
 

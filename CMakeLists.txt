@@ -1,5 +1,42 @@
 cmake_minimum_required(VERSION 3.16.3)
 
+# Prevent conda/miniconda compilers from being used
+# This must happen before the project() command to ensure system compilers are used
+if(DEFINED ENV{CONDA_PREFIX})
+  message(STATUS "Conda environment detected at: $ENV{CONDA_PREFIX}")
+  message(STATUS "Forcing use of system compilers instead of conda compilers")
+
+  # If compilers are already cached with conda paths, clear them
+  if(DEFINED CMAKE_C_COMPILER AND CMAKE_C_COMPILER MATCHES "conda|miniconda")
+    message(STATUS "Clearing cached conda C compiler: ${CMAKE_C_COMPILER}")
+    unset(CMAKE_C_COMPILER CACHE)
+  endif()
+  if(DEFINED CMAKE_CXX_COMPILER AND CMAKE_CXX_COMPILER MATCHES "conda|miniconda")
+    message(STATUS "Clearing cached conda C++ compiler: ${CMAKE_CXX_COMPILER}")
+    unset(CMAKE_CXX_COMPILER CACHE)
+  endif()
+
+  # Find and set system compilers (will be used by project() command)
+  find_program(SYSTEM_C_COMPILER NAMES gcc cc PATHS /usr/bin /bin NO_DEFAULT_PATH REQUIRED)
+  find_program(SYSTEM_CXX_COMPILER NAMES g++ c++ PATHS /usr/bin /bin NO_DEFAULT_PATH REQUIRED)
+
+  set(CMAKE_C_COMPILER "${SYSTEM_C_COMPILER}" CACHE FILEPATH "C compiler" FORCE)
+  set(CMAKE_CXX_COMPILER "${SYSTEM_CXX_COMPILER}" CACHE FILEPATH "C++ compiler" FORCE)
+
+  message(STATUS "Using C compiler: ${CMAKE_C_COMPILER}")
+  message(STATUS "Using C++ compiler: ${CMAKE_CXX_COMPILER}")
+
+  # Unset conda environment variables to prevent them from affecting the build
+  unset(ENV{CC})
+  unset(ENV{CXX})
+  unset(ENV{CFLAGS})
+  unset(ENV{CXXFLAGS})
+  unset(ENV{LDFLAGS})
+  unset(ENV{AR})
+  unset(ENV{RANLIB})
+  unset(ENV{NM})
+endif()
+
 set(EXTERNAL_DIR "${CMAKE_SOURCE_DIR}/external_imported")
 
 if(MSVC)
@@ -72,9 +109,11 @@ endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-project(EternalTCP VERSION 6.2.11 LANGUAGES C CXX)
+project(EternalTCP VERSION 7.0.0 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
+
+option(BUILD_TESTING "Build tests" ON)
 
 # Add cmake script directory.
 list(APPEND CMAKE_MODULE_PATH "${CMAKE_SOURCE_DIR}/cmake")
@@ -94,7 +133,9 @@ find_package(Protobuf REQUIRED)
 find_package(Unwind)
 
 if(DISABLE_VCPKG)
-  add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  if(BUILD_TESTING)
+    add_subdirectory(${EXTERNAL_DIR}/Catch2)
+  endif()
   add_subdirectory(${EXTERNAL_DIR}/cxxopts)
   add_subdirectory(${EXTERNAL_DIR}/cpp-httplib)
   add_subdirectory(${EXTERNAL_DIR}/json)
@@ -107,7 +148,9 @@ if(DISABLE_VCPKG)
     ${EXTERNAL_DIR}/cxxopts/include
   )
 else()
-  find_package(Catch2 CONFIG REQUIRED)
+  if(BUILD_TESTING)
+    find_package(Catch2 CONFIG REQUIRED)
+  endif()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
@@ -147,7 +190,7 @@ IF(APPLE)
 ENDIF(APPLE)
 
 if(FREEBSD OR NETBSD OR DISABLE_SENTRY OR DISABLE_TELEMETRY)
-# Sentry doesn't work on BSD
+  # Sentry doesn't work on BSD
 else()
   # Enable sentry
   set(USE_SENTRY TRUE)
@@ -173,8 +216,9 @@ endif()
 
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
-option(BUILD_TESTING "Build tests" ON)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
+option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
 add_definitions(-DET_VERSION="${PROJECT_VERSION}")
 
@@ -221,8 +265,9 @@ set(PROTOBUF_LIBS protobuf::libprotobuf)
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
+  find_package(utf8_range CONFIG REQUIRED)
 
-  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op)
+  set(PROTOBUF_LIBS ${PROTOBUF_LIBS} absl::log_internal_check_op utf8_range::utf8_validity utf8_range::utf8_range)
 endif()
 
 if(SELINUX_FOUND)
@@ -380,8 +425,8 @@ add_library(
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
   src/base/WinsockContext.hpp
-  src/base/SubprocessToString.hpp
-  src/base/SubprocessToString.cpp
+  src/base/SubprocessUtils.hpp
+  src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
 
@@ -519,14 +564,22 @@ else(WIN32)
     ${CORE_LIBRARIES})
   decorate_target(htmd)
 
+  include(CTest)
+
   if(BUILD_TESTING)
     enable_testing()
+    include(Catch)
 
-    file(GLOB TEST_SRCS test/*Test.cpp)
+    file(GLOB TEST_SRCS test/**/*Test.cpp)
     add_executable(
       et-test
       ${TEST_SRCS}
       test/Main.cpp
+    )
+    include_directories(
+      test
+      test/integration_tests
+      test/unit_tests
     )
 
     add_dependencies(et-test generated-code TerminalCommon et-lib)
@@ -543,8 +596,17 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    add_test(et-test et-test)
+    catch_discover_tests(
+      et-test
+      TEST_PREFIX "et-test."
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ADD_TAGS_AS_LABELS
+      PROPERTIES TIMEOUT 300
+    )
     add_sanitizers(et-test)
+    if(TARGET test)
+      add_dependencies(test et-test)
+    endif()
   endif()
 
   if(BUILD_TESTING AND FUZZING)
@@ -598,6 +660,30 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+
+  if(INSTALL_BASH_COMPLETION)
+    find_package(BashCompletion QUIET)
+    if(NOT BASH_COMPLETION_COMPLETIONSDIR)
+      find_package(PkgConfig QUIET)
+      if(PKG_CONFIG_FOUND)
+        pkg_get_variable(BASH_COMPLETION_COMPLETIONSDIR bash-completion completionsdir)
+      endif()
+    endif()
+
+    if(BASH_COMPLETION_COMPLETIONSDIR)
+      install(FILES scripts/et-completion.bash RENAME et DESTINATION ${BASH_COMPLETION_COMPLETIONSDIR})
+    else()
+      message(WARNING "Could not find bash completion directory. Skipping installation of bash completion script.")
+    endif()
+  endif()
+
+  if(INSTALL_ZSH_COMPLETION)
+    if(NOT ZSH_COMPLETIONS_DIR)
+        include(GNUInstallDirs)
+        set(ZSH_COMPLETIONS_DIR "${CMAKE_INSTALL_DATAROOTDIR}/zsh/site-functions")
+    endif()
+    install(FILES scripts/et-completion.zsh RENAME _et DESTINATION ${ZSH_COMPLETIONS_DIR})
+  endif()
 endif()
 
 set(CPACK_PACKAGE_NAME "EternalTerminal")
