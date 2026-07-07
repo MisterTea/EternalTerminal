@@ -95,8 +95,6 @@ jobs:
                 tar \
                 unzip \
                 zip
-    env:
-      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
     steps:
       - name: Install dependencies
         shell: bash
@@ -109,14 +107,16 @@ jobs:
       - name: Generate project files
         shell: bash
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake_build_dir="${GITHUB_WORKSPACE}/build"
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
         shell: bash
         run: |
+          cmake_build_dir="${GITHUB_WORKSPACE}/build"
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
-          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
-          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+          cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
+          ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
 
   freebsd:
     name: build-freebsd
