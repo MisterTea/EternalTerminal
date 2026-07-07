@@ -219,7 +219,7 @@ jobs:
           cmake --build . --target et etserver etterminal --parallel `nproc`
           popd
 
-      - name: Backwards compatibility with et-v6.2.10
+      - name: Backwards compatibility with et-v7.0.0
         run: ./test/system_tests/backwards_compatibility.sh
 
       - name: Stop sshd for act

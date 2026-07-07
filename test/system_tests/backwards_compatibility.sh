@@ -4,7 +4,7 @@ set -x
 
 ROOT=$(git rev-parse --show-toplevel)
 CURRENT_BUILD="${ET_BUILD_DIR:-$ROOT/build}"
-OLD_TAG="${ET_COMPAT_TAG:-et-v6.2.10}"
+OLD_TAG="${ET_COMPAT_TAG:-et-v7.0.0}"
 OLD_ROOT="${ET_COMPAT_OLD_ROOT:-$ROOT/build/compat/$OLD_TAG}"
 OLD_BUILD="$OLD_ROOT/build"
 

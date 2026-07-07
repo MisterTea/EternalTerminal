@@ -109,7 +109,7 @@ endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-project(EternalTCP VERSION 6.2.11 LANGUAGES C CXX)
+project(EternalTCP VERSION 7.0.0 LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 

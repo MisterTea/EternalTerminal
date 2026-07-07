@@ -389,8 +389,8 @@ TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
 
       int64_t invalidLength =
           (a % 2 == 0) ? -1 : (int64_t(128) * 1024 * 1024) + 1;
-      ctx.clientSocketHandler->writeAllOrThrow(
-          fd, &invalidLength, sizeof(invalidLength), true);
+      ctx.clientSocketHandler->writeAllOrThrow(fd, &invalidLength,
+                                               sizeof(invalidLength), true);
 
       REQUIRE(waitForPeerClose(ctx.clientSocketHandler, fd));
       ctx.clientSocketHandler->close(fd);
