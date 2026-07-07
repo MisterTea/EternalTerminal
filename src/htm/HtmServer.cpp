@@ -7,7 +7,7 @@
 
 namespace et {
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
-                     const SocketEndpoint &endpoint)
+                     const SocketEndpoint& endpoint)
     : IpcPairServer(_socketHandler, endpoint),
       state(_socketHandler),
       running(true) {}
@@ -38,10 +38,10 @@ void HtmServer::run() {
       // on the same master descriptor (line 90).
       if (FD_ISSET(endpointFd, &rfd)) {
         LOG(INFO) << "READING FROM STDIN";
-        socketHandler->readAll(endpointFd, (char *)&header, 1, false);
+        socketHandler->readAll(endpointFd, (char*)&header, 1, false);
         LOG(INFO) << "Got message header: " << int(header);
         int32_t length;
-        socketHandler->readB64(endpointFd, (char *)&length, 4);
+        socketHandler->readB64(endpointFd, (char*)&length, 4);
         LOG(INFO) << "READ LENGTH: " << length;
         switch (header) {
           case INSERT_KEYS: {
@@ -98,9 +98,9 @@ void HtmServer::run() {
           }
           case RESIZE_PANE: {
             int32_t cols;
-            socketHandler->readB64(endpointFd, (char *)&cols, 4);
+            socketHandler->readB64(endpointFd, (char*)&cols, 4);
             int32_t rows;
-            socketHandler->readB64(endpointFd, (char *)&rows, 4);
+            socketHandler->readB64(endpointFd, (char*)&rows, 4);
             string paneId = string(UUID_LENGTH, '0');
             socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
                                    false);
@@ -128,7 +128,7 @@ void HtmServer::run() {
       if (endpointFd > 0) {
         state.update(endpointFd);
       }
-    } catch (std::runtime_error &re) {
+    } catch (std::runtime_error& re) {
       STERROR << re.what();
       closeEndpoint();
     }
@@ -136,12 +136,12 @@ void HtmServer::run() {
   closeEndpoint();
 }
 
-void HtmServer::sendDebug(const string &msg) {
+void HtmServer::sendDebug(const string& msg) {
   LOG(INFO) << "SENDING DEBUG LOG: " << msg;
   unsigned char header = DEBUG_LOG;
   int32_t length = Base64::EncodedLength(msg);
-  socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
-  socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+  socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
+  socketHandler->writeB64(endpointFd, (const char*)&length, 4);
   socketHandler->writeB64(endpointFd, &msg[0], msg.length());
 }
 
@@ -166,8 +166,8 @@ void HtmServer::recover() {
     int32_t length = jsonString.length();
     VLOG(1) << "SENDING INIT: " << jsonString;
     VLOG(1) << "SENDING INIT: " << length;
-    socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
-    socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+    socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
+    socketHandler->writeB64(endpointFd, (const char*)&length, 4);
     socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
                                    jsonString.length(), false);
   }

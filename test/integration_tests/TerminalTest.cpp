@@ -4,6 +4,8 @@
 
 #if __APPLE__
 #include <util.h>
+#elif __FreeBSD__
+#include <libutil.h>
 #else
 #include <pty.h>
 #endif

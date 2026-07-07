@@ -69,29 +69,29 @@ string MultiplexerState::toJsonString() {
   json state;
   state["shell"] = string(::getenv("SHELL"));
 
-  for (auto &it : tabs) {
+  for (auto& it : tabs) {
     state["tabs"][it.first] = it.second->toJson();
   }
 
-  for (auto &it : panes) {
+  for (auto& it : panes) {
     state["panes"][it.first] = it.second->toJson();
   }
 
-  for (auto &it : splits) {
+  for (auto& it : splits) {
     state["splits"][it.first] = it.second->toJson();
   }
 
   return state.dump();
 }
 
-void MultiplexerState::appendData(const string &uid, const string &data) {
+void MultiplexerState::appendData(const string& uid, const string& data) {
   if (panes.find(uid) == panes.end()) {
     STFATAL << "Tried to write to non-existent terminal";
   }
   panes[uid]->terminal->appendData(data);
 }
 
-void MultiplexerState::newTab(const string &tabId, const string &paneId) {
+void MultiplexerState::newTab(const string& tabId, const string& paneId) {
   fatalIfFound(tabId);
   fatalIfFound(paneId);
   auto tab = shared_ptr<Tab>(new Tab());
@@ -109,7 +109,7 @@ void MultiplexerState::newTab(const string &tabId, const string &paneId) {
   panes.insert(make_pair(paneId, pane));
 }
 
-void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
+void MultiplexerState::newSplit(const string& sourceId, const string& paneId,
                                 bool vertical) {
   fatalIfFound(paneId);
 
@@ -127,7 +127,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
     // The source is already part of a split with the same orientation.  Append
     // and resize
     auto split = splitIt->second;
-    for (auto &it : split->sizes) {
+    for (auto& it : split->sizes) {
       it /= 2.0;
     }
     split->sizes.push_back(0.5);
@@ -190,7 +190,7 @@ void MultiplexerState::newSplit(const string &sourceId, const string &paneId,
   tab->pane_or_split_id = newSplit->id;
 }
 
-void MultiplexerState::closePane(const string &paneId) {
+void MultiplexerState::closePane(const string& paneId) {
   if (closed.find(paneId) != closed.end()) {
     return;  // Already closed
   }
@@ -271,17 +271,17 @@ void MultiplexerState::closePane(const string &paneId) {
 
 void MultiplexerState::update(int endpointFd) {
   char header;
-  for (auto &it : panes) {
-    shared_ptr<TerminalHandler> &terminal = it.second->terminal;
+  for (auto& it : panes) {
+    shared_ptr<TerminalHandler>& terminal = it.second->terminal;
     string terminalData = terminal->pollUserTerminal();
     if (terminalData.length()) {
-      const string &paneId = it.first;
+      const string& paneId = it.first;
       header = APPEND_TO_PANE;
       int32_t length = Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
-      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+      socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1,
                                      false);
-      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeB64(endpointFd, (const char*)&length, 4);
       socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
                                      false);
       socketHandler->writeB64(endpointFd, &terminalData[0],
@@ -295,9 +295,9 @@ void MultiplexerState::update(int endpointFd) {
       header = SERVER_CLOSE_PANE;
       int32_t length = paneId.length();
       VLOG(1) << "CLOSING " << paneId << ":" << length;
-      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+      socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1,
                                      false);
-      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeB64(endpointFd, (const char*)&length, 4);
       socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
                                      false);
       // Break to avoid erase + iterate of panes
@@ -308,18 +308,18 @@ void MultiplexerState::update(int endpointFd) {
 
 void MultiplexerState::sendTerminalBuffers(int endpointFd) {
   char header;
-  for (auto &it : panes) {
-    const string &paneId = it.first;
-    shared_ptr<TerminalHandler> &terminal = it.second->terminal;
-    const deque<string> &terminalBuffer = terminal->getBuffer();
+  for (auto& it : panes) {
+    const string& paneId = it.first;
+    shared_ptr<TerminalHandler>& terminal = it.second->terminal;
+    const deque<string>& terminalBuffer = terminal->getBuffer();
     if (terminalBuffer.size()) {
       int byteCount = 0;
-      for (const string &it : terminalBuffer) {
+      for (const string& it : terminalBuffer) {
         byteCount += it.length() + 1;
       }
       string terminalData;
       terminalData.reserve(byteCount);
-      for (const string &it : terminalBuffer) {
+      for (const string& it : terminalBuffer) {
         if (terminalData.length()) {
           terminalData.append(1, '\n');
         }
@@ -328,9 +328,9 @@ void MultiplexerState::sendTerminalBuffers(int endpointFd) {
       header = APPEND_TO_PANE;
       int32_t length = Base64::EncodedLength(terminalData) + paneId.length();
       VLOG(1) << "WRITING TO " << paneId << ":" << length;
-      socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1,
+      socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1,
                                      false);
-      socketHandler->writeB64(endpointFd, (const char *)&length, 4);
+      socketHandler->writeB64(endpointFd, (const char*)&length, 4);
       socketHandler->writeAllOrThrow(endpointFd, &(paneId[0]), paneId.length(),
                                      false);
       socketHandler->writeB64(endpointFd, &terminalData[0],
@@ -340,11 +340,11 @@ void MultiplexerState::sendTerminalBuffers(int endpointFd) {
   }
 }
 
-void MultiplexerState::resizePane(const string &paneId, int cols, int rows) {
+void MultiplexerState::resizePane(const string& paneId, int cols, int rows) {
   getPane(paneId)->terminal->updateTerminalSize(cols, rows);
 }
 
-void MultiplexerState::fatalIfFound(const string &id) {
+void MultiplexerState::fatalIfFound(const string& id) {
   if (panes.find(id) != panes.end()) {
     STFATAL << "Found unexpected id in panes: " << id;
   }

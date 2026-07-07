@@ -25,17 +25,17 @@ class TerminalServer : public ServerConnection {
  public:
   /** @brief Initializes the server with socket helpers and router endpoint. */
   TerminalServer(std::shared_ptr<SocketHandler> _socketHandler,
-                 const SocketEndpoint &_serverEndpoint,
+                 const SocketEndpoint& _serverEndpoint,
                  std::shared_ptr<PipeSocketHandler> _pipeSocketHandler,
-                 const SocketEndpoint &_routerEndpoint);
+                 const SocketEndpoint& _routerEndpoint);
   /** @brief Tears down the server, closing any active router connections. */
   virtual ~TerminalServer();
   /** @brief Drives a jumphost proxy session for the authenticated client. */
   void runJumpHost(shared_ptr<ServerClientConnection> serverClientState,
-                   const InitialPayload &payload);
+                   const InitialPayload& payload);
   /** @brief Launches the interactive terminal session for a client. */
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                   const InitialPayload &payload);
+                   const InitialPayload& payload);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   /** @brief Callback from ServerConnection when a new client is authenticated.

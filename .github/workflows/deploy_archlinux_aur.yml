@@ -1,0 +1,128 @@
+name: Deploy Arch Linux AUR
+
+on:
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to deploy. Leave blank to use the latest GitHub release."
+        required: false
+        default: ""
+      aur_repo:
+        description: "AUR package Git repository."
+        required: true
+        default: "ssh://aur@aur.archlinux.org/eternalterminal.git"
+      push_changes:
+        description: "Push the generated commit to AUR."
+        required: true
+        type: boolean
+        default: true
+
+permissions:
+  contents: read
+
+jobs:
+  deploy_archlinux_aur:
+    name: deploy-archlinux-aur
+    runs-on: ubuntu-latest
+    container:
+      image: archlinux:latest
+    env:
+      AUR_REPO: ${{ inputs.aur_repo }}
+      RELEASE_TAG: ${{ inputs.release_tag }}
+    steps:
+      - name: Install packaging dependencies
+        run: |
+          pacman -Syu --disable-sandbox --noconfirm --needed \
+            base-devel \
+            curl \
+            git \
+            jq \
+            openssh \
+            sudo \
+            wget
+
+      - name: Create packaging user
+        run: |
+          useradd -m -G wheel -s /bin/bash packager
+          echo "%wheel ALL=(ALL:ALL) NOPASSWD: ALL" >> /etc/sudoers
+
+      - name: Configure SSH and Git
+        env:
+          AUR_SSH_PRIVATE_KEY: ${{ secrets.AUR_SSH_PRIVATE_KEY }}
+        run: |
+          if [[ -z "${AUR_SSH_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret AUR_SSH_PRIVATE_KEY" >&2
+            exit 1
+          fi
+
+          install -d -m 700 /home/packager/.ssh
+          printf '%s\n' "${AUR_SSH_PRIVATE_KEY}" > /home/packager/.ssh/id_ed25519
+          chmod 600 /home/packager/.ssh/id_ed25519
+          ssh-keyscan aur.archlinux.org >> /home/packager/.ssh/known_hosts
+          chown -R packager:packager /home/packager/.ssh
+
+          sudo -u packager git config --global user.name "Jason Gauci"
+          sudo -u packager git config --global user.email "jgmath2000@gmail.com"
+
+      - name: Resolve release
+        run: |
+          if [[ -z "${RELEASE_TAG}" ]]; then
+            release_json="$(curl --fail --silent --show-error --location "https://api.github.com/repos/${GITHUB_REPOSITORY}/releases/latest")"
+            RELEASE_TAG="$(jq --raw-output ".tag_name" <<<"${release_json}")"
+          fi
+
+          if [[ -z "${RELEASE_TAG}" || "${RELEASE_TAG}" == "null" ]]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+
+          VERSION_NUMBER="${RELEASE_TAG#et-v}"
+          if [[ "${VERSION_NUMBER}" == "${RELEASE_TAG}" ]]; then
+            echo "Expected release tag to start with et-v, got ${RELEASE_TAG}" >&2
+            exit 1
+          fi
+
+          {
+            echo "RELEASE_TAG=${RELEASE_TAG}"
+            echo "VERSION_NUMBER=${VERSION_NUMBER}"
+          } >> "${GITHUB_ENV}"
+
+      - name: Update AUR package
+        run: |
+          sudo -u packager git clone "${AUR_REPO}" /home/packager/arch_et
+          pushd /home/packager/arch_et
+
+          sudo -u packager wget "https://github.com/MisterTea/EternalTerminal/archive/et-v${VERSION_NUMBER}.tar.gz"
+          NEW_SHA="$(sha256sum "et-v${VERSION_NUMBER}.tar.gz" | awk '{print $1}')"
+          rm "et-v${VERSION_NUMBER}.tar.gz"
+
+          sed -i -E "s/sha256sums=\('(.*)'\)/sha256sums=\('${NEW_SHA}'\)/" PKGBUILD
+          sed -i -E "s/pkgver='(.*)'/pkgver='${VERSION_NUMBER}'/" PKGBUILD
+
+          chown -R packager:packager /home/packager/arch_et
+          sudo -u packager bash -lc 'cd /home/packager/arch_et && makepkg --printsrcinfo > .SRCINFO'
+
+          sudo -u packager git diff -- PKGBUILD .SRCINFO
+          popd
+
+      - name: Commit and push AUR package
+        env:
+          PUSH_CHANGES: ${{ inputs.push_changes }}
+        run: |
+          pushd /home/packager/arch_et
+
+          if sudo -u packager git diff --quiet -- PKGBUILD .SRCINFO; then
+            echo "PKGBUILD and .SRCINFO are already up to date for ${RELEASE_TAG}"
+            exit 0
+          fi
+
+          sudo -u packager git add PKGBUILD .SRCINFO
+          sudo -u packager git commit -m "Update eternalterminal to ${VERSION_NUMBER}"
+
+          if [[ "${PUSH_CHANGES}" == "true" ]]; then
+            sudo -u packager git push origin HEAD:master
+          else
+            echo "push_changes is false; leaving generated commit unpushed"
+          fi
+
+          popd

@@ -11,7 +11,7 @@ namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-int main(int argc, char **argv) {
+int main(int argc, char** argv) {
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
@@ -88,14 +88,14 @@ int main(int argc, char **argv) {
       SI_Error rc = ini.LoadFile(cfgfilename.c_str());
       if (rc == 0) {
         if (!result.count("port")) {
-          const char *portString = ini.GetValue("Networking", "port", NULL);
+          const char* portString = ini.GetValue("Networking", "port", NULL);
           if (portString) {
             port = stoi(portString);
           }
         }
 
         if (!result.count("bindip")) {
-          const char *bindIpPtr = ini.GetValue("Networking", "bind_ip", NULL);
+          const char* bindIpPtr = ini.GetValue("Networking", "bind_ip", NULL);
           if (bindIpPtr) {
             bindIp = string(bindIpPtr);
           }
@@ -103,14 +103,14 @@ int main(int argc, char **argv) {
 
         enableTelemetry = ini.GetBoolValue("Debug", "telemetry", false);
         // read verbose level (prioritize command line option over cfgfile)
-        const char *vlevel = ini.GetValue("Debug", "verbose", NULL);
+        const char* vlevel = ini.GetValue("Debug", "verbose", NULL);
         if (result.count("verbose")) {
           el::Loggers::setVerboseLevel(result["verbose"].as<int>());
         } else if (vlevel) {
           el::Loggers::setVerboseLevel(atoi(vlevel));
         }
 
-        const char *fifoName = ini.GetValue("Debug", "serverfifo", NULL);
+        const char* fifoName = ini.GetValue("Debug", "serverfifo", NULL);
         if (fifoName) {
           const string fifoNameStr(fifoName);
           if (!fifoNameStr.empty()) {
@@ -119,20 +119,20 @@ int main(int argc, char **argv) {
         }
 
         // read silent setting
-        const char *silent = ini.GetValue("Debug", "silent", NULL);
+        const char* silent = ini.GetValue("Debug", "silent", NULL);
         if (silent && atoi(silent) != 0) {
           defaultConf.setGlobally(el::ConfigurationType::Enabled, "false");
         }
 
         // read log file size limit
-        const char *logsize = ini.GetValue("Debug", "logsize", NULL);
+        const char* logsize = ini.GetValue("Debug", "logsize", NULL);
         if (logsize && atoi(logsize) != 0) {
           // make sure maxlogsize is a string of int value
           maxlogsize = string(logsize);
         }
 
         // log file directory (TODO path validation and trailing slash cleanup)
-        const char *logdir = ini.GetValue("Debug", "logdirectory", NULL);
+        const char* logdir = ini.GetValue("Debug", "logdirectory", NULL);
         if (logdir) {
           logDirectory = string(logdir);
         }
@@ -202,7 +202,7 @@ int main(int argc, char **argv) {
                                   pipeSocketHandler, routerFifo);
     terminalServer.run();
 
-  } catch (cxxopts::exceptions::exception &oe) {
+  } catch (cxxopts::exceptions::exception& oe) {
     CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
     CLOG(INFO, "stdout") << options.help({}) << endl;
     exit(1);

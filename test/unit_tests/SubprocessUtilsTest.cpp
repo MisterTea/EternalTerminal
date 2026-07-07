@@ -1,6 +1,5 @@
-#include <catch2/catch_test_macros.hpp>
-
 #include "SubprocessUtils.hpp"
+#include "TestHeaders.hpp"
 
 using namespace et;
 

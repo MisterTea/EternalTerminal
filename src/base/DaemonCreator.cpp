@@ -47,13 +47,18 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
     std::stringstream pid_ss;
     pid_ss << getpid() << "\n";
     std::string pid_str = pid_ss.str();
-    write(pidFilehandle, pid_str.c_str(), pid_str.length());
-    close(pidFilehandle);
+    ssize_t bytesWritten =
+        write(pidFilehandle, pid_str.c_str(), pid_str.length());
+    FATAL_FAIL(bytesWritten);
+    if (static_cast<size_t>(bytesWritten) != pid_str.length()) {
+      STFATAL << "Error writing pidfile: " << childPidFile;
+    }
+    FATAL_FAIL(close(pidFilehandle));
   }
 
   /* Change the working directory to the root directory */
   /* or another appropriated directory */
-  chdir("/");
+  FATAL_FAIL(chdir("/"));
 
   auto fd = open("/dev/null", O_WRONLY | O_CREAT, 0666);
   dup2(fd, STDOUT_FILENO);

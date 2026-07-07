@@ -26,7 +26,7 @@ class IpcPairEndpoint {
   virtual void closeEndpoint() {
     LOG(INFO) << "SENDING SESSION END";
     unsigned char header = SESSION_END;
-    socketHandler->writeAllOrThrow(endpointFd, (const char *)&header, 1, false);
+    socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
     socketHandler->close(endpointFd);
     endpointFd = -1;
   }
