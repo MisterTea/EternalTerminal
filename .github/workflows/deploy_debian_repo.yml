@@ -7,10 +7,6 @@ on:
         description: "Release tag to deploy. Leave blank to use the latest GitHub release."
         required: false
         default: ""
-      deployment_ref:
-        description: "Ref containing the deployment packaging templates."
-        required: true
-        default: "deployment"
       debian_repo:
         description: "Git repository containing the published Debian repo."
         required: true
@@ -54,7 +50,6 @@ jobs:
     env:
       DEBFULLNAME: Jason Gauci
       DEBEMAIL: jgmath2000@gmail.com
-      DEPLOYMENT_REF: ${{ inputs.deployment_ref }}
       DEBIAN_REPO: ${{ inputs.debian_repo }}
       DEBIAN_ARCHES: ${{ inputs.debian_arches }}
       DEBIAN_SUITES: ${{ inputs.debian_suites }}
@@ -131,10 +126,6 @@ jobs:
             echo "ORIG_TARBALL=et_${version}.orig.tar.gz"
           } >> "${GITHUB_ENV}"
 
-      - name: Check out deployment packaging
-        run: |
-          git clone --depth 1 --branch "${DEPLOYMENT_REF}" "https://github.com/${GITHUB_REPOSITORY}.git" deployment-branch
-
       - name: Download original release tarball
         run: |
           wget "${TARBALL_URL}" -O "${ORIG_TARBALL}"
@@ -195,7 +186,7 @@ jobs:
             tar -xzf "${ORIG_TARBALL}" --strip-components=1 -C EternalTerminal
 
             rm -rf EternalTerminal/debian
-            cp -a deployment-branch/deployment/debian/debian_SOURCE EternalTerminal/debian
+            cp -a EternalTerminal/deployment/debian_SOURCE EternalTerminal/debian
             python3 -c 'import pathlib; path = pathlib.Path("EternalTerminal/debian/rules"); path.write_text(path.read_text().replace("-DDISABLE_VCPKG:BOOL=ON", "-DDISABLE_VCPKG:BOOL=ON -DDISABLE_TELEMETRY:BOOL=ON"))'
             if [[ "${VERBOSE_BUILD}" != "true" ]]; then
               python3 -c 'import pathlib; path = pathlib.Path("EternalTerminal/debian/rules"); path.write_text(path.read_text().replace("export DH_VERBOSE = 1", "export DH_VERBOSE = 0"))'

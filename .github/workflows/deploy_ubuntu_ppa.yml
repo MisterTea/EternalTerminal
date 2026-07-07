@@ -7,10 +7,6 @@ on:
         description: "Release tag to deploy. Leave blank to use the latest GitHub release."
         required: false
         default: ""
-      deployment_ref:
-        description: "Ref containing the deployment packaging templates."
-        required: true
-        default: "deployment"
       ppa:
         description: "Launchpad PPA target."
         required: true
@@ -130,12 +126,6 @@ jobs:
             echo "ORIG_TARBALL=et_${version}.orig.tar.gz"
           } >> "${GITHUB_ENV}"
 
-      - name: Check out deployment packaging
-        env:
-          DEPLOYMENT_REF: ${{ inputs.deployment_ref }}
-        run: |
-          git clone --depth 1 --branch "${DEPLOYMENT_REF}" "https://github.com/${GITHUB_REPOSITORY}.git" deployment-branch
-
       - name: Download original release tarball
         run: |
           wget "${TARBALL_URL}" -O "${ORIG_TARBALL}"
@@ -160,7 +150,7 @@ jobs:
           pushd EternalTerminal
           for distro in "${ubuntu_series[@]}"; do
             rm -rf debian
-            cp -a ../deployment-branch/deployment/debian/debian_SOURCE debian
+            cp -a deployment/debian_SOURCE debian
             python3 -c 'import pathlib, sys; path = pathlib.Path("debian/changelog"); path.write_text(path.read_text().replace("##DISTRO##", sys.argv[1]))' "${distro}"
             sed -i -E 's/^\* /  * /; s/^-- / -- /' debian/changelog
             debuild -S -us -uc

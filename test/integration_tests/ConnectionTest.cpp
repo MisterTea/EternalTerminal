@@ -257,6 +257,30 @@ void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
   }
 }
 
+bool waitForPeerClose(shared_ptr<SocketHandler> socketHandler, int fd) {
+  time_t startTime = time(NULL);
+  char byte;
+  while (time(NULL) <= startTime + 5) {
+    if (!socketHandler->hasData(fd)) {
+      ::usleep(10 * 1000);
+      continue;
+    }
+
+    ssize_t bytesRead = socketHandler->read(fd, &byte, sizeof(byte));
+    if (bytesRead == 0) {
+      return true;
+    }
+    if (bytesRead < 0) {
+      auto localErrno = GetErrno();
+      if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
+        continue;
+      }
+      return true;
+    }
+  }
+  return false;
+}
+
 struct ConnectionTestContext {
   shared_ptr<FlakySocketHandler> serverSocketHandler;
   shared_ptr<FlakySocketHandler> clientSocketHandler;
@@ -360,15 +384,19 @@ TEST_CASE("ConnectionTest_MultiReadWrite_Flaky",
 TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
   runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
     for (int a = 0; a < 128; a++) {
-      string junk(16 * 1024 * 1024, 't');
-      for (int b = 0; b < 16 * 1024 * 1024; b++) {
-        junk[b] = rand() % 256;
-      }
       int fd = ctx.clientSocketHandler->connect(ctx.endpoint);
-      int retval = ctx.clientSocketHandler->writeAllOrReturn(fd, &junk[0],
-                                                             junk.length());
-      REQUIRE(retval == -1);
+      REQUIRE(fd >= 0);
+
+      int64_t invalidLength =
+          (a % 2 == 0) ? -1 : (int64_t(128) * 1024 * 1024) + 1;
+      ctx.clientSocketHandler->writeAllOrThrow(
+          fd, &invalidLength, sizeof(invalidLength), true);
+
+      REQUIRE(waitForPeerClose(ctx.clientSocketHandler, fd));
       ctx.clientSocketHandler->close(fd);
     }
+
+    lock_guard<mutex> lock(serverClientConnectionMutex);
+    REQUIRE(serverClientConnections.empty());
   });
 }
