@@ -205,8 +205,22 @@ jobs:
               result_dir="${HOME}/pbuilder/${distro}-${arch}_result"
 
               if [[ ! -d "${cow_dir}" ]]; then
-                run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
-                  cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd
+                # Remove stale/incomplete base COW to prevent hard-link collisions
+                sudo rm -rf \
+                  "${HOME}/pbuilder/${distro}-base.cow" \
+                  "${HOME}/pbuilder/${distro}-${arch}-base.cow" \
+                  "${cow_dir}"
+
+                if ! run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
+                    cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd; then
+                  echo "cowbuilder create failed; retrying after cleanup..." >&2
+                  sudo rm -rf \
+                    "${HOME}/pbuilder/${distro}-base.cow" \
+                    "${HOME}/pbuilder/${distro}-${arch}-base.cow" \
+                    "${cow_dir}"
+                  run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
+                    cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd
+                fi
               fi
 
               run_cowbuilder "cowbuilder-${distro}-${arch}-update.log" \
