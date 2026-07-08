@@ -11,6 +11,11 @@ on:
         description: "Launchpad PPA target."
         required: true
         default: "ppa:jgmath2000/et"
+      simulate_upload:
+        description: "Run dput in simulate mode instead of uploading to Launchpad."
+        required: true
+        type: boolean
+        default: true
 
 permissions:
   contents: read
@@ -135,9 +140,10 @@ jobs:
           mkdir EternalTerminal
           tar -xzf "${ORIG_TARBALL}" --strip-components=1 -C EternalTerminal
 
-      - name: Build source packages and dry-run upload
+      - name: Build source packages and upload
         env:
           PPA: ${{ inputs.ppa }}
+          SIMULATE_UPLOAD: ${{ inputs.simulate_upload }}
         run: |
           rm -f ./*.changes
 
@@ -173,7 +179,11 @@ jobs:
 
             gpg --batch --verify "${changes_files[0]}"
             gpg --batch --verify "${dsc_files[0]}"
-            dput --simulate --unchecked -f "${PPA}" "${changes_files[0]}"
+            dput_args=(--unchecked -f)
+            if [[ "${SIMULATE_UPLOAD}" == "true" ]]; then
+              dput_args=(--simulate "${dput_args[@]}")
+            fi
+            dput "${dput_args[@]}" "${PPA}" "${changes_files[0]}"
           done
           popd
 
