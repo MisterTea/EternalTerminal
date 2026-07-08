@@ -95,7 +95,10 @@ jobs:
             wget
 
           sudo update-binfmts --enable || true
-          echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > "${HOME}/.pbuilderrc"
+          cat > "${HOME}/.pbuilderrc" <<'EOF'
+          PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt
+          EXTRAPACKAGES=
+          EOF
 
       - name: Resolve release
         run: |
