@@ -98,6 +98,7 @@ jobs:
           cat > "${HOME}/.pbuilderrc" <<'EOF'
           PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt
           EXTRAPACKAGES=
+          COWMETHOD=hardlink
           EOF
 
       - name: Resolve release
