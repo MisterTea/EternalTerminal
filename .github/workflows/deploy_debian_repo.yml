@@ -29,8 +29,8 @@ on:
         required: true
         type: boolean
         default: true
-      quiet_cowbuilder:
-        description: "Redirect cowbuilder logs to files unless a cowbuilder command fails."
+      quiet_sbuild:
+        description: "Redirect sbuild logs to files unless a package build command fails."
         required: true
         type: boolean
         default: false
@@ -42,10 +42,17 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   deploy_debian_repo:
     name: deploy-debian-repo
     runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+      options: --privileged
     timeout-minutes: 360
     env:
       DEBFULLNAME: Jason Gauci
@@ -55,21 +62,20 @@ jobs:
       DEBIAN_SUITES: ${{ inputs.debian_suites }}
       DEB_BUILD_JOBS: ${{ inputs.deb_build_jobs }}
       INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
-      QUIET_COWBUILDER: ${{ inputs.quiet_cowbuilder }}
+      QUIET_SBUILD: ${{ inputs.quiet_sbuild }}
       PUSH_CHANGES: ${{ inputs.push_changes }}
       VERBOSE_BUILD: ${{ inputs.verbose_build }}
     steps:
       - name: Install build and publishing dependencies
         run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             aptly \
             arch-test \
             binfmt-support \
             build-essential \
             ca-certificates \
             cmake \
-            cowbuilder \
             curl \
             debhelper \
             debian-archive-keyring \
@@ -77,6 +83,7 @@ jobs:
             devscripts \
             distro-info \
             git \
+            iproute2 \
             jq \
             libcurl4-openssl-dev \
             libprotobuf-dev \
@@ -85,20 +92,33 @@ jobs:
             libtool \
             libunwind-dev \
             libutempter-dev \
+            mmdebstrap \
             ninja-build \
             openssh-client \
             protobuf-compiler \
             python3 \
             qemu-user-static \
             rsync \
-            ubuntu-dev-tools \
-            wget
+            sbuild \
+            uidmap \
+            wget \
+            zstd
 
-          sudo update-binfmts --enable || true
-          cat > "${HOME}/.pbuilderrc" <<'EOF'
-          PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt
-          EXTRAPACKAGES=
-          COWMETHOD=hardlink
+          update-binfmts --enable || true
+          [[ -e /dev/console ]] || mknod -m 600 /dev/console c 5 1 || true
+          install -d "${HOME}/.cache/sbuild" "${HOME}/.config/sbuild"
+
+          if ! awk -F: '$1 == "root" { found = 1 } END { exit !found }' /etc/subuid; then
+            echo "root:100000:65536" >> /etc/subuid
+          fi
+          if ! awk -F: '$1 == "root" { found = 1 } END { exit !found }' /etc/subgid; then
+            echo "root:100000:65536" >> /etc/subgid
+          fi
+
+          cat > "${HOME}/.config/sbuild/config.pl" <<'EOF'
+          $chroot_mode = "unshare";
+          $run_lintian = 0;
+          1;
           EOF
 
       - name: Resolve release
@@ -138,16 +158,16 @@ jobs:
         run: |
           debbuildopts="-j${DEB_BUILD_JOBS}"
 
-          run_cowbuilder() {
+          run_logged() {
             local log_file="$1"
             shift
 
-            if [[ "${QUIET_COWBUILDER}" == "true" ]]; then
-              echo "Running cowbuilder command; full log: ${log_file}"
+            if [[ "${QUIET_SBUILD}" == "true" ]]; then
+              echo "Running command; full log: ${log_file}"
               if ! "$@" >"${log_file}" 2>&1; then
-                echo "cowbuilder command failed; matching error lines:" >&2
+                echo "Command failed; matching error lines:" >&2
                 awk 'tolower($0) ~ /(error:|fatal:|failed|killed|undefined reference|cannot|no such file|returned exit status)/ { print }' "${log_file}" >&2 || true
-                echo "cowbuilder command failed; last 200 log lines:" >&2
+                echo "Command failed; last 400 log lines:" >&2
                 tail -n 400 "${log_file}" >&2 || true
                 return 1
               fi
@@ -184,6 +204,8 @@ jobs:
             exit 1
           fi
 
+          debian_mirror="http://deb.debian.org/debian"
+
           for distro in "${debian_suites[@]}"; do
             rm -rf EternalTerminal
             mkdir EternalTerminal
@@ -205,51 +227,63 @@ jobs:
             popd
 
             for arch in "${debian_arches[@]}"; do
-              cow_dir="${HOME}/pbuilder/${distro}-${arch}.cow"
-              result_dir="${HOME}/pbuilder/${distro}-${arch}_result"
+              chroot_tarball="${HOME}/.cache/sbuild/${distro}-${arch}-sbuild.tar"
+              chroot_dir="${HOME}/sbuild-chroots/${distro}-${arch}"
+              result_dir="${PWD}/sbuild-results/${distro}-${arch}"
 
-              if [[ ! -d "${cow_dir}" ]]; then
-                # Remove stale/incomplete base COW to prevent hard-link collisions
-                sudo rm -rf \
-                  "${HOME}/pbuilder/${distro}-base.cow" \
-                  "${HOME}/pbuilder/${distro}-${arch}-base.cow" \
-                  "${cow_dir}"
-
-                if ! run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
-                    cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd; then
-                  echo "cowbuilder create failed; retrying after cleanup..." >&2
-                  sudo rm -rf \
-                    "${HOME}/pbuilder/${distro}-base.cow" \
-                    "${HOME}/pbuilder/${distro}-${arch}-base.cow" \
-                    "${cow_dir}"
-                  run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
-                    cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd
-                fi
+              if [[ ! -f "${chroot_tarball}" ]]; then
+                rm -rf "${chroot_dir}"
+                mkdir -p "$(dirname "${chroot_tarball}")" "$(dirname "${chroot_dir}")"
+                run_logged "mmdebstrap-${distro}-${arch}.log" \
+                  mmdebstrap \
+                    --mode=root \
+                    --variant=buildd \
+                    --architectures="${arch}" \
+                    --include=fakeroot,build-essential \
+                    --components=main,contrib,non-free,non-free-firmware \
+                    --format=tar \
+                    "${distro}" \
+                    "${chroot_tarball}" \
+                    "${debian_mirror}"
               fi
 
-              run_cowbuilder "cowbuilder-${distro}-${arch}-update.log" \
-                cowbuilder-dist "${distro}" "${arch}" update
-              run_cowbuilder "cowbuilder-${distro}-${arch}-build.log" \
-                cowbuilder-dist "${distro}" "${arch}" build \
-                --debbuildopts "${debbuildopts}" \
-                ./*.dsc
+              rm -rf "${result_dir}"
+              mkdir -p "${result_dir}"
+              if ! run_logged "sbuild-${distro}-${arch}.log" \
+                  sbuild \
+                  --chroot-mode=unshare \
+                  --chroot="${chroot_tarball}" \
+                  --dist="${distro}" \
+                  --arch="${arch}" \
+                  --build-dir="${result_dir}" \
+                  --no-run-lintian \
+                  --no-run-autopkgtest \
+                  --debbuildopts "${debbuildopts}" \
+                  ./*.dsc; then
+                shopt -s nullglob
+                build_logs=("${result_dir}"/*.build)
+                shopt -u nullglob
+                if [[ "${#build_logs[@]}" -gt 0 ]]; then
+                  echo "sbuild failed; build log tail follows:" >&2
+                  for build_log in "${build_logs[@]}"; do
+                    echo "==> ${build_log} <==" >&2
+                    tail -n 400 "${build_log}" >&2 || true
+                  done
+                fi
+                exit 1
+              fi
 
               mkdir -p "debian-packages/${distro}-${arch}"
-              result_dirs=("${result_dir}" "${HOME}/pbuilder/${distro}_result")
               package_files=()
-              for candidate_result_dir in "${result_dirs[@]}"; do
-                if [[ -d "${candidate_result_dir}" ]]; then
-                  shopt -s nullglob
-                  package_files+=("${candidate_result_dir}"/*.deb)
-                  cp -a "${candidate_result_dir}"/*.buildinfo "debian-packages/${distro}-${arch}/" || true
-                  cp -a "${candidate_result_dir}"/*.changes "debian-packages/${distro}-${arch}/" || true
-                  shopt -u nullglob
-                fi
-              done
+              shopt -s nullglob
+              package_files+=("${result_dir}"/*.deb)
+              cp -a "${result_dir}"/*.buildinfo "debian-packages/${distro}-${arch}/" || true
+              cp -a "${result_dir}"/*.changes "debian-packages/${distro}-${arch}/" || true
+              shopt -u nullglob
 
               if [[ "${#package_files[@]}" -eq 0 ]]; then
-                echo "No Debian packages found in expected result directories:" >&2
-                printf '  %s\n' "${result_dirs[@]}" >&2
+                echo "No Debian packages found in expected result directory:" >&2
+                printf '  %s\n' "${result_dir}" >&2
                 exit 1
               fi
 
