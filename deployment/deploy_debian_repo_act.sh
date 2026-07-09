@@ -13,8 +13,9 @@ ssh_key_path="${DEBIAN_REPO_SSH_KEY_PATH:-${HOME}/.ssh/id_rsa}"
 debian_suites="${DEBIAN_SUITES:-}"
 debian_arches="${DEBIAN_ARCHES:-amd64 arm64}"
 verbose_build="${VERBOSE_BUILD:-false}"
-quiet_cowbuilder="${QUIET_COWBUILDER:-true}"
+quiet_sbuild="${QUIET_SBUILD:-true}"
 deb_build_jobs="${DEB_BUILD_JOBS:-1}"
+container_architecture="${CONTAINER_ARCHITECTURE:-}"
 
 if ! command -v act >/dev/null 2>&1; then
   echo "act is required to run this script" >&2
@@ -24,7 +25,7 @@ fi
 cmd=(
   act workflow_dispatch
   -W "${workflow}"
-  --container-architecture linux/amd64
+  --privileged
   --container-options "--privileged"
   --input "deployment_ref=${deployment_ref}"
   --input "debian_repo=${debian_repo}"
@@ -32,9 +33,13 @@ cmd=(
   --input "debian_suites=${debian_suites}"
   --input "debian_arches=${debian_arches}"
   --input "verbose_build=${verbose_build}"
-  --input "quiet_cowbuilder=${quiet_cowbuilder}"
+  --input "quiet_sbuild=${quiet_sbuild}"
   --input "deb_build_jobs=${deb_build_jobs}"
 )
+
+if [[ -n "${container_architecture}" ]]; then
+  cmd+=(--container-architecture "${container_architecture}")
+fi
 
 if [[ "${push_changes}" == "true" ]]; then
   if [[ ! -r "${ssh_key_path}" ]]; then
