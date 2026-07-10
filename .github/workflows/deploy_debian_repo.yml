@@ -83,6 +83,7 @@ jobs:
             devscripts \
             distro-info \
             git \
+            gnupg \
             iproute2 \
             jq \
             libcurl4-openssl-dev \
@@ -120,6 +121,56 @@ jobs:
           $run_lintian = 0;
           1;
           EOF
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [[ -z "${GPG_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret GPG_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${GPG_PASSPHRASE}" ]]; then
+            echo "Missing required secret GPG_PASSPHRASE" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${HOME}/.gnupg"
+          {
+            echo "use-agent"
+            echo "pinentry-mode loopback"
+          } > "${HOME}/.gnupg/gpg.conf"
+          echo "allow-loopback-pinentry" > "${HOME}/.gnupg/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+
+          printf '%s\n' "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ -z "${key_fingerprint}" ]]; then
+            echo "No GPG secret key was imported" >&2
+            exit 1
+          fi
+
+          passphrase_file="${RUNNER_TEMP}/gpg-passphrase"
+          printf '%s' "${GPG_PASSPHRASE}" > "${passphrase_file}"
+          chmod 600 "${passphrase_file}"
+
+          printf 'apt repository signing smoke test\n' > "${RUNNER_TEMP}/gpg-smoke-test"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "${passphrase_file}" \
+            --local-user "${key_fingerprint}" \
+            --detach-sign --armor \
+            --output "${RUNNER_TEMP}/gpg-smoke-test.asc" \
+            "${RUNNER_TEMP}/gpg-smoke-test"
+
+          public_key_file="${RUNNER_TEMP}/et.gpg"
+          gpg --batch --yes --output "${public_key_file}" --export "${key_fingerprint}"
+
+          {
+            echo "GPG_KEY_ID=${key_fingerprint}"
+            echo "GPG_PASSPHRASE_FILE=${passphrase_file}"
+            echo "GPG_PUBLIC_KEY_FILE=${public_key_file}"
+          } >> "${GITHUB_ENV}"
 
       - name: Resolve release
         run: |
@@ -293,7 +344,11 @@ jobs:
             aptly repo create -distribution="${distro}" -component=main "et-${distro}" || true
             aptly repo add -force-replace=true "et-${distro}" debian-packages/"${distro}"-*/*.deb
             aptly publish drop "${distro}" || true
-            aptly publish repo -skip-signing "et-${distro}"
+            aptly publish repo \
+              -batch=true \
+              -gpg-key="${GPG_KEY_ID}" \
+              -passphrase-file="${GPG_PASSPHRASE_FILE}" \
+              "et-${distro}"
           done
 
       - name: Upload built Debian packages
@@ -334,14 +389,15 @@ jobs:
           git clone "${DEBIAN_REPO}" debian-et
           mkdir -p debian-et/debian-source
           rsync -raz --delete ~/.aptly/public/ debian-et/debian-source/
+          cp "${GPG_PUBLIC_KEY_FILE}" debian-et/et.gpg
 
           pushd debian-et
-          if git diff --quiet -- debian-source; then
+          if git diff --quiet -- debian-source et.gpg; then
             echo "Debian repository is already up to date"
             exit 0
           fi
 
-          git add debian-source
+          git add debian-source et.gpg
           git commit -m "Update Debian packages for ${RELEASE_TAG}"
           git push origin HEAD
           popd
