@@ -367,6 +367,12 @@ inline bool waitOnSocketData(int fd) {
     if (errno == EINTR) {
       // Interrupted by the signal, the caller will retry.
       return false;
+    } else if (errno == EBADF || errno == EINVAL) {
+      // The fd was closed under us (e.g. peer disconnected). It will never
+      // become readable, and callers use this helper in retry loops, so
+      // returning false would spin at 100% CPU. Throw so the loop treats
+      // it as socket death.
+      throw std::runtime_error("Socket closed while waiting for data");
     } else {
       FATAL_FAIL(selectResult);
     }
@@ -389,8 +395,12 @@ inline bool isSocketWritable(int fd) {
   tv.tv_usec = 0;
   const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
   if (selectResult < 0) {
-    if (errno == EINTR) {
-      // Interrupted by the signal, the caller will retry.
+    if (errno == EINTR || errno == EBADF || errno == EINVAL) {
+      // EINTR: interrupted by a signal. EBADF/EINVAL: the fd was closed
+      // under us (e.g. client disconnected). Returning false is safe in
+      // both cases: callers use this as a non-blocking "can I write more?"
+      // poll and stop on false; a dead socket is then surfaced by the next
+      // read/write on the connection.
       return false;
     } else {
       FATAL_FAIL(selectResult);
