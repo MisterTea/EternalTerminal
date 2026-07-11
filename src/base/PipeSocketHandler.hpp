@@ -42,6 +42,8 @@ class PipeSocketHandler : public UnixSocketHandler {
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
 
+  virtual void minimizeKernelBuffering(int fd);
+
  protected:
   /** @brief Tracks path -> listening socket descriptors for each pipe. */
   map<string, set<int>> pipeServerSockets;

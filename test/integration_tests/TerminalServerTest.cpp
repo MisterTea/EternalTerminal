@@ -1,4 +1,5 @@
 #include <atomic>
+#include <catch2/generators/catch_generators.hpp>
 
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
@@ -471,6 +472,53 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerDataTransferTest",
   }
 
   REQUIRE(resultConcat == s);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+// Sessions that opt into flow control (backpressure or discard) must
+// still deliver data intact in both directions. The volumes here stay far
+// below WriteBuffer::MAX_BUFFER_SIZE, so even discard mode must not drop
+// anything.
+TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerFlowControlDataTransferTest",
+                 "[ServerFlowControlDataTransferTest][integration]") {
+  const et::FlowControlMode mode =
+      GENERATE(et::FLOW_CONTROL_BACKPRESSURE, et::FLOW_CONTROL_DISCARD);
+  CAPTURE(mode);
+
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      fakeConsole, false, "", "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {},
+      mode));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  // Keyboard input path (console -> terminal)
+  string s = "flow_control_input";
+  for (size_t a = 0; a < s.size(); a++) {
+    fakeConsole->simulateKeystrokes(string(1, s[a]));
+  }
+  string resultConcat;
+  for (size_t a = 0; a < s.size(); a++) {
+    resultConcat = resultConcat.append(fakeUserTerminal->getKeystrokes(1));
+  }
+  REQUIRE(resultConcat == s);
+
+  // Terminal output path (terminal -> console); this is the direction the
+  // flow-control buffering applies to.
+  string out = "flow_control_output";
+  fakeUserTerminal->simulateTerminalResponse(out);
+  REQUIRE(fakeConsole->getTerminalData(out.length()) == out);
 
   terminalClient->shutdown();
   terminalClientThread.join();

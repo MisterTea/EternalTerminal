@@ -57,10 +57,25 @@ message PortForwardData {
   optional bool closed = 5;
 }
 
+enum FlowControlMode {
+  // Legacy behavior: no application-level buffering or kernel buffer
+  // tuning. This is the default and what servers assume for old clients
+  // that don't send flow_control_mode: current users are unchanged.
+  FLOW_CONTROL_NONE = 0;
+  // Bounded buffering; when full, stop reading from the source. Lossless
+  // (like plain ssh, but with small, tuned buffers so Ctrl-C stays
+  // responsive on a saturated link).
+  FLOW_CONTROL_BACKPRESSURE = 1;
+  // Bounded buffering; when full, drop the oldest pending output. The
+  // producing process never stalls and the display stays near real time.
+  FLOW_CONTROL_DISCARD = 2;
+}
+
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
   map<string, string> environmentvariables = 3;
+  optional FlowControlMode flow_control_mode = 4 [default = FLOW_CONTROL_NONE];
 }
 
 message InitialResponse {
@@ -75,6 +90,9 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  // Tells etterminal whether the attached client opted into flow control,
+  // so it can shrink the kernel buffer on its socket to the server.
+  optional FlowControlMode flow_control_mode = 3 [default = FLOW_CONTROL_NONE];
 }
 
 message TerminalUserInfo {
