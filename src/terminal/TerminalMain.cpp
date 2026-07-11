@@ -124,7 +124,7 @@ int main(int argc, char** argv) {
         STFATAL << "Invalid number of tokens: " << tokens.size();
       }
     } else {
-      string idpasskey = result["idpasskey"].as<string>();
+      idpasskey = result["idpasskey"].as<string>();
       if (result.count("idpasskeyfile")) {
         // Check for passkey file
         std::ifstream t(result["idpasskeyfile"].as<string>().c_str());
