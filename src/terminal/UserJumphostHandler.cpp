@@ -40,8 +40,15 @@ void UserJumphostHandler::run() {
   InitialPayload payload;
   while (true) {
     Packet initPacket;
-    if (!routerSocketHandler->readPacket(routerFd, &initPacket)) {
-      continue;
+    try {
+      if (!routerSocketHandler->readPacket(routerFd, &initPacket)) {
+        continue;
+      }
+    } catch (const std::runtime_error& re) {
+      // The router connection died before init (e.g. etserver shut down).
+      // Fail with a logged fatal instead of an uncaught exception.
+      STFATAL << "Router connection died waiting for jumphost init: "
+              << re.what();
     }
     if (initPacket.getHeader() != TerminalPacketType::JUMPHOST_INIT) {
       STFATAL << "Invalid jumphost init packet header: "

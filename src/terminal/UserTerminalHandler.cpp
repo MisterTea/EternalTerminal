@@ -40,8 +40,15 @@ UserTerminalHandler::UserTerminalHandler(
 void UserTerminalHandler::run() {
   while (true) {
     Packet termInitPacket;
-    if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
-      continue;
+    try {
+      if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+        continue;
+      }
+    } catch (const std::runtime_error& re) {
+      // The router connection died before init (e.g. etserver shut down).
+      // Fail with a logged fatal instead of an uncaught exception.
+      STFATAL << "Router connection died waiting for terminal init: "
+              << re.what();
     }
     if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
       STFATAL << "Invalid terminal init packet header: "
