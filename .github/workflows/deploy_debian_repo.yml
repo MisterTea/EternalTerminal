@@ -424,9 +424,27 @@ jobs:
           fi
 
           install -d -m 700 "${HOME}/.ssh"
-          printf '%s\n' "${DEBIAN_REPO_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
-          chmod 600 "${HOME}/.ssh/id_ed25519"
-          ssh-keyscan github.com >> "${HOME}/.ssh/known_hosts"
+
+          # Start ssh-agent and load the deploy key; export socket so subsequent
+          # steps in this job can use the running agent.
+          eval "$(ssh-agent -s)"
+          echo "SSH_AUTH_SOCK=${SSH_AUTH_SOCK}" >> "${GITHUB_ENV}"
+          echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
+          ssh-add - <<< "${DEBIAN_REPO_SSH_PRIVATE_KEY}"
+
+          # Fetch github.com host keys and verify the output is non-empty before
+          # writing to known_hosts (ssh-keyscan exits 0 even when it gets no data).
+          known_hosts_content="$(ssh-keyscan -t ed25519,rsa,ecdsa github.com 2>/dev/null)"
+          if [[ -z "${known_hosts_content}" ]]; then
+            echo "ssh-keyscan returned no host keys for github.com" >&2
+            exit 1
+          fi
+          printf '%s\n' "${known_hosts_content}" >> "${HOME}/.ssh/known_hosts"
+          chmod 644 "${HOME}/.ssh/known_hosts"
+
+          # Tell git to use IdentitiesOnly (agent key only) with strict host checking.
+          git config --global core.sshCommand \
+            "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
 
           git config --global user.name "Jason Gauci"
           git config --global user.email "jgmath2000@gmail.com"
