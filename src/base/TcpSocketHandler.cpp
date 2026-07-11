@@ -293,4 +293,23 @@ void TcpSocketHandler::initSocket(int fd) {
         fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
   }
 }
+
+void TcpSocketHandler::minimizeKernelBuffering(int fd) {
+#ifdef TCP_NOTSENT_LOWAT
+  // Keep the kernel's not-yet-sent queue small so pending terminal output
+  // stays in application-level buffers, where flow control can apply
+  // backpressure or discard stale data. Without this, select()/poll()
+  // report the socket writable whenever the autotuned (multi-MB) send
+  // buffer has room, and on a slow link many seconds of stale output pile
+  // up in the kernel where they can no longer be dropped (issue #631).
+  // TCP_NOTSENT_LOWAT only limits *unsent* data; sent-but-unacked
+  // (in-flight) data is unaffected, so throughput on high-BDP links is
+  // preserved. Best effort: not supported on all platforms.
+  int lowat = 32 * 1024;
+  if (setsockopt(fd, IPPROTO_TCP, TCP_NOTSENT_LOWAT, (char*)&lowat,
+                 sizeof(lowat)) < 0) {
+    LOG(WARNING) << "Failed to set TCP_NOTSENT_LOWAT: " << strerror(errno);
+  }
+#endif
+}
 }  // namespace et

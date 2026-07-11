@@ -31,6 +31,8 @@ class TcpSocketHandler : public UnixSocketHandler {
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
 
+  virtual void minimizeKernelBuffering(int fd);
+
  protected:
   /** @brief Tracks all listening sockets created per TCP port. */
   map<int, set<int>> portServerSockets;

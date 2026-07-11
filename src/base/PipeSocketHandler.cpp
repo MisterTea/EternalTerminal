@@ -144,4 +144,18 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   FATAL_FAIL(::close(sockFd));
 #endif
 }
+
+void PipeSocketHandler::minimizeKernelBuffering(int fd) {
+#ifndef WIN32
+  // Bound the kernel buffer on this unix socket. Terminal output waits
+  // here when the server applies backpressure (stops reading); the default
+  // (~200KB on Linux) is seconds of stale output on a slow link. 64KB does
+  // not limit throughput on a local socket.
+  int sndbuf = 64 * 1024;
+  if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&sndbuf, sizeof(sndbuf)) <
+      0) {
+    LOG(WARNING) << "Failed to set SO_SNDBUF: " << strerror(errno);
+  }
+#endif
+}
 }  // namespace et

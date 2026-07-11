@@ -59,6 +59,11 @@ void UserTerminalHandler::run() {
       setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
              true);
     }
+    if (ti.flow_control_mode() != et::FLOW_CONTROL_NONE) {
+      // The client opted into flow control: shrink the kernel buffer on the
+      // etterminal->etserver hop so backpressure holds less stale output.
+      socketHandler->minimizeKernelBuffering(routerFd);
+    }
     break;
   }
 

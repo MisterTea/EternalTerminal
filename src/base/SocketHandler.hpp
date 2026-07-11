@@ -20,6 +20,15 @@ class SocketHandler {
    * descriptor.
    */
   virtual bool hasData(int fd) = 0;
+
+  /**
+   * @brief Shrinks the kernel's outgoing queue on fd so that pending data
+   * waits in application-level buffers, where flow control can apply
+   * backpressure or discard stale output. Only called for sessions that
+   * opt into flow control (--flow-control backpressure|discard); the
+   * default is a no-op so legacy sessions keep stock kernel buffering.
+   */
+  virtual void minimizeKernelBuffering(int fd) {}
   /**
    * @brief Reads up to count bytes from fd.
    */

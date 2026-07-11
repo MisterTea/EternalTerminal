@@ -2,6 +2,7 @@
 
 #include "TelemetryService.hpp"
 #include "TunnelUtils.hpp"
+#include "WriteBuffer.hpp"
 
 namespace et {
 
@@ -12,14 +13,20 @@ TerminalClient::TerminalClient(
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
-    const vector<pair<string, string>>& envVars)
+    const vector<pair<string, string>>& envVars,
+    et::FlowControlMode _flowControlMode)
     : console(_console),
       shuttingDown(false),
-      keepaliveDuration(_keepaliveDuration) {
+      keepaliveDuration(_keepaliveDuration),
+      flowControlMode(_flowControlMode) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+  if (flowControlMode != et::FLOW_CONTROL_NONE) {
+    // Left unset for NONE so the wire format matches old clients exactly.
+    payload.set_flow_control_mode(flowControlMode);
+  }
 
   for (const auto& envVar : envVars) {
     (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;
@@ -172,6 +179,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   TerminalInfo lastTerminalInfo;
 
+  const bool flowControlEnabled = (flowControlMode != et::FLOW_CONTROL_NONE);
+  // Flow control (opt-in): terminal output is staged here and written to the
+  // console at the top of each loop iteration. Unused when flow control is
+  // off: output is written straight to the console (legacy behavior).
+  WriteBuffer consoleOutputBuffer(flowControlMode == et::FLOW_CONTROL_DISCARD
+                                      ? WriteBufferMode::DISCARD
+                                      : WriteBufferMode::BACKPRESSURE);
+
   if (!console.get()) {
     // NOTE: ../../scripts/ssh-et relies on the wording of this message, so if
     // you change it please update it as well.
@@ -200,8 +215,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
     }
     int clientFd = connection->getSocketFd();
     if (clientFd > 0) {
-      FD_SET(clientFd, &rfd);
-      maxfd = max(maxfd, clientFd);
+      // Only read from the server if the console output buffer has room;
+      // this propagates backpressure when the console is slow.
+      if (!flowControlEnabled || consoleOutputBuffer.canAcceptMore()) {
+        FD_SET(clientFd, &rfd);
+        maxfd = max(maxfd, clientFd);
+      }
     }
     // Include port forward sockets in select for low-latency forwarding.
     set<int> pfFds;
@@ -215,6 +234,24 @@ void TerminalClient::run(const string& command, const bool noexit) {
     select(maxfd + 1, &rfd, NULL, NULL, &tv);
 
     try {
+      // First, drain buffered terminal output to the console. Coalesce all
+      // pending chunks into a single write to avoid intermediate renders
+      // (flicker), matching the non-buffered path below.
+      if (console && consoleOutputBuffer.hasPendingData()) {
+        string pending;
+        size_t count;
+        const char* data;
+        while ((data = consoleOutputBuffer.peekData(&count)) != nullptr &&
+               count > 0) {
+          pending.append(data, count);
+          consoleOutputBuffer.consume(count);
+        }
+        if (!pending.empty()) {
+          // May block if the console is slow; bounded by the buffer size.
+          console->write(pending);
+        }
+      }
+
       if (console) {
         // Check for data to send.
         if (FD_ISSET(consoleFd, &rfd)) {
@@ -287,7 +324,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
         // arriving in one write followed by the repaint in the next), which
         // produces visible flicker.
         string coalesced;
-        while (connection->hasData()) {
+        // Stop pulling packets once the console buffer is full: in
+        // backpressure mode it would otherwise grow past its bound by
+        // however much the kernel had queued. Unprocessed packets stay in
+        // the socket buffer until the next iteration.
+        while (connection->hasData() &&
+               (!flowControlEnabled || consoleOutputBuffer.canAcceptMore())) {
           VLOG(4) << "connection has data";
           Packet packet;
           if (!connection->read(&packet)) {
@@ -326,17 +368,26 @@ void TerminalClient::run(const string& command, const bool noexit) {
           }
         }
         if (console && !coalesced.empty()) {
-          console->write(coalesced);
+          if (flowControlEnabled) {
+            // Staged for the flow-controlled drain at the top of the loop
+            consoleOutputBuffer.enqueue(coalesced);
+          } else {
+            console->write(coalesced);
+          }
         }
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
         keepaliveTime = time(NULL) + keepaliveDuration;
-        if (waitingOnKeepalive) {
+        // While the console buffer is full we are intentionally not reading
+        // the connection, so the keepalive echo may be sitting unread in the
+        // socket; don't treat that as a dead connection.
+        if (waitingOnKeepalive &&
+            !(flowControlEnabled && consoleOutputBuffer.hasPendingData())) {
           LOG(INFO) << "Missed a keepalive, killing connection.";
           connection->closeSocketAndMaybeReconnect();
           waitingOnKeepalive = false;
-        } else {
+        } else if (!waitingOnKeepalive) {
           LOG(INFO) << "Writing keepalive packet";
           connection->writePacket(Packet(TerminalPacketType::KEEP_ALIVE, ""));
           waitingOnKeepalive = true;
