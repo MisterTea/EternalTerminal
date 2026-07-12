@@ -1,6 +1,6 @@
-#include <cstdint>
-
 #include "HtmServer.hpp"
+
+#include <cstdint>
 
 #include "HtmHeaderCodes.hpp"
 #include "LogHandler.hpp"

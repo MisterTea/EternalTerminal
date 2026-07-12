@@ -1,7 +1,7 @@
 #ifndef WIN32
-#include <cstdint>
-
 #include "UserTerminalHandler.hpp"
+
+#include <cstdint>
 
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"

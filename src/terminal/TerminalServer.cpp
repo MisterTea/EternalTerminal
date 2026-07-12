@@ -1,7 +1,7 @@
 #ifndef WIN32
-#include <cstdint>
-
 #include "TerminalServer.hpp"
+
+#include <cstdint>
 
 #include "TelemetryService.hpp"
 
