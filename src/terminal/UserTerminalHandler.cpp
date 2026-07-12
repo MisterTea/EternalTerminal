@@ -1,4 +1,6 @@
 #ifndef WIN32
+#include <cstdint>
+
 #include "UserTerminalHandler.hpp"
 
 #include "ETerminal.pb.h"
@@ -6,7 +8,6 @@
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
 #include "UserTerminalRouter.hpp"
-#include <cstdint>
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(

@@ -1,5 +1,6 @@
-#include "BackedWriter.hpp"
 #include <cstdint>
+
+#include "BackedWriter.hpp"
 
 namespace et {
 BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,

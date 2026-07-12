@@ -1,8 +1,9 @@
 #ifndef WIN32
+#include <cstdint>
+
 #include "TerminalServer.hpp"
 
 #include "TelemetryService.hpp"
-#include <cstdint>
 
 #define BUF_SIZE (16 * 1024)
 
