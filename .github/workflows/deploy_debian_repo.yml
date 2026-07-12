@@ -418,6 +418,8 @@ jobs:
         env:
           DEBIAN_REPO_SSH_PRIVATE_KEY: ${{ secrets.DEBIAN_REPO_SSH_PRIVATE_KEY }}
         run: |
+          set -euo pipefail
+
           if [[ -z "${DEBIAN_REPO_SSH_PRIVATE_KEY}" ]]; then
             echo "Missing required secret DEBIAN_REPO_SSH_PRIVATE_KEY" >&2
             exit 1
@@ -432,19 +434,39 @@ jobs:
           echo "SSH_AGENT_PID=${SSH_AGENT_PID}" >> "${GITHUB_ENV}"
           ssh-add - <<< "${DEBIAN_REPO_SSH_PRIVATE_KEY}"
 
-          # Fetch github.com host keys and verify the output is non-empty before
-          # writing to known_hosts (ssh-keyscan exits 0 even when it gets no data).
-          known_hosts_content="$(ssh-keyscan -t ed25519,rsa,ecdsa github.com 2>/dev/null)"
-          if [[ -z "${known_hosts_content}" ]]; then
-            echo "ssh-keyscan returned no host keys for github.com" >&2
+          # Fetch github.com host keys with retries and backoff.
+          : > "${HOME}/.ssh/known_hosts"
+          attempts=0
+          max_attempts=5
+          while [[ "${attempts}" -lt "${max_attempts}" ]]; do
+            attempts=$((attempts + 1))
+            echo "ssh-keyscan attempt ${attempts}/${max_attempts}..."
+            scan_output="$(ssh-keyscan -T 10 -t ed25519,rsa,ecdsa github.com 2>/dev/null || true)"
+            if [[ -n "${scan_output}" ]]; then
+              printf '%s\n' "${scan_output}" > "${HOME}/.ssh/known_hosts"
+              break
+            fi
+            sleep $((attempts * 2))
+          done
+
+          if [[ ! -s "${HOME}/.ssh/known_hosts" ]]; then
+            echo "ERROR: ssh-keyscan returned no host keys for github.com after ${max_attempts} attempts" >&2
             exit 1
           fi
-          printf '%s\n' "${known_hosts_content}" >> "${HOME}/.ssh/known_hosts"
           chmod 644 "${HOME}/.ssh/known_hosts"
 
-          # Tell git to use IdentitiesOnly (agent key only) with strict host checking.
-          git config --global core.sshCommand \
-            "ssh -o IdentitiesOnly=yes -o StrictHostKeyChecking=yes"
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host github.com
+            User git
+            IdentitiesOnly yes
+            IdentityAgent ${SSH_AUTH_SOCK}
+            StrictHostKeyChecking yes
+            UserKnownHostsFile ${HOME}/.ssh/known_hosts
+            BatchMode yes
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+          git config --global core.sshCommand "ssh -F ${HOME}/.ssh/config"
 
           git config --global user.name "Jason Gauci"
           git config --global user.email "jgmath2000@gmail.com"
@@ -452,7 +474,7 @@ jobs:
       - name: Commit and push Debian repository
         if: ${{ inputs.push_changes }}
         run: |
-          git clone "${DEBIAN_REPO}" debian-et
+          git -c core.sshCommand="ssh -F ${HOME}/.ssh/config" clone "${DEBIAN_REPO}" debian-et
           mkdir -p debian-et/debian-source
           rsync -raz --delete ~/.aptly/public/ debian-et/debian-source/
           cp "${GPG_PUBLIC_KEY_FILE}" debian-et/et.gpg
