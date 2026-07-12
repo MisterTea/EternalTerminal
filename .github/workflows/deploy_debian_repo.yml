@@ -262,6 +262,9 @@ jobs:
             local qemu_target=""
 
             case "${arch}" in
+              amd64)
+                qemu_target="x86_64"
+                ;;
               arm64)
                 qemu_target="aarch64"
                 ;;
@@ -294,13 +297,11 @@ jobs:
               --output /tmp/qemu-binfmt-conf.sh
             chmod +x /tmp/qemu-binfmt-conf.sh
 
-            if ! /tmp/qemu-binfmt-conf.sh --path /usr/bin --suffix -static --persistent "${qemu_target}"; then
-              /tmp/qemu-binfmt-conf.sh \
-                --qemu-path /usr/bin \
-                --qemu-suffix -static \
-                --persistent yes \
-                "${qemu_target}"
-            fi
+            /tmp/qemu-binfmt-conf.sh \
+              --qemu-path /usr/bin \
+              --qemu-suffix=-static \
+              --persistent yes \
+              "${qemu_target}"
           }
 
           for distro in "${debian_suites[@]}"; do
