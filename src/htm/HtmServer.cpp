@@ -4,6 +4,7 @@
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "base64.h"
+#include <cstdint>
 
 namespace et {
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,

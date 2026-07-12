@@ -6,6 +6,7 @@
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
 #include "UserTerminalRouter.hpp"
+#include <cstdint>
 
 namespace et {
 UserTerminalHandler::UserTerminalHandler(

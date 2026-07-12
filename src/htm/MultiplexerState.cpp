@@ -2,6 +2,7 @@
 
 #include "HtmHeaderCodes.hpp"
 #include "JsonLib.hpp"
+#include <cstdint>
 
 namespace et {
 struct MultiplexerState::Pane {

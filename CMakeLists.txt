@@ -326,8 +326,16 @@ else()
     util
     resolv
     atomic
-    stdc++fs
   )
+  # stdc++fs was a separate library for <filesystem> in GCC 8 and earlier.
+  # Starting with GCC 9, filesystem support is part of libstdc++ proper, and
+  # the separate -lstdc++fs was removed entirely in GCC 15.
+  # Only link it if the compiler still ships it.
+  include(CheckLibraryExists)
+  check_library_exists(stdc++fs "" "" HAVE_STDCXXFS)
+  if(HAVE_STDCXXFS)
+    list(APPEND CORE_LIBRARIES stdc++fs)
+  endif()
 endif()
 
 IF(Unwind_FOUND)

@@ -2,6 +2,7 @@
 
 #include "TelemetryService.hpp"
 #include "TunnelUtils.hpp"
+#include <cstdint>
 
 namespace et {
 
