@@ -1,5 +1,7 @@
 #include "UnixSocketHandler.hpp"
 
+#include <cstdint>
+
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 

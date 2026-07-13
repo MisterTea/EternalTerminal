@@ -1,5 +1,7 @@
 #include "TerminalClient.hpp"
 
+#include <cstdint>
+
 #include "TelemetryService.hpp"
 #include "TunnelUtils.hpp"
 

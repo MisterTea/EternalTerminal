@@ -1,5 +1,7 @@
 #include "MultiplexerState.hpp"
 
+#include <cstdint>
+
 #include "HtmHeaderCodes.hpp"
 #include "JsonLib.hpp"
 

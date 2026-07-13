@@ -1,5 +1,7 @@
 #include "PortForwardHandler.hpp"
 
+#include <cstdint>
+
 namespace et {
 PortForwardHandler::PortForwardHandler(
     shared_ptr<SocketHandler> _networkSocketHandler,
