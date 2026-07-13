@@ -427,7 +427,22 @@ jobs:
           install -d -m 700 "${HOME}/.ssh"
           printf '%s\n' "${DEBIAN_REPO_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
           chmod 600 "${HOME}/.ssh/id_ed25519"
-          ssh-keyscan github.com >> "${HOME}/.ssh/known_hosts"
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com > "${HOME}/.ssh/known_hosts"
+          if [[ ! -s "${HOME}/.ssh/known_hosts" ]]; then
+            echo "Failed to populate SSH known_hosts for github.com" >&2
+            exit 1
+          fi
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host github.com
+            HostName github.com
+            IdentityFile ${HOME}/.ssh/id_ed25519
+            UserKnownHostsFile ${HOME}/.ssh/known_hosts
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+          echo "GIT_SSH_COMMAND=ssh -F ${HOME}/.ssh/config" >> "${GITHUB_ENV}"
 
           git config --global user.name "Jason Gauci"
           git config --global user.email "jgmath2000@gmail.com"
