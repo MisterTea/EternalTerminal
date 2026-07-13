@@ -13,7 +13,7 @@ jobs:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest]
-        gcc: [13, 14, 15]
+        gcc: [13, 14, 15, 16]
         exclude:
           #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
           #gcc: 11
@@ -21,12 +21,16 @@ jobs:
             gcc: 14
           - os: macos-latest
             gcc: 15
+          - os: macos-latest
+            gcc: 16
           #- os: windows-latest
           #gcc: 11
           - os: windows-latest
             gcc: 14
           - os: windows-latest
             gcc: 15
+          - os: windows-latest
+            gcc: 16
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
