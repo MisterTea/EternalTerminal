@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -72,7 +72,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -120,7 +120,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -168,7 +168,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.

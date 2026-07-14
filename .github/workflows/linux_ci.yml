@@ -27,7 +27,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -123,7 +123,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -183,7 +183,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
