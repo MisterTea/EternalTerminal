@@ -154,7 +154,7 @@ else()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
-  find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
+  find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h")
 endif()
 
 # Optional packages
