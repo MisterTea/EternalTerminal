@@ -50,7 +50,7 @@ jobs:
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          make -j`nproc`
+          cmake --build . --parallel
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
@@ -98,7 +98,7 @@ jobs:
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
-          make -j`nproc`
+          cmake --build . --parallel
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
@@ -146,7 +146,7 @@ jobs:
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
-          make -j`nproc`
+          cmake --build . --parallel
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build
@@ -194,7 +194,7 @@ jobs:
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
-          make -j`nproc`
+          cmake --build . --parallel
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
           popd
           rm -Rf build

@@ -314,7 +314,9 @@ elseif(WIN32)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
     dbghelp)
 elseif(APPLE)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
+  find_library(SECURITY_FRAMEWORK Security REQUIRED)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv
+    ${SECURITY_FRAMEWORK})
 else()
   set(CORE_LIBRARIES
     httplib::httplib
