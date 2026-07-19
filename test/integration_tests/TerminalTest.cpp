@@ -24,6 +24,18 @@
 
 namespace et {
 
+void waitForFakeConsoleSetup(const shared_ptr<FakeConsole>& fakeConsole) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (fakeConsole->isSetup()) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(fakeConsole->isSetup());
+}
+
 void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
@@ -55,6 +67,7 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
 
   string s(1024, '\0');
   for (int a = 0; a < 1024; a++) {
@@ -181,6 +194,7 @@ void largeInputNoDeadlockTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
 
   // Before the bulk test, confirm the full client -> pty(`cat`) -> client echo
   // pipe is actually live, and drain anything the connection produced during

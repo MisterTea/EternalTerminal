@@ -85,6 +85,11 @@ class FakeConsole : public Console {
 
   virtual int getFd() { return clientServerFd; }
 
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd >= 0 && serverClientFd >= 0;
+  }
+
   string getTerminalData(int count) {
     string s(count, '\0');
     socketHandler->readAll(serverClientFd, &s[0], count, false);
