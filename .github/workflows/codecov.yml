@@ -59,10 +59,14 @@ jobs:
 
       - name: Build
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DCODE_COVERAGE=ON ../
-          make -j`nproc`
+          make -j"${parallel_level}"
           popd
 
       - name: Build Test with code coverage

@@ -125,8 +125,12 @@ jobs:
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
-          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${{ env.CI_PARALLEL_LEVEL || 2 }}"
-          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${{ env.CI_PARALLEL_LEVEL || 2 }}" --output-on-failure
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}

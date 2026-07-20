@@ -47,11 +47,15 @@ jobs:
 
       - name: Test with ubsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          cmake --build . --parallel
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
           rm -Rf build
 
@@ -95,11 +99,15 @@ jobs:
 
       - name: Test with asan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
-          cmake --build . --parallel
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
           rm -Rf build
 
@@ -143,11 +151,15 @@ jobs:
 
       - name: Test with msan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
-          cmake --build . --parallel
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
           rm -Rf build
 
@@ -191,10 +203,14 @@ jobs:
 
       - name: Test with tsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
-          cmake --build . --parallel
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
           rm -Rf build

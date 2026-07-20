@@ -64,41 +64,57 @@ jobs:
 
       - name: Build with ubsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
         if: matrix.sanitize == 'ubsan'
 
       - name: Build with asan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
         if: matrix.sanitize == 'asan'
 
       - name: Build with msan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
         if: matrix.sanitize == 'msan'
 
       - name: Build with tsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
         if: matrix.sanitize == 'tsan'
 
@@ -153,10 +169,14 @@ jobs:
 
       - name: Build for jumphost system test
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          cmake --build . --target et etserver etterminal --parallel `nproc`
+          cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
       - name: Connect with jumphost
@@ -213,10 +233,14 @@ jobs:
 
       - name: Build for backwards compatibility system test
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          cmake --build . --target et etserver etterminal --parallel `nproc`
+          cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
       - name: Backwards compatibility with et-v7.0.0
