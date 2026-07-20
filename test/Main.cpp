@@ -44,6 +44,11 @@ int main(int argc, char** argv) {
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
 
-  FATAL_FAIL(fs::remove_all(logDirectory.c_str()));
+  try {
+    fs::remove_all(logDirectory);
+  } catch (const fs::filesystem_error& e) {
+    LOG(WARNING) << "Failed to remove test log directory " << logDirectory
+                 << ": " << e.what();
+  }
   return result;
 }
