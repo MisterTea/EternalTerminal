@@ -252,6 +252,12 @@ endif()
 set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+if(APPLE)
+  # The bundled ThreadPool submodule still uses std::result_of. libc++ hides that
+  # C++17 type trait in C++20 unless this compatibility switch is enabled.
+  add_compile_definitions(_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS)
+endif()
+
 # Enable compile commands export for vscode
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
 
