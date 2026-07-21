@@ -122,6 +122,7 @@ jobs:
 
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
+        if: matrix.os != 'windows-latest'
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
           if [[ -n "${ACT:-}" ]]; then
@@ -129,6 +130,14 @@ jobs:
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $parallelLevel = if ($env:CI_PARALLEL_LEVEL) { $env:CI_PARALLEL_LEVEL } else { "2" }
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel"
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --output-on-failure
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}

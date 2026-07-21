@@ -73,7 +73,7 @@ void ClientConnection::closeSocketAndMaybeReconnect() {
   waitReconnect();
   LOG(INFO) << "Closing socket";
   closeSocket();
-  if (!shuttingDown) {
+  if (!isShuttingDown()) {
     LOG(INFO) << "Socket closed, starting new reconnect thread";
     reconnectThread = std::shared_ptr<std::thread>(
         new std::thread(&ClientConnection::pollReconnect, this));
@@ -91,9 +91,12 @@ void ClientConnection::waitReconnect() {
 void ClientConnection::pollReconnect() {
   el::Helpers::setThreadName("Reconnect");
   LOG(INFO) << "Trying to reconnect to " << remoteEndpoint << endl;
-  while (socketFd == -1) {
+  while (true) {
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
+      if (socketFd != -1) {
+        break;
+      }
       if (shuttingDown) {
         LOG(INFO) << "Aborting reconnect loop because shutdown was called";
         return;
@@ -147,7 +150,7 @@ void ClientConnection::pollReconnect() {
       }
     }
 
-    if (socketFd == -1) {
+    if (isDisconnected()) {
       VLOG_EVERY_N(10, 1) << "Waiting to retry...";
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }

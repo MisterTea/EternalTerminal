@@ -47,11 +47,17 @@ class Connection {
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
 
   /** @brief File descriptor of the currently connected socket or -1. */
-  int getSocketFd() { return socketFd; }
+  int getSocketFd() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return socketFd;
+  }
 
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
-  inline bool isDisconnected() { return socketFd == -1; }
+  inline bool isDisconnected() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return socketFd == -1;
+  }
 
   /**
    * @brief Returns true when writePacket() of `bytes` more will not block:
@@ -67,7 +73,10 @@ class Connection {
 
   inline string getId() { return id; }
 
-  inline bool hasData() { return reader->hasData(); }
+  inline bool hasData() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return reader && reader->hasData();
+  }
 
   /**
    * @brief Closes the socket and invalidates the reader/writer.
