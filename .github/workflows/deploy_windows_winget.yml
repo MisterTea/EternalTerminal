@@ -1,6 +1,8 @@
 name: Deploy Windows Release Asset
 
 on:
+  release:
+    types: [published]
   workflow_dispatch:
     inputs:
       release_tag:
@@ -27,8 +29,8 @@ jobs:
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
-      INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
-      OVERWRITE_ASSET: ${{ inputs.overwrite_asset }}
+      INPUT_RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
     steps:
       - name: Resolve release
         id: resolve_release
