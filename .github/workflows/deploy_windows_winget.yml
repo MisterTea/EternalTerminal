@@ -1,0 +1,157 @@
+name: Deploy Windows Release Asset
+
+on:
+  release:
+    types: [published]
+  workflow_dispatch:
+    inputs:
+      release_tag:
+        description: "Release tag to package. Leave blank to use the latest GitHub release."
+        required: false
+        default: ""
+      overwrite_asset:
+        description: "Overwrite an existing release asset with the same name."
+        required: true
+        type: boolean
+        default: false
+
+permissions:
+  contents: write
+
+defaults:
+  run:
+    shell: bash
+
+jobs:
+  deploy_windows:
+    name: deploy-windows-release-asset
+    runs-on: windows-latest
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      INPUT_RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
+      OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
+    steps:
+      - name: Resolve release
+        id: resolve_release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          if [[ -n "${INPUT_RELEASE_TAG}" ]]; then
+            release_tag="${INPUT_RELEASE_TAG}"
+            if ! gh release view "${release_tag}" --repo "${GITHUB_REPOSITORY}" >/dev/null; then
+              echo "Release ${release_tag} does not exist in ${GITHUB_REPOSITORY}" >&2
+              exit 1
+            fi
+          else
+            release_tag="$(gh release view --repo "${GITHUB_REPOSITORY}" --json tagName --jq .tagName)"
+          fi
+
+          if [[ -z "${release_tag}" || "${release_tag}" == "null" ]]; then
+            echo "Could not resolve a release tag" >&2
+            exit 1
+          fi
+
+          version="${release_tag#et-v}"
+          if [[ "${version}" == "${release_tag}" ]]; then
+            echo "Expected release tag to start with et-v, got ${release_tag}" >&2
+            exit 1
+          fi
+
+          asset_name="EternalTerminal-${version}-windows-x64.zip"
+          {
+            echo "RELEASE_TAG=${release_tag}"
+            echo "RELEASE_VERSION=${version}"
+            echo "ASSET_NAME=${asset_name}"
+            echo "PACKAGE_DIR=${RUNNER_TEMP}/EternalTerminal-${version}-windows-x64"
+            echo "PACKAGE_PATH=${RUNNER_TEMP}/${asset_name}"
+          } >> "${GITHUB_ENV}"
+          echo "release_tag=${release_tag}" >> "${GITHUB_OUTPUT}"
+
+      - name: Check release asset
+        id: check_release_asset
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          existing_asset="$(
+            gh release view "${RELEASE_TAG}" \
+              --repo "${GITHUB_REPOSITORY}" \
+              --json assets \
+              --jq ".assets[].name" |
+              grep -Fx "${ASSET_NAME}" || true
+          )"
+
+          if [[ -n "${existing_asset}" && "${OVERWRITE_ASSET}" != "true" ]]; then
+            echo "Release asset ${ASSET_NAME} already exists and overwrite_asset is false; skipping Windows build."
+            echo "should_build=false" >> "${GITHUB_OUTPUT}"
+          else
+            echo "Release asset ${ASSET_NAME} will be built and uploaded."
+            echo "should_build=true" >> "${GITHUB_OUTPUT}"
+          fi
+
+      - uses: actions/checkout@v4
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        with:
+          ref: ${{ steps.resolve_release.outputs.release_tag }}
+          submodules: recursive
+          fetch-depth: 0
+
+      - name: Install Dependencies (Windows)
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        run: choco install -y ninja
+
+      # Restore both vcpkg and its artifacts from the GitHub cache service.
+      - name: Restore vcpkg and its artifacts.
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        uses: actions/cache@v5
+        with:
+          path: |
+            ${{ env.VCPKG_ROOT }}
+            !${{ env.VCPKG_ROOT }}/buildtrees
+            !${{ env.VCPKG_ROOT }}/packages
+            !${{ env.VCPKG_ROOT }}/downloads
+          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
+          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
+          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
+          key: |
+            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-windows-latest-11-release-1
+
+      - name: Show content of workspace after cache has been restored
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        run: find $RUNNER_WORKSPACE
+        shell: bash
+
+      # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+
+      # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
+      - name: Install dependencies and generate project files (windows)
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        run: |
+          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+
+      # Build the whole project with Ninja (which is spawn by CMake).
+      - name: Build
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        run: |
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
+          ctest --parallel
+
+      - name: Package
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        run: |
+          mkdir -p "${PACKAGE_DIR}"
+          cp "${CMAKE_BUILD_DIR}/et.exe" "${PACKAGE_DIR}/et.exe"
+          cp "${GITHUB_WORKSPACE}/LICENSE" "${PACKAGE_DIR}/LICENSE"
+          pushd "${PACKAGE_DIR}"
+          7z a -tzip "${PACKAGE_PATH}" .
+          popd
+
+      - name: Upload release asset
+        if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          upload_args=("${RELEASE_TAG}" "${PACKAGE_PATH}" --repo "${GITHUB_REPOSITORY}")
+          gh release upload "${upload_args[@]}"
