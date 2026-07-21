@@ -1,6 +1,6 @@
 # Testing
 
-- To run unit tests: `pushd build; ninja && ctest --parallel; popd`
+- To run unit tests: `pushd build; ninja && ctest --parallel --output-on-failure; popd`
 - To get code coverage: `bash coverage.sh`
 - Any time a new test is added, you must run cmake for cmake/ctest to recognize the new test.
 - To run lint: `bash format.sh`

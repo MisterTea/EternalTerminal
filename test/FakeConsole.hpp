@@ -60,16 +60,29 @@ class FakeConsole : public Console {
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
     ::usleep(1000 * 1000);
-    clientServerFd = socketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
+    int fd = socketHandler->connect(endpoint);
+    FATAL_FAIL(fd);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = fd;
+    }
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
     LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
   }
 
   virtual void teardown() {
-    socketHandler->close(clientServerFd);
-    socketHandler->close(serverClientFd);
+    int localClientServerFd;
+    int localServerClientFd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      localClientServerFd = clientServerFd;
+      localServerClientFd = serverClientFd;
+      clientServerFd = -1;
+      serverClientFd = -1;
+    }
+    socketHandler->close(localClientServerFd);
+    socketHandler->close(localServerClientFd);
     FATAL_FAIL(::remove(pipePath.c_str()));
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
@@ -83,17 +96,37 @@ class FakeConsole : public Console {
     return fakeTerminalInfo;
   }
 
-  virtual int getFd() { return clientServerFd; }
+  virtual int getFd() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd;
+  }
+
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd >= 0 && serverClientFd >= 0;
+  }
 
   string getTerminalData(int count) {
     string s(count, '\0');
-    socketHandler->readAll(serverClientFd, &s[0], count, false);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    socketHandler->readAll(fd, &s[0], count, false);
     return s;
   }
 
   void simulateKeystrokes(const string& s) {
-    LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
-    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
+    int localClientServerFd;
+    int localServerClientFd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      localClientServerFd = clientServerFd;
+      localServerClientFd = serverClientFd;
+    }
+    LOG(INFO) << "FDs: " << localClientServerFd << " " << localServerClientFd;
+    socketHandler->writeAllOrThrow(localServerClientFd, s.c_str(), s.length(),
                                    false);
   }
 

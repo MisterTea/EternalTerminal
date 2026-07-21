@@ -154,7 +154,7 @@ else()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
-  find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
+  find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h")
 endif()
 
 # Optional packages
@@ -248,9 +248,15 @@ if(UNIX)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
 endif()
 
-# Enable C++-17
-set(CMAKE_CXX_STANDARD 17)
+# Enable C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(APPLE OR FREEBSD)
+  # The bundled ThreadPool submodule still uses std::result_of. libc++ hides that
+  # C++17 type trait in C++20 unless this compatibility switch is enabled.
+  add_compile_definitions(_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS)
+endif()
 
 # Enable compile commands export for vscode
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
@@ -314,7 +320,9 @@ elseif(WIN32)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
     dbghelp)
 elseif(APPLE)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
+  find_library(SECURITY_FRAMEWORK Security REQUIRED)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv
+    ${SECURITY_FRAMEWORK})
 else()
   set(CORE_LIBRARIES
     httplib::httplib

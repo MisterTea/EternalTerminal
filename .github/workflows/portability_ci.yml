@@ -139,10 +139,16 @@ jobs:
             rsync
           sudo rm -rf /root/work
           sudo ln -s "${GITHUB_WORKSPACE}" /root/work
+          sudo mkdir -p /home/runner/work/EternalTerminal
+          sudo rsync -a --delete \
+            --exclude build \
+            "${GITHUB_WORKSPACE}/" \
+            /home/runner/work/EternalTerminal/EternalTerminal/
 
       - name: Start FreeBSD VM
         uses: vmactions/freebsd-vm@v1
         with:
+          arch: ${{ env.ACT && 'aarch64' || '' }}
           usesh: true
 
       - name: Expose FreeBSD shell for act
@@ -156,6 +162,8 @@ jobs:
         run: |
           if [ -f /root/work/CMakeLists.txt ]; then
             cd /root/work
+          elif [ -f /home/runner/work/EternalTerminal/EternalTerminal/CMakeLists.txt ]; then
+            cd /home/runner/work/EternalTerminal/EternalTerminal
           else
             cd "${GITHUB_WORKSPACE}"
           fi
