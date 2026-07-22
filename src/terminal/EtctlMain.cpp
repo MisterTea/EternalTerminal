@@ -2,22 +2,23 @@
  * etctl: the client-side control CLI for backgrounded `et --ctl` sessions.
  *
  * It is a thin, stateless translator: each invocation resolves a session's local
- * control socket (~/.et/sessions/<name>.sock), sends one native control frame, and
- * prints the response.  The transport carries ET's own vocabulary (raw input
- * bytes and scrollback reads); the verbs here are ergonomic sugar composed from it.
+ * control socket (~/.et/sessions/<name>.sock), sends one native control frame,
+ * and prints the response.  The transport carries ET's own vocabulary (raw input
+ * bytes and scrollback reads); the verbs here are ergonomic sugar composed from
+ * it.
  */
 #include <algorithm>
 #include <csignal>
+#include <cxxopts.hpp>
 #include <map>
 #include <regex>
 #include <sstream>
-
-#include <cxxopts.hpp>
 
 #include "ControlPaths.hpp"
 #include "ControlProtocol.hpp"
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
+#include "Osc133.hpp"
 #include "SessionCredentials.hpp"
 
 using namespace et;
@@ -25,9 +26,10 @@ using namespace et;
 namespace {
 
 /*
- * Ctrl-C handling.  et-lib's easyloggingpp installs a crash handler that catches
- * SIGINT and aborts with a "CRASH HANDLED" backtrace; but here Ctrl-C is the
- * normal way to stop a blocking verb (run, expect, wait, read --follow, peep
+ * Ctrl-C handling.  et-lib's easyloggingpp installs a crash handler that
+ * catches SIGINT and aborts with a "CRASH HANDLED" backtrace; but here Ctrl-C
+ * is the normal way to stop a blocking verb (run, expect, wait, read --follow,
+ * peep
  * --follow).  main() runs after easyloggingpp's static init, so we replace its
  * handler with one that exits cleanly using the conventional code 130.  The
  * interactive attach/observe verbs put the terminal in raw mode (ISIG off), so
@@ -49,13 +51,14 @@ string descFor(const string& cmd) {
   if (cmd == "sessions") return "List local control sessions.";
   if (cmd == "gc")
     return "Remove dead session sockets (and, with --idle, end idle sessions).";
-  if (cmd == "info") return "Show session status (liveness, link, size, cursor).";
+  if (cmd == "info")
+    return "Show session status (liveness, link, size, cursor).";
   if (cmd == "kill") return "Force-stop a session's local daemon.";
   if (cmd == "read") return "Read session output without consuming it.";
   if (cmd == "write") return "Inject raw input bytes (a TEXT arg, or stdin).";
-  if (cmd == "writeln")
-    return "Inject a line of input (or a hidden password).";
-  if (cmd == "run") return "Run a command; print its output verbatim, exit with its code.";
+  if (cmd == "writeln") return "Inject a line of input (or a hidden password).";
+  if (cmd == "run")
+    return "Run a command; print its output verbatim, exit with its code.";
   if (cmd == "expect") return "Wait for a pattern to appear in the output.";
   return "";
 }
@@ -85,11 +88,11 @@ cxxopts::Options buildOptions(const string& cmd) {
     o.parse_positional({"NAME"});
     synopsis = "NAME [--wait[=S]]";
   } else if (cmd == "read") {
-    o.add_options()
-        ("cursor", "Start at byte offset N (default: oldest retained)",
-         cxxopts::value<long long>())
-        ("timeout", "Wait up to S seconds for new output, then return",
-         cxxopts::value<double>());
+    o.add_options()("cursor",
+                    "Start at byte offset N (default: oldest retained)",
+                    cxxopts::value<long long>())(
+        "timeout", "Wait up to S seconds for new output, then return",
+        cxxopts::value<double>());
     pos("NAME", "session", cxxopts::value<string>());
     o.parse_positional({"NAME"});
     synopsis = "NAME [OPTION...]";
@@ -102,36 +105,41 @@ cxxopts::Options buildOptions(const string& cmd) {
   } else if (cmd == "writeln") {
     o.add_options()("secret",
                     "Read the line hidden via getpass (e.g. a password)");
-    pos("NAME", "session", cxxopts::value<string>())(
-        "TEXT", "text to send", cxxopts::value<string>());
+    pos("NAME", "session", cxxopts::value<string>())("TEXT", "text to send",
+                                                     cxxopts::value<string>());
     o.parse_positional({"NAME", "TEXT"});
     synopsis = "NAME [TEXT] [--secret]";
   } else if (cmd == "run") {
     o.add_options()("timeout", "Seconds before giving up",
-                    cxxopts::value<double>()->default_value("60"));
-    pos("NAME", "session", cxxopts::value<string>())(
-        "CMD", "command to run", cxxopts::value<string>());
+                    cxxopts::value<double>()->default_value("60"))(
+        "framing",
+        "Run framing: auto (detect, the default), osc133 (bracketed paste + OSC "
+        "133; cleanest, needs shell integration), or mark (echo-marker here-doc; "
+        "works on any shell)",
+        cxxopts::value<string>()->default_value("auto"));
+    pos("NAME", "session", cxxopts::value<string>())("CMD", "command to run",
+                                                     cxxopts::value<string>());
     o.parse_positional({"NAME", "CMD"});
     synopsis = "NAME CMD [OPTION...]";
   } else if (cmd == "expect") {
-    o.add_options()
-        ("timeout", "Seconds before giving up",
-         cxxopts::value<double>()->default_value("30"))
-        ("exact", "Match PATTERN as a literal substring, not a regex")
-        ("cursor", "Scan output from byte offset N (capture it before writing "
-                   "to avoid races)",
-         cxxopts::value<long long>());
+    o.add_options()("timeout", "Seconds before giving up",
+                    cxxopts::value<double>()->default_value("30"))(
+        "exact", "Match PATTERN as a literal substring, not a regex")(
+        "cursor",
+        "Scan output from byte offset N (capture it before writing "
+        "to avoid races)",
+        cxxopts::value<long long>());
     pos("NAME", "session", cxxopts::value<string>())(
         "PATTERN", "regex (or literal with --exact)", cxxopts::value<string>());
     o.parse_positional({"NAME", "PATTERN"});
     synopsis = "NAME PATTERN [OPTION...]";
   } else if (cmd == "gc") {
-    o.add_options()
-        ("idle",
-         "Also end live sessions idle longer than DUR (e.g. 30m, 6h; "
-         "default 8h)",
-         cxxopts::value<string>()->implicit_value("8h"))
-        ("force", "Stop idle sessions outright, skipping the graceful eof");
+    o.add_options()(
+        "idle",
+        "Also end live sessions idle longer than DUR (e.g. 30m, 6h; "
+        "default 8h)",
+        cxxopts::value<string>()->implicit_value("8h"))(
+        "force", "Stop idle sessions outright, skipping the graceful eof");
     synopsis = "[--idle [DUR]] [--force]";
   }
   o.positional_help("");
@@ -150,8 +158,8 @@ void printOverview() {
           "output and\n"
           "  send it input. Run 'etctl <command> --help' for a command's "
           "options.\n"
-          "  NAME is a session name (under ~/.et/sessions, or $ET_SESSION_DIR) or a "
-          "socket path.\n"
+          "  NAME is a session name (under ~/.et/sessions, or "
+          "$ET_SESSION_DIR) or a socket path.\n"
           "\n"
           "  open        start a control session in the background (idempotent)\n"
           "  run         run a command; capture its verbatim output + exit code\n"
@@ -265,6 +273,42 @@ string readAllStdin() {
   return data;
 }
 
+// --- OSC 133 semantic-prompt support -------------------------------------
+// The pure OSC-133 parsing (regexes + extractOsc133) lives in Osc133.hpp so it
+// can be unit-tested without a pty; the detection cache and probe below add the
+// stateful, I/O-bound half that only makes sense against a live session.
+
+// Per-session cache of the resolved run framing, a sibling of the session's
+// socket (~/.et/ctl/<name>.framing). Detection is done once (lazily, on the
+// first run) and reused, since etctl is otherwise stateless per call. The
+// stored value is the resolved RunProfile bits (see the struct below).
+string framingCachePath(const string& name) {
+  return control_paths::controlDir() + "/" + name + ".framing";
+}
+// false = no usable cache yet; otherwise the three cached bits are filled in.
+// Stored as "bracket oscRead usesStatusVar" (0/1 each). A malformed or older
+// (two-token) file fails to parse and reads as a miss, so a fresh open reprobes.
+bool readFramingCache(const string& name, bool* bracket, bool* oscRead,
+                      bool* usesStatusVar) {
+  std::ifstream f(framingCachePath(name));
+  if (!f.good()) return false;
+  int b = -1, o = -1, s = 0;
+  if (!(f >> b >> o >> s)) return false;
+  if (b < 0 || o < 0) return false;
+  if (bracket) *bracket = (b != 0);
+  if (oscRead) *oscRead = (o != 0);
+  if (usesStatusVar) *usesStatusVar = (s != 0);
+  return true;
+}
+void writeFramingCache(const string& name, bool bracket, bool oscRead,
+                       bool usesStatusVar) {
+  control_paths::ensureControlDir();
+  std::ofstream f(framingCachePath(name));
+  if (f.good())
+    f << (bracket ? 1 : 0) << " " << (oscRead ? 1 : 0) << " "
+      << (usesStatusVar ? 1 : 0) << "\n";
+}
+
 // --- commands ---------------------------------------------------------------
 
 // Quiet liveness check: a socket that accepts a connection has a live daemon.
@@ -283,9 +327,8 @@ bool sessionAlive(const string& name) {
 // otherwise asynchronous (the daemon may still be finishing teardown), so
 // a too-soon `open` can see the still-live daemon and no-op.
 bool waitSessionGone(const string& name, double secs) {
-  const auto deadline =
-      std::chrono::steady_clock::now() +
-      std::chrono::milliseconds((long long)(secs * 1000));
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds((long long)(secs * 1000));
   while (sessionAlive(name)) {
     if (std::chrono::steady_clock::now() >= deadline) {
       return false;
@@ -296,8 +339,9 @@ bool waitSessionGone(const string& name, double secs) {
 }
 
 int64_t sessionField(const string& name, const string& key);  // defined below
-int cmdWrite(const string& name, const string& bytes, bool secret);  // defined below
-int cmdKill(const string& name, double waitSecs);                    // defined below
+int cmdWrite(const string& name, const string& bytes,
+             bool secret);                         // defined below
+int cmdKill(const string& name, double waitSecs);  // defined below
 
 // Fetch a session's full info as a key=value map (one CTL_INFO round-trip).
 std::map<string, string> sessionInfo(const string& name) {
@@ -345,10 +389,18 @@ int64_t parseDuration(const string& s, int64_t fallback) {
   if (end == s.c_str()) return fallback;
   int64_t mult = 1;
   switch (*end) {
-    case 'm': mult = 60; break;
-    case 'h': mult = 3600; break;
-    case 'd': mult = 86400; break;
-    default: mult = 1; break;  // 's' or none
+    case 'm':
+      mult = 60;
+      break;
+    case 'h':
+      mult = 3600;
+      break;
+    case 'd':
+      mult = 86400;
+      break;
+    default:
+      mult = 1;
+      break;  // 's' or none
   }
   return (int64_t)(n * (double)mult);
 }
@@ -363,7 +415,8 @@ int cmdGc(int argc, char** argv) {
           "etctl gc [--idle [DUR]] [--force]\n"
           "  Remove dead session sockets (a daemon that has exited leaves a\n"
           "  stale socket).  With --idle, also end live sessions idle longer\n"
-          "  than DUR (default 8h; e.g. 30m, 6h, 2d): eof first, then a forced\n"
+          "  than DUR (default 8h; e.g. 30m, 6h, 2d): eof first, then a "
+          "forced\n"
           "  stop if it doesn't exit within a few seconds.  --force skips the\n"
           "  graceful eof and stops idle sessions outright.\n");
       return 0;
@@ -412,6 +465,8 @@ int cmdGc(int argc, char** argv) {
       fprintf(stderr, "etctl gc: could not remove %s: %s\n", path.c_str(),
               strerror(errno));
     }
+    // Drop the session's framing detection cache along with its socket.
+    ::unlink(framingCachePath(name).c_str());
   }
   return 0;
 }
@@ -431,7 +486,8 @@ int cmdSessions() {
     }
     const bool connected = in["connected"] == "1";
     int64_t created = in.count("created") ? atoll(in["created"].c_str()) : -1;
-    int64_t last = in.count("lastActivity") ? atoll(in["lastActivity"].c_str()) : -1;
+    int64_t last =
+        in.count("lastActivity") ? atoll(in["lastActivity"].c_str()) : -1;
     rows.push_back({name,
                     in.count("host") && !in["host"].empty() ? in["host"] : "-",
                     connected ? "connected" : "disconnected",
@@ -584,8 +640,8 @@ int cmdExpect(const string& name, const string& pattern, double timeoutSec,
     }
   }
   // An explicit --cursor wins; otherwise watch for output produced from now on.
-  // Capturing a cursor (info headCursor) before sending input and passing it here
-  // avoids the race where the awaited text lands between the write and a
+  // Capturing a cursor (info headCursor) before sending input and passing it
+  // here avoids the race where the awaited text lands between the write and a
   // head-anchored expect.
   int64_t cursor = startCursor >= 0 ? startCursor : sessionHeadCursor(name);
   if (cursor < 0) cursor = 0;
@@ -618,70 +674,273 @@ int cmdExpect(const string& name, const string& pattern, double timeoutSec,
   return 1;
 }
 
-/*
- * run(): send a command and collect its output verbatim + real exit code, the way
- * etch.run does.  We frame the command with unique start/end markers (echoed by the
- * shell) and parse the exit code printed after it; the body between the markers is
- * passed through untouched -- ANSI colors, control bytes, and the pty's own CR all
- * survive, so `run` is an 8-bit-clean pipe.  This assumes a cooperating line-oriented
- * shell on the far side.  If `bodyOut` is non-null the body is captured there;
- * otherwise it is written to stdout.  (Validated against a live et session, not the
- * in-process echo harness, which does not execute commands.)
- */
-int runCommand(const string& name, const string& command, double timeoutSec,
-               string* bodyOut) {
-  string tag;
-  std::random_device rd;
-  static const char* kHex = "0123456789abcdef";
-  for (int i = 0; i < 8; i++) tag.push_back(kHex[rd() % 16]);
-  const string mark = "ETCTL_" + tag;
-  // Here-doc delimiter for the body, kept distinct from `mark` (a different
-  // prefix, not just a different suffix) so neither marker regex can ever
-  // match the delimiter line that the pty echoes back.
-  const string bodyMark = "ETCTL_BODY_" + tag;
+// How `run` injects a command and finds its output + exit code. Two orthogonal
+// choices, resolved once per session by detectFraming and cached:
+//   bracket -- inject the *bare* command via bracketed paste (\e[200~..\e[201~),
+//              so the real command shows in scrollback with no wrapper; needs a
+//              paste-aware line editor (\e[?2004h). Otherwise the command rides
+//              an eval here-doc, which is POSIX and immune to its own syntax.
+//   oscRead -- read the boundaries + exit code from the prompt's own OSC 133 C/D
+//              marks (no injected echoes); needs an OSC 133 integration.
+//              Otherwise we bracket the body with `echo <mark> .. <mark>:<code>`
+//              and parse those, which works on any line shell.
+// The cleanest combo (bracket+oscRead) needs both; the universal fallback
+// (neither) works anywhere a POSIX here-doc does.
+struct RunProfile {
+  bool bracket = false;
+  bool oscRead = false;
+  // fish and zsh accept $status for the exit code; bash/sh/dash need $?.
+  bool usesStatusVar = false;
+};
 
-  int64_t cursor = sessionHeadCursor(name);
-  if (cursor < 0) cursor = 0;
+// `run`'s framing override: auto-detect (the default), or force one extreme --
+// the cleanest bracketed+OSC path, or the universal here-doc + echo markers.
+enum class RunOverride { kAuto, kForceBracketOsc, kForceMark };
 
-  // Echo the start marker, eval the body, echo the end marker + $?.  The body
-  // is captured by `cat` from a *quoted* here-doc and handed to `eval` as a
-  // string -- i.e. data, never source the interactive line reader parses.  So
-  // the control line we type is always syntactically complete and carries none
-  // of the body's own syntax:
-  //   - a parse error in the body fails at eval *runtime* -- the end marker
-  //     still prints (non-zero code) instead of desyncing the frame, no hang;
-  //   - history expansion ('!') and glob/brace/quote metacharacters are inert,
-  //     since a quoted here-doc suppresses all expansion of its content (a bare
-  //     '!.]'-style glob used to trip zsh's "event not found").
-  // `eval` runs in the current shell, so cd/export still persist across runs.
-  // We use `eval "$(cat <<...)"` rather than `. /dev/fd/N` because it needs no
-  // /dev/fd entry (absent on e.g. FreeBSD without fdescfs) and keeps the body's
-  // stdin (fd 0) on the pty: `cat` reads the here-doc in the command-sub
-  // subshell, never touching the outer shell's fd 0.  The open '$(' + here-doc
-  // also keeps the first line incomplete, so a line-editing shell waits for the
-  // whole body.
-  string framed = "echo " + mark + "; eval \"$(cat <<'" + bodyMark + "'\n" +
-                  command + "\n" + bodyMark + "\n)\"; echo " + mark + ":$?\n";
-  if (cmdWrite(name, framed) != 0) {
-    return 2;
-  }
-
-  // The end marker is "<mark>:<code>\n". Anchoring on the trailing newline
-  // (\r? tolerates the PTY's ONLCR) ensures we only match once the *whole* exit
-  // code has arrived; without it, a chunked read could match a truncated code.
-  // It also skips the echoed command and zsh's OSC window-title (both contain
-  // "<mark>:$?" -- no digit after ':' -- which never matches here).
-  std::regex endRe(mark + ":([0-9]+)\\r?\\n");
-  // The start marker is the line the start echo prints, "<mark>\r?\n".  <mark>
-  // also appears earlier -- in the echoed command and in zsh's OSC window-title
-  // escape ("\e]2;echo <mark>...\a") -- but only the real output line has <mark>
-  // immediately followed by a newline, so anchor on that (a bare find would land
-  // in the title; the colored echo splits <mark> per character and never matches).
-  std::regex startRe(mark + "\\r?\\n");
+// Read scrollback from `startCursor`, appending each chunk, until `stop(acc,
+// grew)` returns true or the deadline passes. `grew` says whether the last read
+// advanced the cursor; a stall (no new bytes) sleeps briefly. This is the shared
+// core of every scrollback poll below.
+template <typename Stop>
+string readScroll(const string& name, int64_t startCursor, double timeoutSec,
+                  Stop stop) {
+  int64_t cursor = startCursor < 0 ? 0 : startCursor;
   string acc;
   const auto deadline =
       std::chrono::steady_clock::now() +
       std::chrono::milliseconds((long long)(timeoutSec * 1000));
+  while (std::chrono::steady_clock::now() < deadline) {
+    uint8_t op = 0;
+    string payload;
+    if (!oneShot(name, CTL_READ, control_proto::encodeCursor(cursor), &op,
+                 &payload))
+      break;
+    ScrollbackRead r = control_proto::decodeReadResp(payload);
+    const bool grew = (r.nextCursor != cursor);
+    cursor = r.nextCursor;
+    acc += r.data;
+    if (stop(acc, grew)) break;
+    if (!grew) ::usleep(40 * 1000);
+  }
+  return acc;
+}
+
+// Send `framed`, then read until this probe's OSC 133 D mark arrives (plus a
+// beat to catch the next prompt's paste toggle), or a short grace after its
+// sentinel has echoed twice (input + output => it ran), or the deadline.
+// Captures from a fresh cursor so back-to-back probes don't see each other.
+string probeRead(const string& name, const string& framed,
+                 const string& sentinel, double timeoutSec) {
+  const int64_t start = sessionHeadCursor(name);
+  if (cmdWrite(name, framed) != 0) return "";
+  const std::regex sentRe(sentinel);
+  bool sawD = false, graced = false;
+  auto until = std::chrono::steady_clock::now();
+  return readScroll(name, start, timeoutSec, [&](const string& acc, bool) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!sawD && std::regex_search(acc, kOsc133D)) {
+      sawD = true;  // read a beat past D for the next prompt's paste toggle
+      until = now + std::chrono::milliseconds(400);
+    }
+    if (sawD) return now >= until;
+    if (!graced &&
+        std::distance(std::sregex_iterator(acc.begin(), acc.end(), sentRe),
+                      std::sregex_iterator()) >= 2) {
+      graced = true;  // echoed input + printed output => command ran
+      until = now + std::chrono::milliseconds(600);
+    }
+    return graced && now >= until;
+  });
+}
+
+// Read the connect handshake the open preamble leaves in scrollback. Its last
+// command is `echo "ETCTL_EC=$status"`, so a fresh session already carries the
+// exit-code capability marker and, in the prompt right after it, the framing
+// marks. Reads from the oldest retained byte (the handshake is at the very start
+// of the session), drains what is there, and -- if the marker hasn't landed yet
+// (first run racing the connect) -- waits for it plus a short beat for the
+// following prompt. Returns the accumulated bytes; an absent marker (older
+// etctl, or the handshake scrolled away) tells the caller to fall back.
+string readConnectHandshake(const string& name, double timeoutSec) {
+  const std::regex marker("ETCTL_EC=[0-9]*[\r\n]");
+  bool sawMarker = false;
+  auto beatEnd = std::chrono::steady_clock::now();
+  // Oldest retained: the handshake is at the very start of the session.
+  return readScroll(name, 0, timeoutSec, [&](const string& acc, bool grew) {
+    const auto now = std::chrono::steady_clock::now();
+    if (!sawMarker && std::regex_search(acc, marker)) {
+      sawMarker = true;
+      beatEnd = now + std::chrono::milliseconds(300);
+    }
+    // Drained after the marker => the following prompt is already captured.
+    if (sawMarker) return !grew || now >= beatEnd;
+    return acc.size() > 65536;  // scanned a big window, no marker: it isn't there
+  });
+}
+
+// Detect the cleanest framing the session's prompt supports, ideally without
+// sending anything. The open preamble ends with `echo "ETCTL_EC=$status"`, so a
+// fresh session's scrollback already holds both signals: the exit-code
+// capability ($status expands to a digit in fish/zsh, empty in bash/sh) and, in
+// the prompt right after it, the framing marks (OSC-133 D, bracketed-paste
+// ?2004). Reading those back is a zero-probe first run. Only when the marker is
+// absent (older etctl, or the handshake scrolled away) do we fall back to a
+// single probe. Run once per session by runCommand and cached.
+RunProfile detectFraming(const string& name, double timeoutSec) {
+  RunProfile prof;
+
+  // Primary: deduce everything from the connect handshake already in scrollback.
+  {
+    const string acc = readConnectHandshake(name, timeoutSec);
+    if (std::regex_search(acc, std::regex("ETCTL_EC=[0-9]*[\r\n]"))) {
+      prof.usesStatusVar =
+          std::regex_search(acc, std::regex("ETCTL_EC=[0-9]"));
+      prof.bracket = acc.find("\x1b[?2004") != string::npos;
+      prof.oscRead = std::regex_search(acc, kOsc133D);
+      return prof;
+    }
+  }
+
+  // Fallback: no connect marker. Defang `!` history expansion (the older connect
+  // preamble that would have done so is absent), then send one probe that
+  // doubles as the framing sentinel and the $status capability check.
+  cmdWrite(name, "set +o histexpand 2>/dev/null\n");
+  std::random_device rd;
+  static const char* kHex = "0123456789abcdef";
+  string tag;
+  for (int i = 0; i < 8; i++) tag.push_back(kHex[rd() % 16]);
+  const string sentinel = "ETCTL_OSCPROBE_" + tag;
+  const string acc = probeRead(name, "echo \"" + sentinel + "=$status\"\n",
+                               sentinel, timeoutSec);
+  prof.usesStatusVar =
+      std::regex_search(acc, std::regex(sentinel + "=[0-9]"));
+  prof.bracket = acc.find("\x1b[?2004") != string::npos;
+  prof.oscRead = std::regex_search(acc, kOsc133D);
+  return prof;
+}
+
+// Is bracketed paste enabled at the prompt *right now*? Reads a trailing window
+// of scrollback and inspects the last paste toggle: an idle prompt re-arms it
+// (\e[?2004h) after each command, while a full-screen app or a redraw can leave
+// it off (\e[?2004l). Only a trailing ?2004l counts as off; with no toggle in
+// the window we assume on (the prompt enabled it earlier), so bracket falls back
+// to the here-doc only on positive evidence that paste is currently off.
+bool pasteEnabledNow(const string& name) {
+  const int64_t head = sessionHeadCursor(name);
+  if (head < 0) return true;
+  // Drain the trailing ~8 KB window up to the current (idle-prompt) head.
+  const string acc = readScroll(name, head > 8192 ? head - 8192 : 0, 1.0,
+                                [](const string&, bool grew) { return !grew; });
+  const size_t on = acc.rfind("\x1b[?2004h");
+  const size_t off = acc.rfind("\x1b[?2004l");
+  if (off == string::npos) return true;
+  if (on == string::npos) return false;
+  return on > off;
+}
+
+/*
+ * run(): send a command and collect its output verbatim + real exit code.
+ * The framing is the 2x2 of two orthogonal axes (see RunProfile), cheapest
+ * scrollback first:
+ *  - bracket + oscRead types the *bare* command inside bracketed paste, so the
+ *    real command shows in the scrollback with no wrapper and no markers, and
+ *    reads the boundaries + exit code from the prompt's OSC 133 C/D marks.
+ *  - bracket alone also pastes the *bare* command (so it is fish-safe: no eval
+ *    here-doc, which fish cannot parse), but wraps it in `echo <mark> ...
+ *    <mark>:<status>` and parses those -- for a bracketed-paste shell with no
+ *    OSC 133 (e.g. default fish).
+ *  - oscRead alone injects the eval here-doc (below) and reads OSC 133 -- for an
+ *    OSC 133 prompt whose line editor lacks bracketed paste.
+ *  - neither injects the eval here-doc bracketed by `echo <mark> ... <mark>:$?`
+ *    and parses those -- the POSIX fallback for a shell with neither OSC 133
+ *    nor bracketed paste (e.g. dash).
+ * The eval here-doc hands the body to `eval` as *data*, never source the line
+ * reader parses, so it is syntactically complete and immune to the body's own
+ * quotes/braces/`!`/parse errors; bracketed paste gets the same multi-line and
+ * metacharacter safety from the paste, minus a here-doc's collision-proofing
+ * (so a body literally containing the paste terminator falls back to eval).
+ * If `bodyOut` is non-null the body is captured there; else it goes to stdout.
+ */
+int runCommand(const string& name, const string& command, double timeoutSec,
+               string* bodyOut, RunOverride ovr = RunOverride::kAuto) {
+  // Empty / whitespace-only body: a no-op. Short-circuit so bracketed paste
+  // does not submit a blank line (which runs nothing and emits no C/D mark).
+  if (command.find_first_not_of(" \t\r\n") == string::npos) {
+    if (bodyOut) bodyOut->clear();
+    return 0;
+  }
+
+  // Resolve kAuto once, using the per-session cache; detect lazily on the first
+  // run (etctl is stateless per call, so the result is cached beside the
+  // socket).
+  RunProfile prof;
+  if (ovr == RunOverride::kForceBracketOsc) {
+    prof.bracket = true;
+    prof.oscRead = true;
+  } else if (ovr == RunOverride::kForceMark) {
+    // leave both false: the universal here-doc + echo markers.
+  } else if (!readFramingCache(name, &prof.bracket, &prof.oscRead,
+                               &prof.usesStatusVar)) {
+    // kAuto, cache miss: detect once (lazily) and cache beside the socket.
+    prof = detectFraming(name, 3.0);
+    writeFramingCache(name, prof.bracket, prof.oscRead, prof.usesStatusVar);
+  }
+
+  const bool oscRead = prof.oscRead;
+  // Inject bare via bracketed paste only when the prompt supports it, the body
+  // cannot collide with the paste terminator, AND paste is enabled at the live
+  // prompt right now (a full-screen app or a redraw may have turned it off).
+  // Otherwise fall back to the eval here-doc, which needs neither.
+  const bool useBracket = prof.bracket &&
+                          command.find("\x1b[201~") == string::npos &&
+                          pasteEnabledNow(name);
+  // fish and zsh accept $status for the exit code; bash/sh/dash need $?.
+  const string statusVar = prof.usesStatusVar ? "$status" : "$?";
+
+  string tag;
+  std::random_device rd;
+  static const char* kHex = "0123456789abcdef";
+  for (int i = 0; i < 8; i++) tag.push_back(kHex[rd() % 16]);
+  const string bodyMark = "ETCTL_BODY_" + tag;  // here-doc delimiter
+  const string mark = "ETCTL_" + tag;           // echo-marker (non-OSC framings)
+
+  int64_t cursor = sessionHeadCursor(name);
+  if (cursor < 0) cursor = 0;
+
+  // The 2x2 of the two axes: inject via paste vs eval here-doc, and read the
+  // exit code from OSC 133 vs from our own echo-markers.
+  string framed;
+  if (useBracket && oscRead) {
+    framed = "\x1b[200~" + command + "\x1b[201~\r";
+  } else if (useBracket) {
+    // Bare body via bracketed paste (fish-safe: no here-doc), wrapped in
+    // echo-markers since there are no OSC 133 marks to read.
+    framed = "\x1b[200~echo " + mark + "\n" + command + "\necho " + mark + ":" +
+             statusVar + "\x1b[201~\r";
+  } else if (oscRead) {
+    framed = "eval \"$(cat <<'" + bodyMark + "'\n" + command + "\n" + bodyMark +
+             "\n)\"\n";
+  } else {
+    framed = "echo " + mark + "; eval \"$(cat <<'" + bodyMark + "'\n" +
+             command + "\n" + bodyMark + "\n)\"; echo " + mark + ":" +
+             statusVar + "\n";
+  }
+  if (cmdWrite(name, framed) != 0) {
+    return 2;
+  }
+
+  // kMark markers: the end marker "<mark>:<code>\n" is anchored on the trailing
+  // newline so a chunked read never matches a truncated code, and the start
+  // marker "<mark>\r?\n" ignores the echoed command and zsh's OSC window-title
+  // (both of which also contain <mark>). Unused by the OSC framings.
+  std::regex endRe(mark + ":([0-9]+)\\r?\\n");
+  std::regex startRe(mark + "\\r?\\n");
+  std::regex execStartRe("[\\r\\n]" + mark + "\\r?\\n");
+  string acc;
+  const auto typedAt = std::chrono::steady_clock::now();
+  const auto deadline =
+      typedAt + std::chrono::milliseconds((long long)(timeoutSec * 1000));
+  bool accepted = false;
   while (std::chrono::steady_clock::now() < deadline) {
     uint8_t op = 0;
     string payload;
@@ -693,17 +952,34 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     cursor = r.nextCursor;
     acc += r.data;
 
-    std::smatch m;
-    if (std::regex_search(acc, m, endRe)) {
-      int code = atoi(m[1].str().c_str());
-      size_t endPos = (size_t)m.position(0);
-      std::smatch sm;
-      size_t bodyStart = 0;
-      if (std::regex_search(acc, sm, startRe) &&
-          (size_t)sm.position(0) < endPos) {
-        bodyStart = (size_t)sm.position(0) + sm.length(0);
+    string body;
+    int code = 0;
+    bool done = false;
+    if (oscRead) {
+      done = extractOsc133(acc, &body, &code);
+    } else {
+      std::smatch m;
+      if (std::regex_search(acc, m, endRe)) {
+        code = atoi(m[1].str().c_str());
+        size_t endPos = (size_t)m.position(0);
+        // Take the LAST start marker before the end marker. A bracketed paste
+        // (kBracketMark) echoes the pasted `echo <mark>` line before executing
+        // it, so the first match is the echo; the executed one is the last.
+        size_t bodyStart = 0;
+        for (auto it = std::sregex_iterator(acc.begin(), acc.end(), startRe),
+                  se = std::sregex_iterator();
+             it != se; ++it) {
+          size_t after = (size_t)it->position(0) + (size_t)it->length(0);
+          if (after <= endPos)
+            bodyStart = after;
+          else
+            break;
+        }
+        body = acc.substr(bodyStart, endPos - bodyStart);
+        done = true;
       }
-      string body = acc.substr(bodyStart, endPos - bodyStart);
+    }
+    if (done) {
       if (bodyOut) {
         *bodyOut = body;
       } else {
@@ -711,14 +987,62 @@ int runCommand(const string& name, const string& command, double timeoutSec,
       }
       return code;
     }
+    // Continuation guard (bracketed inject only): if the pasted body is
+    // malformed (unbalanced quote, incomplete construct) the shell parks on a
+    // continuation prompt and our end marker never comes. Detect that and Ctrl-C
+    // to recover, rather than hang to the full timeout. A legitimately slow
+    // command is never interrupted (it keeps executing, not re-prompting).
+    if (useBracket) {
+      bool parked = false;
+      if (oscRead) {
+        // preexec emits C the instant the command is accepted; if none appears
+        // shortly after injection, the line was never accepted (parked).
+        if (std::regex_search(acc, kOsc133C)) {
+          accepted = true;
+        } else if (!accepted && std::chrono::steady_clock::now() - typedAt >
+                                    std::chrono::milliseconds(2000)) {
+          parked = true;
+        }
+      } else {
+        // kBracketMark has no C mark, and two shells park two ways:
+        //  - bash runs the leading marker line then parks on PS2, toggling paste
+        //    off (?2004l) then back on (?2004h): a ?2004h after that ?2004l,
+        //    with no end marker, means it re-prompted = parked (fast).
+        //  - fish parks atomically, running nothing and never toggling paste:
+        //    no executed start marker (mark at column 0, vs the echoed
+        //    `echo <mark>`) after a short grace = parked.
+        // A still-running command keeps paste disabled and has already emitted
+        // the executed marker, so neither branch fires: it is never interrupted.
+        size_t off = acc.find("\x1b[?2004l");
+        if (off != string::npos &&
+            acc.find("\x1b[?2004h", off) != string::npos) {
+          parked = true;
+        } else if (std::chrono::steady_clock::now() - typedAt >
+                       std::chrono::milliseconds(2000) &&
+                   !std::regex_search(acc, execStartRe)) {
+          parked = true;
+        }
+      }
+      if (parked) {
+        cmdWrite(name, "\x03");  // Ctrl-C to abort the continuation prompt
+        fprintf(stderr,
+                "etctl: command looks incomplete (shell parked on a "
+                "continuation prompt); aborted\n");
+        return 125;
+      }
+    }
     ::usleep(80 * 1000);
   }
+  // A bracketed inject that never completed may have left the shell parked on a
+  // continuation prompt; recover it so the next run is not wedged.
+  if (useBracket) cmdWrite(name, "\x03");
   fprintf(stderr, "etctl: run timed out after %.1fs\n", timeoutSec);
   return 124;
 }
 
-int cmdRun(const string& name, const string& command, double timeoutSec) {
-  return runCommand(name, command, timeoutSec, nullptr);
+int cmdRun(const string& name, const string& command, double timeoutSec,
+           RunOverride ovr = RunOverride::kAuto) {
+  return runCommand(name, command, timeoutSec, nullptr, ovr);
 }
 
 int cmdOpen(int argc, char** argv) {
@@ -804,6 +1128,10 @@ int cmdOpen(int argc, char** argv) {
     return 0;
   }
 
+  // Establishing a fresh session under this name: drop any stale framing
+  // detection a previous session left behind, so the first run re-probes.
+  ::unlink(framingCachePath(name).c_str());
+
   string etPath = "et";
   string self = argv[0];
   size_t slash = self.find_last_of('/');
@@ -813,14 +1141,25 @@ int cmdOpen(int argc, char** argv) {
       etPath = sibling;  // prefer the et next to this etctl (dev/build trees)
     }
   }
-  // Stamp every control session with ETCTL_SESSION=<name> via et's connect-time
-  // command (which runs once in the persistent --ctl shell).  This lets the
-  // remote shell -- prompt, scripts, anything -- know it is being driven by
-  // etctl, and which session it is.  A user-supplied -c is merged in after it.
-  string setupCommand = "export ETCTL_SESSION='" + name + "'";
+  // The connect command runs once in the persistent --ctl shell; we use it for
+  // the whole session handshake:
+  //  - `set +o histexpand` disables `!` history expansion (a scripted session
+  //    never wants it; the eval here-doc is immune, bracketed paste is not). It
+  //    hits the option natively in both bash and zsh; sh/fish have no `!`
+  //    expansion and simply error into /dev/null.
+  //  - ETCTL_SESSION stamps the session so the remote shell/prompt/scripts know
+  //    they are being driven, and which session.
+  //  - a trailing `echo "ETCTL_EC=$status"` emits the exit-code capability
+  //    marker ($status -> a digit in fish/zsh, empty in bash/sh) so the first
+  //    run can deduce the framing (from the following prompt) and the marker's
+  //    status var straight from scrollback, without sending a probe.
+  // A user-supplied -c is merged in the middle.
+  string setupCommand =
+      "set +o histexpand 2>/dev/null; export ETCTL_SESSION='" + name + "'";
   if (!userCommand.empty()) {
     setupCommand += "; " + userCommand;
   }
+  setupCommand += "; echo \"ETCTL_EC=$status\"";
 
   vector<char*> args;
   args.push_back(strdup(etPath.c_str()));
@@ -874,8 +1213,8 @@ int main(int argc, char** argv) {
       if (a == "-h" || a == "--help") {
         // open parses argv itself (NAME + et passthrough), so build its cxxopts
         // Options inline to render descFor + Usage + -h exactly as the other
-        // verbs do; the `...` passthrough (not a real option) is appended in the
-        // same column so the options block reads as one.
+        // verbs do; the `...` passthrough (not a real option) is appended in
+        // the same column so the options block reads as one.
         cxxopts::Options opts("etctl open", descFor("open"));
         opts.add_options()("h,help", "Print help");
         opts.positional_help("");
@@ -932,7 +1271,8 @@ int main(int argc, char** argv) {
   if (cmd == "write") {
     // TEXT arg if given, else stdin; raw bytes, no trailing newline.  A hidden
     // secret belongs on writeln (a password needs the submitting newline).
-    string bytes = res.count("TEXT") ? res["TEXT"].as<string>() : readAllStdin();
+    string bytes =
+        res.count("TEXT") ? res["TEXT"].as<string>() : readAllStdin();
     return cmdWrite(name, bytes);
   }
   if (cmd == "writeln") {
@@ -949,7 +1289,20 @@ int main(int argc, char** argv) {
       fprintf(stderr, "etctl run: missing CMD\n");
       return 2;
     }
-    return cmdRun(name, res["CMD"].as<string>(), res["timeout"].as<double>());
+    RunOverride ovr = RunOverride::kAuto;
+    const string framing = res["framing"].as<string>();
+    if (framing == "osc133") {
+      ovr = RunOverride::kForceBracketOsc;
+    } else if (framing == "mark") {
+      ovr = RunOverride::kForceMark;
+    } else if (framing != "auto") {
+      fprintf(stderr,
+              "etctl run: unknown --framing '%s' (want auto|osc133|mark)\n",
+              framing.c_str());
+      return 2;
+    }
+    return cmdRun(name, res["CMD"].as<string>(), res["timeout"].as<double>(),
+                  ovr);
   }
   if (cmd == "expect") {
     if (!res.count("PATTERN")) {
