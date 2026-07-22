@@ -42,8 +42,15 @@ UserTerminalHandler::UserTerminalHandler(
 void UserTerminalHandler::run() {
   while (true) {
     Packet termInitPacket;
-    if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
-      continue;
+    try {
+      if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+        continue;
+      }
+    } catch (const std::runtime_error& re) {
+      // The router connection died before init (e.g. etserver shut down).
+      // Fail with a logged fatal instead of an uncaught exception.
+      STFATAL << "Router connection died waiting for terminal init: "
+              << re.what();
     }
     if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
       STFATAL << "Invalid terminal init packet header: "
@@ -53,6 +60,11 @@ void UserTerminalHandler::run() {
     for (int a = 0; a < ti.environmentnames_size(); a++) {
       setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
              true);
+    }
+    if (ti.flow_control_mode() != et::FLOW_CONTROL_NONE) {
+      // The client opted into flow control: shrink the kernel buffer on the
+      // etterminal->etserver hop so backpressure holds less stale output.
+      socketHandler->minimizeKernelBuffering(routerFd);
     }
     break;
   }

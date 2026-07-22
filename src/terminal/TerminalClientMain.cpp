@@ -185,7 +185,20 @@ int main(int argc, char** argv) {
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
-         cxxopts::value<std::vector<std::string>>());
+         cxxopts::value<std::vector<std::string>>())  //
+        ("idpasskey",
+         "If set, skip SSH and use this id/passkey directly (format: "
+         "id/passkey). Start etterminal manually before connecting.",
+         cxxopts::value<std::string>())  //
+        ("flow-control",
+         "Flow control mode: 'none' (default; legacy behavior, unchanged), "
+         "'backpressure' (lossless: bounded, tuned buffers keep Ctrl-C "
+         "responsive on a slow link; when the client can't keep up the "
+         "remote process is paused, like plain ssh), or 'discard' (drop "
+         "the oldest pending output so the remote process never stalls "
+         "and the display stays close to real time; not for consumers "
+         "that require every byte, e.g. tmux -CC)",
+         cxxopts::value<std::string>()->default_value("none"));
 
     options.parse_positional({"host"});
     auto result = options.parse(argc, argv);
@@ -291,7 +304,7 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
-    {
+    if (!result.count("idpasskey")) {
       char* home_dir = ssh_get_user_home_dir();
       const char* host_from_command = destinationHost.c_str();
       ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
@@ -369,7 +382,7 @@ int main(int argc, char** argv) {
     shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
-    if (!ping(socketEndpoint, clientSocket)) {
+    if (!result.count("idpasskey") && !ping(socketEndpoint, clientSocket)) {
       CLOG(INFO, "stdout") << "Could not reach the ET server: "
                            << socketEndpoint.name() << ":"
                            << socketEndpoint.port() << endl;
@@ -432,17 +445,42 @@ int main(int argc, char** argv) {
       }
     }
 
-    auto subprocessUtils = make_shared<SubprocessUtils>();
-    SshSetupHandler sshSetupHandler(subprocessUtils);
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
+    pair<string, string> idpasskeypair;
+    if (result.count("idpasskey")) {
+      auto tokens = split(result["idpasskey"].as<string>(), '/');
+      if (tokens.size() != 2 || tokens[0].empty() || tokens[1].empty()) {
+        CLOG(INFO, "stdout")
+            << "Invalid --idpasskey format. Expected: id/passkey" << endl;
+        exit(1);
+      }
+      idpasskeypair = {tokens[0], tokens[1]};
+    } else {
+      auto subprocessUtils = make_shared<SubprocessUtils>();
+      SshSetupHandler sshSetupHandler(subprocessUtils);
+      idpasskeypair = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+          etterminal_path, serverFifo, ssh_options);
+    }
+
+    et::FlowControlMode flowControlMode = et::FLOW_CONTROL_NONE;
+    string flowControlStr = result["flow-control"].as<string>();
+    if (flowControlStr == "backpressure") {
+      flowControlMode = et::FLOW_CONTROL_BACKPRESSURE;
+    } else if (flowControlStr == "discard") {
+      flowControlMode = et::FLOW_CONTROL_DISCARD;
+    } else if (flowControlStr != "none") {
+      CLOG(INFO, "stdout") << "Invalid flow-control mode: " << flowControlStr
+                           << ". Must be 'none', 'backpressure', or 'discard'."
+                           << endl;
+      exit(1);
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
-        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
+        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
+        flowControlMode);
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
