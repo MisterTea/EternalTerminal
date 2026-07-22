@@ -301,6 +301,34 @@ process can tell which named control session it is running under. The socket
 lives at `~/.et/sessions/<name>.sock` (`0700` dir, `0600` socket, owning-uid
 only), beside the session's credentials; set `$ET_SESSION_DIR` to relocate both.
 
+### How `run` frames a command
+
+`run` has to know where a command's output starts and ends and what it exited
+with, and it has to inject the command safely (a multi-line body must run as one
+command, and quotes/braces/`!`/parse errors must not desync the frame or hang on
+a continuation prompt). It picks the cleanest of three framings for the far-side
+prompt, detected once per session and cached (`~/.et/ctl/<name>.framing`):
+
+- **Bracketed paste + OSC 133** (the default when the prompt has FinalTerm/iTerm2
+  shell integration *and* a bracketed-paste-aware line editor -- the official
+  bash, zsh, fish, and xonsh integrations all qualify). The bare command is sent
+  inside bracketed paste, so the **real command shows in the scrollback** with no
+  wrapper and no injected markers, and the output boundaries + exit code come
+  straight from the prompt's own OSC 133 `C`/`D` marks.
+- **Eval here-doc + OSC 133** (a prompt with OSC 133 but no bracketed paste, e.g.
+  tcsh). The body is wrapped in `eval "$(cat <<'BODY' ... )"` -- so it is handed
+  to the shell as data, immune to its own syntax -- and boundaries come from OSC
+  133. No echo markers, but the wrapper is visible.
+- **Eval here-doc + echo markers** (the universal fallback for a shell with no
+  OSC 133, e.g. dash). The eval is bracketed by `echo <mark> ... <mark>:$?`.
+
+`run` also trims the prompt-prep sequences a shell splices around the output (a
+zsh/fish end-of-line mark, iTerm2's `OSC 1337` context report, a title,
+bracketed-paste toggles) so the captured output is the command's alone, and it
+disables history expansion on the control session (a script-driven session has no
+use for interactive `!`). Force a framing with `--framing=osc133` (bracketed
+paste) or `--framing=mark` (echo markers); the default is `--framing=auto`.
+
 Run `etctl` with no arguments for the full verb list, `etctl <verb> --help` for
 any verb's options, and `etctl --version` for the version. `--ctl` is not
 available on Windows.
