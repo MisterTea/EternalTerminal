@@ -3,11 +3,13 @@
 namespace et {
 ForwardSourceHandler::ForwardSourceHandler(
     shared_ptr<SocketHandler> _socketHandler, const SocketEndpoint& _source,
-    const SocketEndpoint& _destination)
+    const SocketEndpoint& _destination, bool alreadyListening)
     : socketHandler(_socketHandler),
       source(_source),
       destination(_destination) {
-  socketHandler->listen(source);
+  if (!alreadyListening) {
+    socketHandler->listen(source);
+  }
 }
 
 ForwardSourceHandler::~ForwardSourceHandler() {

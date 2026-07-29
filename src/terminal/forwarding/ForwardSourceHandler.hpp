@@ -11,11 +11,15 @@ namespace et {
  */
 class ForwardSourceHandler {
  public:
-  /** @brief Creates source/destination handlers used for local port forwarding.
+  /**
+   * @brief Creates source/destination handlers used for local port forwarding.
+   * @param alreadyListening If true, skip listen(); caller already registered
+   * the source endpoint (e.g. via listenAsUser).
    */
   ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
                        const SocketEndpoint& _source,
-                       const SocketEndpoint& _destination);
+                       const SocketEndpoint& _destination,
+                       bool alreadyListening = false);
 
   ~ForwardSourceHandler();
 

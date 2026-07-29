@@ -1,5 +1,9 @@
 #include "PipeSocketHandler.hpp"
 
+#ifndef WIN32
+#include "UserSocketOps.hpp"
+#endif
+
 namespace et {
 PipeSocketHandler::PipeSocketHandler() {}
 
@@ -90,6 +94,24 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   return sockFd;
 }
 
+#ifndef WIN32
+int PipeSocketHandler::connectAsUser(const SocketEndpoint& endpoint, uid_t uid,
+                                     gid_t gid) {
+  lock_guard<std::recursive_mutex> mutexGuard(globalMutex);
+
+  string pipePath = endpoint.name();
+  VLOG(3) << "Connecting to " << endpoint << " as uid " << uid;
+  int sockFd = UserSocketOps::connectUnixAsUser(pipePath, uid, gid);
+  if (sockFd < 0) {
+    return -1;
+  }
+  initSocket(sockFd);
+  addToActiveSockets(sockFd);
+  LOG(INFO) << "Connected to endpoint " << endpoint << " as uid " << uid;
+  return sockFd;
+}
+#endif
+
 set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
 
@@ -116,6 +138,27 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   pipeServerSockets[pipePath] = set<int>({fd});
   return pipeServerSockets[pipePath];
 }
+
+#ifndef WIN32
+set<int> PipeSocketHandler::listenAsUser(const SocketEndpoint& endpoint,
+                                         uid_t uid, gid_t gid) {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
+
+  string pipePath = endpoint.name();
+  if (pipeServerSockets.find(pipePath) != pipeServerSockets.end()) {
+    throw runtime_error("Tried to listen twice on the same path");
+  }
+
+  int fd = UserSocketOps::listenUnixAsUser(pipePath, uid, gid);
+  if (fd < 0) {
+    throw runtime_error(string("Failed to listen as user on ") + pipePath +
+                        ": " + strerror(GetErrno()));
+  }
+  initServerSocket(fd);
+  pipeServerSockets[pipePath] = set<int>({fd});
+  return pipeServerSockets[pipePath];
+}
+#endif
 
 set<int> PipeSocketHandler::getEndpointFds(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);

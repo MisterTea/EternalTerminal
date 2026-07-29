@@ -430,6 +430,8 @@ add_library(
   src/base/SocketHandler.cpp
   src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+  src/base/UserSocketOps.hpp
+  src/base/UserSocketOps.cpp
   src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.hpp

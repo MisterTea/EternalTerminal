@@ -118,7 +118,8 @@ bool Connection::recover(int newSocketFd) {
 
     // Read the remote sequence number
     et::SequenceHeader remoteHeader =
-        socketHandler->readProto<et::SequenceHeader>(newSocketFd, true);
+        socketHandler->readProto<et::SequenceHeader>(
+            newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
 
     {
       // Fetch the catchup bytes and send

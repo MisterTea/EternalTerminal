@@ -41,8 +41,8 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   string clientId;
   bool createdClientConnection = false;
   try {
-    et::ConnectRequest request =
-        socketHandler->readProto<et::ConnectRequest>(clientSocketFd, true);
+    et::ConnectRequest request = socketHandler->readProto<et::ConnectRequest>(
+        clientSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
     {
       int version = request.version();
       if (version != PROTOCOL_VERSION) {

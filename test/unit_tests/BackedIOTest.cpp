@@ -424,3 +424,37 @@ TEST_CASE("BackedWriter trims old data when connected and buffer exceeds 64MB",
 
   handler->close(fd);
 }
+
+TEST_CASE("BackedWriter recover rejects client-ahead sequence without aborting",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  auto encryptCrypto = make_shared<CryptoHandler>(
+      "12345678901234567890123456789012", 0 /*verbosity*/);
+  const int fd = handler->createChannel();
+
+  BackedWriter writer(handler, encryptCrypto, fd);
+  REQUIRE(writer.write(Packet(1, "one")) == BackedWriterWriteState::SUCCESS);
+  writer.invalidateSocket();
+
+  REQUIRE_THROWS_AS(writer.recover(writer.getSequenceNumber() + 1),
+                    std::runtime_error);
+}
+
+TEST_CASE("SocketHandler readProto enforces max length before allocating",
+          "[SocketHandler]") {
+  FdSocketHandler handler;
+  int fds[2];
+  REQUIRE(::pipe(fds) == 0);
+
+  int64_t oversize = SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH + 1;
+  REQUIRE(handler.writeAllOrReturn(fds[1], &oversize, sizeof(oversize)) ==
+          (int)sizeof(oversize));
+
+  REQUIRE_THROWS_AS(
+      handler.readProto<et::SequenceHeader>(
+          fds[0], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH),
+      std::runtime_error);
+
+  handler.close(fds[0]);
+  handler.close(fds[1]);
+}

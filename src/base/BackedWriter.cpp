@@ -91,7 +91,9 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (messagesToRecover < 0) {
-    STFATAL << "Something went really wrong, client is ahead of server";
+    // Attacker-controlled sequence numbers must not abort the process.
+    throw std::runtime_error(
+        "Invalid recovery sequence: client is ahead of server");
   }
   if (messagesToRecover == 0) {
     return vector<std::string>();

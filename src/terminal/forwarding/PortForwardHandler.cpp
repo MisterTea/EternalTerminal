@@ -2,12 +2,16 @@
 
 #include <cstdint>
 
+#include "PipeSocketHandler.hpp"
+
 namespace et {
 PortForwardHandler::PortForwardHandler(
     shared_ptr<SocketHandler> _networkSocketHandler,
-    shared_ptr<SocketHandler> _pipeSocketHandler)
+    shared_ptr<SocketHandler> _pipeSocketHandler, uid_t userid, gid_t groupid)
     : networkSocketHandler(_networkSocketHandler),
-      pipeSocketHandler(_pipeSocketHandler) {}
+      pipeSocketHandler(_pipeSocketHandler),
+      sessionUid(userid),
+      sessionGid(groupid) {}
 
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend) {
@@ -77,14 +81,23 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     } else {
-      auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
-          pipeSocketHandler, source, pfsr.destination()));
 #ifndef WIN32
-      if (userid >= 0 && groupid >= 0) {
-        FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
-        FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
+      // Perform unlink/bind/listen as the session user so a client-chosen path
+      // cannot delete or chown root-owned files.
+      auto concretePipe =
+          dynamic_pointer_cast<PipeSocketHandler>(pipeSocketHandler);
+      if (concretePipe && userid != static_cast<uid_t>(-1) &&
+          groupid != static_cast<gid_t>(-1)) {
+        concretePipe->listenAsUser(source, userid, groupid);
+        auto handler =
+            shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+                pipeSocketHandler, source, pfsr.destination(), true));
+        sourceHandlers.push_back(handler);
+        return PortForwardSourceResponse();
       }
 #endif
+      auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+          pipeSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
       return PortForwardSourceResponse();
     }
@@ -114,7 +127,21 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
       fd = networkSocketHandler->connect(ipv4Localhost);
     }
   } else {
+#ifndef WIN32
+    // Connect as the session user so root etserver cannot open privileged
+    // sockets (e.g. docker.sock) on behalf of an unprivileged client.
+    auto concretePipe =
+        dynamic_pointer_cast<PipeSocketHandler>(pipeSocketHandler);
+    if (concretePipe && sessionUid != static_cast<uid_t>(-1) &&
+        sessionGid != static_cast<gid_t>(-1)) {
+      fd = concretePipe->connectAsUser(pfdr.destination(), sessionUid,
+                                       sessionGid);
+    } else {
+      fd = pipeSocketHandler->connect(pfdr.destination());
+    }
+#else
     fd = pipeSocketHandler->connect(pfdr.destination());
+#endif
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
