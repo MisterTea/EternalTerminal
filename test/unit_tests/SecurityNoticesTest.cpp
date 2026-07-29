@@ -6,7 +6,9 @@
  */
 
 #include <fcntl.h>
+#include <pwd.h>
 #include <sys/stat.h>
+#include <unistd.h>
 
 #include <atomic>
 #include <chrono>
@@ -96,6 +98,26 @@ string makeTempDir() {
   string dir = string(mkdtemp(&pattern[0]));
   REQUIRE_FALSE(dir.empty());
   return dir;
+}
+
+// CI containers (Debian/FreeBSD) run tests as root. Privilege-drop tests must
+// target a non-root uid so DAC actually applies after setuid.
+bool unprivilegedTestUser(uid_t* uid, gid_t* gid) {
+  if (getuid() != 0) {
+    *uid = getuid();
+    *gid = getgid();
+    return true;
+  }
+  const char* candidates[] = {"nobody", "nfsnobody", nullptr};
+  for (int i = 0; candidates[i] != nullptr; ++i) {
+    struct passwd* pw = getpwnam(candidates[i]);
+    if (pw != nullptr && pw->pw_uid != 0) {
+      *uid = pw->pw_uid;
+      *gid = pw->pw_gid;
+      return true;
+    }
+  }
+  return false;
 }
 }  // namespace
 
@@ -292,6 +314,12 @@ TEST_CASE(
 TEST_CASE(
     "ANT-2026-AVTT7HQH createSource as user does not destroy undeletable file",
     "[SecurityNotice][ANT-2026-AVTT7HQH][PortForwardHandler]") {
+  uid_t sessionUid = 0;
+  gid_t sessionGid = 0;
+  if (!unprivilegedTestUser(&sessionUid, &sessionGid)) {
+    SKIP("No unprivileged user available for privilege-drop test");
+  }
+
   string dir = makeTempDir();
   string victim = dir + "/victim_file";
   {
@@ -300,12 +328,22 @@ TEST_CASE(
     REQUIRE(::write(fd, "keepme", 6) == 6);
     ::close(fd);
   }
-  // Remove directory write permission so unlink(victim) fails for this user.
-  REQUIRE(::chmod(dir.c_str(), 0555) == 0);
+
+  if (getuid() == 0) {
+    // Root-owned directory: after setuid to nobody, unlink must fail. This is
+    // the etserver-as-root threat model from the notice.
+    REQUIRE(::chown(dir.c_str(), 0, 0) == 0);
+    REQUIRE(::chmod(dir.c_str(), 0755) == 0);
+    REQUIRE(::chown(victim.c_str(), 0, 0) == 0);
+  } else {
+    // Non-root: remove directory write so self cannot unlink.
+    REQUIRE(::chmod(dir.c_str(), 0555) == 0);
+  }
 
   auto networkHandler = make_shared<PipeSocketHandler>();
   auto pipeHandler = make_shared<PipeSocketHandler>();
-  PortForwardHandler handler(networkHandler, pipeHandler, getuid(), getgid());
+  PortForwardHandler handler(networkHandler, pipeHandler, sessionUid,
+                             sessionGid);
 
   PortForwardSourceRequest request;
   SocketEndpoint source;
@@ -316,11 +354,13 @@ TEST_CASE(
   *request.mutable_destination() = destination;
 
   PortForwardSourceResponse response =
-      handler.createSource(request, nullptr, getuid(), getgid());
+      handler.createSource(request, nullptr, sessionUid, sessionGid);
 
   REQUIRE(response.has_error());
 
-  REQUIRE(::chmod(dir.c_str(), 0755) == 0);
+  if (getuid() != 0) {
+    REQUIRE(::chmod(dir.c_str(), 0755) == 0);
+  }
   struct stat st;
   REQUIRE(::stat(victim.c_str(), &st) == 0);
   REQUIRE(S_ISREG(st.st_mode));
@@ -332,13 +372,22 @@ TEST_CASE(
 TEST_CASE(
     "ANT-2026-AVTT7HQH createSource as user creates socket on writable path",
     "[SecurityNotice][ANT-2026-AVTT7HQH][PortForwardHandler]") {
+  uid_t sessionUid = 0;
+  gid_t sessionGid = 0;
+  if (!unprivilegedTestUser(&sessionUid, &sessionGid)) {
+    SKIP("No unprivileged user available for privilege-drop test");
+  }
+
   string dir = makeTempDir();
   string sockPath = dir + "/ok.sock";
+  // Ensure the session user can create the socket in this directory.
+  REQUIRE(::chmod(dir.c_str(), 0777) == 0);
 
   {
     auto networkHandler = make_shared<PipeSocketHandler>();
     auto pipeHandler = make_shared<PipeSocketHandler>();
-    PortForwardHandler handler(networkHandler, pipeHandler, getuid(), getgid());
+    PortForwardHandler handler(networkHandler, pipeHandler, sessionUid,
+                               sessionGid);
 
     PortForwardSourceRequest request;
     SocketEndpoint source;
@@ -349,7 +398,7 @@ TEST_CASE(
     *request.mutable_destination() = destination;
 
     PortForwardSourceResponse response =
-        handler.createSource(request, nullptr, getuid(), getgid());
+        handler.createSource(request, nullptr, sessionUid, sessionGid);
     REQUIRE_FALSE(response.has_error());
 
     struct stat st;
@@ -365,13 +414,18 @@ TEST_CASE(
     "ANT-2026-AVTT7HQH UserSocketOps listen fails on root-only path without "
     "deleting it",
     "[SecurityNotice][ANT-2026-AVTT7HQH][UserSocketOps]") {
-  if (getuid() == 0) {
-    SKIP("Test requires a non-root process");
+  uid_t sessionUid = 0;
+  gid_t sessionGid = 0;
+  if (!unprivilegedTestUser(&sessionUid, &sessionGid)) {
+    SKIP("No unprivileged user available for privilege-drop test");
+  }
+  if (sessionUid == 0) {
+    SKIP("Test requires a non-root session user");
   }
   // /dev/null is a privileged node; listen/unlink as an unprivileged user must
   // fail and must not remove it.
   REQUIRE(::access("/dev/null", F_OK) == 0);
-  int fd = UserSocketOps::listenUnixAsUser("/dev/null", getuid(), getgid());
+  int fd = UserSocketOps::listenUnixAsUser("/dev/null", sessionUid, sessionGid);
   REQUIRE(fd < 0);
   REQUIRE(::access("/dev/null", F_OK) == 0);
 }
@@ -383,15 +437,23 @@ TEST_CASE(
 TEST_CASE(
     "ANT-2026-A3WQS3AG createDestination as session user can reach own socket",
     "[SecurityNotice][ANT-2026-A3WQS3AG][PortForwardHandler]") {
+  uid_t sessionUid = 0;
+  gid_t sessionGid = 0;
+  if (!unprivilegedTestUser(&sessionUid, &sessionGid)) {
+    SKIP("No unprivileged user available for privilege-drop test");
+  }
+
   string dir = makeTempDir();
+  REQUIRE(::chmod(dir.c_str(), 0777) == 0);
   string path = dir + "/dest.sock";
 
-  int listenFd = UserSocketOps::listenUnixAsUser(path, getuid(), getgid());
+  int listenFd = UserSocketOps::listenUnixAsUser(path, sessionUid, sessionGid);
   REQUIRE(listenFd >= 0);
 
   auto networkHandler = make_shared<PipeSocketHandler>();
   auto pipeHandler = make_shared<PipeSocketHandler>();
-  PortForwardHandler handler(networkHandler, pipeHandler, getuid(), getgid());
+  PortForwardHandler handler(networkHandler, pipeHandler, sessionUid,
+                             sessionGid);
 
   PortForwardDestinationRequest request;
   SocketEndpoint destination;
@@ -415,18 +477,40 @@ TEST_CASE(
     "ANT-2026-A3WQS3AG createDestination as session user cannot open "
     "mode-000 socket",
     "[SecurityNotice][ANT-2026-A3WQS3AG][PortForwardHandler]") {
+  uid_t sessionUid = 0;
+  gid_t sessionGid = 0;
+  if (!unprivilegedTestUser(&sessionUid, &sessionGid)) {
+    SKIP("No unprivileged user available for privilege-drop test");
+  }
+  if (sessionUid == 0) {
+    SKIP("Test requires a non-root session user");
+  }
+
   string dir = makeTempDir();
+  REQUIRE(::chmod(dir.c_str(), 0777) == 0);
   string path = dir + "/denied.sock";
 
-  int listenFd = UserSocketOps::listenUnixAsUser(path, getuid(), getgid());
+  // Create the listener as root (or current user), then strip access. A root
+  // connect would often still succeed; connecting after setuid to the session
+  // user must fail. Keep the listen handler alive for the whole test.
+  auto listenPipeHandler = make_shared<PipeSocketHandler>();
+  int listenFd = -1;
+  SocketEndpoint listenEp;
+  listenEp.set_name(path);
+  if (getuid() == 0) {
+    set<int> fds = listenPipeHandler->listen(listenEp);
+    REQUIRE_FALSE(fds.empty());
+    listenFd = *fds.begin();
+  } else {
+    listenFd = UserSocketOps::listenUnixAsUser(path, sessionUid, sessionGid);
+  }
   REQUIRE(listenFd >= 0);
-  // Strip all access. A root connect would often still succeed; connecting as
-  // the session user must fail.
   REQUIRE(::chmod(path.c_str(), 0) == 0);
 
   auto networkHandler = make_shared<PipeSocketHandler>();
   auto pipeHandler = make_shared<PipeSocketHandler>();
-  PortForwardHandler handler(networkHandler, pipeHandler, getuid(), getgid());
+  PortForwardHandler handler(networkHandler, pipeHandler, sessionUid,
+                             sessionGid);
 
   PortForwardDestinationRequest request;
   SocketEndpoint destination;
@@ -438,7 +522,11 @@ TEST_CASE(
   REQUIRE(response.has_error());
   REQUIRE_FALSE(response.has_socketid());
 
-  ::close(listenFd);
+  if (getuid() == 0) {
+    listenPipeHandler->stopListening(listenEp);
+  } else {
+    ::close(listenFd);
+  }
   ::chmod(path.c_str(), 0700);
   ::unlink(path.c_str());
   ::rmdir(dir.c_str());
