@@ -26,6 +26,20 @@ class UserSocketOps {
    */
   static int connectUnixAsUser(const string& path, uid_t uid, gid_t gid);
 
+  /**
+   * @brief Create a listening UNIX socket at @p path in the current process.
+   *
+   * Used after privilege drop in the forked child, and directly by unit tests.
+   * @return Listening fd, or -1 with errno set.
+   */
+  static int listenAtPath(const string& path);
+
+  /**
+   * @brief Connect to a UNIX socket at @p path in the current process.
+   * @return Connected fd, or -1 with errno set.
+   */
+  static int connectAtPath(const string& path);
+
  private:
   enum class Op : int { LISTEN = 1, CONNECT = 2 };
 
@@ -34,6 +48,7 @@ class UserSocketOps {
   static void childConnect(int resultFd, const string& path);
   static void sendFd(int channel, int fdToSend, int status, int err);
   static int recvFd(int channel, int* errOut);
+  static void coverageExit(int code);
 };
 #endif
 }  // namespace et

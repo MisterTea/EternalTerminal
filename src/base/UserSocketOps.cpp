@@ -6,6 +6,10 @@
 #include <sys/wait.h>
 #include <unistd.h>
 
+#ifdef CODE_COVERAGE
+extern "C" void __gcov_dump(void);
+#endif
+
 namespace et {
 namespace {
 struct ResultHeader {
@@ -18,7 +22,19 @@ void fatalClose(int fd) {
     ::close(fd);
   }
 }
+
+bool pathTooLong(const string& path) {
+  return path.size() >= sizeof(sockaddr_un::sun_path);
+}
 }  // namespace
+
+void UserSocketOps::coverageExit(int code) {
+#ifdef CODE_COVERAGE
+  // _exit skips atexit/gcov flush; dump so forked child lines count in reports.
+  __gcov_dump();
+#endif
+  _exit(code);
+}
 
 void UserSocketOps::sendFd(int channel, int fdToSend, int status, int err) {
   ResultHeader header{status, err};
@@ -94,16 +110,15 @@ int UserSocketOps::recvFd(int channel, int* errOut) {
   return fd;
 }
 
-void UserSocketOps::childListen(int resultFd, const string& path) {
-  if (path.size() >= sizeof(sockaddr_un::sun_path)) {
-    sendFd(resultFd, -1, -1, ENAMETOOLONG);
-    _exit(1);
+int UserSocketOps::listenAtPath(const string& path) {
+  if (pathTooLong(path)) {
+    SetErrno(ENAMETOOLONG);
+    return -1;
   }
 
   int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0) {
-    sendFd(resultFd, -1, -1, errno);
-    _exit(1);
+    return -1;
   }
 
   sockaddr_un local;
@@ -111,42 +126,38 @@ void UserSocketOps::childListen(int resultFd, const string& path) {
   local.sun_family = AF_UNIX;
   strncpy(local.sun_path, path.c_str(), sizeof(local.sun_path) - 1);
 
-  // Only removes a path the dropped-privilege user can unlink.
+  // Only removes a path the current credentials can unlink.
   ::unlink(local.sun_path);
 
   if (::bind(fd, (struct sockaddr*)&local, sizeof(local)) < 0) {
     int err = errno;
     fatalClose(fd);
-    sendFd(resultFd, -1, -1, err);
-    _exit(1);
+    SetErrno(err);
+    return -1;
   }
   if (::listen(fd, 5) < 0) {
     int err = errno;
     fatalClose(fd);
-    sendFd(resultFd, -1, -1, err);
-    _exit(1);
+    SetErrno(err);
+    return -1;
   }
   if (::fchmod(fd, S_IRUSR | S_IWUSR | S_IXUSR) < 0) {
     // fchmod on unix sockets is unsupported on some platforms; fall back to
-    // path chmod. Still running as the session user.
+    // path chmod. Still running with the caller's credentials.
     ::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR);
   }
-
-  sendFd(resultFd, fd, 0, 0);
-  fatalClose(fd);
-  _exit(0);
+  return fd;
 }
 
-void UserSocketOps::childConnect(int resultFd, const string& path) {
-  if (path.size() >= sizeof(sockaddr_un::sun_path)) {
-    sendFd(resultFd, -1, -1, ENAMETOOLONG);
-    _exit(1);
+int UserSocketOps::connectAtPath(const string& path) {
+  if (pathTooLong(path)) {
+    SetErrno(ENAMETOOLONG);
+    return -1;
   }
 
   int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   if (fd < 0) {
-    sendFd(resultFd, -1, -1, errno);
-    _exit(1);
+    return -1;
   }
 
   sockaddr_un remote;
@@ -157,13 +168,32 @@ void UserSocketOps::childConnect(int resultFd, const string& path) {
   if (::connect(fd, (struct sockaddr*)&remote, sizeof(remote)) < 0) {
     int err = errno;
     fatalClose(fd);
-    sendFd(resultFd, -1, -1, err);
-    _exit(1);
+    SetErrno(err);
+    return -1;
   }
+  return fd;
+}
 
+void UserSocketOps::childListen(int resultFd, const string& path) {
+  int fd = listenAtPath(path);
+  if (fd < 0) {
+    sendFd(resultFd, -1, -1, GetErrno());
+    coverageExit(1);
+  }
   sendFd(resultFd, fd, 0, 0);
   fatalClose(fd);
-  _exit(0);
+  coverageExit(0);
+}
+
+void UserSocketOps::childConnect(int resultFd, const string& path) {
+  int fd = connectAtPath(path);
+  if (fd < 0) {
+    sendFd(resultFd, -1, -1, GetErrno());
+    coverageExit(1);
+  }
+  sendFd(resultFd, fd, 0, 0);
+  fatalClose(fd);
+  coverageExit(0);
 }
 
 int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
@@ -190,23 +220,23 @@ int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
     if (::geteuid() == 0) {
       if (::setgroups(1, &gid) != 0) {
         sendFd(sv[1], -1, -1, errno);
-        _exit(1);
+        coverageExit(1);
       }
     }
     if (::setgid(gid) != 0) {
       sendFd(sv[1], -1, -1, errno);
-      _exit(1);
+      coverageExit(1);
     }
     if (::setuid(uid) != 0) {
       sendFd(sv[1], -1, -1, errno);
-      _exit(1);
+      coverageExit(1);
     }
     if (op == Op::LISTEN) {
       childListen(sv[1], path);
     } else {
       childConnect(sv[1], path);
     }
-    _exit(1);
+    coverageExit(1);
   }
 
   fatalClose(sv[1]);

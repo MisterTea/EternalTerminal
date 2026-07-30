@@ -231,6 +231,44 @@ TEST_CASE("ServerClientConnection recoverClient keeps old socket on failure",
   handler->close(attack[1]);
 }
 
+TEST_CASE("ServerClientConnection recoverClient closes old socket on success",
+          "[ServerClientConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int live[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+
+  const string key = "zyxwvutsrqponmlkjihgfedcba987654";
+  ServerClientConnection connection(handler, "client-recover-ok", live[0], key);
+  REQUIRE(connection.getSocketFd() == live[0]);
+
+  int reconnect[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+
+  std::thread remote([&]() {
+    auto seqHeader = handler->readProto<SequenceHeader>(
+        reconnect[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(seqHeader.sequencenumber() == 0);
+
+    SequenceHeader seqResponse;
+    seqResponse.set_sequencenumber(0);
+    handler->writeProto(reconnect[1], seqResponse, true);
+
+    auto catchup = handler->readProto<CatchupBuffer>(reconnect[1], true);
+    REQUIRE(catchup.buffer_size() == 0);
+    CatchupBuffer back;
+    handler->writeProto(reconnect[1], back, true);
+  });
+
+  REQUIRE(connection.recoverClient(reconnect[0]));
+  REQUIRE(connection.getSocketFd() == reconnect[0]);
+
+  remote.join();
+  connection.shutdown();
+  handler->close(live[1]);
+  handler->close(reconnect[0]);
+  handler->close(reconnect[1]);
+}
+
 TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
