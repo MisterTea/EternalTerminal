@@ -45,3 +45,67 @@ TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
   FATAL_FAIL(::remove(pipePath.c_str()));
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
+
+#ifndef WIN32
+TEST_CASE("PipeSocketHandler listenAsUser and connectAsUser",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+
+  string tmpPath = GetTempDirectory() + string("et_test_user_XXXXXXXX");
+  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  string pipePath = pipeDirectory + "/pipe";
+
+  SocketEndpoint endpoint;
+  endpoint.set_name(pipePath);
+
+  uid_t uid = getuid();
+  gid_t gid = getgid();
+  set<int> serverFds = socketHandler->listenAsUser(endpoint, uid, gid);
+  REQUIRE(!serverFds.empty());
+
+  REQUIRE_THROWS_AS(socketHandler->listenAsUser(endpoint, uid, gid),
+                    std::runtime_error);
+
+  int clientFd = socketHandler->connectAsUser(endpoint, uid, gid);
+  REQUIRE(clientFd >= 0);
+
+  int accepted = socketHandler->accept(*serverFds.begin());
+  REQUIRE(accepted >= 0);
+
+  socketHandler->close(accepted);
+  socketHandler->close(clientFd);
+  socketHandler->stopListening(endpoint);
+  FATAL_FAIL(::remove(pipePath.c_str()));
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+}
+
+TEST_CASE("PipeSocketHandler connectAsUser returns -1 when path missing",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+
+  string tmpPath = GetTempDirectory() + string("et_test_user_XXXXXXXX");
+  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  string pipePath = pipeDirectory + "/missing";
+
+  SocketEndpoint endpoint;
+  endpoint.set_name(pipePath);
+
+  int clientFd = socketHandler->connectAsUser(endpoint, getuid(), getgid());
+  REQUIRE(clientFd < 0);
+
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+}
+
+TEST_CASE("PipeSocketHandler listenAsUser throws when path cannot bind",
+          "[UnixSocketHandler][PipeSocketHandler]") {
+  if (getuid() == 0) {
+    SKIP("Test requires a non-root process");
+  }
+
+  shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
+  SocketEndpoint endpoint;
+  endpoint.set_name("/dev/null_et_listen_as_user_should_fail");
+  REQUIRE_THROWS_AS(socketHandler->listenAsUser(endpoint, getuid(), getgid()),
+                    std::runtime_error);
+}
+#endif

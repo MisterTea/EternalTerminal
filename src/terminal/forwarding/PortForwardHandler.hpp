@@ -14,9 +14,16 @@ namespace et {
  */
 class PortForwardHandler {
  public:
-  /** @brief Constructs forwarding helpers for network and router sockets. */
+  /**
+   * @brief Constructs forwarding helpers for network and router sockets.
+   * @param userid Session uid used for privilege-dropped UNIX socket ops
+   *        ((uid_t)-1 to disable).
+   * @param groupid Session gid used with @p userid.
+   */
   explicit PortForwardHandler(shared_ptr<SocketHandler> _networkSocketHandler,
-                              shared_ptr<SocketHandler> _pipeSocketHandler);
+                              shared_ptr<SocketHandler> _pipeSocketHandler,
+                              uid_t userid = static_cast<uid_t>(-1),
+                              gid_t groupid = static_cast<gid_t>(-1));
   /** @brief Polls all handlers for new destination/data and sends
    * `PortForwardData`. */
   void update(vector<PortForwardDestinationRequest>* requests,
@@ -48,6 +55,10 @@ class PortForwardHandler {
   shared_ptr<SocketHandler> networkSocketHandler;
   /** @brief Handler used for the router/pipe-facing sockets. */
   shared_ptr<SocketHandler> pipeSocketHandler;
+  /** @brief Session uid for UNIX connect/listen; (uid_t)-1 disables drop. */
+  uid_t sessionUid;
+  /** @brief Session gid for UNIX connect/listen; (gid_t)-1 disables drop. */
+  gid_t sessionGid;
   /** @brief Active destination handlers keyed by socket id. */
   unordered_map<int, shared_ptr<ForwardDestinationHandler>> destinationHandlers;
 

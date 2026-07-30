@@ -233,8 +233,9 @@ IF(WIN32)
 ENDIF(WIN32)
 
 if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage")
+  # CODE_COVERAGE define lets forked children flush gcov before _exit.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage -DCODE_COVERAGE")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage -DCODE_COVERAGE")
 endif(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 
 if(DISABLE_CRASH_LOG)
@@ -430,6 +431,8 @@ add_library(
   src/base/SocketHandler.cpp
   src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+  src/base/UserSocketOps.hpp
+  src/base/UserSocketOps.cpp
   src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.hpp

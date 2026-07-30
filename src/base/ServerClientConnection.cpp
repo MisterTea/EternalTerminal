@@ -25,13 +25,40 @@ ServerClientConnection::~ServerClientConnection() {
 }
 
 bool ServerClientConnection::recoverClient(int newSocketFd) {
+  // Detach the live session without closing it until recover succeeds, so a
+  // failed/malicious reconnect cannot force-disconnect the victim.
+  int oldSocketFd = -1;
   {
     lock_guard<std::recursive_mutex> guard(connectionMutex);
-    if (socketFd != -1) {
-      closeSocket();
+    oldSocketFd = socketFd;
+    if (reader) {
+      reader->invalidateSocket();
+    }
+    if (writer) {
+      writer->invalidateSocket();
+    }
+    socketFd = -1;
+  }
+
+  bool success = recover(newSocketFd);
+  if (success) {
+    if (oldSocketFd != -1) {
+      socketHandler->close(oldSocketFd);
+    }
+    return true;
+  }
+
+  if (oldSocketFd != -1) {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    socketFd = oldSocketFd;
+    if (reader) {
+      reader->revive(oldSocketFd, vector<string>());
+    }
+    if (writer) {
+      writer->revive(oldSocketFd);
     }
   }
-  return recover(newSocketFd);
+  return false;
 }
 
 bool ServerClientConnection::verifyPasskey(const string& targetKey) {

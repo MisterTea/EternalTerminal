@@ -3,17 +3,33 @@
 #include "base64.h"
 
 namespace et {
-#define SOCKET_DATA_TRANSFER_TIMEOUT (30)
+#define SOCKET_DATA_TRANSFER_TIMEOUT (SocketHandler::SOCKET_IDLE_TIMEOUT_SEC)
 
 void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
-  time_t startTime = time(NULL);
+  if (timeout) {
+    readAll(fd, buf, count, SOCKET_IDLE_TIMEOUT_SEC,
+            SOCKET_ABSOLUTE_TIMEOUT_SEC);
+  } else {
+    readAll(fd, buf, count, 0, 0);
+  }
+}
+
+void SocketHandler::readAll(int fd, void* buf, size_t count, int idleTimeoutSec,
+                            int absoluteTimeoutSec) {
+  time_t absoluteStartTime = time(NULL);
+  time_t idleStartTime = absoluteStartTime;
   size_t pos = 0;
   while (pos < count) {
+    // Enforce deadlines on every iteration so a slow trickle that keeps the
+    // idle timer reset cannot hold the read open past the absolute limit.
+    time_t currentTime = time(NULL);
+    if ((idleTimeoutSec > 0 && currentTime > idleStartTime + idleTimeoutSec) ||
+        (absoluteTimeoutSec > 0 &&
+         currentTime > absoluteStartTime + absoluteTimeoutSec)) {
+      throw std::runtime_error("Socket Timeout");
+    }
+
     if (!waitOnSocketData(fd)) {
-      time_t currentTime = time(NULL);
-      if (timeout && currentTime > startTime + SOCKET_DATA_TRANSFER_TIMEOUT) {
-        throw std::runtime_error("Socket Timeout");
-      }
       continue;
     }
 
@@ -36,7 +52,8 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
       }
     } else {
       pos += bytesRead;
-      startTime = time(NULL);
+      // Only the idle timer resets on progress; absolute deadline does not.
+      idleStartTime = time(NULL);
     }
   }
 }
