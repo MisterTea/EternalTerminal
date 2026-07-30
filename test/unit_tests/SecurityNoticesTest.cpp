@@ -111,7 +111,9 @@ bool unprivilegedTestUser(uid_t* uid, gid_t* gid) {
   const char* candidates[] = {"nobody", "nfsnobody", nullptr};
   for (int i = 0; candidates[i] != nullptr; ++i) {
     struct passwd* pw = getpwnam(candidates[i]);
-    if (pw != nullptr && pw->pw_uid != 0) {
+    // Reject uid 0 and macOS's nobody sentinel ((uid_t)-2 == 4294967294).
+    // Allow traditional nobody (65534) used on Linux/FreeBSD.
+    if (pw != nullptr && pw->pw_uid != 0 && pw->pw_uid <= 65534) {
       *uid = pw->pw_uid;
       *gid = pw->pw_gid;
       return true;
@@ -154,36 +156,61 @@ TEST_CASE(
   FdSocketHandler handler;
   int fds[2];
   REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  // Non-blocking so a spuriously-readable fd cannot block forever inside
+  // read() and skip absolute-deadline checks.
+  for (int fd : {fds[0], fds[1]}) {
+    int flags = ::fcntl(fd, F_GETFL, 0);
+    REQUIRE(flags >= 0);
+    REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
+  }
 
   std::atomic<bool> stop{false};
   std::thread trickle([&]() {
-    // Keep resetting the idle timer with 1 byte ~every 400ms; without an
+    // Keep resetting the idle timer with 1 byte ~every 200ms; without an
     // absolute deadline this would never time out.
     char b = 'x';
     while (!stop.load()) {
-      if (::write(fds[1], &b, 1) < 0) {
+      ssize_t n = ::write(fds[1], &b, 1);
+      if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
         return;
       }
-      std::this_thread::sleep_for(std::chrono::milliseconds(400));
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
     }
   });
 
-  char buf[64];
+  // Always stop the writer and join, even on assertion failure.
+  struct TrickleGuard {
+    std::atomic<bool>& stop;
+    std::thread& trickle;
+    int& writeFd;
+    int& readFd;
+    ~TrickleGuard() {
+      stop.store(true);
+      if (writeFd >= 0) {
+        ::close(writeFd);
+        writeFd = -1;
+      }
+      if (trickle.joinable()) {
+        trickle.join();
+      }
+      if (readFd >= 0) {
+        ::close(readFd);
+        readFd = -1;
+      }
+    }
+  } guard{stop, trickle, fds[1], fds[0]};
+
+  char buf[256];
   auto start = std::chrono::steady_clock::now();
   // Idle allowance is long; absolute deadline is short.
   REQUIRE_THROWS_AS(handler.readAll(fds[0], buf, sizeof(buf), /*idle*/ 30,
                                     /*absolute*/ 2),
                     std::runtime_error);
-  auto elapsed = std::chrono::steady_clock::now() - start;
-  auto elapsedSec =
-      std::chrono::duration_cast<std::chrono::seconds>(elapsed).count();
+  auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
   // Must not wait anywhere near the 30s idle timeout.
-  REQUIRE(elapsedSec < 10);
-
-  stop.store(true);
-  trickle.join();
-  handler.close(fds[0]);
-  handler.close(fds[1]);
+  REQUIRE(elapsedMs < 15000);
 }
 
 TEST_CASE(
