@@ -819,23 +819,78 @@ RunProfile detectFraming(const string& name, double timeoutSec) {
   return prof;
 }
 
-// Is bracketed paste enabled at the prompt *right now*? Reads a trailing window
-// of scrollback and inspects the last paste toggle: an idle prompt re-arms it
+// The state of the far-side prompt just before a command is injected: where to
+// start capturing, and whether bracketed paste is armed there.
+struct PromptSnapshot {
+  int64_t cursor = 0;   // capture everything at or after this offset
+  bool pasteOn = true;  // is bracketed paste armed at the live prompt?
+};
+
+// Wait for the session to go quiet, then snapshot the capture cursor and the
+// live paste state together, from the same drained window.
+//
+// The settling is not politeness, it is correctness. `run` frames a command as
+// "everything after this cursor", so any byte still in flight from the previous
+// command lands on the wrong side of it and is read as part of *this* one. The
+// byte that matters is the OSC-133 D that precmd emits for the previous line:
+// snapshot too early and the capture opens with an orphan done-mark, which is
+// exactly what a line we just interrupted leaves behind ("D;130"). Draining to
+// quiescence first keeps that noise where it belongs -- behind the cursor.
+//
+// Paste state comes from the same window: an idle prompt re-arms paste
 // (\e[?2004h) after each command, while a full-screen app or a redraw can leave
 // it off (\e[?2004l). Only a trailing ?2004l counts as off; with no toggle in
-// the window we assume on (the prompt enabled it earlier), so bracket falls back
-// to the here-doc only on positive evidence that paste is currently off.
-bool pasteEnabledNow(const string& name) {
+// the window we assume on (the prompt enabled it earlier), so bracket falls
+// back to the here-doc only on positive evidence that paste is currently off.
+//
+// `quietMs` is how long the far side must stay silent to count as settled, and
+// `awaitActivity` makes the wait start only once something new has arrived --
+// needed right after sending a Ctrl-C, where the shell has not yet had a round
+// trip to react and "silent" would otherwise mean "hasn't heard us yet".
+//
+// Bounded: a session that never goes quiet (a background job writing to the
+// tty) gets `maxSec` and then we proceed with what we have.
+PromptSnapshot snapshotPrompt(const string& name, double maxSec,
+                              int quietMs = 60, bool awaitActivity = false) {
+  PromptSnapshot snap;
   const int64_t head = sessionHeadCursor(name);
-  if (head < 0) return true;
-  // Drain the trailing ~8 KB window up to the current (idle-prompt) head.
-  const string acc = readScroll(name, head > 8192 ? head - 8192 : 0, 1.0,
-                                [](const string&, bool grew) { return !grew; });
-  const size_t on = acc.rfind("\x1b[?2004h");
-  const size_t off = acc.rfind("\x1b[?2004l");
-  if (off == string::npos) return true;
-  if (on == string::npos) return false;
-  return on > off;
+  if (head < 0) return snap;
+  // Read a trailing ~8 KB window so the last paste toggle is in view. That
+  // first read is history, not activity, so it must not restart the quiet
+  // clock: on an already-idle prompt this settles in one extra poll.
+  int64_t cursor = head > 8192 ? head - 8192 : 0;
+  string tail;
+  bool seeded = false, sawActivity = false;
+  const auto quiet = std::chrono::milliseconds(quietMs);
+  const auto deadline = std::chrono::steady_clock::now() +
+                        std::chrono::milliseconds((long long)(maxSec * 1000));
+  auto quietSince = std::chrono::steady_clock::now();
+  while (true) {
+    uint8_t op = 0;
+    string payload;
+    if (!oneShot(name, CTL_READ, control_proto::encodeCursor(cursor), &op,
+                 &payload))
+      break;
+    ScrollbackRead r = control_proto::decodeReadResp(payload);
+    const bool grew = (r.nextCursor != cursor);
+    cursor = r.nextCursor;
+    tail += r.data;
+    const auto now = std::chrono::steady_clock::now();
+    if (grew && seeded) {
+      sawActivity = true;
+      quietSince = now;
+    } else if (now - quietSince >= quiet && (sawActivity || !awaitActivity)) {
+      break;  // the prompt has stopped moving
+    }
+    seeded = true;
+    if (now >= deadline) break;
+    ::usleep(20 * 1000);
+  }
+  snap.cursor = cursor;
+  const size_t on = tail.rfind("\x1b[?2004h");
+  const size_t off = tail.rfind("\x1b[?2004l");
+  snap.pasteOn = (off == string::npos) || (on != string::npos && on > off);
+  return snap;
 }
 
 /*
@@ -887,13 +942,17 @@ int runCommand(const string& name, const string& command, double timeoutSec,
   }
 
   const bool oscRead = prof.oscRead;
+  // Settle the prompt, then take the capture cursor and the live paste state
+  // from that same quiet moment (see snapshotPrompt: a cursor sampled while the
+  // previous command is still draining captures its trailing marks as if they
+  // were ours).
+  const PromptSnapshot snap = snapshotPrompt(name, 2.0);
   // Inject bare via bracketed paste only when the prompt supports it, the body
   // cannot collide with the paste terminator, AND paste is enabled at the live
   // prompt right now (a full-screen app or a redraw may have turned it off).
   // Otherwise fall back to the eval here-doc, which needs neither.
-  const bool useBracket = prof.bracket &&
-                          command.find("\x1b[201~") == string::npos &&
-                          pasteEnabledNow(name);
+  const bool useBracket =
+      prof.bracket && command.find("\x1b[201~") == string::npos && snap.pasteOn;
   // fish and zsh accept $status for the exit code; bash/sh/dash need $?.
   const string statusVar = prof.usesStatusVar ? "$status" : "$?";
 
@@ -904,7 +963,7 @@ int runCommand(const string& name, const string& command, double timeoutSec,
   const string bodyMark = "ETCTL_BODY_" + tag;  // here-doc delimiter
   const string mark = "ETCTL_" + tag;           // echo-marker (non-OSC framings)
 
-  int64_t cursor = sessionHeadCursor(name);
+  int64_t cursor = snap.cursor;
   if (cursor < 0) cursor = 0;
 
   // The 2x2 of the two axes: inject via paste vs eval here-doc, and read the
@@ -989,33 +1048,43 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     }
     // Continuation guard (bracketed inject only): if the pasted body is
     // malformed (unbalanced quote, incomplete construct) the shell parks on a
-    // continuation prompt and our end marker never comes. Detect that and Ctrl-C
-    // to recover, rather than hang to the full timeout. A legitimately slow
-    // command is never interrupted (it keeps executing, not re-prompting).
+    // continuation prompt and our end marker never comes. Detect that and
+    // Ctrl-C to recover, rather than hang to the full timeout.
+    //
+    // The signal is positive evidence that the shell *re-prompted without
+    // running anything*: zle drops bracketed paste (\e[?2004l) to evaluate what
+    // it received, then re-arms it (\e[?2004h) to read the continuation. A
+    // command that is actually executing leaves paste off for its whole
+    // duration, so this cannot fire on a slow command -- and, unlike a
+    // deadline, it cannot fire on a slow *link* either. Absence of a mark is
+    // never enough on its own: a late C is indistinguishable from a parked
+    // shell, and acting on that guess is what discarded the output of commands
+    // that had already run.
     if (useBracket) {
       bool parked = false;
+      const size_t pasteOff = acc.find("\x1b[?2004l");
+      const bool rearmed = pasteOff != string::npos &&
+                           acc.find("\x1b[?2004h", pasteOff) != string::npos;
       if (oscRead) {
-        // preexec emits C the instant the command is accepted; if none appears
-        // shortly after injection, the line was never accepted (parked).
-        if (std::regex_search(acc, kOsc133C)) {
+        // Either mark proves the line was accepted: C is emitted by preexec the
+        // instant it runs, D by precmd when it finishes. Once accepted, never
+        // interrupt -- whatever is missing, the command is the shell's now.
+        if (std::regex_search(acc, kOsc133C) ||
+            std::regex_search(acc, kOsc133D))
           accepted = true;
-        } else if (!accepted && std::chrono::steady_clock::now() - typedAt >
-                                    std::chrono::milliseconds(2000)) {
-          parked = true;
-        }
+        parked = !accepted && rearmed;
       } else {
         // kBracketMark has no C mark, and two shells park two ways:
-        //  - bash runs the leading marker line then parks on PS2, toggling paste
-        //    off (?2004l) then back on (?2004h): a ?2004h after that ?2004l,
-        //    with no end marker, means it re-prompted = parked (fast).
+        //  - bash runs the leading marker line then parks on PS2, toggling
+        //    paste off (?2004l) then back on (?2004h): that re-arm, with no
+        //    end marker, means it re-prompted = parked (fast).
         //  - fish parks atomically, running nothing and never toggling paste:
         //    no executed start marker (mark at column 0, vs the echoed
         //    `echo <mark>`) after a short grace = parked.
         // A still-running command keeps paste disabled and has already emitted
-        // the executed marker, so neither branch fires: it is never interrupted.
-        size_t off = acc.find("\x1b[?2004l");
-        if (off != string::npos &&
-            acc.find("\x1b[?2004h", off) != string::npos) {
+        // the executed marker, so neither branch fires: it is never
+        // interrupted.
+        if (rearmed) {
           parked = true;
         } else if (std::chrono::steady_clock::now() - typedAt >
                        std::chrono::milliseconds(2000) &&
@@ -1025,6 +1094,12 @@ int runCommand(const string& name, const string& command, double timeoutSec,
       }
       if (parked) {
         cmdWrite(name, "\x03");  // Ctrl-C to abort the continuation prompt
+        // Let the interrupt land and the shell re-prompt before returning. The
+        // D that precmd emits for the aborted line has to be in the scrollback
+        // *before* the next run snapshots its cursor, or that run opens its
+        // capture on an orphan done-mark. Wait for the shell to actually react
+        // (a round trip away), not merely for the line to be quiet.
+        snapshotPrompt(name, 2.0, 200, /*awaitActivity=*/true);
         fprintf(stderr,
                 "etctl: command looks incomplete (shell parked on a "
                 "continuation prompt); aborted\n");
@@ -1034,8 +1109,12 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     ::usleep(80 * 1000);
   }
   // A bracketed inject that never completed may have left the shell parked on a
-  // continuation prompt; recover it so the next run is not wedged.
-  if (useBracket) cmdWrite(name, "\x03");
+  // continuation prompt; recover it, and drain the aftermath so the next run is
+  // not handed an orphan done-mark.
+  if (useBracket) {
+    cmdWrite(name, "\x03");
+    snapshotPrompt(name, 2.0, 200, /*awaitActivity=*/true);
+  }
   fprintf(stderr, "etctl: run timed out after %.1fs\n", timeoutSec);
   return 124;
 }

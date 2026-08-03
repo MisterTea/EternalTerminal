@@ -182,3 +182,62 @@ TEST_CASE("extractOsc133 preserves real output that looks prep-like",
     REQUIRE(body == "plain\r\n");
   }
 }
+
+// Regression: a capture that opens on prompt noise from the *previous* command.
+// `run` snapshots its cursor at what it believes is an idle prompt, but a byte
+// still in flight lands on the far side of it. The one that matters is the D
+// precmd emits for the previous line -- a line that was just Ctrl-C'd leaves a
+// bare "D;130" with no C of its own. Anchoring on the first D latched onto that
+// orphan, and since `acc` only grows at the end, no later output could dislodge
+// it: the read never completed, the command's output was discarded, and the
+// session looked wedged. See bug-reports/etctl-run-false-parked-detection.md.
+TEST_CASE("extractOsc133 ignores orphan done-marks from the previous prompt",
+          "[Osc133]") {
+  string body;
+  int code = -999;
+  const string A_BEL = "\x1b]133;A\x07";
+  const string B_BEL = "\x1b]133;B\x07";
+  // What zsh actually emits after a Ctrl-C at a continuation prompt: the
+  // aborted line's D, then a fresh prompt, then our command.
+  const string orphan = dBel(130) + A_BEL + "[15:24:43] ~ " + B_BEL;
+
+  SECTION("orphan D before the command is skipped") {
+    REQUIRE(extractOsc133(orphan + C_BEL + "RECOVERED\r\n" + dBel(0), &body,
+                          &code));
+    REQUIRE(body == "RECOVERED\r\n");
+    REQUIRE(code == 0);  // ours, not the interrupted line's 130
+  }
+
+  SECTION("several orphan Ds are skipped") {
+    REQUIRE(extractOsc133(orphan + orphan + C_BEL + "out\r\n" + dBel(3), &body,
+                          &code));
+    REQUIRE(body == "out\r\n");
+    REQUIRE(code == 3);
+  }
+
+  SECTION("an orphan D still leaves the next command's D authoritative") {
+    // A chatty integration emits another D at the following prompt; the first D
+    // *after our C* is still the one that ends our output.
+    REQUIRE(extractOsc133(
+        orphan + C_BEL + "mine\r\n" + dBel(7) + A_BEL + B_BEL + dBel(0), &body,
+        &code));
+    REQUIRE(body == "mine\r\n");
+    REQUIRE(code == 7);
+  }
+
+  SECTION("orphan D alone is not a completed command") {
+    REQUIRE_FALSE(extractOsc133(orphan, &body, &code));
+  }
+
+  SECTION("orphan D then a C but no D yet: still running") {
+    REQUIRE_FALSE(extractOsc133(orphan + C_BEL + "partial", &body, &code));
+  }
+
+  SECTION("fish's annotation C before the real C, behind an orphan D") {
+    REQUIRE(extractOsc133(orphan + cAid("1") + fishLead("echo hi") + C_BEL +
+                              "hi\r\n" + dAid(0, "1"),
+                          &body, &code));
+    REQUIRE(body == "hi\r\n");
+    REQUIRE(code == 0);
+  }
+}
