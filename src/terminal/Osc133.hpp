@@ -83,26 +83,51 @@ inline void trimPromptPrep(std::string* body) {
 
 // Pull a command's output and exit code out of an OSC-133-framed stream. `acc`
 // is the raw bytes captured since just before the command was typed. Returns
-// true once the command's done-mark has arrived. Anchor on the FIRST D: it is
-// this command's, and a chatty integration (fish) emits another D at the next
-// prompt that must not be mistaken for it. Then take the LAST C before that D:
-// fish and xonsh emit a semantic C annotation (";cmdline_url", ";aid") before
-// the real output-start C, and tcsh can emit stray Cs, so the closest C to the
-// output is the right boundary. `body` is the bytes between, with prompt-prep
-// trimmed from both ends; `code` is D's exit status, or -1 if D carried none.
+// true once the command's done-mark has arrived.
+//
+// Anchor on the first C, not on the first D. Everything before that C belongs
+// to the prompt that was already on screen when capture started, and a shell
+// that is still settling puts a D there: precmd emits the *previous* line's
+// done-mark, so a line that was just Ctrl-C'd contributes a bare "D;130" with
+// no C of its own. Anchoring on the first D would latch onto that orphan --
+// and because `acc` only ever grows at the end, the first D never changes, so
+// the read could never complete no matter how much valid output arrived after
+// it. That is a permanent wedge, not a slow read; skipping orphan Ds is what
+// keeps a stale byte from poisoning the rest of the session.
+//
+// Within the command's own range the D to use is still the FIRST one (a chatty
+// integration such as fish emits another at the next prompt), and the C is the
+// LAST one before it: fish and xonsh emit a semantic C annotation
+// (";cmdline_url", ";aid") ahead of the real output-start C, and tcsh can emit
+// stray Cs, so the closest C to the output is the right boundary. `body` is the
+// bytes between, with prompt-prep trimmed from both ends; `code` is D's exit
+// status, or -1 if D carried none.
 inline bool extractOsc133(const std::string& acc, std::string* body,
                           int* code) {
-  std::smatch dm;
-  if (!std::regex_search(acc, dm, kOsc133D)) return false;  // not finished yet
-  *code = dm[2].matched ? atoi(dm[2].str().c_str()) : -1;
-  const std::string beforeD = acc.substr(0, (size_t)dm.position(0));
+  const std::sregex_iterator kEnd;
+  std::smatch cm;
+  if (!std::regex_search(acc, cm, kOsc133C)) return false;  // not started yet
+  const size_t firstC = (size_t)cm.position(0);
+
+  // First D at or after the first C: this command's done-mark.
+  auto dIt =
+      std::sregex_iterator(acc.begin() + (long)firstC, acc.end(), kOsc133D);
+  if (dIt == kEnd) return false;  // not finished yet
+  const std::smatch& dm = *dIt;
+  const size_t dPos = firstC + (size_t)dm.position(0);
+
+  // Last C before that D.
   size_t bodyStart = std::string::npos;
-  for (auto it = std::sregex_iterator(beforeD.begin(), beforeD.end(), kOsc133C);
-       it != std::sregex_iterator(); ++it) {
-    bodyStart = (size_t)it->position(0) + it->length(0);  // last C before D
+  for (auto it = std::sregex_iterator(acc.begin(), acc.begin() + (long)dPos,
+                                      kOsc133C);
+       it != kEnd; ++it) {
+    bodyStart = (size_t)it->position(0) + it->length(0);
   }
-  if (bodyStart == std::string::npos) return false;  // D seen, but no C yet
-  *body = beforeD.substr(bodyStart);
+  if (bodyStart == std::string::npos)
+    return false;  // unreachable: firstC < dPos
+
+  *code = dm[2].matched ? atoi(dm[2].str().c_str()) : -1;
+  *body = acc.substr(bodyStart, dPos - bodyStart);
   trimPromptPrep(body);
   return true;
 }
