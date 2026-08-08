@@ -29,6 +29,23 @@ class ClientConnection : public Connection {
   bool connect();
 
   /**
+   * @brief Adopts a session an earlier process left behind on the server.
+   *
+   * The server keeps a session alive when its client goes away (it cannot tell
+   * a crashed client from one that is about to reconnect), and it recognizes a
+   * returning client purely by id and key. So a *new* process holding the same
+   * credentials can take the session over: connect, expect RETURNING_CLIENT,
+   * then run the ordinary recovery handshake in take-over mode. The caller must
+   * skip the initial-payload exchange, which belongs to session setup and would
+   * desync a session that is already running.
+   *
+   * @return true when the session was adopted. False means there was nothing to
+   * adopt (unknown or expired credentials, or too much output produced while we
+   * were away to replay), and the caller should fall back to a fresh session.
+   */
+  bool attach();
+
+  /**
    * @brief Extends the base behavior to spawn a reconnect thread after closing.
    */
   virtual void closeSocketAndMaybeReconnect();

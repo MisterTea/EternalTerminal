@@ -7,6 +7,7 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SessionCredentials.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -196,6 +197,12 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
         ("N,no-terminal", "Do not create a terminal")           //
+        ("attach",
+         "Name this session NAME and adopt the one already running under that "
+         "name on the host, keeping its shell, cwd and running jobs. Starts a "
+         "new session (and remembers it as NAME) when there is nothing to "
+         "adopt, so it is safe to use every time.",
+         cxxopts::value<std::string>())  //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
@@ -505,15 +512,45 @@ int main(int argc, char** argv) {
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
+
+    // Bootstrapping over SSH mints fresh credentials and a fresh remote shell.
+    // Under --attach, cache them under the session name so a later `et` can
+    // adopt this session rather than stranding it.
+    const bool attachRequested = result.count("attach") > 0;
+    const string sessionName =
+        attachRequested ? result["attach"].as<string>() : string();
+    auto bootstrapNewSession = [&]() -> pair<string, string> {
+      pair<string, string> fresh = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+          etterminal_path, serverFifo, ssh_options);
+      if (attachRequested) {
+        session_creds::save(sessionName, fresh.first, fresh.second);
+      }
+      return fresh;
+    };
+
+    // With --attach, try the cached credentials first. Nothing cached simply
+    // means there is no session under that name yet, so fall through and make
+    // one; the client does the same if the server turns out to disagree.
+    pair<string, string> idpasskeypair;
+    bool attachExisting = false;
+    if (attachRequested) {
+      string savedId, savedKey;
+      if (session_creds::load(sessionName, &savedId, &savedKey)) {
+        idpasskeypair = std::make_pair(savedId, savedKey);
+        attachExisting = true;
+      }
+    }
+    if (!attachExisting) {
+      idpasskeypair = bootstrapNewSession();
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
-        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
+        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
+        attachExisting, bootstrapNewSession);
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
