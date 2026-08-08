@@ -69,6 +69,77 @@ bool ClientConnection::connect() {
   return false;
 }
 
+bool ClientConnection::attach() {
+  try {
+    VLOG(1) << "Attaching to an existing session";
+    socketFd = socketHandler->connect(remoteEndpoint);
+    if (socketFd == -1) {
+      VLOG(1) << "Could not connect to host";
+      return false;
+    }
+    et::ConnectRequest request;
+    request.set_clientid(id);
+    request.set_version(PROTOCOL_VERSION);
+    socketHandler->writeProto(socketFd, request, true);
+    et::ConnectResponse response =
+        socketHandler->readProto<et::ConnectResponse>(socketFd, true);
+    if (response.status() != RETURNING_CLIENT) {
+      // NEW_CLIENT means the server has no session under these credentials, so
+      // it just created an empty one for us; INVALID_KEY means it never had
+      // one. Either way there is nothing to adopt.
+      VLOG(1) << "Nothing to attach to: status " << response.status();
+      socketHandler->close(socketFd);
+      socketFd = -1;
+      return false;
+    }
+    if (!response.has_writesequencenumber()) {
+      // A server that predates take-over cannot tell us where its outbound
+      // stream has reached, and guessing is not safe: assuming zero asks it to
+      // replay the whole session, including setup packets that abort the run
+      // loop. Decline and let the caller start a session normally.
+      LOG(INFO) << "Server does not support session take-over; falling back";
+      socketHandler->close(socketFd);
+      socketFd = -1;
+      return false;
+    }
+
+    // Build the streams detached (fd -1): recover() owns the handshake and
+    // revives them onto the socket, and it refuses to run against a live fd.
+    const int fd = socketFd;
+    socketFd = -1;
+    reader = shared_ptr<BackedReader>(
+        new BackedReader(socketHandler,
+                         shared_ptr<CryptoHandler>(
+                             new CryptoHandler(key, SERVER_CLIENT_NONCE_MSB)),
+                         -1));
+    writer = shared_ptr<BackedWriter>(
+        new BackedWriter(socketHandler,
+                         shared_ptr<CryptoHandler>(
+                             new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
+                         -1));
+    // Declare ourselves caught up on everything the session has already sent.
+    // We want the live stream from here, not the history: replaying it would
+    // push the original setup packets through a run loop that is long past
+    // setup. Must happen before recover(), which reports our read position.
+    reader->adoptSequenceNumber(response.writesequencenumber());
+    if (!recover(fd, /*takingOverSession=*/true)) {
+      // recover() closed the socket. The usual cause is a session that outran
+      // the server's replay buffer while we were gone.
+      LOG(INFO) << "Could not recover the session; falling back";
+      return false;
+    }
+    LOG(INFO) << "Attached to existing session " << id;
+    return true;
+  } catch (const runtime_error& err) {
+    LOG(INFO) << "Got failure during attach: " << err.what();
+    if (socketFd != -1) {
+      socketHandler->close(socketFd);
+      socketFd = -1;
+    }
+  }
+  return false;
+}
+
 void ClientConnection::closeSocketAndMaybeReconnect() {
   waitReconnect();
   LOG(INFO) << "Closing socket";

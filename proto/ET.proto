@@ -24,6 +24,15 @@ enum ConnectStatus {
 message ConnectResponse {
   optional ConnectStatus status = 1;
   optional string error = 2;
+  // How many packets this side has already sent on the session's outbound
+  // stream. Only meaningful with RETURNING_CLIENT, and only used by a client
+  // that is adopting a session a previous process left behind: it has received
+  // none of them, so without this it would ask for the whole session to be
+  // replayed, including the setup packets its run loop is long past. Adopting
+  // the count makes the client "already caught up" and the replay empty. An
+  // older server leaves it unset, which reads as 0 and preserves the old
+  // (full-replay) behavior.
+  optional int64 writeSequenceNumber = 3;
 }
 
 message SequenceHeader {

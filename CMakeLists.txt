@@ -509,6 +509,7 @@ add_library(
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/ServerFifoPath.hpp
+  src/terminal/SessionCredentials.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp

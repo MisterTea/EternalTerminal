@@ -46,6 +46,13 @@ class Connection {
   inline shared_ptr<BackedReader> getReader() { return reader; }
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
 
+  /**
+   * @brief Packets sent so far on the outbound stream (0 before setup).
+   */
+  inline int64_t getWriterSequenceNumber() {
+    return writer ? writer->getSequenceNumber() : 0;
+  }
+
   /** @brief File descriptor of the currently connected socket or -1. */
   int getSocketFd() {
     lock_guard<std::recursive_mutex> guard(connectionMutex);
@@ -101,10 +108,17 @@ class Connection {
  protected:
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
+   * @param newSocketFd Socket to recover onto.
+   * @param takingOverSession True when *this process* did not send the packets
+   * the peer has already received, i.e. a new process is adopting a session an
+   * earlier one left behind. Our write counter starts at zero while the peer's
+   * read counter is N, so the outbound diff would go negative; adopt N instead
+   * and send an empty catchup. The inbound direction is untouched: our read
+   * counter is genuinely zero, so the peer replays what it still holds.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd);
+  bool recover(int newSocketFd, bool takingOverSession = false);
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;
