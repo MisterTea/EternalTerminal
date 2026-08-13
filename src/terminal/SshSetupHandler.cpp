@@ -5,6 +5,20 @@
 namespace et {
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
 
+bool SshSetupHandler::IsSshConfigPathSafeForProxyJump(const string& path) {
+  if (path.empty() || path.front() != '/') {
+    return false;
+  }
+  for (unsigned char c : path) {
+    bool asciiAlphaNumeric = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                             (c >= '0' && c <= '9');
+    if (!asciiAlphaNumeric && c != '/' && c != '.' && c != '_' && c != '-') {
+      return false;
+    }
+  }
+  return true;
+}
+
 string genCommand(const string& passkey, const string& id,
                   const string& clientTerm, const string& user, bool kill,
                   const string& etterminal_path, const string& options) {
@@ -56,11 +70,16 @@ pair<string, string> SshSetupHandler::SetupSsh(
   }
 
   std::vector<std::string> ssh_args;
+  if (!sshConfigPath_.empty()) {
+    // An explicit `-F` suppresses OpenSSH's user and system configuration.
+    // OpenSSH also propagates it to the implicit proxy command created by
+    // `-J`, so the explicit jumphost uses the same selected policy.
+    ssh_args.push_back("-F");
+    ssh_args.push_back(sshConfigPath_);
+  }
   if (!jumphost.empty()) {
-    ssh_args = {
-        "-J",
-        jumphost,
-    };
+    ssh_args.push_back("-J");
+    ssh_args.push_back(jumphost);
   }
 
   ssh_args.push_back(SSH_USER_PREFIX + host_alias);
@@ -141,6 +160,10 @@ pair<string, string> SshSetupHandler::SetupSsh(
                               : parsedJump.user + "@" + jumphostAddr;
 
     std::vector<std::string> jump_ssh_args;
+    if (!sshConfigPath_.empty()) {
+      jump_ssh_args.push_back("-F");
+      jump_ssh_args.push_back(sshConfigPath_);
+    }
     if (!parsedJump.portSuffix.empty()) {
       // portSuffix includes the colon, e.g. ":22"
       jump_ssh_args.push_back("-p");
