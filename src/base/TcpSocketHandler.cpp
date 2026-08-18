@@ -294,9 +294,13 @@ void TcpSocketHandler::initSocket(int fd) {
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int)));
   }
   {
-    // Set linger if possible
+    // Linger is disabled deliberately. With l_onoff=1, closing a socket that
+    // still has unacknowledged data blocks in ::close() for the full l_linger
+    // seconds -- and UnixSocketHandler::close() calls it while holding the
+    // process-wide globalMutex, so one connection tearing down freezes every
+    // thread in etserver, terminal sessions included.
     struct linger so_linger;
-    so_linger.l_onoff = 1;
+    so_linger.l_onoff = 0;
     so_linger.l_linger = 5;
     FATAL_FAIL_UNLESS_EINVAL(setsockopt(
         fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
