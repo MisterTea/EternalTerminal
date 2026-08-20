@@ -219,7 +219,10 @@ int main(int argc, char** argv) {
       for (const auto& session : listSessions()) {
         char saved[32];
         struct tm savedTm;
-        localtime_r(&session.savedAt, &savedTm);
+        // time_t is long on some platforms and long long on others; go
+        // through an explicit time_t so this compiles everywhere.
+        const time_t savedAt = static_cast<time_t>(session.savedAt);
+        localtime_r(&savedAt, &savedTm);
         strftime(saved, sizeof(saved), "%Y-%m-%d %H:%M:%S", &savedTm);
         CLOG(INFO, "stdout")
             << left << setw(24) << session.name << setw(24) << session.host
