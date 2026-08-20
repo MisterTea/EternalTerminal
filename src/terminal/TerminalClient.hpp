@@ -51,6 +51,15 @@ class TerminalClient {
    * alive. */
   void run(const string& command, const bool noexit);
   /**
+   * @brief True when run() ended because the server reported the session is
+   * gone (INVALID_KEY on reconnect), as opposed to the local console going
+   * away.  Used to decide whether the saved session file may be deleted.
+   */
+  bool sessionEndedByServer() {
+    return connection &&
+           connection->lastStatus() == et::ConnectStatus::INVALID_KEY;
+  }
+  /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
   void shutdown() {

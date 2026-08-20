@@ -166,6 +166,7 @@ void ClientConnection::pollReconnect() {
             LOG(INFO) << "Got invalid key on reconnect, assume that server has "
                          "terminated the session.";
             // This means that the server has terminated the connection.
+            lastStatus_ = INVALID_KEY;
             shuttingDown = true;
             socketHandler->close(newSocketFd);
             return;

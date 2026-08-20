@@ -96,9 +96,12 @@ int main(int argc, char** argv) {
 
   // Override easylogging handler for sigint
 
-  // Name of the session being started (empty when unnamed); deleted on a
-  // clean exit, kept on signal exits so the session can be reattached.
+  // Name of the session being started (empty when unnamed).  The saved file
+  // is deleted when the server ends the session, and kept otherwise so the
+  // session can be reattached later.
   string sessionName = "";
+  // Set after run() returns: true when the server ended the session.
+  bool sessionEndedByServer = false;
   ::signal(SIGINT, et::InterruptSignalHandler);
 
   Options sshConfigOptions = {
@@ -302,6 +305,7 @@ int main(int argc, char** argv) {
       }
       int attachKeepalive = extractSingleOptionWithDefault<int>(
           result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
+      bool attachSessionEnded = false;
       try {
         TerminalClient attachClient(
             attachSocket, attachPipeSocket, attachEndpoint, session->id,
@@ -313,6 +317,7 @@ int main(int argc, char** argv) {
         attachClient.run(
             result.count("command") ? result["command"].as<string>() : "",
             result.count("noexit"));
+        attachSessionEnded = attachClient.sessionEndedByServer();
       } catch (const runtime_error& err) {
         if (string(err.what()) ==
             TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
@@ -326,8 +331,12 @@ int main(int argc, char** argv) {
         }
         exit(1);
       }
-      // Clean exit: the session is done, drop the saved file.
-      deleteSession(attachName);
+      // Only drop the saved file when the server says the session is gone
+      // (the remote shell ended).  A local exit — console closed, window
+      // died — leaves the remote shell running, so the file stays.
+      if (attachSessionEnded) {
+        deleteSession(attachName);
+      }
       exit(0);
     }
     string username = "";
@@ -588,6 +597,7 @@ int main(int argc, char** argv) {
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
+    sessionEndedByServer = terminalClient.sessionEndedByServer();
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {
@@ -604,10 +614,11 @@ int main(int argc, char** argv) {
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
 
-  // A clean exit ends the session: drop the saved session file. Signal
-  // exits (and crashes) skip this on purpose so the session can be
-  // reattached later.
-  if (!sessionName.empty()) {
+  // Drop the saved session file only when the server ended the session
+  // (the remote shell exited; observed as INVALID_KEY).  Any other exit —
+  // console EOF from a closed window, signal, crash — leaves the remote
+  // shell running, so the file stays and the session can be reattached.
+  if (!sessionName.empty() && sessionEndedByServer) {
     deleteSession(sessionName);
   }
 
