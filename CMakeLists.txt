@@ -496,6 +496,8 @@ add_library(
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
+  src/terminal/SessionStore.hpp
+  src/terminal/SessionStore.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
@@ -798,7 +800,10 @@ else(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 600
+      # The router-restart integration tests spin up full client/server/terminal
+      # stacks (one with 14 concurrent sessions) and need wall-clock headroom on
+      # a loaded CI runner.
+      PROPERTIES TIMEOUT 900
     )
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND AND NOT WIN32)

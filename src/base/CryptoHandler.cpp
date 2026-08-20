@@ -7,7 +7,8 @@
   }
 namespace et {
 
-CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
+CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB)
+    : nonceMSB(nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (-1 == sodium_init()) {
     STFATAL << "libsodium init failed";
@@ -16,6 +17,12 @@ CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
     STFATAL << "Invalid key length";
   }
   memcpy(key, &_key[0], _key.length());
+  memset(nonce, 0, crypto_secretbox_NONCEBYTES);
+  nonce[crypto_secretbox_NONCEBYTES - 1] = nonceMSB;
+}
+
+void CryptoHandler::resetNonce() {
+  lock_guard<std::mutex> guard(cryptoMutex);
   memset(nonce, 0, crypto_secretbox_NONCEBYTES);
   nonce[crypto_secretbox_NONCEBYTES - 1] = nonceMSB;
 }

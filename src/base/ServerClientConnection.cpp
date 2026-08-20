@@ -36,7 +36,7 @@ ServerClientConnection::~ServerClientConnection() {
   }
 }
 
-bool ServerClientConnection::recoverClient(int newSocketFd) {
+bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset) {
   bool idle = false;
   if (!recoveryInFlight.compare_exchange_strong(idle, true)) {
     // Waiting for the reconnect that is already running would hold this handler
@@ -67,9 +67,11 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
   socketFd = -1;
 
-  bool success = recover(newSocketFd);
+  bool success = recover(newSocketFd, forceReset);
   if (success) {
-    if (oldSocketFd != -1) {
+    // On the resume path the connection was constructed with this very fd
+    // (oldSocketFd == newSocketFd); closing it would kill the live session.
+    if (oldSocketFd != -1 && oldSocketFd != newSocketFd) {
       socketHandler->close(oldSocketFd);
     }
     return true;

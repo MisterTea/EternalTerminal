@@ -22,8 +22,17 @@ namespace et {
 class TerminalClient {
  public:
   /**
+   * @brief Message thrown when a reattach fails because the server has no
+   * session for the saved id anymore (ConnectStatus INVALID_KEY).
+   */
+  static const string INVALID_SESSION_CONNECT_ERROR;
+
+  /**
    * @brief Configures the client with the required sockets, console, and
    * tunnels.
+   * @param _maxConnectAttempts Initial connect attempts before giving up.
+   * @param _exitOnConnectFailure When false, a failed initial connect throws
+   * instead of exiting so callers can clean up (used by --attach).
    */
   TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
                  std::shared_ptr<SocketHandler> _pipeSocketHandler,
@@ -32,13 +41,24 @@ class TerminalClient {
                  bool jumphost, const string& tunnels,
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration,
-                 const vector<pair<string, string>>& envVars);
+                 const vector<pair<string, string>>& envVars,
+                 int _maxConnectAttempts = 3,
+                 bool _exitOnConnectFailure = true);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  /**
+   * @brief True when run() ended because the server reported the session is
+   * gone (INVALID_KEY on reconnect), as opposed to the local console going
+   * away.  Used to decide whether the saved session file may be deleted.
+   */
+  bool sessionEndedByServer() {
+    return connection &&
+           connection->lastStatus() == et::ConnectStatus::INVALID_KEY;
+  }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */

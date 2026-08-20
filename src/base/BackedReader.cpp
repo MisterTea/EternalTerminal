@@ -104,6 +104,15 @@ void BackedReader::revive(int newSocketFd,
   socketFd = newSocketFd;
 }
 
+void BackedReader::reset() {
+  // Caller must hold recoverMutex (see getRecoverMutex), mirroring revive().
+  localBuffer.clear();
+  partialMessage.clear();
+  sequenceNumber = 0;
+  // Restart the stream nonce so a fresh peer process stays in lockstep.
+  cryptoHandler->resetNonce();
+}
+
 int BackedReader::getPartialMessageLength() {
   if (partialMessage.length() < 4) {
     STFATAL << "Tried to construct a message header that wasn't complete";

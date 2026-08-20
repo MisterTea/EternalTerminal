@@ -10,6 +10,9 @@
 
 namespace et {
 
+const string TerminalClient::INVALID_SESSION_CONNECT_ERROR =
+    "Server has no session for this client id";
+
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
     shared_ptr<SocketHandler> _pipeSocketHandler,
@@ -17,7 +20,8 @@ TerminalClient::TerminalClient(
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
-    const vector<pair<string, string>>& envVars)
+    const vector<pair<string, string>>& envVars, int _maxConnectAttempts,
+    bool _exitOnConnectFailure)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration) {
@@ -87,31 +91,38 @@ TerminalClient::TerminalClient(
     try {
       bool fail = true;
       if (connection->connect()) {
-        connection->writePacket(
-            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
-        for (int a = 0; a < 3; a++) {
-          int clientFd = connection->getSocketFd();
-          if (clientFd < 0) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            continue;
-          }
-          if (waitOnSocketData(clientFd)) {
-            Packet initialResponsePacket;
-            if (connection->readPacket(&initialResponsePacket)) {
-              if (initialResponsePacket.getHeader() !=
-                  EtPacketType::INITIAL_RESPONSE) {
-                CLOG(INFO, "stdout") << "Error: Missing initial response\n";
-                STFATAL << "Missing initial response!";
+        if (connection->wasRecovered()) {
+          // Reattaching to a session whose server-side connection survived:
+          // the bootstrap exchange (INITIAL_PAYLOAD/INITIAL_RESPONSE) already
+          // happened when the session started, so skip it.
+          fail = false;
+        } else {
+          connection->writePacket(
+              Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+          for (int a = 0; a < 3; a++) {
+            int clientFd = connection->getSocketFd();
+            if (clientFd < 0) {
+              std::this_thread::sleep_for(std::chrono::seconds(1));
+              continue;
+            }
+            if (waitOnSocketData(clientFd)) {
+              Packet initialResponsePacket;
+              if (connection->readPacket(&initialResponsePacket)) {
+                if (initialResponsePacket.getHeader() !=
+                    EtPacketType::INITIAL_RESPONSE) {
+                  CLOG(INFO, "stdout") << "Error: Missing initial response\n";
+                  STFATAL << "Missing initial response!";
+                }
+                auto initialResponse = stringToProto<InitialResponse>(
+                    initialResponsePacket.getPayload());
+                if (initialResponse.has_error()) {
+                  CLOG(INFO, "stdout") << "Error initializing connection: "
+                                       << initialResponse.error() << endl;
+                  exit(1);
+                }
+                fail = false;
+                break;
               }
-              auto initialResponse = stringToProto<InitialResponse>(
-                  initialResponsePacket.getPayload());
-              if (initialResponse.has_error()) {
-                CLOG(INFO, "stdout") << "Error initializing connection: "
-                                     << initialResponse.error() << endl;
-                exit(1);
-              }
-              fail = false;
-              break;
             }
           }
         }
@@ -119,15 +130,34 @@ TerminalClient::TerminalClient(
       if (fail) {
         LOG(WARNING) << "Connecting to server failed: Connect timeout";
         connectFailCount++;
-        if (connectFailCount == 3) {
+        if (!_exitOnConnectFailure && connection &&
+            connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
+          // The server knows this id no longer exists; surface a distinct
+          // error so callers can discard the saved session.
+          throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
+        }
+        if (connectFailCount >= _maxConnectAttempts) {
           throw std::runtime_error("Connect Timeout");
         }
+        // Actually retry: without the continue the loop falls through to the
+        // break below and runs with a dead connection.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
-      CLOG(INFO, "stdout") << "Could not make initial connection to "
-                           << _socketEndpoint << ": " << err.what() << endl;
-      exit(1);
+      if (!_exitOnConnectFailure && connection &&
+          connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
+        // The server knows this id no longer exists; surface a distinct
+        // error so callers can discard the saved session.
+        throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
+      }
+      if (_exitOnConnectFailure) {
+        CLOG(INFO, "stdout") << "Could not make initial connection to "
+                             << _socketEndpoint << ": " << err.what() << endl;
+        exit(1);
+      }
+      throw;
     }
 
     TelemetryService::get()->logToDatadog("Connection Established",

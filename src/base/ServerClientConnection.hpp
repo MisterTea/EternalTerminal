@@ -25,8 +25,11 @@ class ServerClientConnection : public Connection {
    *
    * Returns false without touching the live session if another reconnect for
    * this client is already in flight.
+   *
+   * @param forceReset When true, request the reset handshake (both sides
+   * zero their sequence/crypto state) instead of replaying history.
    */
-  bool recoverClient(int newSocketFd);
+  bool recoverClient(int newSocketFd, bool forceReset = false);
 
   /**
    * @brief Constant-time comparison of the stored key and a supplied passkey.

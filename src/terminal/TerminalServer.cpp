@@ -318,7 +318,8 @@ void TerminalServer::runJumpHost(
 
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
-    const InitialPayload& payload, const TerminalUserInfo& userInfo) {
+    const InitialPayload& payload, const TerminalUserInfo& userInfo,
+    bool resume) {
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
@@ -331,31 +332,33 @@ void TerminalServer::runTerminal(
     LOG(INFO) << "SetEnv: " << envVar.first << "=" << envVar.second;
   }
 
-  vector<string> pipePaths;
-  for (const PortForwardSourceRequest& pfsr : payload.reversetunnels()) {
-    string sourceName;
-    PortForwardSourceResponse pfsresponse;
-    if (pfsr.has_environmentvariable()) {
-      pfsresponse = portForwardHandler->createSource(
-          pfsr, &sourceName, userInfo.uid(), userInfo.gid());
-    } else {
-      pfsresponse = portForwardHandler->createSource(
-          pfsr, nullptr, userInfo.uid(), userInfo.gid());
+  if (!resume) {
+    vector<string> pipePaths;
+    for (const PortForwardSourceRequest& pfsr : payload.reversetunnels()) {
+      string sourceName;
+      PortForwardSourceResponse pfsresponse;
+      if (pfsr.has_environmentvariable()) {
+        pfsresponse = portForwardHandler->createSource(
+            pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+      } else {
+        pfsresponse = portForwardHandler->createSource(
+            pfsr, nullptr, userInfo.uid(), userInfo.gid());
+      }
+      if (pfsresponse.has_error()) {
+        InitialResponse response;
+        response.set_error(pfsresponse.error());
+        serverClientState->writePacket(Packet(
+            uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+        return;
+      }
+      if (pfsr.has_environmentvariable()) {
+        environmentVariables[pfsr.environmentvariable()] = sourceName;
+        pipePaths.push_back(sourceName);
+      }
     }
-    if (pfsresponse.has_error()) {
-      InitialResponse response;
-      response.set_error(pfsresponse.error());
-      serverClientState->writePacket(Packet(
-          uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
-      return;
-    }
-    if (pfsr.has_environmentvariable()) {
-      environmentVariables[pfsr.environmentvariable()] = sourceName;
-      pipePaths.push_back(sourceName);
-    }
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
   }
-  serverClientState->writePacket(
-      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
 
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
@@ -371,14 +374,16 @@ void TerminalServer::runTerminal(
   FdPoller poller;
   uint64_t forwardFdsGeneration = portForwardHandler->getForwardFdsGeneration();
 
-  TermInit termInit;
-  for (auto& it : environmentVariables) {
-    *(termInit.add_environmentnames()) = it.first;
-    *(termInit.add_environmentvalues()) = it.second;
+  if (!resume) {
+    TermInit termInit;
+    for (auto& it : environmentVariables) {
+      *(termInit.add_environmentnames()) = it.first;
+      *(termInit.add_environmentvalues()) = it.second;
+    }
+    terminalSocketHandler->writePacket(
+        terminalFd,
+        Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
   }
-  terminalSocketHandler->writePacket(
-      terminalFd,
-      Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
 
   WriteBuffer terminalOutputBuffer;
   string clientInterruptCarry;
@@ -625,9 +630,7 @@ void TerminalServer::handleConnection(
   }
 
   removeClient(serverClientState->getId());
-  if (userInfo) {
-    terminalRouter->removeConnection(*userInfo);
-  }
+  removeRouterEntryIfRunning(userInfo);
 }
 
 bool TerminalServer::newClient(
@@ -637,5 +640,60 @@ bool TerminalServer::newClient(
                                serverClientState);
   terminalThreads.push_back(t);
   return true;
+}
+
+bool TerminalServer::shouldResumeAsReturning(const string& clientId) {
+  return terminalRouter->isPtyActive(clientId);
+}
+
+void TerminalServer::resumeClient(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  lock_guard<std::mutex> guard(terminalThreadMutex);
+  shared_ptr<thread> t = shared_ptr<thread>(new thread(
+      &TerminalServer::handleConnectionResume, this, serverClientState));
+  terminalThreads.push_back(t);
+}
+
+void TerminalServer::handleConnectionResume(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  // The session's bootstrap (INITIAL_PAYLOAD / INITIAL_RESPONSE /
+  // TERMINAL_INIT) already ran before the server restart; the pty is alive.
+  // Go straight to the pump for the existing terminal.
+  std::optional<TerminalUserInfo> userInfo;
+  try {
+    userInfo = terminalRouter->tryGetInfoForConnection(serverClientState);
+    if (!userInfo) {
+      LOG(ERROR) << "Resuming client failed to bind to terminal router";
+    } else {
+      LOG(INFO) << "RESUMING TERMINAL";
+      runTerminal(serverClientState, InitialPayload(), *userInfo,
+                  /*resume=*/true);
+    }
+  } catch (const std::exception& ex) {
+    LOG(ERROR) << "Resumed terminal thread failed: " << ex.what();
+  }
+
+  removeClient(serverClientState->getId());
+  removeRouterEntryIfRunning(userInfo);
+}
+
+void TerminalServer::removeRouterEntryIfRunning(
+    const std::optional<TerminalUserInfo>& userInfo) {
+  if (!userInfo) {
+    return;
+  }
+  // Drop the router entry only when the terminal side ended the session (its
+  // pipe hit EOF or errored), so a future same-id registration is not rejected
+  // (also fixes the MisterTea#428 leak).  On a server halt the terminal is
+  // still alive: the entry must survive so a clean shutdown can close the pipe
+  // and hand the terminal its EOF.
+  bool serverHalted;
+  {
+    lock_guard<std::mutex> guard(terminalThreadMutex);
+    serverHalted = halt;
+  }
+  if (!serverHalted) {
+    terminalRouter->removeConnection(*userInfo);
+  }
 }
 }  // namespace et

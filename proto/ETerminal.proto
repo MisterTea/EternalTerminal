@@ -83,4 +83,8 @@ message TerminalUserInfo {
   optional int64 uid = 3;
   optional int64 gid = 4;
   optional int64 fd = 5;
+  // Set when a terminal re-registers after its router went away: the pty and
+  // its shell are already running, so the server must resume the session
+  // instead of bootstrapping a fresh one.
+  optional bool ptyactive = 6;
 }

@@ -117,4 +117,14 @@ void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
   disconnectedBytes = 0;
 }
+
+void BackedWriter::reset() {
+  // Caller must hold recoverMutex (see getRecoverMutex), mirroring recover().
+  backupBuffer.clear();
+  backupSize = 0;
+  disconnectedBytes = 0;
+  sequenceNumber = 0;
+  // Restart the stream nonce so a fresh peer process stays in lockstep.
+  cryptoHandler->resetNonce();
+}
 }  // namespace et

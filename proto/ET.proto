@@ -19,6 +19,7 @@ enum ConnectStatus {
   RETURNING_CLIENT = 2;
   INVALID_KEY = 3;
   MISMATCHED_PROTOCOL = 4;
+  RETRY_LATER = 5;
 }
 
 message ConnectResponse {
@@ -28,6 +29,10 @@ message ConnectResponse {
 
 message SequenceHeader {
   optional int32 sequenceNumber = 1;
+  // Set when either side's sequence state is unusable (fresh process on one
+  // side). Both peers then zero their BackedReader/BackedWriter state and
+  // exchange empty catchup buffers instead of replaying history.
+  optional bool reset = 2;
 }
 
 message CatchupBuffer {

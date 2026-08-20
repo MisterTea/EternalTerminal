@@ -34,6 +34,17 @@ class CryptoHandler {
    * @return Original plaintext payload.
    */
   string decrypt(const string& buffer);
+  /**
+   * @brief Restores the nonce to its initial value (base nonce with only the
+   * MSB byte set). Used by the reset handshake: when both sides agree to
+   * discard all buffered history and restart at sequence 0, their per-message
+   * nonces must also restart from the base so the fresh streams stay in
+   * lockstep.
+   * @note This deliberately reuses nonces that were consumed before the reset.
+   * That is only safe because the reset discards the old session's buffered
+   * packets on both sides, so no two live ciphertexts share a nonce.
+   */
+  void resetNonce();
 
  protected:
   /**
@@ -45,6 +56,8 @@ class CryptoHandler {
   unsigned char nonce[crypto_secretbox_NONCEBYTES];
   /** @brief Shared secret key used for encrypt/decrypt operations. */
   unsigned char key[crypto_secretbox_KEYBYTES];
+  /** @brief MSB byte used to seed the nonce (see constructor). */
+  unsigned char nonceMSB;
 
  private:
   /** @brief Guards the nonce/key pair to keep operations thread-safe. */

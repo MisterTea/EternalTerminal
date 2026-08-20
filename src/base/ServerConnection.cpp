@@ -5,6 +5,7 @@ ServerConnection::ServerConnection(
     const SocketEndpoint& _serverEndpoint)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
+      startTime_(time(NULL)),
       clientHandlerThreadPool(new ThreadPool(8)) {
   socketHandler->listen(serverEndpoint);
 }
@@ -26,9 +27,15 @@ bool ServerConnection::acceptNewConnection(int fd) {
 }
 
 void ServerConnection::shutdown() {
-  lock_guard<std::recursive_mutex> guard(classMutex);
-  socketHandler->stopListening(serverEndpoint);
+  {
+    lock_guard<std::recursive_mutex> guard(classMutex);
+    socketHandler->stopListening(serverEndpoint);
+  }
+  // Join the worker pool WITHOUT holding classMutex: an in-flight
+  // clientHandler needs classMutex to finish, so joining the pool while
+  // holding it is an AB-BA deadlock.
   clientHandlerThreadPool.reset();
+  lock_guard<std::recursive_mutex> guard(classMutex);
   for (const auto& it : clientConnections) {
     it.second->shutdown();
   }
@@ -92,26 +99,53 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       std::ostringstream errorStream;
       errorStream << "Client is not registered";
       response.set_error(errorStream.str());
-      response.set_status(INVALID_KEY);
+      // Right after an etserver restart, the terminals' re-registrations (and
+      // with them the client keys) have not landed yet.  Ask the client to
+      // retry during the grace window instead of declaring the session gone.
+      if (time(NULL) - startTime_ < recoveryGraceSeconds) {
+        LOG(INFO) << "Within the recovery grace window; asking client "
+                  << clientId << " to retry.";
+        response.set_status(RETRY_LATER);
+      } else {
+        response.set_status(INVALID_KEY);
+      }
       socketHandler->writeProto(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
     } else if (createdClientConnection) {
+      // The key is known but no connection survived: either this is a brand
+      // new session (NEW_CLIENT, the client bootstraps) or the terminal
+      // re-registered after an etserver restart with its pty still running
+      // (resume: the session's bootstrap already happened).
+      const bool resume = shouldResumeAsReturning(clientId);
       et::ConnectResponse response;
-      response.set_status(NEW_CLIENT);
+      response.set_status(resume ? RETURNING_CLIENT : NEW_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
 
-      LOG(INFO) << "New client.  Setting up connection";
-      VLOG(1) << "Created client with id " << clientId;
+      if (resume) {
+        LOG(INFO) << "Resuming existing session for " << clientId;
+        if (!serverClientState->recoverClient(clientSocketFd,
+                                              /*forceReset=*/true)) {
+          LOG(WARNING) << "Resume handshake failed for " << clientId;
+          // recoverClient closed the new socket on failure; the connection
+          // entry must go, but the key stays (the terminal is still live).
+          destroyPartialConnection(clientId);
+        } else {
+          resumeClient(serverClientState);
+        }
+      } else {
+        LOG(INFO) << "New client.  Setting up connection";
+        VLOG(1) << "Created client with id " << clientId;
 
-      {
-        lock_guard<std::recursive_mutex> guard(classMutex);
+        {
+          lock_guard<std::recursive_mutex> guard(classMutex);
 
-        if (!newClient(serverClientState)) {
-          VLOG(1) << "newClient failed";
-          // Client creation failed, Destroy the new client
-          removeClient(clientId);
-          socketHandler->close(clientSocketFd);
+          if (!newClient(serverClientState)) {
+            VLOG(1) << "newClient failed";
+            // Client creation failed, Destroy the new client
+            removeClient(clientId);
+            socketHandler->close(clientSocketFd);
+          }
         }
       }
     } else {

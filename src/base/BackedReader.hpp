@@ -53,6 +53,13 @@ class BackedReader {
    * @param newLocalEntries Serialized packets buffered while reconnecting.
    */
   void revive(int newSocketFd, const vector<string>& newLocalEntries);
+  /**
+   * @brief Discards all buffered state and sequence tracking so the next
+   * packet starts at sequence 0. Used by the reset handshake when the
+   * peer's sequence history is unusable (fresh process on one side).
+   * @note Caller must hold the recover mutex (see getRecoverMutex).
+   */
+  void reset();
 
   /**
    * @brief Marks the reader as disconnected so callers stop issuing reads.

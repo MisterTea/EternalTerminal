@@ -304,6 +304,15 @@ class FakeUserTerminal : public UserTerminal {
     return lastWinInfo;
   }
 
+  bool wasCleanedUp() { return didCleanUp; }
+  bool sessionEndHandled() { return didHandleSessionEnd; }
+
+  /** @brief True once setup() has both pipe ends connected. */
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return serverClientFd >= 0 && clientServerFd >= 0;
+  }
+
  protected:
   recursive_mutex _mutex;
   // Keep geometry updates independent from blocking socket I/O under _mutex.
