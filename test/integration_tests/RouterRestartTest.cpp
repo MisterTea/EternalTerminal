@@ -79,6 +79,15 @@ struct RestartableServer {
 
 // One client+etterminal session pair.
 struct SessionFixture {
+  ~SessionFixture() {
+    // A failing REQUIRE unwinds through this dtor; destroying a joinable
+    // thread would terminate the process and mask the real failure.
+    try {
+      stop();
+    } catch (...) {
+    }
+  }
+
   void start(RestartableServer& target) {
     auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
     auto sshSetupHandler =

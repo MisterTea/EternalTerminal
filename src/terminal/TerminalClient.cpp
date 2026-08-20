@@ -134,9 +134,19 @@ TerminalClient::TerminalClient(
       if (fail) {
         LOG(WARNING) << "Connecting to server failed: Connect timeout";
         connectFailCount++;
+        if (!_exitOnConnectFailure && connection &&
+            connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
+          // The server knows this id no longer exists; surface a distinct
+          // error so callers can discard the saved session.
+          throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
+        }
         if (connectFailCount >= _maxConnectAttempts) {
           throw std::runtime_error("Connect Timeout");
         }
+        // Actually retry: without the continue the loop falls through to the
+        // break below and runs with a dead connection.
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
