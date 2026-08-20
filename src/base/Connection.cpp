@@ -102,17 +102,23 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool forceReset) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
-  LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
+  LOG(INFO) << "Recovering with socket fd " << newSocketFd
+            << (forceReset ? " (reset)" : "") << "...";
   try {
     {
       // Write the current sequence number
       et::SequenceHeader sh;
-      sh.set_sequencenumber(reader->getSequenceNumber());
+      if (forceReset) {
+        sh.set_sequencenumber(0);
+        sh.set_reset(true);
+      } else {
+        sh.set_sequencenumber(reader->getSequenceNumber());
+      }
       socketHandler->writeProto(newSocketFd, sh, true);
     }
 
@@ -120,6 +126,25 @@ bool Connection::recover(int newSocketFd) {
     et::SequenceHeader remoteHeader =
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+
+    if (forceReset || remoteHeader.reset()) {
+      // At least one side has unusable sequence history (a fresh process).
+      // Zero both sides and exchange empty catchup buffers so the
+      // handshake wire sequence stays identical to a normal recover.
+      LOG(INFO) << "Performing reset recovery";
+      writer->reset();
+      reader->reset();
+
+      et::CatchupBuffer emptyCatchup;
+      socketHandler->writeProto(newSocketFd, emptyCatchup, true);
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+
+      socketFd = newSocketFd;
+      reader->revive(socketFd, {});
+      writer->revive(socketFd);
+      LOG(INFO) << "Finished reset recovery with socket fd: " << socketFd;
+      return true;
+    }
 
     {
       // Fetch the catchup bytes and send

@@ -32,6 +32,7 @@ bool ClientConnection::connect() {
     VLOG(1) << "Receiving client id";
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
+    lastStatus_ = response.status();
     if (response.status() != NEW_CLIENT &&
         response.status() != RETURNING_CLIENT) {
       // Note: the response can be returning client if the client died while
@@ -58,6 +59,18 @@ bool ClientConnection::connect() {
                          shared_ptr<CryptoHandler>(
                              new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
                          socketFd));
+    if (response.status() == RETURNING_CLIENT) {
+      // The server already holds state for this id but our process is fresh,
+      // so the sequence history on one side is unusable. Recover with a
+      // reset so both sides start at sequence 0 and the INITIAL_PAYLOAD
+      // bootstrap is skipped by the caller.
+      VLOG(1) << "Returning client: performing reset recovery";
+      if (!recover(socketFd, /*forceReset=*/true)) {
+        LOG(WARNING) << "Reset recovery failed during connect";
+        return false;
+      }
+      recovered_ = true;
+    }
     VLOG(1) << "Client Connection established";
     return true;
   } catch (const runtime_error& err) {

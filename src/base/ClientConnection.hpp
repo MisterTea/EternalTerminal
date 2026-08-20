@@ -34,6 +34,19 @@ class ClientConnection : public Connection {
   virtual void closeSocketAndMaybeReconnect();
 
   /**
+   * @brief True when the last successful connect used the reset handshake
+   * (the server already held state for this id, so no bootstrap exchange
+   * is needed).
+   */
+  bool wasRecovered() const { return recovered_; }
+
+  /**
+   * @brief The ConnectStatus received on the most recent connect attempt.
+   * Only meaningful when connect() returned false.
+   */
+  et::ConnectStatus lastStatus() const { return lastStatus_; }
+
+  /**
    * @brief Blocks until any running reconnect thread has finished.
    */
   void waitReconnect();
@@ -46,6 +59,10 @@ class ClientConnection : public Connection {
 
   /** @brief Server endpoint we try to connect to. */
   SocketEndpoint remoteEndpoint;
+  /** @brief Set when connect() completed via the reset handshake. */
+  bool recovered_ = false;
+  /** @brief ConnectStatus from the most recent connect attempt. */
+  et::ConnectStatus lastStatus_ = et::ConnectStatus::NEW_CLIENT;
   /** @brief Thread that keeps retrying the handshake after disconnects. */
   std::shared_ptr<std::thread> reconnectThread;
 };

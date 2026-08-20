@@ -71,7 +71,9 @@ class RecoverableConnection : public Connection {
     socketFd = fd;
   }
 
-  bool recoverPublic(int fd) { return recover(fd); }
+  bool recoverPublic(int fd, bool forceReset = false) {
+    return recover(fd, forceReset);
+  }
 
   void closeSocketAndMaybeReconnect() override { closeSocket(); }
 };
@@ -98,9 +100,23 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
     ConnectResponse response;
     response.set_status(RETURNING_CLIENT);
     handler->writeProto(fds[1], response, true);
+
+    // The returning client starts a reset recovery exchange.
+    auto seqHeader = handler->readProto<SequenceHeader>(
+        fds[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(seqHeader.reset());
+    SequenceHeader seqResponse;
+    seqResponse.set_sequencenumber(0);
+    seqResponse.set_reset(true);
+    handler->writeProto(fds[1], seqResponse, true);
+    auto catchup = handler->readProto<CatchupBuffer>(fds[1], true);
+    REQUIRE(catchup.buffer_size() == 0);
+    CatchupBuffer back;
+    handler->writeProto(fds[1], back, true);
   });
 
   REQUIRE(conn.connect());
+  REQUIRE(conn.wasRecovered());
 
   server.join();
   conn.shutdown();
@@ -310,4 +326,110 @@ TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
   handler->close(live[1]);
   handler->close(reconnect[0]);
   remote.join();
+}
+
+TEST_CASE("Connection recover with forceReset performs clean reset exchange",
+          "[Connection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int live[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+
+  const string key = "zyxwvutsrqponmlkjihgfedcba987654";
+  auto encryptCrypto = make_shared<CryptoHandler>(key, 0);
+  auto decryptCrypto = make_shared<CryptoHandler>(key, 0);
+
+  auto reader = make_shared<BackedReader>(handler, decryptCrypto, live[0]);
+  auto writer = make_shared<BackedWriter>(handler, encryptCrypto, live[0]);
+  RecoverableConnection conn(handler, reader, writer, live[0], key);
+
+  conn.write(Packet(1, "first"));
+  conn.write(Packet(2, "second"));
+  conn.closeSocket();
+
+  int reconnect[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+
+  std::thread remote([&]() {
+    auto seqHeader = handler->readProto<SequenceHeader>(
+        reconnect[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(seqHeader.sequencenumber() == 0);
+    REQUIRE(seqHeader.reset());
+
+    // The remote peer is further ahead; with a reset its history is
+    // discarded, so this must not trigger a "client is ahead" failure.
+    SequenceHeader seqResponse;
+    seqResponse.set_sequencenumber(5);
+    seqResponse.set_reset(true);
+    handler->writeProto(reconnect[1], seqResponse, true);
+
+    auto catchup = handler->readProto<CatchupBuffer>(reconnect[1], true);
+    REQUIRE(catchup.buffer_size() == 0);
+    CatchupBuffer back;
+    handler->writeProto(reconnect[1], back, true);
+  });
+
+  REQUIRE(conn.recoverPublic(reconnect[0], true));
+  remote.join();
+
+  REQUIRE(conn.getReader()->getSequenceNumber() == 0);
+  REQUIRE(conn.getWriter()->getSequenceNumber() == 0);
+  // A write after reset starts a fresh sequence at 1.
+  conn.write(Packet(3, "after-reset"));
+  REQUIRE(conn.getWriter()->getSequenceNumber() == 1);
+}
+
+TEST_CASE(
+    "ClientConnection connect performs reset recovery for returning "
+    "clients",
+    "[ClientConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  const string key = "zyxwvutsrqponmlkjihgfedcba987654";
+
+  // A server-side connection with existing history: the old client exited,
+  // but the server state (and its buffered output) survives.
+  int live[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  ServerClientConnection serverConn(handler, "client-id", live[0], key);
+  serverConn.writePacket(Packet(1, "pre-existing-output"));
+
+  // The old client disconnects.
+  handler->close(live[1]);
+
+  // A fresh client process connects with the same id.
+  int reconnect[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+  handler->queueConnectFd(reconnect[0]);
+  ClientConnection client(handler, SocketEndpoint(), "client-id", key);
+
+  std::thread server([&]() {
+    auto request = handler->readProto<ConnectRequest>(reconnect[1], true);
+    REQUIRE(request.clientid() == "client-id");
+    ConnectResponse response;
+    response.set_status(RETURNING_CLIENT);
+    handler->writeProto(reconnect[1], response, true);
+    // The client's reset request makes the server take the reset path too.
+    REQUIRE(serverConn.recoverClient(reconnect[1]));
+  });
+
+  REQUIRE(client.connect());
+  REQUIRE(client.wasRecovered());
+  server.join();
+
+  // Pre-reset output was dropped by the reset (covered at the BackedIO
+  // level); fresh data flows in both directions from here.
+
+  client.writePacket(Packet(10, "hello"));
+  Packet serverGot;
+  REQUIRE(serverConn.readPacket(&serverGot));
+  REQUIRE(serverGot.getPayload() == "hello");
+
+  serverConn.writePacket(Packet(20, "hi-back"));
+  Packet clientGot;
+  REQUIRE(client.readPacket(&clientGot));
+  REQUIRE(clientGot.getPayload() == "hi-back");
+
+  client.shutdown();
+  serverConn.shutdown();
+  handler->close(live[0]);
+  handler->close(reconnect[1]);
 }

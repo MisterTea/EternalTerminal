@@ -101,10 +101,13 @@ class Connection {
  protected:
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
+   * When `forceReset` is true (or the remote header requests a reset), both
+   * BackedReader and BackedWriter state is zeroed and empty catchup buffers
+   * are exchanged instead of replaying history.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd);
+  bool recover(int newSocketFd, bool forceReset = false);
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;

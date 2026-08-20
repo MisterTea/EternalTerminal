@@ -475,6 +475,8 @@ add_library(
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
   src/terminal/UserTerminalHandler.cpp
+  src/terminal/SessionStore.hpp
+  src/terminal/SessionStore.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp

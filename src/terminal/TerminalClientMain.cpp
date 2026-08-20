@@ -1,10 +1,13 @@
+#include <ctime>
 #include <cxxopts.hpp>
+#include <iomanip>
 
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SessionStore.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -92,6 +95,10 @@ int main(int argc, char** argv) {
   et::HandleTerminate();
 
   // Override easylogging handler for sigint
+
+  // Name of the session being started (empty when unnamed); deleted on a
+  // clean exit, kept on signal exits so the session can be reattached.
+  string sessionName = "";
   ::signal(SIGINT, et::InterruptSignalHandler);
 
   Options sshConfigOptions = {
@@ -181,6 +188,11 @@ int main(int argc, char** argv) {
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
+        ("name", "Name this session so it can be reattached later",
+         cxxopts::value<std::string>())  //
+        ("attach", "Reattach to a previously named session",
+         cxxopts::value<std::string>())           //
+        ("list", "List saved sessions and exit")  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
@@ -198,6 +210,30 @@ int main(int argc, char** argv) {
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
       exit(0);
+    }
+
+    if (result.count("list")) {
+      // Local-only operation: no connection is made.
+      CLOG(INFO, "stdout") << left << setw(24) << "NAME" << setw(24) << "HOST"
+                           << setw(8) << "PORT" << "SAVED" << endl;
+      for (const auto& session : listSessions()) {
+        char saved[32];
+        struct tm savedTm;
+        localtime_r(&session.savedAt, &savedTm);
+        strftime(saved, sizeof(saved), "%Y-%m-%d %H:%M:%S", &savedTm);
+        CLOG(INFO, "stdout")
+            << left << setw(24) << session.name << setw(24) << session.host
+            << setw(8) << session.port << saved << endl;
+      }
+      exit(0);
+    }
+
+    if (result.count("attach") &&
+        (result.count("name") || result.count("host"))) {
+      CLOG(INFO, "stdout") << "--attach takes a session name; it cannot be "
+                              "combined with --name or a host"
+                           << endl;
+      exit(1);
     }
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
@@ -224,6 +260,73 @@ int main(int argc, char** argv) {
     TelemetryService::create(result["telemetry"].as<bool>(),
                              tmpDir + "/.sentry-native-et", "Client");
 
+    if (result.count("attach")) {
+      // Reattach to a previously named session. The server-side session
+      // (terminal + router entry) outlived the client, so skip ssh bootstrap
+      // and connect straight to the saved endpoint with the saved id/key.
+      const string attachName = result["attach"].as<string>();
+      if (!isValidSessionName(attachName)) {
+        CLOG(INFO, "stdout") << "Invalid session name: " << attachName << endl;
+        exit(1);
+      }
+      optional<SessionInfo> session = loadSession(attachName);
+      if (!session) {
+        CLOG(INFO, "stdout")
+            << "No saved session named '" << attachName << "'" << endl;
+        for (const auto& s : listSessions()) {
+          CLOG(INFO, "stdout") << "  " << s.name << " (" << s.host << ":"
+                               << s.port << ")" << endl;
+        }
+        exit(1);
+      }
+
+      SocketEndpoint attachEndpoint;
+      attachEndpoint.set_name(session->host);
+      attachEndpoint.set_port(session->port);
+      shared_ptr<SocketHandler> attachSocket(new TcpSocketHandler());
+      shared_ptr<SocketHandler> attachPipeSocket(new PipeSocketHandler());
+
+      if (!ping(attachEndpoint, attachSocket)) {
+        CLOG(INFO, "stdout")
+            << "Could not reach the ET server: " << attachEndpoint.name() << ":"
+            << attachEndpoint.port() << endl;
+        exit(1);
+      }
+
+      shared_ptr<Console> attachConsole;
+      if (!result.count("N")) {
+        attachConsole.reset(new PseudoTerminalConsole());
+      }
+      int attachKeepalive = extractSingleOptionWithDefault<int>(
+          result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
+      try {
+        TerminalClient attachClient(
+            attachSocket, attachPipeSocket, attachEndpoint, session->id,
+            session->passkey, attachConsole, /*jumphost=*/false,
+            /*tunnels=*/"", /*reverseTunnels=*/"",
+            /*forwardSshAgent=*/false, /*identityAgent=*/"", attachKeepalive,
+            /*envVars=*/{}, /*maxConnectAttempts=*/15,
+            /*exitOnConnectFailure=*/false);
+        attachClient.run(
+            result.count("command") ? result["command"].as<string>() : "",
+            result.count("noexit"));
+      } catch (const runtime_error& err) {
+        if (string(err.what()) ==
+            TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
+          deleteSession(attachName);
+          CLOG(INFO, "stdout")
+              << "Session '" << attachName << "' is no longer running on "
+              << session->host << endl;
+        } else {
+          CLOG(INFO, "stdout") << "Could not attach to session '" << attachName
+                               << "': " << err.what() << endl;
+        }
+        exit(1);
+      }
+      // Clean exit: the session is done, drop the saved file.
+      deleteSession(attachName);
+      exit(0);
+    }
     string username = "";
     if (result.count("username")) {
       username = result["username"].as<string>();
@@ -307,6 +410,29 @@ int main(int argc, char** argv) {
         destinationHost = string(sshConfigOptions.host);
       }
       free(home_dir);
+    }
+
+    // Every session gets a name so it can be reattached after the client
+    // (or machine) restarts: explicit --name, or a host+timestamp default.
+    if (result.count("name")) {
+      sessionName = result["name"].as<string>();
+      if (!isValidSessionName(sessionName)) {
+        CLOG(INFO, "stdout") << "Invalid session name: " << sessionName << endl;
+        exit(1);
+      }
+      if (loadSession(sessionName).has_value()) {
+        CLOG(INFO, "stdout")
+            << "session '" << sessionName << "' already exists; use --attach "
+            << sessionName << " or choose another --name" << endl;
+        exit(1);
+      }
+    } else {
+      char ts[32];
+      time_t now = time(NULL);
+      struct tm localTm;
+      localtime_r(&now, &localTm);
+      strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", &localTm);
+      sessionName = destinationHost + "-" + ts;
     }
 
     // Parse username: cmdline > sshconfig > localuser
@@ -443,6 +569,19 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
+
+    // The connection is up: persist the session so a rebooted or killed
+    // client can reattach with --attach.
+    if (!sessionName.empty()) {
+      SessionInfo sessionInfo;
+      sessionInfo.name = sessionName;
+      sessionInfo.host = socketEndpoint.name();
+      sessionInfo.port = socketEndpoint.port();
+      sessionInfo.id = idpasskeypair.first;
+      sessionInfo.passkey = idpasskeypair.second;
+      sessionInfo.savedAt = (int64_t)time(NULL);
+      saveSession(sessionInfo);
+    }
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
@@ -461,6 +600,13 @@ int main(int argc, char** argv) {
 
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
+
+  // A clean exit ends the session: drop the saved session file. Signal
+  // exits (and crashes) skip this on purpose so the session can be
+  // reattached later.
+  if (!sessionName.empty()) {
+    deleteSession(sessionName);
+  }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
