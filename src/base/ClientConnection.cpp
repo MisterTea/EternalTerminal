@@ -30,9 +30,28 @@ bool ClientConnection::connect() {
     request.set_version(PROTOCOL_VERSION);
     socketHandler->writeProto(socketFd, request, true);
     VLOG(1) << "Receiving client id";
+    // Bound the wait: a server that accepted into its listen backlog but
+    // never answers (e.g. mid-restart) must not wedge the caller's retry
+    // loop.
+    bool responded = false;
+    for (int a = 0; a < 50; a++) {
+      if (socketHandler->hasData(socketFd)) {
+        responded = true;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!responded) {
+      throw std::runtime_error("Server did not answer the connect handshake");
+    }
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
     lastStatus_ = response.status();
+    if (response.status() == RETRY_LATER) {
+      // The server is still recovering after a restart; surface a plain
+      // failure so the caller's retry loop continues without error spam.
+      throw std::runtime_error("Server is recovering; retry later");
+    }
     if (response.status() != NEW_CLIENT &&
         response.status() != RETURNING_CLIENT) {
       // Note: the response can be returning client if the client died while
@@ -122,6 +141,23 @@ void ClientConnection::pollReconnect() {
           request.set_clientid(id);
           request.set_version(PROTOCOL_VERSION);
           socketHandler->writeProto(newSocketFd, request, true);
+          // A half-dead server can complete the TCP/pipe handshake into its
+          // listen backlog but never answer; bound the wait so the loop can
+          // retry instead of wedging on readProto.
+          bool responded = false;
+          for (int a = 0; a < 50; a++) {
+            if (socketHandler->hasData(newSocketFd)) {
+              responded = true;
+              break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+          if (!responded) {
+            LOG(INFO) << "Server did not answer the reconnect handshake; "
+                         "retrying.";
+            socketHandler->close(newSocketFd);
+            continue;
+          }
           et::ConnectResponse response =
               socketHandler->readProto<et::ConnectResponse>(newSocketFd, true);
           LOG(INFO) << "Got response with status: " << response.status() << " "
@@ -134,7 +170,13 @@ void ClientConnection::pollReconnect() {
             socketHandler->close(newSocketFd);
             return;
           }
-          if (response.status() != RETURNING_CLIENT) {
+          if (response.status() == RETRY_LATER) {
+            // The server restarted and the terminal has not re-registered
+            // yet; keep retrying quietly at the loop's 1 Hz pace.
+            LOG(INFO) << "Server is still recovering; retrying reconnect "
+                         "shortly.";
+            socketHandler->close(newSocketFd);
+          } else if (response.status() != RETURNING_CLIENT) {
             STERROR << "Error reconnecting to server: " << response.status()
                     << ": " << response.error();
             CLOG(INFO, "stdout")

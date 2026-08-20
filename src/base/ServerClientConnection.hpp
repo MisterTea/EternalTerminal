@@ -22,8 +22,10 @@ class ServerClientConnection : public Connection {
   /**
    * @brief Attempts recovery on the new fd; closes the old socket only after
    * recover succeeds.
+   * @param forceReset When true, request the reset handshake (both sides
+   * zero their sequence/crypto state) instead of replaying history.
    */
-  bool recoverClient(int newSocketFd);
+  bool recoverClient(int newSocketFd, bool forceReset = false);
 
   /**
    * @brief Constant-time comparison of the stored key and a supplied passkey.

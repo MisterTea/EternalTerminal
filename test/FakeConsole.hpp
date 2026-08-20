@@ -222,6 +222,15 @@ class FakeUserTerminal : public UserTerminal {
   virtual void cleanup() { didCleanUp = true; }
   virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
 
+  bool wasCleanedUp() { return didCleanUp; }
+  bool sessionEndHandled() { return didHandleSessionEnd; }
+
+  /** @brief True once setup() has both pipe ends connected. */
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return serverClientFd >= 0 && clientServerFd >= 0;
+  }
+
  protected:
   recursive_mutex _mutex;
   shared_ptr<PipeSocketHandler> socketHandler;

@@ -41,9 +41,33 @@ class UserTerminalHandler {
   bool shuttingDown;
   /** @brief Guards `shuttingDown` across threads. */
   recursive_mutex shutdownMutex;
+  /** @brief Client id used for router registration. */
+  string id;
+  /** @brief Passkey used for router registration. */
+  string passkey;
+  /** @brief Router endpoint used for (re)connection attempts. */
+  optional<SocketEndpoint> routerEndpoint;
+  /** @brief True once the pty has been set up (the session has started). */
+  bool ptyActive;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
+
+  /**
+   * @brief Connects to the router and sends the TERMINAL_USER_INFO
+   * registration for this session.
+   * @throws runtime_error when the router cannot be reached.
+   */
+  void registerWithRouter();
+
+  /**
+   * @brief Blocks with bounded backoff until the router is reachable again,
+   * re-registering this session with the same id/passkey. The pty child keeps
+   * running the whole time; because the master fd is not drained, the shell
+   * is backpressured by the kernel pty buffer instead of data being lost.
+   * @returns The new router fd, or -1 when the session must end (shutdown).
+   */
+  int reconnectRouter();
 };
 }  // namespace et
 

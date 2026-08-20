@@ -81,6 +81,19 @@ class ServerConnection {
   virtual bool newClient(
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 
+  /**
+   * @brief Returns true when a known client id maps to a session that is
+   * already running (its terminal re-registered with an active pty) and must
+   * be resumed instead of bootstrapped fresh.
+   */
+  virtual bool shouldResumeAsReturning(const string& clientId) { return false; }
+
+  /**
+   * @brief Invoked after a successful resume handshake for a client whose
+   * session is already running.
+   */
+  virtual void resumeClient(shared_ptr<ServerClientConnection> state) {}
+
  protected:
   /**
    * @brief Discards a partially initialized connection if its thread fails.
@@ -102,6 +115,14 @@ class ServerConnection {
   recursive_mutex classMutex;
   /** @brief Serializes connect/disconnect events. */
   mutex connectMutex;
+  /**
+   * @brief Seconds after startup during which an unknown client id receives
+   * RETRY_LATER instead of INVALID_KEY: after an etserver restart the
+   * terminals need a moment to re-register and restore their keys.
+   */
+  int recoveryGraceSeconds = 60;
+  /** @brief When this server instance started (wall clock). */
+  time_t startTime_;
 };
 }  // namespace et
 

@@ -42,6 +42,26 @@ class UserTerminalRouter {
     return socketHandler;
   }
 
+  /**
+   * @brief Returns true when the terminal for `id` re-registered with its pty
+   * already running (a resumed session, not a fresh bootstrap).
+   */
+  bool isPtyActive(const string& id);
+
+  /**
+   * @brief Drops the registration for `id` so its terminal slot no longer
+   * blocks a future same-id registration (a terminal whose shell ended must
+   * not linger; also fixes the stale-entry leak behind MisterTea#428).
+   */
+  void removeTerminal(const string& id);
+
+  /**
+   * @brief Closes the listen fd and every registered terminal pipe.  On a
+   * clean server shutdown this makes connected terminals observe EOF (they
+   * keep their pty alive and wait for a replacement router).  Idempotent.
+   */
+  void shutdown();
+
  protected:
   /** @brief File descriptor used by external clients to reach the router. */
   int serverFd;

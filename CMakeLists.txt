@@ -622,7 +622,10 @@ else(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300
+      # The router-restart integration tests spin up full client/server/terminal
+      # stacks (one with 14 concurrent sessions) and need wall-clock headroom on
+      # a loaded CI runner.
+      PROPERTIES TIMEOUT 900
     )
     add_sanitizers(et-test)
     if(TARGET test)

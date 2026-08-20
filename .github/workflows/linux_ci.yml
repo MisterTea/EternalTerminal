@@ -182,6 +182,12 @@ jobs:
       - name: Connect with jumphost
         run: ./test/system_tests/connect_with_jumphost.sh
 
+      - name: Named sessions survive client death
+        run: ./test/system_tests/named_sessions.sh
+
+      - name: Sessions survive etserver restart
+        run: ./test/system_tests/router_restart.sh
+
       - name: Stop sshd for act
         if: ${{ always() }}
         run: |

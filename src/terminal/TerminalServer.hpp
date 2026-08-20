@@ -35,12 +35,23 @@ class TerminalServer : public ServerConnection {
                    const InitialPayload& payload);
   /** @brief Launches the interactive terminal session for a client. */
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                   const InitialPayload& payload);
+                   const InitialPayload& payload, bool resume = false);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
+  /**
+   * @brief Resumes a session whose terminal re-registered after a server
+   * restart: skips the INITIAL_PAYLOAD bootstrap and goes straight to the
+   * pump for the existing pty.
+   */
+  void handleConnectionResume(
+      shared_ptr<ServerClientConnection> serverClientState);
   /** @brief Callback from ServerConnection when a new client is authenticated.
    */
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
+  /** @brief ServerConnection hook: a known id whose pty is live resumes. */
+  virtual bool shouldResumeAsReturning(const string& clientId);
+  /** @brief ServerConnection hook: spawns the resume pump thread. */
+  virtual void resumeClient(shared_ptr<ServerClientConnection> state);
 
   /** @brief Main loop that accepts client connections and relays to handlers.
    */
@@ -49,6 +60,17 @@ class TerminalServer : public ServerConnection {
   void shutdown() {
     lock_guard<std::mutex> guard(terminalThreadMutex);
     halt = true;
+  }
+
+  /**
+   * @brief Closes client connections and terminal pipes so remote ends
+   * observe a clean EOF instead of a silently abandoned socket.  Call only
+   * after `run()` has exited (closing fds while the select loop still uses
+   * them is a classic select/close race).
+   */
+  void shutdownConnections() {
+    ServerConnection::shutdown();
+    terminalRouter->shutdown();
   }
 
   /** @brief Router that hands reconnecting clients to their terminals. */

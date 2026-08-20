@@ -24,7 +24,7 @@ ServerClientConnection::~ServerClientConnection() {
   }
 }
 
-bool ServerClientConnection::recoverClient(int newSocketFd) {
+bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset) {
   // Detach the live session without closing it until recover succeeds, so a
   // failed/malicious reconnect cannot force-disconnect the victim.
   int oldSocketFd = -1;
@@ -40,9 +40,11 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
     socketFd = -1;
   }
 
-  bool success = recover(newSocketFd);
+  bool success = recover(newSocketFd, forceReset);
   if (success) {
-    if (oldSocketFd != -1) {
+    // On the resume path the connection was constructed with this very fd
+    // (oldSocketFd == newSocketFd); closing it would kill the live session.
+    if (oldSocketFd != -1 && oldSocketFd != newSocketFd) {
       socketHandler->close(oldSocketFd);
     }
     return true;

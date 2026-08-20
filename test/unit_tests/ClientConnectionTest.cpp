@@ -1,4 +1,5 @@
 #include <queue>
+#include <set>
 
 #include "ClientConnection.hpp"
 #include "ServerClientConnection.hpp"
@@ -55,9 +56,23 @@ class RecordingServerConnection : public ServerConnection {
     return allowNewClients;
   }
 
+  // Pretend the recovery grace window has long passed.
+  void expireGrace() { startTime_ = time(NULL) - recoveryGraceSeconds - 1; }
+
+  bool shouldResumeAsReturning(const string& clientId) override {
+    return resumeIds.count(clientId) > 0;
+  }
+
+  void resumeClient(shared_ptr<ServerClientConnection> state) override {
+    resumeClientCalled = true;
+    lastConnection = std::move(state);
+  }
+
   bool newClientCalled = false;
   bool allowNewClients = true;
   shared_ptr<ServerClientConnection> lastConnection;
+  std::set<string> resumeIds;
+  bool resumeClientCalled = false;
 };
 
 class RecoverableConnection : public Connection {
@@ -157,7 +172,8 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   endpoint.set_port(0);
   RecordingServerConnection server(handler, endpoint);
 
-  // Missing key path should return INVALID_KEY.
+  // Missing key path returns RETRY_LATER while the server is still within
+  // its post-startup recovery grace window.
   int firstPair[2];
   REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, firstPair) == 0);
   ConnectRequest missingKeyRequest;
@@ -167,9 +183,21 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   server.clientHandler(firstPair[1]);
   auto missingKeyResponse =
       handler->readProto<ConnectResponse>(firstPair[0], true);
-  REQUIRE(missingKeyResponse.status() == INVALID_KEY);
+  REQUIRE(missingKeyResponse.status() == RETRY_LATER);
   handler->close(firstPair[0]);
   handler->close(firstPair[1]);
+
+  // Past the grace window an unknown id is a hard INVALID_KEY.
+  server.expireGrace();
+  int gracePair[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, gracePair) == 0);
+  handler->writeProto(gracePair[0], missingKeyRequest, true);
+  server.clientHandler(gracePair[1]);
+  auto expiredGraceResponse =
+      handler->readProto<ConnectResponse>(gracePair[0], true);
+  REQUIRE(expiredGraceResponse.status() == INVALID_KEY);
+  handler->close(gracePair[0]);
+  handler->close(gracePair[1]);
 
   // Known key path should trigger newClient callback and NEW_CLIENT status.
   const string clientKey = "0123456789abcdef0123456789abcdef";
@@ -195,6 +223,60 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   handler->close(secondPair[0]);
   handler->close(secondPair[1]);
   server.shutdown();
+}
+
+TEST_CASE("ServerConnection resumes sessions with an active pty",
+          "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  endpoint.set_port(0);
+  RecordingServerConnection server(handler, endpoint);
+
+  // The terminal re-registered with a live pty: the key exists, no
+  // connection survived, and shouldResumeAsReturning says the pty is active.
+  const string clientKey = "0123456789abcdef0123456789abcdef";
+  server.addClientKey("live-term", clientKey);
+  server.resumeIds.insert("live-term");
+
+  int fds[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+
+  std::thread client([&]() {
+    ConnectRequest request;
+    request.set_clientid("live-term");
+    request.set_version(PROTOCOL_VERSION);
+    handler->writeProto(fds[0], request, true);
+
+    auto response = handler->readProto<ConnectResponse>(fds[0], true);
+    REQUIRE(response.status() == RETURNING_CLIENT);
+
+    // The server initiates the reset recovery exchange.
+    auto seqHeader = handler->readProto<SequenceHeader>(
+        fds[0], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(seqHeader.sequencenumber() == 0);
+    REQUIRE(seqHeader.reset());
+    SequenceHeader seqResponse;
+    seqResponse.set_sequencenumber(0);
+    seqResponse.set_reset(true);
+    handler->writeProto(fds[0], seqResponse, true);
+    auto catchup = handler->readProto<CatchupBuffer>(fds[0], true);
+    REQUIRE(catchup.buffer_size() == 0);
+    CatchupBuffer back;
+    handler->writeProto(fds[0], back, true);
+  });
+
+  server.clientHandler(fds[1]);
+  client.join();
+
+  // Resume path taken, not the fresh-bootstrap newClient path.
+  REQUIRE(server.resumeClientCalled);
+  REQUIRE_FALSE(server.newClientCalled);
+  REQUIRE(server.clientConnectionExists("live-term"));
+
+  server.shutdown();
+  handler->close(fds[0]);
+  handler->close(fds[1]);
 }
 
 TEST_CASE("ServerClientConnection verifies passkeys",

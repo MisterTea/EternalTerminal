@@ -17,50 +17,95 @@ UserTerminalHandler::UserTerminalHandler(
     : socketHandler(_socketHandler),
       term(_term),
       noratelimit(_noratelimit),
-      shuttingDown(false) {
+      routerEndpoint(routerEndpoint),
+      shuttingDown(false),
+      ptyActive(false) {
   auto idpasskey_splited = split(idPasskey, '/');
-  string id = idpasskey_splited[0];
-  string passkey = idpasskey_splited[1];
-  TerminalUserInfo tui;
-  tui.set_id(id);
-  tui.set_passkey(passkey);
-  tui.set_uid(getuid());
-  tui.set_gid(getgid());
-
-  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
+  id = idpasskey_splited[0];
+  passkey = idpasskey_splited[1];
 
   try {
-    socketHandler->writePacket(
-        routerFd,
-        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
-
+    registerWithRouter();
   } catch (const std::runtime_error& re) {
     STFATAL << "Error connecting to router: " << re.what();
   }
 }
 
-void UserTerminalHandler::run() {
+void UserTerminalHandler::registerWithRouter() {
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
+  tui.set_ptyactive(ptyActive);
+
+  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
+
+  socketHandler->writePacket(
+      routerFd,
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+}
+
+int UserTerminalHandler::reconnectRouter() {
+  if (routerFd >= 0) {
+    // Go through the socket handler so its fd bookkeeping stays in sync;
+    // a raw close() would leave a stale entry and the next connect() could
+    // reuse the number and trip "fd already exists".
+    socketHandler->close(routerFd);
+    routerFd = -1;
+  }
+  LOG(INFO) << "Router connection lost; the session stays alive and waits for "
+               "the router to come back.";
+  int backoffSec = 1;
   while (true) {
-    Packet termInitPacket;
-    if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
-      continue;
+    // Bound the shutdown latency: check the flag every second while sleeping.
+    for (int a = 0; a < backoffSec; a++) {
+      sleep(1);
+      {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        if (shuttingDown) {
+          return -1;
+        }
+      }
     }
-    if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
-      STFATAL << "Invalid terminal init packet header: "
-              << termInitPacket.getHeader();
+    try {
+      registerWithRouter();
+      LOG(INFO) << "Reconnected to the router; resuming the session.";
+      return routerFd;
+    } catch (const std::exception& re) {
+      LOG(INFO) << "Router not available yet: " << re.what();
     }
-    TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
-    for (int a = 0; a < ti.environmentnames_size(); a++) {
-      setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
-             true);
+    if (backoffSec < 10) {
+      backoffSec *= 2;
     }
-    break;
+  }
+}
+
+void UserTerminalHandler::run() {
+  if (!ptyActive) {
+    while (true) {
+      Packet termInitPacket;
+      if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+        continue;
+      }
+      if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
+        STFATAL << "Invalid terminal init packet header: "
+                << termInitPacket.getHeader();
+      }
+      TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
+      for (int a = 0; a < ti.environmentnames_size(); a++) {
+        setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+               true);
+      }
+      break;
+    }
   }
 
   int masterfd = term->setup(routerFd);
   VLOG(1) << "pty opened " << masterfd;
+  ptyActive = true;
   runUserTerminal(masterfd);
-  close(routerFd);
+  socketHandler->close(routerFd);
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {
@@ -177,8 +222,13 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
                                    strerror(readErrno));
         }
         if (rc == 0) {
-          throw std::runtime_error(
-              "Router has ended abruptly.  Killing terminal session.");
+          // The router (etserver) went away.  Keep the pty child alive and
+          // wait for the replacement router instead of killing the session.
+          routerFd = reconnectRouter();
+          if (routerFd < 0) {
+            break;
+          }
+          continue;
         }
         switch (packetType) {
           case TERMINAL_BUFFER: {
@@ -224,10 +274,14 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         }
       }
     } catch (const std::exception& ex) {
+      // Router-side failure (read error, write failure, or a desynchronized
+      // stream): the pty child is still fine, so wait for the router to come
+      // back instead of ending the session.
       LOG(INFO) << ex.what();
-      lock_guard<recursive_mutex> guard(shutdownMutex);
-      shuttingDown = true;
-      break;
+      routerFd = reconnectRouter();
+      if (routerFd < 0) {
+        break;
+      }
     }
   }
 
