@@ -18,12 +18,21 @@ NAME_LOG=$LOG_DIR/name.log
 MISMATCH_LOG=$LOG_DIR/mismatch.log
 RECREATE_LOG=$LOG_DIR/recreate.log
 AMBIGUOUS_LOG=$LOG_DIR/ambiguous.log
+UNNAMED_LOG=$LOG_DIR/unnamed.log
+UNWRITABLE_LIST_LOG=$LOG_DIR/unwritable-list.log
+UNWRITABLE_NAME_LOG=$LOG_DIR/unwritable-name.log
+ATTACH_OPTIONS_LOG=$LOG_DIR/attach-options.log
+KILL_LOG=$LOG_DIR/kill.log
+KILL_ATTACH_LOG=$LOG_DIR/kill-attach.log
+STALE_KILL_LOG=$LOG_DIR/stale-kill.log
+UNREACHABLE_KILL_LOG=$LOG_DIR/unreachable-kill.log
 INPUT_FIFO=$LOG_DIR/input_fifo
 ATTACH_FIFO=$LOG_DIR/attach_fifo
 
 server_pid=""
 client_pid=""
 attach_pid=""
+aux_pid=""
 
 dump_logs() {
   echo "named_sessions.sh: failure diagnostics (last 60 lines per log)" >&2
@@ -43,6 +52,7 @@ cleanup() {
   trap - EXIT
   [ "$status" -eq 0 ] || dump_logs
   [ -n "$attach_pid" ] && kill -9 "$attach_pid" 2>/dev/null || true
+  [ -n "$aux_pid" ] && kill -9 "$aux_pid" 2>/dev/null || true
   [ -n "$client_pid" ] && kill -9 "$client_pid" 2>/dev/null || true
   [ -n "$server_pid" ] && kill -9 "$server_pid" 2>/dev/null || true
   pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
@@ -69,6 +79,15 @@ wait_for_grep() { # pattern, file, seconds
   return 1
 }
 
+wait_for_process_exit() { # pid, seconds
+  for _ in $(seq 1 "$(( $2 * 10 ))"); do
+    kill -0 "$1" 2>/dev/null || return 0
+    sleep 0.1
+  done
+  echo "timed out waiting for process $1 to exit" >&2
+  return 1
+}
+
 ssh -o 'PreferredAuthentications=publickey' localhost "echo" || exit 1
 ssh -o "StrictHostKeyChecking no" localhost echo "Bypassing host check"
 
@@ -82,6 +101,60 @@ mkdir -p "$SERVER_LOG_DIR"
 build/etserver --port $ET_PORT --serverfifo=$ET_FIFO -l "$SERVER_LOG_DIR" &
 server_pid=$!
 sleep 3
+
+# Attach uses only the saved endpoint and credentials. Options that require a
+# fresh SSH bootstrap must fail explicitly instead of being ignored.
+for option in tunnel reverse agent jumphost; do
+  case "$option" in
+    tunnel) args=(-t 18080:80) ;;
+    reverse) args=(-r 18081:81) ;;
+    agent) args=(-f) ;;
+    jumphost) args=(-j localhost) ;;
+  esac
+  if HOME=$TEST_HOME build/et --attach alpha "${args[@]}" \
+    >"$ATTACH_OPTIONS_LOG" 2>&1; then
+    echo "--attach unexpectedly accepted $option options" >&2
+    exit 1
+  fi
+  grep -F -q -- "--attach cannot be combined with -t, -r, -f, or -j" \
+    "$ATTACH_OPTIONS_LOG"
+done
+
+# Unnamed sessions keep their credentials in memory only.
+HOME=$TEST_HOME build/et -N --serverfifo=$ET_FIFO \
+  --terminal-path "$PWD/build/etterminal" --logtostdout \
+  "localhost:$ET_PORT" >"$UNNAMED_LOG" 2>&1 &
+aux_pid=$!
+wait_for_grep 'ET running, feel free to background' "$UNNAMED_LOG" 30
+if [ -d "$TEST_HOME/.et/sessions" ] &&
+  find "$TEST_HOME/.et/sessions" -type f -print -quit | grep -q .; then
+  echo "unnamed session created a saved session file" >&2
+  exit 1
+fi
+kill -9 "$aux_pid" 2>/dev/null || true
+wait "$aux_pid" 2>/dev/null || true
+aux_pid=""
+pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
+
+# Session storage failures are warnings. Listing remains a successful local
+# operation, and --name continues as an unnamed live session.
+RESTRICTED_HOME=$TEST_HOME/restricted
+mkdir "$RESTRICTED_HOME"
+chmod 000 "$RESTRICTED_HOME"
+HOME=$RESTRICTED_HOME build/et --list >"$UNWRITABLE_LIST_LOG" 2>&1
+grep -F -q 'Could not list sessions' "$UNWRITABLE_LIST_LOG"
+HOME=$RESTRICTED_HOME build/et --name unwritable -N \
+  --serverfifo=$ET_FIFO --terminal-path "$PWD/build/etterminal" \
+  --logtostdout "localhost:$ET_PORT" >"$UNWRITABLE_NAME_LOG" 2>&1 &
+aux_pid=$!
+wait_for_grep "Could not save session 'unwritable'" \
+  "$UNWRITABLE_NAME_LOG" 30
+wait_for_grep 'ET running, feel free to background' "$UNWRITABLE_NAME_LOG" 30
+kill -9 "$aux_pid" 2>/dev/null || true
+wait "$aux_pid" 2>/dev/null || true
+aux_pid=""
+pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
+chmod 700 "$RESTRICTED_HOME"
 
 mkfifo "$INPUT_FIFO" "$ATTACH_FIFO"
 # Hold the fifos open so the clients never see EOF on stdin.
@@ -200,16 +273,51 @@ wait_for_file "$TEST_HOME/.et/sessions/alpha" 30
 printf 'if [ -z "${ET_SENTINEL+x}" ]; then echo FRESH-UNSET; else echo FRESH-SET; fi\n' >&10
 wait_for_grep 'FRESH-UNSET' "$RECREATE_LOG" 30
 
-printf 'exit\n' >&10
-for _ in $(seq 1 100); do
-  [ ! -f "$TEST_HOME/.et/sessions/alpha" ] && break
-  sleep 0.1
-done
+# Preserve the live credentials for stale and unreachable follow-up cases,
+# then terminate the session from a separate client. A unique
+# case-insensitive substring resolves the same way as --attach.
+cp -p "$TEST_HOME/.et/sessions/alpha" "$LOG_DIR/alpha.kill-stale"
+terminal_pid=$(pgrep -f "etterminal.*--serverfifo=$ET_FIFO" | tail -n 1)
+HOME=$TEST_HOME build/et --kill LPH >"$KILL_LOG" 2>&1
+grep -F -q "Killed session 'alpha'" "$KILL_LOG"
+wait_for_process_exit "$terminal_pid" 30
 [ ! -f "$TEST_HOME/.et/sessions/alpha" ] || {
-  echo "fresh session file not removed after clean exit" >&2
+  echo "--kill did not remove the live session file" >&2
   exit 1
 }
 wait "$attach_pid" 2>/dev/null || true
 attach_pid=""
+
+if HOME=$TEST_HOME build/et --attach alpha >"$KILL_ATTACH_LOG" 2>&1; then
+  echo "--attach found a killed session" >&2
+  exit 1
+fi
+grep -F -q "No saved session named 'alpha'" "$KILL_ATTACH_LOG"
+
+# Restoring the ended session's credentials makes a stale local record. The
+# server's INVALID_KEY response removes it successfully.
+cp -p "$LOG_DIR/alpha.kill-stale" "$TEST_HOME/.et/sessions/alpha"
+HOME=$TEST_HOME build/et --kill alpha >"$STALE_KILL_LOG" 2>&1
+grep -F -q "Session 'alpha' was already gone; removed stale record" \
+  "$STALE_KILL_LOG"
+[ ! -f "$TEST_HOME/.et/sessions/alpha" ]
+
+# An unreachable endpoint must retain the record for a later retry.
+cp -p "$LOG_DIR/alpha.kill-stale" "$TEST_HOME/.et/sessions/unreachable"
+sed -i 's/^name=alpha$/name=unreachable/' \
+  "$TEST_HOME/.et/sessions/unreachable"
+sed -i "s/^port=$ET_PORT$/port=$((ET_PORT + 1))/" \
+  "$TEST_HOME/.et/sessions/unreachable"
+if HOME=$TEST_HOME build/et --kill unreachable \
+  >"$UNREACHABLE_KILL_LOG" 2>&1; then
+  echo "--kill unexpectedly succeeded for an unreachable host" >&2
+  exit 1
+fi
+grep -F -q "Could not reach the ET server: localhost:$((ET_PORT + 1))" \
+  "$UNREACHABLE_KILL_LOG"
+grep -F -q "Session 'unreachable' was not removed; retry --kill or delete ~/.et/sessions/unreachable manually" \
+  "$UNREACHABLE_KILL_LOG"
+[ -f "$TEST_HOME/.et/sessions/unreachable" ]
+rm "$TEST_HOME/.et/sessions/unreachable"
 
 echo "named_sessions.sh: OK"

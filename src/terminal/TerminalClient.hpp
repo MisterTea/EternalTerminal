@@ -54,6 +54,8 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  /** @brief Requests server-side termination and waits for confirmation. */
+  bool killSession(int timeoutSeconds);
   /**
    * @brief True when run() ended because the server reported the session is
    * gone (INVALID_KEY on reconnect), as opposed to the local console going

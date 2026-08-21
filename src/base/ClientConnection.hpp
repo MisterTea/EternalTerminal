@@ -38,13 +38,13 @@ class ClientConnection : public Connection {
    * (the server already held state for this id, so no bootstrap exchange
    * is needed).
    */
-  bool wasRecovered() const { return recovered_; }
+  bool wasRecovered() const { return recovered_.load(); }
 
   /**
    * @brief The ConnectStatus received on the most recent connect attempt.
    * Only meaningful when connect() returned false.
    */
-  et::ConnectStatus lastStatus() const { return lastStatus_; }
+  et::ConnectStatus lastStatus() const { return lastStatus_.load(); }
 
   /**
    * @brief Blocks until any running reconnect thread has finished.
@@ -60,9 +60,9 @@ class ClientConnection : public Connection {
   /** @brief Server endpoint we try to connect to. */
   SocketEndpoint remoteEndpoint;
   /** @brief Set when connect() completed via the reset handshake. */
-  bool recovered_ = false;
+  std::atomic<bool> recovered_{false};
   /** @brief ConnectStatus from the most recent connect attempt. */
-  et::ConnectStatus lastStatus_ = et::ConnectStatus::NEW_CLIENT;
+  std::atomic<et::ConnectStatus> lastStatus_{et::ConnectStatus::NEW_CLIENT};
   /** @brief Thread that keeps retrying the handshake after disconnects. */
   std::shared_ptr<std::thread> reconnectThread;
 };

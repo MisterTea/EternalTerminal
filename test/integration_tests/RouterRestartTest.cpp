@@ -103,7 +103,8 @@ struct SessionFixture {
   }
 
   void start(RestartableServer& target,
-             std::function<bool(const string&)> sessionTitleUpdate = {}) {
+             std::function<bool(const string&)> sessionTitleUpdate = {},
+             const string& reverseTunnels = "") {
     auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
     auto sshSetupHandler =
         make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
@@ -126,7 +127,7 @@ struct SessionFixture {
     clientPipeSocketHandler.reset(new PipeSocketHandler());
     client = shared_ptr<TerminalClient>(new TerminalClient(
         clientSocketHandler, clientPipeSocketHandler, target.serverEndpoint, id,
-        passkey, console, false, "", "", false, "",
+        passkey, console, false, "", reverseTunnels, false, "",
         MAX_CLIENT_KEEP_ALIVE_DURATION, vector<pair<string, string>>(),
         /*maxConnectAttempts=*/3, /*exitOnConnectFailure=*/true,
         /*sessionHeartbeat=*/{}, sessionTitleUpdate));
@@ -157,6 +158,17 @@ struct SessionFixture {
       }
       handler.reset();
     }
+  }
+
+  void detachClient() {
+    if (!client) {
+      return;
+    }
+    client->shutdown();
+    if (clientThread.joinable()) {
+      clientThread.join();
+    }
+    client.reset();
   }
 
   string id;
@@ -209,6 +221,12 @@ class RealPtyCatTerminal : public UserTerminal {
   }
   virtual void runTerminal() {}
   virtual void handleSessionEnd() {}
+  virtual void terminate() {
+    const pid_t pid = childPid.load();
+    if (pid > 0) {
+      kill(pid, SIGHUP);
+    }
+  }
   virtual void cleanup() {
     if (masterFd >= 0) {
       close(masterFd);
@@ -493,6 +511,38 @@ TEST_CASE("TerminalClientPersistsOscTitle", "[RouterRestart]") {
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
 
+TEST_CASE("TerminalClientKillsDetachedSession", "[RouterRestart]") {
+  const string pipeDirectory = makePipeDir();
+  RestartableServer target;
+  target.serverEndpoint.set_name(pipeDirectory + "/pipe_server");
+  target.routerEndpoint.set_name(pipeDirectory + "/pipe_router");
+  target.start();
+
+  SessionFixture session;
+  session.start(target);
+  session.detachClient();
+
+  auto socketHandler = make_shared<PipeSocketHandler>();
+  auto pipeSocketHandler = make_shared<PipeSocketHandler>();
+  TerminalClient killer(
+      socketHandler, pipeSocketHandler, target.serverEndpoint, session.id,
+      session.passkey, /*console=*/nullptr, false, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, vector<pair<string, string>>(),
+      /*maxConnectAttempts=*/3, /*exitOnConnectFailure=*/false);
+  REQUIRE(killer.killSession(10));
+  requireEventually([&]() { return session.userTerminal->sessionEndHandled(); },
+                    10, "terminal session end after kill");
+  requireEventually(
+      [&]() { return !target.server->clientConnectionExists(session.id); }, 10,
+      "server key removal after kill");
+
+  session.stop();
+  target.kill();
+  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
+  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+}
+
 TEST_CASE("RouterRestartOutageBackpressure", "[RouterRestart]") {
   const string pipeDirectory = makePipeDir();
   RestartableServer target;
@@ -524,6 +574,38 @@ TEST_CASE("RouterRestartOutageBackpressure", "[RouterRestart]") {
 
   session.stop();
   target.kill();
+  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
+  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
+  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+}
+
+TEST_CASE("RouterRestartWarnsWhenReverseTunnelsAreLost", "[RouterRestart]") {
+  const string pipeDirectory = makePipeDir();
+  RestartableServer target;
+  target.serverEndpoint.set_name(pipeDirectory + "/pipe_server");
+  target.routerEndpoint.set_name(pipeDirectory + "/pipe_router");
+  target.start();
+
+  SessionFixture session;
+  const string reverseSource = pipeDirectory + "/reverse-source";
+  const string reverseDestination = pipeDirectory + "/reverse-destination";
+  session.start(target, {}, reverseSource + ":" + reverseDestination);
+
+  target.kill();
+  target.start();
+  requireEventually(
+      [&]() { return target.server->clientConnectionExists(session.id); }, 60,
+      "client reconnect");
+  requireTerminalOutputEventually(
+      session.console,
+      "et: port forwards were not restored across the server restart; "
+      "reconnect to re-establish",
+      30, "lost port-forward notice");
+
+  session.stop();
+  target.kill();
+  std::error_code ec;
+  std::filesystem::remove(reverseSource, ec);
   FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
   FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
   FATAL_FAIL(::remove(pipeDirectory.c_str()));

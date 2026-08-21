@@ -296,6 +296,11 @@ class RealPtyEchoTerminal : public UserTerminal {
   }
   virtual void runTerminal() {}
   virtual void handleSessionEnd() {}
+  virtual void terminate() {
+    if (childPid > 0) {
+      kill(childPid, SIGHUP);
+    }
+  }
   virtual void cleanup() {
     if (masterFd >= 0) {
       close(masterFd);

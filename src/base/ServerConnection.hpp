@@ -110,8 +110,9 @@ class ServerConnection {
   SocketEndpoint serverEndpoint;
   /** @brief Map of client IDs to their registered passkeys. */
   std::unordered_map<string, string> clientKeys;
-  /** @brief Client IDs whose registered keys were removed in this process. */
-  std::unordered_set<string> removedClientIds;
+  /** @brief Removal time for client IDs whose sessions ended in this process.
+   */
+  std::unordered_map<string, time_t> removedClientIds;
   /** @brief Active client connections indexed by ID. */
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;
@@ -129,6 +130,9 @@ class ServerConnection {
   int recoveryGraceSeconds = 60;
   /** @brief When this server instance started (wall clock). */
   time_t startTime_;
+
+  /** @brief Evicts ended-client markers older than the recovery grace. */
+  void pruneRemovedClientIds(time_t now);
 };
 }  // namespace et
 

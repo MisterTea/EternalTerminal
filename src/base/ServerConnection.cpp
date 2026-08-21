@@ -84,6 +84,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       LOG(INFO) << "Got client with id: " << clientId;
 
       clientKeyExistsNow = clientKeyExists(clientId);
+      pruneRemovedClientIds(time(NULL));
       clientWasRemoved =
           removedClientIds.find(clientId) != removedClientIds.end();
       if (clientConnectionExists(clientId)) {
@@ -189,7 +190,9 @@ bool ServerConnection::removeClient(const string& id, bool clientSessionEnded) {
       return false;
     }
     if (clientSessionEnded) {
-      removedClientIds.insert(id);
+      const time_t now = time(NULL);
+      pruneRemovedClientIds(now);
+      removedClientIds[id] = now;
     }
     clientKeys.erase(id);
     const auto it = clientConnections.find(id);
@@ -203,6 +206,17 @@ bool ServerConnection::removeClient(const string& id, bool clientSessionEnded) {
   // reconnect can hold across blocking socket I/O.
   connection->shutdown();
   return true;
+}
+
+void ServerConnection::pruneRemovedClientIds(time_t now) {
+  for (auto it = removedClientIds.begin(); it != removedClientIds.end();) {
+    if (now >= it->second &&
+        now - it->second > static_cast<time_t>(recoveryGraceSeconds)) {
+      it = removedClientIds.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void ServerConnection::destroyPartialConnection(const string& clientId) {

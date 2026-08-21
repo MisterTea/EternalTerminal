@@ -195,6 +195,26 @@ et hostname (etserver running on default port 2022, username is the same as curr
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
 
+### Named sessions
+
+`--name` saves a session so another client can attach later. Sessions without
+`--name` keep their credentials in memory and do not appear in `--list`.
+
+```bash
+et --name work hostname
+et --list
+et --attach work
+et --kill work
+```
+
+`--list` reads local records from `~/.et/sessions` and does not contact a
+server. `--attach` accepts an exact name or a unique case-insensitive match in
+the saved name or terminal title. Port forwards, SSH agent forwarding, and
+jumphost options require a fresh connection and cannot be added by `--attach`.
+`--kill` uses the same name and title matching rules, ends the remote session,
+and removes its local record. If the server is unreachable, the record is kept
+so the command can be retried.
+
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 
 ```bash

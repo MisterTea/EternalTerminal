@@ -292,7 +292,12 @@ vector<SessionInfo> listSessions() {
     return sessions;
   }
   std::error_code ec;
-  if (!fs::is_directory(dir, ec)) {
+  const bool isDirectory = fs::is_directory(dir, ec);
+  if (ec) {
+    LOG(WARNING) << "Could not list sessions: " << ec.message();
+    return sessions;
+  }
+  if (!isDirectory) {
     // No session directory yet is not an error.
     return sessions;
   }

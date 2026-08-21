@@ -292,6 +292,7 @@ class FakeUserTerminal : public UserTerminal {
     lock_guard<recursive_mutex> lock(_mutex);
     didHandleSessionEnd = true;
   }
+  virtual void terminate() {}
   virtual void cleanup() {
     lock_guard<recursive_mutex> lock(_mutex);
     if (didCleanUp) {

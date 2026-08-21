@@ -49,6 +49,8 @@ class UserTerminalHandler {
   optional<SocketEndpoint> routerEndpoint;
   /** @brief True once the pty has been set up (the session has started). */
   bool ptyActive;
+  /** @brief True when bootstrap created server-side reverse tunnels. */
+  bool hadReverseTunnels;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);

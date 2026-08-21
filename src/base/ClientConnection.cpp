@@ -46,7 +46,7 @@ bool ClientConnection::connect() {
     }
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
-    lastStatus_ = response.status();
+    lastStatus_.store(response.status());
     if (response.status() == RETRY_LATER) {
       // The server is still recovering after a restart; surface a plain
       // failure so the caller's retry loop continues without error spam.
@@ -96,7 +96,7 @@ bool ClientConnection::connect() {
         LOG(WARNING) << "Reset recovery failed during connect";
         return false;
       }
-      recovered_ = true;
+      recovered_.store(true);
     }
     VLOG(1) << "Client Connection established";
     return true;
@@ -177,7 +177,7 @@ void ClientConnection::pollReconnect() {
             LOG(INFO) << "Got invalid key on reconnect, assume that server has "
                          "terminated the session.";
             // This means that the server has terminated the connection.
-            lastStatus_ = INVALID_KEY;
+            lastStatus_.store(INVALID_KEY);
             shuttingDown = true;
             socketHandler->close(newSocketFd);
             return;

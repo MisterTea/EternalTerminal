@@ -178,6 +178,32 @@ TerminalClient::~TerminalClient() {
   connection.reset();
 }
 
+bool TerminalClient::killSession(int timeoutSeconds) {
+  TerminalInfo command;
+  command.set_command(TerminalInfo::KILL_SESSION);
+  command.set_commandversion(SESSION_KILL_COMMAND_VERSION);
+  connection->writePacket(
+      Packet(TerminalPacketType::TERMINAL_INFO, protoToString(command)));
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (connection->hasData()) {
+      Packet packet;
+      if (connection->read(&packet) &&
+          packet.getHeader() == TerminalPacketType::KEEP_ALIVE &&
+          packet.getPayload() == SESSION_KILL_ACK) {
+        return true;
+      }
+    }
+    if (connection->lastStatus() == ConnectStatus::INVALID_KEY) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
 void TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->setup();

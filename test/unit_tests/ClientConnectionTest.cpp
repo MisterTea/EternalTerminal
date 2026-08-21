@@ -90,6 +90,12 @@ class RecordingServerConnection : public ServerConnection {
   // Pretend the recovery grace window has long passed.
   void expireGrace() { startTime_ = time(NULL) - recoveryGraceSeconds - 1; }
 
+  void expireRemovedClient(const string& id) {
+    removedClientIds.at(id) = time(NULL) - recoveryGraceSeconds - 1;
+  }
+
+  size_t removedClientCount() const { return removedClientIds.size(); }
+
   bool shouldResumeAsReturning(const string& clientId) override {
     return resumeIds.count(clientId) > 0;
   }
@@ -326,6 +332,21 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   REQUIRE(unknownResponse.status() == RETRY_LATER);
   handler->close(unknownPair[0]);
   handler->close(unknownPair[1]);
+
+  // Once the removal marker itself expires, the id is unknown again. Because
+  // this server is still inside its startup grace, unknown ids retry instead
+  // of being treated as sessions that definitely ended.
+  server.expireRemovedClient("ended");
+  int expiredPair[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, expiredPair) == 0);
+  handler->writeProto(expiredPair[0], endedRequest, true);
+  server.clientHandler(expiredPair[1]);
+  auto expiredResponse =
+      handler->readProto<ConnectResponse>(expiredPair[0], true);
+  REQUIRE(expiredResponse.status() == RETRY_LATER);
+  REQUIRE(server.removedClientCount() == 0);
+  handler->close(expiredPair[0]);
+  handler->close(expiredPair[1]);
 
   server.shutdown();
 }
