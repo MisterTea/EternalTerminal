@@ -116,7 +116,9 @@ int main(int argc, char** argv) {
   if (!listOnly) {
     CLOG(INFO, "stdout") << "Writing log to " << logDirectory << endl;
   }
-  et::LogHandler::setupLogFiles(&defaultConf, logDirectory, "log", true, true);
+  // Sanitizers report directly to stderr and may terminate the process before
+  // test cleanup can preserve redirected logs. Keep stderr attached to CTest.
+  et::LogHandler::setupLogFiles(&defaultConf, logDirectory, "log", true, false);
 
   // Reconfigure default logger to apply settings above
   el::Loggers::reconfigureLogger("default", defaultConf);

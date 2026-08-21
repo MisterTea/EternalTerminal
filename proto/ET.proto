@@ -31,8 +31,11 @@ message SequenceHeader {
   optional int32 sequenceNumber = 1;
   // Set when either side's sequence state is unusable (fresh process on one
   // side). Both peers then zero their BackedReader/BackedWriter state and
-  // exchange empty catchup buffers instead of replaying history.
+  // exchange empty catchup buffers instead of replaying history. A reset
+  // request must include a fresh 32-byte resetSalt. Upstream peers do not send
+  // reset requests, so mixed-version reset recovery is not supported.
   optional bool reset = 2;
+  optional bytes resetSalt = 3;
 }
 
 message CatchupBuffer {

@@ -55,12 +55,23 @@ class SocketPairHandler : public SocketHandler {
     return fd;
   }
   void stopListening(const SocketEndpoint&) override {}
-  void close(int fd) override { ::close(fd); }
+  void close(int fd) override {
+    lock_guard<std::mutex> guard(closeCountsMutex);
+    closeCounts[fd]++;
+    ::close(fd);
+  }
   vector<int> getActiveSockets() override { return {}; }
+  int closeCount(int fd) const {
+    lock_guard<std::mutex> guard(closeCountsMutex);
+    auto it = closeCounts.find(fd);
+    return it == closeCounts.end() ? 0 : it->second;
+  }
 
  private:
   std::queue<int> connectQueue;
   std::queue<int> acceptQueue;
+  mutable std::mutex closeCountsMutex;
+  std::map<int, int> closeCounts;
 };
 
 class RecordingServerConnection : public ServerConnection {
@@ -141,9 +152,9 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
     auto seqHeader = handler->readProto<SequenceHeader>(
         fds[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
     REQUIRE(seqHeader.reset());
+    REQUIRE(seqHeader.resetsalt().size() == CryptoHandler::EPOCH_SALT_BYTES);
     SequenceHeader seqResponse;
     seqResponse.set_sequencenumber(0);
-    seqResponse.set_reset(true);
     handler->writeProto(fds[1], seqResponse, true);
     auto catchup = handler->readProto<CatchupBuffer>(fds[1], true);
     REQUIRE(catchup.buffer_size() == 0);
@@ -178,10 +189,12 @@ TEST_CASE("ClientConnection surfaces handshake failures",
   });
 
   REQUIRE_FALSE(conn.connect());
-
   server.join();
+
+  REQUIRE(conn.getSocketFd() == -1);
+  REQUIRE(handler->closeCount(fds[0]) == 1);
+
   conn.shutdown();
-  handler->close(fds[0]);
   handler->close(fds[1]);
 }
 
@@ -348,9 +361,9 @@ TEST_CASE("ServerConnection resumes sessions with an active pty",
         fds[0], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
     REQUIRE(seqHeader.sequencenumber() == 0);
     REQUIRE(seqHeader.reset());
+    REQUIRE(seqHeader.resetsalt().size() == CryptoHandler::EPOCH_SALT_BYTES);
     SequenceHeader seqResponse;
     seqResponse.set_sequencenumber(0);
-    seqResponse.set_reset(true);
     handler->writeProto(fds[0], seqResponse, true);
     auto catchup = handler->readProto<CatchupBuffer>(fds[0], true);
     REQUIRE(catchup.buffer_size() == 0);
@@ -528,12 +541,14 @@ TEST_CASE("Connection recover with forceReset performs clean reset exchange",
         reconnect[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
     REQUIRE(seqHeader.sequencenumber() == 0);
     REQUIRE(seqHeader.reset());
+    REQUIRE(seqHeader.resetsalt().size() == CryptoHandler::EPOCH_SALT_BYTES);
 
     // The remote peer is further ahead; with a reset its history is
     // discarded, so this must not trigger a "client is ahead" failure.
     SequenceHeader seqResponse;
     seqResponse.set_sequencenumber(5);
     seqResponse.set_reset(true);
+    seqResponse.set_resetsalt(string(CryptoHandler::EPOCH_SALT_BYTES, 'r'));
     handler->writeProto(reconnect[1], seqResponse, true);
 
     auto catchup = handler->readProto<CatchupBuffer>(reconnect[1], true);

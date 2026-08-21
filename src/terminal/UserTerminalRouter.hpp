@@ -1,6 +1,7 @@
 #ifndef __ET_USER_TERMINAL_ROUTER__
 #define __ET_USER_TERMINAL_ROUTER__
 
+#include <condition_variable>
 #include <optional>
 
 #include "Headers.hpp"
@@ -51,11 +52,11 @@ class UserTerminalRouter {
   bool isPtyActive(const string& id);
 
   /**
-   * @brief Drops the registration for `id` so its terminal slot no longer
-   * blocks a future same-id registration (a terminal whose shell ended must
-   * not linger; also fixes the stale-entry leak behind MisterTea#428).
+   * @brief Closes and drops the registration only when `terminalFd` is still
+   * the current fd for `id`. Returns false when a replacement registration
+   * has already superseded this pump.
    */
-  void removeTerminal(const string& id);
+  bool removeTerminal(const string& id, int terminalFd);
 
   /**
    * @brief Closes the listen fd and every registered terminal pipe.  On a
@@ -73,6 +74,8 @@ class UserTerminalRouter {
   shared_ptr<PipeSocketHandler> socketHandler;
   /** @brief Synchronizes access to the router state. */
   recursive_mutex routerMutex;
+  /** @brief Wakes an ending pump when its terminal re-registers. */
+  condition_variable_any registrationChanged;
 };
 }  // namespace et
 

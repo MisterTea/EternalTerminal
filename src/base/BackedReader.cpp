@@ -104,13 +104,12 @@ void BackedReader::revive(int newSocketFd,
   socketFd = newSocketFd;
 }
 
-void BackedReader::reset() {
+void BackedReader::reset(const string& salt) {
   // Caller must hold recoverMutex (see getRecoverMutex), mirroring revive().
   localBuffer.clear();
   partialMessage.clear();
   sequenceNumber = 0;
-  // Restart the stream nonce so a fresh peer process stays in lockstep.
-  cryptoHandler->resetNonce();
+  cryptoHandler->rekey(salt);
 }
 
 int BackedReader::getPartialMessageLength() {

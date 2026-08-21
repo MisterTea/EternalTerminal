@@ -57,8 +57,16 @@ bool ClientConnection::connect() {
       // Note: the response can be returning client if the client died while
       // performing the initial connection but the server thought the client
       // survived.
-      STERROR << "Error connecting to server: " << response.status() << ": "
-              << response.error();
+      if (response.status() == INVALID_KEY) {
+        // A saved session whose shell has ended is an expected attach result,
+        // not an internal error.  Avoid the expensive stack trace before the
+        // caller discards the stale record and creates a new session.
+        LOG(INFO) << "Server rejected an ended client session: "
+                  << response.error();
+      } else {
+        STERROR << "Error connecting to server: " << response.status() << ": "
+                << response.error();
+      }
       CLOG(INFO, "stdout") << "Error connecting to server: "
                            << response.status() << ": " << response.error()
                            << endl;
@@ -95,7 +103,10 @@ bool ClientConnection::connect() {
   } catch (const runtime_error& err) {
     LOG(INFO) << "Got failure during connect";
     if (socketFd != -1) {
-      socketHandler->close(socketFd);
+      // Keep Connection's descriptor state in sync with the socket handler.
+      // A raw close here leaves socketFd live, so destruction closes it twice
+      // and reports two additional stack traces on this expected failure path.
+      closeSocket();
     }
   }
   return false;

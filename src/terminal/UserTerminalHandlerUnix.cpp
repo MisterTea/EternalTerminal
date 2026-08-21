@@ -58,14 +58,10 @@ int UserTerminalHandler::reconnectRouter() {
                "the router to come back.";
   int backoffSec = 1;
   while (true) {
-    // Bound the shutdown latency: check the flag every second while sleeping.
-    for (int a = 0; a < backoffSec; a++) {
-      sleep(1);
-      {
-        lock_guard<recursive_mutex> guard(shutdownMutex);
-        if (shuttingDown) {
-          return -1;
-        }
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
       }
     }
     try {
@@ -77,6 +73,14 @@ int UserTerminalHandler::reconnectRouter() {
       return routerFd;
     } catch (const std::exception& re) {
       LOG(INFO) << "Router not available yet: " << re.what();
+    }
+    // Bound the shutdown latency: check the flag every second while sleeping.
+    for (int a = 0; a < backoffSec; a++) {
+      sleep(1);
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
+      }
     }
     if (backoffSec < 10) {
       backoffSec *= 2;

@@ -95,6 +95,37 @@ TEST_CASE("UserTerminalRouter getSocketHandler returns handler",
 
 #ifndef WIN32
 namespace {
+class CountingPipeSocketHandler : public PipeSocketHandler {
+ public:
+  void close(int fd) override {
+    {
+      lock_guard<mutex> guard(closeCountsMutex);
+      closeCounts[fd]++;
+    }
+    PipeSocketHandler::close(fd);
+  }
+
+  int closeCount(int fd) const {
+    lock_guard<mutex> guard(closeCountsMutex);
+    const auto it = closeCounts.find(fd);
+    return it == closeCounts.end() ? 0 : it->second;
+  }
+
+ private:
+  mutable mutex closeCountsMutex;
+  map<int, int> closeCounts;
+};
+
+class InspectableUserTerminalRouter : public UserTerminalRouter {
+ public:
+  using UserTerminalRouter::UserTerminalRouter;
+
+  int terminalFd(const string& id) {
+    lock_guard<recursive_mutex> guard(routerMutex);
+    return idInfoMap.at(id).fd();
+  }
+};
+
 // Registers a fake terminal with the router over the pipe endpoint, exactly
 // like UserTerminalHandler::registerWithRouter does.  Returns the terminal
 // side fd and the accepted id/key pair via the out parameters.
@@ -150,20 +181,21 @@ TEST_CASE("UserTerminalRouter tracks ptyactive registrations",
 
 TEST_CASE("UserTerminalRouter replaces dead registrations only",
           "[UserTerminalRouter]") {
-  auto socketHandler = std::make_shared<PipeSocketHandler>();
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
 
   RouterEndpoint testEndpoint;
 
   SocketEndpoint routerEndpoint;
   routerEndpoint.set_name(testEndpoint.path);
 
-  UserTerminalRouter router(socketHandler, routerEndpoint);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
 
   IdKeyPair accepted;
   int fdOwner = registerFakeTerminal(socketHandler, router, routerEndpoint,
                                      "term", "owner-key", true, &accepted);
   REQUIRE(accepted.id == "term");
   REQUIRE(accepted.key == "owner-key");
+  const int supersededRouterFd = router.terminalFd("term");
 
   // A duplicate registration while the owner is live is rejected, and the
   // original registration (and its key) stays in place.
@@ -182,6 +214,7 @@ TEST_CASE("UserTerminalRouter replaces dead registrations only",
   REQUIRE(accepted.id == "term");
   REQUIRE(accepted.key == "owner-key");
   REQUIRE(router.isPtyActive("term"));
+  REQUIRE(socketHandler->closeCount(supersededRouterFd) == 1);
 
   socketHandler->close(fdNew);
   testEndpoint.cleanup(socketHandler);
@@ -189,22 +222,24 @@ TEST_CASE("UserTerminalRouter replaces dead registrations only",
 
 TEST_CASE("UserTerminalRouter removeTerminal frees the id",
           "[UserTerminalRouter]") {
-  auto socketHandler = std::make_shared<PipeSocketHandler>();
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
 
   RouterEndpoint testEndpoint;
 
   SocketEndpoint routerEndpoint;
   routerEndpoint.set_name(testEndpoint.path);
 
-  UserTerminalRouter router(socketHandler, routerEndpoint);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
 
   IdKeyPair accepted;
   int fdOwner = registerFakeTerminal(socketHandler, router, routerEndpoint,
                                      "term", "owner-key", true, &accepted);
   REQUIRE(accepted.id == "term");
 
-  router.removeTerminal("term");
+  const int routerFd = router.terminalFd("term");
+  REQUIRE(router.removeTerminal("term", routerFd));
   REQUIRE_FALSE(router.isPtyActive("term"));
+  REQUIRE(socketHandler->closeCount(routerFd) == 1);
 
   // Even with the old pipe still open, the id is free again.
   int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,

@@ -57,9 +57,10 @@ class BackedReader {
    * @brief Discards all buffered state and sequence tracking so the next
    * packet starts at sequence 0. Used by the reset handshake when the
    * peer's sequence history is unusable (fresh process on one side).
+   * @param salt Fresh epoch salt agreed during the reset handshake.
    * @note Caller must hold the recover mutex (see getRecoverMutex).
    */
-  void reset();
+  void reset(const string& salt);
 
   /**
    * @brief Marks the reader as disconnected so callers stop issuing reads.

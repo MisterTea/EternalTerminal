@@ -216,8 +216,9 @@ TEST_CASE("BackedIO reset zeroes sequences and drops buffered state",
   {
     std::lock_guard<std::mutex> readerGuard(reader.getRecoverMutex());
     std::lock_guard<std::mutex> writerGuard(writer.getRecoverMutex());
-    reader.reset();
-    writer.reset();
+    const string resetSalt(CryptoHandler::EPOCH_SALT_BYTES, 'r');
+    reader.reset(resetSalt);
+    writer.reset(resetSalt);
   }
   REQUIRE(writer.getSequenceNumber() == 0);
   REQUIRE(reader.getSequenceNumber() == 0);

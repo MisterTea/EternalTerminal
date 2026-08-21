@@ -24,8 +24,12 @@ struct SessionInfo {
   string id;
   /** @brief Session passkey. Secret material. */
   string passkey;
+  /** @brief Latest terminal title reported by OSC 0/2. */
+  string title;
   /** @brief Unix time when the session was saved. */
   int64_t savedAt;
+  /** @brief Unix time from the session file's modification time. */
+  int64_t lastSeenAt;
 };
 
 /**
@@ -58,6 +62,21 @@ vector<SessionInfo> listSessions();
  * @brief Loads one saved session, or nullopt if it is missing or corrupt.
  */
 optional<SessionInfo> loadSession(const string& name);
+
+/**
+ * @brief Updates a saved session's modification time without rewriting it.
+ * Returns false if the name is invalid, missing, or cannot be touched.
+ */
+bool touchSession(const string& name);
+
+/**
+ * @brief Rewrites a saved session with a new title, preserving credentials.
+ * Returns false if the session cannot be loaded or saved.
+ */
+bool updateSessionTitle(const string& name, const string& title);
+
+/** @brief Formats a session file time as a coarse age for --list. */
+string formatLastSeen(int64_t lastSeenAt, int64_t now);
 
 /**
  * @brief Removes a saved session file if present.

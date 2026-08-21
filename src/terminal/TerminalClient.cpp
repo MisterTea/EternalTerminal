@@ -21,10 +21,13 @@ TerminalClient::TerminalClient(
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
     const vector<pair<string, string>>& envVars, int _maxConnectAttempts,
-    bool _exitOnConnectFailure)
+    bool _exitOnConnectFailure, std::function<bool()> _sessionHeartbeat,
+    std::function<bool(const string&)> _sessionTitleUpdate)
     : console(_console),
       shuttingDown(false),
-      keepaliveDuration(_keepaliveDuration) {
+      keepaliveDuration(_keepaliveDuration),
+      sessionHeartbeat(_sessionHeartbeat),
+      sessionTitleUpdate(_sessionTitleUpdate) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
@@ -150,6 +153,7 @@ TerminalClient::TerminalClient(
           connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
         // The server knows this id no longer exists; surface a distinct
         // error so callers can discard the saved session.
+        connection->shutdown();
         throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
       }
       if (_exitOnConnectFailure) {
@@ -185,6 +189,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
+  time_t sessionHeartbeatTime = time(NULL);
+  bool sessionHeartbeatWarningLogged = false;
+  time_t sessionTitleUpdateTime = time(NULL);
+  bool sessionTitleWarningLogged = false;
+  optional<string> currentSessionTitle;
+  optional<string> pendingSessionTitle;
 
   if (command.length()) {
     LOG(INFO) << "Got command: " << command;
@@ -510,6 +520,15 @@ void TerminalClient::run(const string& command, const bool noexit) {
                 VLOG(3) << "Got terminal buffer";
                 et::TerminalBuffer tb =
                     stringToProto<et::TerminalBuffer>(packet.getPayload());
+                if (sessionTitleUpdate && !tb.buffer().empty()) {
+                  const optional<string> parsedTitle =
+                      titleParser.parse(tb.buffer());
+                  if (parsedTitle && (!currentSessionTitle ||
+                                      *parsedTitle != *currentSessionTitle)) {
+                    currentSessionTitle = parsedTitle;
+                    pendingSessionTitle = parsedTitle;
+                  }
+                }
                 consoleOut.enqueue(tb.buffer());
                 keepaliveTime = time(NULL) + keepaliveDuration;
               }
@@ -589,6 +608,38 @@ void TerminalClient::run(const string& command, const bool noexit) {
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
         VLOG(4) << "send PF data";
         keepaliveTime = time(NULL) + keepaliveDuration;
+      }
+
+      const time_t now = time(NULL);
+      if (sessionHeartbeat && connection->getSocketFd() > 0 &&
+          sessionHeartbeatTime <= now) {
+        bool heartbeatSucceeded = false;
+        try {
+          heartbeatSucceeded = sessionHeartbeat();
+        } catch (...) {
+          // Session persistence is best-effort and must not end a connection.
+        }
+        if (!heartbeatSucceeded && !sessionHeartbeatWarningLogged) {
+          LOG(WARNING) << "Could not update saved session heartbeat";
+          sessionHeartbeatWarningLogged = true;
+        }
+        sessionHeartbeatTime = now + 15;
+      }
+      if (sessionTitleUpdate && pendingSessionTitle &&
+          connection->getSocketFd() > 0 && sessionTitleUpdateTime <= now) {
+        bool updateSucceeded = false;
+        try {
+          updateSucceeded = sessionTitleUpdate(*pendingSessionTitle);
+        } catch (...) {
+          // Session persistence is best-effort and must not end a connection.
+        }
+        if (updateSucceeded) {
+          pendingSessionTitle.reset();
+        } else if (!sessionTitleWarningLogged) {
+          LOG(WARNING) << "Could not update saved session title";
+          sessionTitleWarningLogged = true;
+        }
+        sessionTitleUpdateTime = now + 2;
       }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();

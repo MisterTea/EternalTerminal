@@ -102,8 +102,8 @@ class Connection {
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
    * When `forceReset` is true (or the remote header requests a reset), both
-   * BackedReader and BackedWriter state is zeroed and empty catchup buffers
-   * are exchanged instead of replaying history.
+   * peers derive fresh epoch keys, zero BackedReader and BackedWriter state,
+   * and exchange empty catchup buffers instead of replaying history.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */

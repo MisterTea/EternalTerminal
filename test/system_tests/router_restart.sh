@@ -10,19 +10,37 @@ cd "$(dirname "$0")/../.."
 ET_PORT=9923
 ET_FIFO=/tmp/et_router_restart.fifo
 TEST_HOME=$(mktemp -d /tmp/et_router_home_XXXXXXXX)
+DIAGNOSTIC_START=$TEST_HOME/diagnostic_start
 LOG_DIR=/tmp/et_test_logs/router_restart
 SERVER_LOG_DIR=$LOG_DIR/server
 
 server_pid=""
 declare -a client_pids=()
 
+dump_logs() {
+  echo "router_restart.sh: failure diagnostics (last 60 lines per log)" >&2
+  while IFS= read -r -d '' log; do
+    echo "===== $log =====" >&2
+    tail -n 60 "$log" >&2 || true
+  done < <(find "$LOG_DIR" -type f -name '*.log' -print0 2>/dev/null | sort -z)
+  while IFS= read -r -d '' log; do
+    echo "===== $log =====" >&2
+    tail -n 60 "$log" >&2 || true
+  done < <(find /tmp -maxdepth 1 -type f -name 'etterminal-*.log' \
+    -newer "$DIAGNOSTIC_START" -print0 2>/dev/null | sort -z)
+}
+
 cleanup() {
+  status=$?
+  trap - EXIT
+  [ "$status" -eq 0 ] || dump_logs
   for pid in "${client_pids[@]}"; do
     kill -9 "$pid" 2>/dev/null || true
   done
   [ -n "$server_pid" ] && kill -9 "$server_pid" 2>/dev/null || true
   pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
   [ -n "$KEEP_LOGS" ] || rm -rf "$TEST_HOME" "$LOG_DIR" || true
+  exit "$status"
 }
 trap cleanup EXIT
 
@@ -56,6 +74,7 @@ ssh -o "StrictHostKeyChecking no" localhost echo "Bypassing host check"
 pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
 rm -rf "$LOG_DIR"
 
+touch "$DIAGNOSTIC_START"
 mkdir -p "$SERVER_LOG_DIR"
 build/etserver --port $ET_PORT --serverfifo=$ET_FIFO -l "$SERVER_LOG_DIR" &
 server_pid=$!

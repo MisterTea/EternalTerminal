@@ -1,6 +1,28 @@
 #include "Connection.hpp"
 
 namespace et {
+namespace {
+string combineResetSalts(const string& localSalt, const string& remoteSalt) {
+  if (localSalt.empty()) {
+    return remoteSalt;
+  }
+  if (remoteSalt.empty()) {
+    return localSalt;
+  }
+
+  const string input =
+      localSalt < remoteSalt ? localSalt + remoteSalt : remoteSalt + localSalt;
+  string combined(CryptoHandler::EPOCH_SALT_BYTES, '\0');
+  if (crypto_generichash(reinterpret_cast<unsigned char*>(&combined[0]),
+                         combined.length(),
+                         reinterpret_cast<const unsigned char*>(input.data()),
+                         input.length(), nullptr, 0) != 0) {
+    throw std::runtime_error("Reset salt combination failed");
+  }
+  return combined;
+}
+}  // namespace
+
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
     : socketHandler(_socketHandler),
@@ -117,12 +139,16 @@ bool Connection::recover(int newSocketFd, bool forceReset) {
   LOG(INFO) << "Recovering with socket fd " << newSocketFd
             << (forceReset ? " (reset)" : "") << "...";
   try {
+    string localResetSalt;
     {
       // Write the current sequence number
       et::SequenceHeader sh;
       if (forceReset) {
+        localResetSalt.resize(CryptoHandler::EPOCH_SALT_BYTES);
+        randombytes_buf(&localResetSalt[0], localResetSalt.length());
         sh.set_sequencenumber(0);
         sh.set_reset(true);
+        sh.set_resetsalt(localResetSalt);
       } else {
         sh.set_sequencenumber(reader->getSequenceNumber());
       }
@@ -135,17 +161,25 @@ bool Connection::recover(int newSocketFd, bool forceReset) {
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
 
     if (forceReset || remoteHeader.reset()) {
+      if (remoteHeader.reset() && remoteHeader.resetsalt().length() !=
+                                      CryptoHandler::EPOCH_SALT_BYTES) {
+        throw std::runtime_error("Reset request has invalid salt length");
+      }
+
       // At least one side has unusable sequence history (a fresh process).
-      // Zero both sides and exchange empty catchup buffers so the
-      // handshake wire sequence stays identical to a normal recover.
+      // Derive fresh keys, zero both sides, and exchange empty catchup buffers
+      // so the handshake wire sequence stays identical to a normal recover.
       LOG(INFO) << "Performing reset recovery";
-      writer->reset();
-      reader->reset();
+      const string resetSalt = combineResetSalts(
+          localResetSalt,
+          remoteHeader.reset() ? remoteHeader.resetsalt() : string());
 
       et::CatchupBuffer emptyCatchup;
       socketHandler->writeProto(newSocketFd, emptyCatchup, true);
       socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
 
+      writer->reset(resetSalt);
+      reader->reset(resetSalt);
       socketFd = newSocketFd;
       reader->revive(socketFd, {});
       writer->revive(socketFd);
