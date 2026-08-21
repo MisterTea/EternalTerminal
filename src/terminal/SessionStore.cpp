@@ -4,6 +4,7 @@
 #include <sys/types.h>
 
 #include <cerrno>
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -222,11 +223,24 @@ optional<SessionInfo> loadSession(const string& name) {
         info.port <= 0 || info.port > 65535) {
       return std::nullopt;
     }
+#ifdef WIN32
+    std::error_code ec;
+    const auto mtime = fs::last_write_time(path, ec);
+    if (ec) {
+      return std::nullopt;
+    }
+    info.lastSeenAt =
+        std::chrono::duration_cast<std::chrono::seconds>(
+            std::chrono::clock_cast<std::chrono::system_clock>(mtime)
+                .time_since_epoch())
+            .count();
+#else
     struct stat fileStat;
     if (::stat(path.c_str(), &fileStat) != 0) {
       return std::nullopt;
     }
     info.lastSeenAt = static_cast<int64_t>(fileStat.st_mtime);
+#endif
     return info;
   } catch (const std::exception& e) {
     LOG(WARNING) << "Could not load session '" << name << "': " << e.what();

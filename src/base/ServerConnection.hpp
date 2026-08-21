@@ -68,14 +68,21 @@ class ServerConnection {
    */
   bool removeClient(const string& id, bool clientSessionEnded = true);
 
-  shared_ptr<ServerClientConnection> getClientConnection(
+  /** @brief Returns the active connection for an id, or null when absent. */
+  shared_ptr<ServerClientConnection> tryGetClientConnection(
       const string& clientId) {
     lock_guard<std::recursive_mutex> guard(classMutex);
     auto it = clientConnections.find(clientId);
-    if (it == clientConnections.end()) {
+    return it == clientConnections.end() ? nullptr : it->second;
+  }
+
+  shared_ptr<ServerClientConnection> getClientConnection(
+      const string& clientId) {
+    auto connection = tryGetClientConnection(clientId);
+    if (!connection) {
       STFATAL << "Error: Tried to get a client connection that doesn't exist";
     }
-    return it->second;
+    return connection;
   }
 
   /**

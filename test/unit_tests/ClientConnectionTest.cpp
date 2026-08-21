@@ -216,6 +216,9 @@ TEST_CASE("ClientConnection reports an unavailable endpoint",
 TEST_CASE("ServerConnection accepts queued clients", "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   RecordingServerConnection server(handler, SocketEndpoint());
+  // An unknown id only hardens into INVALID_KEY once the restart-recovery
+  // grace window has passed; inside it the server asks the client to retry.
+  server.expireGrace();
   REQUIRE_FALSE(server.acceptNewConnection(123));
 
   int pair[2];
@@ -288,6 +291,8 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   serverThread.join();
   REQUIRE(server.newClientCalled);
   REQUIRE(server.clientConnectionExists("client-one"));
+  REQUIRE(server.tryGetClientConnection("client-one") == server.lastConnection);
+  REQUIRE_FALSE(server.tryGetClientConnection("missing"));
   REQUIRE_FALSE(server.removeClient("missing-client"));
   REQUIRE(server.removeClient("client-one"));
   REQUIRE_FALSE(server.clientConnectionExists("client-one"));

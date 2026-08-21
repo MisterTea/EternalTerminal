@@ -48,8 +48,8 @@ TEST_CASE("TitleParser removes C1 controls without damaging UTF-8",
   TitleParser parser;
 
   const string title =
-      "caf\xC3\xA9"  // valid U+00E9
-      "\xC2\x80"     // encoded U+0080 control
+      "cl\xC3\xA9"  // valid U+00E9
+      "\xC2\x80"    // encoded U+0080 control
       "ok"
       "\xC2\x9F"           // encoded U+009F control
       " \xF0\x9F\x98\x80"  // valid U+1F600
@@ -57,7 +57,7 @@ TEST_CASE("TitleParser removes C1 controls without damaging UTF-8",
       "\xC3x";             // invalid two-byte sequence, then ASCII x
 
   REQUIRE(parser.parse("\033]2;" + title + "\007") ==
-          optional<string>("caf\xC3\xA9ok \xF0\x9F\x98\x80x"));
+          optional<string>("cl\xC3\xA9ok \xF0\x9F\x98\x80x"));
 }
 
 TEST_CASE("TitleParser reports an empty title as a clear", "[TitleParser]") {

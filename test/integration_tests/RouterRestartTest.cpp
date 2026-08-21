@@ -418,9 +418,9 @@ TEST_CASE("RouterRestartSurvival", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("RouterReregistrationSurvivesWithLiveServer", "[RouterRestart]") {
@@ -438,6 +438,11 @@ TEST_CASE("RouterReregistrationSurvivesWithLiveServer", "[RouterRestart]") {
       target.server->terminalRouter->tryGetInfoForConnection(oldConnection);
   REQUIRE(oldInfo.has_value());
   const int oldTerminalFd = oldInfo->fd();
+  // Count registrations rather than comparing descriptor numbers: the server
+  // closes the dead pipe before the replacement is accepted, so the
+  // replacement routinely lands on the very same descriptor number.
+  const uint64_t oldRegistrationCount =
+      target.server->terminalRouter->getAcceptedRegistrationCount();
 
   // Break only this terminal-to-server pipe. The server process and its TCP
   // listener remain live while etterminal re-registers the same session id.
@@ -445,15 +450,18 @@ TEST_CASE("RouterReregistrationSurvivesWithLiveServer", "[RouterRestart]") {
 
   requireEventually(
       [&]() {
-        const optional<TerminalUserInfo> info =
-            target.server->terminalRouter->tryGetInfoForConnection(
-                oldConnection);
-        return info && info->fd() != oldTerminalFd;
+        return target.server->terminalRouter->getAcceptedRegistrationCount() >
+                   oldRegistrationCount &&
+               target.server->terminalRouter
+                   ->tryGetInfoForConnection(oldConnection)
+                   .has_value();
       },
       30, "replacement terminal registration");
   requireEventually(
       [&]() {
-        return target.server->getClientConnection(session.id) != oldConnection;
+        const shared_ptr<ServerClientConnection> connection =
+            target.server->tryGetClientConnection(session.id);
+        return connection && connection != oldConnection;
       },
       30, "client reconnect to replacement terminal pump");
 
@@ -466,9 +474,9 @@ TEST_CASE("RouterReregistrationSurvivesWithLiveServer", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("TerminalClientPersistsOscTitle", "[RouterRestart]") {
@@ -506,9 +514,9 @@ TEST_CASE("TerminalClientPersistsOscTitle", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("TerminalClientKillsDetachedSession", "[RouterRestart]") {
@@ -538,9 +546,9 @@ TEST_CASE("TerminalClientKillsDetachedSession", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("RouterRestartOutageBackpressure", "[RouterRestart]") {
@@ -574,9 +582,9 @@ TEST_CASE("RouterRestartOutageBackpressure", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("RouterRestartWarnsWhenReverseTunnelsAreLost", "[RouterRestart]") {
@@ -606,9 +614,9 @@ TEST_CASE("RouterRestartWarnsWhenReverseTunnelsAreLost", "[RouterRestart]") {
   target.kill();
   std::error_code ec;
   std::filesystem::remove(reverseSource, ec);
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("RouterRestartConcurrentReregistration", "[RouterRestart]") {
@@ -658,9 +666,9 @@ TEST_CASE("RouterRestartConcurrentReregistration", "[RouterRestart]") {
     session->stop();
   }
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 TEST_CASE("RouterRestartRealPtySurvives", "[RouterRestart]") {
@@ -702,9 +710,9 @@ TEST_CASE("RouterRestartRealPtySurvives", "[RouterRestart]") {
 
   session.stop();
   target.kill();
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
-  FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  removeOrMissing(pipeDirectory + "/pipe_server");
+  removeOrMissing(pipeDirectory + "/pipe_router");
+  removeOrMissing(pipeDirectory);
 }
 
 }  // namespace et

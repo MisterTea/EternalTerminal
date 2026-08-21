@@ -1,3 +1,5 @@
+#include <chrono>
+
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
 #include "TestHeaders.hpp"
@@ -161,6 +163,9 @@ TEST_CASE("UserTerminalRouter tracks ptyactive registrations",
 
   UserTerminalRouter router(socketHandler, routerEndpoint);
   REQUIRE_FALSE(router.isPtyActive("missing"));
+  auto missingConnection = make_shared<ServerClientConnection>(
+      socketHandler, "missing", -1, "0123456789abcdef0123456789abcdef");
+  REQUIRE_FALSE(router.tryGetInfoForConnection(missingConnection));
 
   IdKeyPair accepted;
   int fdA = registerFakeTerminal(socketHandler, router, routerEndpoint,
@@ -237,7 +242,14 @@ TEST_CASE("UserTerminalRouter removeTerminal frees the id",
   REQUIRE(accepted.id == "term");
 
   const int routerFd = router.terminalFd("term");
+  const UserTerminalRouter& constRouter = router;
+  REQUIRE(constRouter.isCurrentRegistration("term", routerFd));
+  REQUIRE_FALSE(constRouter.isCurrentRegistration("term", routerFd + 1));
+  const auto removalStarted = std::chrono::steady_clock::now();
   REQUIRE(router.removeTerminal("term", routerFd));
+  const auto removalElapsed = std::chrono::steady_clock::now() - removalStarted;
+  REQUIRE(removalElapsed < std::chrono::milliseconds(500));
+  REQUIRE_FALSE(constRouter.isCurrentRegistration("term", routerFd));
   REQUIRE_FALSE(router.isPtyActive("term"));
   REQUIRE(socketHandler->closeCount(routerFd) == 1);
 

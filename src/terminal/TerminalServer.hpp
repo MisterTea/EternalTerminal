@@ -37,7 +37,8 @@ class TerminalServer : public ServerConnection {
   /** @brief Launches the interactive terminal session for a client. */
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
                    const InitialPayload& payload,
-                   const TerminalUserInfo& userInfo, bool resume = false);
+                   const TerminalUserInfo& userInfo, bool resume = false,
+                   bool* terminalEofOut = nullptr);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   /**
@@ -45,8 +46,9 @@ class TerminalServer : public ServerConnection {
    * unless the server is halting (shutdown closes the pipes itself), the
    * router registration.
    */
-  void finishSession(const string& id,
-                     const std::optional<TerminalUserInfo>& userInfo);
+  void finishSession(
+      const shared_ptr<ServerClientConnection>& serverClientState,
+      const std::optional<TerminalUserInfo>& userInfo, bool terminalEof);
   /**
    * @brief Resumes a session whose terminal re-registered after a server
    * restart: skips the INITIAL_PAYLOAD bootstrap and goes straight to the

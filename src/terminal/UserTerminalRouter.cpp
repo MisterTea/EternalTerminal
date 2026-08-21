@@ -43,7 +43,9 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
 
     const bool inserted =
         idInfoMap.insert(std::make_pair(tui.id(), tui)).second;
-    if (!inserted) {
+    if (inserted) {
+      acceptedRegistrationCount++;
+    } else {
       // A registration for this id already exists.  If the previous owner's
       // pipe is dead (the connection dropped without the session ending),
       // replace it so the terminal can re-attach; a live owner always wins.
@@ -55,7 +57,7 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
         socketHandler->close(idInfoMap.at(tui.id()).fd());
         idInfoMap.erase(tui.id());
         idInfoMap.insert(std::make_pair(tui.id(), tui));
-        registrationChanged.notify_all();
+        acceptedRegistrationCount++;
       } else {
         LOG(ERROR) << "Rejecting duplicate terminal connection for "
                    << tui.id();
@@ -80,7 +82,7 @@ std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
   lock_guard<recursive_mutex> guard(routerMutex);
   auto it = idInfoMap.find(serverClientState->getId());
   if (it == idInfoMap.end()) {
-    STFATAL << " Tried to read from an id that no longer exists";
+    return std::nullopt;
   }
 
   // While both the id and passkey are randomly generated, do an extra
@@ -111,23 +113,21 @@ bool UserTerminalRouter::isPtyActive(const string& id) {
   return it != idInfoMap.end() && it->second.ptyactive();
 }
 
+bool UserTerminalRouter::isCurrentRegistration(const string& id,
+                                               int terminalFd) const {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  const auto it = idInfoMap.find(id);
+  return it != idInfoMap.end() && it->second.fd() == terminalFd;
+}
+
+uint64_t UserTerminalRouter::getAcceptedRegistrationCount() const {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  return acceptedRegistrationCount;
+}
+
 bool UserTerminalRouter::removeTerminal(const string& id, int terminalFd) {
-  unique_lock<recursive_mutex> guard(routerMutex);
+  lock_guard<recursive_mutex> guard(routerMutex);
   auto it = idInfoMap.find(id);
-  if (it == idInfoMap.end() || it->second.fd() != terminalFd) {
-    return false;
-  }
-  // A live etterminal reconnects immediately when only its Unix pipe dies.
-  // Give its replacement registration a short chance to win before treating
-  // the EOF as the shell ending. The original registration can still say
-  // ptyactive=false because it was sent just before TERMINAL_INIT created the
-  // pty, so every active pump needs this grace period. The condition variable
-  // releases routerMutex so acceptNewConnection can install the replacement.
-  registrationChanged.wait_for(guard, std::chrono::seconds(1), [&]() {
-    const auto current = idInfoMap.find(id);
-    return current == idInfoMap.end() || current->second.fd() != terminalFd;
-  });
-  it = idInfoMap.find(id);
   if (it == idInfoMap.end() || it->second.fd() != terminalFd) {
     return false;
   }
