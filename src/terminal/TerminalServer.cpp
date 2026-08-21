@@ -629,8 +629,7 @@ void TerminalServer::handleConnection(
     LOG(ERROR) << "Terminal thread failed: " << ex.what();
   }
 
-  removeClient(serverClientState->getId());
-  removeRouterEntryIfRunning(userInfo);
+  finishSession(serverClientState->getId(), userInfo);
 }
 
 bool TerminalServer::newClient(
@@ -673,26 +672,24 @@ void TerminalServer::handleConnectionResume(
     LOG(ERROR) << "Resumed terminal thread failed: " << ex.what();
   }
 
-  removeClient(serverClientState->getId());
-  removeRouterEntryIfRunning(userInfo);
+  finishSession(serverClientState->getId(), userInfo);
 }
 
-void TerminalServer::removeRouterEntryIfRunning(
-    const std::optional<TerminalUserInfo>& userInfo) {
-  if (!userInfo) {
-    return;
-  }
+void TerminalServer::finishSession(
+    const string& id, const std::optional<TerminalUserInfo>& userInfo) {
   // Drop the router entry only when the terminal side ended the session (its
   // pipe hit EOF or errored), so a future same-id registration is not rejected
   // (also fixes the MisterTea#428 leak).  On a server halt the terminal is
   // still alive: the entry must survive so a clean shutdown can close the pipe
-  // and hand the terminal its EOF.
+  // and hand the terminal its EOF, and the id must not be marked as ended so
+  // the recovery grace window still applies after the restart.
   bool serverHalted;
   {
     lock_guard<std::mutex> guard(terminalThreadMutex);
     serverHalted = halt;
   }
-  if (!serverHalted) {
+  removeClient(id, !serverHalted);
+  if (!serverHalted && userInfo) {
     terminalRouter->removeConnection(*userInfo);
   }
 }

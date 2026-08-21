@@ -45,6 +45,13 @@ void requireEventually(const std::function<bool()>& fn, int seconds,
 // A TerminalServer that can be killed and replaced on the same pipe paths,
 // standing in for an etserver process restart.
 struct RestartableServer {
+  ~RestartableServer() {
+    try {
+      kill();
+    } catch (...) {
+    }
+  }
+
   void start() {
     serverSocketHandler.reset(new PipeSocketHandler());
     routerSocketHandler.reset(new PipeSocketHandler());
@@ -61,8 +68,13 @@ struct RestartableServer {
   // client connections and terminal pipes see their EOF, exactly as when the
   // kernel reaps a dead process.
   void kill() {
+    if (!server) {
+      return;
+    }
     server->shutdown();
-    serverThread.join();
+    if (serverThread.joinable()) {
+      serverThread.join();
+    }
     server->shutdownConnections();
     server.reset();
     serverSocketHandler.reset();
@@ -124,12 +136,22 @@ struct SessionFixture {
   }
 
   void stop() {
-    client->shutdown();
-    clientThread.join();
-    client.reset();
-    handler->shutdown();
-    handlerThread.join();
-    handler.reset();
+    // Idempotent: the test body calls this explicitly and the dtor calls it
+    // again on unwind.
+    if (client) {
+      client->shutdown();
+      if (clientThread.joinable()) {
+        clientThread.join();
+      }
+      client.reset();
+    }
+    if (handler) {
+      handler->shutdown();
+      if (handlerThread.joinable()) {
+        handlerThread.join();
+      }
+      handler.reset();
+    }
   }
 
   string id;
@@ -159,11 +181,12 @@ class RealPtyCatTerminal : public UserTerminal {
     cfmakeraw(&tios);
     tios.c_cc[VMIN] = 1;
     tios.c_cc[VTIME] = 0;
-    childPid = forkpty(&masterFd, NULL, &tios, NULL);
-    if (childPid == -1) {
-      FATAL_FAIL(childPid);
+    const pid_t pid = forkpty(&masterFd, NULL, &tios, NULL);
+    childPid.store(pid);
+    if (pid == -1) {
+      FATAL_FAIL(pid);
     }
-    if (childPid == 0) {
+    if (pid == 0) {
       // The child must not hold copies of the server/router sockets (the
       // whole suite runs in one process): keeping them open would mask the
       // EOF the handler relies on when the server side closes its end.
@@ -186,21 +209,122 @@ class RealPtyCatTerminal : public UserTerminal {
       close(masterFd);
       masterFd = -1;
     }
-    if (childPid > 0) {
+    const pid_t pid = childPid.exchange(-1);
+    if (pid > 0) {
       int status = 0;
-      waitpid(childPid, &status, 0);
-      childPid = -1;
+      waitpid(pid, &status, 0);
     }
   }
   virtual int getFd() { return masterFd; }
   virtual void setInfo(const winsize& tmpwin) {}
 
-  pid_t getChildPid() { return childPid; }
+  pid_t getChildPid() { return childPid.load(); }
 
  private:
   int masterFd;
-  pid_t childPid;
+  std::atomic<pid_t> childPid;
 };
+
+// A real-pty session whose teardown remains safe if an assertion throws.
+struct RealPtySessionFixture {
+  ~RealPtySessionFixture() {
+    try {
+      stop();
+    } catch (...) {
+    }
+  }
+
+  void start(RestartableServer& target) {
+    auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+    auto sshSetupHandler =
+        make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+    auto idpass = sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
+                                            "", "", false, 0, "", "", {});
+    id = idpass.first;
+    const string passkey = idpass.second;
+
+    consoleSocketHandler.reset(new PipeSocketHandler());
+    console.reset(new FakeConsole(consoleSocketHandler));
+    realPty.reset(new RealPtyCatTerminal());
+    handlerSocketHandler.reset(new PipeSocketHandler());
+    handler = shared_ptr<UserTerminalHandler>(
+        new UserTerminalHandler(handlerSocketHandler, realPty, true,
+                                target.routerEndpoint, id + "/" + passkey));
+    handlerThread = thread([this]() { handler->run(); });
+
+    clientSocketHandler.reset(new PipeSocketHandler());
+    clientPipeSocketHandler.reset(new PipeSocketHandler());
+    client = shared_ptr<TerminalClient>(new TerminalClient(
+        clientSocketHandler, clientPipeSocketHandler, target.serverEndpoint, id,
+        passkey, console, false, "", "", false, "",
+        MAX_CLIENT_KEEP_ALIVE_DURATION, vector<pair<string, string>>()));
+    clientThread = thread([this]() { client->run("", false); });
+
+    requireEventually([this]() { return console->isSetup(); }, 30,
+                      "console setup");
+    // The pty child is forked only after the client bootstrap delivers
+    // TERMINAL_INIT to the handler.
+    requireEventually([this]() { return realPty->getChildPid() > 0; }, 30,
+                      "pty setup");
+  }
+
+  void stop() {
+    if (client) {
+      client->shutdown();
+      if (clientThread.joinable()) {
+        clientThread.join();
+      }
+      client.reset();
+    }
+    if (handler) {
+      handler->shutdown();
+      if (handlerThread.joinable()) {
+        handlerThread.join();
+      }
+      handler.reset();
+    }
+  }
+
+  string id;
+  shared_ptr<PipeSocketHandler> consoleSocketHandler;
+  shared_ptr<SocketHandler> handlerSocketHandler;
+  shared_ptr<SocketHandler> clientSocketHandler;
+  shared_ptr<SocketHandler> clientPipeSocketHandler;
+  shared_ptr<FakeConsole> console;
+  shared_ptr<RealPtyCatTerminal> realPty;
+  shared_ptr<UserTerminalHandler> handler;
+  shared_ptr<TerminalClient> client;
+  thread handlerThread;
+  thread clientThread;
+};
+
+void requireTerminalOutputEventually(const shared_ptr<FakeConsole>& console,
+                                     const string& sentinel, int seconds,
+                                     const string& what) {
+  string output;
+  requireEventually(
+      [&]() {
+        while (console->hasTerminalData()) {
+          output += console->getTerminalData(1);
+        }
+        return output.find(sentinel) != string::npos;
+      },
+      seconds, what);
+}
+
+void requireKeystrokesEventually(
+    const shared_ptr<FakeUserTerminal>& userTerminal, const string& sentinel,
+    int seconds, const string& what) {
+  string input;
+  requireEventually(
+      [&]() {
+        while (userTerminal->hasKeystrokes()) {
+          input += userTerminal->getKeystrokes(1);
+        }
+        return input.find(sentinel) != string::npos;
+      },
+      seconds, what);
+}
 
 string makePipeDir() {
   string tmpPath = GetTempDirectory() + string("et_restart_test_XXXXXXXX");
@@ -327,7 +451,8 @@ TEST_CASE("RouterRestartConcurrentReregistration", "[RouterRestart]") {
   }
   for (int i = 0; i < kSessionCount; i++) {
     const char marker = char('a' + i);
-    REQUIRE(sessions[i]->userTerminal->getKeystrokes(1) == string(1, marker));
+    requireKeystrokesEventually(sessions[i]->userTerminal, string(1, marker),
+                                60, "marker for " + sessions[i]->id);
   }
 
   for (auto& session : sessions) {
@@ -346,40 +471,15 @@ TEST_CASE("RouterRestartRealPtySurvives", "[RouterRestart]") {
   target.routerEndpoint.set_name(pipeDirectory + "/pipe_router");
   target.start();
 
-  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
-  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
-  auto idpass = sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
-                                          "", "", false, 0, "", "", {});
-  const string id = idpass.first;
-  const string passkey = idpass.second;
-
-  auto consoleSocketHandler = make_shared<PipeSocketHandler>();
-  auto console = make_shared<FakeConsole>(consoleSocketHandler);
-  auto realPty = make_shared<RealPtyCatTerminal>();
-  auto handlerSocketHandler = make_shared<PipeSocketHandler>();
-  auto handler = shared_ptr<UserTerminalHandler>(
-      new UserTerminalHandler(handlerSocketHandler, realPty, true,
-                              target.routerEndpoint, id + "/" + passkey));
-  thread handlerThread([handler]() { handler->run(); });
-
-  auto clientSocketHandler = make_shared<PipeSocketHandler>();
-  auto clientPipeSocketHandler = make_shared<PipeSocketHandler>();
-  auto client = shared_ptr<TerminalClient>(new TerminalClient(
-      clientSocketHandler, clientPipeSocketHandler, target.serverEndpoint, id,
-      passkey, console, false, "", "", false, "",
-      MAX_CLIENT_KEEP_ALIVE_DURATION, vector<pair<string, string>>()));
-  thread clientThread([client]() { client->run("", false); });
-  requireEventually([console]() { return console->isSetup(); }, 30,
-                    "console setup");
-  // The pty child is forked only after the client bootstrap delivers
-  // TERMINAL_INIT to the handler.
-  requireEventually([&]() { return realPty->getChildPid() > 0; }, 30,
-                    "pty setup");
-  const pid_t childBefore = realPty->getChildPid();
+  RealPtySessionFixture session;
+  session.start(target);
+  const pid_t childBefore = session.realPty->getChildPid();
 
   // cat echoes input back through the whole chain.
-  console->simulateKeystrokes("x");
-  REQUIRE(console->getTerminalData(1) == "x");
+  const string beforeRestart = "ET_REAL_PTY_BEFORE_RESTART";
+  session.console->simulateKeystrokes(beforeRestart);
+  requireTerminalOutputEventually(session.console, beforeRestart, 30,
+                                  "real pty echo before restart");
 
   target.kill();
   std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -388,20 +488,20 @@ TEST_CASE("RouterRestartRealPtySurvives", "[RouterRestart]") {
 
   target.start();
   requireEventually(
-      [&]() { return target.server->terminalRouter->isPtyActive(id); }, 60,
-      "terminal re-registration");
-  requireEventually([&]() { return target.server->clientConnectionExists(id); },
-                    60, "client reconnect");
+      [&]() { return target.server->terminalRouter->isPtyActive(session.id); },
+      60, "terminal re-registration");
+  requireEventually(
+      [&]() { return target.server->clientConnectionExists(session.id); }, 60,
+      "client reconnect");
 
   // Same child process, and the echo path works after the restart.
-  REQUIRE(realPty->getChildPid() == childBefore);
-  console->simulateKeystrokes("y");
-  REQUIRE(console->getTerminalData(1) == "y");
+  REQUIRE(session.realPty->getChildPid() == childBefore);
+  const string afterRestart = "ET_REAL_PTY_AFTER_RESTART";
+  session.console->simulateKeystrokes(afterRestart);
+  requireTerminalOutputEventually(session.console, afterRestart, 30,
+                                  "real pty echo after restart");
 
-  client->shutdown();
-  clientThread.join();
-  handler->shutdown();
-  handlerThread.join();
+  session.stop();
   target.kill();
   FATAL_FAIL(::remove((pipeDirectory + "/pipe_server").c_str()));
   FATAL_FAIL(::remove((pipeDirectory + "/pipe_router").c_str()));

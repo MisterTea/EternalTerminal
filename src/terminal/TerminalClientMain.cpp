@@ -512,7 +512,18 @@ int main(int argc, char** argv) {
       struct tm localTm;
       localtime_r(&now, &localTm);
       strftime(ts, sizeof(ts), "%Y%m%d-%H%M%S", &localTm);
-      sessionName = destinationHost + "-" + ts;
+      // Hosts can contain characters that are invalid in session names
+      // (colons in IPv6 literals, etc.); map them to '-'.
+      string safeHost = destinationHost;
+      for (auto& c : safeHost) {
+        if (!isalnum(c) && c != '.' && c != '_' && c != '-') {
+          c = '-';
+        }
+      }
+      if (safeHost.empty()) {
+        safeHost = "session";
+      }
+      sessionName = safeHost + "-" + ts;
     }
 
     // Parse username: cmdline > sshconfig > localuser
@@ -655,15 +666,23 @@ int main(int argc, char** argv) {
 
     // The connection is up: persist the session so a rebooted or killed
     // client can reattach with --attach.
+    // Persist the session for reattach.  A store failure must never kill a
+    // working connection, so this is best-effort.
     if (!sessionName.empty()) {
-      SessionInfo sessionInfo;
-      sessionInfo.name = sessionName;
-      sessionInfo.host = socketEndpoint.name();
-      sessionInfo.port = socketEndpoint.port();
-      sessionInfo.id = idpasskeypair.first;
-      sessionInfo.passkey = idpasskeypair.second;
-      sessionInfo.savedAt = (int64_t)time(NULL);
-      saveSession(sessionInfo);
+      try {
+        SessionInfo sessionInfo;
+        sessionInfo.name = sessionName;
+        sessionInfo.host = socketEndpoint.name();
+        sessionInfo.port = socketEndpoint.port();
+        sessionInfo.id = idpasskeypair.first;
+        sessionInfo.passkey = idpasskeypair.second;
+        sessionInfo.savedAt = (int64_t)time(NULL);
+        saveSession(sessionInfo);
+      } catch (const std::exception& se) {
+        LOG(WARNING) << "Could not save session '" << sessionName
+                     << "': " << se.what();
+        sessionName = "";
+      }
     }
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",

@@ -52,6 +52,8 @@ class ServerConnection {
   inline void addClientKey(const string& id, const string& passkey) {
     lock_guard<std::recursive_mutex> guard(classMutex);
     clientKeys[id] = passkey;
+    // A re-registered id is live again: it must not be reported as ended.
+    removedClientIds.erase(id);
   }
 
   /**
@@ -61,8 +63,10 @@ class ServerConnection {
 
   /**
    * @brief Removes a registered client and terminates its active connection.
+   * @param clientSessionEnded Whether this removal means the client session
+   *        ended, rather than the server shutting down around a live session.
    */
-  bool removeClient(const string& id);
+  bool removeClient(const string& id, bool clientSessionEnded = true);
 
   shared_ptr<ServerClientConnection> getClientConnection(
       const string& clientId) {
@@ -106,6 +110,8 @@ class ServerConnection {
   SocketEndpoint serverEndpoint;
   /** @brief Map of client IDs to their registered passkeys. */
   std::unordered_map<string, string> clientKeys;
+  /** @brief Client IDs whose registered keys were removed in this process. */
+  std::unordered_set<string> removedClientIds;
   /** @brief Active client connections indexed by ID. */
   std::unordered_map<string, shared_ptr<ServerClientConnection>>
       clientConnections;

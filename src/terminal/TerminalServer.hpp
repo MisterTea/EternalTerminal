@@ -41,11 +41,12 @@ class TerminalServer : public ServerConnection {
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   /**
-   * @brief Removes the router registration for a finished session, unless the
-   * server is halting (shutdown closes the pipes itself).
+   * @brief Retires a finished session: drops the client key/connection and,
+   * unless the server is halting (shutdown closes the pipes itself), the
+   * router registration.
    */
-  void removeRouterEntryIfRunning(
-      const std::optional<TerminalUserInfo>& userInfo);
+  void finishSession(const string& id,
+                     const std::optional<TerminalUserInfo>& userInfo);
   /**
    * @brief Resumes a session whose terminal re-registered after a server
    * restart: skips the INITIAL_PAYLOAD bootstrap and goes straight to the

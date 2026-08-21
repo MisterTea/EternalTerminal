@@ -74,6 +74,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     clientId = request.clientid();
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
+    bool clientWasRemoved;
 
     {
       lock_guard<std::recursive_mutex> guard(classMutex);
@@ -83,6 +84,8 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       LOG(INFO) << "Got client with id: " << clientId;
 
       clientKeyExistsNow = clientKeyExists(clientId);
+      clientWasRemoved =
+          removedClientIds.find(clientId) != removedClientIds.end();
       if (clientConnectionExists(clientId)) {
         serverClientState = getClientConnection(clientId);
       } else if (clientKeyExistsNow) {
@@ -102,7 +105,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       // Right after an etserver restart, the terminals' re-registrations (and
       // with them the client keys) have not landed yet.  Ask the client to
       // retry during the grace window instead of declaring the session gone.
-      if (time(NULL) - startTime_ < recoveryGraceSeconds) {
+      if (!clientWasRemoved && time(NULL) - startTime_ < recoveryGraceSeconds) {
         LOG(INFO) << "Within the recovery grace window; asking client "
                   << clientId << " to retry.";
         response.set_status(RETRY_LATER);
@@ -178,12 +181,15 @@ void ServerConnection::clientHandler(int clientSocketFd) {
   }
 }
 
-bool ServerConnection::removeClient(const string& id) {
+bool ServerConnection::removeClient(const string& id, bool clientSessionEnded) {
   shared_ptr<ServerClientConnection> connection;
   {
     lock_guard<std::recursive_mutex> guard(classMutex);
     if (clientKeys.find(id) == clientKeys.end()) {
       return false;
+    }
+    if (clientSessionEnded) {
+      removedClientIds.insert(id);
     }
     clientKeys.erase(id);
     const auto it = clientConnections.find(id);

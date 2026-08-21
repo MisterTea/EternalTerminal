@@ -278,6 +278,45 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   server.shutdown();
 }
 
+TEST_CASE("ServerConnection rejects removed clients during recovery grace",
+          "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  endpoint.set_port(0);
+  RecordingServerConnection server(handler, endpoint);
+
+  server.addClientKey("ended", "0123456789abcdef0123456789abcdef");
+  REQUIRE(server.removeClient("ended"));
+
+  int endedPair[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, endedPair) == 0);
+  ConnectRequest endedRequest;
+  endedRequest.set_clientid("ended");
+  endedRequest.set_version(PROTOCOL_VERSION);
+  handler->writeProto(endedPair[0], endedRequest, true);
+  server.clientHandler(endedPair[1]);
+  auto endedResponse = handler->readProto<ConnectResponse>(endedPair[0], true);
+  REQUIRE(endedResponse.status() == INVALID_KEY);
+  handler->close(endedPair[0]);
+  handler->close(endedPair[1]);
+
+  int unknownPair[2];
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, unknownPair) == 0);
+  ConnectRequest unknownRequest;
+  unknownRequest.set_clientid("unknown");
+  unknownRequest.set_version(PROTOCOL_VERSION);
+  handler->writeProto(unknownPair[0], unknownRequest, true);
+  server.clientHandler(unknownPair[1]);
+  auto unknownResponse =
+      handler->readProto<ConnectResponse>(unknownPair[0], true);
+  REQUIRE(unknownResponse.status() == RETRY_LATER);
+  handler->close(unknownPair[0]);
+  handler->close(unknownPair[1]);
+
+  server.shutdown();
+}
+
 TEST_CASE("ServerConnection resumes sessions with an active pty",
           "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
