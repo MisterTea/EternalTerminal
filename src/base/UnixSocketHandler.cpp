@@ -2,6 +2,19 @@
 
 #include <cstdint>
 
+// How long a write blocked on EAGAIN keeps retrying before it gives up, when
+// NOTHING of the buffer has reached the wire yet. Unchanged from the original
+// hard-coded 5: at this point giving up is clean, because the peer has seen
+// none of the message and the caller's -1 is the whole truth.
+#define SOCKET_WRITE_TIMEOUT (5)
+
+// The same, once part of the buffer HAS been sent and cannot be recalled.
+// Deliberately far longer: giving up here truncates the message rather than
+// failing it (see the comment at the check). A minute of a completely
+// undrainable socket means the connection is dead, at which point it is being
+// torn down anyway and a truncated message no longer matters.
+#define SOCKET_WRITE_COMMITTED_TIMEOUT (60)
+
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
@@ -94,8 +107,37 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
     if (w < 0) {
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
-        if (time(NULL) > startTime + 5) {
-          // Give up
+        // Giving up once part of the buffer is already on the wire truncates
+        // the message. `send` returns a short count whenever the send buffer
+        // has room for some but not all of it, so `bytesWritten > 0` with the
+        // socket now blocking is an ordinary state, not a rare one. Returning
+        // -1 there is ambiguous: it cannot be told apart from "nothing was
+        // sent", so the caller has no way to know how much of the buffer the
+        // peer actually holds.
+        //
+        // Callers survive that ambiguity only by throwing the connection away.
+        // BackedWriter treats -1 as WROTE_WITH_FAILURE, and Connection turns
+        // that into closeSocketAndMaybeReconnect(), replaying unacknowledged
+        // messages from its backup buffer. That is correct, but it pays for a
+        // full reconnect every time ordinary backpressure trips the deadline.
+        //
+        // So the 5s budget applies only while nothing is committed, where -1
+        // is unambiguous and giving up is cheap. Past that point the write
+        // should be allowed to finish rather than force a teardown, and only
+        // an outright dead connection (a real error from `send`, handled
+        // below, or the long ceiling here) ends it.
+        const time_t budget = bytesWritten > 0 ? SOCKET_WRITE_COMMITTED_TIMEOUT
+                                               : SOCKET_WRITE_TIMEOUT;
+        if (time(NULL) > startTime + budget) {
+          if (bytesWritten > 0) {
+            LOG(ERROR) << "Truncated write on fd " << fd << ": sent "
+                       << bytesWritten << " of " << count
+                       << " bytes before the socket stayed unwritable for "
+                       << SOCKET_WRITE_COMMITTED_TIMEOUT
+                       << "s. The peer holds a partial message; this write is "
+                          "reported as failed, so the caller must discard the "
+                          "connection rather than retry on it.";
+          }
           return -1;
         }
       } else {
