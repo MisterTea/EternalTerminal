@@ -119,7 +119,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       response.set_status(RETURNING_CLIENT);
       socketHandler->writeProto(clientSocketFd, response, true);
 
-      lock_guard<std::recursive_mutex> guard(classMutex);
+      // Deliberately not under classMutex: recover() blocks on socket I/O for
+      // as long as the socket timeout allows, and holding a server-wide lock
+      // across that stalls the accept loop until the reconnect gives up.
+      // serverClientState keeps the connection alive, and recoverClient()
+      // serializes concurrent reconnects on the connection's own mutex.
       serverClientState->recoverClient(clientSocketFd);
     }
   } catch (const runtime_error& err) {
@@ -141,28 +145,38 @@ void ServerConnection::clientHandler(int clientSocketFd) {
 }
 
 bool ServerConnection::removeClient(const string& id) {
-  lock_guard<std::recursive_mutex> guard(classMutex);
-  if (clientKeys.find(id) == clientKeys.end()) {
-    return false;
+  shared_ptr<ServerClientConnection> connection;
+  {
+    lock_guard<std::recursive_mutex> guard(classMutex);
+    if (clientKeys.find(id) == clientKeys.end()) {
+      return false;
+    }
+    clientKeys.erase(id);
+    const auto it = clientConnections.find(id);
+    if (it == clientConnections.end()) {
+      return true;
+    }
+    connection = it->second;
+    clientConnections.erase(it);
   }
-  clientKeys.erase(id);
-  if (clientConnections.find(id) == clientConnections.end()) {
-    return true;
-  }
-  auto connection = clientConnections[id];
+  // Outside classMutex: shutdown() waits on the connection mutex, which a
+  // reconnect can hold across blocking socket I/O.
   connection->shutdown();
-  clientConnections.erase(id);
   return true;
 }
 
 void ServerConnection::destroyPartialConnection(const string& clientId) {
-  lock_guard<std::recursive_mutex> guard(classMutex);
-  const auto it = clientConnections.find(clientId);
-  if (it == clientConnections.end()) {
-    return;
+  shared_ptr<ServerClientConnection> connection;
+  {
+    lock_guard<std::recursive_mutex> guard(classMutex);
+    const auto it = clientConnections.find(clientId);
+    if (it == clientConnections.end()) {
+      return;
+    }
+    connection = it->second;
+    clientConnections.erase(it);
   }
-  it->second->shutdown();
-  clientConnections.erase(it);
+  connection->shutdown();
 }
 
 }  // namespace et

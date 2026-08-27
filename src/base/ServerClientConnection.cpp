@@ -25,20 +25,21 @@ ServerClientConnection::~ServerClientConnection() {
 }
 
 bool ServerClientConnection::recoverClient(int newSocketFd) {
+  // Held across the whole recovery so two reconnects for the same client cannot
+  // interleave their socket swaps. connectionMutex is recursive, so recover()
+  // re-locking it below is fine.
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
+
   // Detach the live session without closing it until recover succeeds, so a
   // failed/malicious reconnect cannot force-disconnect the victim.
-  int oldSocketFd = -1;
-  {
-    lock_guard<std::recursive_mutex> guard(connectionMutex);
-    oldSocketFd = socketFd;
-    if (reader) {
-      reader->invalidateSocket();
-    }
-    if (writer) {
-      writer->invalidateSocket();
-    }
-    socketFd = -1;
+  int oldSocketFd = socketFd;
+  if (reader) {
+    reader->invalidateSocket();
   }
+  if (writer) {
+    writer->invalidateSocket();
+  }
+  socketFd = -1;
 
   bool success = recover(newSocketFd);
   if (success) {
@@ -49,7 +50,6 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
 
   if (oldSocketFd != -1) {
-    lock_guard<std::recursive_mutex> guard(connectionMutex);
     socketFd = oldSocketFd;
     if (reader) {
       reader->revive(oldSocketFd, vector<string>());
