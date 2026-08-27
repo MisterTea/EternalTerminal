@@ -1,7 +1,9 @@
 #include "TcpSocketHandler.hpp"
 
 namespace et {
-TcpSocketHandler::TcpSocketHandler() {}
+TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
+    : listenBacklog(_listenBacklog > 0 ? _listenBacklog
+                                       : DEFAULT_LISTEN_BACKLOG) {}
 
 int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
@@ -229,7 +231,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
     }
 
     // Listen
-    FATAL_FAIL(::listen(sockFd, 32));
+    FATAL_FAIL(::listen(sockFd, listenBacklog));
     LOG(INFO) << "Listening on "
               << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"

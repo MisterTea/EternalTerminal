@@ -78,6 +78,7 @@ int main(int argc, char** argv) {
     string maxlogsize = "20971520";
 
     int port = 0;
+    int listenBacklog = TcpSocketHandler::DEFAULT_LISTEN_BACKLOG;
     string bindIp = "";
     bool enableTelemetry = false;
     string logDirectory = GetTempDirectory();
@@ -99,6 +100,11 @@ int main(int argc, char** argv) {
           if (bindIpPtr) {
             bindIp = string(bindIpPtr);
           }
+        }
+
+        const char* backlogString = ini.GetValue("Networking", "backlog", NULL);
+        if (backlogString) {
+          listenBacklog = stoi(backlogString);
         }
 
         enableTelemetry = ini.GetBoolValue("Debug", "telemetry", false);
@@ -185,7 +191,8 @@ int main(int argc, char** argv) {
 
     serverFifo.createDirectoriesIfRequired();
 
-    std::shared_ptr<SocketHandler> tcpSocketHandler(new TcpSocketHandler());
+    std::shared_ptr<SocketHandler> tcpSocketHandler(
+        new TcpSocketHandler(listenBacklog));
     std::shared_ptr<PipeSocketHandler> pipeSocketHandler(
         new PipeSocketHandler());
 
