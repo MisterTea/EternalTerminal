@@ -62,6 +62,62 @@ void writeConnectRequest(const shared_ptr<SocketHandler>& handler, int fd,
   request.set_version(PROTOCOL_VERSION);
   handler->writeProto(fd, request, true);
 }
+
+// Runs before the thread/future are destroyed: closing the stuck peer lets
+// recover() fail and release whatever it holds, so nothing hangs on teardown.
+struct Cleanup {
+  ServerConnection& server;
+  std::thread& reconnectThread;
+  int& stuckPeerFd;
+  int& livePeerFd;
+  int& extraPeerFd;
+  ~Cleanup() {
+    if (stuckPeerFd >= 0) {
+      ::close(stuckPeerFd);
+      stuckPeerFd = -1;
+    }
+    if (reconnectThread.joinable()) {
+      reconnectThread.join();
+    }
+    if (livePeerFd >= 0) {
+      ::close(livePeerFd);
+      livePeerFd = -1;
+    }
+    if (extraPeerFd >= 0) {
+      ::close(extraPeerFd);
+      extraPeerFd = -1;
+    }
+    server.shutdown();
+  }
+};
+
+// Leaves the server in the state the incident produces: a registered session
+// plus a reconnect for it blocked inside recover(). Returns once that block is
+// provable, so a test can act while it is still in effect.
+void wedgeReconnect(const shared_ptr<SocketHandler>& handler,
+                    TestServerConnection& server, const string& clientId,
+                    int live[2], int stuck[2], std::thread& reconnectThread) {
+  // A live session the reconnect can come back to.
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  writeConnectRequest(handler, live[1], clientId);
+  server.clientHandler(live[0]);
+  REQUIRE(server.clientConnectionExists(clientId));
+  handler->readProto<ConnectResponse>(live[1], true);
+
+  // The reconnect. Nothing ever answers on the peer end, so recover() blocks
+  // waiting for the sequence header reply.
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, stuck) == 0);
+  writeConnectRequest(handler, stuck[1], clientId);
+  const int stuckServerFd = stuck[0];
+  reconnectThread = std::thread(
+      [&server, stuckServerFd]() { server.clientHandler(stuckServerFd); });
+
+  // recover() is provably in flight once it has answered RETURNING_CLIENT and
+  // written its sequence header; the next thing it does is block on the reply.
+  handler->readProto<ConnectResponse>(stuck[1], true);
+  handler->readProto<SequenceHeader>(stuck[1], true,
+                                     SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+}
 }  // namespace
 
 TEST_CASE("Reconnect stuck in recover still allows new connections",
@@ -79,53 +135,9 @@ TEST_CASE("Reconnect stuck in recover still allows new connections",
   int fresh[2] = {-1, -1};
   std::thread reconnectThread;
   std::future<bool> accepted;
+  Cleanup cleanup{server, reconnectThread, stuck[1], live[1], fresh[1]};
 
-  // Runs before the thread/future are destroyed: closing the stuck peer lets
-  // recover() fail and release whatever it holds, so nothing hangs on teardown.
-  struct Cleanup {
-    TestServerConnection& server;
-    std::thread& reconnectThread;
-    int& stuckPeerFd;
-    int& livePeerFd;
-    int& freshPeerFd;
-    ~Cleanup() {
-      if (stuckPeerFd >= 0) {
-        ::close(stuckPeerFd);
-        stuckPeerFd = -1;
-      }
-      if (reconnectThread.joinable()) {
-        reconnectThread.join();
-      }
-      if (livePeerFd >= 0) {
-        ::close(livePeerFd);
-        livePeerFd = -1;
-      }
-      if (freshPeerFd >= 0) {
-        ::close(freshPeerFd);
-        freshPeerFd = -1;
-      }
-      server.shutdown();
-    }
-  } cleanup{server, reconnectThread, stuck[1], live[1], fresh[1]};
-
-  // A live session the reconnect can come back to.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
-  writeConnectRequest(handler, live[1], clientId);
-  server.clientHandler(live[0]);
-  REQUIRE(server.clientConnectionExists(clientId));
-  handler->readProto<ConnectResponse>(live[1], true);
-
-  // The reconnect. Nothing ever answers on the peer end, so recover() blocks
-  // waiting for the sequence header reply.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, stuck) == 0);
-  writeConnectRequest(handler, stuck[1], clientId);
-  reconnectThread = std::thread([&]() { server.clientHandler(stuck[0]); });
-
-  // recover() is provably in flight once it has answered RETURNING_CLIENT and
-  // written its sequence header; the next thing it does is block on the reply.
-  handler->readProto<ConnectResponse>(stuck[1], true);
-  handler->readProto<SequenceHeader>(stuck[1], true,
-                                     SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+  wedgeReconnect(handler, server, clientId, live, stuck, reconnectThread);
 
   // An unrelated client must still get accepted. The pooled handler owns and
   // closes fresh[0]; an oversized length makes it fail fast instead of
@@ -142,4 +154,45 @@ TEST_CASE("Reconnect stuck in recover still allows new connections",
   REQUIRE(accepted.wait_for(std::chrono::seconds(5)) ==
           std::future_status::ready);
   REQUIRE(accepted.get());
+}
+
+TEST_CASE("A second reconnect is refused while one is in flight",
+          "[AcceptStarvation][ServerClientConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  TestServerConnection server(handler, endpoint);
+
+  const string clientId = "starved-client";
+  server.addClientKey(clientId, "abcdefghijklmnopqrstuvwxyz012345");
+
+  int live[2] = {-1, -1};
+  int stuck[2] = {-1, -1};
+  int second[2] = {-1, -1};
+  std::thread reconnectThread;
+  std::future<void> refused;
+  Cleanup cleanup{server, reconnectThread, stuck[1], live[1], second[1]};
+
+  wedgeReconnect(handler, server, clientId, live, stuck, reconnectThread);
+
+  // A second reconnect for the same client, arriving while the first is still
+  // blocked. Queueing it would hold this handler until the first one's socket
+  // timeout expires, and handlers are the resource every other client needs.
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, second) == 0);
+  writeConnectRequest(handler, second[1], clientId);
+  refused = std::async(std::launch::async,
+                       [&]() { server.clientHandler(second[0]); });
+
+  INFO("the second reconnect waited for the first instead of being refused");
+  REQUIRE(refused.wait_for(std::chrono::seconds(5)) ==
+          std::future_status::ready);
+  refused.get();
+
+  // It is answered and then dropped, so the client retries on its own schedule.
+  REQUIRE(handler->readProto<ConnectResponse>(second[1], true).status() ==
+          RETURNING_CLIENT);
+  REQUIRE_THROWS(handler->readProto<SequenceHeader>(
+      second[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH));
+  // The live session is untouched: only the refused socket was closed.
+  REQUIRE(server.clientConnectionExists(clientId));
 }
