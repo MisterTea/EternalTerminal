@@ -43,6 +43,22 @@ class FdSocketHandler : public SocketHandler {
   vector<int> getActiveSockets() override { return {}; }
 };
 
+// Exposes the initial-payload deadline so it can be tested without waiting out
+// the production value.
+class TestTerminalServer : public TerminalServer {
+ public:
+  TestTerminalServer(shared_ptr<SocketHandler> socketHandler,
+                     const SocketEndpoint& serverEndpoint,
+                     shared_ptr<PipeSocketHandler> pipeSocketHandler,
+                     const SocketEndpoint& routerEndpoint)
+      : TerminalServer(std::move(socketHandler), serverEndpoint,
+                       std::move(pipeSocketHandler), routerEndpoint) {}
+
+  void setInitialPayloadTimeout(int seconds) {
+    initialPayloadTimeoutSec = seconds;
+  }
+};
+
 // Owns the temp directory holding the server and router pipes.
 struct ServerFixture {
   string directory;
@@ -51,26 +67,34 @@ struct ServerFixture {
   shared_ptr<PipeSocketHandler> serverSocketHandler;
   shared_ptr<PipeSocketHandler> routerSocketHandler;
   // Heap allocated so a worker can keep it alive past this scope, see below.
-  shared_ptr<TerminalServer> server;
+  shared_ptr<TestTerminalServer> server;
+
+  SocketEndpoint serverEndpoint;
+  SocketEndpoint routerEndpoint;
 
   ServerFixture() {
     string pattern = GetTempDirectory() + string("et_handleconn_XXXXXX");
-    directory = string(mkdtemp(&pattern[0]));
+    const char* created = mkdtemp(&pattern[0]);
+    REQUIRE(created != nullptr);
+    directory = string(created);
     serverPipePath = directory + "/pipe_server";
     routerPipePath = directory + "/pipe_router";
 
     serverSocketHandler = make_shared<PipeSocketHandler>();
     routerSocketHandler = make_shared<PipeSocketHandler>();
 
-    SocketEndpoint serverEndpoint;
     serverEndpoint.set_name(serverPipePath);
-    SocketEndpoint routerEndpoint;
     routerEndpoint.set_name(routerPipePath);
-    server = make_shared<TerminalServer>(serverSocketHandler, serverEndpoint,
-                                         routerSocketHandler, routerEndpoint);
+    server =
+        make_shared<TestTerminalServer>(serverSocketHandler, serverEndpoint,
+                                        routerSocketHandler, routerEndpoint);
   }
 
   ~ServerFixture() {
+    // Both constructors above start listening; nothing else closes those
+    // sockets, since TerminalServer::shutdown() only sets the halt flag.
+    serverSocketHandler->stopListening(serverEndpoint);
+    routerSocketHandler->stopListening(routerEndpoint);
     ::remove(serverPipePath.c_str());
     ::remove(routerPipePath.c_str());
     ::rmdir(directory.c_str());
@@ -110,6 +134,21 @@ struct HandleConnectionRun {
     return true;
   }
 };
+
+// A live but silent client: the socket stays open and nothing ever arrives on
+// it, which is the state that used to keep the thread looping forever. The
+// connection gets its own handler because UnixSocketHandler refuses
+// descriptors it did not create.
+shared_ptr<ServerClientConnection> makeSilentClient(int fds[2]) {
+  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  // Non-blocking, as initSocket() leaves every socket the server owns. A
+  // blocking descriptor would park BackedReader::read() instead of reporting
+  // that no data is available.
+  REQUIRE(::fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0);
+  return make_shared<ServerClientConnection>(
+      make_shared<FdSocketHandler>(), "silent-client", fds[0],
+      "abcdefghijklmnopqrstuvwxyz012345");
+}
 }  // namespace
 
 TEST_CASE("handleConnection returns when the connection is shutting down",
@@ -119,6 +158,7 @@ TEST_CASE("handleConnection returns when the connection is shutting down",
   auto connection = make_shared<ServerClientConnection>(
       fixture.serverSocketHandler, "shutdown-client", -1,
       "abcdefghijklmnopqrstuvwxyz012345");
+
   connection->shutdown();
 
   HandleConnectionRun run(fixture.server, connection);
@@ -129,15 +169,8 @@ TEST_CASE("handleConnection returns when the server is halted",
           "[HandleConnectionTimeout][integration]") {
   ServerFixture fixture;
 
-  // A live but silent client: the socket stays open and nothing ever arrives on
-  // it, which is the state that used to keep the thread looping forever.
   int fds[2] = {-1, -1};
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
-  // Non-blocking, as initSocket() leaves every socket the server owns.
-  REQUIRE(::fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0);
-  auto connection = make_shared<ServerClientConnection>(
-      make_shared<FdSocketHandler>(), "silent-client", fds[0],
-      "abcdefghijklmnopqrstuvwxyz012345");
+  auto connection = makeSilentClient(fds);
 
   fixture.server->shutdown();
 
@@ -147,6 +180,25 @@ TEST_CASE("handleConnection returns when the server is halted",
   if (returned) {
     // Only safe once handleConnection() is done, since shutdown() waits on the
     // mutex it holds. Skipping it on failure keeps teardown from hanging.
+    connection->shutdown();
+  }
+  ::close(fds[1]);
+  REQUIRE(returned);
+}
+
+TEST_CASE("handleConnection gives up on a client that never sends a payload",
+          "[HandleConnectionTimeout][integration]") {
+  ServerFixture fixture;
+  fixture.server->setInitialPayloadTimeout(1);
+
+  int fds[2] = {-1, -1};
+  auto connection = makeSilentClient(fds);
+
+  // Neither halted nor shutting down, so only the deadline can end this wait.
+  HandleConnectionRun run(fixture.server, connection);
+  const bool returned = run.returnedWithin(std::chrono::seconds(10));
+
+  if (returned) {
     connection->shutdown();
   }
   ::close(fds[1]);

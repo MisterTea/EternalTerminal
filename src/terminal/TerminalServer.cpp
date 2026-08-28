@@ -431,8 +431,7 @@ void TerminalServer::runTerminal(
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
   Packet packet;
-  const time_t initialPayloadDeadline =
-      time(NULL) + INITIAL_PAYLOAD_TIMEOUT_DURATION;
+  const time_t initialPayloadDeadline = time(NULL) + initialPayloadTimeoutSec;
   while (!serverClientState->readPacket(&packet)) {
     bool halted;
     {
