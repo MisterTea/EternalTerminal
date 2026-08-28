@@ -26,7 +26,9 @@ TEST_CASE("TcpSocketHandler uses a configurable listen backlog",
   }
 }
 
-TEST_CASE("TcpSocketHandler listens with a non-default backlog",
+// The kernel accept queue depth cannot be read back portably, so this only
+// covers that a custom backlog reaches listen() without being rejected.
+TEST_CASE("TcpSocketHandler listen succeeds with a custom backlog",
           "[TcpSocketHandler]") {
   TcpSocketHandler handler(64);
   SocketEndpoint endpoint;
