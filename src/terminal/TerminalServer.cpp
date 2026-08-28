@@ -434,9 +434,14 @@ void TerminalServer::handleConnection(
   const time_t initialPayloadDeadline =
       time(NULL) + INITIAL_PAYLOAD_TIMEOUT_DURATION;
   while (!serverClientState->readPacket(&packet)) {
-    // Both exits matter: without them this thread spins forever on a client
+    bool halted;
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      halted = halt;
+    }
+    // Every exit matters: without them this thread spins forever on a client
     // that never speaks, and run() blocks on join() at shutdown.
-    if (serverClientState->isShuttingDown() ||
+    if (halted || serverClientState->isShuttingDown() ||
         time(NULL) > initialPayloadDeadline) {
       LOG(WARNING) << "Giving up waiting for the initial packet from "
                    << serverClientState->getId();
