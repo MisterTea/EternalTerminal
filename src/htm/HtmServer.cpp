@@ -39,9 +39,9 @@ void HtmServer::run() {
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (FD_ISSET(endpointFd, &rfd)) {
-        LOG(INFO) << "READING FROM STDIN";
+        VLOG(1) << "READING FROM STDIN";
         socketHandler->readAll(endpointFd, (char*)&header, 1, false);
-        LOG(INFO) << "Got message header: " << int(header);
+        VLOG(1) << "Got message header: " << int(header);
         if (header == SESSION_END) {
           // SESSION_END is a 1-byte packet with no length field. Reading a
           // length here races with client teardown and hangs the daemon.
@@ -61,16 +61,16 @@ void HtmServer::run() {
         }
         int32_t length;
         socketHandler->readB64(endpointFd, (char*)&length, 4);
-        LOG(INFO) << "READ LENGTH: " << length;
+        VLOG(1) << "READ LENGTH: " << length;
         switch (header) {
           case INSERT_KEYS: {
             string uid = string(UUID_LENGTH, '0');
             socketHandler->readAll(endpointFd, &uid[0], uid.length(), false);
             length -= uid.length();
-            LOG(INFO) << "READING FROM " << uid << ":" << length;
+            VLOG(1) << "READING FROM " << uid << ":" << length;
             string data;
             socketHandler->readB64EncodedLength(endpointFd, &data, length);
-            LOG(INFO) << "READ FROM " << uid << ":" << data << " " << length;
+            VLOG(1) << "READ FROM " << uid << ":" << data << " " << length;
             state.appendData(uid, data);
             break;
           }
@@ -207,7 +207,6 @@ void HtmServer::recover() {
 }
 
 string HtmServer::getPipeName() {
-  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() +
-         string(".ipc");
+  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".ipc");
 }
 }  // namespace et

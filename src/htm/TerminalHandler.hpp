@@ -39,6 +39,10 @@ class TerminalHandler {
  protected:
   /** @brief Appends freshly read PTY bytes to the scrollback ring. */
   string bufferOutput(const string& newChars);
+#ifndef WIN32
+  /** @brief Writes as much of `pendingWrite` as the PTY will accept. */
+  void flushPendingWrite();
+#endif
 
 #ifdef WIN32
   /** @brief ConPTY handle (`HPCON`). */
@@ -54,6 +58,9 @@ class TerminalHandler {
   int masterFd;
   /** @brief Child process ID for the spawned terminal. */
   int childPid;
+  /** @brief Bytes waiting to be written because the PTY input buffer is full.
+   */
+  string pendingWrite;
 #endif
   /** @brief Flag that indicates whether the handler is live. */
   bool run;

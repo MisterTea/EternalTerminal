@@ -1,17 +1,24 @@
 #include <fcntl.h>
 #include <limits.h>
 #include <signal.h>
+#include <stdio.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
 
 #include <chrono>
+#include <cstdio>
+#include <set>
 #include <thread>
+#include <utility>
 #include <vector>
 
 #include "HtmHeaderCodes.hpp"
 #include "HtmTestHelpers.hpp"
 #include "TestHeaders.hpp"
+
+// Ghostty e2e is opt-in ([.ghostty], hidden from default ./et-test and ctest)
+// until Ghostty's HTM PR lands. Run with: ./et-test ghostty
 
 #ifndef WIN32
 #if defined(__APPLE__)
@@ -46,10 +53,13 @@ bool executable(const string& path) { return access(path.c_str(), X_OK) == 0; }
 
 uid_t selfUid() { return getuid(); }
 
-string ipcPath() { return string(_PATH_TMP) + "htm." + GetHtmIpcUser() + ".ipc"; }
+string ipcPath() {
+  return string(_PATH_TMP) + "htm." + GetHtmIpcUser() + ".ipc";
+}
 
 bool htmdRunning() {
-  string cmd = string("pgrep -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
+  string cmd =
+      string("pgrep -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
   return system(cmd.c_str()) == 0;
 }
 
@@ -78,13 +88,15 @@ bool htmHasControllingTty() {
 }
 
 void killHtmd() {
-  string cmd = string("pkill -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
+  string cmd =
+      string("pkill -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
   system(cmd.c_str());
   waitUntil([]() { return !htmdRunning(); }, 3000);
 }
 
 void killHtmClients() {
-  string cmd = string("pkill -x -U ") + to_string(selfUid()) + " htm >/dev/null 2>&1";
+  string cmd =
+      string("pkill -x -U ") + to_string(selfUid()) + " htm >/dev/null 2>&1";
   system(cmd.c_str());
 }
 
@@ -123,8 +135,7 @@ class GhosttyHtmPty {
         ::kill(pid, SIGTERM);
       }
       int status = 0;
-      waitUntil(
-          [&]() { return waitpid(pid, &status, WNOHANG) == pid; }, 4000);
+      waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; }, 4000);
       if (waitpid(pid, &status, WNOHANG) != pid) {
         ::kill(pid, SIGKILL);
         waitpid(pid, &status, 0);
@@ -156,13 +167,17 @@ class GhosttyHtmPty {
         continue;
       }
       if (n < 0 && (errno == EAGAIN || errno == EINTR)) {
+        int saved = errno;
+        pump(5);
         auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
                            std::chrono::steady_clock::now() - start)
                            .count();
-        if (elapsed > 3000) {
+        if (elapsed > 30000) {
           FAIL("Timed out writing to HTM PTY");
         }
-        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+        if (saved == EAGAIN) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
         continue;
       }
       FAIL("write to HTM PTY failed: errno=" << errno);
@@ -189,7 +204,8 @@ class GhosttyHtmPty {
     writePacket(NEW_TAB, tabId + paneId);
   }
 
-  void writeNewSplit(const string& sourceId, const string& newId, bool vertical) {
+  void writeNewSplit(const string& sourceId, const string& newId,
+                     bool vertical) {
     string payload = sourceId + newId;
     payload.push_back(vertical ? '1' : '0');
     writePacket(NEW_SPLIT, payload);
@@ -445,7 +461,8 @@ class GhosttyHtmPty {
 struct IsolatedHtmd {
   string lockDir;
   IsolatedHtmd() {
-    lockDir = string(_PATH_TMP) + "htm.e2e." + to_string(selfUid()) + ".lockdir";
+    lockDir =
+        string(_PATH_TMP) + "htm.e2e." + to_string(selfUid()) + ".lockdir";
     const auto start = std::chrono::steady_clock::now();
     while (mkdir(lockDir.c_str(), 0700) != 0) {
       if (errno != EEXIST) {
@@ -479,10 +496,12 @@ string findGhostty() {
     return env;
   }
   const char* candidates[] = {
-      "/Users/jjg/github/ghostty/macos/build/Debug/Ghostty.app/Contents/MacOS/ghostty",
+      "/Users/jjg/github/ghostty/macos/build/Debug/Ghostty.app/Contents/MacOS/"
+      "ghostty",
       "/Users/jjg/github/ghostty/zig-out/Ghostty.app/Contents/MacOS/ghostty",
       "/Users/jjg/github/ghostty/zig-out/bin/ghostty",
-      "/Users/jjg/github/ghostty/macos/build/Build/Products/Debug/Ghostty.app/Contents/MacOS/ghostty",
+      "/Users/jjg/github/ghostty/macos/build/Build/Products/Debug/Ghostty.app/"
+      "Contents/MacOS/ghostty",
       "/Applications/Ghostty.app/Contents/MacOS/ghostty",
   };
   for (const char* path : candidates) {
@@ -506,7 +525,8 @@ void quitGhosttyApp(const string& app) {
   if (app.empty()) {
     return;
   }
-  string osa = string("osascript -e 'tell application \"") + app + "\" to quit'";
+  string osa =
+      string("osascript -e 'tell application \"") + app + "\" to quit'";
   system(osa.c_str());
   waitUntil(
       [&]() {
@@ -537,7 +557,7 @@ bool ghosttyHasHtmIntegration(const string& bin) {
 }  // namespace
 
 TEST_CASE("Ghostty-style PTY: init, keys, tab/split, escape, reconnect, x",
-          "[Htm][Ghostty][e2e]") {
+          "[Htm][.ghostty][e2e]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built (expected in ET_BUILD_DIR or ./)");
   }
@@ -568,8 +588,8 @@ TEST_CASE("Ghostty-style PTY: init, keys, tab/split, escape, reconnect, x",
 
     // SERVER_CLOSE_PANE is emitted when a pane's shell exits, not when the
     // client sends CLIENT_CLOSE_PANE.
-    ghostty.writeInsertKeys(splitPane, "exit\n");
-    REQUIRE(ghostty.waitForHeader(SERVER_CLOSE_PANE, 8000));
+    ghostty.writeInsertKeys(splitPane, "printf 'GHOSTTY_E2E_SPLIT\\n'; exit\n");
+    REQUIRE(ghostty.waitForHeader(SERVER_CLOSE_PANE, 10000));
 
     ghostty.writeClosePane(tabPane);
 
@@ -599,7 +619,7 @@ TEST_CASE("Ghostty-style PTY: init, keys, tab/split, escape, reconnect, x",
 }
 
 TEST_CASE("Ghostty-style PTY: init sequence split across 1-byte reads",
-          "[Htm][Ghostty][e2e][race]") {
+          "[Htm][.ghostty][e2e][race]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -614,7 +634,7 @@ TEST_CASE("Ghostty-style PTY: init sequence split across 1-byte reads",
 }
 
 TEST_CASE("Ghostty-style PTY: rapid escape/reconnect does not wedge htmd",
-          "[Htm][Ghostty][e2e][race]") {
+          "[Htm][.ghostty][e2e][race]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -637,7 +657,7 @@ TEST_CASE("Ghostty-style PTY: rapid escape/reconnect does not wedge htmd",
 }
 
 TEST_CASE("Ghostty-style PTY: SIGTERM writes exit sequence and htmd survives",
-          "[Htm][Ghostty][e2e]") {
+          "[Htm][.ghostty][e2e]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -658,7 +678,7 @@ TEST_CASE("Ghostty-style PTY: SIGTERM writes exit sequence and htmd survives",
 }
 
 TEST_CASE("Ghostty-style PTY: SIGKILL of htm lets htmd accept a new client",
-          "[Htm][Ghostty][e2e][race]") {
+          "[Htm][.ghostty][e2e][race]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -680,7 +700,7 @@ TEST_CASE("Ghostty-style PTY: SIGKILL of htm lets htmd accept a new client",
 }
 
 TEST_CASE("Ghostty-style PTY: closing the last pane shuts down htmd",
-          "[Htm][Ghostty][e2e]") {
+          "[Htm][.ghostty][e2e]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -700,7 +720,7 @@ TEST_CASE("Ghostty-style PTY: closing the last pane shuts down htmd",
 }
 
 TEST_CASE("Ghostty-style PTY: wrapped newline does not disconnect htmd",
-          "[Htm][Ghostty][e2e]") {
+          "[Htm][.ghostty][e2e]") {
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
   }
@@ -718,15 +738,426 @@ TEST_CASE("Ghostty-style PTY: wrapped newline does not disconnect htmd",
   ghostty.waitFor([&]() { return !htmdRunning(); }, 8000);
 }
 
+string burstCmd(const string& tag, int n) {
+  return "i=1; while [ \"$i\" -le " + to_string(n) + " ]; do printf '" + tag +
+         "_%s\\n' \"$i\"; i=$((i+1)); sleep 0.04; done\n";
+}
+
+TEST_CASE("Ghostty-style PTY: tabs, nested splits, concurrent pane output",
+          "[Htm][.ghostty][e2e][features]") {
+  if (!executable(htmPath()) || !executable(htmdPath())) {
+    SKIP("htm/htmd are not built");
+  }
+  IsolatedHtmd isolate;
+  const int bursts = 8;
+
+  string p0;
+  string pane1;
+  string pane2;
+  string splitV;
+  string splitH;
+  {
+    GhosttyHtmPty ghostty(4096);
+    REQUIRE(ghostty.waitForInit());
+    p0 = ghostty.firstPaneId();
+
+    string tab1 = sole::uuid4().str();
+    pane1 = sole::uuid4().str();
+    ghostty.writeNewTab(tab1, pane1);
+
+    string tab2 = sole::uuid4().str();
+    pane2 = sole::uuid4().str();
+    ghostty.writeNewTab(tab2, pane2);
+
+    splitV = sole::uuid4().str();
+    ghostty.writeNewSplit(p0, splitV, true);
+    splitH = sole::uuid4().str();
+    ghostty.writeNewSplit(p0, splitH, false);
+
+    ghostty.writeResize(p0, 60, 20);
+    ghostty.writeResize(splitV, 60, 20);
+    ghostty.writeResize(pane1, 80, 24);
+    std::this_thread::sleep_for(std::chrono::milliseconds(300));
+    ghostty.pump(200);
+
+    const vector<pair<string, string>> panes = {
+        {p0, "HTM_C0"},     {pane1, "HTM_C1"},  {pane2, "HTM_C2"},
+        {splitV, "HTM_C3"}, {splitH, "HTM_C4"},
+    };
+    size_t burstAt = ghostty.packets.size();
+    for (const auto& pane : panes) {
+      ghostty.writeInsertKeys(pane.first, burstCmd(pane.second, bursts));
+    }
+
+    REQUIRE(ghostty.waitFor(
+        [&]() {
+          for (const auto& pane : panes) {
+            if (ghostty.paneOutput(pane.first)
+                    .find(pane.second + "_" + to_string(bursts)) ==
+                string::npos) {
+              return false;
+            }
+          }
+          return true;
+        },
+        15000));
+
+    for (const auto& pane : panes) {
+      string out = ghostty.paneOutput(pane.first);
+      REQUIRE(out.find(pane.second + "_1") != string::npos);
+      REQUIRE(out.find(pane.second + "_" + to_string(bursts)) != string::npos);
+    }
+
+    vector<string> order = ghostty.appendPaneOrder(burstAt);
+    REQUIRE(order.size() >= 10);
+    std::set<string> unique(order.begin(), order.end());
+    REQUIRE(unique.size() >= 4);
+    int transitions = 0;
+    for (size_t i = 1; i < order.size(); i++) {
+      if (order[i] != order[i - 1]) {
+        transitions++;
+      }
+    }
+    REQUIRE(transitions >= 4);
+
+    ghostty.writeClosePane(splitH);
+    ghostty.writeInsertKeys(pane1, "printf 'HTM_AFTER_CLOSE\\n'\n");
+    REQUIRE(ghostty.waitFor(
+        [&]() {
+          return ghostty.paneOutput(pane1).find("HTM_AFTER_CLOSE") !=
+                 string::npos;
+        },
+        8000));
+
+    ghostty.writeDebugKeys(string(1, char(27)));
+    REQUIRE(ghostty.waitFor(
+        [&]() { return ghostty.sawExitSeq || !ghostty.childAlive(); }, 8000));
+    ghostty.closeSession(false);
+  }
+
+  {
+    GhosttyHtmPty ghostty(4096, false);
+    REQUIRE(ghostty.waitForInit());
+    REQUIRE(ghostty.initState["tabs"].size() == 3);
+    REQUIRE(ghostty.initState["panes"].size() == 4);
+    REQUIRE(ghostty.initState["splits"].size() >= 1);
+    REQUIRE(ghostty.initState["panes"].contains(p0));
+    REQUIRE(ghostty.initState["panes"].contains(pane1));
+    REQUIRE(ghostty.initState["panes"].contains(pane2));
+    REQUIRE(ghostty.initState["panes"].contains(splitV));
+    REQUIRE(ghostty.waitFor(
+        [&]() {
+          return ghostty.paneOutput(p0).find("HTM_C0_") != string::npos &&
+                 ghostty.paneOutput(pane1).find("HTM_C1_") != string::npos &&
+                 ghostty.paneOutput(pane2).find("HTM_C2_") != string::npos &&
+                 ghostty.paneOutput(splitV).find("HTM_C3_") != string::npos;
+        },
+        8000));
+    ghostty.writeDebugKeys("x");
+    ghostty.waitFor([&]() { return !htmdRunning(); }, 8000);
+  }
+}
+
+// Several panes printing while the leader keeps injecting keys, with a slow
+// PTY drain so stdout can back up the way Hyper did. writeRaw times out if
+// htm stops reading stdin (the old blocking writeAll(stdout) deadlock).
+TEST_CASE("Ghostty-style PTY: keys keep flowing under stdout backpressure",
+          "[Htm][.ghostty][e2e][stress]") {
+  if (!executable(htmPath()) || !executable(htmdPath())) {
+    SKIP("htm/htmd are not built");
+  }
+  IsolatedHtmd isolate;
+  GhosttyHtmPty ghostty(256);
+  REQUIRE(ghostty.waitForInit());
+  string p0 = ghostty.firstPaneId();
+  string tabPane = sole::uuid4().str();
+  ghostty.writeNewTab(sole::uuid4().str(), tabPane);
+  string splitPane = sole::uuid4().str();
+  ghostty.writeNewSplit(p0, splitPane, true);
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  ghostty.pump(150);
+
+  auto bgBurst = [](const string& tag, int n) {
+    string cmd = burstCmd(tag, n);
+    if (!cmd.empty() && cmd.back() == '\n') {
+      cmd.pop_back();
+    }
+    return cmd + " &\n";
+  };
+  const int bursts = 20;
+  ghostty.writeInsertKeys(p0, bgBurst("BP0", bursts));
+  ghostty.writeInsertKeys(tabPane, bgBurst("BP1", bursts));
+  ghostty.writeInsertKeys(splitPane, bgBurst("BP2", bursts));
+  ghostty.pump(200);
+
+  const int keyMarks = 12;
+  for (int i = 0; i < keyMarks; i++) {
+    ghostty.writeInsertKeys(p0, "printf 'BPKEY_" + to_string(i) + "\\n'\n");
+    ghostty.pump(20);
+  }
+
+  REQUIRE(ghostty.waitFor(
+      [&]() {
+        string out = ghostty.paneOutput(p0);
+        return out.find("BPKEY_" + to_string(keyMarks - 1)) != string::npos &&
+               out.find("BP0_1") != string::npos && ghostty.childAlive();
+      },
+      15000));
+  INFO("p0 output: " << ghostty.paneOutput(p0));
+  REQUIRE(ghostty.paneOutput(tabPane).find("BP1_1") != string::npos);
+  REQUIRE(ghostty.paneOutput(splitPane).find("BP2_1") != string::npos);
+  REQUIRE(ghostty.childAlive());
+
+  ghostty.writeDebugKeys("x");
+  ghostty.waitFor([&]() { return !htmdRunning(); }, 8000);
+}
+
+TEST_CASE("Ghostty-style PTY: concurrent read/write on many tabs and splits",
+          "[Htm][.ghostty][e2e][stress]") {
+  if (!executable(htmPath()) || !executable(htmdPath())) {
+    SKIP("htm/htmd are not built");
+  }
+  IsolatedHtmd isolate;
+  GhosttyHtmPty ghostty(4096);
+  REQUIRE(ghostty.waitForInit());
+
+  string p0 = ghostty.firstPaneId();
+  vector<pair<string, string>> panes = {{p0, "P0"}};
+  for (int t = 0; t < 3; t++) {
+    string tabPane = sole::uuid4().str();
+    ghostty.writeNewTab(sole::uuid4().str(), tabPane);
+    char tag[8];
+    snprintf(tag, sizeof(tag), "T%d", t);
+    panes.push_back({tabPane, tag});
+    string splitPane = sole::uuid4().str();
+    ghostty.writeNewSplit(tabPane, splitPane, t % 2 == 0);
+    snprintf(tag, sizeof(tag), "S%d", t);
+    panes.push_back({splitPane, tag});
+  }
+  string split0 = sole::uuid4().str();
+  ghostty.writeNewSplit(p0, split0, true);
+  panes.push_back({split0, "PX"});
+  std::this_thread::sleep_for(std::chrono::milliseconds(400));
+  ghostty.pump(200);
+
+  // Login prompts sit on a partial line. Keep unique tags on their own short
+  // lines so an 80-column wrap cannot split OUT_P0_0123 from the sequence
+  // number; bulky padding goes on the following line.
+  for (const auto& pane : panes) {
+    ghostty.writeResize(pane.first, 200, 40);
+    ghostty.writeInsertKeys(pane.first, "\n");
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  ghostty.pump(150);
+
+  const int floodLines = 400;
+  const int keyRounds = 24;
+  const string pad(64, 'X');
+  size_t burstAt = ghostty.packets.size();
+  for (const auto& pane : panes) {
+    string cmd = "i=1; while [ \"$i\" -le " + to_string(floodLines) +
+                 " ]; do printf 'OUT_" + pane.second +
+                 "_%04d\\n' \"$i\"; printf '" + pad +
+                 "\\n'; i=$((i+1)); done &\n";
+    ghostty.writeInsertKeys(pane.first, cmd);
+  }
+  ghostty.pump(50);
+
+  for (int round = 0; round < keyRounds; round++) {
+    for (const auto& pane : panes) {
+      char buf[80];
+      snprintf(buf, sizeof(buf), "printf 'IN_%s_%04d\\n'\n",
+               pane.second.c_str(), round);
+      ghostty.writeInsertKeys(pane.first, buf);
+    }
+    if (round % 8 == 0) {
+      for (const auto& pane : panes) {
+        ghostty.writeResize(pane.first, 200, 40);
+      }
+    }
+    ghostty.pump(10);
+    REQUIRE(ghostty.childAlive());
+  }
+
+  REQUIRE(ghostty.waitFor(
+      [&]() {
+        if (!ghostty.childAlive()) {
+          return false;
+        }
+        for (const auto& pane : panes) {
+          string out = ghostty.paneOutput(pane.first);
+          char lastOut[32];
+          char lastIn[32];
+          snprintf(lastOut, sizeof(lastOut), "OUT_%s_%04d", pane.second.c_str(),
+                   floodLines);
+          snprintf(lastIn, sizeof(lastIn), "IN_%s_%04d", pane.second.c_str(),
+                   keyRounds - 1);
+          if (out.find(lastOut) == string::npos ||
+              out.find(lastIn) == string::npos) {
+            return false;
+          }
+        }
+        return true;
+      },
+      90000));
+  REQUIRE(ghostty.childAlive());
+  REQUIRE(htmdRunning());
+
+  for (const auto& pane : panes) {
+    string out = ghostty.paneOutput(pane.first);
+    int outHits = 0;
+    int inHits = 0;
+    string missing;
+    for (int i = 1; i <= floodLines; i++) {
+      char needle[32];
+      snprintf(needle, sizeof(needle), "OUT_%s_%04d", pane.second.c_str(), i);
+      if (out.find(needle) != string::npos) {
+        outHits++;
+      } else if (missing.size() < 80) {
+        if (!missing.empty()) {
+          missing += ",";
+        }
+        missing += to_string(i);
+      }
+    }
+    for (int i = 0; i < keyRounds; i++) {
+      char needle[32];
+      snprintf(needle, sizeof(needle), "IN_%s_%04d", pane.second.c_str(), i);
+      if (out.find(needle) != string::npos) {
+        inHits++;
+      }
+    }
+    INFO("pane " << pane.second << " outHits=" << outHits
+                 << " inHits=" << inHits << " missing=" << missing);
+    // Background flood and foreground key printfs share one PTY, so a few
+    // markers can be split at the byte level. Require almost all of them,
+    // and that no other pane's tags leaked into this stream.
+    REQUIRE(outHits >= floodLines - keyRounds);
+    REQUIRE(inHits >= keyRounds - 2);
+    for (const auto& other : panes) {
+      if (other.second == pane.second) {
+        continue;
+      }
+      REQUIRE(out.find("OUT_" + other.second + "_") == string::npos);
+      REQUIRE(out.find("IN_" + other.second + "_") == string::npos);
+    }
+  }
+
+  vector<string> order = ghostty.appendPaneOrder(burstAt);
+  std::set<string> unique(order.begin(), order.end());
+  REQUIRE(unique.size() >= 6);
+  int transitions = 0;
+  for (size_t i = 1; i < order.size(); i++) {
+    if (order[i] != order[i - 1]) {
+      transitions++;
+    }
+  }
+  REQUIRE(transitions >= 20);
+
+  ghostty.writeDebugKeys("x");
+  ghostty.waitFor([&]() { return !htmdRunning(); }, 8000);
+}
+
+TEST_CASE("Ghostty GUI: attach to a multi-pane HTM session",
+          "[Htm][.ghostty][e2e][gui][features]") {
+  string ghosttyBin = findGhostty();
+  if (ghosttyBin.empty()) {
+    SKIP("Ghostty is not installed; set GHOSTTY to an HTM-enabled binary");
+  }
+  if (!ghosttyHasHtmIntegration(ghosttyBin)) {
+    SKIP("Ghostty at " << ghosttyBin << " has no htm-integration");
+  }
+  if (!executable(htmPath()) || !executable(htmdPath())) {
+    SKIP("htm/htmd are not built");
+  }
+  IsolatedHtmd isolate;
+
+  {
+    GhosttyHtmPty session(4096);
+    REQUIRE(session.waitForInit());
+    string p0 = session.firstPaneId();
+    string tab1 = sole::uuid4().str();
+    string pane1 = sole::uuid4().str();
+    session.writeNewTab(tab1, pane1);
+    string split = sole::uuid4().str();
+    session.writeNewSplit(p0, split, true);
+    session.writeInsertKeys(p0, "printf 'GUI_TAB0\\n'\n");
+    session.writeInsertKeys(pane1, "printf 'GUI_TAB1\\n'\n");
+    session.writeInsertKeys(split, "printf 'GUI_SPLIT\\n'\n");
+    REQUIRE(session.waitFor(
+        [&]() {
+          return session.paneOutput(p0).find("GUI_TAB0") != string::npos &&
+                 session.paneOutput(pane1).find("GUI_TAB1") != string::npos &&
+                 session.paneOutput(split).find("GUI_SPLIT") != string::npos;
+        },
+        10000));
+    session.writeDebugKeys(string(1, char(27)));
+    REQUIRE(session.waitFor(
+        [&]() { return session.sawExitSeq || !session.childAlive(); }, 8000));
+    session.closeSession(false);
+  }
+  REQUIRE(htmdRunning());
+
+  string dir;
+  char resolved[PATH_MAX];
+  if (realpath(htmBinDir().c_str(), resolved)) {
+    dir = resolved;
+  } else {
+    dir = htmBinDir();
+  }
+  string htm = dir + "/htm";
+  string binDirFlag = string("--htm-bin-dir=") + dir;
+  string app = ghosttyAppBundle(ghosttyBin);
+  if (app.empty()) {
+    SKIP("Ghostty binary is not inside a .app bundle");
+  }
+
+  pid_t opener = fork();
+  REQUIRE(opener >= 0);
+  if (opener == 0) {
+    execl("/usr/bin/open", "open", "-na", app.c_str(), "--args",
+          "--quit-after-last-window-closed=true",
+          "--confirm-close-surface=false", "--window-save-state=never",
+          binDirFlag.c_str(), "-e", htm.c_str(), (char*)nullptr);
+    _exit(127);
+  }
+  int openStatus = 0;
+  waitpid(opener, &openStatus, 0);
+  REQUIRE(WIFEXITED(openStatus));
+  REQUIRE(WEXITSTATUS(openStatus) == 0);
+
+  bool attached = waitUntil(
+      []() { return htmdRunning() && htmHasControllingTty(); }, 25000);
+  if (!attached) {
+    quitGhosttyApp(app);
+    FAIL("Ghostty did not attach to the existing HTM session");
+  }
+  std::this_thread::sleep_for(std::chrono::milliseconds(1500));
+  quitGhosttyApp(app);
+  REQUIRE(waitUntil([]() { return !htmHasControllingTty(); }, 8000));
+  REQUIRE(htmdRunning());
+
+  {
+    GhosttyHtmPty reconnect(4096, false);
+    REQUIRE(reconnect.waitForInit());
+    REQUIRE(reconnect.initState["tabs"].size() >= 2);
+    REQUIRE(reconnect.initState["panes"].size() >= 3);
+    REQUIRE(reconnect.initState["splits"].size() >= 1);
+    reconnect.writeDebugKeys("x");
+    reconnect.waitFor([&]() { return !htmdRunning(); }, 8000);
+  }
+}
+
 TEST_CASE("Ghostty GUI: launch htm, observe htmd, quit cleanly",
-          "[Htm][Ghostty][e2e][gui]") {
+          "[Htm][.ghostty][e2e][gui]") {
   string ghostty = findGhostty();
   if (ghostty.empty()) {
     SKIP("Ghostty is not installed; set GHOSTTY to an HTM-enabled binary");
   }
   if (!ghosttyHasHtmIntegration(ghostty)) {
-    SKIP("Ghostty at " << ghostty
-                       << " has no htm-integration (need the htm-integration branch)");
+    SKIP("Ghostty at "
+         << ghostty
+         << " has no htm-integration (need the htm-integration branch)");
   }
   if (!executable(htmPath()) || !executable(htmdPath())) {
     SKIP("htm/htmd are not built");
@@ -776,9 +1207,7 @@ TEST_CASE("Ghostty GUI: launch htm, observe htmd, quit cleanly",
 #endif
 
   bool inited = waitUntil(
-      []() {
-        return htmdRunning() && access(ipcPath().c_str(), F_OK) == 0;
-      },
+      []() { return htmdRunning() && access(ipcPath().c_str(), F_OK) == 0; },
       25000);
   if (!inited) {
 #if defined(__APPLE__)

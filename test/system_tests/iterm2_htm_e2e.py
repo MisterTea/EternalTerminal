@@ -6,8 +6,8 @@ the user's installed iTerm2 prefs and windows are left alone. Protocol
 correctness is checked against htmd logs; native tabs/panes are checked via
 Accessibility. Clean-exit checks process leftovers and the IPC socket.
 
-Skip (exit 77) when iTerm2+HTM, htm/htmd, or Accessibility is unavailable so
-default ``ctest --parallel`` stays green on machines without a GUI build.
+Skip (exit 77) when iTerm2+HTM, htm/htmd, or Accessibility is unavailable.
+Not registered with default CTest; run this file directly (see AGENTS.md).
 
 Environment:
   ITERM2_APP   Path to an iTerm2.app that contains HTM support
@@ -94,19 +94,61 @@ def header_count(text: str, code: int) -> int:
     return text.count(f"Got message header: {code}")
 
 
-def inserted_keys(text: str) -> str:
-    parts = []
+def writing_to_ids(text: str) -> list[str]:
+    """Pane UUIDs from VLOG ``WRITING TO <uuid>:`` lines, in log order."""
+    ids = []
+    needle = "WRITING TO "
+    for line in text.splitlines():
+        idx = line.find(needle)
+        if idx < 0:
+            continue
+        rest = line[idx + len(needle) :]
+        pane = rest.split(":", 1)[0].strip()
+        if len(pane) == 36:
+            ids.append(pane)
+    return ids
+
+
+def read_from_ids(text: str) -> list[str]:
+    """Pane UUIDs that received INSERT_KEYS, in log order."""
+    ids = []
     needle = "READ FROM "
     for line in text.splitlines():
-        if needle not in line:
+        idx = line.find(needle)
+        if idx < 0:
             continue
-        try:
-            after = line.split(":", 1)[1]
-            payload = after.rsplit(" ", 1)[0]
-        except (IndexError, ValueError):
+        rest = line[idx + len(needle) :]
+        if len(rest) >= 36:
+            ids.append(rest[:36])
+    return ids
+
+
+def inserted_by_pane(text: str) -> dict[str, str]:
+    """Map pane UUID -> concatenated INSERT_KEYS payloads from the log."""
+    out: dict[str, str] = {}
+    needle = "READ FROM "
+    for line in text.splitlines():
+        idx = line.find(needle)
+        if idx < 0:
             continue
-        parts.append(payload)
-    return "".join(parts)
+        rest = line[idx + len(needle) :]
+        if len(rest) < 38 or rest[36] != ":":
+            continue
+        pane = rest[:36]
+        body = rest[37:]
+        if " " in body:
+            body, _length = body.rsplit(" ", 1)
+        out[pane] = out.get(pane, "") + body
+    return out
+
+
+def inserted_keys(text: str) -> str:
+    """Concatenate payloads from ``READ FROM <uuid>:<data> <length>`` lines.
+
+    glog prefixes a timestamp with colons, so this must not split on the first
+    ``:``. One keystroke is one log line; join them to recover typed text.
+    """
+    return "".join(inserted_by_pane(text).values())
 
 
 def pids_named(name: str) -> list[int]:
@@ -157,12 +199,12 @@ def run_osascript(script: str, timeout: float = 20.0) -> str:
             for marker in (
                 "not allowed assistive access",
                 "osascript is not allowed",
-                "not authorized",
-                "-1719",
-                "-1743",
+                "not authorized to send apple events",
             )
         ):
             skip("osascript needs Accessibility permission")
+        # -1719 is a transient "no such object" (process/window not ready yet),
+        # not a TCC denial. Let callers retry.
         raise
 
 
@@ -401,6 +443,45 @@ end tell
         except (ValueError, subprocess.CalledProcessError):
             return 0
 
+    def select_first_tab(self) -> None:
+        """Focus the gateway tab (first) so Esc/x reach the HTM command menu."""
+        try:
+            self.osascript_pid(
+                "set frontmost to true\n    click radio button 1 of tab group 1 of window 1"
+            )
+        except subprocess.CalledProcessError:
+            self.keystroke('"1"', "command down")
+        time.sleep(0.35)
+
+    def previous_pane(self) -> None:
+        """Select the previous split pane (Window > Split Pane > Select Split Pane)."""
+        try:
+            self.osascript_pid(
+                "set frontmost to true\n"
+                '    click menu item "Previous Pane" of menu "Select Split Pane" '
+                'of menu item "Select Split Pane" of menu "Split Pane" '
+                'of menu item "Split Pane" of menu "Window" of menu bar 1'
+            )
+        except subprocess.CalledProcessError:
+            self.keystroke('"["', "command down")
+        time.sleep(0.35)
+
+    def next_pane(self) -> None:
+        try:
+            self.osascript_pid(
+                "set frontmost to true\n"
+                '    click menu item "Next Pane" of menu "Select Split Pane" '
+                'of menu item "Select Split Pane" of menu "Split Pane" '
+                'of menu item "Split Pane" of menu "Window" of menu bar 1'
+            )
+        except subprocess.CalledProcessError:
+            self.keystroke('"]"', "command down")
+        time.sleep(0.35)
+
+    def previous_tab(self) -> None:
+        self.keystroke('"["', "{command down, shift down}")
+        time.sleep(0.4)
+
     def start(self, command: str) -> None:
         configure_suite_defaults()
         self.started_at = time.time() - 1.0
@@ -476,6 +557,16 @@ end tell
             )
         return last
 
+    def _pid_command(self, pid: int) -> str:
+        try:
+            return subprocess.check_output(
+                ["ps", "-p", str(pid), "-o", "command="],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except subprocess.CalledProcessError:
+            return ""
+
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
             try:
@@ -490,18 +581,15 @@ end tell
                 except OSError:
                     pass
                 self.proc.wait(timeout=2)
-        # Never kill the user's installed iTerm2.
+        # Never kill the user's installed iTerm2. /proc does not exist on macOS.
+        app_marker = str(self.app)
         for pid in self._iterm_pids():
             if pid in self.preexisting_iterm:
                 continue
             if self.proc and pid == self.proc.pid:
                 continue
-            # Child helpers of the suite instance (iTermServer) may linger.
-            try:
-                cmdline = Path(f"/proc/{pid}/cmdline").read_text()
-            except OSError:
-                cmdline = ""
-            if SUITE in cmdline or (self.proc and str(self.proc.pid) in cmdline):
+            cmdline = self._pid_command(pid)
+            if SUITE in cmdline or app_marker in cmdline:
                 try:
                     os.kill(pid, signal.SIGTERM)
                 except OSError:
@@ -525,7 +613,9 @@ def run_tests(session: ITermHtmSession) -> None:
     session.start(f"{session.htm} -x")
     session.wait_init()
     # INIT_STATE materializes the first pane as a real iTerm2 tab beside the gateway.
-    time.sleep(1.5)
+    deadline = time.time() + 8
+    while time.time() < deadline and session.tab_count() < 2:
+        time.sleep(0.25)
     session.focus()
 
     tabs_after_init = session.tab_count()
@@ -572,6 +662,75 @@ def run_tests(session: ITermHtmSession) -> None:
     )
     print("OK: Cmd+Shift+D sent second NEW_SPLIT", flush=True)
 
+    # Concurrent output: background printers on two split panes plus another tab.
+    # Background `&` returns the shell immediately so pane/tab switches can land.
+    time.sleep(0.5)
+    stamp = int(time.time())
+
+    def echo_on_focused_pane(tag: str) -> str:
+        before = len(read_from_ids(session.log_text()))
+        session.keystroke(f'"echo {tag}"')
+        session.key_code(36)
+        session.wait_log(lambda text: tag in inserted_keys(text), 12, f"echo {tag}")
+        ids = read_from_ids(session.log_text())[before:]
+        if not ids:
+            fail(f"no INSERT_KEYS UUID for {tag}")
+        return ids[0]
+
+    mark_a = f"MA{stamp}"
+    pane_a = echo_on_focused_pane(mark_a)
+    pane_b = pane_a
+    for switch in (session.next_pane, session.previous_pane, session.previous_tab):
+        switch()
+        tag = f"MB{stamp}{switch.__name__}"
+        pane_b = echo_on_focused_pane(tag)
+        if pane_b != pane_a:
+            break
+    if pane_b == pane_a:
+        fail("could not focus a second HTM pane for concurrent output")
+    print(f"OK: keys reached two panes ({pane_a[:8]}… / {pane_b[:8]}…)", flush=True)
+
+    def burst_cmd(tag: str) -> str:
+        return f"for i in 1 2 3 4 5 6 7 8; do echo {tag}_$i; sleep 0.08; done &"
+
+    loops = [f"IT2C0{stamp}", f"IT2C1{stamp}"]
+    wrote_at = len(writing_to_ids(session.log_text()))
+    # Focused on pane_b after the probe. Start printer there, then jump back.
+    session.keystroke(f'"{burst_cmd(loops[1])}"')
+    session.key_code(36)
+    time.sleep(0.2)
+    session.previous_pane()
+    session.keystroke(f'"{burst_cmd(loops[0])}"')
+    session.key_code(36)
+
+    def interleaved(text: str) -> bool:
+        writes = writing_to_ids(text)[wrote_at:]
+        if len(set(writes)) < 2:
+            return False
+        tail = writes[-25:] if len(writes) >= 12 else writes
+        if len(set(tail)) < 2:
+            return False
+        trans = sum(1 for i in range(1, len(tail)) if tail[i] != tail[i - 1])
+        return trans >= 4
+
+    session.wait_log(interleaved, 20, "interleaved WRITING TO from 2+ panes")
+    new_writes = writing_to_ids(session.log_text())[wrote_at:]
+    unique_new = list(dict.fromkeys(new_writes))
+    transitions = sum(
+        1 for i in range(1, len(new_writes)) if new_writes[i] != new_writes[i - 1]
+    )
+    by_pane = inserted_by_pane(session.log_text())
+    tag_panes = {
+        tag: [pane for pane, keys in by_pane.items() if tag in keys] for tag in loops
+    }
+    if not any(tag_panes.values()):
+        fail(f"burst commands never reached htmd: {tag_panes}")
+    print(
+        f"OK: concurrent pane output ({len(unique_new)} panes, "
+        f"{transitions} WRITING TO switches)",
+        flush=True,
+    )
+
     time.sleep(0.4)
     session.keystroke('"w"', "command down")
     session.wait_log(
@@ -608,10 +767,7 @@ def run_tests(session: ITermHtmSession) -> None:
     print("OK: rapid split/tab/close did not crash iTerm2 or htmd", flush=True)
 
     # Clean detach: gateway Esc closes client panes but leaves htmd running.
-    session.keystroke('"["', "{command down, shift down}")
-    time.sleep(0.3)
-    session.keystroke('"["', "{command down, shift down}")
-    time.sleep(0.3)
+    session.select_first_tab()
     session.key_code(53)  # escape
     time.sleep(1.5)
     if not pids_named("htmd"):
@@ -622,12 +778,16 @@ def run_tests(session: ITermHtmSession) -> None:
         fail("iTerm2 exited on HTM detach")
     print("OK: Esc detached without killing htmd", flush=True)
 
-    # Reattach to the still-running daemon, then shut it down with gateway 'x'.
-    session.keystroke(f'"{session.htm}"')
+    # Reattach in a real shell tab. After detach the original `--command=htm`
+    # process has exited, so typing into that session cannot start a new client.
+    session.keystroke('"t"', "command down")
+    time.sleep(1.5)
+    session.keystroke(f'"{session.htm} -x"')
     session.key_code(36)
     session.started_at = time.time() - 1.0
     session.wait_init(timeout=20)
     time.sleep(1.0)
+    # apply() selects the new client tab; previous tab is the new gateway.
     session.keystroke('"["', "{command down, shift down}")
     time.sleep(0.3)
     session.keystroke('"x"')

@@ -113,6 +113,7 @@ class HtmPty:
         self.packets: list[tuple[int, bytes]] = []
         self.saw_init_seq = False
         self.init_json: Optional[dict] = None
+        self.read_size = 65536
 
     def start(self) -> None:
         env = os.environ.copy()
@@ -148,7 +149,7 @@ class HtmPty:
             if not ready:
                 break
             try:
-                chunk = os.read(self.master_fd, 65536)
+                chunk = os.read(self.master_fd, self.read_size)
             except OSError:
                 break
             if not chunk:
@@ -205,15 +206,79 @@ class HtmPty:
             return
         if self.proc is not None and self.proc.poll() is not None:
             return
-        try:
-            os.write(self.master_fd, encode_packet(header, payload))
-        except OSError:
-            return
+        data = encode_packet(header, payload)
+        view = memoryview(data)
+        while view:
+            try:
+                n = os.write(self.master_fd, view)
+            except BlockingIOError:
+                select.select([], [self.master_fd], [], 0.2)
+                continue
+            except OSError:
+                return
+            if n <= 0:
+                return
+            view = view[n:]
 
     def first_pane_id(self) -> str:
         if not self.init_json or not self.init_json.get("panes"):
             fail("INIT_STATE had no panes")
         return next(iter(self.init_json["panes"].keys()))
+
+    def insert_keys(self, pane: str, data: str) -> None:
+        self.write_packet(
+            INSERT_KEYS, pane.encode("ascii") + base64.b64encode(data.encode())
+        )
+
+    def new_split(self, source: str, pane: str, vertical: bool = True) -> None:
+        self.write_packet(
+            NEW_SPLIT,
+            source.encode("ascii") + pane.encode("ascii") + (b"1" if vertical else b"0"),
+        )
+
+    def new_tab(self, tab: str, pane: str) -> None:
+        self.write_packet(NEW_TAB, tab.encode("ascii") + pane.encode("ascii"))
+
+    def resize(self, pane: str, cols: int = 80, rows: int = 24) -> None:
+        self.write_packet(
+            RESIZE_PANE, encode_length(cols) + encode_length(rows) + pane.encode("ascii")
+        )
+
+    def pane_output(self, pane: str) -> str:
+        chunks: list[str] = []
+        for header, payload in self.packets:
+            if header != APPEND_TO_PANE or len(payload) < UUID_LEN:
+                continue
+            if payload[:UUID_LEN] != pane.encode("ascii"):
+                continue
+            try:
+                chunks.append(
+                    base64.b64decode(payload[UUID_LEN:]).decode("utf-8", "replace")
+                )
+            except Exception:
+                continue
+        return "".join(chunks)
+
+    def append_pane_order(self, start: int = 0) -> list[str]:
+        order: list[str] = []
+        for header, payload in self.packets[start:]:
+            if header != APPEND_TO_PANE or len(payload) < UUID_LEN:
+                continue
+            order.append(payload[:UUID_LEN].decode("ascii", "replace"))
+        return order
+
+    def wait_until(self, predicate, timeout: float, description: str) -> None:
+        deadline = time.time() + timeout
+        while time.time() < deadline:
+            self.pump(0.1)
+            if predicate():
+                return
+            if self.proc is not None and self.proc.poll() is not None:
+                fail(
+                    f"htm exited while waiting for {description} "
+                    f"(rc={self.proc.returncode})"
+                )
+        fail(f"timed out waiting for {description}")
 
     def wait_header(self, header: int, timeout: float = 8.0) -> bytes:
         deadline = time.time() + timeout
@@ -228,6 +293,20 @@ class HtmPty:
                 break
             seen = len(now)
         fail(f"timed out waiting for header {chr(header)!r} (saw {seen})")
+
+    def append_output(self) -> bytes:
+        bodies = []
+        for header, payload in self.packets:
+            if header != APPEND_TO_PANE or len(payload) < UUID_LEN:
+                continue
+            encoded = payload[UUID_LEN:]
+            if not encoded:
+                continue
+            try:
+                bodies.append(base64.b64decode(encoded, validate=False))
+            except Exception:
+                continue
+        return b"".join(bodies)
 
     def stop(self, kill_htmd: bool = True) -> None:
         if self.proc and self.proc.poll() is None:
@@ -328,6 +407,47 @@ def run_tests(htm: Path, htmd: Path) -> None:
     session = HtmPty(htm, htmd)
     try:
         session.start()
+        pane = session.first_pane_id()
+        tab_pane = new_id()
+        session.write_packet(
+            NEW_TAB, new_id().encode("ascii") + tab_pane.encode("ascii")
+        )
+        split_pane = new_id()
+        session.write_packet(
+            NEW_SPLIT, pane.encode("ascii") + split_pane.encode("ascii") + b"1"
+        )
+        session.pump(0.4)
+
+        def start_printer(pane_id: str, tag: str) -> None:
+            cmd = (
+                f"i=1; while [ \"$i\" -le 24 ]; do printf '{tag}_%s\\n' \"$i\"; "
+                "i=$((i+1)); sleep 0.04; done &\n"
+            )
+            session.write_packet(
+                INSERT_KEYS, pane_id.encode("ascii") + base64.b64encode(cmd.encode())
+            )
+
+        start_printer(pane, "ST0")
+        start_printer(tab_pane, "ST1")
+        start_printer(split_pane, "ST2")
+        for i in range(20):
+            marker = f"printf 'PTYKEY_{i}\\n'\n"
+            session.write_packet(
+                INSERT_KEYS, pane.encode("ascii") + base64.b64encode(marker.encode())
+            )
+            session.pump(0.04)
+        session.drain_idle(idle=0.3, timeout=10)
+        if session.proc is not None and session.proc.poll() is not None:
+            fail("htm died under concurrent pane output and INSERT_KEYS")
+        if not pids_named("htmd"):
+            fail("htmd died under concurrent pane output and INSERT_KEYS")
+        out = session.append_output()
+        if b"PTYKEY_19" not in out:
+            fail("INSERT_KEYS stalled while panes were printing")
+        if b"ST0_1" not in out or b"ST1_1" not in out or b"ST2_1" not in out:
+            fail("missing concurrent pane output during INSERT_KEYS stress")
+        print("OK: concurrent printers and INSERT_KEYS did not drop htm", flush=True)
+
         session.write_packet(INSERT_DEBUG_KEYS, b"x")
         start = time.time()
         deadline = start + 12

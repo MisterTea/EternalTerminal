@@ -54,14 +54,15 @@ TerminalHandler::TerminalHandler()
       outputRead(INVALID_HANDLE_VALUE),
       processHandle(INVALID_HANDLE_VALUE),
       run(false),
-      bufferLength(0) {
-}
+      bufferLength(0){}
 #else
     : masterFd(-1), childPid(-1), run(false), bufferLength(0) {
 }
 #endif
 
-TerminalHandler::~TerminalHandler() { stop(); }
+      TerminalHandler::~TerminalHandler() {
+  stop();
+}
 
 #define MAX_BUFFER_LINES (1024)
 #define MAX_BUFFER_CHARS (128 * MAX_BUFFER_LINES)
@@ -91,8 +92,7 @@ string TerminalHandler::bufferOutput(const string& newChars) {
     bufferLength -= buffer.begin()->length();
     buffer.pop_front();
   }
-  LOG(INFO) << "BUFFER LINES: " << buffer.size() << " " << tokens.size()
-            << endl;
+  VLOG(1) << "BUFFER LINES: " << buffer.size() << " " << tokens.size();
   return newChars;
 }
 
@@ -122,13 +122,13 @@ void TerminalHandler::start() {
 
   SIZE_T attrBytes = 0;
   InitializeProcThreadAttributeList(NULL, 1, 0, &attrBytes);
-  auto attrList =
-      reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(HeapAlloc(
-          GetProcessHeap(), 0, attrBytes));
+  auto attrList = reinterpret_cast<LPPROC_THREAD_ATTRIBUTE_LIST>(
+      HeapAlloc(GetProcessHeap(), 0, attrBytes));
   if (!attrList ||
       !InitializeProcThreadAttributeList(attrList, 1, 0, &attrBytes) ||
-      !UpdateProcThreadAttribute(attrList, 0, PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE,
-                                 pc, sizeof(pc), NULL, NULL)) {
+      !UpdateProcThreadAttribute(attrList, 0,
+                                 PROC_THREAD_ATTRIBUTE_PSEUDOCONSOLE, pc,
+                                 sizeof(pc), NULL, NULL)) {
     if (attrList) {
       DeleteProcThreadAttributeList(attrList);
       HeapFree(GetProcessHeap(), 0, attrList);
@@ -286,6 +286,10 @@ void TerminalHandler::start() {
       VLOG(1) << "pty opened " << masterFd << endl;
       childPid = pid;
       run = true;
+      int flags = fcntl(masterFd, F_GETFL, 0);
+      if (flags >= 0) {
+        fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+      }
 #ifdef WITH_UTEMPTER
       {
         char buf[1024];
@@ -302,55 +306,58 @@ string TerminalHandler::pollUserTerminal() {
   if (!run || masterFd < 0) {
     return string();
   }
+  flushPendingWrite();
 
 #define BUF_SIZE (16 * 1024)
   char b[BUF_SIZE];
 
-  // Data structures needed for select() and
-  // non-blocking I/O.
   fd_set rfd;
   timeval tv;
 
   FD_ZERO(&rfd);
   FD_SET(masterFd, &rfd);
   tv.tv_sec = 0;
-  tv.tv_usec = 10000;
+  tv.tv_usec = 0;
   select(masterFd + 1, &rfd, NULL, NULL, &tv);
 
   try {
-    // Check for data to receive; the received
-    // data includes also the data previously sent
-    // on the same master descriptor (line 90).
-    if (FD_ISSET(masterFd, &rfd)) {
-      // Read from terminal and write to client
-      memset(b, 0, BUF_SIZE);
+    if (!FD_ISSET(masterFd, &rfd)) {
+      return string();
+    }
+    string collected;
+    while (true) {
       int rc = read(masterFd, b, BUF_SIZE);
+      if (rc > 0) {
+        collected.append(b, rc);
+        continue;
+      }
+      if (rc < 0 && (GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK ||
+                     GetErrno() == EINTR)) {
+        break;
+      }
       if (rc < 0) {
-        // Terminal failed for some reason, bail.
         throw std::runtime_error("Terminal Failure");
       }
-      if (rc > 0) {
-        return bufferOutput(string(b, rc));
-      } else {
-        LOG(INFO) << "Terminal session ended";
+      // rc == 0: session ended
+      LOG(INFO) << "Terminal session ended";
 #if __NetBSD__
-        // this unfortunateness seems to be fixed in NetBSD-8 (or at
-        // least -CURRENT) sadness for now :/
-        int throwaway;
-        FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
+      int throwaway;
+      FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
 #else
-        siginfo_t childInfo;
-        int rc = waitid(P_PID, childPid, &childInfo, WEXITED);
-        if (rc < 0 && GetErrno() != ECHILD) {
-          FATAL_FAIL(rc);
-        }
-#endif
-        run = false;
-#ifdef WITH_UTEMPTER
-        utempter_remove_record(masterFd);
-#endif
-        return string();
+      siginfo_t childInfo;
+      int waitRc = waitid(P_PID, childPid, &childInfo, WEXITED);
+      if (waitRc < 0 && GetErrno() != ECHILD) {
+        FATAL_FAIL(waitRc);
       }
+#endif
+      run = false;
+#ifdef WITH_UTEMPTER
+      utempter_remove_record(masterFd);
+#endif
+      break;
+    }
+    if (!collected.empty()) {
+      return bufferOutput(collected);
     }
   } catch (const std::exception& ex) {
     LOG(INFO) << ex.what();
@@ -363,11 +370,37 @@ string TerminalHandler::pollUserTerminal() {
   return string();
 }
 
+void TerminalHandler::flushPendingWrite() {
+  if (masterFd < 0 || pendingWrite.empty()) {
+    return;
+  }
+  while (!pendingWrite.empty()) {
+    ssize_t rc = write(masterFd, pendingWrite.data(), pendingWrite.size());
+    if (rc > 0) {
+      pendingWrite.erase(0, static_cast<size_t>(rc));
+      continue;
+    }
+    if (rc < 0 && (GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK ||
+                   GetErrno() == EINTR)) {
+      return;
+    }
+    LOG(INFO) << "Terminal write failed";
+    run = false;
+    pendingWrite.clear();
+    return;
+  }
+}
+
 void TerminalHandler::appendData(const string& data) {
   if (masterFd < 0 || data.empty()) {
     return;
   }
-  RawSocketUtils::writeAll(masterFd, &data[0], data.length());
+  pendingWrite.append(data);
+  const size_t maxPending = 1024 * 1024;
+  if (pendingWrite.size() > maxPending) {
+    pendingWrite.erase(0, pendingWrite.size() - maxPending);
+  }
+  flushPendingWrite();
 }
 
 void TerminalHandler::updateTerminalSize(int col, int row) {
@@ -390,6 +423,7 @@ void TerminalHandler::stop() {
 #ifdef WITH_UTEMPTER
     utempter_remove_record(masterFd);
 #endif
+    pendingWrite.clear();
     close(masterFd);
     masterFd = -1;
   }

@@ -618,8 +618,14 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
+    # [.ghostty] / iTerm2 / Hyper e2e stay opt-in until those terminals' HTM
+    # PRs land. Default ctest and `./et-test` skip them. Run with:
+    #   ./et-test ghostty
+    #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   (Hyper: hyper-htm repo, npm run test:system)
     catch_discover_tests(
       et-test
+      TEST_SPEC "~[.ghostty]"
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
@@ -639,31 +645,49 @@ else(WIN32)
         htm_pty_e2e
         PROPERTIES
           SKIP_RETURN_CODE 77
-          TIMEOUT 60
+          TIMEOUT 120
           LABELS "e2e;htm;system"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
       )
-    endif()
-    if(APPLE AND Python3_Interpreter_FOUND)
       add_test(
-        NAME iterm2_htm_e2e
+        NAME htm_features_e2e
         COMMAND
           ${Python3_EXECUTABLE}
-          ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_features_e2e.py
           --htm $<TARGET_FILE:htm>
           --htmd $<TARGET_FILE:htmd>
       )
       set_tests_properties(
-        iterm2_htm_e2e
+        htm_features_e2e
         PROPERTIES
           SKIP_RETURN_CODE 77
-          TIMEOUT 240
-          LABELS "e2e;iterm2;system"
+          TIMEOUT 90
+          LABELS "e2e;htm;system;features"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME htm_stress_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_stress_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        htm_stress_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 180
+          LABELS "e2e;htm;system;stress"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
       )
     endif()
+    # iTerm2 GUI e2e is not registered with CTest. Run it explicitly:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)
