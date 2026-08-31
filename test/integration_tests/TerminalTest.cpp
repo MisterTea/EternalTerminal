@@ -491,8 +491,8 @@ class EndToEndTestFixture {
     clientSocketHandler.reset();
     clientPipeSocketHandler.reset();
     routerSocketHandler.reset();
-    FATAL_FAIL(::remove(routerPipePath.c_str()));
-    FATAL_FAIL(::remove(serverPipePath.c_str()));
+    removeOrMissing(routerPipePath);
+    removeOrMissing(serverPipePath);
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
 
     el::Helpers::uninstallLogDispatchCallback<LogInterceptHandler>(

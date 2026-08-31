@@ -6,6 +6,7 @@
 #include <windows.h>
 #else
 #include <chrono>
+#include <stdexcept>
 
 #include "ETerminal.pb.h"
 #endif
@@ -267,7 +268,8 @@ void TerminalHandler::start() {
   pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
   switch (pid) {
     case -1:
-      FATAL_FAIL(pid);
+      throw std::runtime_error(string("forkpty failed: ") +
+                               strerror(GetErrno()));
     case 0: {
       passwd* pwd = getpwuid(getuid());
       if (pwd == NULL) {
@@ -275,7 +277,9 @@ void TerminalHandler::start() {
             << "Not able to fork a terminal because getpwuid returns null";
       }
       chdir(pwd->pw_dir);
-      string terminal = string(::getenv("SHELL"));
+      const char* shellEnv = ::getenv("SHELL");
+      string terminal =
+          (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
       setenv("HTM_VERSION", ET_VERSION, 1);
       execl(terminal.c_str(), terminal.c_str(), "-l", NULL);
       exit(0);

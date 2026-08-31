@@ -20,6 +20,7 @@
 #include <mach-o/dyld.h>
 #endif
 #include <limits.h>
+#include <unistd.h>
 #endif
 
 using namespace et;
@@ -221,13 +222,26 @@ int main(int argc, char** argv) {
 #endif
 
   // This means we are the client to the daemon
-  std::this_thread::sleep_for(std::chrono::microseconds(
-      10 * 1000));  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());
-  HtmClient htmClient(socketHandler, pipeEndpoint);
-  htmClient.run();
+#ifndef WIN32
+  for (int i = 0; i < 50; i++) {
+    if (::access(pipeEndpoint.name().c_str(), F_OK) == 0) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+#endif
+  try {
+    HtmClient htmClient(socketHandler, pipeEndpoint);
+    htmClient.run();
+  } catch (const std::exception& ex) {
+    LOG(ERROR) << "htm client exiting: " << ex.what();
+    writeHtmExitSequence();
+    restoreTerminal();
+    return 1;
+  }
 
   writeHtmExitSequence();
   restoreTerminal();

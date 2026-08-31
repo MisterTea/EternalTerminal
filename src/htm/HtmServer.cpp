@@ -18,7 +18,16 @@ void HtmServer::run() {
   while (running.load()) {
     if (endpointFd < 0) {
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
-      pollAccept();
+      try {
+        pollAccept();
+      } catch (const std::exception& re) {
+        STERROR << re.what();
+        try {
+          closeEndpoint();
+        } catch (const std::exception& closeEx) {
+          LOG(INFO) << "closeEndpoint after accept/recover: " << closeEx.what();
+        }
+      }
       continue;
     }
 

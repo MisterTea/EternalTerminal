@@ -433,7 +433,8 @@ inline string GetTempDirectory() {
   return tmpDir;
 }
 
-/** @brief Per-user token used in HTM IPC socket names (uid on Unix, username on Windows). */
+/** @brief Per-user token used in HTM IPC socket names (uid on Unix, username
+ * on Windows). */
 inline string GetHtmIpcUser() {
 #ifdef WIN32
   char name[256];

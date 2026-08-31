@@ -11,7 +11,8 @@ using namespace et::htmtest;
 namespace {
 class SilentServer : public IpcPairServer {
  public:
-  SilentServer(shared_ptr<SocketHandler> handler, const SocketEndpoint& endpoint)
+  SilentServer(shared_ptr<SocketHandler> handler,
+               const SocketEndpoint& endpoint)
       : IpcPairServer(handler, endpoint) {}
   void recover() override {}
 };
@@ -128,21 +129,21 @@ TEST_CASE("MultiplexerState reports a pane that exits",
 #else
   mux.appendData(paneId, "exit\n");
 #endif
+  bool sawClose = false;
   REQUIRE(waitUntil(
       [&]() {
         mux.update(server.getEndpointFd());
+        string incoming = readUntil(handler, client.getEndpointFd(), 1, 50);
+        consumeInitSequence(&incoming);
+        HtmPacket packet;
+        while (popPacket(&incoming, &packet)) {
+          if (packet.header == SERVER_CLOSE_PANE) {
+            sawClose = true;
+          }
+        }
         return mux.numPanes() == 0;
       },
       8000));
-  string incoming = readUntil(handler, client.getEndpointFd(), 1, 1000);
-  consumeInitSequence(&incoming);
-  bool sawClose = false;
-  HtmPacket packet;
-  while (popPacket(&incoming, &packet)) {
-    if (packet.header == SERVER_CLOSE_PANE) {
-      sawClose = true;
-    }
-  }
   REQUIRE(sawClose);
   client.closeEndpoint();
 }

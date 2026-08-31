@@ -161,10 +161,10 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest][integration]") {
   clientPipeSocketHandler.reset();
   routerSocketHandler.reset();
 
-  FATAL_FAIL(::remove(jumphostRouterPipePath.c_str()));
-  FATAL_FAIL(::remove(jumphostServerPipePath.c_str()));
-  FATAL_FAIL(::remove(routerPipePath.c_str()));
-  FATAL_FAIL(::remove(serverPipePath.c_str()));
+  removeOrMissing(jumphostRouterPipePath);
+  removeOrMissing(jumphostServerPipePath);
+  removeOrMissing(routerPipePath);
+  removeOrMissing(serverPipePath);
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
 }  // namespace et

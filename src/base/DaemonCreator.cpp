@@ -33,9 +33,9 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
   vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
   cmdBuf.push_back(L'\0');
 
-  BOOL ok = CreateProcessW(application, cmdBuf.data(), NULL, NULL, FALSE,
-                           DETACHED_PROCESS | CREATE_NO_WINDOW, NULL, NULL, &si,
-                           &pi);
+  BOOL ok =
+      CreateProcessW(application, cmdBuf.data(), NULL, NULL, FALSE,
+                     DETACHED_PROCESS | CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
   if (!ok) {
     STFATAL << "Failed to start htmd: " << GetLastError();
   }

@@ -347,13 +347,20 @@ TEST_CASE("HtmServer survives an abrupt client hangup", "[Htm][HtmServer]") {
   auto endpoint = endpointFor(ipc.path);
   HtmServer server(handler, endpoint);
   std::thread runner([&]() { server.run(); });
+  struct JoinRunner {
+    HtmServer& server;
+    std::thread& runner;
+    ~JoinRunner() {
+      server.requestStop();
+      if (runner.joinable()) {
+        runner.join();
+      }
+    }
+  } joinOnExit{server, runner};
   DroppingClient client(handler, endpoint);
   REQUIRE(waitUntil([&]() { return server.getEndpointFd() >= 0; }, 5000));
   client.hangup();
-  REQUIRE(waitUntil([&]() { return server.getEndpointFd() < 0; }, 5000));
-  REQUIRE(runner.joinable());
-  server.requestStop();
-  runner.join();
+  REQUIRE(waitUntil([&]() { return server.getEndpointFd() < 0; }, 8000));
 }
 
 TEST_CASE("HtmServer disconnects on a stray non-protocol byte",

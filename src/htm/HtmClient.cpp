@@ -191,9 +191,17 @@ void HtmClient::run() {
     }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    select(maxFd + 1, &rfd,
-           (!stdoutQueue.empty() || !ipcOutQueue.empty()) ? &wfd : NULL, NULL,
-           &tv);
+    int nsel =
+        select(maxFd + 1, &rfd,
+               (!stdoutQueue.empty() || !ipcOutQueue.empty()) ? &wfd : NULL,
+               NULL, &tv);
+    if (nsel < 0) {
+      auto localErrno = GetErrno();
+      if (localErrno != EINTR) {
+        throw std::runtime_error("select failed");
+      }
+      continue;
+    }
 
     if (ipcOutQueue.size() < MAX_IPC_OUT_QUEUE &&
         FD_ISSET(STDIN_FILENO, &rfd)) {

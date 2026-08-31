@@ -79,11 +79,14 @@ string MultiplexerState::toJsonString() {
   json state;
   const char* shellEnv = ::getenv("SHELL");
 #ifdef WIN32
-  if (shellEnv == nullptr) {
+  if (shellEnv == nullptr || !shellEnv[0]) {
     shellEnv = ::getenv("COMSPEC");
   }
-#endif
   state["shell"] = shellEnv ? string(shellEnv) : string();
+#else
+  state["shell"] =
+      (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
+#endif
 
   for (auto& it : tabs) {
     state["tabs"][it.first] = it.second->toJson();

@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.container }}
+      options: --privileged
+    env:
+      SHELL: /bin/bash
     strategy:
       fail-fast: true
       max-parallel: 1

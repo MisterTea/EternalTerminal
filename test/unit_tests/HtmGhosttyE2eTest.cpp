@@ -21,8 +21,10 @@
 // until Ghostty's HTM PR lands. Run with: ./et-test ghostty
 
 #ifndef WIN32
-#if defined(__APPLE__)
+#if defined(__APPLE__) || defined(__NetBSD__)
 #include <util.h>
+#elif defined(__FreeBSD__)
+#include <libutil.h>
 #else
 #include <pty.h>
 #endif

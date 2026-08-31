@@ -30,14 +30,16 @@ inline string b64Bytes(const string& data) {
     return "";
   }
   string encoded(Base64::EncodedLength(data.size()), '\0');
-  REQUIRE(Base64::Encode(data.data(), data.size(), &encoded[0], encoded.size()));
+  REQUIRE(
+      Base64::Encode(data.data(), data.size(), &encoded[0], encoded.size()));
   return encoded;
 }
 
 inline int32_t decodeB64Int32(const string& encoded) {
   int32_t value = 0;
   REQUIRE(encoded.size() >= 8);
-  REQUIRE(Base64::Decode(encoded.data(), 8, reinterpret_cast<char*>(&value), 4));
+  REQUIRE(
+      Base64::Decode(encoded.data(), 8, reinterpret_cast<char*>(&value), 4));
   return value;
 }
 
