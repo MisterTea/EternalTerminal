@@ -195,7 +195,7 @@ TEST_CASE("HtmServer streams concurrent output from tabs and splits",
   for (const auto& pane : panes) {
     string cmd = "i=1; while [ \"$i\" -le " + to_string(bursts) +
                  " ]; do printf '" + pane.second +
-                 "_%s\\n' \"$i\"; i=$((i+1)); sleep 0.04; done\n";
+                 "_%s\\n' \"$i\"; i=$((i+1)); done\n";
     sendInsertKeys(h.handler, h.client->getEndpointFd(), pane.first, cmd);
   }
 

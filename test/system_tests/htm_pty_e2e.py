@@ -441,7 +441,7 @@ def run_tests(htm: Path, htmd: Path) -> None:
         def start_printer(pane_id: str, tag: str) -> None:
             cmd = (
                 f"i=1; while [ \"$i\" -le 24 ]; do printf '{tag}_%s\\n' \"$i\"; "
-                "i=$((i+1)); sleep 0.04; done &\n"
+                "i=$((i+1)); done &\n"
             )
             session.write_packet(
                 INSERT_KEYS, pane_id.encode("ascii") + base64.b64encode(cmd.encode())

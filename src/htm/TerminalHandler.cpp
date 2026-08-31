@@ -281,7 +281,9 @@ void TerminalHandler::start() {
       string terminal =
           (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
       setenv("HTM_VERSION", ET_VERSION, 1);
-      execl(terminal.c_str(), terminal.c_str(), "-l", NULL);
+      // Non-login: inherit PATH from htmd and skip login scripts that may
+      // switch to csh (FreeBSD's default user shell).
+      execl(terminal.c_str(), terminal.c_str(), NULL);
       exit(0);
       break;
     }
@@ -324,53 +326,50 @@ string TerminalHandler::pollUserTerminal() {
   tv.tv_usec = 0;
   select(masterFd + 1, &rfd, NULL, NULL, &tv);
 
+  string collected;
+  bool hungup = false;
   try {
-    if (!FD_ISSET(masterFd, &rfd)) {
-      return string();
-    }
-    string collected;
-    while (true) {
-      int rc = read(masterFd, b, BUF_SIZE);
-      if (rc > 0) {
-        collected.append(b, rc);
-        continue;
-      }
-      if (rc < 0 && (GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK ||
-                     GetErrno() == EINTR)) {
+    if (FD_ISSET(masterFd, &rfd)) {
+      while (true) {
+        int rc = read(masterFd, b, BUF_SIZE);
+        if (rc > 0) {
+          collected.append(b, rc);
+          continue;
+        }
+        if (rc < 0 && (GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK ||
+                       GetErrno() == EINTR)) {
+          break;
+        }
+        // rc == 0 (Linux EOF) or EIO (BSD): PTY slave closed.
+        hungup = true;
+        LOG(INFO) << "Terminal session ended";
         break;
       }
-      if (rc < 0) {
-        throw std::runtime_error("Terminal Failure");
-      }
-      // rc == 0: session ended
-      LOG(INFO) << "Terminal session ended";
-#if __NetBSD__
-      int throwaway;
-      FATAL_FAIL(waitpid(childPid, &throwaway, WUNTRACED));
-#else
-      siginfo_t childInfo;
-      int waitRc = waitid(P_PID, childPid, &childInfo, WEXITED);
-      if (waitRc < 0 && GetErrno() != ECHILD) {
-        FATAL_FAIL(waitRc);
-      }
-#endif
-      run = false;
-#ifdef WITH_UTEMPTER
-      utempter_remove_record(masterFd);
-#endif
-      break;
-    }
-    if (!collected.empty()) {
-      return bufferOutput(collected);
     }
   } catch (const std::exception& ex) {
     LOG(INFO) << ex.what();
+    hungup = true;
+  }
+
+  if (childPid > 0) {
+    int status = 0;
+    int wr = waitpid(childPid, &status, WNOHANG);
+    if (wr == childPid || (wr < 0 && GetErrno() == ECHILD)) {
+      hungup = true;
+      childPid = -1;
+    }
+  }
+
+  if (hungup) {
     run = false;
 #ifdef WITH_UTEMPTER
     utempter_remove_record(masterFd);
 #endif
   }
 
+  if (!collected.empty()) {
+    return bufferOutput(collected);
+  }
   return string();
 }
 

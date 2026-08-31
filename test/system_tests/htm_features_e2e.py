@@ -40,7 +40,7 @@ def new_id() -> str:
 def burst_cmd(tag: str, n: int) -> str:
     return (
         f"i=1; while [ \"$i\" -le {n} ]; do "
-        f"printf '{tag}_%s\\n' \"$i\"; i=$((i+1)); sleep 0.04; done\n"
+        f"printf '{tag}_%s\\n' \"$i\"; i=$((i+1)); done\n"
     )
 
 

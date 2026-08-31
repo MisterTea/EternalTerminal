@@ -197,6 +197,15 @@ void UserSocketOps::childConnect(int resultFd, const string& path) {
 }
 
 int UserSocketOps::runAsUser(Op op, const string& path, uid_t uid, gid_t gid) {
+  // etserver is multithreaded and cannot seteuid in-process, so privilege
+  // drop happens in a child. Skip the fork when we already have the target
+  // credentials: on Darwin, passing a connected UNIX socket via SCM_RIGHTS
+  // and then exiting the connecting process delivers EOF on the duplicate.
+  if (::getuid() == uid && ::geteuid() == uid && ::getgid() == gid &&
+      ::getegid() == gid) {
+    return op == Op::LISTEN ? listenAtPath(path) : connectAtPath(path);
+  }
+
   int sv[2];
   if (::socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
     return -1;
