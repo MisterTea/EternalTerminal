@@ -171,6 +171,7 @@ void HtmServer::run() {
   } catch (const std::exception& closeEx) {
     LOG(INFO) << "closeEndpoint on shutdown: " << closeEx.what();
   }
+  state.stopAll();
 }
 
 void HtmServer::sendDebug(const string& msg) {

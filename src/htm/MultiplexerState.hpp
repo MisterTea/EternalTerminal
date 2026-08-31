@@ -38,6 +38,8 @@ class MultiplexerState {
   void newSplit(const string& sourceId, const string& paneId, bool vertical);
   /** @brief Stops and removes a pane, collapsing its split/tab as needed. */
   void closePane(const string& paneId);
+  /** @brief Stops every pane PTY. Safe to call more than once. */
+  void stopAll();
   /** @brief Reads from every `TerminalHandler` and streams data to the client.
    */
   void update(int endpointFd);

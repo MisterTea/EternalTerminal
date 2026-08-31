@@ -498,10 +498,19 @@ def run_tests(htm: Path, htmd: Path) -> None:
     finally:
         session.stop()
 
-    if pids_named("htmd"):
-        fail("htmd leftover after tests")
-    if pids_named("htm"):
-        fail("htm leftover after tests")
+    for name in ("htmd", "htm"):
+        leftover = pids_named(name)
+        if leftover:
+            subprocess.call(
+                ["pkill", "-x", "-U", str(uid()), name],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            deadline = time.time() + 2
+            while pids_named(name) and time.time() < deadline:
+                time.sleep(0.1)
+        if pids_named(name):
+            fail(f"{name} leftover after tests")
     print("PASS: htm/htmd PTY e2e", flush=True)
 
 

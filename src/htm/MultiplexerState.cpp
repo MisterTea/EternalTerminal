@@ -47,13 +47,15 @@ struct MultiplexerState::Tab {
     return tab;
   }
 };
-MultiplexerState::~MultiplexerState() {
+void MultiplexerState::stopAll() {
   for (auto& it : panes) {
     if (it.second && it.second->terminal) {
       it.second->terminal->stop();
     }
   }
 }
+
+MultiplexerState::~MultiplexerState() { stopAll(); }
 
 MultiplexerState::MultiplexerState(shared_ptr<SocketHandler> _socketHandler)
     : socketHandler(_socketHandler) {
