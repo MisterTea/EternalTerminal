@@ -79,8 +79,7 @@ TEST_CASE("TerminalHandler trims a large scrollback buffer",
   term.start();
   // Exceed MAX_BUFFER_CHARS (128 * 1024) with a few wide lines so we do not
   // stall the PTY by flooding thousands of short writes.
-  term.appendData(
-      "awk 'BEGIN{for(i=0;i<200;i++) printf \"%0700d\\n\", i}'\n");
+  term.appendData("awk 'BEGIN{for(i=0;i<200;i++) printf \"%0700d\\n\", i}'\n");
   REQUIRE(waitUntil(
       [&]() {
         term.pollUserTerminal();

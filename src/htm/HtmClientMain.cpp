@@ -199,40 +199,44 @@ int main(int argc, char** argv) {
   }
 #else
   uid_t myuid = getuid();
+  const string pipeName = HtmServer::getPipeName();
+  auto htmdPids = [&]() {
+    string command =
+        string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
+    return SystemToStr(command.c_str());
+  };
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
-    // Kill previous htm daemon
     string command =
         string("pkill -x -U ") + to_string(myuid) + string(" htmd");
     system(command.c_str());
+    for (int i = 0; i < 50; i++) {
+      if (htmdPids().empty()) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    ::unlink(pipeName.c_str());
   }
 
-  // Check if daemon exists
-  string command = string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
-  string pgrepOutput = SystemToStr(command.c_str());
-
-  if (pgrepOutput.length() == 0) {
-    // Fork to create the daemon
+  if (htmdPids().empty()) {
     int daemonResult = DaemonCreator::create(false, "");
     if (daemonResult == DaemonCreator::CHILD) {
-      // This means we are the daemon
       exit(system(siblingHtmdCommand().c_str()));
     }
   }
-#endif
 
-  // This means we are the client to the daemon
-  shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
-  SocketEndpoint pipeEndpoint;
-  pipeEndpoint.set_name(HtmServer::getPipeName());
-#ifndef WIN32
-  for (int i = 0; i < 50; i++) {
-    if (::access(pipeEndpoint.name().c_str(), F_OK) == 0) {
+  for (int i = 0; i < 100; i++) {
+    if (!htmdPids().empty() && ::access(pipeName.c_str(), F_OK) == 0) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
   }
 #endif
+
+  shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
+  SocketEndpoint pipeEndpoint;
+  pipeEndpoint.set_name(HtmServer::getPipeName());
   try {
     HtmClient htmClient(socketHandler, pipeEndpoint);
     htmClient.run();

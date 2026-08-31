@@ -4,6 +4,10 @@
 #include <cstring>
 #include <iostream>
 
+#ifndef WIN32
+#include <unistd.h>
+#endif
+
 #include "LogHandler.hpp"
 #include "TelemetryService.hpp"
 #include "TestHeaders.hpp"
@@ -75,6 +79,12 @@ int main(int argc, char** argv) {
   el::Loggers::reconfigureLogger("default", defaultConf);
 
   TelemetryService::create(false, "", "");
+
+#ifndef WIN32
+  // HTM tests send Bourne-shell syntax (printf, awk, exit). Login csh/zsh on
+  // some CI images otherwise ignore those commands and time out.
+  setenv("SHELL", "/bin/sh", 1);
+#endif
 
   int result = Catch::Session().run(argc, argv);
 

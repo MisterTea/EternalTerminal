@@ -87,7 +87,8 @@ TEST_CASE("IpcPairServer replaces an existing client on a new accept",
   second.closeEndpoint();
 }
 
-TEST_CASE("IpcPairServer pollAccept is a no-op without a client", "[Htm][Ipc]") {
+TEST_CASE("IpcPairServer pollAccept is a no-op without a client",
+          "[Htm][Ipc]") {
   UniqueIpcPath ipc;
   auto handler = std::make_shared<PipeSocketHandler>();
   auto endpoint = endpointFor(ipc.path);

@@ -118,26 +118,46 @@ class HtmPty:
     def start(self) -> None:
         env = os.environ.copy()
         env["PATH"] = f"{self.htm.parent.resolve()}:{env.get('PATH', '')}"
-        self.master_fd, slave_fd = pty.openpty()
-        self.proc = subprocess.Popen(
-            [str(self.htm), "-x"],
-            stdin=slave_fd,
-            stdout=slave_fd,
-            stderr=slave_fd,
-            env=env,
-            close_fds=True,
-            start_new_session=True,
+        env.setdefault("SHELL", "/bin/sh")
+        last_rc: Optional[int] = None
+        leftover = b""
+        for _attempt in range(3):
+            self.buf.clear()
+            self.packets.clear()
+            self.saw_init_seq = False
+            self.init_json = None
+            self.master_fd, slave_fd = pty.openpty()
+            self.proc = subprocess.Popen(
+                [str(self.htm), "-x"],
+                stdin=slave_fd,
+                stdout=slave_fd,
+                stderr=slave_fd,
+                env=env,
+                close_fds=True,
+                start_new_session=True,
+            )
+            os.close(slave_fd)
+            deadline = time.time() + 15
+            while time.time() < deadline:
+                self.pump(0.2)
+                if self.init_json is not None:
+                    self.drain_idle()
+                    return
+                if self.proc.poll() is not None:
+                    last_rc = self.proc.returncode
+                    leftover = bytes(self.buf[-200:])
+                    break
+            if self.proc is not None and self.proc.poll() is None:
+                self.proc.terminate()
+                self.proc.wait(timeout=5)
+            if self.master_fd >= 0:
+                os.close(self.master_fd)
+                self.master_fd = -1
+        fail(
+            f"htm exited early with {last_rc}; leftover={leftover!r}"
+            if last_rc is not None
+            else "did not receive INIT_STATE from htm"
         )
-        os.close(slave_fd)
-        deadline = time.time() + 15
-        while time.time() < deadline:
-            self.pump(0.2)
-            if self.init_json is not None:
-                self.drain_idle()
-                return
-            if self.proc.poll() is not None:
-                fail(f"htm exited early with {self.proc.returncode}")
-        fail("did not receive INIT_STATE from htm")
 
     def pump(self, timeout: float) -> None:
         if self.master_fd < 0:
