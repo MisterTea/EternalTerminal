@@ -18,6 +18,8 @@ class HtmServer : public IpcPairServer {
             const SocketEndpoint& endpoint);
   /** @brief Main loop that accepts connections and dispatches HTM events. */
   void run();
+  /** @brief Asks `run()` to exit after the current select timeout. */
+  void requestStop() { running.store(false); }
   /** @brief Returns the default pipe path used by the local HTM server. */
   static string getPipeName();
   /** @brief Sends the current multiplexer state after a reconnect. */
@@ -29,7 +31,7 @@ class HtmServer : public IpcPairServer {
   /** @brief State keeps track of panes/tabs/splits and terminal buffers. */
   MultiplexerState state;
   /** @brief Termination flag that exits `run()` when false. */
-  bool running;
+  std::atomic<bool> running;
 };
 }  // namespace et
 

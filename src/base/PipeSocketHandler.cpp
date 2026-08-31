@@ -2,6 +2,8 @@
 
 #ifndef WIN32
 #include "UserSocketOps.hpp"
+#else
+#include <io.h>
 #endif
 
 namespace et {
@@ -127,7 +129,11 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   initServerSocket(fd);
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
   strncpy(local.sun_path, pipePath.c_str(), sizeof(local.sun_path));
+#ifdef WIN32
+  _unlink(local.sun_path);
+#else
   unlink(local.sun_path);
+#endif
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
   ::listen(fd, 5);
@@ -186,5 +192,11 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
 #else
   FATAL_FAIL(::close(sockFd));
 #endif
+#ifdef WIN32
+  _unlink(pipePath.c_str());
+#else
+  ::unlink(pipePath.c_str());
+#endif
+  pipeServerSockets.erase(it);
 }
 }  // namespace et

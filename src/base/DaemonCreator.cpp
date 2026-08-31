@@ -1,7 +1,61 @@
-#ifndef WIN32
 #include "DaemonCreator.hpp"
 
+#ifdef WIN32
+#include <windows.h>
+#endif
+
 namespace et {
+#ifdef WIN32
+int DaemonCreator::createSessionLeader() { return 0; }
+
+int DaemonCreator::create(bool parentExit, string childPidFile) {
+  wchar_t modulePath[MAX_PATH];
+  fs::path htmdPath;
+  if (GetModuleFileNameW(NULL, modulePath, MAX_PATH) != 0) {
+    htmdPath = fs::path(modulePath).parent_path() / L"htmd.exe";
+  }
+
+  wstring cmdLine;
+  const wchar_t* application = nullptr;
+  if (!htmdPath.empty() && fs::exists(htmdPath)) {
+    application = htmdPath.c_str();
+    cmdLine = L"\"" + htmdPath.wstring() + L"\"";
+  } else {
+    cmdLine = L"htmd.exe";
+  }
+
+  STARTUPINFOW si;
+  ZeroMemory(&si, sizeof(si));
+  si.cb = sizeof(si);
+  PROCESS_INFORMATION pi;
+  ZeroMemory(&pi, sizeof(pi));
+
+  vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
+  cmdBuf.push_back(L'\0');
+
+  BOOL ok = CreateProcessW(application, cmdBuf.data(), NULL, NULL, FALSE,
+                           DETACHED_PROCESS | CREATE_NO_WINDOW, NULL, NULL, &si,
+                           &pi);
+  if (!ok) {
+    STFATAL << "Failed to start htmd: " << GetLastError();
+  }
+
+  if (!childPidFile.empty()) {
+    std::ofstream pidFile(childPidFile.c_str());
+    if (pidFile) {
+      pidFile << pi.dwProcessId << "\n";
+    }
+  }
+
+  CloseHandle(pi.hThread);
+  CloseHandle(pi.hProcess);
+
+  if (parentExit) {
+    exit(EXIT_SUCCESS);
+  }
+  return PARENT;
+}
+#else
 int DaemonCreator::createSessionLeader() { return ::daemon(0, 0); }
 
 int DaemonCreator::create(bool parentExit, string childPidFile) {
@@ -69,5 +123,5 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
 
   return CHILD;
 }
-}  // namespace et
 #endif
+}  // namespace et

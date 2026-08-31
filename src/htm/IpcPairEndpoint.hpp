@@ -24,11 +24,23 @@ class IpcPairEndpoint {
   inline int getEndpointFd() { return endpointFd; }
   /** @brief Sends `SESSION_END` to the peer before closing the descriptor. */
   virtual void closeEndpoint() {
-    LOG(INFO) << "SENDING SESSION END";
-    unsigned char header = SESSION_END;
-    socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
-    socketHandler->close(endpointFd);
+    if (endpointFd < 0) {
+      return;
+    }
+    int fd = endpointFd;
     endpointFd = -1;
+    LOG(INFO) << "SENDING SESSION END";
+    try {
+      unsigned char header = SESSION_END;
+      socketHandler->writeAllOrThrow(fd, (const char*)&header, 1, false);
+    } catch (const std::exception& ex) {
+      LOG(INFO) << "Failed to send SESSION_END: " << ex.what();
+    }
+    try {
+      socketHandler->close(fd);
+    } catch (const std::exception& ex) {
+      LOG(INFO) << "Failed to close endpoint: " << ex.what();
+    }
   }
 
  protected:

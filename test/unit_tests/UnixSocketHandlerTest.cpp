@@ -40,9 +40,7 @@ TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
   REQUIRE((GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK));
 
   socketHandler->stopListening(endpoint);
-  // stopListening() only closes the fd; the bound socket file remains, so
-  // remove it before the (now empty) directory.
-  FATAL_FAIL(::remove(pipePath.c_str()));
+  REQUIRE(::access(pipePath.c_str(), F_OK) != 0);
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
 
@@ -75,7 +73,7 @@ TEST_CASE("PipeSocketHandler listenAsUser and connectAsUser",
   socketHandler->close(accepted);
   socketHandler->close(clientFd);
   socketHandler->stopListening(endpoint);
-  FATAL_FAIL(::remove(pipePath.c_str()));
+  REQUIRE(::access(pipePath.c_str(), F_OK) != 0);
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
 }
 

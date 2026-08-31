@@ -8,12 +8,14 @@ namespace et {
  * @brief Spawns a pseudo-terminal and buffers data flowing through it.
  *
  * Used by `MultiplexerState` to collect pane output and replay buffered lines
- * when a client reconnects.
+ * when a client reconnects. Unix uses `forkpty`; Windows uses ConPTY.
  */
 class TerminalHandler {
  public:
   /** @brief Sets up internal buffers/state before launching a PTY. */
   TerminalHandler();
+  /** @brief Stops the child PTY if it is still running. */
+  ~TerminalHandler();
   /** @brief Forks a child shell connected to a pty for interactive
    * input/output. */
   void start();
@@ -22,23 +24,37 @@ class TerminalHandler {
    * the raw bytes that were just read.
    */
   string pollUserTerminal();
-  /** @brief Updates the terminal window size using TIOCSWINSZ. */
+  /** @brief Updates the terminal window size. */
   void updateTerminalSize(int col, int row);
   /** @brief Writes raw bytes into the running terminal (e.g., from the client).
    */
   void appendData(const string& data);
   /** @brief Indicates whether the PTY child is still alive. */
   inline bool isRunning() { return run; }
-  /** @brief Sends SIGTERM/Cleanup to stop the handler's child process. */
+  /** @brief Stops the handler's child process and closes PTY handles. */
   void stop();
   /** @brief Returns the buffered output that should be sent to the client. */
   const deque<string>& getBuffer() { return buffer; }
 
  protected:
+  /** @brief Appends freshly read PTY bytes to the scrollback ring. */
+  string bufferOutput(const string& newChars);
+
+#ifdef WIN32
+  /** @brief ConPTY handle (`HPCON`). */
+  void* hPC;
+  /** @brief Write end of the pipe feeding ConPTY input. */
+  void* inputWrite;
+  /** @brief Read end of the pipe receiving ConPTY output. */
+  void* outputRead;
+  /** @brief Child process handle. */
+  void* processHandle;
+#else
   /** @brief Master fd used to read/write the PTY. */
   int masterFd;
   /** @brief Child process ID for the spawned terminal. */
   int childPid;
+#endif
   /** @brief Flag that indicates whether the handler is live. */
   bool run;
   /** @brief Recent fragments that have been read from the PTY. */

@@ -24,6 +24,8 @@ class MultiplexerState {
  public:
   /** @brief Initializes the multiplexer using the supplied IPC handler. */
   MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
+  /** @brief Stops every pane PTY so tests and shutdown do not leak shells. */
+  ~MultiplexerState();
   /** @brief Serializes the current tabs/panes/splits into JSON for INIT_STATE.
    */
   string toJsonString();

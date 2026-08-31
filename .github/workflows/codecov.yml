@@ -47,6 +47,7 @@ jobs:
           # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
           path: |
             ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
+            ${{ github.workspace }}/cov_build/vcpkg_installed/
             ${{ env.VCPKG_ROOT }}
             !${{ env.VCPKG_ROOT }}/buildtrees
             !${{ env.VCPKG_ROOT }}/packages
@@ -57,35 +58,8 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-codecov-1
 
-      - name: Build
-        run: |
-          parallel_level="${CI_PARALLEL_LEVEL:-2}"
-          if [[ -n "${ACT:-}" ]]; then
-            parallel_level="${CI_PARALLEL_LEVEL:-14}"
-          fi
-          mkdir -p build
-          pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCODE_COVERAGE=ON ../
-          make -j"${parallel_level}"
-          popd
-
       - name: Build Test with code coverage
-        run: |
-          ./build/et-test
-          lcov --capture --directory . --output-file ./code-coverage.info
-          lcov --remove ./code-coverage.info \
-              '/usr/include/*' \
-              '/home/*/miniconda3/*' \
-              '*/vcpkg_installed/*' \
-              '*/external/*' \
-              '*/test/integration_tests/*' \
-              '*/test/unit_tests/*' \
-              '*/test/*' \
-              '*/proto/*' \
-              '*/cov_build/ET.pb*' \
-              '*/cov_build/ETerminal.pb*' \
-              --output-file ./filtered.info -rc lcov_branch_coverage=1
-          lcov --list ./filtered.info # debug info
+        run: bash coverage.sh
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4

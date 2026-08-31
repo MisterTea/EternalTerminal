@@ -2,6 +2,7 @@
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
+#include "WinsockContext.hpp"
 
 using namespace et;
 
@@ -9,6 +10,9 @@ int main(int argc, char** argv) {
   // Version string need to be set before GFLAGS parse arguments
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
+#ifdef WIN32
+  WinsockContext winsockContext;
+#endif
 
   // Setup easylogging configurations
   el::Configurations defaultConf =

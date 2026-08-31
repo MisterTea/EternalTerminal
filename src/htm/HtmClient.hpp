@@ -9,7 +9,8 @@ namespace et {
  * @brief IPC client that sends local stdin keystrokes to `htmd` and prints its
  * output.
  *
- * `run()` uses `select()` to multiplex between STDIN and the connected pipe fd.
+ * Unix uses `select()` on STDIN and the pipe fd. Windows waits on the stdin
+ * handle and the IPC socket because stdin is not a selectable socket.
  */
 class HtmClient : public IpcPairClient {
  public:

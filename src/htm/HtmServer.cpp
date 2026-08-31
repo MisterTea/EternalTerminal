@@ -15,9 +15,9 @@ HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
       running(true) {}
 
 void HtmServer::run() {
-  while (running) {
+  while (running.load()) {
     if (endpointFd < 0) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
       pollAccept();
       continue;
     }
@@ -42,6 +42,23 @@ void HtmServer::run() {
         LOG(INFO) << "READING FROM STDIN";
         socketHandler->readAll(endpointFd, (char*)&header, 1, false);
         LOG(INFO) << "Got message header: " << int(header);
+        if (header == SESSION_END) {
+          // SESSION_END is a 1-byte packet with no length field. Reading a
+          // length here races with client teardown and hangs the daemon.
+          LOG(INFO) << "Client sent SESSION_END";
+          closeEndpoint();
+          continue;
+        }
+        if (header != INSERT_KEYS && header != INSERT_DEBUG_KEYS &&
+            header != NEW_TAB && header != NEW_SPLIT && header != RESIZE_PANE &&
+            header != CLIENT_CLOSE_PANE) {
+          // A stray keystroke (for example a leftover newline while Hyper is
+          // still switching into HTM mode) must not be parsed as a length
+          // prefix; that used to abort the session.
+          LOG(INFO) << "Unexpected HTM header, disconnecting: " << int(header);
+          closeEndpoint();
+          continue;
+        }
         int32_t length;
         socketHandler->readB64(endpointFd, (char*)&length, 4);
         LOG(INFO) << "READ LENGTH: " << length;
@@ -63,7 +80,7 @@ void HtmServer::run() {
             socketHandler->readAll(endpointFd, &data[0], length, false);
             if (data[0] == 'x') {
               // x key pressed, exit
-              running = false;
+              running.store(false);
             }
             if (data[0] == 27) {
               // escape key pressed, disconnect
@@ -117,12 +134,13 @@ void HtmServer::run() {
             state.closePane(paneId);
             if (state.numPanes() == 0) {
               // No panes left
-              running = false;
+              running.store(false);
             }
             break;
           }
           default: {
-            STFATAL << "Got unknown packet header: " << int(header);
+            throw std::runtime_error(string("Got unknown packet header: ") +
+                                     to_string(int(header)));
           }
         }
       }
@@ -130,12 +148,20 @@ void HtmServer::run() {
       if (endpointFd > 0) {
         state.update(endpointFd);
       }
-    } catch (std::runtime_error& re) {
+    } catch (const std::exception& re) {
       STERROR << re.what();
-      closeEndpoint();
+      try {
+        closeEndpoint();
+      } catch (const std::exception& closeEx) {
+        LOG(INFO) << "closeEndpoint after disconnect: " << closeEx.what();
+      }
     }
   }
-  closeEndpoint();
+  try {
+    closeEndpoint();
+  } catch (const std::exception& closeEx) {
+    LOG(INFO) << "closeEndpoint on shutdown: " << closeEx.what();
+  }
 }
 
 void HtmServer::sendDebug(const string& msg) {
@@ -154,10 +180,9 @@ void HtmServer::recover() {
   };
   socketHandler->writeAllOrThrow(endpointFd, buf, sizeof(buf), false);
   fflush(stdout);
-  // Sleep to make sure the client can process the escape code
-  std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
 
-  // Send the state
+  // Send the state immediately so the init sequence and first packets can
+  // arrive in the same client read, avoiding a race with 16ms PTY batching.
   LOG(INFO) << "Starting terminal";
 
   sendDebug("Initializing HTM, please wait...\n\r");
@@ -182,8 +207,7 @@ void HtmServer::recover() {
 }
 
 string HtmServer::getPipeName() {
-  uid_t myuid = getuid();
-  return string(GetTempDirectory() + "htm.") + to_string(myuid) +
+  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() +
          string(".ipc");
 }
 }  // namespace et

@@ -499,9 +499,54 @@ target_link_libraries(
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
+add_library(
+  HtmCommon STATIC
+  src/htm/TerminalHandler.cpp
+  src/htm/MultiplexerState.cpp
+  src/htm/IpcPairClient.cpp
+  src/htm/IpcPairEndpoint.cpp
+  src/htm/IpcPairServer.cpp
+  src/htm/HtmClient.cpp
+  src/htm/HtmServer.cpp
+)
+add_dependencies(HtmCommon generated-code et-lib)
+decorate_target(HtmCommon)
+
+add_executable(htm src/htm/HtmClientMain.cpp)
+target_link_libraries(
+  htm
+  LINK_PUBLIC
+  HtmCommon
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${CORE_LIBRARIES})
+add_dependencies(htm generated-code et-lib TerminalCommon)
+decorate_target(htm)
+
+add_executable(htmd src/htm/HtmServerMain.cpp)
+target_link_libraries(
+  htmd
+  LINK_PUBLIC
+  HtmCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${CORE_LIBRARIES})
+decorate_target(htmd)
+
 if(WIN32)
   install(
-    TARGETS et
+    TARGETS et htm htmd
     DESTINATION "bin"
     COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
@@ -540,49 +585,6 @@ else(WIN32)
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
 
-  add_library(
-    HtmCommon STATIC
-    src/htm/TerminalHandler.cpp
-    src/htm/MultiplexerState.cpp
-    src/htm/IpcPairClient.cpp
-    src/htm/IpcPairEndpoint.cpp
-    src/htm/IpcPairServer.cpp
-    src/htm/HtmClient.cpp
-    src/htm/HtmServer.cpp
-  )
-  add_dependencies(HtmCommon generated-code et-lib)
-  decorate_target(HtmCommon)
-
-  add_executable(htm src/htm/HtmClientMain.cpp)
-  target_link_libraries(
-    htm
-    LINK_PUBLIC
-    HtmCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    ${Boost_LIBRARIES}
-    ${CORE_LIBRARIES})
-  decorate_target(htm)
-
-  add_executable(htmd src/htm/HtmServerMain.cpp)
-  target_link_libraries(
-    htmd
-    LINK_PUBLIC
-    HtmCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    ${Boost_LIBRARIES}
-    ${CORE_LIBRARIES})
-  decorate_target(htmd)
-
   include(CTest)
 
   if(BUILD_TESTING)
@@ -601,11 +603,12 @@ else(WIN32)
       test/unit_tests
     )
 
-    add_dependencies(et-test generated-code TerminalCommon et-lib)
+    add_dependencies(et-test generated-code TerminalCommon et-lib HtmCommon)
     target_link_libraries(
       et-test
       LINK_PUBLIC
       TerminalCommon
+      HtmCommon
       et-lib
       Catch2::Catch2WithMain
       ${CMAKE_THREAD_LIBS_INIT}
@@ -622,6 +625,45 @@ else(WIN32)
       ADD_TAGS_AS_LABELS
       PROPERTIES TIMEOUT 300
     )
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND AND NOT WIN32)
+      add_test(
+        NAME htm_pty_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_pty_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        htm_pty_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 60
+          LABELS "e2e;htm;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
+    if(APPLE AND Python3_Interpreter_FOUND)
+      add_test(
+        NAME iterm2_htm_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        iterm2_htm_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 240
+          LABELS "e2e;iterm2;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)

@@ -47,6 +47,14 @@ struct MultiplexerState::Tab {
     return tab;
   }
 };
+MultiplexerState::~MultiplexerState() {
+  for (auto& it : panes) {
+    if (it.second && it.second->terminal) {
+      it.second->terminal->stop();
+    }
+  }
+}
+
 MultiplexerState::MultiplexerState(shared_ptr<SocketHandler> _socketHandler)
     : socketHandler(_socketHandler) {
   shared_ptr<Tab> t(new Tab());
@@ -69,7 +77,13 @@ MultiplexerState::MultiplexerState(shared_ptr<SocketHandler> _socketHandler)
 
 string MultiplexerState::toJsonString() {
   json state;
-  state["shell"] = string(::getenv("SHELL"));
+  const char* shellEnv = ::getenv("SHELL");
+#ifdef WIN32
+  if (shellEnv == nullptr) {
+    shellEnv = ::getenv("COMSPEC");
+  }
+#endif
+  state["shell"] = shellEnv ? string(shellEnv) : string();
 
   for (auto& it : tabs) {
     state["tabs"][it.first] = it.second->toJson();
