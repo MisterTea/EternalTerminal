@@ -5,9 +5,12 @@
 
 namespace et {
 namespace test {
+// Bidirectional connected pair. Unix uses AF_UNIX socketpair; Windows has no
+// socketpair, so tests fall back to a loopback TCP pair. A pipe is not a
+// substitute: handshake tests write to both ends.
 inline int createTestSocketPair(int sockets[2]) {
 #ifndef WIN32
-  return ::pipe(sockets);
+  return ::socketpair(AF_UNIX, SOCK_STREAM, 0, sockets);
 #else
   SOCKET listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
   if (listener == INVALID_SOCKET) {
