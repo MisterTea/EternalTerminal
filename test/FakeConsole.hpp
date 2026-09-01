@@ -27,10 +27,10 @@ class FakeConsole : public Console {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (GetErrno() != EAGAIN) {
+        if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
           FATAL_FAIL(fd);
         } else {
-          ::usleep(100 * 1000);  // Sleep for client to connect
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       } else {
         break;
@@ -47,9 +47,13 @@ class FakeConsole : public Console {
     fakeTerminalInfo.set_width(8);
     fakeTerminalInfo.set_height(10);
 
+#ifdef WIN32
+    pipePath = "et_test_console_" + genRandomAlphaNum(12) + ".ipc";
+#else
     string tmpPath = GetTempDirectory() + string("et_test_console_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
+#endif
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
     {
@@ -59,7 +63,7 @@ class FakeConsole : public Console {
     std::thread serverListenThread(&FakeConsole::consoleListenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
-    ::usleep(1000 * 1000);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     int fd = socketHandler->connect(endpoint);
     FATAL_FAIL(fd);
     {
@@ -83,8 +87,12 @@ class FakeConsole : public Console {
     }
     socketHandler->close(localClientServerFd);
     socketHandler->close(localServerClientFd);
-    FATAL_FAIL(::remove(pipePath.c_str()));
+    SocketEndpoint endpoint;
+    endpoint.set_name(pipePath);
+    socketHandler->stopListening(endpoint);
+#ifndef WIN32
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#endif
   }
 
   virtual TerminalInfo getTerminalInfo() {
@@ -99,6 +107,15 @@ class FakeConsole : public Console {
   virtual int getFd() {
     lock_guard<recursive_mutex> lock(_mutex);
     return clientServerFd;
+  }
+
+  void write(const string& data) override {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = clientServerFd;
+    }
+    socketHandler->writeAllOrThrow(fd, data.data(), data.size(), false);
   }
 
   bool isSetup() {
@@ -163,10 +180,10 @@ class FakeUserTerminal : public UserTerminal {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (GetErrno() != EAGAIN) {
+        if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
           FATAL_FAIL(fd);
         } else {
-          ::usleep(100 * 1000);  // Sleep for client to connect
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       } else {
         break;
@@ -177,26 +194,35 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
+#ifdef WIN32
+    pipePath = "et_test_userterminal_" + genRandomAlphaNum(12) + ".ipc";
+#else
     string tmpPath =
         GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
+#endif
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
     serverClientFd = -1;
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
-    ::usleep(1000 * 1000);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
     clientServerFd = socketHandler->connect(endpoint);
     FATAL_FAIL(clientServerFd);
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
     // Honor the UserTerminal contract: the handler polls this fd non-blocking.
+#ifdef WIN32
+    u_long nonBlocking = 1;
+    FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+#else
     int flags = fcntl(clientServerFd, F_GETFL, 0);
     if (flags != -1) {
       fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
     }
+#endif
     return getFd();
   };
 
@@ -219,7 +245,31 @@ class FakeUserTerminal : public UserTerminal {
                                    false);
   }
   virtual void handleSessionEnd() { didHandleSessionEnd = true; }
-  virtual void cleanup() { didCleanUp = true; }
+  virtual void cleanup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    if (didCleanUp) {
+      return;
+    }
+    if (clientServerFd >= 0) {
+      socketHandler->close(clientServerFd);
+      clientServerFd = -1;
+    }
+    if (serverClientFd >= 0) {
+      socketHandler->close(serverClientFd);
+      serverClientFd = -1;
+    }
+    if (!pipePath.empty()) {
+      SocketEndpoint endpoint;
+      endpoint.set_name(pipePath);
+      socketHandler->stopListening(endpoint);
+    }
+#ifndef WIN32
+    if (!pipeDirectory.empty()) {
+      FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    }
+#endif
+    didCleanUp = true;
+  }
   virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
 
  protected:

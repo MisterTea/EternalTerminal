@@ -15,4 +15,8 @@ inline void removeOrMissing(const string& path) {
   }
 }
 
+inline void testSleepMicros(uint64_t micros) {
+  std::this_thread::sleep_for(std::chrono::microseconds(micros));
+}
+
 #endif

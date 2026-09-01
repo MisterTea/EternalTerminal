@@ -564,9 +564,13 @@ if(WIN32)
 
     set(WINDOWS_TEST_SRCS
       test/HostParsingTest.cpp
+      test/integration_tests/BackedTest.cpp
+      test/integration_tests/ConnectionTest.cpp
+      test/integration_tests/PortForwardHandlerTest.cpp
       test/unit_tests/BackedIOTest.cpp
       test/unit_tests/ClientConnectionTest.cpp
       test/unit_tests/CryptoHandlerTest.cpp
+      test/unit_tests/FakeConsoleTest.cpp
       test/unit_tests/ForwardDestinationHandlerTest.cpp
       test/unit_tests/ForwardSourceHandlerTest.cpp
       test/unit_tests/HtmIpcTest.cpp

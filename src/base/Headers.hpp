@@ -43,6 +43,15 @@ inline int close(int fd) { return ::closesocket(fd); }
 #ifdef WIN32
 using uid_t = int;
 using gid_t = int;
+// Portable terminal-size payload used by UserTerminal implementations. Unix
+// provides this through <sys/ioctl.h>; Windows consumers translate it to
+// CONSOLE_SCREEN_BUFFER_INFO or ConPTY dimensions.
+struct winsize {
+  unsigned short ws_row;
+  unsigned short ws_col;
+  unsigned short ws_xpixel;
+  unsigned short ws_ypixel;
+};
 #else
 #include <arpa/inet.h>
 #include <grp.h>

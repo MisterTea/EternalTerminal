@@ -14,20 +14,21 @@ TEST_CASE("FakeConsoleTest", "[FakeConsoleTest]") {
   fakeConsole.reset(new FakeConsole(socketHandler));
   fakeConsole->setup();
 
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
+  const int payloadSize = 64 * 1024;
+  string s(payloadSize, '\0');
+  for (int a = 0; a < payloadSize - 1; a++) {
     s[a] = rand() % 26 + 'A';
   }
-  s[64 * 1024 - 1] = 0;
+  s[payloadSize - 1] = 0;
 
   REQUIRE(!socketHandler->hasData(fakeConsole->getFd()));
 
   thread t([fakeConsole, s]() { fakeConsole->simulateKeystrokes(s); });
-  sleep(1);
+  testSleepMicros(1000 * 1000);
 
   REQUIRE(socketHandler->hasData(fakeConsole->getFd()));
 
-  string s2(64 * 1024, '\0');
+  string s2(payloadSize, '\0');
   socketHandler->readAll(fakeConsole->getFd(), &s2[0], s2.length(), false);
 
   t.join();
@@ -53,11 +54,12 @@ TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
   fakeUserTerminal.reset(new FakeUserTerminal(socketHandler));
   fakeUserTerminal->setup(-1);
 
-  string s(64 * 1024, '\0');
-  for (int a = 0; a < 64 * 1024 - 1; a++) {
+  const int payloadSize = 64 * 1024;
+  string s(payloadSize, '\0');
+  for (int a = 0; a < payloadSize - 1; a++) {
     s[a] = rand() % 26 + 'A';
   }
-  s[64 * 1024 - 1] = 0;
+  s[payloadSize - 1] = 0;
 
   thread t([fakeUserTerminal, s]() {
     RawSocketUtils::writeAll(fakeUserTerminal->getFd(), &s[0], s.length());
@@ -72,7 +74,7 @@ TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
     fakeUserTerminal->simulateTerminalResponse(s);
   });
 
-  string s3(64 * 1024, '\0');
+  string s3(payloadSize, '\0');
   socketHandler->readAll(fakeUserTerminal->getFd(), &s3[0], s3.length(), false);
 
   t2.join();

@@ -63,7 +63,9 @@ class BackedCollector {
       lock_guard<std::mutex> guard(collectorMutex);
       done = true;
     }
-    collectorThread.join();
+    if (collectorThread.joinable()) {
+      collectorThread.join();
+    }
   }
 
   BackedWriterWriteState write(string s) { return writer->write(Packet(0, s)); }
@@ -87,7 +89,7 @@ void listenFn(shared_ptr<SocketHandler> socketHandler, SocketEndpoint endpoint,
     fd = socketHandler->accept(serverFd);
     auto localErrno = GetErrno();
     if (fd == -1) {
-      if (localErrno != EAGAIN) {
+      if (localErrno != EAGAIN && localErrno != EWOULDBLOCK) {
         FATAL_FAIL(fd);
       } else {
         std::this_thread::sleep_for(std::chrono::microseconds(100 * 1000));
@@ -110,9 +112,13 @@ TEST_CASE("BackedTest", "[BackedTest][integration]") {
   string pipeDirectory;
   string pipePath;
 
+#ifdef WIN32
+  pipePath = "et_backed_test_" + genRandomAlphaNum(12) + ".ipc";
+#else
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   pipeDirectory = string(mkdtemp(&tmpPath[0]));
   pipePath = string(pipeDirectory) + "/pipe";
+#endif
   SocketEndpoint endpoint;
   endpoint.set_name(pipePath);
   int serverClientFd = -1;
@@ -175,6 +181,15 @@ TEST_CASE("BackedTest", "[BackedTest][integration]") {
     REQUIRE(resultConcat == s);
   }
 
-  FATAL_FAIL(::remove(pipePath.c_str()));
+  serverCollector->finish();
+  clientCollector->finish();
+  serverCollector.reset();
+  clientCollector.reset();
+  serverSocketHandler->close(serverClientFd);
+  clientSocketHandler->close(clientServerFd);
+  serverSocketHandler->stopListening(endpoint);
+  removeOrMissing(pipePath);
+#ifndef WIN32
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#endif
 }
