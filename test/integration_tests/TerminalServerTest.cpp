@@ -272,10 +272,10 @@ class ServerEndToEndTestFixture {
     clientSocketHandler.reset();
     clientPipeSocketHandler.reset();
     routerSocketHandler.reset();
-    FATAL_FAIL(::remove(routerPipePath.c_str()));
-    FATAL_FAIL(::remove(serverPipePath.c_str()));
-    FATAL_FAIL(::remove(jumphostRouterPipePath.c_str()));
-    FATAL_FAIL(::remove(jumphostServerPipePath.c_str()));
+    removeOrMissing(routerPipePath);
+    removeOrMissing(serverPipePath);
+    removeOrMissing(jumphostRouterPipePath);
+    removeOrMissing(jumphostServerPipePath);
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
   }
 

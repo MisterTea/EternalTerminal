@@ -70,7 +70,13 @@ jobs:
         with:
           version: ${{ matrix.gcc }}
           platform: x64
-        if: matrix.os == 'ubuntu-latest'
+        if: matrix.os == 'ubuntu-latest' && !env.ACT
+      - name: Set up GCC (Ubuntu, act)
+        if: matrix.os == 'ubuntu-latest' && env.ACT
+        run: |
+          sudo apt-get update
+          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+            gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
 
         # Run CMake to generate Ninja project files.
       - name: Install dependencies and generate project files (mac)

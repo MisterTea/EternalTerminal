@@ -24,6 +24,8 @@ class MultiplexerState {
  public:
   /** @brief Initializes the multiplexer using the supplied IPC handler. */
   MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
+  /** @brief Stops every pane PTY so tests and shutdown do not leak shells. */
+  ~MultiplexerState();
   /** @brief Serializes the current tabs/panes/splits into JSON for INIT_STATE.
    */
   string toJsonString();
@@ -36,6 +38,8 @@ class MultiplexerState {
   void newSplit(const string& sourceId, const string& paneId, bool vertical);
   /** @brief Stops and removes a pane, collapsing its split/tab as needed. */
   void closePane(const string& paneId);
+  /** @brief Stops every pane PTY. Safe to call more than once. */
+  void stopAll();
   /** @brief Reads from every `TerminalHandler` and streams data to the client.
    */
   void update(int endpointFd);

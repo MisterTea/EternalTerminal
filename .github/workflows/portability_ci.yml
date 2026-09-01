@@ -16,6 +16,9 @@ jobs:
     runs-on: ubuntu-latest
     container:
       image: ${{ matrix.container }}
+      options: --privileged
+    env:
+      SHELL: /bin/bash
     strategy:
       fail-fast: true
       max-parallel: 1
@@ -67,6 +70,7 @@ jobs:
                 pkgconf-pkg-config \
                 protobuf-compiler \
                 protobuf-devel \
+                procps-ng \
                 tar \
                 unzip \
                 zip
@@ -92,6 +96,7 @@ jobs:
                 openssl \
                 pkgconf \
                 protobuf \
+                procps-ng \
                 tar \
                 unzip \
                 zip
@@ -187,4 +192,5 @@ jobs:
           cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
+          export SHELL=/bin/sh
           ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure

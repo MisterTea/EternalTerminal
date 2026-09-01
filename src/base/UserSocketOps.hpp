@@ -40,6 +40,14 @@ class UserSocketOps {
    */
   static int connectAtPath(const string& path);
 
+  /**
+   * @brief Flush gcov (when CODE_COVERAGE is on) and _exit.
+   *
+   * Forked children must call this instead of _exit so coverage from the
+   * child process is written before the image disappears.
+   */
+  static void coverageExit(int code);
+
  private:
   enum class Op : int { LISTEN = 1, CONNECT = 2 };
 
@@ -48,7 +56,6 @@ class UserSocketOps {
   static void childConnect(int resultFd, const string& path);
   static void sendFd(int channel, int fdToSend, int status, int err);
   static int recvFd(int channel, int* errOut);
-  static void coverageExit(int code);
 };
 #endif
 }  // namespace et

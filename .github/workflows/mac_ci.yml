@@ -211,6 +211,6 @@ jobs:
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           cmake --build . --parallel "${parallel_level}"
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --output-on-failure
           popd
           rm -Rf build

@@ -339,7 +339,7 @@ void runConnectionTestCase(bool flaky,
   serverClientConnections.clear();
   ctx.serverConnection->shutdown();
   ctx.serverConnection.reset();
-  FATAL_FAIL(::remove(ctx.pipePath.c_str()));
+  removeOrMissing(ctx.pipePath);
   FATAL_FAIL(::remove(ctx.pipeDirectory.c_str()));
 
   auto v = ctx.serverSocketHandler->getActiveSockets();

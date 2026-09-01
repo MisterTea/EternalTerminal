@@ -9,4 +9,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <catch2/matchers/catch_matchers_all.hpp>
 
+inline void removeOrMissing(const string& path) {
+  if (::remove(path.c_str()) != 0 && GetErrno() != ENOENT) {
+    FATAL_FAIL(-1);
+  }
+}
+
 #endif

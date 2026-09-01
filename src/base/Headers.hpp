@@ -76,6 +76,7 @@ using gid_t = int;
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <ctime>
 #include <deque>
 #include <exception>
@@ -145,6 +146,12 @@ namespace fs = boost::filesystem
 #if defined(_MSC_VER)
 #define popen _popen
 #define pclose _pclose
+
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#endif
 
 /* ssize_t is not defined on Windows */
 #ifndef ssize_t
@@ -424,6 +431,27 @@ inline string GetTempDirectory() {
   string tmpDir = _PATH_TMP;
 #endif
   return tmpDir;
+}
+
+/** @brief Per-user token used in HTM IPC socket names (uid on Unix, username
+ * on Windows). */
+inline string GetHtmIpcUser() {
+#ifdef WIN32
+  char name[256];
+  DWORD size = static_cast<DWORD>(sizeof(name));
+  if (!GetUserNameA(name, &size) || size == 0) {
+    return "user";
+  }
+  string s(name);
+  for (char& c : s) {
+    if (!isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') {
+      c = '_';
+    }
+  }
+  return s.empty() ? string("user") : s;
+#else
+  return to_string(getuid());
+#endif
 }
 
 inline void HandleTerminate() {

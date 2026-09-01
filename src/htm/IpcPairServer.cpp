@@ -7,7 +7,7 @@ IpcPairServer::IpcPairServer(shared_ptr<SocketHandler> _socketHandler,
   serverFd = *(socketHandler->listen(endpoint).begin());
 }
 
-IpcPairServer::~IpcPairServer() { ::close(serverFd); }
+IpcPairServer::~IpcPairServer() { socketHandler->stopListening(endpoint); }
 
 void IpcPairServer::pollAccept() {
   int fd = socketHandler->accept(serverFd);
