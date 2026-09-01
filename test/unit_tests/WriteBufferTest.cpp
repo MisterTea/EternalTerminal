@@ -99,6 +99,26 @@ TEST_CASE("WriteBuffer flush threshold", "[WriteBuffer]") {
   }
 }
 
+TEST_CASE("WriteBuffer Ctrl+C drops a large backlog so the prompt is next",
+          "[WriteBuffer]") {
+  // Same shape as a slow-link manual test: ~200KB of unsent output, then
+  // interrupt, then a prompt. Cheap: no sockets, no throttle, milliseconds.
+  WriteBuffer buffer;
+  const string flood(200 * 1024, 'A');
+  buffer.enqueue(flood);
+  REQUIRE(buffer.size() == flood.size());
+  REQUIRE(buffer.shouldFlushOnInterrupt());
+
+  REQUIRE(WriteBuffer::containsInterruptByte(string(1, '\x03')));
+  REQUIRE(buffer.flushIfLarge() == flood.size());
+  REQUIRE(buffer.size() == 0);
+
+  buffer.enqueue("PROMPT");
+  size_t count = 0;
+  const char* data = buffer.peekData(&count);
+  REQUIRE(string(data, count) == "PROMPT");
+}
+
 TEST_CASE("WriteBuffer hard cap", "[WriteBuffer]") {
   WriteBuffer buffer;
   REQUIRE(buffer.canAcceptMore());
