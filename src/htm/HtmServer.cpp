@@ -184,12 +184,15 @@ void HtmServer::run() {
         state.update(endpointFd);
       }
     } catch (const std::exception& re) {
-      STERROR << re.what();
+      // Close first: ust::generate() in STERROR can take several seconds on
+      // some Linux/libunwind builds, which made disconnect tests time out
+      // while endpointFd was still open.
       try {
         closeEndpoint();
       } catch (const std::exception& closeEx) {
         LOG(INFO) << "closeEndpoint after disconnect: " << closeEx.what();
       }
+      LOG(INFO) << "Client disconnect: " << re.what();
     }
   }
   try {
