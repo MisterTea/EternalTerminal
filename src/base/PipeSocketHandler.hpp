@@ -44,6 +44,8 @@ class PipeSocketHandler : public UnixSocketHandler {
   /** @brief Closes a connection and removes its Windows client socket path. */
   void close(int fd) override;
 
+  virtual void minimizeKernelBuffering(int fd);
+
  protected:
   /** @brief Tracks path -> listening socket descriptors for each pipe. */
   map<string, set<int>> pipeServerSockets;

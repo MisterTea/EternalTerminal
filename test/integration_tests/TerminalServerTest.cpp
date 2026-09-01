@@ -1,4 +1,5 @@
 #include <atomic>
+#include <chrono>
 
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
@@ -475,6 +476,95 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerDataTransferTest",
   terminalClient->shutdown();
   terminalClientThread.join();
   terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerInterruptDoesNotDropSmallOutput",
+                 "[ServerInterruptDoesNotDropSmallOutput][integration]") {
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  const string before = "hello";
+  fakeUserTerminal->simulateTerminalResponse(before);
+  REQUIRE(fakeConsole->getTerminalData(before.length()) == before);
+
+  fakeConsole->simulateKeystrokes(string(1, '\x03'));
+  REQUIRE(fakeUserTerminal->getKeystrokes(1) == string(1, '\x03'));
+
+  const string after = "world";
+  fakeUserTerminal->simulateTerminalResponse(after);
+  REQUIRE(fakeConsole->getTerminalData(after.length()) == after);
+
+  // Connected drain path: a modest burst (well under the flush threshold)
+  // must still be delivered losslessly.
+  const string burst(8 * 1024, 'B');
+  fakeUserTerminal->simulateTerminalResponse(burst);
+  REQUIRE(fakeConsole->getTerminalData(burst.length()) == burst);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerDisconnectDoesNotStallAt64KB",
+                 "[ServerDisconnectDoesNotStallAt64KB][integration]") {
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+  sleep(1);
+
+  // More than the 64KB always-on-backpressure stall from PR #730, well
+  // under the 64MB disconnect buffer. If disconnect incorrectly stopped
+  // reading the PTY at 64KB, this write would block.
+  const size_t floodBytes = 256 * 1024;
+  std::atomic<bool> done{false};
+  thread floodThread([this, floodBytes, &done]() {
+    try {
+      fakeUserTerminal->simulateTerminalResponse(string(floodBytes, 'X'));
+      done = true;
+    } catch (const std::exception&) {
+    }
+  });
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (!done && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  if (!done) {
+    floodThread.detach();
+  } else {
+    floodThread.join();
+  }
+  REQUIRE(done);
 
   sshSetupHandler->shutdownHandler();
 }
