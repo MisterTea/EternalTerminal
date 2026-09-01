@@ -86,6 +86,24 @@ class FakeSshSubprocessHandlerWithJumphost : public SubprocessUtils {
   }
 };
 
+/**
+ * @brief Fake subprocess handler that records both jumphost-mode SSH calls.
+ */
+class RecordingSshSubprocessHandler : public SubprocessUtils {
+ public:
+  vector<vector<string>> calls;
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    calls.push_back(args);
+
+    string id = genRandomAlphaNum(16);
+    string passkey = genRandomAlphaNum(32);
+    return string("IDPASSKEY:") + id + "/" + passkey;
+  }
+};
+
 }  // namespace
 
 TEST_CASE("SshSetupHandler basic connection", "[SshSetupHandler]") {
@@ -157,6 +175,49 @@ TEST_CASE("SshSetupHandler with jumphost", "[SshSetupHandler]") {
   SECTION("Returns id/passkey pair with jumphost") {
     REQUIRE(id.length() == 16);
     REQUIRE(passkey.length() == 32);
+  }
+}
+
+TEST_CASE("SshSetupHandler keeps destination options off the jumphost",
+          "[SshSetupHandler]") {
+  auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
+  SshSetupHandler handler(fakeSubprocess);
+  const vector<string> destination_options = {
+      "User=target-user",
+      "HostKeyAlias=target",
+      "UserKnownHostsFile=/tmp/target_known_hosts",
+      "HostKeyAlgorithms=ssh-ed25519-cert-v01@openssh.com",
+      "KbdInteractiveAuthentication=no",
+  };
+
+  auto [id, passkey] = handler.SetupSsh(
+      "target-user", "target.internal", "target", 2022,
+      "jump-user@jump.example:2222", "", false, 0, "", "", destination_options);
+
+  REQUIRE(id.length() == 16);
+  REQUIRE(passkey.length() == 32);
+  REQUIRE(fakeSubprocess->calls.size() == 2);
+
+  const auto& destination_args = fakeSubprocess->calls[0];
+  REQUIRE(destination_args[0] == "-J");
+  REQUIRE(destination_args[1] == "jump-user@jump.example:2222");
+  REQUIRE(destination_args[2] == "target-user@target");
+  for (const auto& option : destination_options) {
+    REQUIRE(std::find(destination_args.begin(), destination_args.end(),
+                      "-o" + option) != destination_args.end());
+  }
+
+  const auto& jump_args = fakeSubprocess->calls[1];
+  REQUIRE(jump_args.size() == 4);
+  REQUIRE(jump_args[0] == "-p");
+  REQUIRE(jump_args[1] == "2222");
+  REQUIRE(jump_args[2] == "jump-user@jump.example");
+  REQUIRE(
+      jump_args[3].find("--jump --dsthost=target.internal --dstport=2022") !=
+      string::npos);
+  for (const auto& option : destination_options) {
+    REQUIRE(std::find(jump_args.begin(), jump_args.end(), "-o" + option) ==
+            jump_args.end());
   }
 }
 

@@ -146,9 +146,8 @@ pair<string, string> SshSetupHandler::SetupSsh(
       jump_ssh_args.push_back("-p");
       jump_ssh_args.push_back(parsedJump.portSuffix.substr(1));
     }
-    for (const auto& opt : ssh_options) {
-      jump_ssh_args.push_back("-o" + opt);
-    }
+    // ssh_options configure the destination. Jump-specific options are
+    // resolved independently from the jumphost's SSH configuration.
     jump_ssh_args.push_back(jumphostDest);
     jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
 
