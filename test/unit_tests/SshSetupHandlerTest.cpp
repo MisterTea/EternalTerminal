@@ -333,8 +333,29 @@ TEST_CASE("SshSetupHandler can disable all SSH configuration",
 
 TEST_CASE("SSH config paths are safe for OpenSSH ProxyJump",
           "[SshSetupHandler]") {
+#ifdef WIN32
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\et-client_1\\ssh.config"));
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:/et-client_1/ssh.config"));
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "\\\\server\\share\\ssh_config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "/private/et-client_1/ssh.config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("C:et\\ssh.config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("\\et\\ssh.config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\Users\\foo bar\\config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("C:\\et\\config;cmd"));
+#else
   REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
       "/private/et-client_1/ssh.config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\et-client_1\\ssh.config"));
+#endif
 
   const vector<string> unsafe_paths = {
       "relative/config",        "/private/config with-space",
