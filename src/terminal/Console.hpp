@@ -1,6 +1,8 @@
 #ifndef __CONSOLE_HPP__
 #define __CONSOLE_HPP__
 
+#include <optional>
+
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
 #include "RawSocketUtils.hpp"
@@ -12,9 +14,9 @@ namespace et {
  */
 class Console {
  public:
-  /** @brief Returns metadata about the console (size, pixels) for the remote
-   * client. */
-  virtual TerminalInfo getTerminalInfo() = 0;
+  /** @brief Returns console dimensions, or no value when they cannot be read.
+   */
+  virtual std::optional<TerminalInfo> getTerminalInfo() = 0;
   /** @brief Prepares the console/terminal before handing control to ET. */
   virtual void setup() = 0;
   /** @brief Restores the console state before exiting ET. */

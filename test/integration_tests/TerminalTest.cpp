@@ -36,6 +36,22 @@ void waitForFakeConsoleSetup(const shared_ptr<FakeConsole>& fakeConsole) {
   REQUIRE(fakeConsole->isSetup());
 }
 
+bool waitForTerminalInfo(const shared_ptr<FakeUserTerminal>& fakeUserTerminal,
+                         const TerminalInfo& expected) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (std::chrono::steady_clock::now() < deadline) {
+    winsize actual = fakeUserTerminal->getLastWinInfo();
+    if (actual.ws_row == expected.row() && actual.ws_col == expected.column() &&
+        actual.ws_xpixel == expected.width() &&
+        actual.ws_ypixel == expected.height()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
+
 void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
                    SocketEndpoint serverEndpoint,
@@ -109,6 +125,59 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
 
   unsetenv("ET_TEST_VAR1");
   unsetenv("ET_TEST_VAR2_EMPTY");
+}
+
+void terminalInfoQueryFailureTest(
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    shared_ptr<FakeConsole> fakeConsole, const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
+
+  TerminalInfo terminalInfo;
+  terminalInfo.set_row(24);
+  terminalInfo.set_column(80);
+  terminalInfo.set_width(640);
+  terminalInfo.set_height(480);
+  fakeConsole->setTerminalInfoResult(terminalInfo);
+  REQUIRE(waitForTerminalInfo(fakeUserTerminal, terminalInfo));
+
+  int setInfoCount = fakeUserTerminal->getSetInfoCount();
+  fakeConsole->setTerminalInfoResult(std::nullopt);
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  REQUIRE(fakeUserTerminal->getSetInfoCount() == setInfoCount);
+
+  fakeConsole->setTerminalInfoResult(terminalInfo);
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  REQUIRE(fakeUserTerminal->getSetInfoCount() == setInfoCount);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
 }
 
 // A UserTerminal backed by a *real* pty running `cat`, so the test exercises
@@ -305,7 +374,7 @@ class FileBackedConsole : public Console {
     ::remove(directory.c_str());
   }
 
-  virtual TerminalInfo getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() {
     TerminalInfo ti;
     ti.set_row(24);
     ti.set_column(80);
@@ -569,6 +638,14 @@ TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
   readWriteTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
                 clientSocketHandler, clientPipeSocketHandler, fakeConsole,
                 routerEndpoint);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "TerminalInfoQueryFailure",
+                 "[EndToEndTest][integration]") {
+  terminalInfoQueryFailureTest(routerSocketHandler, fakeUserTerminal,
+                               serverEndpoint, clientSocketHandler,
+                               clientPipeSocketHandler, fakeConsole,
+                               routerEndpoint);
 }
 
 TEST_CASE_METHOD(EndToEndTestFixture, "LargeInputNoDeadlock",

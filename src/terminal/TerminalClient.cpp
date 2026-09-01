@@ -367,15 +367,15 @@ void TerminalClient::run(const string& command, const bool noexit) {
       }
 
       if (console) {
-        TerminalInfo ti = console->getTerminalInfo();
+        auto ti = console->getTerminalInfo();
 
-        if (ti != lastTerminalInfo) {
-          VLOG(1) << "Window size changed: row: " << ti.row()
-                  << " column: " << ti.column() << " width: " << ti.width()
-                  << " height: " << ti.height();
-          lastTerminalInfo = ti;
+        if (ti && *ti != lastTerminalInfo) {
+          VLOG(1) << "Window size changed: row: " << ti->row()
+                  << " column: " << ti->column() << " width: " << ti->width()
+                  << " height: " << ti->height();
+          lastTerminalInfo = *ti;
           connection->writePacket(
-              Packet(TerminalPacketType::TERMINAL_INFO, protoToString(ti)));
+              Packet(TerminalPacketType::TERMINAL_INFO, protoToString(*ti)));
         }
       }
 
