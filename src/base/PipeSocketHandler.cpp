@@ -13,11 +13,30 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> mutexGuard(globalMutex);
 
   string pipePath = endpoint.name();
-  sockaddr_un remote;
+  sockaddr_un remote{};
 
   int sockFd = ::socket(AF_UNIX, SOCK_STREAM, 0);
   FATAL_FAIL(sockFd);
+#ifndef WIN32
   initSocket(sockFd);
+#else
+  // Windows AF_UNIX does not autobind clients. bind/connect must also be the
+  // first socket operation, so bind a short, unique pathname before applying
+  // non-blocking configuration.
+  string clientPath = "htmc." + to_string(GetCurrentProcessId()) + "." +
+                      to_string(GetTickCount64()) + "." + to_string(sockFd);
+  sockaddr_un client;
+  ZeroMemory(&client, sizeof(client));
+  client.sun_family = AF_UNIX;
+  strncpy_s(client.sun_path, sizeof(client.sun_path), clientPath.c_str(),
+            _TRUNCATE);
+  DeleteFileA(clientPath.c_str());
+  if (::bind(sockFd, reinterpret_cast<sockaddr*>(&client), sizeof(client)) <
+      0) {
+    ::closesocket(sockFd);
+    return -1;
+  }
+#endif
   remote.sun_family = AF_UNIX;
   strncpy(remote.sun_path, pipePath.c_str(), sizeof(remote.sun_path));
 
@@ -25,7 +44,9 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   int result =
       ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
   auto localErrno = GetErrno();
-  if (result < 0 && localErrno != EINPROGRESS) {
+  VLOG(3) << "AF_UNIX connect returned " << result << " with error "
+          << localErrno;
+  if (result < 0 && localErrno != EINPROGRESS && localErrno != EWOULDBLOCK) {
     VLOG(3) << "Connection result: " << result << " (" << strerror(localErrno)
             << ")";
 #ifdef WIN32
@@ -35,6 +56,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 #endif
 #ifdef _MSC_VER
     FATAL_FAIL(::closesocket(sockFd));
+    DeleteFileA(clientPath.c_str());
 #else
     FATAL_FAIL(::close(sockFd));
 #endif
@@ -50,7 +72,8 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   tv.tv_sec = 3; /* 3 second timeout */
   tv.tv_usec = 0;
   VLOG(4) << "Before selecting sockFd";
-  select(sockFd + 1, NULL, &fdset, NULL, &tv);
+  int selectResult = select(sockFd + 1, NULL, &fdset, NULL, &tv);
+  VLOG(3) << "AF_UNIX connect select returned " << selectResult;
 
   if (FD_ISSET(sockFd, &fdset)) {
     VLOG(4) << "sockFd " << sockFd << " is selected";
@@ -59,6 +82,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 
     FATAL_FAIL(
         ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+    VLOG(3) << "AF_UNIX connect SO_ERROR is " << so_error;
 
     if (so_error == 0) {
       LOG(INFO) << "Connected to endpoint " << endpoint;
@@ -72,6 +96,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
                 << strerror(so_error);
 #ifdef _MSC_VER
       FATAL_FAIL(::closesocket(sockFd));
+      DeleteFileA(clientPath.c_str());
 #else
       FATAL_FAIL(::close(sockFd));
 #endif
@@ -83,6 +108,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
               << strerror(localErrno);
 #ifdef _MSC_VER
     FATAL_FAIL(::closesocket(sockFd));
+    DeleteFileA(clientPath.c_str());
 #else
     FATAL_FAIL(::close(sockFd));
 #endif
@@ -92,6 +118,9 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   LOG(INFO) << sockFd << " is a good socket";
   if (sockFd >= 0) {
     addToActiveSockets(sockFd);
+#ifdef WIN32
+    clientSocketPaths[sockFd] = clientPath;
+#endif
   }
   return sockFd;
 }
@@ -122,11 +151,13 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
     throw runtime_error("Tried to listen twice on the same path");
   }
 
-  sockaddr_un local;
+  sockaddr_un local{};
 
   int fd = socket(AF_UNIX, SOCK_STREAM, 0);
   FATAL_FAIL(fd);
+#ifndef WIN32
   initServerSocket(fd);
+#endif
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
   strncpy(local.sun_path, pipePath.c_str(), sizeof(local.sun_path));
 #ifdef WIN32
@@ -136,7 +167,12 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
 #endif
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
-  ::listen(fd, 5);
+  FATAL_FAIL(::listen(fd, 5));
+#ifdef WIN32
+  // bind must be the first operation on a Windows AF_UNIX socket. Configure
+  // non-blocking mode only after the address family provider is selected.
+  initSocket(fd);
+#endif
 #ifndef WIN32
   FATAL_FAIL(::chmod(local.sun_path, S_IRUSR | S_IWUSR | S_IXUSR));
 #endif
@@ -198,5 +234,25 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   ::unlink(pipePath.c_str());
 #endif
   pipeServerSockets.erase(it);
+}
+
+void PipeSocketHandler::close(int fd) {
+#ifdef WIN32
+  string clientPath;
+  {
+    lock_guard<std::recursive_mutex> guard(globalMutex);
+    auto it = clientSocketPaths.find(fd);
+    if (it != clientSocketPaths.end()) {
+      clientPath = it->second;
+      clientSocketPaths.erase(it);
+    }
+  }
+#endif
+  UnixSocketHandler::close(fd);
+#ifdef WIN32
+  if (!clientPath.empty()) {
+    DeleteFileA(clientPath.c_str());
+  }
+#endif
 }
 }  // namespace et

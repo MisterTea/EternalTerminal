@@ -166,6 +166,11 @@ endif()
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  # Compile translation units concurrently in Visual Studio and MSBuild builds.
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/MP> $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+  # The bundled ThreadPool submodule still uses std::result_of, which the
+  # MSVC standard library hides in C++20 unless compatibility is requested.
+  add_compile_definitions(_HAS_DEPRECATED_RESULT_OF=1)
 endif()
 
 # Using FreeBSD?
@@ -229,7 +234,7 @@ set(CMAKE_CXX_FLAGS
 )
 
 IF(WIN32)
-  SET(CMAKE_CXX_FLAGS "-DSODIUM_STATIC")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSODIUM_STATIC")
 ENDIF(WIN32)
 
 if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
@@ -551,6 +556,69 @@ if(WIN32)
     COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
   set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
+
+  include(CTest)
+  if(BUILD_TESTING)
+    enable_testing()
+    include(Catch)
+
+    set(WINDOWS_TEST_SRCS
+      test/HostParsingTest.cpp
+      test/unit_tests/BackedIOTest.cpp
+      test/unit_tests/ClientConnectionTest.cpp
+      test/unit_tests/CryptoHandlerTest.cpp
+      test/unit_tests/ForwardDestinationHandlerTest.cpp
+      test/unit_tests/ForwardSourceHandlerTest.cpp
+      test/unit_tests/HtmIpcTest.cpp
+      test/unit_tests/HtmMultiplexerStateTest.cpp
+      test/unit_tests/HtmServerClientTest.cpp
+      test/unit_tests/HtmTerminalHandlerTest.cpp
+      test/unit_tests/PortForwardHandlerTest.cpp
+      test/unit_tests/RawSocketUtilsTest.cpp
+      test/unit_tests/SshSetupHandlerTest.cpp
+      test/unit_tests/StringUtilsTest.cpp
+      test/unit_tests/SubprocessUtilsTest.cpp
+      test/unit_tests/TelemetryServiceTest.cpp
+      test/unit_tests/TunnelUtilsTest.cpp
+      test/unit_tests/UnixSocketHandlerTest.cpp
+    )
+    add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
+    target_include_directories(
+      et-test PRIVATE test test/integration_tests test/unit_tests)
+    add_dependencies(et-test generated-code TerminalCommon et-lib HtmCommon)
+    target_link_libraries(
+      et-test
+      PRIVATE
+      TerminalCommon
+      HtmCommon
+      et-lib
+      Catch2::Catch2WithMain
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PROTOBUF_LIBS}
+      ${sodium_LIBRARY_RELEASE}
+      ${Boost_LIBRARIES}
+      ${CORE_LIBRARIES})
+    catch_discover_tests(
+      et-test
+      TEST_PREFIX "et-test."
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ADD_TAGS_AS_LABELS
+      PROPERTIES TIMEOUT 300)
+    add_sanitizers(et-test)
+    find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+    add_custom_target(
+      windows-coverage
+      COMMAND
+        ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+        ${CMAKE_SOURCE_DIR}/coverage-windows.ps1
+        -BuildDirectory ${CMAKE_BINARY_DIR}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      USES_TERMINAL
+      COMMENT "Running Windows tests with native Visual Studio coverage")
+    if(TARGET test)
+      add_dependencies(test et-test)
+    endif()
+  endif()
 
 else(WIN32)
   add_executable(etserver src/terminal/TerminalServerMain.cpp)

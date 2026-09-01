@@ -246,6 +246,13 @@ void HtmServer::recover() {
 }
 
 string HtmServer::getPipeName() {
+#ifdef WIN32
+  // Windows AF_UNIX rejects drive-qualified paths. htm and htmd both use the
+  // temp directory as their working directory, so this relative name still
+  // resolves to the per-user temp location across processes.
+  return string("htm.") + GetHtmIpcUser() + string(".ipc");
+#else
   return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".ipc");
+#endif
 }
 }  // namespace et

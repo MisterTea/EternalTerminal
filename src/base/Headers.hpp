@@ -221,6 +221,22 @@ inline int GetErrno() {
         return ECONNRESET;
       case WSAECONNABORTED:
         return ECONNABORTED;
+      case WSAECONNREFUSED:
+        return ECONNREFUSED;
+      case WSAETIMEDOUT:
+        return ETIMEDOUT;
+      case WSAEINTR:
+        return EINTR;
+      case WSAEINVAL:
+        return EINVAL;
+      case WSAEACCES:
+        return EACCES;
+      case WSAEADDRNOTAVAIL:
+        return EADDRNOTAVAIL;
+      case WSAENETUNREACH:
+        return ENETUNREACH;
+      case WSAEHOSTUNREACH:
+        return EHOSTUNREACH;
       default:
         STFATAL << "Unmapped WSA error: " << retval;
     }

@@ -41,10 +41,17 @@ class PipeSocketHandler : public UnixSocketHandler {
    * @brief Stops listening on the specified pipe and closes its fd.
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
+  /** @brief Closes a connection and removes its Windows client socket path. */
+  void close(int fd) override;
 
  protected:
   /** @brief Tracks path -> listening socket descriptors for each pipe. */
   map<string, set<int>> pipeServerSockets;
+#ifdef WIN32
+  /** @brief Client pathname required because Windows AF_UNIX has no autobind.
+   */
+  map<int, string> clientSocketPaths;
+#endif
 };
 }  // namespace et
 

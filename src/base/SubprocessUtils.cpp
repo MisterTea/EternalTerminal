@@ -4,7 +4,7 @@ namespace et {
 #ifdef WIN32
 #define BUFSIZE 4096
 
-void ErrorExit(PTSTR);
+[[noreturn]] void ThrowWindowsError(const char* function);
 
 string SubprocessUtils::SubprocessToStringInteractive(
     const string& command, const vector<string>& args) {
@@ -23,22 +23,22 @@ string SubprocessUtils::SubprocessToStringInteractive(
   // Create a pipe for the child process's STDOUT.
 
   if (!CreatePipe(&g_hChildStd_OUT_Rd, &g_hChildStd_OUT_Wr, &saAttr, 0))
-    ErrorExit(TEXT("StdoutRd CreatePipe"));
+    ThrowWindowsError("StdoutRd CreatePipe");
 
   // Ensure the read handle to the pipe for STDOUT is not inherited.
 
   if (!SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
-    ErrorExit(TEXT("Stdout SetHandleInformation"));
+    ThrowWindowsError("Stdout SetHandleInformation");
 
   // Create a pipe for the child process's STDIN.
 
   if (!CreatePipe(&g_hChildStd_IN_Rd, &g_hChildStd_IN_Wr, &saAttr, 0))
-    ErrorExit(TEXT("Stdin CreatePipe"));
+    ThrowWindowsError("Stdin CreatePipe");
 
   // Ensure the write handle to the pipe for STDIN is not inherited.
 
   if (!SetHandleInformation(g_hChildStd_IN_Wr, HANDLE_FLAG_INHERIT, 0))
-    ErrorExit(TEXT("Stdin SetHandleInformation"));
+    ThrowWindowsError("Stdin SetHandleInformation");
 
   // Create a child process that uses the previously created pipes for STDIN and
   // STDOUT.
@@ -81,33 +81,32 @@ string SubprocessUtils::SubprocessToStringInteractive(
                            &siStartInfo,  // STARTUPINFO pointer
                            &piProcInfo);  // receives PROCESS_INFORMATION
 
-  // If an error occurs, exit the application.
-  if (!bSuccess)
-    ErrorExit(TEXT("CreateProcess"));
-  else {
-    // Close handles to the child process and its primary thread.
-    // Some applications might keep these handles to monitor the status
-    // of the child process, for example.
-
-    CloseHandle(piProcInfo.hProcess);
-    CloseHandle(piProcInfo.hThread);
-
+  if (!bSuccess) {
+    CloseHandle(g_hChildStd_OUT_Rd);
+    CloseHandle(g_hChildStd_OUT_Wr);
+    CloseHandle(g_hChildStd_IN_Rd);
+    CloseHandle(g_hChildStd_IN_Wr);
+    ThrowWindowsError("CreateProcess");
+  } else {
     // Close handles to the stdin and stdout pipes no longer needed by the child
     // process. If they are not explicitly closed, there is no way to recognize
     // that the child process has ended.
 
     CloseHandle(g_hChildStd_OUT_Wr);
     CloseHandle(g_hChildStd_IN_Rd);
+    // This API captures output but does not currently provide input. Closing
+    // the remaining parent write end ensures programs waiting on stdin see
+    // EOF rather than hanging forever.
+    CloseHandle(g_hChildStd_IN_Wr);
   }
 
   // Read from pipe that is the standard output for child process.
   // Read output from the child process's pipe for STDOUT
   // and write to the parent process's pipe for STDOUT.
   // Stop when there is no more data.
-  DWORD dwRead, dwWritten;
+  DWORD dwRead;
   CHAR chBuf[BUFSIZE];
   bSuccess = FALSE;
-  HANDLE hParentStdOut = GetStdHandle(STD_OUTPUT_HANDLE);
   string childOutput = "";
 
   for (;;) {
@@ -117,43 +116,30 @@ string SubprocessUtils::SubprocessToStringInteractive(
     childOutput += string((const char*)chBuf, (size_t)dwRead);
   }
 
+  CloseHandle(g_hChildStd_OUT_Rd);
+  WaitForSingleObject(piProcInfo.hProcess, INFINITE);
+  CloseHandle(piProcInfo.hThread);
+  CloseHandle(piProcInfo.hProcess);
+
   // The remaining open handles are cleaned up when this process terminates.
   // To avoid resource leaks in a larger application, close handles explicitly.
 
   return childOutput;
 }
 
-#include <stdio.h>
-#include <strsafe.h>
-#include <tchar.h>
-#include <windows.h>
-
-void ErrorExit(PTSTR lpszFunction)
-
-// Format a readable error message, display a message box,
-// and exit from the application.
-{
-  LPVOID lpMsgBuf;
-  LPVOID lpDisplayBuf;
+[[noreturn]] void ThrowWindowsError(const char* function) {
   DWORD dw = GetLastError();
-
-  FormatMessage(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
-                    FORMAT_MESSAGE_IGNORE_INSERTS,
-                NULL, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-                (LPTSTR)&lpMsgBuf, 0, NULL);
-
-  lpDisplayBuf = (LPVOID)LocalAlloc(
-      LMEM_ZEROINIT,
-      (lstrlen((LPCTSTR)lpMsgBuf) + lstrlen((LPCTSTR)lpszFunction) + 40) *
-          sizeof(TCHAR));
-  StringCchPrintf((LPTSTR)lpDisplayBuf, LocalSize(lpDisplayBuf) / sizeof(TCHAR),
-                  TEXT("%s failed with error %d: %s"), lpszFunction, dw,
-                  lpMsgBuf);
-  MessageBox(NULL, (LPCTSTR)lpDisplayBuf, TEXT("Error"), MB_OK);
-
-  LocalFree(lpMsgBuf);
-  LocalFree(lpDisplayBuf);
-  ExitProcess(1);
+  char* message = nullptr;
+  FormatMessageA(FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM |
+                     FORMAT_MESSAGE_IGNORE_INSERTS,
+                 NULL, dw, MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
+                 reinterpret_cast<char*>(&message), 0, NULL);
+  string detail = message ? string(message) : string("Unknown error");
+  if (message) {
+    LocalFree(message);
+  }
+  throw runtime_error(string(function) + " failed with error " + to_string(dw) +
+                      ": " + detail);
 }
 #else
 string SubprocessUtils::SubprocessToStringInteractive(

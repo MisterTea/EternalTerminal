@@ -19,9 +19,10 @@ wstring utf8ToWide(const string& s) {
     return wstring();
   }
   int n = MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, NULL, 0);
-  wstring out(n ? n - 1 : 0, L'\0');
+  wstring out(n ? n : 0, L'\0');
   if (n > 1) {
     MultiByteToWideChar(CP_UTF8, 0, s.c_str(), -1, &out[0], n);
+    out.resize(n - 1);
   }
   return out;
 }
@@ -113,9 +114,9 @@ void TerminalHandler::start() {
   size.Y = 24;
   HPCON pc = nullptr;
   HRESULT hr = CreatePseudoConsole(size, ptyIn, ptyOut, 0, &pc);
-  CloseHandle(ptyIn);
-  CloseHandle(ptyOut);
   if (FAILED(hr)) {
+    CloseHandle(ptyIn);
+    CloseHandle(ptyOut);
     CloseHandle(ourIn);
     CloseHandle(ourOut);
     LOG(FATAL) << "CreatePseudoConsole failed: " << hr;
@@ -135,6 +136,8 @@ void TerminalHandler::start() {
       HeapFree(GetProcessHeap(), 0, attrList);
     }
     ClosePseudoConsole(pc);
+    CloseHandle(ptyIn);
+    CloseHandle(ptyOut);
     CloseHandle(ourIn);
     CloseHandle(ourOut);
     LOG(FATAL) << "ProcThreadAttribute setup failed: " << GetLastError();
@@ -159,68 +162,63 @@ void TerminalHandler::start() {
   PROCESS_INFORMATION pi;
   ZeroMemory(&pi, sizeof(pi));
   BOOL ok = CreateProcessW(
-      NULL, cmdBuf.data(), NULL, NULL, FALSE, EXTENDED_STARTUPINFO_PRESENT,
-      NULL, wideHome.empty() ? NULL : wideHome.c_str(), &si.StartupInfo, &pi);
+      wideShell.c_str(), cmdBuf.data(), NULL, NULL, FALSE,
+      EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, NULL,
+      wideHome.empty() ? NULL : wideHome.c_str(), &si.StartupInfo, &pi);
 
   DeleteProcThreadAttributeList(attrList);
   HeapFree(GetProcessHeap(), 0, attrList);
 
   if (!ok) {
     ClosePseudoConsole(pc);
+    CloseHandle(ptyIn);
+    CloseHandle(ptyOut);
     CloseHandle(ourIn);
     CloseHandle(ourOut);
     LOG(FATAL) << "CreateProcess for HTM pane failed: " << GetLastError();
   }
 
   CloseHandle(pi.hThread);
+  // The pseudoconsole owns duplicated copies after CreateProcess succeeds.
+  CloseHandle(ptyIn);
+  CloseHandle(ptyOut);
   hPC = pc;
   inputWrite = ourIn;
   outputRead = ourOut;
   processHandle = pi.hProcess;
   run = true;
+  outputThread = thread([this]() {
+    char bytes[16 * 1024];
+    DWORD count = 0;
+    HANDLE output = static_cast<HANDLE>(outputRead);
+    while (ReadFile(output, bytes, sizeof(bytes), &count, NULL) && count > 0) {
+      lock_guard<mutex> guard(pendingOutputMutex);
+      pendingOutput.append(bytes, count);
+    }
+    run = false;
+  });
   VLOG(1) << "ConPTY opened for " << shell << endl;
 }
 
 string TerminalHandler::pollUserTerminal() {
-  if (!run || outputRead == INVALID_HANDLE_VALUE) {
-    return string();
+  string output;
+  {
+    lock_guard<mutex> guard(pendingOutputMutex);
+    output.swap(pendingOutput);
   }
-
+  if (!output.empty()) {
+    return bufferOutput(output);
+  }
   if (processHandle != INVALID_HANDLE_VALUE &&
       WaitForSingleObject(static_cast<HANDLE>(processHandle), 0) ==
           WAIT_OBJECT_0) {
-    LOG(INFO) << "Terminal session ended";
-    run = false;
-    return string();
-  }
-
-#define BUF_SIZE (16 * 1024)
-  char b[BUF_SIZE];
-  HANDLE out = static_cast<HANDLE>(outputRead);
-  DWORD avail = 0;
-  if (!PeekNamedPipe(out, NULL, 0, NULL, &avail, NULL)) {
-    LOG(INFO) << "Terminal session ended";
-    run = false;
-    return string();
-  }
-  if (avail == 0) {
-    WaitForSingleObject(out, 10);
-    if (!PeekNamedPipe(out, NULL, 0, NULL, &avail, NULL) || avail == 0) {
-      return string();
+    DWORD exitCode = 0;
+    GetExitCodeProcess(static_cast<HANDLE>(processHandle), &exitCode);
+    if (run.exchange(false)) {
+      LOG(INFO) << "Terminal session ended with exit code " << exitCode;
     }
   }
-
-  DWORD toRead = avail > BUF_SIZE ? BUF_SIZE : avail;
-  DWORD n = 0;
-  if (!ReadFile(out, b, toRead, &n, NULL)) {
-    LOG(INFO) << "Terminal session ended";
-    run = false;
-    return string();
-  }
-  if (n == 0) {
-    return string();
-  }
-  return bufferOutput(string(b, n));
+  return string();
 }
 
 void TerminalHandler::appendData(const string& data) {
@@ -228,8 +226,13 @@ void TerminalHandler::appendData(const string& data) {
     return;
   }
   DWORD written = 0;
-  WriteFile(static_cast<HANDLE>(inputWrite), data.data(),
-            static_cast<DWORD>(data.size()), &written, NULL);
+  if (!WriteFile(static_cast<HANDLE>(inputWrite), data.data(),
+                 static_cast<DWORD>(data.size()), &written, NULL)) {
+    LOG(WARNING) << "Writing terminal input failed: " << GetLastError();
+  } else if (written != data.size()) {
+    LOG(WARNING) << "Only wrote " << written << " of " << data.size()
+                 << " terminal input bytes";
+  }
 }
 
 void TerminalHandler::updateTerminalSize(int col, int row) {
@@ -244,9 +247,9 @@ void TerminalHandler::updateTerminalSize(int col, int row) {
 
 void TerminalHandler::stop() {
   run = false;
-  if (hPC != nullptr) {
-    ClosePseudoConsole(static_cast<HPCON>(hPC));
-    hPC = nullptr;
+  if (inputWrite != INVALID_HANDLE_VALUE) {
+    CloseHandle(static_cast<HANDLE>(inputWrite));
+    inputWrite = INVALID_HANDLE_VALUE;
   }
   if (processHandle != INVALID_HANDLE_VALUE) {
     TerminateProcess(static_cast<HANDLE>(processHandle), 1);
@@ -254,9 +257,12 @@ void TerminalHandler::stop() {
     CloseHandle(static_cast<HANDLE>(processHandle));
     processHandle = INVALID_HANDLE_VALUE;
   }
-  if (inputWrite != INVALID_HANDLE_VALUE) {
-    CloseHandle(static_cast<HANDLE>(inputWrite));
-    inputWrite = INVALID_HANDLE_VALUE;
+  if (hPC != nullptr) {
+    ClosePseudoConsole(static_cast<HPCON>(hPC));
+    hPC = nullptr;
+  }
+  if (outputThread.joinable()) {
+    outputThread.join();
   }
   if (outputRead != INVALID_HANDLE_VALUE) {
     CloseHandle(static_cast<HANDLE>(outputRead));
