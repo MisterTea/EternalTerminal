@@ -32,6 +32,7 @@ class HtmServerHarness {
       : handler(std::make_shared<PipeSocketHandler>()),
         endpoint(endpointFor(ipc.path)),
         server(handler, endpoint) {
+    skipIfThreadSanitizer();
     runner = std::thread([this]() { server.run(); });
     client.reset(new IpcPairClient(handler, endpoint));
     REQUIRE(waitUntil([&]() { return server.getEndpointFd() >= 0; }, 5000));
@@ -333,6 +334,7 @@ TEST_CASE("HtmServer recovers from a client disconnect error",
 }
 
 TEST_CASE("HtmServer survives an abrupt client hangup", "[Htm][HtmServer]") {
+  skipIfThreadSanitizer();
   class DroppingClient : public IpcPairClient {
    public:
     using IpcPairClient::IpcPairClient;

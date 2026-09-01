@@ -61,6 +61,37 @@ def ipc_path() -> Path:
     return Path("/tmp") / f"htm.{uid()}.ipc"
 
 
+def pids_named_from_proc(name: str) -> list[int]:
+    proc = Path("/proc")
+    if not proc.is_dir():
+        return []
+    my_uid = uid()
+    pids: list[int] = []
+    try:
+        entries = list(proc.iterdir())
+    except OSError:
+        return []
+    for entry in entries:
+        if not entry.name.isdigit():
+            continue
+        try:
+            comm = (entry / "comm").read_text(encoding="utf-8").strip()
+        except OSError:
+            continue
+        if comm != name:
+            continue
+        try:
+            status = (entry / "status").read_text(encoding="utf-8")
+        except OSError:
+            continue
+        for line in status.splitlines():
+            if line.startswith("Uid:"):
+                if int(line.split()[1]) == my_uid:
+                    pids.append(int(entry.name))
+                break
+    return pids
+
+
 def pids_named(name: str) -> list[int]:
     try:
         out = subprocess.check_output(
@@ -68,6 +99,8 @@ def pids_named(name: str) -> list[int]:
             text=True,
             stderr=subprocess.DEVNULL,
         )
+    except FileNotFoundError:
+        return pids_named_from_proc(name)
     except subprocess.CalledProcessError:
         return []
     return [int(p) for p in out.split() if p.isdigit()]

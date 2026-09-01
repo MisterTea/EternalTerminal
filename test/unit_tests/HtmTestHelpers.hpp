@@ -15,8 +15,28 @@
 #include <windows.h>
 #endif
 
+#if defined(__has_feature)
+#define ET_HTM_TSAN_FEATURE __has_feature(thread_sanitizer)
+#else
+#define ET_HTM_TSAN_FEATURE 0
+#endif
+
 namespace et {
 namespace htmtest {
+
+inline bool runningUnderThreadSanitizer() {
+#if defined(__SANITIZE_THREAD__) || ET_HTM_TSAN_FEATURE
+  return true;
+#else
+  return false;
+#endif
+}
+
+inline void skipIfThreadSanitizer() {
+  if (runningUnderThreadSanitizer()) {
+    SKIP("forkpty from a worker thread is unsupported under ThreadSanitizer");
+  }
+}
 
 inline string b64Int32(int32_t value) {
   string encoded(Base64::EncodedLength(4), '\0');
