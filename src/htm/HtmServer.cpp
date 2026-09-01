@@ -2,6 +2,10 @@
 
 #include <cstdint>
 
+#ifndef WIN32
+#include <poll.h>
+#endif
+
 #include "HtmHeaderCodes.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
@@ -33,8 +37,28 @@ void HtmServer::run() {
 
     try {
       char header;
-      // Data structures needed for select() and
-      // non-blocking I/O.
+      bool readable = false;
+#ifndef WIN32
+      // poll() reports POLLHUP when the client close()s without a byte of
+      // data; select() on some Linux distros (Debian/Fedora containers) does
+      // not wake until a later write fails.
+      struct pollfd pfd;
+      pfd.fd = endpointFd;
+      pfd.events = POLLIN;
+      pfd.revents = 0;
+      int pr = ::poll(&pfd, 1, 10);
+      if (pr < 0 && GetErrno() != EINTR) {
+        throw std::runtime_error(string("poll failed: ") +
+                                 strerror(GetErrno()));
+      }
+      if ((pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) &&
+          !(pfd.revents & POLLIN)) {
+        LOG(INFO) << "Client hangup";
+        closeEndpoint();
+        continue;
+      }
+      readable = (pfd.revents & POLLIN) != 0;
+#else
       fd_set rfd;
       timeval tv;
 
@@ -43,11 +67,13 @@ void HtmServer::run() {
       tv.tv_sec = 0;
       tv.tv_usec = 10000;
       select(endpointFd + 1, &rfd, NULL, NULL, &tv);
+      readable = FD_ISSET(endpointFd, &rfd) != 0;
+#endif
 
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
-      if (FD_ISSET(endpointFd, &rfd)) {
+      if (readable) {
         VLOG(1) << "READING FROM STDIN";
         socketHandler->readAll(endpointFd, (char*)&header, 1, false);
         VLOG(1) << "Got message header: " << int(header);
