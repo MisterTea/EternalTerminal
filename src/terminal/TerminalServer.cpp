@@ -3,6 +3,7 @@
 
 #include <cstdint>
 
+#include "JumphostPending.hpp"
 #include "TelemetryService.hpp"
 #include "WriteBuffer.hpp"
 
@@ -74,76 +75,6 @@ void drainWriteBufferToClient(WriteBuffer* buf,
     buf->consume(count);
   }
 }
-
-struct JumphostPending {
-  std::deque<Packet> packets;
-  size_t bytes = 0;
-  size_t terminalBufferBytes = 0;
-
-  bool canAcceptMore() const { return bytes < WriteBuffer::MAX_BUFFER_SIZE; }
-
-  void enqueue(const Packet& packet) {
-    packets.push_back(packet);
-    bytes += packet.length();
-    if (packet.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
-      terminalBufferBytes += packet.length();
-    }
-  }
-
-  size_t flushTerminalBuffersIfLarge() {
-    if (terminalBufferBytes < WriteBuffer::FLUSH_THRESHOLD) {
-      return 0;
-    }
-    size_t dropped = 0;
-    for (auto it = packets.begin(); it != packets.end();) {
-      if (it->getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
-        dropped += it->length();
-        bytes -= it->length();
-        terminalBufferBytes -= it->length();
-        it = packets.erase(it);
-      } else {
-        ++it;
-      }
-    }
-    return dropped;
-  }
-
-  void drainToClient(shared_ptr<ServerClientConnection> conn,
-                     int serverClientFd) {
-    if (packets.empty()) {
-      return;
-    }
-    if (serverClientFd > 0) {
-      if (!isSocketWritable(serverClientFd)) {
-        return;
-      }
-      while (!packets.empty()) {
-        conn->writePacket(packets.front());
-        bytes -= packets.front().length();
-        if (packets.front().getHeader() ==
-            TerminalPacketType::TERMINAL_BUFFER) {
-          terminalBufferBytes -= packets.front().length();
-        }
-        packets.pop_front();
-        if (!isSocketWritable(serverClientFd)) {
-          break;
-        }
-      }
-      return;
-    }
-    while (!packets.empty()) {
-      if (!conn->canBufferWrite(2 * BUF_SIZE)) {
-        break;
-      }
-      conn->writePacket(packets.front());
-      bytes -= packets.front().length();
-      if (packets.front().getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
-        terminalBufferBytes -= packets.front().length();
-      }
-      packets.pop_front();
-    }
-  }
-};
 
 void drainDiscardJumphostTerminalBuffers(
     shared_ptr<SocketHandler> terminalSocketHandler, int terminalFd,
@@ -311,7 +242,7 @@ void TerminalServer::runJumpHost(
       getSocketHandler()->minimizeKernelBuffering(serverClientFd);
       FD_SET(serverClientFd, &rfd);
       maxfd = max(maxfd, serverClientFd);
-      if (!pending.packets.empty()) {
+      if (!pending.empty()) {
         FD_SET(serverClientFd, &wfd);
       }
     }
@@ -322,7 +253,7 @@ void TerminalServer::runJumpHost(
     }
 
     try {
-      pending.drainToClient(serverClientState, serverClientFd);
+      pending.drainToClient(serverClientState.get(), serverClientFd);
 
       if (serverClientFd > 0 && FD_ISSET(serverClientFd, &rfd)) {
         VLOG(4) << "Jumphost is selected";
@@ -358,13 +289,19 @@ void TerminalServer::runJumpHost(
         }
       }
 
+      serverClientFd = serverClientState->getSocketFd();
+      const bool stillConnected = serverClientFd > 0;
+      if (!stillConnected) {
+        pending.drainToClient(serverClientState.get(), -1);
+      }
+
       if (FD_ISSET(terminalFd, &rfd)) {
         try {
           Packet packet;
           if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
-            if (connected) {
+            if (stillConnected) {
               pending.enqueue(packet);
-              pending.drainToClient(serverClientState, serverClientFd);
+              pending.drainToClient(serverClientState.get(), serverClientFd);
             } else {
               serverClientState->writePacket(packet);
             }

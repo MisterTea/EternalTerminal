@@ -471,6 +471,7 @@ add_library(
   src/terminal/forwarding/ForwardDestinationHandler.cpp
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+  src/terminal/JumphostPending.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp

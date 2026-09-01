@@ -620,4 +620,90 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerJumphostTest",
   sshSetupHandler->shutdownHandler();
 }
 
+TEST_CASE_METHOD(
+    ServerEndToEndTestFixture, "ServerJumphostInterruptDoesNotDropSmallOutput",
+    "[ServerJumphostInterruptDoesNotDropSmallOutput][integration]") {
+  auto [id, passkey] =
+      sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
+                                "jumphost:2023", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, jumphostServerEndpoint, id,
+      passkey, fakeConsole, true, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  const string before = "hello";
+  fakeUserTerminal->simulateTerminalResponse(before);
+  REQUIRE(fakeConsole->getTerminalData(before.length()) == before);
+
+  fakeConsole->simulateKeystrokes(string(1, '\x03'));
+  REQUIRE(fakeUserTerminal->getKeystrokes(1) == string(1, '\x03'));
+
+  const string after = "world";
+  fakeUserTerminal->simulateTerminalResponse(after);
+  REQUIRE(fakeConsole->getTerminalData(after.length()) == after);
+
+  const string burst(8 * 1024, 'B');
+  fakeUserTerminal->simulateTerminalResponse(burst);
+  REQUIRE(fakeConsole->getTerminalData(burst.length()) == burst);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerJumphostDisconnectDoesNotStallAt64KB",
+                 "[ServerJumphostDisconnectDoesNotStallAt64KB][integration]") {
+  auto [id, passkey] =
+      sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
+                                "jumphost:2023", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, jumphostServerEndpoint, id,
+      passkey, fakeConsole, true, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+  sleep(1);
+
+  const size_t floodBytes = 256 * 1024;
+  std::atomic<bool> done{false};
+  thread floodThread([this, floodBytes, &done]() {
+    try {
+      fakeUserTerminal->simulateTerminalResponse(string(floodBytes, 'X'));
+      done = true;
+    } catch (const std::exception&) {
+    }
+  });
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (!done && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  if (!done) {
+    floodThread.detach();
+  } else {
+    floodThread.join();
+  }
+  REQUIRE(done);
+
+  sshSetupHandler->shutdownHandler();
+}
+
 }  // namespace et
