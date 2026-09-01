@@ -5,6 +5,13 @@
 using namespace et;
 using namespace et::htmtest;
 
+namespace {
+class TestableTerminalHandler : public TerminalHandler {
+ public:
+  using TerminalHandler::bufferOutput;
+};
+}  // namespace
+
 TEST_CASE("TerminalHandler is idle before start", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   REQUIRE_FALSE(term.isRunning());
@@ -81,6 +88,28 @@ TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
       },
       8000));
   term.stop();
+}
+
+TEST_CASE("TerminalHandler bounds its scrollback buffer",
+          "[Htm][TerminalHandler]") {
+  TestableTerminalHandler term;
+  string line(2048, 'x');
+  string output;
+  for (int i = 0; i < 200; ++i) {
+    output += line + "\n";
+  }
+  output += "LATEST_MARKER";
+
+  REQUIRE(term.bufferOutput(output) == output);
+  REQUIRE_FALSE(term.getBuffer().empty());
+  REQUIRE(term.getBuffer().back().find("LATEST_MARKER") != string::npos);
+
+  size_t bufferedChars = 0;
+  for (const auto& bufferedLine : term.getBuffer()) {
+    bufferedChars += bufferedLine.size();
+  }
+  REQUIRE(bufferedChars <= 128 * 1024);
+  REQUIRE(term.getBuffer().size() <= 1024);
 }
 
 #ifndef WIN32

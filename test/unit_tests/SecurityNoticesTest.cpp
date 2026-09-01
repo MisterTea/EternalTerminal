@@ -5,10 +5,12 @@
  * requires a PROTOCOL_VERSION bump / wire-format change.
  */
 
+#ifndef WIN32
 #include <fcntl.h>
 #include <pwd.h>
 #include <sys/stat.h>
 #include <unistd.h>
+#endif
 
 #include <atomic>
 #include <chrono>
@@ -23,7 +25,10 @@
 #include "ServerClientConnection.hpp"
 #include "ServerConnection.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
+#ifndef WIN32
 #include "UserSocketOps.hpp"
+#endif
 
 using namespace et;
 
@@ -36,11 +41,20 @@ class SocketPairHandler : public SocketHandler {
   bool hasData(int fd) override { return waitOnSocketData(fd); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
 
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
 
   int connect(const SocketEndpoint&) override {
@@ -79,10 +93,19 @@ class FdSocketHandler : public SocketHandler {
  public:
   bool hasData(int fd) override { return waitOnSocketData(fd); }
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
   int connect(const SocketEndpoint&) override { return -1; }
   set<int> listen(const SocketEndpoint&) override { return {}; }
@@ -93,6 +116,7 @@ class FdSocketHandler : public SocketHandler {
   vector<int> getActiveSockets() override { return {}; }
 };
 
+#ifndef WIN32
 string makeTempDir() {
   string pattern = GetTempDirectory() + "et_secnotice_XXXXXX";
   string dir = string(mkdtemp(&pattern[0]));
@@ -121,6 +145,7 @@ bool unprivilegedTestUser(uid_t* uid, gid_t* gid) {
   }
   return false;
 }
+#endif
 }  // namespace
 
 // ---------------------------------------------------------------------------
@@ -133,7 +158,7 @@ TEST_CASE(
     "[SecurityNotice][ANT-2026-5PETM5BV]") {
   FdSocketHandler handler;
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(test::createTestSocketPair(fds) == 0);
 
   // Exactly the old 128 MiB cap must also be rejected for handshake reads.
   int64_t oversize = 128 * 1024 * 1024;
@@ -155,13 +180,18 @@ TEST_CASE(
     "[SecurityNotice][ANT-2026-5PETM5BV]") {
   FdSocketHandler handler;
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(test::createTestSocketPair(fds) == 0);
   // Non-blocking so a spuriously-readable fd cannot block forever inside
   // read() and skip absolute-deadline checks.
   for (int fd : {fds[0], fds[1]}) {
+#ifdef WIN32
+    u_long nonBlocking = 1;
+    REQUIRE(::ioctlsocket(fd, FIONBIO, &nonBlocking) == 0);
+#else
     int flags = ::fcntl(fd, F_GETFL, 0);
     REQUIRE(flags >= 0);
     REQUIRE(::fcntl(fd, F_SETFL, flags | O_NONBLOCK) == 0);
+#endif
   }
 
   std::atomic<bool> stop{false};
@@ -170,8 +200,9 @@ TEST_CASE(
     // absolute deadline this would never time out.
     char b = 'x';
     while (!stop.load()) {
-      ssize_t n = ::write(fds[1], &b, 1);
-      if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
+      ssize_t n = handler.write(fds[1], &b, 1);
+      int error = GetErrno();
+      if (n < 0 && error != EAGAIN && error != EWOULDBLOCK) {
         return;
       }
       std::this_thread::sleep_for(std::chrono::milliseconds(200));
@@ -223,7 +254,7 @@ TEST_CASE(
   RecordingServerConnection server(handler, endpoint);
 
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(test::createTestSocketPair(fds) == 0);
 
   int64_t oversize = SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH + 1;
   REQUIRE(handler->writeAllOrReturn(fds[0], &oversize, sizeof(oversize)) ==
@@ -303,15 +334,23 @@ TEST_CASE(
     "[SecurityNotice][ANT-2026-VAMER5RC][ServerClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(test::createTestSocketPair(live) == 0);
 
   const string key = "zyxwvutsrqponmlkjihgfedcba987654";
   ServerClientConnection connection(handler, "client-recover", live[0], key);
   REQUIRE(connection.getSocketFd() == live[0]);
+#ifdef WIN32
+  int socketType = 0;
+  int socketTypeLength = sizeof(socketType);
+  REQUIRE(::getsockopt(live[0], SOL_SOCKET, SO_TYPE,
+                       reinterpret_cast<char*>(&socketType),
+                       &socketTypeLength) == 0);
+#else
   REQUIRE(::fcntl(live[0], F_GETFD) != -1);
+#endif
 
   int attack[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, attack) == 0);
+  REQUIRE(test::createTestSocketPair(attack) == 0);
 
   std::thread attacker([&]() {
     handler->readProto<SequenceHeader>(
@@ -324,7 +363,14 @@ TEST_CASE(
   REQUIRE_FALSE(connection.recoverClient(attack[0]));
   // Victim session must remain on the original fd, which must still be open.
   REQUIRE(connection.getSocketFd() == live[0]);
+#ifdef WIN32
+  socketTypeLength = sizeof(socketType);
+  REQUIRE(::getsockopt(live[0], SOL_SOCKET, SO_TYPE,
+                       reinterpret_cast<char*>(&socketType),
+                       &socketTypeLength) == 0);
+#else
   REQUIRE(::fcntl(live[0], F_GETFD) != -1);
+#endif
 
   attacker.join();
   connection.shutdown();

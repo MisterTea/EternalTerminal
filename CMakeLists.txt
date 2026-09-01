@@ -562,30 +562,24 @@ if(WIN32)
     enable_testing()
     include(Catch)
 
-    set(WINDOWS_TEST_SRCS
-      test/HostParsingTest.cpp
-      test/integration_tests/BackedTest.cpp
-      test/integration_tests/ConnectionTest.cpp
-      test/integration_tests/PortForwardHandlerTest.cpp
-      test/unit_tests/BackedIOTest.cpp
-      test/unit_tests/ClientConnectionTest.cpp
-      test/unit_tests/CryptoHandlerTest.cpp
-      test/unit_tests/FakeConsoleTest.cpp
-      test/unit_tests/ForwardDestinationHandlerTest.cpp
-      test/unit_tests/ForwardSourceHandlerTest.cpp
-      test/unit_tests/HtmIpcTest.cpp
-      test/unit_tests/HtmMultiplexerStateTest.cpp
-      test/unit_tests/HtmServerClientTest.cpp
-      test/unit_tests/HtmTerminalHandlerTest.cpp
-      test/unit_tests/PortForwardHandlerTest.cpp
-      test/unit_tests/RawSocketUtilsTest.cpp
-      test/unit_tests/SshSetupHandlerTest.cpp
-      test/unit_tests/StringUtilsTest.cpp
-      test/unit_tests/SubprocessUtilsTest.cpp
-      test/unit_tests/TelemetryServiceTest.cpp
-      test/unit_tests/TunnelUtilsTest.cpp
-      test/unit_tests/UnixSocketHandlerTest.cpp
-    )
+    file(GLOB WINDOWS_TEST_SRCS CONFIGURE_DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/*Test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/*Test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/*Test.cpp)
+
+    # These tests exercise production facilities that do not exist on Windows:
+    # fork/SCM_RIGHTS privilege dropping, Unix server/terminal handlers, or a
+    # POSIX PTY/terminal host. Keep this exclusion list explicit so every new
+    # portable test is included on Windows automatically.
+    set(WINDOWS_UNSUPPORTED_TEST_SRCS
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/JumphostTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalServerTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/HtmGhosttyE2eTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ServerFifoPathTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/UserSocketOpsTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/UserTerminalHandlerTest.cpp)
+    list(REMOVE_ITEM WINDOWS_TEST_SRCS ${WINDOWS_UNSUPPORTED_TEST_SRCS})
     add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
     target_include_directories(
       et-test PRIVATE test test/integration_tests test/unit_tests)
