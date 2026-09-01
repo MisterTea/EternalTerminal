@@ -572,6 +572,7 @@ if(WIN32)
     # POSIX PTY/terminal host. Keep this exclusion list explicit so every new
     # portable test is included on Windows automatically.
     set(WINDOWS_UNSUPPORTED_TEST_SRCS
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/HandleConnectionTimeoutTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/JumphostTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalServerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalTest.cpp

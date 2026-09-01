@@ -7,9 +7,6 @@
  * hold a server-wide lock across blocking socket I/O.
  */
 
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <chrono>
 #include <future>
 #include <thread>
@@ -17,8 +14,10 @@
 #include "ServerClientConnection.hpp"
 #include "ServerConnection.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 
 using namespace et;
+using namespace et::test;
 
 namespace {
 // Socket handler driven by pre-made socketpairs. accept() hands back the
@@ -28,11 +27,20 @@ class SocketPairHandler : public SocketHandler {
   bool hasData(int fd) override { return waitOnSocketData(fd); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
 
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
 
   int connect(const SocketEndpoint&) override { return -1; }
@@ -98,7 +106,7 @@ void wedgeReconnect(const shared_ptr<SocketHandler>& handler,
                     TestServerConnection& server, const string& clientId,
                     int live[2], int stuck[2], std::thread& reconnectThread) {
   // A live session the reconnect can come back to.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
   writeConnectRequest(handler, live[1], clientId);
   server.clientHandler(live[0]);
   REQUIRE(server.clientConnectionExists(clientId));
@@ -106,7 +114,7 @@ void wedgeReconnect(const shared_ptr<SocketHandler>& handler,
 
   // The reconnect. Nothing ever answers on the peer end, so recover() blocks
   // waiting for the sequence header reply.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, stuck) == 0);
+  REQUIRE(createTestSocketPair(stuck) == 0);
   writeConnectRequest(handler, stuck[1], clientId);
   const int stuckServerFd = stuck[0];
   reconnectThread = std::thread(
@@ -142,7 +150,7 @@ TEST_CASE("Reconnect stuck in recover still allows new connections",
   // An unrelated client must still get accepted. The pooled handler owns and
   // closes fresh[0]; an oversized length makes it fail fast instead of
   // occupying a worker.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fresh) == 0);
+  REQUIRE(createTestSocketPair(fresh) == 0);
   int64_t oversize = SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH + 1;
   REQUIRE(handler->writeAllOrReturn(fresh[1], &oversize, sizeof(oversize)) ==
           (int)sizeof(oversize));
@@ -178,7 +186,7 @@ TEST_CASE("A second reconnect is refused while one is in flight",
   // A second reconnect for the same client, arriving while the first is still
   // blocked. Queueing it would hold this handler until the first one's socket
   // timeout expires, and handlers are the resource every other client needs.
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, second) == 0);
+  REQUIRE(createTestSocketPair(second) == 0);
   writeConnectRequest(handler, second[1], clientId);
   refused = std::async(std::launch::async,
                        [&]() { server.clientHandler(second[0]); });
