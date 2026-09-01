@@ -105,6 +105,13 @@ void Connection::closeSocket() {
 bool Connection::recover(int newSocketFd) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
+  if (shuttingDown) {
+    // The session was torn down while this reconnect was in flight. Reviving
+    // the reader/writer here would resurrect a dead connection.
+    LOG(INFO) << "Not recovering: connection is shutting down";
+    socketHandler->close(newSocketFd);
+    return false;
+  }
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
   LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
