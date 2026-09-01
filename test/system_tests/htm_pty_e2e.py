@@ -73,6 +73,49 @@ def pids_named(name: str) -> list[int]:
     return [int(p) for p in out.split() if p.isdigit()]
 
 
+def _proc_state(pid: int) -> str:
+    if not Path("/proc").is_dir():
+        return "R"
+    try:
+        text = Path(f"/proc/{pid}/stat").read_text(encoding="utf-8")
+        rest = text[text.rfind(")") + 1 :].split()
+        return rest[0] if rest else "?"
+    except OSError:
+        return ""
+
+
+def live_pids_named(name: str) -> list[int]:
+    return [pid for pid in pids_named(name) if _proc_state(pid) not in ("", "Z")]
+
+
+def reap_named(name: str) -> None:
+    for pid in pids_named(name):
+        try:
+            os.kill(pid, signal.SIGKILL)
+        except OSError:
+            pass
+    deadline = time.time() + 2
+    while time.time() < deadline:
+        if not live_pids_named(name):
+            return
+        time.sleep(0.05)
+    leftover = live_pids_named(name)
+    if leftover:
+        details = []
+        for pid in leftover:
+            try:
+                cmd = (
+                    Path(f"/proc/{pid}/cmdline")
+                    .read_bytes()
+                    .replace(b"\0", b" ")
+                    .decode("utf-8", "replace")
+                )
+            except OSError:
+                cmd = "?"
+            details.append(f"{pid}:{cmd}")
+        fail(f"{name} leftover after tests: {details}")
+
+
 def encode_length(length: int) -> bytes:
     return base64.b64encode(struct.pack("<i", length))
 
@@ -499,18 +542,7 @@ def run_tests(htm: Path, htmd: Path) -> None:
         session.stop()
 
     for name in ("htmd", "htm"):
-        leftover = pids_named(name)
-        if leftover:
-            subprocess.call(
-                ["pkill", "-x", "-U", str(uid()), name],
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
-            deadline = time.time() + 2
-            while pids_named(name) and time.time() < deadline:
-                time.sleep(0.1)
-        if pids_named(name):
-            fail(f"{name} leftover after tests")
+        reap_named(name)
     print("PASS: htm/htmd PTY e2e", flush=True)
 
 
