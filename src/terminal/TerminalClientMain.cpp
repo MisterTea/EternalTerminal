@@ -326,6 +326,9 @@ int main(int argc, char** argv) {
           !SshSetupHandler::IsSshConfigPathSafeForProxyJump(sshConfigPath)) {
         CLOG(INFO, "stdout")
             << "--ssh-config must contain only ASCII letters, digits, '/', "
+#ifdef WIN32
+               "'\\\\', ':', "
+#endif
                "'.', '_', and '-'; OpenSSH does not quote this path when "
                "propagating it through ProxyJump"
             << endl;

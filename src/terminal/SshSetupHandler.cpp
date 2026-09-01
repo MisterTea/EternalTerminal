@@ -5,14 +5,29 @@
 namespace et {
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
 
+namespace {
+/** @brief Characters OpenSSH can splice into an unquoted ProxyJump -F path. */
+bool isSshConfigPathCharSafeForProxyJump(unsigned char c) {
+  if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+      (c >= '0' && c <= '9') || c == '/' || c == '.' || c == '_' || c == '-') {
+    return true;
+  }
+#ifdef WIN32
+  // Native Windows paths need a drive colon and backslash; those are not
+  // Bourne metacharacters, and Unix clients never pass Windows paths.
+  return c == ':' || c == '\\';
+#else
+  return false;
+#endif
+}
+}  // namespace
+
 bool SshSetupHandler::IsSshConfigPathSafeForProxyJump(const string& path) {
-  if (path.empty() || path.front() != '/') {
+  if (!std::filesystem::path(path).is_absolute()) {
     return false;
   }
   for (unsigned char c : path) {
-    bool asciiAlphaNumeric = (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-                             (c >= '0' && c <= '9');
-    if (!asciiAlphaNumeric && c != '/' && c != '.' && c != '_' && c != '-') {
+    if (!isSshConfigPathCharSafeForProxyJump(c)) {
       return false;
     }
   }

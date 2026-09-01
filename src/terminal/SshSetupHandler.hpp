@@ -33,7 +33,14 @@ class SshSetupHandler {
   /** @brief Path to the packaged `etterminal` helper binary. */
   static const string ETTERMINAL_BIN;
 
-  /** @brief Whether OpenSSH can safely propagate this path through `-J`. */
+  /**
+   * @brief Whether OpenSSH can safely propagate this path through `-J`.
+   *
+   * Requires a native absolute path. Allowed characters are ASCII letters,
+   * digits, `/`, `.`, `_`, and `-`; Windows also allows `:` and `\\` so drive
+   * and UNC paths work. Spaces and shell metacharacters are rejected because
+   * OpenSSH interpolates `-F` into the implicit ProxyJump command unquoted.
+   */
   static bool IsSshConfigPathSafeForProxyJump(const string& path);
 
  private:
