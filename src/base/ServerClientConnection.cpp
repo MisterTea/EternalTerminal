@@ -1,10 +1,22 @@
 #include "ServerClientConnection.hpp"
 
 namespace et {
+namespace {
+/** @brief Clears the in-flight flag however recoverClient() returns. */
+class InFlightGuard {
+ public:
+  explicit InFlightGuard(std::atomic<bool>& _flag) : flag(_flag) {}
+  ~InFlightGuard() { flag.store(false); }
+
+ private:
+  std::atomic<bool>& flag;
+};
+}  // namespace
+
 ServerClientConnection::ServerClientConnection(
     const std::shared_ptr<SocketHandler>& _socketHandler,
     const string& clientId, int _socketFd, const string& key)
-    : Connection(_socketHandler, clientId, key) {
+    : Connection(_socketHandler, clientId, key), recoveryInFlight(false) {
   socketFd = _socketFd;
   reader = shared_ptr<BackedReader>(
       new BackedReader(socketHandler,
@@ -25,20 +37,35 @@ ServerClientConnection::~ServerClientConnection() {
 }
 
 bool ServerClientConnection::recoverClient(int newSocketFd) {
+  bool idle = false;
+  if (!recoveryInFlight.compare_exchange_strong(idle, true)) {
+    // Waiting for the reconnect that is already running would hold this handler
+    // thread for as long as that one blocks, which against a silent peer is the
+    // full socket timeout. Every other client's handshake runs on the same
+    // small pool, so refusing is cheaper for everyone: a real client is between
+    // attempts of its own reconnect loop and will come back.
+    LOG(INFO) << "Refusing reconnect for " << getId()
+              << ": another one is already in flight";
+    socketHandler->close(newSocketFd);
+    return false;
+  }
+  InFlightGuard inFlightGuard(recoveryInFlight);
+
+  // Held across the whole recovery so two reconnects for the same client cannot
+  // interleave their socket swaps. connectionMutex is recursive, so recover()
+  // re-locking it below is fine.
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
+
   // Detach the live session without closing it until recover succeeds, so a
   // failed/malicious reconnect cannot force-disconnect the victim.
-  int oldSocketFd = -1;
-  {
-    lock_guard<std::recursive_mutex> guard(connectionMutex);
-    oldSocketFd = socketFd;
-    if (reader) {
-      reader->invalidateSocket();
-    }
-    if (writer) {
-      writer->invalidateSocket();
-    }
-    socketFd = -1;
+  int oldSocketFd = socketFd;
+  if (reader) {
+    reader->invalidateSocket();
   }
+  if (writer) {
+    writer->invalidateSocket();
+  }
+  socketFd = -1;
 
   bool success = recover(newSocketFd);
   if (success) {
@@ -49,7 +76,6 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
 
   if (oldSocketFd != -1) {
-    lock_guard<std::recursive_mutex> guard(connectionMutex);
     socketFd = oldSocketFd;
     if (reader) {
       reader->revive(oldSocketFd, vector<string>());

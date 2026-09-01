@@ -59,6 +59,11 @@ class TerminalServer : public ServerConnection {
   bool halt = false;
 
  protected:
+  /**
+   * @brief Seconds to wait for a client's initial payload before giving up.
+   * Overridable so tests do not have to wait out the real deadline.
+   */
+  int initialPayloadTimeoutSec = INITIAL_PAYLOAD_TIMEOUT_DURATION;
   /** @brief Guards access to `terminalThreads` and the halt flag. */
   mutex terminalThreadMutex;
   /** @brief Local pipe endpoint used to signal terminal/jumphost handoffs. */

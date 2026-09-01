@@ -14,6 +14,8 @@ class FakeConsole : public Console {
   FakeConsole(shared_ptr<PipeSocketHandler> _socketHandler)
       : socketHandler(_socketHandler),
         getTerminalInfoCount(0),
+        terminalInfoAvailable(true),
+        automaticallyChangeTerminalInfo(true),
         clientServerFd(-1) {}
 
   virtual ~FakeConsole() {}
@@ -95,13 +97,26 @@ class FakeConsole : public Console {
 #endif
   }
 
-  virtual TerminalInfo getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() {
+    lock_guard<recursive_mutex> lock(_mutex);
     getTerminalInfoCount++;
-    if (getTerminalInfoCount % 100 == 0) {
+    if (!terminalInfoAvailable) {
+      return std::nullopt;
+    }
+    if (automaticallyChangeTerminalInfo && getTerminalInfoCount % 100 == 0) {
       // Bump the terminal info
       fakeTerminalInfo.set_row(fakeTerminalInfo.row() + 1);
     }
     return fakeTerminalInfo;
+  }
+
+  void setTerminalInfoResult(const std::optional<TerminalInfo>& terminalInfo) {
+    lock_guard<recursive_mutex> lock(_mutex);
+    automaticallyChangeTerminalInfo = false;
+    terminalInfoAvailable = terminalInfo.has_value();
+    if (terminalInfo) {
+      fakeTerminalInfo = *terminalInfo;
+    }
   }
 
   virtual int getFd() {
@@ -152,6 +167,8 @@ class FakeConsole : public Console {
   shared_ptr<PipeSocketHandler> socketHandler;
   TerminalInfo fakeTerminalInfo;
   int getTerminalInfoCount;
+  bool terminalInfoAvailable;
+  bool automaticallyChangeTerminalInfo;
   int serverClientFd;
   int clientServerFd;
   string pipeDirectory;
@@ -164,6 +181,7 @@ class FakeUserTerminal : public UserTerminal {
       : socketHandler(_socketHandler),
         serverClientFd(-1),
         clientServerFd(-1),
+        setInfoCount(0),
         didCleanUp(false),
         didHandleSessionEnd(false) {
     memset(&lastWinInfo, 0, sizeof(winsize));
@@ -270,15 +288,32 @@ class FakeUserTerminal : public UserTerminal {
 #endif
     didCleanUp = true;
   }
-  virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
+  virtual void setInfo(const winsize& tmpwin) {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    lastWinInfo = tmpwin;
+    setInfoCount++;
+  }
+
+  int getSetInfoCount() {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    return setInfoCount;
+  }
+
+  winsize getLastWinInfo() {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    return lastWinInfo;
+  }
 
  protected:
   recursive_mutex _mutex;
+  // Keep geometry updates independent from blocking socket I/O under _mutex.
+  recursive_mutex terminalInfoMutex;
   shared_ptr<PipeSocketHandler> socketHandler;
   int serverClientFd;
   int clientServerFd;
   string pipeDirectory;
   string pipePath;
+  int setInfoCount;
   bool didCleanUp;
   bool didHandleSessionEnd;
   winsize lastWinInfo;

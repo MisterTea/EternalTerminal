@@ -73,7 +73,7 @@ class PseudoTerminalConsole : public Console {
   }
 
   /** @brief Queries the current terminal window dimensions. */
-  virtual TerminalInfo getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() {
 #ifdef WIN32
     CONSOLE_SCREEN_BUFFER_INFO csbi;
     int columns, rows;
@@ -96,8 +96,10 @@ class PseudoTerminalConsole : public Console {
 
     return ti;
 #else
-    winsize win;
-    ioctl(1, TIOCGWINSZ, &win);
+    winsize win{};
+    if (ioctl(STDOUT_FILENO, TIOCGWINSZ, &win) < 0) {
+      return std::nullopt;
+    }
     TerminalInfo ti;
     ti.set_row(win.ws_row);
     ti.set_column(win.ws_col);

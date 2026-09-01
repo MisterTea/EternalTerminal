@@ -198,6 +198,11 @@ const int MAX_CLIENT_KEEP_ALIVE_DURATION = 5;
 // allow enough time.
 const int SERVER_KEEP_ALIVE_DURATION = 11;
 
+// A client sends its initial payload immediately after the handshake. If it
+// never arrives, no terminal was ever started, so the handler thread gives up
+// rather than waiting for a client that is not coming back.
+const int INITIAL_PAYLOAD_TIMEOUT_DURATION = 600;
+
 #if defined(__ANDROID__)
 #define STFATAL LOG(FATAL) << "No Stack Trace on Android" << endl
 

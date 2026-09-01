@@ -431,8 +431,25 @@ void TerminalServer::runTerminal(
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
   Packet packet;
+  const time_t initialPayloadDeadline = time(NULL) + initialPayloadTimeoutSec;
   while (!serverClientState->readPacket(&packet)) {
-    LOG(INFO) << "Waiting for initial packet...";
+    bool halted;
+    {
+      lock_guard<std::mutex> guard(terminalThreadMutex);
+      halted = halt;
+    }
+    // Every exit matters: without them this thread spins forever on a client
+    // that never speaks, and run() blocks on join() at shutdown.
+    if (halted || serverClientState->isShuttingDown() ||
+        time(NULL) > initialPayloadDeadline) {
+      LOG(WARNING) << "Giving up waiting for the initial packet from "
+                   << serverClientState->getId();
+      string id = serverClientState->getId();
+      serverClientState.reset();
+      removeClient(id);
+      return;
+    }
+    LOG_EVERY_N(10, INFO) << "Waiting for initial packet...";
     sleep(1);
   }
   if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {

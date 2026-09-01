@@ -11,7 +11,14 @@ const char* GaiStrError(int error) {
 }
 }  // namespace
 
-TcpSocketHandler::TcpSocketHandler() {}
+TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
+    : listenBacklog(_listenBacklog > 0 ? _listenBacklog
+                                       : DEFAULT_LISTEN_BACKLOG) {
+  if (_listenBacklog <= 0) {
+    LOG(WARNING) << "Ignoring listen backlog " << _listenBacklog << ", using "
+                 << DEFAULT_LISTEN_BACKLOG;
+  }
+}
 
 int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
@@ -235,15 +242,16 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
 #else
       FATAL_FAIL(::close(sockFd));
 #endif
+      freeaddrinfo(servinfo);
       throw std::runtime_error(s.c_str());
     }
 
     // Listen
-    FATAL_FAIL(::listen(sockFd, 32));
+    FATAL_FAIL(::listen(sockFd, listenBacklog));
     LOG(INFO) << "Listening on "
               << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"
-              << p->ai_protocol;
+              << p->ai_protocol << " with backlog " << listenBacklog;
 
     // if we get here, we must have connected successfully
     serverSockets.insert(sockFd);
@@ -254,6 +262,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
   }
 
   portServerSockets[port] = serverSockets;
+  freeaddrinfo(servinfo);
   return serverSockets;
 }
 
