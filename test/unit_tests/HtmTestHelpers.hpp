@@ -67,11 +67,8 @@ class UniqueIpcPath {
  public:
   UniqueIpcPath() {
 #ifdef WIN32
-    string root = GetTempDirectory();
-    dir = root + "htm_test_" + to_string(GetCurrentProcessId()) + "_" +
-          to_string(GetTickCount64());
-    REQUIRE(CreateDirectoryA(dir.c_str(), NULL) != 0);
-    path = dir + "\\ipc";
+    path = "htm_test_" + to_string(GetCurrentProcessId()) + "_" +
+           to_string(GetTickCount64()) + ".ipc";
 #else
     string tmpl = GetTempDirectory() + string("htm_test_XXXXXX");
     char* created = mkdtemp(&tmpl[0]);
@@ -83,7 +80,6 @@ class UniqueIpcPath {
   ~UniqueIpcPath() {
     ::remove(path.c_str());
 #ifdef WIN32
-    RemoveDirectoryA(dir.c_str());
 #else
     ::remove(dir.c_str());
 #endif

@@ -24,9 +24,13 @@ TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
   // caller instead of hitting FATAL_FAIL.
   shared_ptr<PipeSocketHandler> socketHandler(new PipeSocketHandler());
 
+#ifdef WIN32
+  string pipePath = "et_unix_socket_test_" + genRandomAlphaNum(12) + ".ipc";
+#else
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   string pipeDirectory = string(mkdtemp(&tmpPath[0]));
   string pipePath = pipeDirectory + "/pipe";
+#endif
 
   SocketEndpoint endpoint;
   endpoint.set_name(pipePath);
@@ -40,8 +44,12 @@ TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {
   REQUIRE((GetErrno() == EAGAIN || GetErrno() == EWOULDBLOCK));
 
   socketHandler->stopListening(endpoint);
+#ifdef WIN32
+  REQUIRE_FALSE(fs::exists(pipePath));
+#else
   REQUIRE(::access(pipePath.c_str(), F_OK) != 0);
   FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#endif
 }
 
 #ifndef WIN32

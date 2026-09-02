@@ -4,6 +4,7 @@
 #include "ServerClientConnection.hpp"
 #include "ServerConnection.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 
 namespace et {
 namespace {
@@ -11,15 +12,25 @@ namespace {
 class SocketPairHandler : public SocketHandler {
  public:
   void queueConnectFd(int fd) { connectQueue.push(fd); }
+  void queueAcceptFd(int fd) { acceptQueue.push(fd); }
 
   bool hasData(int fd) override { return waitOnSocketData(fd); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
 
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
 
   int connect(const SocketEndpoint&) override {
@@ -33,13 +44,22 @@ class SocketPairHandler : public SocketHandler {
 
   set<int> listen(const SocketEndpoint&) override { return {}; }
   set<int> getEndpointFds(const SocketEndpoint&) override { return {}; }
-  int accept(int fd) override { return fd; }
+  int accept(int) override {
+    if (acceptQueue.empty()) {
+      SetErrno(EAGAIN);
+      return -1;
+    }
+    int fd = acceptQueue.front();
+    acceptQueue.pop();
+    return fd;
+  }
   void stopListening(const SocketEndpoint&) override {}
   void close(int fd) override { ::close(fd); }
   vector<int> getActiveSockets() override { return {}; }
 
  private:
   std::queue<int> connectQueue;
+  std::queue<int> acceptQueue;
 };
 
 class RecordingServerConnection : public ServerConnection {
@@ -79,12 +99,13 @@ class RecoverableConnection : public Connection {
 }  // namespace et
 
 using namespace et;
+using namespace et::test;
 
 TEST_CASE("ClientConnection completes handshake over socketpair",
           "[ClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
   handler->queueConnectFd(fds[0]);
 
   const string key = "12345678901234567890123456789012";
@@ -111,7 +132,7 @@ TEST_CASE("ClientConnection surfaces handshake failures",
           "[ClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
   handler->queueConnectFd(fds[0]);
 
   const string key = "abcdefghijklmnopqrstuvwxzy123456";
@@ -133,6 +154,35 @@ TEST_CASE("ClientConnection surfaces handshake failures",
   handler->close(fds[1]);
 }
 
+TEST_CASE("ClientConnection reports an unavailable endpoint",
+          "[ClientConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  ClientConnection conn(handler, SocketEndpoint(), "client-id",
+                        "12345678901234567890123456789012");
+  REQUIRE_FALSE(conn.connect());
+  conn.shutdown();
+}
+
+TEST_CASE("ServerConnection accepts queued clients", "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  RecordingServerConnection server(handler, SocketEndpoint());
+  REQUIRE_FALSE(server.acceptNewConnection(123));
+
+  int pair[2];
+  REQUIRE(createTestSocketPair(pair) == 0);
+  ConnectRequest request;
+  request.set_clientid("unknown-client");
+  request.set_version(PROTOCOL_VERSION);
+  handler->writeProto(pair[0], request, true);
+  handler->queueAcceptFd(pair[1]);
+  REQUIRE(server.acceptNewConnection(123));
+
+  auto response = handler->readProto<ConnectResponse>(pair[0], true);
+  REQUIRE(response.status() == INVALID_KEY);
+  handler->close(pair[0]);
+  server.shutdown();
+}
+
 TEST_CASE("ServerConnection responds to known and unknown clients",
           "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
@@ -143,7 +193,7 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
 
   // Missing key path should return INVALID_KEY.
   int firstPair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, firstPair) == 0);
+  REQUIRE(createTestSocketPair(firstPair) == 0);
   ConnectRequest missingKeyRequest;
   missingKeyRequest.set_clientid("missing");
   missingKeyRequest.set_version(PROTOCOL_VERSION);
@@ -159,7 +209,7 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   const string clientKey = "0123456789abcdef0123456789abcdef";
   server.addClientKey("client-one", clientKey);
   int secondPair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, secondPair) == 0);
+  REQUIRE(createTestSocketPair(secondPair) == 0);
 
   std::thread serverThread([&]() { server.clientHandler(secondPair[1]); });
 
@@ -175,6 +225,9 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   serverThread.join();
   REQUIRE(server.newClientCalled);
   REQUIRE(server.clientConnectionExists("client-one"));
+  REQUIRE_FALSE(server.removeClient("missing-client"));
+  REQUIRE(server.removeClient("client-one"));
+  REQUIRE_FALSE(server.clientConnectionExists("client-one"));
 
   handler->close(secondPair[0]);
   handler->close(secondPair[1]);
@@ -185,7 +238,7 @@ TEST_CASE("ServerClientConnection verifies passkeys",
           "[ServerClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   const string key = "zzzyyyxxxwwwvvvuuutttsssrrrqqqpp";
   ServerClientConnection connection(handler, "client-passkey", fds[0], key);
@@ -202,14 +255,14 @@ TEST_CASE("ServerClientConnection recoverClient keeps old socket on failure",
           "[ServerClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
 
   const string key = "zyxwvutsrqponmlkjihgfedcba987654";
   ServerClientConnection connection(handler, "client-recover", live[0], key);
   REQUIRE(connection.getSocketFd() == live[0]);
 
   int attack[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, attack) == 0);
+  REQUIRE(createTestSocketPair(attack) == 0);
 
   std::thread attacker([&]() {
     // Read server SequenceHeader, then claim to be far ahead.
@@ -235,14 +288,14 @@ TEST_CASE("ServerClientConnection recoverClient closes old socket on success",
           "[ServerClientConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
 
   const string key = "zyxwvutsrqponmlkjihgfedcba987654";
   ServerClientConnection connection(handler, "client-recover-ok", live[0], key);
   REQUIRE(connection.getSocketFd() == live[0]);
 
   int reconnect[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+  REQUIRE(createTestSocketPair(reconnect) == 0);
 
   std::thread remote([&]() {
     auto seqHeader = handler->readProto<SequenceHeader>(
@@ -272,7 +325,7 @@ TEST_CASE("ServerClientConnection recoverClient closes old socket on success",
 TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
 
   const string key = "zyxwvutsrqponmlkjihgfedcba987654";
   auto encryptCrypto = make_shared<CryptoHandler>(key, 0);
@@ -287,7 +340,7 @@ TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
   conn.closeSocket();
 
   int reconnect[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+  REQUIRE(createTestSocketPair(reconnect) == 0);
 
   std::thread remote([&]() {
     auto seqHeader = handler->readProto<SequenceHeader>(reconnect[1], true);

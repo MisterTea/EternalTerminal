@@ -68,8 +68,14 @@ int main(int argc, char** argv) {
 
   et::HandleTerminate();
 
+  string logDirectory;
+#ifdef WIN32
+  logDirectory = GetTempDirectory() + "et_test_" + genRandomAlphaNum(12);
+  fs::create_directories(logDirectory);
+#else
   string logDirectoryPattern = GetTempDirectory() + string("et_test_XXXXXXXX");
-  string logDirectory = string(mkdtemp(&logDirectoryPattern[0]));
+  logDirectory = string(mkdtemp(&logDirectoryPattern[0]));
+#endif
   if (!listOnly) {
     CLOG(INFO, "stdout") << "Writing log to " << logDirectory << endl;
   }
@@ -91,11 +97,17 @@ int main(int argc, char** argv) {
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
 
+  // Release file sinks before removing the per-process log directory. Windows
+  // does not allow unlinking open log files.
+  el::Loggers::flushAll();
+  el::Loggers::unregisterLogger("default");
+  el::Loggers::unregisterLogger("stdout");
+
   try {
     fs::remove_all(logDirectory);
   } catch (const fs::filesystem_error& e) {
-    LOG(WARNING) << "Failed to remove test log directory " << logDirectory
-                 << ": " << e.what();
+    std::cerr << "Failed to remove test log directory " << logDirectory << ": "
+              << e.what() << '\n';
   }
   return result;
 }

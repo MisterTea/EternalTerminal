@@ -351,6 +351,13 @@ Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: C
 
 If you have any problems with installation or usage, please [file an issue on GitHub](https://github.com/MisterTea/EternalTerminal/issues).
 
+## Protocol and design documentation
+
+- [Eternal Terminal protocol](docs/protocol.md)
+- [HTM terminal emulator protocol](docs/htm-terminal-protocol.md)
+- [`htm` to `htmd` IPC protocol](docs/htm-ipc-protocol.md)
+- [HTM design and architecture](docs/htm-design.md)
+
 ## Developers
 
 - Jason Gauci: https://github.com/MisterTea

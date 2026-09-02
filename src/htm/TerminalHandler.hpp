@@ -53,6 +53,12 @@ class TerminalHandler {
   void* outputRead;
   /** @brief Child process handle. */
   void* processHandle;
+  /** @brief Continuously drains ConPTY's synchronous output channel. */
+  thread outputThread;
+  /** @brief Guards output waiting to be consumed by pollUserTerminal(). */
+  mutex pendingOutputMutex;
+  /** @brief Bytes drained by outputThread and awaiting a poll. */
+  string pendingOutput;
 #else
   /** @brief Master fd used to read/write the PTY. */
   int masterFd;
@@ -63,7 +69,7 @@ class TerminalHandler {
   string pendingWrite;
 #endif
   /** @brief Flag that indicates whether the handler is live. */
-  bool run;
+  atomic<bool> run;
   /** @brief Recent fragments that have been read from the PTY. */
   deque<string> buffer;
   /** @brief Running length of the buffered data for tracking split sizes. */

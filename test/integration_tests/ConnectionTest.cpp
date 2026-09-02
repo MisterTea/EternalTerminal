@@ -60,7 +60,7 @@ class Collector {
         lock_guard<std::recursive_mutex> guard(collectorMutex);
         done = true;
       }
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::recursive_mutex> guard(collectorMutex);
         lastSecond = time(NULL);
@@ -97,7 +97,7 @@ class Collector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
     }
     return pop();
   }
@@ -130,7 +130,7 @@ void listenFn(bool* stopListening, int serverFd,
     if (serverConnection->getSocketHandler()->hasData(serverFd)) {
       serverConnection->acceptNewConnection(serverFd);
     }
-    ::usleep(10 * 1000);
+    testSleepMicros(10 * 1000);
   }
 }
 
@@ -161,7 +161,7 @@ void readWriteTest(const string& clientId,
                    SocketEndpoint endpoint) {
   serverConnection->addClientKey(clientId, CRYPTO_KEY);
   // Wait for server to spin up
-  ::usleep(1000 * 1000);
+  testSleepMicros(1000 * 1000);
 
   shared_ptr<ClientConnection> clientConnection(new ClientConnection(
       clientSocketHandler, endpoint, clientId, CRYPTO_KEY));
@@ -171,7 +171,7 @@ void readWriteTest(const string& clientId,
         break;
       }
       LOG(INFO) << "Connection failed, retrying...";
-      ::usleep(1000 * 1000);
+      testSleepMicros(1000 * 1000);
     } catch (const std::runtime_error& ex) {
       STFATAL << "Error connecting to server: " << ex.what();
     }
@@ -185,7 +185,7 @@ void readWriteTest(const string& clientId,
         break;
       }
     }
-    ::usleep(1000 * 1000);
+    testSleepMicros(1000 * 1000);
   }
   shared_ptr<ServerClientConnection> serverClientConnection;
   {
@@ -250,7 +250,7 @@ void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
         },
         new_id);
     futures.push_back(std::move(f));
-    ::usleep((500 + rand() % 1000) * 1000);
+    testSleepMicros((500 + rand() % 1000) * 1000);
   }
   for (auto& f : futures) {
     f.get();
@@ -262,7 +262,7 @@ bool waitForPeerClose(shared_ptr<SocketHandler> socketHandler, int fd) {
   char byte;
   while (time(NULL) <= startTime + 5) {
     if (!socketHandler->hasData(fd)) {
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
       continue;
     }
 
@@ -309,9 +309,13 @@ void runConnectionTestCase(bool flaky,
 
   el::Helpers::setThreadName("Main");
 
+#ifdef WIN32
+  ctx.pipePath = "et_connection_test_" + genRandomAlphaNum(12) + ".ipc";
+#else
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   ctx.pipeDirectory = string(mkdtemp(&tmpPath[0]));
   ctx.pipePath = string(ctx.pipeDirectory) + "/pipe";
+#endif
   ctx.endpoint = SocketEndpoint();
   ctx.endpoint.set_name(ctx.pipePath);
 
@@ -340,7 +344,9 @@ void runConnectionTestCase(bool flaky,
   ctx.serverConnection->shutdown();
   ctx.serverConnection.reset();
   removeOrMissing(ctx.pipePath);
+#ifndef WIN32
   FATAL_FAIL(::remove(ctx.pipeDirectory.c_str()));
+#endif
 
   auto v = ctx.serverSocketHandler->getActiveSockets();
   if (!v.empty()) {

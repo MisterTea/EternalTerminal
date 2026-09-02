@@ -7,8 +7,10 @@
 #include "RawSocketUtils.hpp"
 #include "SocketHandler.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 
 using namespace et;
+using namespace et::test;
 using Catch::Matchers::Equals;
 
 namespace {
@@ -73,11 +75,20 @@ class FdSocketHandler : public SocketHandler {
   bool hasData(int fd) override { return waitOnSocketData(fd); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
 
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
 
   int connect(const SocketEndpoint&) override { return -1; }
@@ -180,7 +191,7 @@ TEST_CASE("BackedReader revive seeds local buffer", "[BackedIO]") {
 TEST_CASE("RawSocketUtils readAll waits for data then returns fully",
           "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   const string payload = "socketutils";
   std::thread writer([&]() {
@@ -200,7 +211,7 @@ TEST_CASE("SocketHandler helpers read/write encoded payloads",
           "[SocketHandler]") {
   FdSocketHandler handler;
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   // Verify writeAllOrReturn followed by readAll moves the entire message.
   const string raw = "handler-data-block";
@@ -444,7 +455,7 @@ TEST_CASE("SocketHandler readProto enforces max length before allocating",
           "[SocketHandler]") {
   FdSocketHandler handler;
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   int64_t oversize = SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH + 1;
   REQUIRE(handler.writeAllOrReturn(fds[1], &oversize, sizeof(oversize)) ==

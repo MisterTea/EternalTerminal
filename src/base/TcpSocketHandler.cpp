@@ -1,6 +1,16 @@
 #include "TcpSocketHandler.hpp"
 
 namespace et {
+namespace {
+const char* GaiStrError(int error) {
+#ifdef WIN32
+  return gai_strerrorA(error);
+#else
+  return gai_strerror(error);
+#endif
+}
+}  // namespace
+
 TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
     : listenBacklog(_listenBacklog > 0 ? _listenBacklog
                                        : DEFAULT_LISTEN_BACKLOG) {
@@ -34,7 +44,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc == EAI_NONAME) {
-    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << gai_strerror(rc);
+    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << GaiStrError(rc);
     if (results) {
       freeaddrinfo(results);
     }
@@ -43,7 +53,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   if (rc != 0) {
     LOG(INFO) << "Error getting address info for " << endpoint << ": " << rc
-              << " (" << gai_strerror(rc) << ")";
+              << " (" << GaiStrError(rc) << ")";
     if (results) {
       freeaddrinfo(results);
     }
@@ -179,7 +189,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   if ((rc = getaddrinfo(bindIp, portname.c_str(), &hints, &servinfo)) != 0) {
     STERROR << "Error getting address info for " << port << ": " << rc << " ("
-            << gai_strerror(rc) << ")";
+            << GaiStrError(rc) << ")";
     exit(1);
   }
 

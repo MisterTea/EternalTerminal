@@ -142,6 +142,10 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
+  if (!SetCurrentDirectoryA(GetTempDirectory().c_str())) {
+    STFATAL << "Failed to use the temp directory for HTM IPC: "
+            << GetLastError();
+  }
 #endif
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");

@@ -12,6 +12,10 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
+  if (!SetCurrentDirectoryA(GetTempDirectory().c_str())) {
+    STFATAL << "Failed to use the temp directory for HTM IPC: "
+            << GetLastError();
+  }
 #endif
 
   // Setup easylogging configurations
