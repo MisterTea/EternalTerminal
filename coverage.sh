@@ -48,7 +48,8 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   cmake ../ -DBUILD_TESTING=ON -DCODE_COVERAGE=ON -DDISABLE_TELEMETRY=ON -G Ninja
   find . -name "*.gcda" -delete
   ninja
-  ctest --parallel --output-on-failure
+  jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
+  ctest --parallel "${jobs}" --output-on-failure
   popd
 fi
 
