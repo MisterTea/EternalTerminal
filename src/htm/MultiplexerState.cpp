@@ -1417,8 +1417,12 @@ string MultiplexerState::listAllPanes(const string& format) {
 string MultiplexerState::capturePane(uint32_t paneId, bool escapes, bool alt,
                                      int startLine, int endLine, bool joinWrap,
                                      bool preserveTrailing) {
-  return panes.at(paneId)->screen->capture(escapes, alt, startLine, endLine,
-                                           joinWrap, preserveTrailing);
+  auto it = panes.find(paneId);
+  if (it == panes.end() || !it->second || !it->second->screen) {
+    return string();
+  }
+  return it->second->screen->capture(escapes, alt, startLine, endLine, joinWrap,
+                                     preserveTrailing);
 }
 
 string MultiplexerState::displayFormat(const string& format, uint32_t sessionId,
