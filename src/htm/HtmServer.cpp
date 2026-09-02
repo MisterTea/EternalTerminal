@@ -192,4 +192,10 @@ string HtmServer::getPipeName() {
   return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".ipc");
 #endif
 }
+
+#ifdef WIN32
+string HtmServer::getShutdownEventName() {
+  return string("Local\\EternalTerminal.HtmShutdown.") + GetHtmIpcUser();
+}
+#endif
 }  // namespace et

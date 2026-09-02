@@ -32,10 +32,26 @@ void HtmClient::run() {
   const int BUF_SIZE = 1024;
   char buf[BUF_SIZE];
   HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
+  DWORD consoleMode = 0;
+  bool isConsole = GetConsoleMode(stdinHandle, &consoleMode) != 0;
 
   while (true) {
     bool didWork = false;
-    if (WaitForSingleObject(stdinHandle, 0) == WAIT_OBJECT_0) {
+    bool stdinReady = false;
+    if (isConsole) {
+      stdinReady = WaitForSingleObject(stdinHandle, 0) == WAIT_OBJECT_0;
+    } else {
+      DWORD avail = 0;
+      BOOL ok = PeekNamedPipe(stdinHandle, NULL, 0, NULL, &avail, NULL);
+      if (!ok) {
+        if (GetLastError() == ERROR_BROKEN_PIPE) {
+          throw std::runtime_error("stdin has closed abruptly.");
+        }
+      } else if (avail > 0) {
+        stdinReady = true;
+      }
+    }
+    if (stdinReady) {
       DWORD n = 0;
       if (!ReadFile(stdinHandle, buf, BUF_SIZE, &n, NULL)) {
         throw std::runtime_error("Cannot read from stdin");
