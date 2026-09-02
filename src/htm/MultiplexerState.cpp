@@ -129,7 +129,8 @@ shared_ptr<MultiplexerState::Pane> MultiplexerState::makePane(
   pane->cols = width;
   pane->rows = height;
   pane->terminal = make_shared<TerminalHandler>();
-  pane->terminal->start(cwd.empty() ? defaultCwd() : cwd);
+  pane->terminal->start(cwd.empty() ? defaultCwd() : cwd, pane->cols,
+                        pane->rows);
   pane->screen.reset(new PaneScreen(pane->cols, pane->rows));
   panes[pane->id] = pane;
   return pane;
@@ -1037,11 +1038,26 @@ string MultiplexerState::dumpLayout(uint32_t windowId, bool visible) const {
   return string(buf) + "," + body;
 }
 
+string MultiplexerState::windowRawFlags(const Window* window) const {
+  string f;
+  auto sit = sessions.find(window->sessionId);
+  if (sit != sessions.end() && sit->second->activeWindow == window->id) {
+    f.push_back('*');
+  }
+  if (window->zoomedPane) {
+    f.push_back('Z');
+  }
+  return f;
+}
+
 void MultiplexerState::emitLayout(Window* window) {
-  string flags = window->zoomedPane ? "Z" : "";
+  // tmux 3.x: %layout-change #{window_id} #{window_layout}
+  // #{window_visible_layout} #{window_raw_flags}
+  // Always include the flags field (possibly empty) so the space before it
+  // remains; clients such as WezTerm require LAYOUT LAYOUT FLAGS.
   notify("%layout-change @" + to_string(window->id) + " " +
          dumpLayout(window->id, false) + " " + dumpLayout(window->id, true) +
-         (flags.empty() ? "" : " " + flags));
+         " " + windowRawFlags(window));
 }
 
 void MultiplexerState::attachNotifications() {
@@ -1153,17 +1169,11 @@ string MultiplexerState::expandOne(const string& name, Session* session,
       return dumpLayout(window->id, true);
     }
     if (name == "window_flags") {
-      string f;
-      if (session && session->activeWindow == window->id) {
-        f += "*";
-      }
-      if (window->zoomedPane) {
-        f += "Z";
-      }
+      string f = windowRawFlags(window);
       return f.empty() ? "-" : f;
     }
     if (name == "window_raw_flags") {
-      return window->zoomedPane ? "Z" : "";
+      return windowRawFlags(window);
     }
     if (name == "window_width") {
       return to_string(window->cols);
@@ -1173,6 +1183,9 @@ string MultiplexerState::expandOne(const string& name, Session* session,
     }
     if (name == "window_active") {
       return (session && session->activeWindow == window->id) ? "1" : "0";
+    }
+    if (name == "history_limit") {
+      return "2000";
     }
   }
   if (pane) {

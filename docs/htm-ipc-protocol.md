@@ -4,12 +4,14 @@
 
 `htm` is the foreground client attached to a terminal emulator's PTY. `htmd`
 is the persistent per-user daemon that owns multiplexer state and shell PTYs.
-This document defines their local transport, framing, connection lifecycle, and
-failure behavior.
+This document defines their local transport, byte stream, connection
+lifecycle, and failure behavior.
 
-For the terminal-emulator view of the same messages, including the layout JSON
-and author responsibilities, see [HTM Terminal Emulator
-Protocol](htm-terminal-protocol.md).
+The bytes on this socket **are** tmux control mode: commands from `htm` toward
+`htmd`, notifications and `%begin`/`%end` blocks the other way. There is no
+second framing layer. For command and notification meaning, see [HTM and tmux
+Control Mode](htm-terminal-protocol.md) and the
+[tmux Control Mode wiki](https://github.com/tmux/tmux/wiki/Control-Mode).
 
 ## Transport and endpoint
 
@@ -17,7 +19,7 @@ The peers communicate over a local stream socket through `PipeSocketHandler`.
 There is no transport handshake, authentication exchange, encryption, or
 version negotiation. Access control therefore depends on the operating system,
 the per-user endpoint name, and local filesystem/process isolation. This
-protocol MUST NOT be exposed as a network service.
+socket MUST NOT be exposed as a network service.
 
 The default endpoint is per user:
 
@@ -28,143 +30,119 @@ The default endpoint is per user:
   drive-qualified paths.
 
 `htm` attempts a connection up to five times, one second apart. The daemon
-listens continuously but services only one active client. It does not accept a
-waiting client until the active client disconnects; after acceptance it starts
-recovery for the new client.
+listens continuously but services only one active client. Accepting a new
+client disconnects the previous one and runs recovery for the newcomer.
 
 ## Byte forwarding
 
-Once connected, `htm` is a bidirectional bridge:
+Once connected, `htm` is a bidirectional byte bridge:
 
 ```text
 terminal PTY input  -> htm stdin  -> IPC stream -> htmd
 htmd IPC stream     -> htm stdout -> terminal PTY output
 ```
 
-Messages are not acknowledged by `htm`, assigned sequence numbers, or
-reordered. The bridge preserves their bytes and order. Unix `htm` additionally
-recognizes complete server frame boundaries so it can apply bounded output
-queues and backpressure without emitting partial frames; this does not change
-the stream. Windows currently forwards available chunks directly.
+`htm` does not parse, acknowledge, sequence, or reorder the stream. Unix
+`htm` applies bounded nonblocking queues in each direction so a stalled
+terminal read cannot stop it from accepting input. Windows currently forwards
+available chunks directly.
 
-## Framing
+Two sequences are **not** part of the IPC stream. `htm` writes them only to
+the terminal PTY:
 
-All ordinary messages use:
+- DCS `ESC P 1000 p` immediately before it starts forwarding, so the emulator
+  enters tmux `-CC` mode;
+- ST `ESC \` when `htm` exits, so the emulator leaves that mode.
 
-```text
-type[1] + Base64(int32_le(payload_length))[8] + payload[payload_length]
-```
+`htmd` never emits DCS or ST.
 
-The Base64 form is the standard alphabet with `=` padding. The length is a
-signed 32-bit little-endian value and counts payload bytes as transmitted.
-`SESSION_END` is the single ASCII byte `D`, without a length field.
+## Line discipline on the daemon
 
-The reader MUST accumulate partial fields and MUST allow multiple frames in a
-single stream read. A negative or excessive length is invalid. Server input is
-strict: an unexpected type or malformed field disconnects the client.
+`htmd` reads the IPC stream as control-mode text. It splits commands on CR,
+LF, or CRLF. iTerm2's tmux gateway writes CR; a real tmux client usually sees
+LF because the PTY has ICRNL. `htm` puts stdin in raw mode, so the daemon
+accepts both.
 
-The message set is:
-
-| Type | Name | Direction | Wire payload length | Wire payload |
-| --- | --- | --- | --- | --- |
-| `1` | `INSERT_KEYS` | `htm` -> `htmd` | `36 + Base64Length(n)` | pane UUID + Base64 input bytes |
-| `2` | `INIT_STATE` | `htmd` -> `htm` | JSON byte count | raw UTF-8 JSON |
-| `3` | `CLIENT_CLOSE_PANE` | `htm` -> `htmd` | 36 | pane UUID |
-| `4` | `APPEND_TO_PANE` | `htmd` -> `htm` | `36 + Base64Length(n)` | pane UUID + Base64 PTY output |
-| `5` | `NEW_TAB` | `htm` -> `htmd` | 72 | tab UUID + initial pane UUID |
-| `8` | `SERVER_CLOSE_PANE` | `htmd` -> `htm` | 36 | pane UUID |
-| `9` | `NEW_SPLIT` | `htm` -> `htmd` | 73 | source pane UUID + new pane UUID + ASCII `1` vertical or `0` horizontal |
-| `A` | `RESIZE_PANE` | `htm` -> `htmd` | 52 | Base64 int32 columns + Base64 int32 rows + pane UUID |
-| `B` | `DEBUG_LOG` | `htmd` -> `htm` | `Base64Length(n)` | Base64 diagnostic bytes |
-| `C` | `INSERT_DEBUG_KEYS` | `htm` -> `htmd` | command byte count, at least 1 | raw diagnostic command bytes |
-| `D` | `SESSION_END` | either direction | none | none |
-
-Every UUID is exactly 36 ASCII bytes. `Base64Length(n)` is
-`4 * ceil(n / 3)`. Empty Base64 fields have zero bytes.
-
-The currently accepted client-to-daemon framed types are `1`, `3`, `5`, `9`,
-`A`, and `C`. `D` is accepted as the standalone lifecycle byte. Sending a
-server-to-client type in the other direction is a protocol error.
+An empty line detaches the client. Non-empty lines are tmux command lists
+(unquoted `;` separates commands). `htmd` logs each command and replies with
+`%begin`/`%end` or `%begin`/`%error`. Asynchronous notifications (`%output`,
+`%layout-change`, …) are queued while a reply block is open and flushed
+after `%end`/`%error`, matching tmux.
 
 ## Connection lifecycle
 
 ### Initial attachment and reconnect
 
-After every accept, `htmd` writes the following in order:
+After every accept, `htmd` writes:
 
-1. raw six-byte terminal init marker `ESC [ # # # q`;
-2. a `DEBUG_LOG` initialization message;
-3. one `INIT_STATE` containing the complete current model;
-4. zero or more `APPEND_TO_PANE` frames containing retained pane output;
-5. a `DEBUG_LOG` ready message.
+1. an empty server-originated reply (`%begin <t> 1 0` / `%end <t> 1 0`);
+2. snapshot notifications for the attached session (`%sessions-changed`,
+   `%session-changed`, `%window-add`, `%layout-change`,
+   `%session-window-changed`, `%window-pane-changed`).
 
-The init marker is deliberately outside normal framing. `htm` forwards it to
-the terminal emulator. Recovery is a state snapshot plus bounded scrollback,
-not a retransmission log: the protocol has no message IDs or acknowledgement
-positions.
+Recovery is that snapshot, not a retransmission log: the protocol has no
+message IDs or acknowledgement positions. Pane output that arrived while no
+client was attached is not replayed as `%output`.
 
 The daemon's multiplexer state and pane PTYs survive a client disconnect. A
-replacement client receives another recovery sequence. The final pane closing
-causes `htmd` to stop.
+replacement client receives another recovery sequence. Closing the last pane,
+or `kill-server`, stops `htmd`.
 
 ### Graceful close
 
-`IpcPairEndpoint::closeEndpoint` writes `D` and then closes the stream. Receipt
-of `D`, orderly EOF, or an unrecoverable read/write error ends the foreground
-bridge. `htm` then emits the terminal-facing exit marker `ESC [ $ $ $ q` and
-restores the console mode.
+Either side closing the stream ends the foreground bridge. `htmd` also
+detaches when it receives an empty line, `detach-client`, or `exit`; it then
+emits `%exit` and closes the socket. `htm` writes ST to the terminal and
+restores console mode.
 
-`D` is recognized only at a frame boundary. A `D` byte inside a declared
-payload is data, not a close request.
+There is no application-level close byte on the socket.
 
 ### Daemon replacement
 
-`htm -x` requests replacement of an existing per-user daemon before starting a
-new one. Unix uses per-user process discovery/termination and removes a stale
-socket path. Windows uses the named event
-`Local\\EternalTerminal.HtmShutdown.<user>` for graceful shutdown, with process
-termination as a compatibility fallback. The named event is lifecycle control,
-not part of the stream protocol.
+`htm -x` requests replacement of an existing per-user daemon before starting
+a new one. Unix uses per-user process discovery/termination and removes a
+stale socket path. Windows uses the named event
+`Local\\EternalTerminal.HtmShutdown.<user>` for graceful shutdown, with
+process termination as a compatibility fallback. The named event is lifecycle
+control, not part of the stream protocol.
 
 ## Flow control and limits
 
-The IPC protocol has no application-level flow-control messages. It relies on
-stream-socket backpressure.
+The IPC path has no extra application-level flow-control messages beyond what
+tmux control mode already defines (`refresh-client -f pause-after`,
+`refresh-client -A`, `%pause` / `%continue` / `%extended-output`). Socket
+backpressure still applies.
 
 On Unix, `htm` bounds pending data in each direction to 256 KiB. It stops
 reading the source whose destination queue is full, allowing kernel
-backpressure to propagate. It validates server payload lengths against a 4 MiB
-maximum before moving a complete frame to terminal output. Implementations
-should use equivalent bounded queues and must continue servicing input while
-terminal output is blocked.
+backpressure to propagate. Implementations should use equivalent bounded
+queues and must continue servicing input while terminal output is blocked.
 
-The daemon encodes each currently available PTY-output chunk as its own
-`APPEND_TO_PANE` frame. Consumers must not assume one frame corresponds to one
+Each currently available PTY-output chunk becomes its own `%output` (or
+`%extended-output`) line. Consumers must not assume one notification is one
 line, one escape sequence, or one application write.
 
 ## Compatibility constraints
 
-The current framing encodes native C++ `int32_t` memory and the supported
-implementations/tests define that as little-endian. All current supported
-desktop targets are little-endian. A port to a big-endian host must still emit
-and consume little-endian values to remain interoperable.
+Because the wire format is tmux control mode:
 
-Because there is no negotiated protocol version:
-
-- existing type values and payload layouts must remain stable;
-- new framed message types can be added only when old receivers can safely
-  skip them or after capability negotiation is introduced;
-- framing, integer representation, and init-marker changes require a new
-  negotiated protocol version.
+- command names, flags, notification shapes, and layout strings SHOULD stay
+  compatible with the GUI clients HTM targets (iTerm2, WezTerm, Hyper
+  plugins, and others that speak `tmux -CC`);
+- `#{version}` is reported as `3.5a` so those clients enable modern flags;
+- unknown commands already return `%error`; new commands can be added without
+  a private version handshake;
+- `%layout-change` uses tmux 3.x's four-field form (layout, visible layout,
+  flags), including an empty flags field with a trailing space.
 
 ## Failure handling
 
-`htmd` disconnects the client when it receives an unknown client header,
-invalid Base64, a short/closed stream, or another read/write failure. The daemon
-continues running and keeps pane state unless it was explicitly stopped or has
-no panes. A terminal integration should treat loss of `htm` as a detach and MAY
-offer to launch a new `htm` process to recover.
+`htmd` disconnects the client on a short/closed stream or an unrecoverable
+read/write error. Parse failures are reported as `%error` and do not by
+themselves stop the daemon. The daemon keeps pane state unless it was
+explicitly stopped or has no panes. A terminal integration should treat loss
+of `htm` as a detach and MAY offer to launch a new `htm` process to recover.
 
-Neither side currently sends structured error frames. Diagnostic details go to
-process logs or `DEBUG_LOG`; callers must not depend on diagnostic text for
-state transitions.
+Neither side sends a private error frame type. Diagnostic details go to
+process logs (`control command: …` on the daemon). Callers must not depend on
+log text for state transitions.

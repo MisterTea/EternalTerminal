@@ -46,8 +46,20 @@ int main(int argc, char** argv) {
              "build/htm --htmd build/htmd\n";
       return 2;
     } else if (argEqualsIgnoreCase(argv[i], "hyper")) {
-      std::cerr << "Hyper e2e lives in the hyper-htm repo. Run: npm run "
-                   "test:system\n";
+      std::cerr
+          << "Hyper e2e is not part of default Catch2/CTest. Run:\n"
+          << "  python3 test/system_tests/hyper_htm_e2e.py --htm build/htm "
+             "--htmd build/htmd\n"
+          << "  python3 test/system_tests/hyper_htm_stress_e2e.py --htm "
+             "build/htm --htmd build/htmd\n";
+      return 2;
+    } else if (argEqualsIgnoreCase(argv[i], "wezterm")) {
+      std::cerr
+          << "WezTerm e2e is not part of default Catch2/CTest. Run:\n"
+          << "  python3 test/system_tests/wezterm_htm_e2e.py --htm build/htm "
+             "--htmd build/htmd\n"
+          << "  python3 test/system_tests/wezterm_htm_stress_e2e.py --htm "
+             "build/htm --htmd build/htmd\n";
       return 2;
     }
   }

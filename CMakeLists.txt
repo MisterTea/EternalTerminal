@@ -718,11 +718,16 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    # iTerm2 / Ghostty / Hyper e2e stay opt-in until those terminals speak
-    # tmux -CC against htm. Default ctest and `./et-test` skip them. Run with:
+    # iTerm2 / Ghostty / Hyper / WezTerm e2e stay opt-in until those terminals
+    # speak tmux -CC against htm. Default ctest and `./et-test` skip them.
+    # Run with:
     #   ./et-test ghostty
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
     #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
-    #   (Hyper: hyper-htm repo, npm run test:system)
+    #   python3 test/system_tests/hyper_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/wezterm_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
     catch_discover_tests(
       et-test
       TEST_SPEC "~[.ghostty]"
@@ -785,9 +790,15 @@ else(WIN32)
           RUN_SERIAL TRUE
       )
     endif()
-    # iTerm2 GUI e2e is not registered with CTest. Run it explicitly:
+    # GUI e2e is not registered with CTest. Suites (layout, stress) are shared;
+    # each emulator is a driver. Run:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_stress_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_stress_e2e.py
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)

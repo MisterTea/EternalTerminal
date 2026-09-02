@@ -553,6 +553,22 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       writer->end();
       return ControlAction::None;
     }
+    if (cmd.name == "list-commands" || cmd.name == "lscm") {
+      // WezTerm probes this after %session-changed. Include refresh-client
+      // with -C XxY so it can size the client the way modern tmux does.
+      writer->begin();
+      writer->writeOutput(
+          "kill-pane [-a] [-t target-pane]\n"
+          "new-window [-adkP] [-c start-directory] [-n window-name] "
+          "[-t target-window]\n"
+          "refresh-client [-C XxY] [-t target-client]\n"
+          "resize-pane [-DLRTUZ] [-x width] [-y height] [-t target-pane]\n"
+          "resize-window [-aADLTUx] [-x width] [-y height] [-t target-window]\n"
+          "send-keys [-Hl] [-t target-pane] key ...\n"
+          "split-window [-bdfhvP] [-c start-directory] [-t target-pane]");
+      writer->end();
+      return ControlAction::None;
+    }
     if (cmd.name == "copy-mode" || cmd.name == "list-keys" ||
         cmd.name == "lsk" || cmd.name == "list-clients" || cmd.name == "lsc" ||
         cmd.name == "phony-command" || cmd.name == "clear-history" ||
