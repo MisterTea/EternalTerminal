@@ -423,18 +423,18 @@ void MultiplexerState::swapPanes(uint32_t a, uint32_t b) {
   }
   auto pa = panes[a];
   auto pb = panes[b];
-  uint32_t aParent = pa->parentId;
+  uint32_t parentA = pa->parentId;
   bool aWin = pa->parentIsWindow;
   uint32_t aWindowId = pa->windowId;
-  uint32_t bParent = pb->parentId;
+  uint32_t parentB = pb->parentId;
   bool bWin = pb->parentIsWindow;
   uint32_t bWindowId = pb->windowId;
 
   if (aWin && bWin) {
     windows.at(aWindowId)->rootId = b;
     windows.at(bWindowId)->rootId = a;
-  } else if (!aWin && !bWin && aParent == bParent) {
-    for (uint32_t& child : splits.at(aParent)->children) {
+  } else if (!aWin && !bWin && parentA == parentB) {
+    for (uint32_t& child : splits.at(parentA)->children) {
       if (child == a) {
         child = b;
       } else if (child == b) {
@@ -459,14 +459,14 @@ void MultiplexerState::swapPanes(uint32_t a, uint32_t b) {
         }
       }
     };
-    replaceChild(aWin, aParent, aWindowId, a, b);
-    replaceChild(bWin, bParent, bWindowId, b, a);
+    replaceChild(aWin, parentA, aWindowId, a, b);
+    replaceChild(bWin, parentB, bWindowId, b, a);
   }
 
-  pa->parentId = bParent;
+  pa->parentId = parentB;
   pa->parentIsWindow = bWin;
   pa->windowId = bWindowId;
-  pb->parentId = aParent;
+  pb->parentId = parentA;
   pb->parentIsWindow = aWin;
   pb->windowId = aWindowId;
 
