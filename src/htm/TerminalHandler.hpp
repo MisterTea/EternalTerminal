@@ -18,7 +18,7 @@ class TerminalHandler {
   ~TerminalHandler();
   /** @brief Forks a child shell connected to a pty for interactive
    * input/output. */
-  void start(const string& cwd = "");
+  void start(const string& cwd = "", int cols = 80, int rows = 24);
   /** @brief Child process id, or 0 if unknown. */
   int64_t childProcessId() const;
   /**

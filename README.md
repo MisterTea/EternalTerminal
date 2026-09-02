@@ -354,7 +354,7 @@ If you have any problems with installation or usage, please [file an issue on Gi
 ## Protocol and design documentation
 
 - [Eternal Terminal protocol](docs/protocol.md)
-- [HTM terminal emulator protocol](docs/htm-terminal-protocol.md)
+- [HTM and tmux control mode](docs/htm-terminal-protocol.md)
 - [`htm` to `htmd` IPC protocol](docs/htm-ipc-protocol.md)
 - [HTM design and architecture](docs/htm-design.md)
 

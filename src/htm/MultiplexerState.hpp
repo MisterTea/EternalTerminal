@@ -113,6 +113,7 @@ class MultiplexerState {
   void layoutNode(uint32_t id, int x, int y, int cols, int rows);
   string dumpNode(uint32_t id) const;
   void emitLayout(Window* window);
+  string windowRawFlags(const Window* window) const;
   void notify(const string& line);
   string expand(const string& format, Session* session, Window* window,
                 Pane* pane);

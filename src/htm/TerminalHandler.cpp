@@ -110,7 +110,7 @@ int64_t TerminalHandler::childProcessId() const {
 }
 
 #ifdef WIN32
-void TerminalHandler::start(const string& cwd) {
+void TerminalHandler::start(const string& cwd, int cols, int rows) {
   HANDLE ptyIn = INVALID_HANDLE_VALUE;
   HANDLE ptyOut = INVALID_HANDLE_VALUE;
   HANDLE ourIn = INVALID_HANDLE_VALUE;
@@ -121,8 +121,8 @@ void TerminalHandler::start(const string& cwd) {
   }
 
   COORD size;
-  size.X = 80;
-  size.Y = 24;
+  size.X = static_cast<SHORT>(cols > 0 ? cols : 80);
+  size.Y = static_cast<SHORT>(rows > 0 ? rows : 24);
   HPCON pc = nullptr;
   HRESULT hr = CreatePseudoConsole(size, ptyIn, ptyOut, 0, &pc);
   if (FAILED(hr)) {
@@ -281,8 +281,12 @@ void TerminalHandler::stop() {
   }
 }
 #else
-void TerminalHandler::start(const string& cwd) {
-  pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+void TerminalHandler::start(const string& cwd, int cols, int rows) {
+  winsize ws;
+  memset(&ws, 0, sizeof(ws));
+  ws.ws_col = static_cast<unsigned short>(cols > 0 ? cols : 80);
+  ws.ws_row = static_cast<unsigned short>(rows > 0 ? rows : 24);
+  pid_t pid = forkpty(&masterFd, NULL, NULL, &ws);
   switch (pid) {
     case -1:
       throw std::runtime_error(string("forkpty failed: ") +
@@ -304,6 +308,10 @@ void TerminalHandler::start(const string& cwd) {
       string terminal =
           (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
       setenv("HTM_VERSION", ET_VERSION, 1);
+      // zsh's default PROMPT_EOL_MARK is a highlighted `%` plus spaces to the
+      // right margin. GUI panes (Hyper, iTerm2) reflow that padding into a
+      // stray `%` on its own line. Empty the mark so a fresh pane is clean.
+      setenv("PROMPT_EOL_MARK", "", 1);
       // Non-login: inherit PATH from htmd and skip login scripts that may
       // switch to csh (FreeBSD's default user shell).
       execl(terminal.c_str(), terminal.c_str(), NULL);

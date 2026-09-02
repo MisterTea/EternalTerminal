@@ -179,6 +179,70 @@ TEST_CASE("HtmServer recovers and speaks control mode", "[Htm][HtmServer]") {
       8000));
 }
 
+TEST_CASE("HtmServer layout-change matches tmux 3.x fields",
+          "[Htm][HtmServer]") {
+  auto fields = [](const string& line) {
+    vector<string> out;
+    string cur;
+    for (char c : line) {
+      if (c == ' ') {
+        out.push_back(cur);
+        cur.clear();
+      } else {
+        cur.push_back(c);
+      }
+    }
+    out.push_back(cur);
+    return out;
+  };
+  auto isTmux3 = [&](const string& line) {
+    auto f = fields(line);
+    return f.size() >= 5 && f[0] == "%layout-change" && !f[1].empty() &&
+           f[1][0] == '@' && f[2].find('x') != string::npos &&
+           f[3].find('x') != string::npos;
+  };
+
+  HtmServerHarness h;
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        for (const string& line : h.lines) {
+          if (isTmux3(line) && line.find(" *") != string::npos) {
+            return true;
+          }
+        }
+        return false;
+      },
+      5000));
+
+  h.command("split-window -h");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        int n = 0;
+        for (const string& line : h.lines) {
+          if (isTmux3(line)) {
+            n++;
+          }
+        }
+        return n >= 2;
+      },
+      5000));
+
+  h.command("resize-pane -Z");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        for (const string& line : h.lines) {
+          if (isTmux3(line) && line.find(" *Z") != string::npos) {
+            return true;
+          }
+        }
+        return false;
+      },
+      5000));
+}
+
 TEST_CASE("HtmServer streams concurrent output from windows and splits",
           "[Htm][HtmServer]") {
   HtmServerHarness h;

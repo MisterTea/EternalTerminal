@@ -89,12 +89,23 @@ TEST_CASE("displayFormat expands window_active conditionals",
           "[Htm][MultiplexerState]") {
   skipIfThreadSanitizer();
   MultiplexerState mux;
-  string fmt = "#{window_id}\t#{?window_active,1,0}\t#{pane-border-status}";
+  string fmt =
+      "#{window_id}\t#{?window_active,1,0}\t#{pane-border-status}\t#{history_"
+      "limit}";
   string out = mux.displayFormat(fmt, mux.activeSessionId(),
                                  mux.activeWindowId(), mux.activePaneId());
   REQUIRE(out.find("@") != string::npos);
   REQUIRE(out.find("\t1\t") != string::npos);
   REQUIRE(out.find("off") != string::npos);
+  REQUIRE(out.find("2000") != string::npos);
+  REQUIRE(mux.displayFormat("#{window_raw_flags}", mux.activeSessionId(),
+                            mux.activeWindowId(), mux.activePaneId()) == "*");
+  uint32_t split = mux.splitWindow(mux.activePaneId(), false, "");
+  mux.zoomToggle(split);
+  REQUIRE(mux.displayFormat("#{window_raw_flags}", mux.activeSessionId(),
+                            mux.activeWindowId(), mux.activePaneId()) == "*Z");
+  REQUIRE(mux.displayFormat("#{window_flags}", mux.activeSessionId(),
+                            mux.activeWindowId(), mux.activePaneId()) == "*Z");
   mux.stopAll();
 }
 
@@ -137,5 +148,14 @@ TEST_CASE("executeControlCommand stores session and pane user options",
                                 "set -p -t " + pane + " @uservars foo=bar") ==
           ControlAction::None);
   REQUIRE(mux.getUserOption('p', mux.activePaneId(), "@uservars") == "foo=bar");
+  mux.stopAll();
+}
+
+TEST_CASE("list-commands is a successful no-op probe", "[Htm][ControlMode]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  ControlWriter writer;
+  REQUIRE(executeControlCommand(&mux, &writer, "list-commands") ==
+          ControlAction::None);
   mux.stopAll();
 }
