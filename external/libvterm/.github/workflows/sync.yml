@@ -1,0 +1,44 @@
+name: sync
+on:
+  schedule:
+    - cron: '30 1 * * *' # Run every day at 01:30
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  mirror:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+          ref: mirror
+      - run: sudo apt-get install brz
+
+      - name: Set up git config
+        run: |
+          git config --global user.name 'marvim'
+          git config --global user.email 'marvim@users.noreply.github.com'
+
+      - run: git pull bzr::http://bazaar.leonerd.org.uk/c/libvterm --tags --rebase
+      - run: |
+          git push --force-with-lease
+          git push --tags
+
+  nvim:
+    runs-on: ubuntu-latest
+    needs: mirror
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up git config
+        run: |
+          git config --global user.name 'marvim'
+          git config --global user.email 'marvim@users.noreply.github.com'
+
+      - run: git merge origin/mirror -m "Merge mirror"
+      - run: git push

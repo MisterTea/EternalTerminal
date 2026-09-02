@@ -1,95 +1,134 @@
 #ifndef __MULTIPLEXER_STATE_HPP__
 #define __MULTIPLEXER_STATE_HPP__
 
+#include "ControlMode.hpp"
 #include "Headers.hpp"
+#include "PaneScreen.hpp"
 #include "SocketHandler.hpp"
 #include "TerminalHandler.hpp"
 
 namespace et {
-/** @brief Length of the UUID strings used for tabs/panes/splits. */
-const int UUID_LENGTH = 36;
+
+struct ControlClientFlags {
+  int pauseAfterSec = -1;
+  bool waitExit = false;
+  bool noOutput = false;
+  map<uint32_t, string> paneGate;  // "on" "off" "pause"
+};
 
 /**
- * @brief Keeps track of tabs, splits, and running terminals for HTM sessions.
- *
- * Each pane owns a `TerminalHandler`, and `update()` streams new data back
- * to the client while reacting to pane/split/tab lifecycle events.
+ * @brief Tabs/windows, splits, and panes for HTM control mode.
  */
 class MultiplexerState {
+ public:
+  MultiplexerState();
+  ~MultiplexerState();
+
+  void setWriter(ControlWriter* writer) { this->writer = writer; }
+  void attachNotifications();
+  void pollOutput();
+  void stopAll();
+  bool empty() const;
+
+  uint32_t newWindow(const string& name, const string& cwd);
+  uint32_t splitWindow(uint32_t sourcePane, bool stacked, const string& cwd);
+  void closePane(uint32_t paneId);
+  void closeWindow(uint32_t windowId);
+  void swapPanes(uint32_t a, uint32_t b);
+  void movePane(uint32_t src, uint32_t dst, bool stacked, bool before);
+  uint32_t breakPane(uint32_t paneId);
+  void moveWindowToSession(uint32_t windowId, uint32_t sessionId);
+  void setUserOption(char scope, uint32_t targetId, const string& name,
+                     const string& value, bool append = false);
+  void unsetUserOption(char scope, uint32_t targetId, const string& name);
+  string getUserOption(char scope, uint32_t targetId, const string& name) const;
+  void sendKeys(uint32_t paneId, const string& data);
+  void selectPane(uint32_t paneId);
+  void selectWindow(uint32_t windowId);
+  void resizePaneDir(uint32_t paneId, char dir, int amount);
+  void zoomToggle(uint32_t paneId);
+  void setClientSize(int cols, int rows);
+  void setWindowSize(uint32_t windowId, int cols, int rows);
+  void renameWindow(uint32_t windowId, const string& name);
+  void setPaneTitle(uint32_t paneId, const string& title);
+  void selectLayout(uint32_t windowId, const string& layout);
+
+  uint32_t newSession(const string& name);
+  void closeSession(uint32_t sessionId);
+  void renameSession(uint32_t sessionId, const string& name);
+  void attachSession(uint32_t sessionId);
+
+  string listSessions(const string& format);
+  string listWindows(const string& format, uint32_t sessionId);
+  string listPanes(const string& format, uint32_t windowId);
+  string listAllPanes(const string& format);
+  string capturePane(uint32_t paneId, bool escapes, bool alt, int startLine,
+                     int endLine, bool joinWrap, bool preserveTrailing);
+  string displayFormat(const string& format, uint32_t sessionId,
+                       uint32_t windowId, uint32_t paneId);
+
+  uint32_t parsePaneTarget(const string& target);
+  uint32_t parseWindowTarget(const string& target);
+  uint32_t parseSessionTarget(const string& target);
+  uint32_t activePaneId() const;
+  uint32_t activeWindowId() const;
+  uint32_t activeSessionId() const { return attachedSession; }
+  int clientCols() const { return width; }
+  int clientRows() const { return height; }
+  bool hasPane(uint32_t id) const { return panes.count(id) != 0; }
+  bool hasWindow(uint32_t id) const { return windows.count(id) != 0; }
+  bool hasSession(uint32_t id) const { return sessions.count(id) != 0; }
+  int numPanes() const { return int(panes.size()); }
+
+  ControlClientFlags clientFlags;
+  map<string, string> pasteBuffers;
+
+  uint16_t layoutChecksum(const string& layout) const;
+  string dumpLayout(uint32_t windowId, bool visible) const;
+
  protected:
   struct Pane;
   struct Split;
-  struct Tab;
+  struct Window;
+  struct Session;
 
- public:
-  /** @brief Initializes the multiplexer using the supplied IPC handler. */
-  MultiplexerState(shared_ptr<SocketHandler> _socketHandler);
-  /** @brief Stops every pane PTY so tests and shutdown do not leak shells. */
-  ~MultiplexerState();
-  /** @brief Serializes the current tabs/panes/splits into JSON for INIT_STATE.
-   */
-  string toJsonString();
-  /** @brief Sends keystrokes from the client into the pane's terminal. */
-  void appendData(const string& uid, const string& data);
-  /** @brief Creates a new tab that is backed by a newly spawned terminal. */
-  void newTab(const string& tabId, const string& paneId);
-  /** @brief Adds a split alongside `sourceId` using the requested orientation.
-   */
-  void newSplit(const string& sourceId, const string& paneId, bool vertical);
-  /** @brief Stops and removes a pane, collapsing its split/tab as needed. */
-  void closePane(const string& paneId);
-  /** @brief Stops every pane PTY. Safe to call more than once. */
-  void stopAll();
-  /** @brief Reads from every `TerminalHandler` and streams data to the client.
-   */
-  void update(int endpointFd);
-  /** @brief Dumps the current terminal buffers whenever a client reconnects. */
-  void sendTerminalBuffers(int endpointFd);
-  /** @brief Adjusts the terminal window size for a pane. */
-  void resizePane(const string& paneId, int cols, int rows);
-  /** @brief Returns the current number of active panes. */
-  inline int numPanes() { return int(panes.size()); }
+  ControlWriter* writer;
+  uint32_t nextSessionId;
+  uint32_t nextWindowId;
+  uint32_t nextPaneId;
+  uint32_t nextSplitId;
+  uint32_t attachedSession;
+  int width;
+  int height;
 
- protected:
-  /** @brief Socket handler used for all HTM IPC reads/writes. */
-  shared_ptr<SocketHandler> socketHandler;
-  /** @brief Registered tabs by ID. */
-  map<string, shared_ptr<Tab>> tabs;
-  /** @brief Active panes keyed by their UUID. */
-  map<string, shared_ptr<Pane>> panes;
-  /** @brief Split nodes identified by their UUID. */
-  map<string, shared_ptr<Split>> splits;
-  /** @brief IDs that have already been closed to prevent reuse. */
-  set<string> closed;
+  map<uint32_t, shared_ptr<Session>> sessions;
+  map<uint32_t, shared_ptr<Window>> windows;
+  map<uint32_t, shared_ptr<Pane>> panes;
+  map<uint32_t, shared_ptr<Split>> splits;
+  map<string, string> globalOptions;
+  map<string, string> serverOptions;
 
-  /** @brief Fetches a tab object, verifying it exists. */
-  inline shared_ptr<Tab> getTab(const string& id) {
-    auto it = tabs.find(id);
-    if (it == tabs.end()) {
-      STFATAL << "Tried to get a pane that doesn't exist: " << id;
-    }
-    return it->second;
-  }
-  /** @brief Fetches a pane object, verifying it exists. */
-  inline shared_ptr<Pane> getPane(const string& id) {
-    auto it = panes.find(id);
-    if (it == panes.end()) {
-      STFATAL << "Tried to get a pane that doesn't exist: " << id;
-    }
-    return it->second;
-  }
-  /** @brief Fetches a split object, verifying it exists. */
-  inline shared_ptr<Split> getSplit(const string& id) {
-    auto it = splits.find(id);
-    if (it == splits.end()) {
-      STFATAL << "Tried to get a pane that doesn't exist: " << id;
-    }
-    return it->second;
-  }
-
-  /** @brief Helper that ensures new IDs are unique across tabs/panes/splits. */
-  void fatalIfFound(const string& id);
+  shared_ptr<Pane> makePane(uint32_t parentWindow, const string& cwd);
+  void layoutWindow(Window* window);
+  void layoutNode(uint32_t id, int x, int y, int cols, int rows);
+  string dumpNode(uint32_t id) const;
+  void emitLayout(Window* window);
+  void notify(const string& line);
+  string expand(const string& format, Session* session, Window* window,
+                Pane* pane);
+  string expandOne(const string& name, Session* session, Window* window,
+                   Pane* pane);
+  void applyPaneSize(Pane* pane);
+  void collectPanes(uint32_t id, vector<uint32_t>* out) const;
+  string paneCwd(Pane* pane) const;
+  void unlinkPaneFromTree(uint32_t paneId, bool* windowEmptied);
+  void insertPaneBeside(uint32_t srcPane, uint32_t destPane, bool stacked,
+                        bool before);
+  void relayoutWindow(uint32_t windowId);
+  map<string, string>* optionStore(char scope, uint32_t targetId);
+  const map<string, string>* optionStore(char scope, uint32_t targetId) const;
 };
+
 }  // namespace et
 
-#endif  // __MULTIPLEXER_STATE_HPP__
+#endif

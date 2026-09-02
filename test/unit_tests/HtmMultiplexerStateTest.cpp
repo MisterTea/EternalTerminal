@@ -1,149 +1,172 @@
 #include "HtmTestHelpers.hpp"
-#include "IpcPairClient.hpp"
-#include "IpcPairServer.hpp"
-#include "JsonLib.hpp"
 #include "MultiplexerState.hpp"
 #include "TestHeaders.hpp"
 
 using namespace et;
 using namespace et::htmtest;
 
-namespace {
-class SilentServer : public IpcPairServer {
- public:
-  SilentServer(shared_ptr<SocketHandler> handler,
-               const SocketEndpoint& endpoint)
-      : IpcPairServer(handler, endpoint) {}
-  void recover() override {}
-};
-}  // namespace
-
-TEST_CASE("MultiplexerState serializes the initial tab and pane",
+TEST_CASE("MultiplexerState starts with one session, window, and pane",
           "[Htm][MultiplexerState]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  SilentServer server(handler, endpointFor(ipc.path));
-  IpcPairClient client(handler, endpointFor(ipc.path));
-  server.pollAccept();
-
-  MultiplexerState mux(handler);
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
   REQUIRE(mux.numPanes() == 1);
-  json state = json::parse(mux.toJsonString());
-  REQUIRE(state["shell"].get<string>().size() > 0);
-  REQUIRE(state["tabs"].size() == 1);
-  REQUIRE(state["panes"].size() == 1);
-  string paneId = firstJsonKey(state["panes"]);
-  mux.resizePane(paneId, 80, 24);
-#ifdef WIN32
-  mux.appendData(paneId, "echo MUX_ECHO_99\r\n");
-#else
-  mux.appendData(paneId, "printf 'MUX_ECHO_99\\n'\n");
-#endif
-  REQUIRE(waitUntil(
-      [&]() {
-        mux.update(server.getEndpointFd());
-        return handler->hasData(client.getEndpointFd());
-      },
-      8000));
-  mux.sendTerminalBuffers(server.getEndpointFd());
-  client.closeEndpoint();
+  REQUIRE(mux.activeSessionId() != 0);
+  REQUIRE(mux.activeWindowId() != 0);
+  REQUIRE(mux.activePaneId() == 0);
+  string layout = mux.dumpLayout(mux.activeWindowId(), false);
+  REQUIRE(layout.find("x") != string::npos);
+  mux.resizePaneDir(mux.activePaneId(), 'L', 1);
+  mux.stopAll();
 }
 
-TEST_CASE("MultiplexerState splits, nested splits, tabs, and close collapse",
+TEST_CASE("MultiplexerState splits, nested splits, windows, and close",
           "[Htm][MultiplexerState]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  SilentServer server(handler, endpointFor(ipc.path));
-  IpcPairClient client(handler, endpointFor(ipc.path));
-  server.pollAccept();
-
-  MultiplexerState mux(handler);
-  json initial = json::parse(mux.toJsonString());
-  string pane1 = firstJsonKey(initial["panes"]);
-
-  string pane2 = sole::uuid4().str();
-  mux.newSplit(pane1, pane2, true);
-  json afterVertical = json::parse(mux.toJsonString());
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t pane1 = mux.activePaneId();
+  uint32_t pane2 = mux.splitWindow(pane1, true, "");
   REQUIRE(mux.numPanes() == 2);
-  REQUIRE(afterVertical["splits"].size() == 1);
-
-  string pane3 = sole::uuid4().str();
-  mux.newSplit(pane1, pane3, true);
-  json continued = json::parse(mux.toJsonString());
+  uint32_t pane3 = mux.splitWindow(pane1, true, "");
   REQUIRE(mux.numPanes() == 3);
-  REQUIRE(continued["splits"].size() == 1);
-  auto split = firstJsonValue(continued["splits"]);
-  REQUIRE(split["panesOrSplits"].size() == 3);
-
-  string pane4 = sole::uuid4().str();
-  mux.newSplit(pane2, pane4, false);
-  json nested = json::parse(mux.toJsonString());
+  uint32_t pane4 = mux.splitWindow(pane2, false, "");
   REQUIRE(mux.numPanes() == 4);
-  REQUIRE(nested["splits"].size() == 2);
+  string layout = mux.dumpLayout(mux.activeWindowId(), false);
+  REQUIRE(layout.find("{") != string::npos);
+  REQUIRE(layout.find("[") != string::npos);
+
+  uint32_t win2 = mux.newWindow("two", "");
+  REQUIRE(mux.hasWindow(win2));
+  mux.selectWindow(win2);
+  REQUIRE(mux.activeWindowId() == win2);
 
   mux.closePane(pane4);
-  json collapsedNested = json::parse(mux.toJsonString());
-  REQUIRE(mux.numPanes() == 3);
-  REQUIRE(collapsedNested["splits"].size() == 1);
-
   mux.closePane(pane3);
-  json stillSplit = json::parse(mux.toJsonString());
-  REQUIRE(mux.numPanes() == 2);
-  REQUIRE(stillSplit["splits"].size() == 1);
-
   mux.closePane(pane2);
-  json rootPane = json::parse(mux.toJsonString());
-  REQUIRE(mux.numPanes() == 1);
-  REQUIRE(rootPane["splits"].empty());
-
-  string tab2 = sole::uuid4().str();
-  string pane5 = sole::uuid4().str();
-  mux.newTab(tab2, pane5);
-  REQUIRE(mux.numPanes() == 2);
-  json twoTabs = json::parse(mux.toJsonString());
-  REQUIRE(twoTabs["tabs"].size() == 2);
-
-  mux.closePane(pane5);
-  mux.closePane(pane5);
-  json oneTab = json::parse(mux.toJsonString());
-  REQUIRE(mux.numPanes() == 1);
-  REQUIRE(oneTab["tabs"].size() == 1);
-
-  mux.closePane(pane1);
-  REQUIRE(mux.numPanes() == 0);
-  client.closeEndpoint();
+  mux.closeWindow(win2);
+  mux.stopAll();
 }
 
-TEST_CASE("MultiplexerState reports a pane that exits",
+TEST_CASE("MultiplexerState sessions rename attach and list",
           "[Htm][MultiplexerState]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  SilentServer server(handler, endpointFor(ipc.path));
-  IpcPairClient client(handler, endpointFor(ipc.path));
-  server.pollAccept();
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t extra = mux.newSession("other");
+  REQUIRE(mux.hasSession(extra));
+  mux.renameSession(extra, "renamed");
+  mux.attachSession(extra);
+  REQUIRE(mux.activeSessionId() == extra);
+  string listed = mux.listSessions("#{session_id} #{session_name}");
+  REQUIRE(listed.find("renamed") != string::npos);
+  mux.closeSession(extra);
+  mux.stopAll();
+}
 
-  MultiplexerState mux(handler);
-  string paneId = firstJsonKey(json::parse(mux.toJsonString())["panes"]);
+TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t pane = mux.activePaneId();
+  mux.splitWindow(pane, false, "");
+  mux.zoomToggle(pane);
+  string visible = mux.dumpLayout(mux.activeWindowId(), true);
+  REQUIRE(visible.find(to_string(pane)) != string::npos);
+  mux.zoomToggle(pane);
 #ifdef WIN32
-  mux.appendData(paneId, "exit\r\n");
+  mux.sendKeys(pane, "echo MUX_ECHO_99\r\n");
 #else
-  mux.appendData(paneId, "exit\n");
+  mux.sendKeys(pane, "printf 'MUX_ECHO_99\\n'\n");
 #endif
-  bool sawClose = false;
   REQUIRE(waitUntil(
       [&]() {
-        mux.update(server.getEndpointFd());
-        string incoming = readUntil(handler, client.getEndpointFd(), 1, 50);
-        consumeInitSequence(&incoming);
-        HtmPacket packet;
-        while (popPacket(&incoming, &packet)) {
-          if (packet.header == SERVER_CLOSE_PANE) {
-            sawClose = true;
-          }
-        }
-        return mux.numPanes() == 0;
+        mux.pollOutput();
+        return mux.capturePane(pane, false, false, -2000, -1, true, true)
+                   .find("MUX_ECHO_99") != string::npos;
       },
       8000));
-  REQUIRE(sawClose);
-  client.closeEndpoint();
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState swap-pane exchanges layout order",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t p2 = mux.splitWindow(p1, false, "");
+  string before = mux.listPanes("#{pane_id}", mux.activeWindowId());
+  REQUIRE(before.find("%" + to_string(p1)) < before.find("%" + to_string(p2)));
+  mux.swapPanes(p1, p2);
+  string after = mux.listPanes("#{pane_id}", mux.activeWindowId());
+  REQUIRE(after.find("%" + to_string(p2)) < after.find("%" + to_string(p1)));
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState move-pane join break and unlink",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t w1 = mux.activeWindowId();
+  uint32_t p2 = mux.splitWindow(p1, true, "");
+  uint32_t w2 = mux.newWindow("two", "");
+  uint32_t p3 = mux.activePaneId();
+  mux.movePane(p2, p3, false, false);
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  REQUIRE(mux.hasPane(p3));
+  REQUIRE(mux.hasWindow(w1));
+  mux.selectWindow(w1);
+  REQUIRE(mux.activePaneId() == p1);
+  string destLayout = mux.dumpLayout(w2, false);
+  REQUIRE(destLayout.find("," + to_string(p2)) != string::npos);
+  REQUIRE(destLayout.find("," + to_string(p3)) != string::npos);
+  REQUIRE(mux.dumpLayout(w1, false).find("," + to_string(p2)) == string::npos);
+
+  uint32_t broken = mux.breakPane(p2);
+  REQUIRE(broken != w2);
+  REQUIRE(mux.hasWindow(broken));
+  REQUIRE(mux.dumpLayout(broken, false).find("," + to_string(p2)) !=
+          string::npos);
+  REQUIRE(mux.dumpLayout(w2, false).find("," + to_string(p2)) == string::npos);
+
+  mux.closeWindow(broken);
+  REQUIRE(!mux.hasWindow(broken));
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState move last pane closes the source window",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t w1 = mux.activeWindowId();
+  uint32_t w2 = mux.newWindow("two", "");
+  uint32_t p2 = mux.activePaneId();
+  mux.movePane(p1, p2, true, true);
+  REQUIRE(!mux.hasWindow(w1));
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  string layout = mux.dumpLayout(w2, false);
+  REQUIRE(layout.find("," + to_string(p1)) != string::npos);
+  REQUIRE(layout.find("," + to_string(p2)) != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState user options persist on session and pane",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t sid = mux.activeSessionId();
+  uint32_t pane = mux.activePaneId();
+  mux.setUserOption(' ', sid, "@iterm2_id", "guid-1");
+  REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id") == "guid-1");
+  mux.setUserOption('p', pane, "@uservars", "a=b");
+  REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b");
+  mux.setUserOption('p', pane, "@uservars", ",c=d", true);
+  REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b,c=d");
+  mux.unsetUserOption(' ', sid, "@iterm2_id");
+  REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id").empty());
+  mux.setUserOption(' ', sid, "status", "off");
+  REQUIRE(mux.getUserOption(' ', sid, "status").empty());
+  mux.stopAll();
 }

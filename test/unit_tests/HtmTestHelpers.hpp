@@ -5,11 +5,9 @@
 #include <functional>
 #include <thread>
 
-#include "HtmHeaderCodes.hpp"
-#include "JsonLib.hpp"
+#include "ControlMode.hpp"
 #include "PipeSocketHandler.hpp"
 #include "TestHeaders.hpp"
-#include "base64.h"
 
 #ifdef WIN32
 #include <windows.h>
@@ -36,31 +34,6 @@ inline void skipIfThreadSanitizer() {
   if (runningUnderThreadSanitizer()) {
     SKIP("forkpty from a worker thread is unsupported under ThreadSanitizer");
   }
-}
-
-inline string b64Int32(int32_t value) {
-  string encoded(Base64::EncodedLength(4), '\0');
-  REQUIRE(Base64::Encode(reinterpret_cast<const char*>(&value), 4, &encoded[0],
-                         encoded.size()));
-  return encoded;
-}
-
-inline string b64Bytes(const string& data) {
-  if (data.empty()) {
-    return "";
-  }
-  string encoded(Base64::EncodedLength(data.size()), '\0');
-  REQUIRE(
-      Base64::Encode(data.data(), data.size(), &encoded[0], encoded.size()));
-  return encoded;
-}
-
-inline int32_t decodeB64Int32(const string& encoded) {
-  int32_t value = 0;
-  REQUIRE(encoded.size() >= 8);
-  REQUIRE(
-      Base64::Decode(encoded.data(), 8, reinterpret_cast<char*>(&value), 4));
-  return value;
 }
 
 class UniqueIpcPath {
@@ -134,89 +107,43 @@ inline bool waitUntil(const std::function<bool()>& pred, int timeoutMs = 5000) {
   return true;
 }
 
-inline void sendPacket(shared_ptr<SocketHandler> handler, int fd, char header,
-                       const string& payload) {
-  handler->writeAllOrThrow(fd, &header, 1, false);
-  int32_t length = int32_t(payload.size());
-  handler->writeB64(fd, reinterpret_cast<const char*>(&length), 4);
-  if (!payload.empty()) {
-    handler->writeAllOrThrow(fd, payload.data(), payload.size(), false);
+inline void sendLine(shared_ptr<SocketHandler> handler, int fd,
+                     const string& line) {
+  string payload = line;
+  if (payload.empty() || payload.back() != '\n') {
+    payload.push_back('\n');
   }
+  handler->writeAllOrThrow(fd, payload.data(), static_cast<int>(payload.size()),
+                           false);
 }
 
-inline void sendInsertKeys(shared_ptr<SocketHandler> handler, int fd,
-                           const string& paneId, const string& data) {
-  string encoded = b64Bytes(data);
-  sendPacket(handler, fd, INSERT_KEYS, paneId + encoded);
+inline vector<string> splitLines(const string& text) {
+  vector<string> lines;
+  string cur;
+  for (char c : text) {
+    if (c == '\n') {
+      if (!cur.empty() && cur.back() == '\r') {
+        cur.pop_back();
+      }
+      lines.push_back(cur);
+      cur.clear();
+    } else {
+      cur.push_back(c);
+    }
+  }
+  if (!cur.empty()) {
+    lines.push_back(cur);
+  }
+  return lines;
 }
 
-inline void sendDebugKeys(shared_ptr<SocketHandler> handler, int fd,
-                          const string& keys) {
-  sendPacket(handler, fd, INSERT_DEBUG_KEYS, keys);
-}
-
-struct HtmPacket {
-  char header;
-  string payload;
-};
-
-inline bool popPacket(string* buffer, HtmPacket* out) {
-  if (buffer->empty()) {
-    return false;
+inline bool hasLinePrefix(const vector<string>& lines, const string& prefix) {
+  for (const string& line : lines) {
+    if (line.compare(0, prefix.size(), prefix) == 0) {
+      return true;
+    }
   }
-  char header = (*buffer)[0];
-  if (header == SESSION_END) {
-    out->header = header;
-    out->payload.clear();
-    buffer->erase(0, 1);
-    return true;
-  }
-  if (buffer->size() < 9) {
-    return false;
-  }
-  int32_t length = decodeB64Int32(buffer->substr(1, 8));
-  if (length < 0 || buffer->size() < 9u + size_t(length)) {
-    return false;
-  }
-  out->header = header;
-  out->payload = buffer->substr(9, size_t(length));
-  buffer->erase(0, 9 + size_t(length));
-  return true;
-}
-
-inline void consumeInitSequence(string* buffer) {
-  static const string kInit = "\x1b[###q";
-  auto pos = buffer->find(kInit);
-  if (pos != string::npos) {
-    buffer->erase(0, pos + kInit.size());
-  }
-}
-
-inline json firstJsonValue(const json& object) {
-  REQUIRE(object.is_object());
-  REQUIRE_FALSE(object.empty());
-  return object.begin().value();
-}
-
-inline string firstJsonKey(const json& object) {
-  REQUIRE(object.is_object());
-  REQUIRE_FALSE(object.empty());
-  return object.begin().key();
-}
-
-inline bool decodeAppendToPane(const HtmPacket& packet, string* paneId,
-                               string* body) {
-  static const size_t kUuidLen = 36;
-  if (packet.header != APPEND_TO_PANE || packet.payload.size() < kUuidLen) {
-    return false;
-  }
-  *paneId = packet.payload.substr(0, kUuidLen);
-  string encoded = packet.payload.substr(kUuidLen);
-  if (encoded.empty()) {
-    body->clear();
-    return true;
-  }
-  return Base64::Decode(encoded, body);
+  return false;
 }
 
 }  // namespace htmtest
