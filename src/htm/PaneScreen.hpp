@@ -3,6 +3,11 @@
 
 #include "Headers.hpp"
 
+#ifdef small
+// rpcndr.h on Windows defines `small` as `char`, which breaks libvterm's
+// VTermScreenCellAttrs bitfield.
+#undef small
+#endif
 extern "C" {
 #include "vterm.h"
 }
