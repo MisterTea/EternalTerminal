@@ -532,6 +532,11 @@ if(MSVC)
 else()
   target_compile_options(libvterm PRIVATE -w)
 endif()
+if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # Vendored C is stripped from reports; skip instrumentation so gcov .gcda
+  # files from libvterm do not serialize parallel ctest.
+  target_compile_options(libvterm PRIVATE -fno-profile-arcs -fno-test-coverage)
+endif()
 
 add_library(
   HtmCommon STATIC
@@ -635,7 +640,7 @@ if(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300)
+      PROPERTIES TIMEOUT 600)
     add_sanitizers(et-test)
     find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
     add_custom_target(
@@ -734,7 +739,7 @@ else(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300
+      PROPERTIES TIMEOUT 600
     )
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND AND NOT WIN32)

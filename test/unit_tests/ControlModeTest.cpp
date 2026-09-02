@@ -53,6 +53,10 @@ TEST_CASE("encodeSendKeys maps named keys", "[Htm][ControlMode]") {
   REQUIRE(encodeSendKeys({"0xd"}, false, false) == "\r");
   REQUIRE(encodeSendKeys({"0x0d"}, false, false) == "\r");
   REQUIRE(encodeSendKeys({"H", "i"}, false, true) == "Hi");
+  REQUIRE(encodeSendKeys({"Escape", "Space", "Tab", "BSpace"}, false, false) ==
+          "\x1b \t\x7f");
+  REQUIRE(encodeSendKeys({"C-a", "C-A"}, false, false) ==
+          string(1, '\x01') + string(1, '\x01'));
 }
 
 TEST_CASE("PaneScreen captures fed text", "[Htm][PaneScreen]") {
@@ -73,6 +77,21 @@ TEST_CASE("PaneScreen capture-pane -e includes SGR and -a is empty off alt",
   REQUIRE(withEsc.find("red") != string::npos);
   REQUIRE(withEsc.find("\x1b[") != string::npos);
   REQUIRE(screen.capture(false, true, 0, 0, false, false).empty());
+
+  PaneScreen attrs(40, 8);
+  attrs.feed("\x1b[1;3;4;7m");
+  attrs.feed("\x1b[38;5;200m\x1b[48;5;16mX");
+  attrs.feed("\x1b[90mY\x1b[100mZ");
+  attrs.feed("\xc3\xa9");
+  attrs.feed("\xe2\x82\xac");
+  attrs.feed("\xf0\x9f\x98\x80");
+  attrs.feed("\x1b[0m\r\n");
+  string styled = attrs.capture(true, false, 0, 0, false, true);
+  REQUIRE(styled.find("X") != string::npos);
+  REQUIRE(styled.find("\x1b[") != string::npos);
+  attrs.resize(20, 6);
+  REQUIRE(attrs.cols() == 20);
+  REQUIRE(attrs.rows() == 6);
 }
 
 TEST_CASE("layout checksum is stable for a given layout body",
@@ -157,5 +176,97 @@ TEST_CASE("list-commands is a successful no-op probe", "[Htm][ControlMode]") {
   ControlWriter writer;
   REQUIRE(executeControlCommand(&mux, &writer, "list-commands") ==
           ControlAction::None);
+  mux.stopAll();
+}
+
+TEST_CASE("executeControlCommand covers tmux command aliases",
+          "[Htm][ControlMode]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  ControlWriter writer;
+  REQUIRE(executeControlCommand(&mux, &writer, "") == ControlAction::Detach);
+  REQUIRE(executeControlCommand(&mux, &writer, "detach-client") ==
+          ControlAction::Detach);
+  REQUIRE(executeControlCommand(&mux, &writer, "copy-mode") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "link-window") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "not-a-tmux-command") ==
+          ControlAction::Error);
+
+  string pane = "%" + to_string(mux.activePaneId());
+  string window = "@" + to_string(mux.activeWindowId());
+  string session = "$" + to_string(mux.activeSessionId());
+  REQUIRE(executeControlCommand(
+              &mux, &writer, "display-message -p -t " + pane + " #{pane_id}") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "display-message -p -t " + window +
+                                    " #{window_id}") == ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "display-message -p -t " + session +
+                                    " #{session_id}") == ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "list-sessions") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "list-windows") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "list-panes -a") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "list-panes -t " + pane) ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "new-window -P -n extra") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "split-window -h -P") ==
+          ControlAction::None);
+  REQUIRE(
+      executeControlCommand(&mux, &writer, "send-keys -t " + pane + " C-a") ==
+      ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "select-pane -t " + pane) ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "select-window -t " + window) ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "resize-pane -L 1") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "resize-pane -R 1") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "resize-pane -U 1") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "resize-pane -D 1") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "refresh-client -C 80x24 -f "
+                                "no-output,wait-exit,pause-"
+                                "after=1") == ControlAction::None);
+  REQUIRE(mux.clientFlags.noOutput);
+  REQUIRE(mux.clientFlags.waitExit);
+  REQUIRE(mux.clientFlags.pauseAfterSec == 1);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "refresh-client -C " + window + ":40x12") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "refresh-client -A " + pane + ":continue") ==
+          ControlAction::None);
+  REQUIRE(
+      executeControlCommand(&mux, &writer, "capture-pane -p -e -S 0 -E 0") ==
+      ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "rename-window extra") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "select-layout tiled") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "set-buffer -b buffer0 hello") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "show-buffer -b buffer0") ==
+          ControlAction::None);
+  REQUIRE(
+      executeControlCommand(&mux, &writer, "setw -g aggressive-resize off") ==
+      ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "new-session -d -s other") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "rename-session main") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "attach-session -t $1") ==
+          ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "kill-server") ==
+          ControlAction::KillServer);
   mux.stopAll();
 }

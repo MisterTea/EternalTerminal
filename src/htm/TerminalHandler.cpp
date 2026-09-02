@@ -5,10 +5,16 @@
 #ifdef WIN32
 #include <windows.h>
 #else
+#include <unistd.h>
+
 #include <chrono>
 #include <stdexcept>
 
 #include "ETerminal.pb.h"
+
+#ifdef CODE_COVERAGE
+extern "C" void __gcov_reset(void);
+#endif
 #endif
 
 namespace et {
@@ -314,8 +320,13 @@ void TerminalHandler::start(const string& cwd, int cols, int rows) {
       setenv("PROMPT_EOL_MARK", "", 1);
       // Non-login: inherit PATH from htmd and skip login scripts that may
       // switch to csh (FreeBSD's default user shell).
+#ifdef CODE_COVERAGE
+      // Drop inherited counters so the child does not dump .gcda on a failed
+      // execl (exit/atexit) while the parent is still running under ctest.
+      __gcov_reset();
+#endif
       execl(terminal.c_str(), terminal.c_str(), NULL);
-      exit(0);
+      _exit(127);
       break;
     }
     default: {
