@@ -70,11 +70,8 @@ TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
   string visible = mux.dumpLayout(mux.activeWindowId(), true);
   REQUIRE(visible.find(to_string(split)) != string::npos);
   mux.zoomToggle(split);
-#ifdef WIN32
-  mux.sendKeys(split, "echo MUX_ECHO_99\r\n");
-#else
+#ifndef WIN32
   mux.sendKeys(split, "printf 'MUX_ECHO_99\\n'\n");
-#endif
   REQUIRE(waitUntil(
       [&]() {
         mux.pollOutput();
@@ -82,6 +79,7 @@ TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
                    .find("MUX_ECHO_99") != string::npos;
       },
       8000));
+#endif
   mux.stopAll();
 }
 
