@@ -32,7 +32,17 @@ class TerminalHandler {
    */
   void appendData(const string& data);
   /** @brief Indicates whether the PTY child is still alive. */
-  inline bool isRunning() { return run; }
+  inline bool isRunning() {
+#ifdef WIN32
+    if (processHandle == INVALID_HANDLE_VALUE) {
+      return false;
+    }
+    return WaitForSingleObject(static_cast<HANDLE>(processHandle), 0) !=
+           WAIT_OBJECT_0;
+#else
+    return run;
+#endif
+  }
   /** @brief Stops the handler's child process and closes PTY handles. */
   void stop();
   /** @brief Returns the buffered output that should be sent to the client. */

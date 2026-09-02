@@ -65,20 +65,20 @@ TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
   skipIfThreadSanitizer();
   MultiplexerState mux;
   uint32_t pane = mux.activePaneId();
-  mux.splitWindow(pane, false, "");
-  mux.zoomToggle(pane);
+  uint32_t split = mux.splitWindow(pane, false, "");
+  mux.zoomToggle(split);
   string visible = mux.dumpLayout(mux.activeWindowId(), true);
-  REQUIRE(visible.find(to_string(pane)) != string::npos);
-  mux.zoomToggle(pane);
+  REQUIRE(visible.find(to_string(split)) != string::npos);
+  mux.zoomToggle(split);
 #ifdef WIN32
-  mux.sendKeys(pane, "echo MUX_ECHO_99\r\n");
+  mux.sendKeys(split, "echo MUX_ECHO_99\r\n");
 #else
-  mux.sendKeys(pane, "printf 'MUX_ECHO_99\\n'\n");
+  mux.sendKeys(split, "printf 'MUX_ECHO_99\\n'\n");
 #endif
   REQUIRE(waitUntil(
       [&]() {
         mux.pollOutput();
-        return mux.capturePane(pane, false, false, -2000, -1, true, true)
+        return mux.capturePane(split, false, false, -2000, -1, true, true)
                    .find("MUX_ECHO_99") != string::npos;
       },
       8000));
