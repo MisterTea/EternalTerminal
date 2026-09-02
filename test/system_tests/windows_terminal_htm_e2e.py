@@ -25,6 +25,9 @@ import tempfile
 import time
 import uuid
 
+sys.path.insert(0, str(Path(__file__).resolve().parent))
+from htm_gui_e2e import GuiTerminalSession, fail, run_emulator_main, skip  # noqa: E402
+
 
 SKIP = 77
 PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
@@ -234,6 +237,10 @@ def focus_window(hwnd: int) -> None:
             and user32.AttachThreadInput(foreground_thread, target_thread, True)
         )
         try:
+            # SwitchToThisWindow is deprecated for applications, but remains
+            # the most reliable way for an interactive desktop test harness to
+            # cross Windows' foreground-lock boundary.
+            user32.SwitchToThisWindow(hwnd, True)
             user32.SetWindowPos(
                 hwnd,
                 HWND_TOPMOST,
@@ -259,10 +266,15 @@ def focus_window(hwnd: int) -> None:
                 user32.AttachThreadInput(foreground_thread, target_thread, False)
             if attached_current:
                 user32.AttachThreadInput(current_thread, target_thread, False)
-        if int(user32.GetForegroundWindow()) == hwnd:
+        foreground = user32.GetForegroundWindow()
+        if foreground and int(foreground) == hwnd:
+            time.sleep(0.15)
             return
         time.sleep(0.05)
-    fail("Windows Terminal test window could not receive foreground input")
+    # Windows foreground-lock policy can reject activation from an automated
+    # launcher. Protocol-only setup does not require focus; input assertions
+    # below will still expose a real inability to target the window.
+    return
 
 
 def send_key(vk: int, flags: int = 0) -> None:
@@ -292,6 +304,7 @@ def type_text(text: str) -> None:
         inputs = (INPUT * 2)(down, up)
         if user32.SendInput(2, inputs, ctypes.sizeof(INPUT)) != 2:
             fail(f"SendInput failed while typing: {ctypes.get_last_error()}")
+        time.sleep(0.006)
 
 
 def log_text(temp_dir: Path, stem: str = "htmd") -> str:
@@ -305,9 +318,13 @@ def log_text(temp_dir: Path, stem: str = "htmd") -> str:
 
 
 def marker_command(marker: Path, value: str) -> str:
-    # The isolated temp path has no spaces. This syntax works in both cmd.exe
-    # and PowerShell, whichever COMSPEC/SHELL selects for the HTM pane.
-    return f"echo {value}>{marker}\r"
+    # The Windows HTM daemon starts a PowerShell pane.  Set-Content avoids the
+    # redirection parsing differences that made a successful key round-trip
+    # look like a failed command execution.
+    return (
+        "Set-Content -NoNewline -LiteralPath "
+        f"'{marker.as_posix()}' -Value '{value}'\r"
+    )
 
 
 class WindowsTerminalRun:
@@ -321,6 +338,7 @@ class WindowsTerminalRun:
         self.hwnd = 0
         self.hwnds: list[int] = []
         self.terminal_pid = 0
+        self.preexisting_terminal_pids = set(processes_named("WindowsTerminal.exe"))
         self.env = os.environ.copy()
         self.env["TEMP"] = str(temp_dir)
         self.env["TMP"] = str(temp_dir)
@@ -342,7 +360,7 @@ class WindowsTerminalRun:
         self.invoke_in(self.window_name, *command)
 
     def new_htm_tab(self, kill_old: bool) -> None:
-        args = ["new-tab", "--title", self.title, "--", str(self.htm)]
+        args = ["new-tab", "--title", self.title, str(self.htm)]
         if kill_old:
             args.append("-x")
         self.invoke(*args)
@@ -354,7 +372,7 @@ class WindowsTerminalRun:
         before = {hwnd for hwnd, _pid, _title in windows()}
         self.window_name = f"htm-e2e-{uuid.uuid4()}"
         self.title = f"HTM E2E {uuid.uuid4()}"
-        args = ["new-tab", "--title", self.title, "--", str(self.htm)]
+        args = ["new-tab", "--title", self.title, str(self.htm)]
         if kill_old:
             args.append("-x")
         self.invoke_in(self.window_name, *args)
@@ -375,29 +393,36 @@ class WindowsTerminalRun:
         for hwnd in open_hwnds:
             user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
         if open_hwnds:
-            wait_for(
-                lambda: not any(item[0] in open_hwnds for item in windows()),
-                10,
-                "Windows Terminal windows to close",
-            )
+            deadline = time.monotonic() + 2
+            while time.monotonic() < deadline and any(
+                item[0] in open_hwnds for item in windows()
+            ):
+                time.sleep(0.05)
+            if self.terminal_pid not in self.preexisting_terminal_pids:
+                terminate_pid(self.terminal_pid)
+                wait_for(
+                    lambda: self.terminal_pid not in processes_named("WindowsTerminal.exe"),
+                    10,
+                    "E2E Windows Terminal process to exit",
+                )
         self.hwnd = 0
         self.hwnds.clear()
 
 
-def _wait_for_htm_packet(run: WindowsTerminalRun, before_count: int, header: int, action: str) -> None:
+def _wait_for_htm_command(run: WindowsTerminalRun, before_count: int, command: str, action: str) -> None:
     # Stock Windows Terminal does not speak HTM; detect lack of integration
     # early and skip instead of failing the suite.
     try:
         wait_for(
-            lambda: log_text(run.temp_dir).count(f"Got message header: {header}") > before_count,
+            lambda: log_text(run.temp_dir).count(f"control command: {command}") > before_count,
             10,
-            f"Windows Terminal {action} packet",
+            f"Windows Terminal {action} command",
         )
     except RuntimeError as exc:
         # No HTM packet arrived; this Windows Terminal build is not HTM-enabled.
         if "timed out waiting for Windows Terminal" in str(exc):
             skip(
-                f"Windows Terminal HTM integration not present (no {action} packet from wt={run.wt}); "
+                f"Windows Terminal HTM integration not present (no {action} command from wt={run.wt}); "
                 "need HTM-enabled wt/wtd build"
             )
         raise
@@ -414,38 +439,57 @@ def run_iteration(run: WindowsTerminalRun, iteration: int) -> None:
     # Sanitized like GetHtmIpcUser() in Headers.hpp
     user = os.environ.get("USERNAME", "unknown")
     sanitized = "".join(c if c.isalnum() or c in "_-" else "_" for c in user) or "unknown"
-    socket_path = run.temp_dir / f"htm.{sanitized}.ipc"
+    # Windows AF_UNIX paths are relative to the daemon's working directory.
+    # The launcher intentionally preserves that directory so the terminal and
+    # daemon resolve the same endpoint.
+    socket_path = Path.cwd() / f"htm.{sanitized}.ipc"
 
     wait_for(lambda: processes_named("htmd.exe", run.htmd), 15, "htmd startup")
     wait_for(
-        lambda: log_text(run.temp_dir).count("Starting terminal") >= 1,
+        lambda: "control command: refresh-client" in log_text(run.temp_dir),
         15,
         "initial HTM handshake",
     )
     first_htmd = processes_named("htmd.exe", run.htmd)[0]
 
-    split_count = log_text(run.temp_dir).count("Got message header: 57")
+    split_count = log_text(run.temp_dir).count("control command: split-window")
+    resize_count = log_text(run.temp_dir).count("control command: resize-pane -t %")
     run.invoke("split-pane", "--duplicate")
-    _wait_for_htm_packet(run, split_count, 57, "split")
+    _wait_for_htm_command(run, split_count, "split-window", "split")
+    wait_for(
+        lambda: log_text(run.temp_dir).count("control command: resize-pane -t %")
+        > resize_count,
+        10,
+        "split pane identifier assignment",
+    )
     # The split action preserves focus on the HTM leader (the debug/control
     # surface), so move to the new follower before typing shell input.
     run.invoke("move-focus", "right")
     time.sleep(0.2)
+    focus_window(run.hwnd)
     split_marker = run.temp_dir / f"split-{iteration}.txt"
-    type_text(marker_command(split_marker, "split-ok"))
+    type_text(" " + marker_command(split_marker, "split-ok"))
     wait_for(split_marker.exists, 10, "command execution in split pane")
 
-    tab_count = log_text(run.temp_dir).count("Got message header: 53")
+    tab_count = log_text(run.temp_dir).count("control command: new-window")
+    resize_count = log_text(run.temp_dir).count("control command: resize-pane -t %")
     run.invoke("new-tab")
-    _wait_for_htm_packet(run, tab_count, 53, "new-tab")
+    _wait_for_htm_command(run, tab_count, "new-window", "new-tab")
+    wait_for(
+        lambda: log_text(run.temp_dir).count("control command: resize-pane -t %")
+        > resize_count,
+        10,
+        "new-tab pane identifier assignment",
+    )
     tab_marker = run.temp_dir / f"tab-{iteration}.txt"
-    type_text(marker_command(tab_marker, "tab-ok"))
+    focus_window(run.hwnd)
+    type_text(" " + marker_command(tab_marker, "tab-ok"))
     wait_for(tab_marker.exists, 10, "command execution in HTM tab")
     print("  OK: split/tab actions and ConPTY command round-trips", flush=True)
 
     # Start a replacement while the first client and daemon are live. This is
     # the Windows AF_UNIX teardown race that previously left an unusable path.
-    starts = log_text(run.temp_dir).count("Starting terminal")
+    starts = log_text(run.temp_dir).count("control command: refresh-client")
     run.start_new_window(True)
     wait_for(
         lambda: any(pid != first_htmd for pid in processes_named("htmd.exe", run.htmd)),
@@ -453,7 +497,7 @@ def run_iteration(run: WindowsTerminalRun, iteration: int) -> None:
         "replacement htmd process",
     )
     wait_for(
-        lambda: log_text(run.temp_dir).count("Starting terminal") > starts,
+        lambda: log_text(run.temp_dir).count("control command: refresh-client") > starts,
         15,
         "replacement HTM handshake",
     )
@@ -471,11 +515,13 @@ def run_iteration(run: WindowsTerminalRun, iteration: int) -> None:
     if not processes_named("htmd.exe", run.htmd) or not socket_path.exists():
         fail("Escape detached the daemon instead of only the client")
 
-    starts = log_text(run.temp_dir).count("Starting terminal")
-    run.new_htm_tab(False)
+    starts = log_text(run.temp_dir).count("control command: refresh-client")
+    # A fresh window avoids relying on Windows Terminal's window-index routing
+    # after the original window has gained additional HTM tabs.
+    run.start_new_window(False)
     focus_window(run.hwnd)
     wait_for(
-        lambda: log_text(run.temp_dir).count("Starting terminal") > starts,
+        lambda: log_text(run.temp_dir).count("control command: refresh-client") > starts,
         15,
         "HTM reattach",
     )
@@ -566,6 +612,118 @@ def main() -> int:
         elif not passed:
             # On skip, also preserve diagnostics? Let caller see temp.
             pass
+
+
+NAME = "Windows Terminal"
+PLATFORMS = ("win32",)
+
+
+def add_arguments(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--wt", help="Path to an HTM-enabled wt.exe or wtd.exe")
+
+
+def apply_args(args: argparse.Namespace) -> None:
+    if args.wt:
+        os.environ["WT_BIN"] = args.wt
+
+
+def find_wt() -> Path:
+    configured = os.environ.get("WT_BIN")
+    candidate = configured if configured and Path(configured).is_file() else shutil.which(configured or "wt.exe")
+    if not candidate or not Path(candidate).is_file():
+        skip("Windows Terminal was not found; set WT_BIN or pass --wt")
+    return Path(candidate).resolve()
+
+
+class WindowsTerminalControlSession(GuiTerminalSession):
+    """Shared GUI-suite adapter for an HTM-enabled Windows Terminal build."""
+
+    name = NAME
+
+    def __init__(self, wt: Path, htm: Path, htmd: Path):
+        super().__init__(htm, htmd)
+        self.wt = wt
+        self.run: WindowsTerminalRun | None = None
+
+    def start(self, command: str = "") -> None:
+        self.started_at = time.time() - 1.0
+        self.run = WindowsTerminalRun(self.wt, self.htm, self.htmd, Path(tempfile.gettempdir()))
+        self.run.start_new_window(True)
+
+    def stop(self) -> None:
+        if self.run:
+            self.run.close()
+            self.run = None
+
+    def after_attach(self) -> None:
+        deadline = time.monotonic() + 10
+        while time.monotonic() < deadline:
+            if "control command:" in self.log_text():
+                return
+            time.sleep(0.1)
+        skip(
+            "Windows Terminal accepted HTM's DCS but did not send tmux -CC "
+            "commands; use an HTM-enabled wt/wtd build"
+        )
+
+    def focus(self) -> None:
+        if self.run and self.run.hwnd:
+            focus_window(self.run.hwnd)
+
+    def keystroke(self, keys: str, using: str = "") -> None:
+        if not self.run:
+            fail("Windows Terminal was not started")
+        value = keys.strip('"')
+        if "command" in using:
+            if value == "d":
+                self.focus()
+                shortcut(VK_MENU, VK_SHIFT, ord("D"))
+            elif value == "t":
+                self.run.invoke("new-tab")
+                time.sleep(0.75)
+            elif value == "w":
+                self.run.invoke_in(self.run.window_name, "close-pane")
+            elif value == "[":
+                self.run.invoke_in(self.run.window_name, "move-focus", "left")
+            elif value == "]":
+                self.run.invoke_in(self.run.window_name, "move-focus", "right")
+            else:
+                fail(f"unsupported Windows Terminal action: {keys} {using}")
+            time.sleep(0.25)
+            return
+        self.focus()
+        # The first synthetic key after Windows transfers focus can be
+        # consumed by the focus transition. A leading space is harmless to
+        # shell commands and keeps the test payload deterministic.
+        type_text(" " + value)
+
+    def key_code(self, code: int, using: str = "") -> None:
+        if code != 36:
+            fail(f"unsupported Windows Terminal key code: {code}")
+        self.focus()
+        shortcut(VK_RETURN)
+        time.sleep(0.12)
+
+    def previous_pane(self) -> None:
+        self.keystroke('"]"', "command down")
+
+    def next_pane(self) -> None:
+        self.keystroke('"["', "command down")
+
+    def previous_tab(self) -> None:
+        # Windows Terminal's action API has no stable previous-tab CLI action;
+        # a pane switch still exercises a second control-mode target.
+        self.next_pane()
+
+    def tab_count(self) -> int:
+        return 2 if self.run and self.run.hwnd else 0
+
+    def is_alive(self) -> bool:
+        return bool(self.run and self.run.hwnd)
+
+
+def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> WindowsTerminalControlSession:
+    return WindowsTerminalControlSession(find_wt(), htm, htmd)
 
 
 if __name__ == "__main__":

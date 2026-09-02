@@ -12,8 +12,11 @@ namespace {
 void writeHtmStdout(const char* buf, size_t n) {
 #ifdef WIN32
   DWORD written = 0;
-  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, static_cast<DWORD>(n),
-            &written, NULL);
+  const auto ok = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf,
+                            static_cast<DWORD>(n), &written, NULL);
+  if (!ok || written != n) {
+    throw std::runtime_error("Cannot write HTM output");
+  }
 #else
   RawSocketUtils::writeAll(STDOUT_FILENO, buf, n);
 #endif
@@ -28,43 +31,80 @@ HtmClient::HtmClient(shared_ptr<SocketHandler> _socketHandler,
 
 #ifdef WIN32
 void HtmClient::run() {
-  writeDcs();
   const int BUF_SIZE = 1024;
   char buf[BUF_SIZE];
   HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
   DWORD consoleMode = 0;
   bool isConsole = GetConsoleMode(stdinHandle, &consoleMode) != 0;
+  if (isConsole) {
+    DWORD rawMode = consoleMode;
+    rawMode &=
+        ~(ENABLE_ECHO_INPUT | ENABLE_LINE_INPUT | ENABLE_PROCESSED_INPUT);
+    rawMode |= ENABLE_VIRTUAL_TERMINAL_INPUT;
+    if (!SetConsoleMode(stdinHandle, rawMode)) {
+      throw std::runtime_error("Cannot put stdin in raw console mode");
+    }
+  }
+
+  auto inputStarted = std::make_shared<std::atomic_bool>(false);
+  auto inputClosed = std::make_shared<std::atomic_bool>(false);
+  std::thread{[handler = socketHandler, endpoint = endpointFd, stdinHandle,
+               isConsole, inputStarted, inputClosed]() {
+    char input[1024];
+    inputStarted->store(true);
+    while (true) {
+      int n = 0;
+      if (isConsole) {
+        INPUT_RECORD record{};
+        DWORD recordsRead = 0;
+        if (!ReadConsoleInputW(stdinHandle, &record, 1, &recordsRead)) {
+          inputClosed->store(true);
+          return;
+        }
+        if (recordsRead != 1 || record.EventType != KEY_EVENT ||
+            !record.Event.KeyEvent.bKeyDown ||
+            record.Event.KeyEvent.uChar.UnicodeChar == 0) {
+          continue;
+        }
+        const wchar_t wide = record.Event.KeyEvent.uChar.UnicodeChar;
+        n = WideCharToMultiByte(CP_UTF8, 0, &wide, 1, input, sizeof(input),
+                                NULL, NULL);
+      } else {
+        DWORD bytesRead = 0;
+        if (!ReadFile(stdinHandle, input, sizeof(input), &bytesRead, NULL) ||
+            bytesRead == 0) {
+          inputClosed->store(true);
+          return;
+        }
+        n = static_cast<int>(bytesRead);
+      }
+      try {
+        handler->writeAllOrThrow(endpoint, input, n, false);
+      } catch (...) {
+        inputClosed->store(true);
+        return;
+      }
+    }
+  }}.detach();
+  while (!inputStarted->load()) {
+    std::this_thread::yield();
+  }
+  writeDcs();
 
   while (true) {
     bool didWork = false;
-    bool stdinReady = false;
-    if (isConsole) {
-      stdinReady = WaitForSingleObject(stdinHandle, 0) == WAIT_OBJECT_0;
-    } else {
-      DWORD avail = 0;
-      BOOL ok = PeekNamedPipe(stdinHandle, NULL, 0, NULL, &avail, NULL);
-      if (!ok) {
-        if (GetLastError() == ERROR_BROKEN_PIPE) {
-          throw std::runtime_error("stdin has closed abruptly.");
-        }
-      } else if (avail > 0) {
-        stdinReady = true;
-      }
+    if (inputClosed->load()) {
+      throw std::runtime_error("stdin has closed abruptly.");
     }
-    if (stdinReady) {
-      DWORD n = 0;
-      if (!ReadFile(stdinHandle, buf, BUF_SIZE, &n, NULL)) {
-        throw std::runtime_error("Cannot read from stdin");
-      }
-      if (n == 0) {
-        throw std::runtime_error("stdin has closed abruptly.");
-      }
-      socketHandler->writeAllOrThrow(endpointFd, buf, static_cast<int>(n),
-                                     false);
-      didWork = true;
+    fd_set readSet;
+    FD_ZERO(&readSet);
+    FD_SET(endpointFd, &readSet);
+    timeval timeout{0, 0};
+    const int ready = select(0, &readSet, nullptr, nullptr, &timeout);
+    if (ready == SOCKET_ERROR) {
+      throw std::runtime_error("Cannot inspect HTM socket");
     }
-
-    if (socketHandler->hasData(endpointFd)) {
+    if (ready > 0) {
       int rc = socketHandler->read(endpointFd, buf, BUF_SIZE);
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
@@ -77,7 +117,6 @@ void HtmClient::run() {
       writeHtmStdout(buf, static_cast<size_t>(rc));
       didWork = true;
     }
-
     if (!didWork) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }

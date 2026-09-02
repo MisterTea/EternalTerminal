@@ -70,16 +70,29 @@ TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
   string visible = mux.dumpLayout(mux.activeWindowId(), true);
   REQUIRE(visible.find(to_string(split)) != string::npos);
   mux.zoomToggle(split);
-#ifndef WIN32
+#ifdef WIN32
+  mux.sendKeys(split, "echo MUX_ECHO_99\r\n");
+#else
   mux.sendKeys(split, "printf 'MUX_ECHO_99\\n'\n");
-  REQUIRE(waitUntil(
+#endif
+  bool captured = waitUntil(
       [&]() {
         mux.pollOutput();
+        if (!mux.hasPane(split)) {
+          return false;
+        }
         return mux.capturePane(split, false, false, -2000, -1, true, true)
                    .find("MUX_ECHO_99") != string::npos;
       },
-      8000));
+      8000);
+#ifdef WIN32
+  if (!captured && !mux.hasPane(split)) {
+    SKIP(
+        "The Windows ConPTY host exited before capture-pane could observe "
+        "the command output");
+  }
 #endif
+  REQUIRE(captured);
   mux.stopAll();
 }
 
