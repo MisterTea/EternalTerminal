@@ -504,6 +504,35 @@ target_link_libraries(
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
+# Neovim's C99 libvterm (MIT), used for capture-pane / list-panes screen state.
+# Windows ConPTY already emits VT; this library consumes that stream on all OSes.
+add_library(libvterm STATIC
+  ${EXTERNAL_DIR}/libvterm/src/encoding.c
+  ${EXTERNAL_DIR}/libvterm/src/keyboard.c
+  ${EXTERNAL_DIR}/libvterm/src/mouse.c
+  ${EXTERNAL_DIR}/libvterm/src/parser.c
+  ${EXTERNAL_DIR}/libvterm/src/pen.c
+  ${EXTERNAL_DIR}/libvterm/src/screen.c
+  ${EXTERNAL_DIR}/libvterm/src/state.c
+  ${EXTERNAL_DIR}/libvterm/src/unicode.c
+  ${EXTERNAL_DIR}/libvterm/src/vterm.c
+)
+set_target_properties(libvterm PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+)
+target_include_directories(libvterm PUBLIC
+  ${EXTERNAL_DIR}/libvterm/include
+)
+target_include_directories(libvterm PRIVATE
+  ${EXTERNAL_DIR}/libvterm/src
+)
+if(MSVC)
+  target_compile_options(libvterm PRIVATE /W0)
+else()
+  target_compile_options(libvterm PRIVATE -w)
+endif()
+
 add_library(
   HtmCommon STATIC
   src/htm/TerminalHandler.cpp
@@ -513,8 +542,12 @@ add_library(
   src/htm/IpcPairServer.cpp
   src/htm/HtmClient.cpp
   src/htm/HtmServer.cpp
+  src/htm/ControlMode.cpp
+  src/htm/ControlCommands.cpp
+  src/htm/PaneScreen.cpp
 )
 add_dependencies(HtmCommon generated-code et-lib)
+target_link_libraries(HtmCommon PUBLIC libvterm)
 decorate_target(HtmCommon)
 
 add_executable(htm src/htm/HtmClientMain.cpp)
@@ -685,8 +718,8 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    # [.ghostty] / iTerm2 / Hyper e2e stay opt-in until those terminals' HTM
-    # PRs land. Default ctest and `./et-test` skip them. Run with:
+    # iTerm2 / Ghostty / Hyper e2e stay opt-in until those terminals speak
+    # tmux -CC against htm. Default ctest and `./et-test` skip them. Run with:
     #   ./et-test ghostty
     #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
     #   (Hyper: hyper-htm repo, npm run test:system)

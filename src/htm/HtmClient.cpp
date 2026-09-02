@@ -1,12 +1,7 @@
 #include "HtmClient.hpp"
 
-#include "HtmHeaderCodes.hpp"
-#include "HtmServer.hpp"
-#include "IpcPairClient.hpp"
-#include "LogHandler.hpp"
-#include "MultiplexerState.hpp"
+#include "ControlMode.hpp"
 #include "RawSocketUtils.hpp"
-#include "base64.h"
 
 #ifdef WIN32
 #include <windows.h>
@@ -23,6 +18,8 @@ void writeHtmStdout(const char* buf, size_t n) {
   RawSocketUtils::writeAll(STDOUT_FILENO, buf, n);
 #endif
 }
+
+void writeDcs() { writeHtmStdout(kControlModeDcs, strlen(kControlModeDcs)); }
 }  // namespace
 
 HtmClient::HtmClient(shared_ptr<SocketHandler> _socketHandler,
@@ -31,6 +28,7 @@ HtmClient::HtmClient(shared_ptr<SocketHandler> _socketHandler,
 
 #ifdef WIN32
 void HtmClient::run() {
+  writeDcs();
   const int BUF_SIZE = 1024;
   char buf[BUF_SIZE];
   HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
@@ -52,16 +50,10 @@ void HtmClient::run() {
 
     if (socketHandler->hasData(endpointFd)) {
       int rc = socketHandler->read(endpointFd, buf, BUF_SIZE);
-      VLOG(1) << endpointFd << " -> STDOUT (" << rc << ")";
       if (rc < 0) {
         throw std::runtime_error("Cannot read from raw socket");
       }
       if (rc == 0) {
-        LOG(INFO) << "htmd has closed";
-        endpointFd = -1;
-        return;
-      }
-      if (rc >= 1 && buf[0] == SESSION_END) {
         LOG(INFO) << "htmd has closed";
         endpointFd = -1;
         return;
@@ -97,19 +89,13 @@ class NonBlockingFd {
 }  // namespace
 
 void HtmClient::run() {
+  writeDcs();
   const int BUF_SIZE = 1024;
-  // Bound queued daemon output so a stalled Hyper PTY cannot grow forever.
-  // Stop reading IPC past this point so backpressure hits htmd instead of
-  // blocking this loop (blocking stdout + pending stdin deadlocks Hyper).
   const size_t MAX_STDOUT_QUEUE = 256 * 1024;
   const size_t MAX_IPC_OUT_QUEUE = 256 * 1024;
-  const int32_t MAX_PACKET_LENGTH = 4 * 1024 * 1024;
-  const string kInit = "\x1b[###q";
   char buf[BUF_SIZE];
   string stdoutQueue;
   string ipcOutQueue;
-  string packetBuf;
-  bool inHtmMode = false;
   NonBlockingFd nonBlockingStdout(STDOUT_FILENO);
 
   auto flushFd = [](int fd, string* queue) {
@@ -129,43 +115,6 @@ void HtmClient::run() {
       }
       return;
     }
-  };
-
-  auto consumeDaemonBytes = [&](const char* data, size_t n) -> bool {
-    if (!inHtmMode) {
-      stdoutQueue.append(data, n);
-      auto pos = stdoutQueue.find(kInit);
-      if (pos == string::npos) {
-        return true;
-      }
-      inHtmMode = true;
-      packetBuf = stdoutQueue.substr(pos + kInit.size());
-      stdoutQueue.erase(pos + kInit.size());
-    } else {
-      packetBuf.append(data, n);
-    }
-    while (!packetBuf.empty()) {
-      if (packetBuf[0] == SESSION_END) {
-        return false;
-      }
-      if (packetBuf.size() < 9) {
-        break;
-      }
-      int32_t length = 0;
-      if (!Base64::Decode(packetBuf.data() + 1, 8,
-                          reinterpret_cast<char*>(&length), 4) ||
-          length < 0 || length > MAX_PACKET_LENGTH) {
-        stdoutQueue.push_back(packetBuf[0]);
-        packetBuf.erase(0, 1);
-        continue;
-      }
-      if (packetBuf.size() < 9u + static_cast<size_t>(length)) {
-        break;
-      }
-      stdoutQueue.append(packetBuf, 0, 9u + static_cast<size_t>(length));
-      packetBuf.erase(0, 9u + static_cast<size_t>(length));
-    }
-    return true;
   };
 
   while (true) {
@@ -205,7 +154,6 @@ void HtmClient::run() {
 
     if (ipcOutQueue.size() < MAX_IPC_OUT_QUEUE &&
         FD_ISSET(STDIN_FILENO, &rfd)) {
-      VLOG(1) << "STDIN -> " << endpointFd;
       int rc = ::read(STDIN_FILENO, buf, BUF_SIZE);
       if (rc < 0) {
         auto localErrno = GetErrno();
@@ -222,7 +170,6 @@ void HtmClient::run() {
 
     if (stdoutQueue.size() < MAX_STDOUT_QUEUE && FD_ISSET(endpointFd, &rfd)) {
       int rc = ::read(endpointFd, buf, BUF_SIZE);
-      VLOG(1) << endpointFd << " -> STDOUT (" << rc << ")";
       if (rc < 0) {
         auto localErrno = GetErrno();
         if (localErrno != EAGAIN && localErrno != EWOULDBLOCK &&
@@ -233,10 +180,8 @@ void HtmClient::run() {
         LOG(INFO) << "htmd has closed";
         endpointFd = -1;
         return;
-      } else if (!consumeDaemonBytes(buf, static_cast<size_t>(rc))) {
-        LOG(INFO) << "htmd has closed";
-        endpointFd = -1;
-        return;
+      } else {
+        stdoutQueue.append(buf, static_cast<size_t>(rc));
       }
     }
 

@@ -6,6 +6,16 @@
 
 using namespace et;
 
+namespace {
+HtmServer* gHtmServer = nullptr;
+
+void stopHtmServer(int) {
+  if (gHtmServer) {
+    gHtmServer->requestStop();
+  }
+}
+}  // namespace
+
 int main(int argc, char** argv) {
   // Version string need to be set before GFLAGS parse arguments
   GOOGLE_PROTOBUF_VERIFY_VERSION;
@@ -30,14 +40,20 @@ int main(int argc, char** argv) {
 
   et::HandleTerminate();
 
-  // Override easylogging handler for sigint
+#ifndef WIN32
+  ::signal(SIGINT, stopHtmServer);
+  ::signal(SIGTERM, stopHtmServer);
+#else
   ::signal(SIGINT, et::InterruptSignalHandler);
+#endif
 
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint endpoint;
   endpoint.set_name(HtmServer::getPipeName());
   HtmServer htm(socketHandler, endpoint);
+  gHtmServer = &htm;
   htm.run();
+  gHtmServer = nullptr;
   LOG(INFO) << "Server is shutting down";
 
   return 0;

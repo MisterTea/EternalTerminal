@@ -1,5 +1,6 @@
 #include <cxxopts.hpp>
 
+#include "ControlMode.hpp"
 #include "DaemonCreator.hpp"
 #include "HtmClient.hpp"
 #include "HtmServer.hpp"
@@ -58,14 +59,13 @@ string siblingHtmdCommand() {
 #endif
 
 void writeHtmExitSequence() {
-  char buf[] = {
-      0x1b, 0x5b, '$', '$', '$', 'q',
-  };
+  const char* st = kControlModeSt;
 #ifdef WIN32
   DWORD written = 0;
-  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, sizeof(buf), &written, NULL);
+  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), st, static_cast<DWORD>(strlen(st)),
+            &written, NULL);
 #else
-  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  RawSocketUtils::writeAll(STDOUT_FILENO, st, strlen(st));
 #endif
   fflush(stdout);
 }

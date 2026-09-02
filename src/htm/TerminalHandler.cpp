@@ -98,8 +98,19 @@ string TerminalHandler::bufferOutput(const string& newChars) {
   return newChars;
 }
 
+int64_t TerminalHandler::childProcessId() const {
 #ifdef WIN32
-void TerminalHandler::start() {
+  if (processHandle == INVALID_HANDLE_VALUE) {
+    return 0;
+  }
+  return static_cast<int64_t>(GetProcessId(static_cast<HANDLE>(processHandle)));
+#else
+  return childPid > 0 ? static_cast<int64_t>(childPid) : 0;
+#endif
+}
+
+#ifdef WIN32
+void TerminalHandler::start(const string& cwd) {
   HANDLE ptyIn = INVALID_HANDLE_VALUE;
   HANDLE ptyOut = INVALID_HANDLE_VALUE;
   HANDLE ourIn = INVALID_HANDLE_VALUE;
@@ -154,7 +165,7 @@ void TerminalHandler::start() {
   vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
   cmdBuf.push_back(L'\0');
 
-  string home = defaultWindowsHome();
+  string home = cwd.empty() ? defaultWindowsHome() : cwd;
   wstring wideHome = utf8ToWide(home);
 
   SetEnvironmentVariableA("HTM_VERSION", ET_VERSION);
@@ -270,7 +281,7 @@ void TerminalHandler::stop() {
   }
 }
 #else
-void TerminalHandler::start() {
+void TerminalHandler::start(const string& cwd) {
   pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
   switch (pid) {
     case -1:
@@ -282,7 +293,13 @@ void TerminalHandler::start() {
         LOG(FATAL)
             << "Not able to fork a terminal because getpwuid returns null";
       }
-      chdir(pwd->pw_dir);
+      if (!cwd.empty()) {
+        if (chdir(cwd.c_str()) != 0 && pwd->pw_dir) {
+          chdir(pwd->pw_dir);
+        }
+      } else if (pwd->pw_dir) {
+        chdir(pwd->pw_dir);
+      }
       const char* shellEnv = ::getenv("SHELL");
       string terminal =
           (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
