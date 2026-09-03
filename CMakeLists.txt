@@ -454,6 +454,7 @@ add_library(
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
   src/base/WriteBuffer.hpp
+  src/base/TmuxCcFilter.hpp
 
   ${ET_HDRS}
   ${ET_SRCS}

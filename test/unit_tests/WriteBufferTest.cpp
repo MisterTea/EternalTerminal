@@ -137,3 +137,36 @@ TEST_CASE("WriteBuffer hard cap", "[WriteBuffer]") {
   REQUIRE(buffer.canAcceptMore());
   REQUIRE(buffer.size() == 0);
 }
+
+TEST_CASE("WriteBuffer flush keeps tmux -CC control notifications",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  const string output = "%output %0 " + string(70 * 1024, 'y') + "\n";
+  const string layout =
+      "%layout-change @1 b25f,80x24,0,0,2  b25f,80x24,0,0,2  1\n";
+  buffer.enqueue(output);
+  buffer.enqueue(layout);
+  REQUIRE(buffer.shouldFlushOnInterrupt());
+
+  size_t dropped = buffer.flushIfLarge();
+  REQUIRE(dropped == output.size());
+  REQUIRE(buffer.size() == layout.size());
+  size_t count = 0;
+  const char* data = buffer.peekData(&count);
+  REQUIRE(string(data, count) == layout);
+}
+
+TEST_CASE("WriteBuffer skipUntilNewline discards the rest of a dropped line",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  buffer.enqueue("%output %0 " + string(WriteBuffer::FLUSH_THRESHOLD, 'y'));
+  REQUIRE(buffer.flushIfLarge() == WriteBuffer::FLUSH_THRESHOLD + 11);
+  REQUIRE(buffer.skippingUntilNewline());
+  REQUIRE(buffer.size() == 0);
+
+  buffer.enqueue("still-the-same-output-line\n%window-add @3\n");
+  REQUIRE_FALSE(buffer.skippingUntilNewline());
+  size_t count = 0;
+  const char* data = buffer.peekData(&count);
+  REQUIRE(string(data, count) == "%window-add @3\n");
+}

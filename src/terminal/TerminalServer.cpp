@@ -12,8 +12,9 @@
 namespace et {
 namespace {
 
-void drainDiscardReadableBytes(int fd) {
-  char buf[BUF_SIZE];
+void drainDiscardReadableBytes(int fd, WriteBuffer* buf) {
+  char bufBytes[BUF_SIZE];
+  bool got = false;
   while (true) {
     fd_set rfds;
     FD_ZERO(&rfds);
@@ -24,10 +25,15 @@ void drainDiscardReadableBytes(int fd) {
     if (select(fd + 1, &rfds, NULL, NULL, &tv) <= 0) {
       break;
     }
-    int rc = ::read(fd, buf, BUF_SIZE);
+    int rc = ::read(fd, bufBytes, BUF_SIZE);
     if (rc <= 0) {
       break;
     }
+    buf->enqueue(string(bufBytes, rc));
+    got = true;
+  }
+  if (got) {
+    buf->filterDroppable();
   }
 }
 
@@ -79,15 +85,19 @@ void drainWriteBufferToClient(WriteBuffer* buf,
 void drainDiscardJumphostTerminalBuffers(
     shared_ptr<SocketHandler> terminalSocketHandler, int terminalFd,
     JumphostPending* pending) {
+  bool addedTerminal = false;
   while (terminalSocketHandler->hasData(terminalFd)) {
     Packet packet;
     if (!terminalSocketHandler->readPacket(terminalFd, &packet)) {
       continue;
     }
     if (packet.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
-      continue;
+      addedTerminal = true;
     }
     pending->enqueue(packet);
+  }
+  if (addedTerminal) {
+    pending->filterTerminalBuffers();
   }
 }
 
@@ -484,7 +494,7 @@ void TerminalServer::runTerminal(
                 if (dropped > 0) {
                   LOG(INFO) << "Flushed " << dropped
                             << " bytes of terminal output on interrupt";
-                  drainDiscardReadableBytes(terminalFd);
+                  drainDiscardReadableBytes(terminalFd, &terminalOutputBuffer);
                 }
               }
               char c = TERMINAL_BUFFER;

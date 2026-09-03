@@ -2,6 +2,7 @@
 #define __ET_WRITE_BUFFER__
 
 #include "Headers.hpp"
+#include "TmuxCcFilter.hpp"
 
 namespace et {
 
@@ -10,11 +11,12 @@ namespace et {
  * written to the client socket.
  *
  * Unsent bytes live here so Ctrl+C (and similar interrupt bytes) can drop a
- * large backlog. Sequence numbers are assigned only when a chunk is later
- * passed to writePacket(), so a flush never desynchronizes reconnect
- * recovery. The hard cap prevents a firehose from growing RAM without bound
- * while the client is connected; disconnect buffering still uses
- * BackedWriter.
+ * large backlog. Nested tmux -CC notifications that are not pane stdout are
+ * kept (see {@link filterTmuxCc}). Sequence numbers are assigned only when a
+ * chunk is later passed to writePacket(), so a flush never desynchronizes
+ * reconnect recovery. The hard cap prevents a firehose from growing RAM
+ * without bound while the client is connected; disconnect buffering still
+ * uses BackedWriter.
  */
 class WriteBuffer {
  public:
@@ -28,7 +30,7 @@ class WriteBuffer {
    */
   static constexpr size_t MAX_BUFFER_SIZE = 16 * 1024 * 1024;
 
-  WriteBuffer() : totalBytes(0), writeOffset(0) {}
+  WriteBuffer() : totalBytes(0), writeOffset(0), skipUntilNewline(false) {}
 
   /**
    * @brief True if @p s contains a TTY interrupt byte (Ctrl+C/Z/\).
@@ -58,13 +60,25 @@ class WriteBuffer {
 
   /**
    * @brief Adds data to the end of the buffer.
+   *
+   * After a flush drops an incomplete `%output`/TTY line, bytes up to the
+   * next newline are discarded so the rest of that line cannot reappear.
    */
   void enqueue(const string& data) {
-    if (data.empty()) {
+    string remaining = data;
+    if (skipUntilNewline) {
+      size_t newline = remaining.find('\n');
+      if (newline == string::npos) {
+        return;
+      }
+      skipUntilNewline = false;
+      remaining = remaining.substr(newline + 1);
+    }
+    if (remaining.empty()) {
       return;
     }
-    pending.push_back(data);
-    totalBytes += data.size();
+    pending.push_back(remaining);
+    totalBytes += remaining.size();
   }
 
   /**
@@ -115,24 +129,60 @@ class WriteBuffer {
     pending.clear();
     totalBytes = 0;
     writeOffset = 0;
+    skipUntilNewline = false;
     return dropped;
   }
 
   /**
-   * @brief If the queue is at least FLUSH_THRESHOLD, drop it.
+   * @brief Drop TTY / `%output` bytes, keeping tmux -CC control lines.
+   * @return Bytes discarded.
+   */
+  size_t filterDroppable() {
+    if (pending.empty()) {
+      return 0;
+    }
+    string data;
+    data.reserve(totalBytes);
+    bool first = true;
+    for (const string& chunk : pending) {
+      if (first) {
+        data.append(chunk, writeOffset, string::npos);
+        first = false;
+      } else {
+        data.append(chunk);
+      }
+    }
+    TmuxCcFilterResult result = filterTmuxCc(data);
+    skipUntilNewline = result.skipUntilNewline;
+    pending.clear();
+    writeOffset = 0;
+    totalBytes = 0;
+    if (!result.kept.empty()) {
+      pending.push_back(result.kept);
+      totalBytes = result.kept.size();
+    }
+    return result.dropped;
+  }
+
+  /**
+   * @brief If the queue is at least FLUSH_THRESHOLD, drop droppable bytes.
    * @return Bytes discarded, or 0 if the queue was too small to flush.
    */
   size_t flushIfLarge() {
     if (!shouldFlushOnInterrupt()) {
       return 0;
     }
-    return clear();
+    return filterDroppable();
   }
+
+  /** @brief True when the next enqueue should discard through a newline. */
+  bool skippingUntilNewline() const { return skipUntilNewline; }
 
  private:
   std::deque<string> pending;
   size_t totalBytes;
   size_t writeOffset;
+  bool skipUntilNewline;
 };
 }  // namespace et
 
