@@ -453,6 +453,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/WriteBuffer.hpp
+  src/base/TmuxCcFilter.hpp
 
   ${ET_HDRS}
   ${ET_SRCS}
@@ -470,6 +472,7 @@ add_library(
   src/terminal/forwarding/ForwardDestinationHandler.cpp
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+  src/terminal/JumphostPending.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp

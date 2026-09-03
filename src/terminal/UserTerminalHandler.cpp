@@ -54,6 +54,10 @@ void UserTerminalHandler::run() {
       setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
              true);
     }
+    // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
+    // flush of the server WriteBuffer is not followed by ~200KB of local
+    // backlog.
+    socketHandler->minimizeKernelBuffering(routerFd);
     break;
   }
 
