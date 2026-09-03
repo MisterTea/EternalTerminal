@@ -18,9 +18,11 @@
 #include <windows.h>
 #else
 #ifdef __APPLE__
+#include <libproc.h>
 #include <mach-o/dyld.h>
 #endif
 #include <limits.h>
+#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -56,6 +58,42 @@ string siblingHtmdCommand() {
   }
   return string("\"") + htmd.string() + "\"";
 }
+
+#ifdef __APPLE__
+string htmdPidsForUser(uid_t uid) {
+  int bytes = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
+  if (bytes <= 0) {
+    return "";
+  }
+  vector<pid_t> pids(static_cast<size_t>(bytes) / sizeof(pid_t) + 16);
+  bytes = proc_listpids(PROC_ALL_PIDS, 0, pids.data(),
+                        static_cast<int>(pids.size() * sizeof(pid_t)));
+  int count = bytes > 0 ? bytes / static_cast<int>(sizeof(pid_t)) : 0;
+  string out;
+  for (int i = 0; i < count; i++) {
+    if (pids[i] <= 0) {
+      continue;
+    }
+    char name[128];
+    if (proc_name(pids[i], name, sizeof(name)) <= 0) {
+      continue;
+    }
+    if (strcmp(name, "htmd") != 0) {
+      continue;
+    }
+    struct proc_bsdinfo info;
+    if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) <= 0) {
+      continue;
+    }
+    if (info.pbi_uid != uid) {
+      continue;
+    }
+    out += to_string(pids[i]);
+    out += '\n';
+  }
+  return out;
+}
+#endif
 #endif
 
 void writeHtmExitSequence() {
@@ -247,16 +285,38 @@ int main(int argc, char** argv) {
 #else
   uid_t myuid = getuid();
   const string pipeName = HtmServer::getPipeName();
+#ifdef __APPLE__
+  auto htmdPids = [&]() { return htmdPidsForUser(myuid); };
+#else
   auto htmdPids = [&]() {
     string command =
         string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
     return SystemToStr(command.c_str());
   };
+#endif
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
+#ifdef __APPLE__
+    string running = htmdPids();
+    string pidStr;
+    for (char ch : running) {
+      if (ch == '\n') {
+        if (!pidStr.empty()) {
+          ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
+          pidStr.clear();
+        }
+      } else {
+        pidStr += ch;
+      }
+    }
+    if (!pidStr.empty()) {
+      ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
+    }
+#else
     string command =
         string("pkill -x -U ") + to_string(myuid) + string(" htmd");
     system(command.c_str());
+#endif
     for (int i = 0; i < 50; i++) {
       if (htmdPids().empty()) {
         break;

@@ -4,6 +4,10 @@
 #include "PipeSocketHandler.hpp"
 #include "WinsockContext.hpp"
 
+#ifndef WIN32
+#include <signal.h>
+#endif
+
 using namespace et;
 
 namespace {
@@ -14,6 +18,14 @@ void stopHtmServer(int) {
     gHtmServer->requestStop();
   }
 }
+
+#ifndef WIN32
+void dumpHtmPanes(int) {
+  if (gHtmServer) {
+    gHtmServer->requestPaneDump();
+  }
+}
+#endif
 }  // namespace
 
 int main(int argc, char** argv) {
@@ -39,6 +51,7 @@ int main(int argc, char** argv) {
 #ifndef WIN32
   ::signal(SIGINT, stopHtmServer);
   ::signal(SIGTERM, stopHtmServer);
+  ::signal(SIGUSR1, dumpHtmPanes);
 #else
   ::signal(SIGINT, et::InterruptSignalHandler);
 #endif

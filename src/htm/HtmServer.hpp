@@ -16,7 +16,9 @@ class HtmServer : public IpcPairServer {
             const SocketEndpoint& endpoint);
   void run();
   void requestStop() { running.store(false); }
+  void requestPaneDump() { paneDumpRequested.store(true); }
   static string getPipeName();
+  static string getPaneDumpPath();
 #ifdef WIN32
   /** @brief Returns the per-user event used for graceful Windows restarts. */
   static string getShutdownEventName();
@@ -26,12 +28,14 @@ class HtmServer : public IpcPairServer {
  protected:
   void handleClientData();
   void processLine(const string& line);
+  void writePaneDumpIfRequested();
 
   MultiplexerState state;
   ControlWriter writer;
   string lineBuf;
   bool skipLfAfterCr;
   std::atomic<bool> running;
+  std::atomic<bool> paneDumpRequested;
 };
 }  // namespace et
 

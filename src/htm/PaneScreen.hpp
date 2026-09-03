@@ -41,6 +41,8 @@ class PaneScreen {
   static int onDamage(VTermRect rect, void* user);
   static int onSetTermProp(VTermProp prop, VTermValue* val, void* user);
   static int onSbPush(int cols, const VTermScreenCell* cells, void* user);
+  static int onSbPush4(int cols, const VTermScreenCell* cells,
+                       bool continuation, void* user);
   static int onSbClear(void* user);
   static int onMoveCursor(VTermPos pos, VTermPos oldpos, int visible,
                           void* user);
@@ -59,7 +61,18 @@ class PaneScreen {
   bool cursorOn;
   int mouseMode;
   string windowTitle;
-  deque<vector<VTermScreenCell>> history;
+  enum class InputFilterState {
+    Normal,
+    Escape,
+    ScreenTitle,
+    ScreenTitleEscape,
+  };
+  InputFilterState inputFilterState;
+  struct HistoryLine {
+    vector<VTermScreenCell> cells;
+    bool continuation = false;
+  };
+  deque<HistoryLine> history;
   static const size_t kMaxHistory = 2000;
 };
 

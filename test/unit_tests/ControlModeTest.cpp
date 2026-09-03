@@ -69,6 +69,26 @@ TEST_CASE("PaneScreen captures fed text", "[Htm][PaneScreen]") {
   REQUIRE(y >= 0);
 }
 
+TEST_CASE("PaneScreen consumes TERM=screen title sequences",
+          "[Htm][PaneScreen]") {
+  PaneScreen screen(40, 10);
+  screen.feed("echo VALUE\r\n\x1bk");
+  screen.feed("echo\x1b");
+  screen.feed("\\VALUE\r\n");
+  string cap = screen.capture(false, false, 0, 0, false, false);
+  REQUIRE(cap.find("\nechoVALUE") == string::npos);
+  REQUIRE(cap.find("\nVALUE") != string::npos);
+}
+
+TEST_CASE("PaneScreen capture -J joins wrapped rows", "[Htm][PaneScreen]") {
+  PaneScreen screen(5, 4);
+  screen.feed("abcdefgh\r\n");
+  string joined = screen.capture(false, false, 0, 0, true, false);
+  string separate = screen.capture(false, false, 0, 0, false, false);
+  REQUIRE(joined.find("abcdefgh") != string::npos);
+  REQUIRE(separate.find("abcde\nfgh") != string::npos);
+}
+
 TEST_CASE("PaneScreen capture-pane -e includes SGR and -a is empty off alt",
           "[Htm][PaneScreen]") {
   PaneScreen screen(40, 10);

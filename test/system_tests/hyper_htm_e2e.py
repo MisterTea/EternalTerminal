@@ -110,6 +110,7 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> "HyperHtmSe
 
 class HyperHtmSession(GuiTerminalSession):
     name = "Hyper"
+    ax_process_name = "Hyper"
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -157,6 +158,10 @@ end tell
         except (ValueError, subprocess.CalledProcessError):
             return 0
 
+    def tab_count(self) -> int:
+        # Each tmux window is a native Hyper window, matching iTerm2 -CC.
+        return self.window_count()
+
     def start(self, command: str = "") -> None:
         self.was_running = process_is_running("Hyper")
         kill_htm_daemons()
@@ -174,6 +179,7 @@ end tell
         )
         self.focus()
         time.sleep(0.8)
+        self.remember_gateway_windows()
         launch = command.strip() if command else f"{self.htm} -x"
         self.keystroke(applescript_quote(launch))
         self.key_code(36)

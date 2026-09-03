@@ -6,8 +6,12 @@
 #include <windows.h>
 #else
 #include <unistd.h>
+#ifdef __APPLE__
+#include <libproc.h>
+#endif
 
 #include <chrono>
+#include <fstream>
 #include <stdexcept>
 
 #include "ETerminal.pb.h"
@@ -112,6 +116,43 @@ int64_t TerminalHandler::childProcessId() const {
   return static_cast<int64_t>(GetProcessId(static_cast<HANDLE>(processHandle)));
 #else
   return childPid > 0 ? static_cast<int64_t>(childPid) : 0;
+#endif
+}
+
+string TerminalHandler::foregroundCommand() const {
+#ifdef WIN32
+  return string();
+#else
+  auto name_of = [](pid_t pid) -> string {
+    if (pid <= 0) {
+      return string();
+    }
+    string comm;
+#ifdef __APPLE__
+    char name[128];
+    if (proc_name(pid, name, sizeof(name)) > 0) {
+      comm = string(name);
+    }
+#else
+    ifstream in(string("/proc/") + to_string(pid) + "/comm");
+    getline(in, comm);
+#endif
+    if (comm == "pgrep" || comm == "pkill" || comm == "htmd" || comm == "htm") {
+      return string();
+    }
+    return comm;
+  };
+  string comm;
+  if (masterFd >= 0) {
+    pid_t pgid = tcgetpgrp(masterFd);
+    if (pgid > 0 && pgid != childPid) {
+      comm = name_of(pgid);
+    }
+  }
+  if (comm.empty()) {
+    comm = name_of(childPid);
+  }
+  return comm;
 #endif
 }
 
@@ -314,6 +355,9 @@ void TerminalHandler::start(const string& cwd, int cols, int rows) {
       string terminal =
           (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
       setenv("HTM_VERSION", ET_VERSION, 1);
+      // Match tmux -f /dev/null (default-terminal screen) so shells send the
+      // same OSC/title sequences iTerm2 sees under tmux -CC.
+      setenv("TERM", "screen", 1);
       // zsh's default PROMPT_EOL_MARK is a highlighted `%` plus spaces to the
       // right margin. GUI panes (Hyper, iTerm2) reflow that padding into a
       // stray `%` on its own line. Empty the mark so a fresh pane is clean.

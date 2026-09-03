@@ -52,6 +52,7 @@ struct MultiplexerState::Window {
   bool rootIsPane = true;
   uint32_t activePane = 0;
   uint32_t zoomedPane = 0;
+  bool automaticRename = true;
   map<string, string> options;
 };
 
@@ -97,6 +98,7 @@ MultiplexerState::MultiplexerState()
       nextPaneId(0),
       nextSplitId(0x40000000u),
       attachedSession(0),
+      sentInitialAttachNotifications(false),
       width(80),
       height(24) {
   uint32_t sid = newSession("htm");
@@ -152,6 +154,7 @@ uint32_t MultiplexerState::newSession(const string& name) {
 
 uint32_t MultiplexerState::newWindow(const string& name, const string& cwd) {
   auto session = sessions[attachedSession];
+  bool firstWindow = session->windowIds.empty();
   auto window = make_shared<Window>();
   window->id = nextWindowId++;
   window->sessionId = session->id;
@@ -169,10 +172,11 @@ uint32_t MultiplexerState::newWindow(const string& name, const string& cwd) {
   session->windowIds.push_back(window->id);
   session->activeWindow = window->id;
   layoutWindow(window.get());
+  if (!firstWindow) {
+    notify("%session-window-changed $" + to_string(session->id) + " @" +
+           to_string(window->id));
+  }
   notify("%window-add @" + to_string(window->id));
-  notify("%session-window-changed $" + to_string(session->id) + " @" +
-         to_string(window->id));
-  emitLayout(window.get());
   return window->id;
 }
 
@@ -201,9 +205,9 @@ uint32_t MultiplexerState::splitWindow(uint32_t sourcePane, bool stacked,
       attachToSplit(split);
       window->activePane = newPane->id;
       layoutWindow(window.get());
-      emitLayout(window.get());
       notify("%window-pane-changed @" + to_string(window->id) + " %" +
              to_string(newPane->id));
+      emitLayout(window.get());
       return newPane->id;
     }
   }
@@ -240,9 +244,9 @@ uint32_t MultiplexerState::splitWindow(uint32_t sourcePane, bool stacked,
   newPane->parentIsWindow = false;
   window->activePane = newPane->id;
   layoutWindow(window.get());
-  emitLayout(window.get());
   notify("%window-pane-changed @" + to_string(window->id) + " %" +
          to_string(newPane->id));
+  emitLayout(window.get());
   return newPane->id;
 }
 
@@ -399,8 +403,8 @@ void MultiplexerState::closeWindow(uint32_t windowId) {
   session->windowIds.erase(
       remove(session->windowIds.begin(), session->windowIds.end(), windowId),
       session->windowIds.end());
-  notify("%window-close @" + to_string(windowId));
   if (session->windowIds.empty()) {
+    notify("%unlinked-window-close @" + to_string(windowId));
     sessions.erase(session->id);
     notify("%sessions-changed");
     if (attachedSession == session->id) {
@@ -414,6 +418,9 @@ void MultiplexerState::closeWindow(uint32_t windowId) {
     session->activeWindow = session->windowIds.back();
     notify("%session-window-changed $" + to_string(session->id) + " @" +
            to_string(session->activeWindow));
+    notify("%unlinked-window-close @" + to_string(windowId));
+  } else {
+    notify("%unlinked-window-close @" + to_string(windowId));
   }
 }
 
@@ -628,9 +635,9 @@ uint32_t MultiplexerState::breakPane(uint32_t paneId) {
   session->windowIds.push_back(window->id);
   session->activeWindow = window->id;
   layoutWindow(window.get());
-  notify("%window-add @" + to_string(window->id));
   notify("%session-window-changed $" + to_string(session->id) + " @" +
          to_string(window->id));
+  notify("%window-add @" + to_string(window->id));
   emitLayout(window.get());
   if (emptied) {
     closeWindow(oldWid);
@@ -795,6 +802,7 @@ void MultiplexerState::selectWindow(uint32_t windowId) {
 
 void MultiplexerState::renameWindow(uint32_t windowId, const string& name) {
   windows.at(windowId)->name = name;
+  windows.at(windowId)->automaticRename = false;
   notify("%window-renamed @" + to_string(windowId) + " " + name);
 }
 
@@ -853,38 +861,57 @@ void MultiplexerState::resizePaneDir(uint32_t paneId, char dir, int amount) {
     return;
   }
   size_t neighbor = idx;
+  bool growPane = true;
   if (dir == 'L' || dir == 'U') {
-    if (idx == 0) {
+    if (idx > 0) {
+      neighbor = idx - 1;
+    } else if (idx + 1 < split->children.size()) {
+      neighbor = idx + 1;
+      growPane = false;
+    } else {
       return;
     }
-    neighbor = idx - 1;
   } else {
-    if (idx + 1 >= split->children.size()) {
+    if (idx + 1 < split->children.size()) {
+      neighbor = idx + 1;
+    } else if (idx > 0) {
+      neighbor = idx - 1;
+      growPane = false;
+    } else {
       return;
     }
-    neighbor = idx + 1;
   }
-  int total = split->stacked ? pane->rows : pane->cols;
-  (void)total;
-  float delta = amount / 100.0f;
-  if (dir == 'L' || dir == 'U') {
-    split->sizes[idx] += delta;
-    split->sizes[neighbor] -= delta;
-  } else {
-    split->sizes[idx] += delta;
-    split->sizes[neighbor] -= delta;
-  }
-  for (float& s : split->sizes) {
-    if (s < 0.05f) {
-      s = 0.05f;
+  int total = 0;
+  vector<int> childDims;
+  for (uint32_t child : split->children) {
+    vector<uint32_t> childPanes;
+    collectPanes(child, &childPanes);
+    int dimension = 1;
+    if (!childPanes.empty() && panes.count(childPanes.front())) {
+      auto childPane = panes.at(childPanes.front());
+      dimension = split->stacked ? childPane->rows : childPane->cols;
     }
+    childDims.push_back(dimension);
+    total += dimension;
   }
-  float sum = 0;
-  for (float s : split->sizes) {
-    sum += s;
+  if (total <= 0) {
+    return;
   }
-  for (float& s : split->sizes) {
-    s /= sum;
+  size_t shrinking = growPane ? neighbor : idx;
+  int move = min(max(0, amount), max(0, childDims[shrinking] - 1));
+  if (move == 0) {
+    return;
+  }
+  if (growPane) {
+    childDims[idx] += move;
+    childDims[neighbor] -= move;
+  } else {
+    childDims[idx] -= move;
+    childDims[neighbor] += move;
+  }
+  for (size_t i = 0; i < split->sizes.size(); i++) {
+    split->sizes[i] =
+        static_cast<float>(childDims[i]) / static_cast<float>(total);
   }
   auto window = windows[pane->windowId];
   layoutWindow(window.get());
@@ -938,14 +965,17 @@ void MultiplexerState::layoutNode(uint32_t id, int x, int y, int cols,
   auto split = splits.at(id);
   int cursor = split->stacked ? y : x;
   int total = split->stacked ? rows : cols;
+  int separators = max(0, static_cast<int>(split->children.size()) - 1);
+  int available =
+      max(static_cast<int>(split->children.size()), total - separators);
   for (size_t i = 0; i < split->children.size(); i++) {
-    int piece = splitDim(total, split->sizes, i);
+    int piece = splitDim(available, split->sizes, i);
     if (split->stacked) {
       layoutNode(split->children[i], x, cursor, cols, piece);
-      cursor += piece;
+      cursor += piece + 1;
     } else {
       layoutNode(split->children[i], cursor, y, piece, rows);
-      cursor += piece;
+      cursor += piece + 1;
     }
   }
 }
@@ -1065,17 +1095,14 @@ void MultiplexerState::attachNotifications() {
     return;
   }
   auto session = sessions[attachedSession];
-  notify("%sessions-changed");
-  notify("%session-changed $" + to_string(session->id) + " " + session->name);
-  for (uint32_t wid : session->windowIds) {
-    notify("%window-add @" + to_string(wid));
-    emitLayout(windows[wid].get());
+  if (!sentInitialAttachNotifications) {
+    for (uint32_t wid : session->windowIds) {
+      notify("%window-add @" + to_string(wid));
+    }
+    notify("%sessions-changed");
+    sentInitialAttachNotifications = true;
   }
-  notify("%session-window-changed $" + to_string(session->id) + " @" +
-         to_string(session->activeWindow));
-  auto window = windows[session->activeWindow];
-  notify("%window-pane-changed @" + to_string(window->id) + " %" +
-         to_string(window->activePane));
+  notify("%session-changed $" + to_string(session->id) + " " + session->name);
 }
 
 void MultiplexerState::pollOutput() {
@@ -1110,6 +1137,15 @@ void MultiplexerState::pollOutput() {
     // makes a just-emitted tmux %output impossible to capture.
     if (data.empty() && !pane->terminal->isRunning()) {
       dead.push_back(pane->id);
+    }
+    auto window = windows[pane->windowId];
+    if (window && window->automaticRename && window->activePane == pane->id) {
+      string comm = pane->terminal->foregroundCommand();
+      if (!comm.empty() && comm != window->name) {
+        window->name = comm;
+        VLOG(1) << "automatic-rename @" << window->id << " " << comm;
+        notify("%window-renamed @" + to_string(window->id) + " " + comm);
+      }
     }
   }
   for (uint32_t id : dead) {
@@ -1222,6 +1258,9 @@ string MultiplexerState::expandOne(const string& name, Session* session,
     }
     if (name == "pane_pid") {
       return to_string(pane->terminal->childProcessId());
+    }
+    if (name == "pane_current_command") {
+      return pane->terminal->foregroundCommand();
     }
     if (name == "pane_active") {
       auto w = windows[pane->windowId];
@@ -1427,6 +1466,60 @@ string MultiplexerState::capturePane(uint32_t paneId, bool escapes, bool alt,
   }
   return it->second->screen->capture(escapes, alt, startLine, endLine, joinWrap,
                                      preserveTrailing);
+}
+
+string MultiplexerState::dumpAllPanesText() const {
+  // Match tmux capture-pane -p -J on the visible screen (default -S/-E).
+  string out;
+  for (const auto& sessIt : sessions) {
+    auto session = sessIt.second;
+    if (!session) {
+      continue;
+    }
+    for (uint32_t wid : session->windowIds) {
+      auto winIt = windows.find(wid);
+      if (winIt == windows.end() || !winIt->second) {
+        continue;
+      }
+      auto window = winIt->second;
+      vector<uint32_t> ids;
+      collectPanes(window->rootId, &ids);
+      for (uint32_t pid : ids) {
+        auto paneIt = panes.find(pid);
+        if (paneIt == panes.end() || !paneIt->second) {
+          continue;
+        }
+        auto pane = paneIt->second;
+        int cx = 0;
+        int cy = 0;
+        if (pane->screen) {
+          pane->screen->cursor(&cx, &cy);
+        }
+        out +=
+            "--- window @" + to_string(window->id) + " name=" + window->name +
+            " pane %" + to_string(pane->id) +
+            " active=" + (window->activePane == pane->id ? "1" : "0") + " " +
+            to_string(pane->cols) + "x" + to_string(pane->rows) +
+            " cursor=" + to_string(cx) + "," + to_string(cy) + " shell_pid=" +
+            to_string(pane->terminal ? pane->terminal->childProcessId() : 0) +
+            " current=" +
+            string((session && session->activeWindow == window->id &&
+                    window->activePane == pane->id)
+                       ? "1"
+                       : "0") +
+            "\n";
+        string text;
+        if (pane->screen) {
+          text = pane->screen->capture(false, false, -1000, -1, true, true);
+        }
+        out += text;
+        if (text.empty() || text.back() != '\n') {
+          out += "\n";
+        }
+      }
+    }
+  }
+  return out;
 }
 
 string MultiplexerState::displayFormat(const string& format, uint32_t sessionId,

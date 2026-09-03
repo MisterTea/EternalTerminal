@@ -64,6 +64,8 @@ class MultiplexerState {
   string listAllPanes(const string& format);
   string capturePane(uint32_t paneId, bool escapes, bool alt, int startLine,
                      int endLine, bool joinWrap, bool preserveTrailing);
+  /** Visible-screen text of every pane, in tmux capture-pane -p -J form. */
+  string dumpAllPanesText() const;
   string displayFormat(const string& format, uint32_t sessionId,
                        uint32_t windowId, uint32_t paneId);
 
@@ -98,6 +100,7 @@ class MultiplexerState {
   uint32_t nextPaneId;
   uint32_t nextSplitId;
   uint32_t attachedSession;
+  bool sentInitialAttachNotifications;
   int width;
   int height;
 
