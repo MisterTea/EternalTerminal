@@ -10,7 +10,6 @@
 #include <libproc.h>
 #elif defined(__FreeBSD__)
 #include <sys/sysctl.h>
-#include <sys/user.h>
 #endif
 
 #include <chrono>
@@ -137,11 +136,14 @@ string TerminalHandler::foregroundCommand() const {
       comm = string(name);
     }
 #elif defined(__FreeBSD__)
-    struct kinfo_proc kp;
-    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid};
-    size_t len = sizeof(kp);
-    if (sysctl(mib, 4, &kp, &len, NULL, 0) == 0 && len >= sizeof(kp)) {
-      comm = string(kp.ki_comm);
+    // Avoid sys/user.h: kinfo_proc collides with std::thread.
+    char path[1024] = {};
+    size_t len = sizeof(path);
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid};
+    if (sysctl(mib, 4, path, &len, NULL, 0) == 0 && path[0]) {
+      string p(path);
+      auto slash = p.find_last_of('/');
+      comm = slash == string::npos ? p : p.substr(slash + 1);
     }
 #else
     ifstream in(string("/proc/") + to_string(pid) + "/comm");
