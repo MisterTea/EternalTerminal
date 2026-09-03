@@ -22,10 +22,6 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
-  if (!SetCurrentDirectoryA(GetTempDirectory().c_str())) {
-    STFATAL << "Failed to use the temp directory for HTM IPC: "
-            << GetLastError();
-  }
 #endif
 
   // Setup easylogging configurations
@@ -52,7 +48,27 @@ int main(int argc, char** argv) {
   endpoint.set_name(HtmServer::getPipeName());
   HtmServer htm(socketHandler, endpoint);
   gHtmServer = &htm;
+#ifdef WIN32
+  HANDLE shutdownEvent = CreateEventA(
+      NULL, TRUE, FALSE, HtmServer::getShutdownEventName().c_str());
+  if (!shutdownEvent) {
+    STFATAL << "Failed to create HTM shutdown event: " << GetLastError();
+  }
+  // A previous daemon may have signaled the named event while this process was
+  // starting. This instance owns the event now, so begin in the nonsignaled
+  // state before publishing its listening socket.
+  ResetEvent(shutdownEvent);
+  thread shutdownWatcher([&]() {
+    WaitForSingleObject(shutdownEvent, INFINITE);
+    htm.requestStop();
+  });
+#endif
   htm.run();
+#ifdef WIN32
+  SetEvent(shutdownEvent);
+  shutdownWatcher.join();
+  CloseHandle(shutdownEvent);
+#endif
   gHtmServer = nullptr;
   LOG(INFO) << "Server is shutting down";
 

@@ -652,6 +652,27 @@ if(WIN32)
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
       USES_TERMINAL
       COMMENT "Running Windows tests with native Visual Studio coverage")
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+      add_test(
+        NAME windows_terminal_htm_headless_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_headless_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+          --iterations 1
+      )
+      set_tests_properties(
+        windows_terminal_htm_headless_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 120
+          LABELS "e2e;htm;system;windows"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
     if(TARGET test)
       add_dependencies(test et-test)
     endif()
@@ -723,9 +744,9 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    # iTerm2 / Ghostty / Hyper / WezTerm e2e stay opt-in until those terminals
-    # speak tmux -CC against htm. Default ctest and `./et-test` skip them.
-    # Run with:
+    # iTerm2 / Ghostty / Hyper / WezTerm / Windows Terminal e2e stay opt-in
+    # until those terminals speak tmux -CC against htm. Default ctest and
+    # `./et-test` skip them. Run with:
     #   ./et-test ghostty
     #   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
     #   python3 test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
@@ -733,6 +754,7 @@ else(WIN32)
     #   python3 test/system_tests/hyper_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/wezterm_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     catch_discover_tests(
       et-test
       TEST_SPEC "~[.ghostty]"
@@ -804,6 +826,8 @@ else(WIN32)
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_stress_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_stress_e2e.py
+    # Windows Terminal interactive e2e (requires unlocked desktop):
+    #   py ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_e2e.py --wt wt.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)
