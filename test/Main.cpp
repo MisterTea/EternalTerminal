@@ -5,6 +5,7 @@
 #include <iostream>
 
 #ifndef WIN32
+#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -67,6 +68,12 @@ int main(int argc, char** argv) {
   // el::Loggers::setVerboseLevel(9);
 
   et::HandleTerminate();
+#ifndef WIN32
+  // Match UnixSocketHandler::initSocket(). Tests that drive socketpairs with
+  // raw ::write() never call initSocket, and a peer closing during recover
+  // would otherwise kill the process with SIGPIPE (debian Portability CI).
+  ::signal(SIGPIPE, SIG_IGN);
+#endif
 
   string logDirectory;
 #ifdef WIN32
