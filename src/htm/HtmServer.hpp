@@ -17,6 +17,10 @@ class HtmServer : public IpcPairServer {
   void run();
   void requestStop() { running.store(false); }
   static string getPipeName();
+#ifdef WIN32
+  /** @brief Returns the per-user event used for graceful Windows restarts. */
+  static string getShutdownEventName();
+#endif
   virtual void recover();
 
  protected:

@@ -20,6 +20,7 @@ import re
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Callable, Optional, Sequence
@@ -132,15 +133,19 @@ def unique_preserve(items: list[str]) -> list[str]:
 
 
 def uid() -> int:
-    return os.getuid()
+    return os.getuid() if os.name != "nt" else 0
 
 
 def ipc_path() -> Path:
+    if os.name == "nt":
+        user = os.environ.get("USERNAME", "user")
+        user = "".join(c if c.isalnum() or c in "_-" else "_" for c in user)
+        return Path.cwd() / f"htm.{user or 'user'}.ipc"
     return Path("/tmp") / f"htm.{uid()}.ipc"
 
 
 def list_htmd_logs() -> list[Path]:
-    tmp = Path("/tmp")
+    tmp = Path(tempfile.gettempdir()) if os.name == "nt" else Path("/tmp")
     try:
         return [
             tmp / name
@@ -183,9 +188,10 @@ def newest_log(logs: list[Path], started_at: float = 0.0) -> Optional[Path]:
             mtime = path.stat().st_mtime
         except OSError:
             mtime = 0.0
-        # Filename time filters leftover logs; mtime keeps a still-growing
-        # log visible across reattach (same htmd, same file).
-        if created < started_at and mtime < started_at:
+        # Initial attach must never pin an older daemon log merely because its
+        # mtime changed during cleanup. Reattach keeps using ``log_file`` and
+        # does not need old files admitted here.
+        if created < started_at:
             continue
         score = max(created, mtime)
         if score >= best_score:
@@ -204,6 +210,20 @@ def read_text(path: Optional[Path]) -> str:
 
 
 def pids_named(name: str) -> list[int]:
+    if os.name == "nt":
+        image = name if name.lower().endswith(".exe") else f"{name}.exe"
+        try:
+            output = subprocess.check_output(
+                ["tasklist", "/FI", f"IMAGENAME eq {image}", "/FO", "CSV", "/NH"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return []
+        import csv
+
+        return [int(row[1]) for row in csv.reader(output.splitlines())
+                if len(row) > 1 and row[0].casefold() == image.casefold()]
     try:
         out = subprocess.check_output(
             ["pgrep", "-x", "-U", str(uid()), name],
@@ -236,6 +256,11 @@ def process_is_running(name: str) -> bool:
 
 
 def kill_named(name: str, sig: int = signal.SIGTERM) -> None:
+    if os.name == "nt":
+        for pid in pids_named(name):
+            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
+                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        return
     for pid in pids_named(name):
         try:
             os.kill(pid, sig)
@@ -296,10 +321,12 @@ def find_htm_bin(cli: Optional[str]) -> Path:
     env = os.environ.get("HTM_BIN")
     if env and Path(env).is_file():
         return Path(env).resolve()
+    executable = "htm.exe" if os.name == "nt" else "htm"
     for candidate in (
-        Path(__file__).resolve().parents[2] / "build" / "htm",
-        Path.cwd() / "htm",
-        Path.cwd() / "build" / "htm",
+        Path(__file__).resolve().parents[2] / "build" / "Release" / executable,
+        Path(__file__).resolve().parents[2] / "build" / executable,
+        Path.cwd() / executable,
+        Path.cwd() / "build" / executable,
     ):
         if candidate.is_file():
             return candidate.resolve()
@@ -312,7 +339,7 @@ def find_htmd_bin(cli: Optional[str], htm: Path) -> Path:
     env = os.environ.get("HTMD_BIN")
     if env and Path(env).is_file():
         return Path(env).resolve()
-    sibling = htm.parent / "htmd"
+    sibling = htm.parent / ("htmd.exe" if os.name == "nt" else "htmd")
     if sibling.is_file():
         return sibling.resolve()
     skip("htmd binary is not built")
@@ -352,6 +379,7 @@ class GuiHtmLogSession:
                 "control command:" in text
                 or "control-mode" in text
                 or "Connected to endpoint" in text
+                or "accepted, returned client_sock" in text
             ):
                 self.log_file = path
                 return True
@@ -709,6 +737,7 @@ EMULATOR_MODULES = {
     "hyper": "hyper_htm_e2e",
     "wezterm": "wezterm_htm_e2e",
     "ghostty": "ghostty_htm_e2e",
+    "windows-terminal": "windows_terminal_htm_e2e",
 }
 
 
@@ -757,7 +786,8 @@ def add_common_gui_args(parser: argparse.ArgumentParser, default_suite: str) -> 
 def run_emulator_main(module: object, default_suite: str = "layout") -> int:
     """CLI entry used by per-emulator scripts and the unified runner."""
     name = getattr(module, "NAME", "GUI")
-    if sys.platform != "darwin":
+    platforms = getattr(module, "PLATFORMS", ("darwin",))
+    if sys.platform not in platforms:
         skip(f"{name} HTM e2e requires macOS")
 
     parser = argparse.ArgumentParser()
@@ -825,7 +855,8 @@ def main() -> int:
     apply_args = getattr(module, "apply_args", None)
     if callable(apply_args):
         apply_args(args)
-    if sys.platform != "darwin":
+    platforms = getattr(module, "PLATFORMS", ("darwin",))
+    if sys.platform not in platforms:
         skip(f"{args.emulator} HTM e2e requires macOS")
 
     htm = find_htm_bin(args.htm)

@@ -7,6 +7,13 @@
 #endif
 
 namespace et {
+namespace {
+socklen_t unixAddressLength(const sockaddr_un& address) {
+  return static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) +
+                                strlen(address.sun_path) + 1);
+}
+}  // namespace
+
 PipeSocketHandler::PipeSocketHandler() {}
 
 int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
@@ -23,16 +30,18 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   // Windows AF_UNIX does not autobind clients. bind/connect must also be the
   // first socket operation, so bind a short, unique pathname before applying
   // non-blocking configuration.
-  string clientPath = "htmc." + to_string(GetCurrentProcessId()) + "." +
+  string clientPath = GetTempDirectory() + "htmc." +
+                      to_string(GetCurrentProcessId()) + "." +
                       to_string(GetTickCount64()) + "." + to_string(sockFd);
+  replace(clientPath.begin(), clientPath.end(), '\\', '/');
   sockaddr_un client;
   ZeroMemory(&client, sizeof(client));
   client.sun_family = AF_UNIX;
   strncpy_s(client.sun_path, sizeof(client.sun_path), clientPath.c_str(),
             _TRUNCATE);
   DeleteFileA(clientPath.c_str());
-  if (::bind(sockFd, reinterpret_cast<sockaddr*>(&client), sizeof(client)) <
-      0) {
+  if (::bind(sockFd, reinterpret_cast<sockaddr*>(&client),
+             unixAddressLength(client)) < 0) {
     ::closesocket(sockFd);
     return -1;
   }
@@ -42,7 +51,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   VLOG(3) << "Connecting to " << endpoint << " with fd " << sockFd;
   int result =
-      ::connect(sockFd, (struct sockaddr*)&remote, sizeof(sockaddr_un));
+      ::connect(sockFd, (struct sockaddr*)&remote, unixAddressLength(remote));
   auto localErrno = GetErrno();
   VLOG(3) << "AF_UNIX connect returned " << result << " with error "
           << localErrno;
@@ -166,7 +175,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   unlink(local.sun_path);
 #endif
 
-  FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, sizeof(sockaddr_un)));
+  FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, unixAddressLength(local)));
   FATAL_FAIL(::listen(fd, 5));
 #ifdef WIN32
   // bind must be the first operation on a Windows AF_UNIX socket. Configure

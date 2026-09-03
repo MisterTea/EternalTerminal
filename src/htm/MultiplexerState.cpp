@@ -1104,7 +1104,11 @@ void MultiplexerState::pollOutput() {
         }
       }
     }
-    if (!pane->terminal->isRunning()) {
+    // Deliver a child's final output before removing its pane. This matters on
+    // ConPTY, where a shell may exit immediately after writing its prompt or
+    // command result; closing it in the same poll drops the final screen and
+    // makes a just-emitted tmux %output impossible to capture.
+    if (data.empty() && !pane->terminal->isRunning()) {
       dead.push_back(pane->id);
     }
   }

@@ -108,6 +108,37 @@ void killHtmdProcesses() {
   CloseHandle(snap);
 }
 
+bool htmdProcessRunning();
+
+bool requestHtmdShutdown() {
+  HANDLE shutdownEvent = NULL;
+  // htmd creates the event before entering its server loop. A just-spawned
+  // daemon can therefore exist in the process table slightly before the event
+  // is visible.
+  for (int retry = 0; retry < 40 && !shutdownEvent; retry++) {
+    shutdownEvent = OpenEventA(EVENT_MODIFY_STATE, FALSE,
+                               HtmServer::getShutdownEventName().c_str());
+    if (!shutdownEvent) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+  }
+  if (!shutdownEvent) {
+    return false;
+  }
+  bool signaled = SetEvent(shutdownEvent) != FALSE;
+  CloseHandle(shutdownEvent);
+  if (!signaled) {
+    return false;
+  }
+  for (int retry = 0; retry < 100; retry++) {
+    if (!htmdProcessRunning()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  return false;
+}
+
 bool htmdProcessRunning() {
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snap == INVALID_HANDLE_VALUE) {
@@ -142,10 +173,6 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
-  if (!SetCurrentDirectoryA(GetTempDirectory().c_str())) {
-    STFATAL << "Failed to use the temp directory for HTM IPC: "
-            << GetLastError();
-  }
 #endif
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
@@ -194,12 +221,28 @@ int main(int argc, char** argv) {
 
 #ifdef WIN32
   if (result.count("x")) {
-    LOG(INFO) << "Killing previous htmd";
-    killHtmdProcesses();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    LOG(INFO) << "Stopping previous htmd";
+    if (htmdProcessRunning() && !requestHtmdShutdown()) {
+      // Compatibility fallback for an older daemon that predates the graceful
+      // shutdown event. New daemons must take the graceful path so Windows can
+      // release the AF_UNIX pathname before the replacement starts.
+      LOG(WARNING) << "Graceful htmd shutdown failed; terminating it";
+      killHtmdProcesses();
+    }
+    for (int retry = 0; retry < 100 && htmdProcessRunning(); retry++) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
   }
   if (!htmdProcessRunning()) {
     DaemonCreator::create(false, "");
+  }
+  const string pipeName = HtmServer::getPipeName();
+  for (int retry = 0; retry < 100; retry++) {
+    if (htmdProcessRunning() &&
+        GetFileAttributesA(pipeName.c_str()) != INVALID_FILE_ATTRIBUTES) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
   }
 #else
   uid_t myuid = getuid();
