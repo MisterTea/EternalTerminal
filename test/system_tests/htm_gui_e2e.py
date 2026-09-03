@@ -1580,7 +1580,7 @@ def _echo_marker(session: GuiTerminalSession, marker: str) -> None:
 
 
 def _type_ascii_command(session: GuiTerminalSession, command: str) -> None:
-    if session.name == "iTerm2":
+    if session.name in ("iTerm2", "WezTerm"):
         command = command.replace("\\", "\\\\")
     session.keystroke(f'"{command}"')
     session.key_code(36)

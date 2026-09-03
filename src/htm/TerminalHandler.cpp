@@ -8,6 +8,9 @@
 #include <unistd.h>
 #ifdef __APPLE__
 #include <libproc.h>
+#elif defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#include <sys/user.h>
 #endif
 
 #include <chrono>
@@ -132,6 +135,13 @@ string TerminalHandler::foregroundCommand() const {
     char name[128];
     if (proc_name(pid, name, sizeof(name)) > 0) {
       comm = string(name);
+    }
+#elif defined(__FreeBSD__)
+    struct kinfo_proc kp;
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PID, pid};
+    size_t len = sizeof(kp);
+    if (sysctl(mib, 4, &kp, &len, NULL, 0) == 0 && len >= sizeof(kp)) {
+      comm = string(kp.ki_comm);
     }
 #else
     ifstream in(string("/proc/") + to_string(pid) + "/comm");

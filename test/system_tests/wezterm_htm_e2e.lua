@@ -40,12 +40,12 @@ return {
     {
       key = '[',
       mods = 'CMD',
-      action = act.ActivatePaneDirection 'Left',
+      action = act.ActivatePaneDirection 'Prev',
     },
     {
       key = ']',
       mods = 'CMD',
-      action = act.ActivatePaneDirection 'Right',
+      action = act.ActivatePaneDirection 'Next',
     },
     {
       key = '[',

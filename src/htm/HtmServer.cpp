@@ -205,7 +205,8 @@ string HtmServer::getPaneDumpPath() {
 #ifdef WIN32
   return string("htm.") + GetHtmIpcUser() + string(".panes");
 #else
-  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".panes");
+  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() +
+         string(".panes");
 #endif
 }
 
