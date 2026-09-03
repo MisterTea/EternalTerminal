@@ -11,7 +11,8 @@ HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
                      const SocketEndpoint& endpoint)
     : IpcPairServer(_socketHandler, endpoint),
       skipLfAfterCr(false),
-      running(true) {
+      running(true),
+      paneDumpRequested(false) {
   state.setWriter(&writer);
 }
 
@@ -101,6 +102,7 @@ void HtmServer::processLine(const string& line) {
 void HtmServer::run() {
   while (running.load()) {
     if (endpointFd < 0) {
+      writePaneDumpIfRequested();
       std::this_thread::sleep_for(std::chrono::milliseconds(50));
       try {
         pollAccept();
@@ -151,6 +153,15 @@ void HtmServer::run() {
       }
       if (endpointFd > 0) {
         state.pollOutput();
+        writePaneDumpIfRequested();
+        // Shell-exit of the last pane does not go through kill-pane; still
+        // end control mode the way tmux -CC does when no windows remain.
+        if (state.empty()) {
+          writer.notify("%exit");
+          closeEndpoint();
+          writer.clearSocket();
+          running.store(false);
+        }
       }
     } catch (const std::exception& re) {
       try {
@@ -187,6 +198,36 @@ string HtmServer::getPipeName() {
   return string("htm.") + GetHtmIpcUser() + string(".ipc");
 #else
   return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".ipc");
+#endif
+}
+
+string HtmServer::getPaneDumpPath() {
+#ifdef WIN32
+  return string("htm.") + GetHtmIpcUser() + string(".panes");
+#else
+  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() + string(".panes");
+#endif
+}
+
+void HtmServer::writePaneDumpIfRequested() {
+  if (!paneDumpRequested.exchange(false)) {
+    return;
+  }
+  const string path = getPaneDumpPath();
+  const string tmp = path + ".tmp";
+  FILE* fp = fopen(tmp.c_str(), "w");
+  if (!fp) {
+    LOG(WARNING) << "pane dump fopen failed: " << tmp;
+    return;
+  }
+  string body = state.dumpAllPanesText();
+  fwrite(body.data(), 1, body.size(), fp);
+  fclose(fp);
+#ifdef WIN32
+  _unlink(path.c_str());
+  rename(tmp.c_str(), path.c_str());
+#else
+  ::rename(tmp.c_str(), path.c_str());
 #endif
 }
 

@@ -106,7 +106,12 @@ TEST_CASE("HtmServer attach handshake is server-originated",
   REQUIRE(beginAt != string::npos);
   REQUIRE(endAt != string::npos);
   REQUIRE(beginAt < endAt);
-  REQUIRE(h.incoming.find("%session-changed") > endAt);
+  auto windowAddAt = h.incoming.find("%window-add");
+  auto sessionsAt = h.incoming.find("%sessions-changed");
+  auto sessionAt = h.incoming.find("%session-changed");
+  REQUIRE(endAt < windowAddAt);
+  REQUIRE(windowAddAt < sessionsAt);
+  REQUIRE(sessionsAt < sessionAt);
 }
 
 TEST_CASE("HtmServer accepts CR-terminated control commands",
@@ -203,18 +208,6 @@ TEST_CASE("HtmServer layout-change matches tmux 3.x fields",
   };
 
   HtmServerHarness h;
-  REQUIRE(waitUntil(
-      [&]() {
-        h.pump();
-        for (const string& line : h.lines) {
-          if (isTmux3(line) && line.find(" *") != string::npos) {
-            return true;
-          }
-        }
-        return false;
-      },
-      5000));
-
   h.command("split-window -h");
   REQUIRE(waitUntil(
       [&]() {
@@ -225,7 +218,7 @@ TEST_CASE("HtmServer layout-change matches tmux 3.x fields",
             n++;
           }
         }
-        return n >= 2;
+        return n >= 1;
       },
       5000));
 
@@ -264,6 +257,18 @@ TEST_CASE("HtmServer stops when the last pane is closed", "[Htm][HtmServer]") {
       8000));
 }
 
+TEST_CASE("HtmServer emits exit when the last shell exits naturally",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("send-keys exit Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%exit") != string::npos;
+      },
+      8000));
+}
+
 TEST_CASE("HtmServer survives an abrupt client hangup", "[Htm][HtmServer]") {
   HtmServerHarness h;
   h.client->closeEndpoint();
@@ -277,6 +282,61 @@ TEST_CASE("HtmServer detach on empty line", "[Htm][HtmServer]") {
       [&]() {
         h.pump();
         return h.incoming.find("%exit") != string::npos;
+      },
+      5000));
+}
+
+TEST_CASE("HtmServer mutation notifications follow tmux control-mode order",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  auto commandEvents = [&](const string& command, const string& lastEvent) {
+    size_t before = h.incoming.size();
+    h.command(command);
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return h.incoming.find(lastEvent, before) != string::npos;
+        },
+        5000));
+    return h.incoming.substr(before);
+  };
+  auto ordered = [](const string& text, const vector<string>& events) {
+    size_t at = 0;
+    for (const string& event : events) {
+      at = text.find(event, at);
+      if (at == string::npos) {
+        return false;
+      }
+      at += event.size();
+    }
+    return true;
+  };
+
+  string added = commandEvents("new-window", "%window-add");
+  REQUIRE(ordered(
+      added, {"%begin ", "%end ", "%session-window-changed", "%window-add"}));
+
+  string split = commandEvents("split-window -h", "%layout-change");
+  REQUIRE(ordered(
+      split, {"%begin ", "%end ", "%window-pane-changed", "%layout-change"}));
+
+  string killedPane = commandEvents("kill-pane", "%window-pane-changed");
+  REQUIRE(ordered(killedPane, {"%begin ", "%end ", "%layout-change",
+                               "%window-pane-changed"}));
+
+  string killedWindow = commandEvents("kill-window", "%unlinked-window-close");
+  REQUIRE(ordered(killedWindow, {"%begin ", "%end ", "%session-window-changed",
+                                 "%unlinked-window-close"}));
+}
+
+TEST_CASE("HtmServer automatic-renames window from pane command",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("send-keys sleep Space 2 Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%window-renamed @1 sleep") != string::npos;
       },
       5000));
 }
@@ -365,8 +425,53 @@ TEST_CASE("HtmServer reconnect recaptures pane contents", "[Htm][HtmServer]") {
         return hasLinePrefix(h.lines, "%session-changed");
       },
       8000));
+  REQUIRE(h.incoming.find("%window-add") == string::npos);
+  REQUIRE(h.incoming.find("%sessions-changed") == string::npos);
+  REQUIRE(h.incoming.find("%layout-change") == string::npos);
   string second = h.command("capture-pane -p -t %0");
   REQUIRE(second.find("RECAP_MARK") != string::npos);
+
+  h.client->closeEndpoint();
+  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
+  h.incoming.clear();
+  h.lines.clear();
+  h.client.reset(new IpcPairClient(h.handler, h.endpoint));
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return hasLinePrefix(h.lines, "%session-changed");
+      },
+      8000));
+  REQUIRE(h.incoming.find("%window-add") == string::npos);
+  REQUIRE(h.incoming.find("%sessions-changed") == string::npos);
+  string third = h.command("capture-pane -p -t %0");
+  REQUIRE(third.find("RECAP_MARK") != string::npos);
+}
+
+TEST_CASE("HtmServer supports repeated graceful detach and reattach",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  for (int cycle = 0; cycle < 2; cycle++) {
+    sendLine(h.handler, h.client->getEndpointFd(), "detach-client");
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return h.server.getEndpointFd() < 0 &&
+                 h.incoming.find("%exit") != string::npos;
+        },
+        5000));
+    h.incoming.clear();
+    h.lines.clear();
+    h.client.reset(new IpcPairClient(h.handler, h.endpoint));
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return hasLinePrefix(h.lines, "%session-changed");
+        },
+        8000));
+  }
+  string version = h.command("display-message -p '#{version}'");
+  REQUIRE(version.find(HTM_TMUX_VERSION) != string::npos);
 }
 
 TEST_CASE("HtmClient forwards stdin and exits when htmd closes",

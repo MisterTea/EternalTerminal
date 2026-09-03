@@ -75,7 +75,8 @@ PaneScreen::PaneScreen(int cols, int rows)
       rowCount(rows > 0 ? rows : 24),
       altScreen(false),
       cursorOn(true),
-      mouseMode(0) {
+      mouseMode(0),
+      inputFilterState(InputFilterState::Normal) {
   vt = vterm_new(rowCount, colCount);
   vterm_set_utf8(vt, 1);
   screen = vterm_obtain_screen(vt);
@@ -85,9 +86,11 @@ PaneScreen::PaneScreen(int cols, int rows)
   callbacks.damage = &PaneScreen::onDamage;
   callbacks.settermprop = &PaneScreen::onSetTermProp;
   callbacks.sb_pushline = &PaneScreen::onSbPush;
+  callbacks.sb_pushline4 = &PaneScreen::onSbPush4;
   callbacks.sb_clear = &PaneScreen::onSbClear;
   callbacks.movecursor = &PaneScreen::onMoveCursor;
   vterm_screen_set_callbacks(screen, &callbacks, this);
+  vterm_screen_callbacks_has_pushline4(screen);
   vterm_screen_reset(screen, 1);
 }
 
@@ -126,8 +129,15 @@ int PaneScreen::onSetTermProp(VTermProp prop, VTermValue* val, void* user) {
 }
 
 int PaneScreen::onSbPush(int cols, const VTermScreenCell* cells, void* user) {
+  return onSbPush4(cols, cells, false, user);
+}
+
+int PaneScreen::onSbPush4(int cols, const VTermScreenCell* cells,
+                          bool continuation, void* user) {
   auto* self = static_cast<PaneScreen*>(user);
-  vector<VTermScreenCell> line(cells, cells + cols);
+  HistoryLine line;
+  line.cells.assign(cells, cells + cols);
+  line.continuation = continuation;
   self->history.push_back(std::move(line));
   while (self->history.size() > kMaxHistory) {
     self->history.pop_front();
@@ -149,7 +159,53 @@ void PaneScreen::feed(const string& bytes) {
   if (!vt || bytes.empty()) {
     return;
   }
-  vterm_input_write(vt, bytes.data(), bytes.size());
+  // screen(1), and therefore TERM=screen shells, use the legacy title
+  // sequence ESC k ... ESC \. tmux consumes it as a title update, but
+  // libvterm does not and otherwise leaves the title text in the grid.
+  // Filter only the screen model; the original bytes still go to %output.
+  string filtered;
+  filtered.reserve(bytes.size());
+  for (unsigned char c : bytes) {
+    switch (inputFilterState) {
+      case InputFilterState::Normal:
+        if (c == '\x1b') {
+          inputFilterState = InputFilterState::Escape;
+        } else {
+          filtered.push_back(static_cast<char>(c));
+        }
+        break;
+      case InputFilterState::Escape:
+        if (c == 'k') {
+          inputFilterState = InputFilterState::ScreenTitle;
+        } else {
+          filtered.push_back('\x1b');
+          if (c == '\x1b') {
+            inputFilterState = InputFilterState::Escape;
+          } else {
+            filtered.push_back(static_cast<char>(c));
+            inputFilterState = InputFilterState::Normal;
+          }
+        }
+        break;
+      case InputFilterState::ScreenTitle:
+        if (c == '\x1b') {
+          inputFilterState = InputFilterState::ScreenTitleEscape;
+        } else if (c == '\a') {
+          inputFilterState = InputFilterState::Normal;
+        }
+        break;
+      case InputFilterState::ScreenTitleEscape:
+        if (c == '\\') {
+          inputFilterState = InputFilterState::Normal;
+        } else if (c != '\x1b') {
+          inputFilterState = InputFilterState::ScreenTitle;
+        }
+        break;
+    }
+  }
+  if (!filtered.empty()) {
+    vterm_input_write(vt, filtered.data(), filtered.size());
+  }
   vterm_screen_flush_damage(screen);
 }
 
@@ -239,11 +295,17 @@ string PaneScreen::capture(bool withEscapes, bool alt, int startLine,
   readVisible(&visible);
 
   vector<string> lines;
+  vector<bool> continuations;
   for (const auto& histLine : history) {
-    lines.push_back(cellsToLine(histLine, withEscapes, preserveTrailing));
+    lines.push_back(cellsToLine(histLine.cells, withEscapes, preserveTrailing));
+    continuations.push_back(histLine.continuation);
   }
-  for (const auto& vis : visible) {
+  for (size_t row = 0; row < visible.size(); row++) {
+    const auto& vis = visible[row];
     lines.push_back(cellsToLine(vis, withEscapes, preserveTrailing));
+    const VTermLineInfo* info =
+        vterm_state_get_lineinfo(state, static_cast<int>(row));
+    continuations.push_back(info && info->continuation);
   }
 
   int hist = static_cast<int>(history.size());
@@ -278,9 +340,7 @@ string PaneScreen::capture(bool withEscapes, bool alt, int startLine,
   string out;
   for (int i = start; i <= end; i++) {
     if (!out.empty()) {
-      if (joinWrap) {
-        out.push_back('\n');
-      } else {
+      if (!joinWrap || !continuations[static_cast<size_t>(i)]) {
         out.push_back('\n');
       }
     }

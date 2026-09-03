@@ -17,6 +17,7 @@ import argparse
 import importlib
 import os
 import re
+import shutil
 import signal
 import subprocess
 import sys
@@ -25,7 +26,23 @@ import time
 from pathlib import Path
 from typing import Callable, Optional, Sequence
 
+import htm_gui_parity
+import iterm2_tmux_cc_oracle as tmux_cc
+
 SKIP = 77
+
+_NATIVE_MUX_TITLE = re.compile(r" \[(?:tmux|htm|@[^]]+)\]\s*$")
+
+
+def _is_gateway_title(name: str) -> bool:
+    """iTerm2's tmux -CC gateway is titled like ``[↣ tmux tmux]`` / ``[↣ htm htm]``."""
+    n = name or ""
+    lower = n.lower()
+    if "tmux tmux" in lower or "htm htm" in lower:
+        return True
+    if n.startswith("[") and not _NATIVE_MUX_TITLE.search(n):
+        return "tmux" in lower or "htm" in lower
+    return False
 
 
 def skip(reason: str) -> None:
@@ -142,6 +159,10 @@ def ipc_path() -> Path:
         user = "".join(c if c.isalnum() or c in "_-" else "_" for c in user)
         return Path.cwd() / f"htm.{user or 'user'}.ipc"
     return Path("/tmp") / f"htm.{uid()}.ipc"
+
+
+def pane_dump_path() -> Path:
+    return ipc_path().with_suffix(".panes")
 
 
 def list_htmd_logs() -> list[Path]:
@@ -345,6 +366,76 @@ def find_htmd_bin(cli: Optional[str], htm: Path) -> Path:
     skip("htmd binary is not built")
 
 
+def find_tmux_bin() -> Path:
+    env = os.environ.get("TMUX_BIN")
+    if env and Path(env).is_file():
+        return Path(env).resolve()
+    for candidate in (
+        Path("/opt/homebrew/bin/tmux"),
+        Path("/usr/local/bin/tmux"),
+        Path("/usr/bin/tmux"),
+    ):
+        if candidate.is_file():
+            return candidate.resolve()
+    try:
+        out = subprocess.check_output(["which", "tmux"], text=True).strip()
+    except (OSError, subprocess.CalledProcessError):
+        out = ""
+    if out and Path(out).is_file():
+        return Path(out).resolve()
+    skip("tmux is not installed; needed for --mux tmux")
+
+
+def muxes_for_suites(muxes: list[str], suites: Sequence[str]) -> list[str]:
+    """Corners always runs tmux -CC then htm and diffs the checkpoints."""
+    if "corners" not in suites:
+        return muxes
+    if muxes != ["tmux", "htm"]:
+        print(
+            "corners verifies htm against iTerm2+tmux -CC; using --mux both",
+            flush=True,
+        )
+    return ["tmux", "htm"]
+
+
+def verify_gui_parity_against_tmux_cc(
+    emulator: str, text_dir: Path, muxes: Sequence[str], suites: Sequence[str]
+) -> None:
+    if list(muxes) != ["tmux", "htm"]:
+        return
+    slug = re.sub(r"[^a-z0-9]+", "-", emulator.lower()).strip("-")
+    for suite in suites:
+        tmux_dir = text_dir / f"{slug}-tmux-{suite}-steps"
+        htm_dir = text_dir / f"{slug}-htm-{suite}-steps"
+        if not tmux_dir.is_dir() or not htm_dir.is_dir():
+            fail(
+                f"{suite} missing tmux -CC vs htm snapshots: "
+                f"tmux={tmux_dir} htm={htm_dir}"
+            )
+        verdicts = htm_gui_parity.compare_step_dirs(tmux_dir, htm_dir)
+        print(f"== {suite} tmux -CC vs htm parity ==", flush=True)
+        print(htm_gui_parity.format_verdicts(verdicts), flush=True)
+        bad = htm_gui_parity.divergences(verdicts)
+        if bad:
+            detail = "\n".join(
+                f"{item['action']}: {item['detail']}" for item in bad
+            )
+            fail(
+                f"htm {suite} snapshots diverged from tmux -CC "
+                f"(not cosmetic/timing):\n{detail}"
+            )
+        print(f"OK: htm {suite} snapshots match tmux -CC", flush=True)
+
+
+def parse_mux(value: str) -> list[str]:
+    raw = (value or "htm").strip().lower()
+    if raw in ("both", "all"):
+        return ["tmux", "htm"]
+    if raw in ("htm", "tmux"):
+        return [raw]
+    fail("--mux must be htm, tmux, or both")
+
+
 def assert_no_htmd() -> None:
     wait_until(
         lambda: not pids_named("htmd"),
@@ -365,11 +456,21 @@ class GuiHtmLogSession:
         self.htmd = htmd
         self.log_file: Optional[Path] = None
         self.started_at = 0.0
+        self.mux = "htm"
+        self.tmux_bin: Optional[Path] = None
+        self.tmux_socket = ""
 
     def log_text(self) -> str:
         return read_text(self.log_file)
 
     def wait_init(self, timeout: float = 25.0) -> str:
+        if self.mux == "tmux":
+            wait_until(
+                self.tmux_has_session,
+                timeout,
+                description="tmux -CC session",
+            )
+            return ""
         def ready() -> bool:
             path = newest_log(list_htmd_logs(), self.started_at)
             text = read_text(path)
@@ -421,11 +522,725 @@ class GuiHtmLogSession:
         return last
 
 
+class ScreenRecorder:
+    """Record one window's screen rectangle with ``screencapture -v``."""
+
+    def __init__(self, path: Path, region: tuple[int, int, int, int], label: str):
+        self.path = path
+        self.region = region
+        self.label = label
+        self.proc: Optional[subprocess.Popen] = None
+
+    def start(self) -> None:
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        if self.path.exists():
+            self.path.unlink()
+        x, y, width, height = self.region
+        rect = f"{x},{y},{width},{height}"
+        print(f"recording {self.label} {rect} -> {self.path}", flush=True)
+        self.proc = subprocess.Popen(
+            ["screencapture", "-v", "-x", "-R", rect, str(self.path)],
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+        )
+        time.sleep(0.4)
+        if self.proc.poll() is not None:
+            err = (self.proc.stderr.read() or b"").decode("utf-8", "replace")
+            fail(f"screencapture -v failed for {rect}: {err.strip() or 'exit'}")
+
+    def stop(self, required: bool = True) -> None:
+        if self.proc is None or self.proc.poll() is not None:
+            self.proc = None
+            return
+        self.proc.send_signal(signal.SIGINT)
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait(timeout=3)
+        self.proc = None
+        size = self.path.stat().st_size if self.path.is_file() else 0
+        if size < 1000:
+            msg = f"video recording missing or tiny: {self.path}"
+            if required:
+                fail(msg)
+            print(f"WARN: {msg}", flush=True)
+            return
+        print(f"saved video {self.path} ({size} bytes)", flush=True)
+
+
+def _parse_ax_windows(raw: str) -> list[dict]:
+    windows = []
+    for line in raw.splitlines():
+        parts = line.split("\t")
+        if len(parts) < 6:
+            continue
+        try:
+            win = {
+                "index": int(parts[0]),
+                "name": parts[1],
+                "x": float(parts[2]),
+                "y": float(parts[3]),
+                "w": float(parts[4]),
+                "h": float(parts[5]),
+                "id": int(parts[6]) if len(parts) > 6 and parts[6].strip() else 0,
+            }
+        except ValueError:
+            continue
+        windows.append(win)
+    return windows
+
+
+def _frame_key(win: dict) -> tuple[int, int, int, int]:
+    return (int(win["x"]), int(win["y"]), int(win["w"]), int(win["h"]))
+
+
+def _window_key(win: dict) -> str:
+    if win.get("id"):
+        return f"id:{win['id']}"
+    name = (win.get("name") or "").strip()
+    frame = ",".join(str(v) for v in _frame_key(win))
+    if name:
+        return f"name:{name}|frame:{frame}"
+    return f"frame:{frame}"
+
+
+def _newest_native(windows: list[dict]) -> dict:
+    return max(
+        windows,
+        key=lambda w: (int(w.get("id") or 0), int(w.get("index") or 0)),
+    )
+
+
 class GuiTerminalSession(GuiHtmLogSession):
     """Plug-in interface for a GUI terminal that speaks tmux -CC against htm."""
 
     name = "terminal"
     require_kill_pane = True
+    ax_process_name: Optional[str] = None
+    supports_detach = False
+    supports_native_resize = False
+
+    def __init__(self, htm: Path, htmd: Path):
+        super().__init__(htm, htmd)
+        self.video_dir: Optional[Path] = None
+        self.text_dir: Optional[Path] = None
+        self._gateway_keys: set[str] = set()
+        self._gateway_names: set[str] = set()
+        self._gateway_clicks: list[tuple[float, float]] = []
+        self._saw_native_mux_windows = False
+        self._recorders: dict[str, ScreenRecorder] = {}
+        self._record_suite = "suite"
+        self._next_win_n = 1
+        self._text_n = 0
+        self._capturing_text = False
+        self._suite_started_at = 0.0
+        self._step_dir: Optional[Path] = None
+        self._front_native: Optional[dict] = None
+
+    def multiplexer_command(self) -> str:
+        if self.mux == "tmux":
+            if not self.tmux_bin:
+                skip("tmux is not installed; needed for --mux tmux")
+            return (
+                f"{self.tmux_bin} -L {self.tmux_socket} -f /dev/null "
+                f"-CC new-session"
+            )
+        return f"{self.htm} -x"
+
+    def tmux_argv(self, *args: str) -> list[str]:
+        if not self.tmux_bin:
+            skip("tmux is not installed; needed for --mux tmux")
+        return [str(self.tmux_bin), "-L", self.tmux_socket, *args]
+
+    def tmux_cmd(self, *args: str) -> str:
+        try:
+            return subprocess.check_output(
+                self.tmux_argv(*args),
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return ""
+
+    def tmux_has_session(self) -> bool:
+        return bool(self.tmux_cmd("list-sessions"))
+
+    def tmux_client_count(self) -> int:
+        return len(
+            [line for line in self.tmux_cmd("list-clients").splitlines() if line.strip()]
+        )
+
+    def tmux_pane_count(self) -> int:
+        return len(
+            [line for line in self.tmux_cmd("list-panes", "-a").splitlines() if line.strip()]
+        )
+
+    def tmux_window_count(self) -> int:
+        return len(
+            [line for line in self.tmux_cmd("list-windows", "-a").splitlines() if line.strip()]
+        )
+
+    def tmux_all_pane_text(self) -> str:
+        ids = [
+            line.strip()
+            for line in self.tmux_cmd("list-panes", "-a", "-F", "#{pane_id}").splitlines()
+            if line.strip()
+        ]
+        return "\n".join(self.tmux_cmd("capture-pane", "-p", "-J", "-t", pane) for pane in ids)
+
+    def tmux_pane_snapshot(self) -> str:
+        """Visible screen of every pane, matching tmux capture-pane -p -J."""
+        rows = [
+            line.split("\t")
+            for line in self.tmux_cmd(
+                "list-panes",
+                "-a",
+                "-F",
+                "#{window_id}\t#{window_name}\t#{pane_id}\t#{pane_active}\t"
+                "#{pane_width}x#{pane_height}\t#{cursor_x},#{cursor_y}\t"
+                "#{pane_pid}\t#{window_active}",
+            ).splitlines()
+            if line.strip()
+        ]
+        chunks: list[str] = []
+        for parts in rows:
+            if len(parts) < 6:
+                continue
+            wid, name, pane, active, size, cursor = parts[:6]
+            shell_pid = parts[6] if len(parts) > 6 else ""
+            win_active = parts[7] if len(parts) > 7 else "0"
+            text = self.tmux_cmd(
+                "capture-pane", "-p", "-J", "-N", "-S", "-1000", "-t", pane
+            )
+            pid_field = f" shell_pid={shell_pid}" if shell_pid else ""
+            current = (
+                "1" if active == "1" and win_active == "1" else "0"
+            )
+            chunks.append(
+                f"--- window {wid} name={name} pane {pane} active={active} "
+                f"{size} cursor={cursor}{pid_field} current={current}\n{text}"
+            )
+            if text and not text.endswith("\n"):
+                chunks[-1] += "\n"
+        return "".join(chunks)
+
+    def htm_pane_snapshot(self, wait: float = 2.0) -> str:
+        """Ask htmd (SIGUSR1) for the same visible-screen dump as capture-pane -p -J."""
+        path = pane_dump_path()
+        before = path.stat().st_mtime if path.is_file() else 0.0
+        pids = pids_named("htmd")
+        if not pids:
+            return ""
+        for pid in pids:
+            try:
+                os.kill(pid, signal.SIGUSR1)
+            except OSError:
+                continue
+
+        deadline = time.time() + wait
+        while time.time() < deadline:
+            try:
+                if path.is_file() and path.stat().st_mtime > before:
+                    return read_text(path)
+            except OSError:
+                pass
+            time.sleep(0.05)
+        return read_text(path) if path.is_file() else ""
+
+    def mux_snapshot(self, wait: float = 2.0) -> str:
+        if self.mux == "tmux":
+            return self.tmux_pane_snapshot()
+        return self.htm_pane_snapshot(wait=wait)
+
+    def mux_pane_count(self) -> int:
+        return len(htm_gui_parity.parse_panes(self.mux_snapshot(wait=0.4)))
+
+    def mux_window_count(self) -> int:
+        panes = htm_gui_parity.parse_panes(self.mux_snapshot(wait=0.4))
+        return len({pane["wid"] for pane in panes})
+
+    def mux_window_names(self) -> list[str]:
+        return [
+            htm_gui_parity.cosmetic_title(pane["name"])
+            for pane in htm_gui_parity.parse_panes(self.mux_snapshot(wait=0.4))
+        ]
+
+    def wait_visible(self, marker: str, timeout: float = 20.0) -> None:
+        wait_until(
+            lambda: marker in self.mux_snapshot(wait=0.35),
+            timeout,
+            description=f"visible pane text contains {marker}",
+        )
+
+    def wait_mux_pane_count(self, count: int, timeout: float = 20.0) -> None:
+        wait_until(
+            lambda: self.mux_pane_count() == count,
+            timeout,
+            description=f"{count} live panes",
+        )
+
+    def wait_mux_window_count(self, count: int, timeout: float = 20.0) -> None:
+        wait_until(
+            lambda: self.mux_window_count() == count,
+            timeout,
+            description=f"{count} live windows",
+        )
+
+    def wait_window_named(self, name: str, timeout: float = 20.0) -> None:
+        wait_until(
+            lambda: name in self.mux_window_names(),
+            timeout,
+            description=f"window named {name}",
+        )
+
+    def checkpoint(self, step_id: str, *, oracle: bool = True) -> str:
+        """Record this mux's dump and assert the iTerm2+tmux -CC oracle."""
+        dump = self.mux_snapshot()
+        body = f"# action: {step_id}\n# mux={self.mux}\n\n{dump}"
+        if self._step_dir:
+            self._step_dir.mkdir(parents=True, exist_ok=True)
+            (self._step_dir / f"{step_id}.txt").write_text(body, encoding="utf-8")
+        if oracle:
+            errors = tmux_cc.check_step(step_id, dump)
+            if errors:
+                fail(
+                    f"{self.mux} checkpoint {step_id} diverged from "
+                    "iTerm2+tmux -CC: "
+                    + "; ".join(errors)
+                    + f"\n{dump[:2000]}"
+                )
+            print(
+                f"OK: {step_id} matches iTerm2+tmux -CC oracle ({self.mux})",
+                flush=True,
+            )
+        else:
+            print(f"OK: recorded parity checkpoint {step_id} ({self.mux})", flush=True)
+        return dump
+
+    def emulator_window_snapshot(self) -> str:
+        windows = self.ax_windows()
+        if not windows:
+            return ""
+        lines = ["--- emulator windows ---"]
+        for win in windows:
+            lines.append(
+                f"win{win['index']} {_window_key(win)} name={win.get('name') or ''} "
+                f"frame={int(win['x'])},{int(win['y'])},{int(win['w'])},{int(win['h'])}"
+            )
+        return "\n".join(lines) + "\n"
+
+    def snapshot_all_text(self, action: str) -> None:
+        """Write every pane's visible text after a test action."""
+        if self._capturing_text or not self.text_dir:
+            return
+        self._capturing_text = True
+        try:
+            if not self._suite_started_at:
+                self._suite_started_at = time.time()
+            self._text_n += 1
+            slug = re.sub(r"[^a-zA-Z0-9]+", "-", action).strip("-")[:80] or "action"
+            dest_dir = (
+                self.text_dir
+                / f"{re.sub(r'[^a-z0-9]+', '-', self.name.lower()).strip('-')}"
+                f"-{self.mux}-{self._record_suite}-text"
+            )
+            dest_dir.mkdir(parents=True, exist_ok=True)
+            elapsed = time.time() - self._suite_started_at
+            if self.mux == "tmux":
+                panes = self.tmux_pane_snapshot()
+            else:
+                panes = self.htm_pane_snapshot()
+            body = (
+                f"# action: {action}\n"
+                f"# t={elapsed:.3f}s mux={self.mux} n={self._text_n}\n\n"
+                f"{panes}"
+            )
+            path = dest_dir / f"{self._text_n:04d}-{slug}.txt"
+            path.write_text(body, encoding="utf-8")
+        except OSError as exc:
+            print(f"WARN: pane text snapshot failed: {exc}", flush=True)
+        finally:
+            self._capturing_text = False
+
+    def split_watermark(self) -> int:
+        if self.mux == "tmux":
+            return self.tmux_pane_count()
+        return command_count(self.log_text(), "split-window")
+
+    def window_watermark(self) -> int:
+        if self.mux == "tmux":
+            return self.tmux_window_count()
+        return command_count(self.log_text(), "new-window")
+
+    def wait_split(self, before: int) -> None:
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_pane_count() > before,
+                20,
+                description="tmux pane after split",
+            )
+        else:
+            self.wait_log(
+                lambda text: command_count(text, "split-window") > before,
+                20,
+                "split-window",
+            )
+        self.snapshot_all_text("after-split")
+
+    def wait_new_window(self, before: int) -> None:
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_window_count() > before,
+                20,
+                description="tmux window after Cmd+T",
+            )
+        else:
+            self.wait_log(
+                lambda text: command_count(text, "new-window") > before,
+                20,
+                "new-window",
+            )
+        self.snapshot_all_text("after-new-window")
+
+    def wait_typed(self, marker: str, timeout: float = 20.0) -> None:
+        if self.mux == "tmux":
+            wait_until(
+                lambda: marker in self.tmux_all_pane_text(),
+                timeout,
+                description=f"tmux pane contains {marker}",
+            )
+        else:
+            self.wait_log(
+                lambda text: log_has_typed(text, marker),
+                timeout,
+                f"send-keys containing {marker}",
+            )
+        self.snapshot_all_text(f"after-typed-{marker}")
+
+    def wait_kill_pane(self, before_panes: int) -> None:
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_pane_count() < before_panes
+                or self.tmux_window_count() < 1,
+                20,
+                description="tmux pane/window closed",
+            )
+        else:
+            self.wait_log(
+                lambda text: "kill-pane" in text or "kill-window" in text,
+                20,
+                "CLIENT_CLOSE_PANE after Cmd+W",
+            )
+        self.snapshot_all_text("after-kill-pane")
+
+    def shutdown_multiplexer(self) -> None:
+        if self.mux == "tmux":
+            subprocess.run(
+                self.tmux_argv("kill-server"),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
+            wait_until(
+                lambda: not self.tmux_has_session(),
+                8,
+                description="tmux server exit",
+            )
+            print("OK: tmux -CC server exited", flush=True)
+            return
+        kill_named("htmd")
+        assert_no_htmd()
+        assert_no_ipc()
+        leftover_htm = pids_named("htm")
+        deadline = time.time() + 8
+        while time.time() < deadline and leftover_htm:
+            leftover_htm = pids_named("htm")
+            time.sleep(0.2)
+        if pids_named("htmd"):
+            fail("htmd still running after SIGTERM")
+        if ipc_path().exists():
+            fail("IPC socket still present after htmd exit")
+        print("OK: htmd shutdown removed IPC socket", flush=True)
+
+    def ax_tell_target(self) -> str:
+        proc = getattr(self, "proc", None)
+        if proc is not None and proc.poll() is None:
+            pid = getattr(self, "pid", None)
+            if isinstance(pid, int):
+                return f"(first process whose unix id is {pid})"
+        name = self.ax_process_name or self.name
+        return f'process "{name}"'
+
+    def ax_windows(self) -> list[dict]:
+        script = f'''
+tell application "System Events"
+  tell {self.ax_tell_target()}
+    set output to ""
+    set i to 0
+    repeat with w in windows
+      set i to i + 1
+      set p to position of w
+      set s to size of w
+      set n to ""
+      try
+        set n to name of w as text
+      end try
+      set wid to 0
+      try
+        set wid to id of w
+      end try
+      if wid is 0 then
+        try
+          set wid to value of attribute "AXWindowNumber" of w
+        end try
+      end if
+      set output to output & i & tab & n & tab & (item 1 of p) & tab & (item 2 of p) & tab & (item 1 of s) & tab & (item 2 of s) & tab & wid & linefeed
+    end repeat
+    return output
+  end tell
+end tell
+'''
+        try:
+            return _parse_ax_windows(run_osascript(script))
+        except (subprocess.CalledProcessError, SystemExit):
+            return []
+
+    def remember_gateway_windows(self) -> None:
+        """Snapshot the original terminal before HTM opens pane windows."""
+        windows = self.ax_windows()
+        non_native = [
+            w
+            for w in windows
+            if not _NATIVE_MUX_TITLE.search(w.get("name") or "")
+        ]
+        commandish = [
+            w
+            for w in non_native
+            if _is_gateway_title(w.get("name") or "")
+        ]
+        gateways = commandish or non_native or windows
+        self._gateway_keys = {_window_key(w) for w in gateways}
+        self._gateway_names = {(w.get("name") or "").strip() for w in gateways}
+        self._gateway_names.discard("")
+        self._gateway_clicks = [
+            (float(w["x"]) + float(w["w"]) * 0.5, float(w["y"]) + float(w["h"]) * 0.45)
+            for w in gateways
+        ]
+        details = [
+            f"{_window_key(w)}:{w.get('name') or '(unnamed)'}" for w in gateways
+        ]
+        print(
+            f"gateway windows: {len(self._gateway_keys)} {details}",
+            flush=True,
+        )
+
+    def click_screen(self, x: float, y: float) -> None:
+        """Optional: click global screen coordinates (iTerm2 implements this)."""
+
+    def focus_native_window(self) -> None:
+        """Raise a tmux -CC native pane window, not the gateway PTY."""
+        launched = self.launched_windows()
+        self.focus()
+        if not launched:
+            return
+        win = _newest_native(launched)
+        self._front_native = win
+        self._raise_ax_window(win)
+
+    def remember_front_native(self) -> None:
+        launched = self.launched_windows()
+        if launched:
+            self._front_native = _newest_native(launched)
+
+    def restore_front_native(self) -> None:
+        saved = getattr(self, "_front_native", None)
+        launched = self.launched_windows()
+        win = None
+        if saved and saved.get("id"):
+            win = next((w for w in launched if w.get("id") == saved.get("id")), None)
+        if win is None and saved:
+            win = next(
+                (
+                    w
+                    for w in launched
+                    if (w.get("name") or "") == (saved.get("name") or "")
+                    and _frame_key(w) == _frame_key(saved)
+                ),
+                None,
+            )
+        if win is None and launched:
+            win = _newest_native(launched)
+        if not win:
+            self.focus()
+            return
+        self._front_native = win
+        self._raise_ax_window(win)
+
+    def _raise_ax_window(self, win: dict) -> None:
+        script = f'''
+tell application "System Events"
+  tell {self.ax_tell_target()}
+    set frontmost to true
+    try
+      perform action "AXRaise" of window {int(win["index"])}
+    end try
+    try
+      set index of window {int(win["index"])} to 1
+    end try
+  end tell
+end tell
+'''
+        try:
+            run_osascript(script)
+        except (subprocess.CalledProcessError, SystemExit):
+            self.focus()
+        time.sleep(0.2)
+        self.click_screen(
+            float(win["x"]) + float(win["w"]) * 0.72,
+            float(win["y"]) + float(win["h"]) * 0.55,
+        )
+        time.sleep(0.15)
+
+    def focus_gateway(self) -> None:
+        """Raise the original --command session so Esc/detach reach the menu."""
+        windows = self.ax_windows()
+        targets = [
+            w for w in windows if _is_gateway_title(w.get("name") or "")
+        ]
+        if not targets:
+            targets = [w for w in windows if _window_key(w) in self._gateway_keys]
+        if not targets and self._gateway_names:
+            targets = [
+                w
+                for w in windows
+                if (w.get("name") or "").strip() in self._gateway_names
+            ]
+        if not targets and self._gateway_clicks:
+            gx, gy = self._gateway_clicks[0]
+            for w in windows:
+                if (
+                    w["x"] <= gx <= w["x"] + w["w"]
+                    and w["y"] <= gy <= w["y"] + w["h"]
+                    and not _NATIVE_MUX_TITLE.search(w.get("name") or "")
+                ):
+                    targets = [w]
+                    break
+        if not targets:
+            print(
+                "WARN: gateway title not matched; windows="
+                + str([(w.get("name"), w.get("index")) for w in windows]),
+                flush=True,
+            )
+            targets = [
+                w
+                for w in windows
+                if not _NATIVE_MUX_TITLE.search(w.get("name") or "")
+            ] or windows[:1]
+        if not targets:
+            print("WARN: no gateway window to raise", flush=True)
+            return
+        target = targets[0]
+        script = f'''
+tell application "System Events"
+  tell {self.ax_tell_target()}
+    set frontmost to true
+    try
+      perform action "AXRaise" of window {int(target["index"])}
+    end try
+    try
+      set index of window {int(target["index"])} to 1
+    end try
+  end tell
+end tell
+'''
+        try:
+            run_osascript(script)
+        except (subprocess.CalledProcessError, SystemExit):
+            print(
+                f"WARN: failed to raise gateway window {target.get('name')}",
+                flush=True,
+            )
+            return
+        time.sleep(0.25)
+        self.click_screen(
+            float(target["x"]) + float(target["w"]) * 0.5,
+            float(target["y"]) + float(target["h"]) * 0.45,
+        )
+        time.sleep(0.2)
+        print(
+            f"focused gateway: {target.get('name') or _window_key(target)}",
+            flush=True,
+        )
+
+    def launched_windows(self) -> list[dict]:
+        """Native windows HTM/tmux -CC opened, excluding the gateway PTY."""
+        current = self.ax_windows()
+        native = [
+            w for w in current if _NATIVE_MUX_TITLE.search(w.get("name") or "")
+        ]
+        if native:
+            self._saw_native_mux_windows = True
+            return native
+        if self._saw_native_mux_windows:
+            return []
+        launched = [w for w in current if _window_key(w) not in self._gateway_keys]
+        if launched:
+            return launched
+        extra = len(current) - len(self._gateway_keys)
+        if extra > 0:
+            return current[:extra]
+        return []
+
+    def sync_htm_window_recordings(self) -> None:
+        """Start a new file for each newly launched HTM window; stop closed ones."""
+        if not self.video_dir:
+            return
+        launched = self.launched_windows()
+        live = set()
+        for win in launched:
+            key = _window_key(win)
+            live.add(key)
+            if key in self._recorders:
+                continue
+            n = self._next_win_n
+            self._next_win_n += 1
+            slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
+            path = (
+                self.video_dir
+                / f"{slug}-{self.mux}-{self._record_suite}-win{n:02d}.mov"
+            )
+            region = (int(win["x"]), int(win["y"]), int(win["w"]), int(win["h"]))
+            label = win["name"] or f"window {win['index']}"
+            rec = ScreenRecorder(path, region, f"{label} ({key})")
+            rec.start()
+            self._recorders[key] = rec
+        for key in list(self._recorders):
+            if key not in live:
+                self._recorders.pop(key).stop(required=False)
+
+    def begin_htm_window_recording(self, suite: str) -> None:
+        self._record_suite = suite
+        self._next_win_n = 1
+        self._text_n = 0
+        self._suite_started_at = time.time()
+        self._saw_native_mux_windows = False
+        if self.text_dir:
+            slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
+            self._step_dir = self.text_dir / f"{slug}-{self.mux}-{suite}-steps"
+            if self._step_dir.exists():
+                shutil.rmtree(self._step_dir)
+            self._step_dir.mkdir(parents=True, exist_ok=True)
+            text_output = self.text_dir / f"{slug}-{self.mux}-{suite}-text"
+            if text_output.exists():
+                shutil.rmtree(text_output)
+        self.sync_htm_window_recordings()
+        self.snapshot_all_text("begin-suite")
+
+    def end_htm_window_recording(self) -> None:
+        for rec in self._recorders.values():
+            rec.stop(required=False)
+        self._recorders.clear()
 
     def start(self, command: str = "") -> None:
         raise NotImplementedError
@@ -469,6 +1284,15 @@ class GuiTerminalSession(GuiHtmLogSession):
     def after_layout_suite(self) -> None:
         """Optional: emulator-only checks after the shared layout suite."""
 
+    def detach_client(self) -> None:
+        fail(f"{self.name} does not implement control-mode detach")
+
+    def reattach_client(self) -> None:
+        fail(f"{self.name} does not implement control-mode reattach")
+
+    def resize_front_native_window(self, width: int, height: int) -> None:
+        fail(f"{self.name} does not implement native window resizing")
+
     def is_alive(self) -> bool:
         proc = getattr(self, "proc", None)
         if proc is None:
@@ -489,64 +1313,64 @@ def _wait_for_native_tab(session: GuiTerminalSession) -> None:
 def _assert_session_alive(session: GuiTerminalSession, when: str) -> None:
     if not session.is_alive():
         fail(f"{session.name} exited {when}")
+    if session.mux == "tmux":
+        if not session.tmux_has_session():
+            fail(f"tmux server exited {when}")
+        return
     if not pids_named("htmd"):
         fail(f"htmd exited {when}")
 
 
 def run_gui_layout_io_tests(session: GuiTerminalSession) -> None:
     """Shared split/tab/keystroke/concurrent-I/O checks for every GUI driver."""
-    session.start(f"{session.htm} -x")
+    session.start(session.multiplexer_command())
     session.wait_init()
     session.after_attach()
     _wait_for_native_tab(session)
     print(f"OK: attached to {session.name}", flush=True)
+    session.begin_htm_window_recording("layout")
+    try:
+        _run_gui_layout_io_body(session)
+    finally:
+        session.end_htm_window_recording()
 
-    splits_before = command_count(session.log_text(), "split-window")
+
+def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
+
+    splits_before = session.split_watermark()
     session.keystroke('"d"', "command down")
-    session.wait_log(
-        lambda text: command_count(text, "split-window") > splits_before,
-        20,
-        "split-window after Cmd+D",
-    )
+    session.wait_split(splits_before)
     print("OK: Cmd+D sent split-window", flush=True)
     session.after_first_split()
+    session.sync_htm_window_recordings()
 
-    marker = f"HTM_E2E_{int(time.time())}"
+    marker = "HTM_E2E_PARITY"
     session.keystroke(f'"{marker}"')
     session.key_code(36)
-    session.wait_log(
-        lambda text: log_has_typed(text, marker),
-        20,
-        f"send-keys containing {marker}",
-    )
-    print("OK: keys reached htmd pane", flush=True)
+    session.wait_typed(marker)
+    print("OK: keys reached pane", flush=True)
     session.after_marker(marker)
+    session.checkpoint("layout-after-marker", oracle=False)
 
-    tabs_before = command_count(session.log_text(), "new-window")
+    tabs_before = session.window_watermark()
     session.keystroke('"t"', "command down")
-    session.wait_log(
-        lambda text: command_count(text, "new-window") > tabs_before,
-        20,
-        "new-window after Cmd+T",
-    )
+    session.wait_new_window(tabs_before)
     print("OK: Cmd+T sent new-window", flush=True)
+    session.sync_htm_window_recordings()
 
-    splits_before = command_count(session.log_text(), "split-window")
+    splits_before = session.split_watermark()
     session.keystroke('"d"', "{command down, shift down}")
-    session.wait_log(
-        lambda text: command_count(text, "split-window") > splits_before,
-        20,
-        "second split-window after Cmd+Shift+D",
-    )
+    session.wait_split(splits_before)
     print("OK: Cmd+Shift+D sent second split-window", flush=True)
+    session.checkpoint("layout-after-tabs-splits", oracle=False)
 
     time.sleep(0.5)
-    stamp = int(time.time())
+    stamp = "PARITY"
 
     def echo_on_focused_pane(tag: str) -> None:
         session.keystroke(f'"echo {tag}"')
         session.key_code(36)
-        session.wait_log(lambda text: log_has_typed(text, tag), 12, f"echo {tag}")
+        session.wait_typed(tag, timeout=12)
 
     mark_a = f"MA{stamp}"
     echo_on_focused_pane(mark_a)
@@ -571,30 +1395,28 @@ def run_gui_layout_io_tests(session: GuiTerminalSession) -> None:
     session.previous_pane()
     session.keystroke(f'"{burst_cmd(loops[0])}"')
     session.key_code(36)
-    session.wait_log(
-        lambda text: log_has_typed(text, loops[0]) and log_has_typed(text, loops[1]),
-        20,
-        "burst send-keys on two panes",
-    )
+    session.wait_visible(f"{loops[0]}_8")
+    session.wait_visible(f"{loops[1]}_8")
+    time.sleep(0.3)
+    session.checkpoint("layout-after-concurrent-output", oracle=False)
     print("OK: concurrent pane output", flush=True)
 
     time.sleep(0.4)
+    panes_before_close = session.split_watermark()
     session.keystroke('"w"', "command down")
     if session.require_kill_pane:
-        session.wait_log(
-            lambda text: "kill-pane" in text or "kill-window" in text,
-            20,
-            "CLIENT_CLOSE_PANE after Cmd+W",
-        )
+        session.wait_kill_pane(panes_before_close)
         print("OK: Cmd+W sent kill-pane/kill-window", flush=True)
     else:
         time.sleep(0.5)
         print("OK: Cmd+W delivered (kill-pane not required)", flush=True)
+    session.sync_htm_window_recordings()
+    session.checkpoint("layout-after-close", oracle=False)
 
     _assert_session_alive(session, "during the happy-path layout test")
 
-    splits_before = session.log_text().count("split-window")
-    tabs_before = session.log_text().count("new-window")
+    splits_before = session.split_watermark()
+    tabs_before = session.window_watermark()
     for _ in range(4):
         session.keystroke('"d"', "command down")
         session.keystroke('"t"', "command down")
@@ -602,59 +1424,60 @@ def run_gui_layout_io_tests(session: GuiTerminalSession) -> None:
         session.keystroke('"w"', "command down")
     time.sleep(1.0)
     _assert_session_alive(session, "during rapid split/tab/close")
-    session.wait_log(
-        lambda text: text.count("split-window") >= splits_before
-        or text.count("new-window") >= tabs_before,
-        15,
-        "htmd still accepting packets after race burst",
-    )
+    if session.mux == "htm":
+        session.wait_log(
+            lambda text: text.count("split-window") >= splits_before
+            or text.count("new-window") >= tabs_before,
+            15,
+            "htmd still accepting packets after race burst",
+        )
+    elif not session.tmux_has_session():
+        fail("tmux server died during rapid split/tab/close")
     print(
-        f"OK: rapid split/tab/close did not crash {session.name} or htmd",
+        f"OK: rapid split/tab/close did not crash {session.name} or {session.mux}",
         flush=True,
     )
     session.after_layout_suite()
+    session.sync_htm_window_recordings()
 
 
 def run_gui_stress(session: GuiTerminalSession) -> None:
     """Shared bulk-I/O stress: two panes printing while keys still flow."""
-    session.start(f"{session.htm} -x")
+    session.start(session.multiplexer_command())
     session.wait_init()
     session.after_attach()
     _wait_for_native_tab(session)
     print("OK: attached", flush=True)
+    session.begin_htm_window_recording("stress")
+    try:
+        _run_gui_stress_body(session)
+    finally:
+        session.end_htm_window_recording()
 
-    splits_before = command_count(session.log_text(), "split-window")
+
+def _run_gui_stress_body(session: GuiTerminalSession) -> None:
+
+    splits_before = session.split_watermark()
     session.keystroke('"d"', "command down")
-    session.wait_log(
-        lambda text: command_count(text, "split-window") > splits_before,
-        20,
-        "NEW_SPLIT after Cmd+D",
-    )
-    tabs_before = command_count(session.log_text(), "new-window")
+    session.wait_split(splits_before)
+    tabs_before = session.window_watermark()
     session.keystroke('"t"', "command down")
-    session.wait_log(
-        lambda text: command_count(text, "new-window") > tabs_before,
-        20,
-        "NEW_TAB after Cmd+T",
-    )
-    splits_before = command_count(session.log_text(), "split-window")
+    session.wait_new_window(tabs_before)
+    session.sync_htm_window_recordings()
+    splits_before = session.split_watermark()
     session.keystroke('"d"', "{command down, shift down}")
-    session.wait_log(
-        lambda text: command_count(text, "split-window") > splits_before,
-        20,
-        "second NEW_SPLIT",
-    )
+    session.wait_split(splits_before)
     time.sleep(0.5)
     print("OK: tabs and splits created", flush=True)
 
-    stamp = int(time.time())
+    stamp = "PARITY"
     mark_a = f"STA{stamp}"
     mark_b = f"STB{stamp}"
 
     def echo_tag(tag: str) -> str:
         session.keystroke(f'"echo {tag}"')
         session.key_code(36)
-        session.wait_log(lambda text: log_has_typed(text, tag), 12, f"echo {tag}")
+        session.wait_typed(tag, timeout=12)
         return tag
 
     pane_a = echo_tag(mark_a)
@@ -667,8 +1490,12 @@ def run_gui_stress(session: GuiTerminalSession) -> None:
     if pane_b == pane_a:
         fail("could not focus a second HTM pane")
     print(f"OK: two panes {pane_a[:8]}… / {pane_b[:8]}…", flush=True)
+    session.checkpoint("stress-after-markers", oracle=False)
 
-    session.keystroke('"yes STBULK1 &"')
+    session.keystroke(
+        '"i=0; while [ $i -lt 200 ]; do echo STBULK1; '
+        'i=$((i+1)); sleep 0.01; done &"'
+    )
     session.key_code(36)
     time.sleep(0.25)
 
@@ -681,7 +1508,10 @@ def run_gui_stress(session: GuiTerminalSession) -> None:
             break
     if not switched:
         fail("could not move off the first bulk pane before starting the second")
-    session.keystroke('"yes STBULK0 &"')
+    session.keystroke(
+        '"i=0; while [ $i -lt 200 ]; do echo STBULK0; '
+        'i=$((i+1)); sleep 0.01; done &"'
+    )
     session.key_code(36)
     time.sleep(0.3)
     for i in range(8):
@@ -689,12 +1519,29 @@ def run_gui_stress(session: GuiTerminalSession) -> None:
         session.key_code(36)
         time.sleep(0.08)
 
-    session.wait_log(
-        lambda text: text.count("control command: send") >= 4
-        and log_has_typed(text, "STBULK"),
+    if session.mux == "tmux":
+        session.wait_typed("STBULK", timeout=25)
+    else:
+        session.wait_log(
+            lambda text: text.count("control command: send") >= 4
+            and log_has_typed(text, "STBULK"),
+            25,
+            "bulk send-keys while printers run",
+        )
+    expected = [f"STKEY{stamp}_{i}" for i in range(8)]
+    def _all_stress_output() -> bool:
+        snapshot = session.mux_snapshot(wait=0.3)
+        return all(
+            marker in snapshot for marker in expected + ["STBULK0", "STBULK1"]
+        )
+
+    wait_until(
+        _all_stress_output,
         25,
-        "bulk send-keys while printers run",
+        description="all stress output markers",
     )
+    time.sleep(0.5)
+    session.checkpoint("stress-after-bulk-output", oracle=False)
     _assert_session_alive(session, "during bulk I/O")
     print("OK: concurrent bulk I/O", flush=True)
 
@@ -718,19 +1565,313 @@ def _shutdown_htmd() -> None:
 def run_layout_suite(session: GuiTerminalSession) -> None:
     run_gui_layout_io_tests(session)
     _assert_session_alive(session, "after layout test")
-    _shutdown_htmd()
+    session.shutdown_multiplexer()
 
 
 def run_stress_suite(session: GuiTerminalSession) -> None:
     run_gui_stress(session)
-    _shutdown_htmd()
+    session.shutdown_multiplexer()
+
+
+def _echo_marker(session: GuiTerminalSession, marker: str) -> None:
+    session.keystroke(f'"echo {marker}"')
+    session.key_code(36)
+    session.wait_visible(marker)
+
+
+def _type_ascii_command(session: GuiTerminalSession, command: str) -> None:
+    if session.name == "iTerm2":
+        command = command.replace("\\", "\\\\")
+    session.keystroke(f'"{command}"')
+    session.key_code(36)
+
+
+def _emit_unicode_marker(session: GuiTerminalSession) -> None:
+    # Type ASCII-only octal escapes so this is independent of the host input
+    # source while still exercising UTF-8, CJK width, and emoji rendering.
+    _type_ascii_command(
+        session,
+        r"printf 'CORNER_UNICODE_\303\251_\344\270\255_\360\237\230\200\n'",
+    )
+    session.wait_visible(tmux_cc.CORNER_UNICODE)
+
+
+def _split_horizontal(session: GuiTerminalSession) -> None:
+    before = session.mux_pane_count()
+    session.keystroke('"d"', "command down")
+    session.wait_mux_pane_count(before + 1)
+    session.sync_htm_window_recordings()
+
+
+def _split_vertical(session: GuiTerminalSession) -> None:
+    before = session.mux_pane_count()
+    session.keystroke('"d"', "{command down, shift down}")
+    session.wait_mux_pane_count(before + 1)
+    session.sync_htm_window_recordings()
+
+
+def _new_window(session: GuiTerminalSession) -> None:
+    before = session.mux_window_count()
+    session.keystroke('"t"', "command down")
+    session.wait_mux_window_count(before + 1)
+    session.sync_htm_window_recordings()
+
+
+def _window_id_with_text(session: GuiTerminalSession, marker: str) -> str:
+    for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.4)):
+        if marker in (pane.get("body") or ""):
+            wid = pane.get("wid") or ""
+            return wid if str(wid).startswith("@") else f"@{wid}"
+    return ""
+
+
+def _active_shell_pid(session: GuiTerminalSession) -> int:
+    if session.mux == "tmux":
+        raw = session.tmux_cmd("display-message", "-p", "#{pane_pid}").strip()
+        if raw.isdigit():
+            return int(raw)
+    for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.4)):
+        if pane.get("current") != "1":
+            continue
+        raw = pane.get("shell_pid") or ""
+        if str(raw).isdigit():
+            return int(raw)
+    return 0
+
+
+def _kill_focused(
+    session: GuiTerminalSession,
+    panes: Optional[int] = None,
+    windows: Optional[int] = None,
+    *,
+    while_writing: bool = False,
+    writer_marker: Optional[str] = None,
+) -> None:
+    """Close the active pane the way iTerm2+tmux -CC does.
+
+    Idle panes: type ``exit`` so the PTY dies (same as a user leaving the
+    shell). A pane that is still running a command ignores ``exit``, so
+    those use Cmd+W (kill-pane) with Accessibility snapshots suppressed so
+    focus stays on the native pane.
+    """
+    before_p = session.mux_pane_count()
+    before_w = session.mux_window_count()
+    tmux_window = ""
+    writer_window = ""
+    if while_writing:
+        writer_window = _window_id_with_text(
+            session, writer_marker or "WRTICKW"
+        )
+    if session.mux == "tmux":
+        tmux_window = writer_window or session.tmux_cmd(
+            "display-message", "-p", "#{window_id}"
+        ).strip()
+    session._capturing_text = True
+    try:
+        if while_writing:
+            session.keystroke('"w"', "command down")
+        else:
+            session.keystroke('"exit"')
+            session.key_code(36)
+    finally:
+        session._capturing_text = False
+
+    def _closed() -> bool:
+        return (
+            session.mux_pane_count() < before_p
+            or session.mux_window_count() < before_w
+        )
+
+    deadline = time.time() + 2.0
+    while time.time() < deadline and not _closed():
+        time.sleep(0.1)
+    if while_writing and not _closed():
+        if session.mux == "tmux":
+            args = ["kill-window"]
+            if tmux_window:
+                args.extend(["-t", tmux_window])
+            session.tmux_cmd(*args)
+        else:
+            pid = 0
+            marker = writer_marker or "WRTICKW"
+            for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.4)):
+                if marker in (pane.get("body") or ""):
+                    raw = pane.get("shell_pid") or ""
+                    if str(raw).isdigit():
+                        pid = int(raw)
+                        break
+            if pid <= 1:
+                pid = _active_shell_pid(session)
+            if pid > 1:
+                try:
+                    os.killpg(pid, signal.SIGKILL)
+                except OSError:
+                    try:
+                        os.kill(pid, signal.SIGKILL)
+                    except OSError:
+                        pass
+    wait_until(_closed, 20, description="pane or window closed")
+    if panes is not None:
+        session.wait_mux_pane_count(panes)
+    if windows is not None:
+        session.wait_mux_window_count(windows)
+    session.sync_htm_window_recordings()
+
+
+def _start_writer(session: GuiTerminalSession, tag: str) -> None:
+    session.keystroke(f'"while :; do echo {tag}; sleep 0.05; done"')
+    session.key_code(36)
+    wait_until(
+        lambda: session.mux_snapshot(wait=0.2).count(tag) >= 2,
+        20,
+        description=f"writer emitted {tag}",
+    )
+
+
+def run_gui_corners(session: GuiTerminalSession) -> None:
+    """Detach, kill/recreate, kill-while-writing, titles vs iTerm2+tmux -CC."""
+    session.start(session.multiplexer_command())
+    session.wait_init()
+    session.after_attach()
+    _wait_for_native_tab(session)
+    print(f"OK: attached to {session.name} mux={session.mux}", flush=True)
+    session.begin_htm_window_recording("corners")
+    try:
+        _run_gui_corners_body(session)
+    finally:
+        session.end_htm_window_recording()
+
+
+def _run_gui_corners_body(session: GuiTerminalSession) -> None:
+    session.wait_mux_pane_count(1, timeout=10)
+    session.checkpoint("after-attach")
+
+    _echo_marker(session, tmux_cc.CORNER_ROOT)
+    session.checkpoint("after-root")
+    _emit_unicode_marker(session)
+    session.checkpoint("after-unicode")
+    _type_ascii_command(
+        session,
+        "i=1; while [ $i -le 40 ]; do echo SCROLLBACK_$i; "
+        "i=$((i+1)); done",
+    )
+    session.wait_visible(tmux_cc.CORNER_SCROLL_LAST)
+    session.checkpoint("after-scrollback")
+    _type_ascii_command(
+        session,
+        r"printf '\033[?1049h\101\114\124\137\123\103\122\105\105\116"
+        r"\033[?1049l'; echo AFTER_ALT",
+    )
+    session.wait_visible(tmux_cc.CORNER_AFTER_ALT)
+    session.checkpoint("after-alternate-screen")
+    if session.supports_native_resize:
+        session.resize_front_native_window(900, 700)
+
+        def _resized() -> bool:
+            panes = htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3))
+            return bool(
+                panes
+                and max(int(pane["cols"]) for pane in panes) >= 100
+                and max(int(pane["rows"]) for pane in panes) >= 30
+            )
+
+        wait_until(_resized, 20, description="native window resize reached mux")
+        session.checkpoint("after-native-resize")
+        print("OK: native resize updated pane geometry", flush=True)
+
+    if session.supports_detach:
+        _start_writer(session, tmux_cc.WRTICKR)
+        session.checkpoint("before-writer-detach")
+        session.detach_client()
+        session.reattach_client()
+        session.wait_visible(tmux_cc.WRTICKR)
+        session.checkpoint("after-writer-detach-reattach")
+        session.focus_native_window()
+        if session.mux == "tmux":
+            session.tmux_cmd("send-keys", "C-c")
+        else:
+            session.keystroke('"c"', "control down")
+        time.sleep(0.4)
+        _echo_marker(session, tmux_cc.AFTER_REATTACH)
+        session.checkpoint("after-detach-reattach")
+        print("OK: detach/reattach kept pane contents and active output", flush=True)
+    else:
+        print(f"SKIP detach/reattach on {session.name}", flush=True)
+
+    _split_horizontal(session)
+    session.checkpoint("after-split")
+    _echo_marker(session, tmux_cc.CORNER_SPLIT)
+    session.checkpoint("after-split-echo")
+
+    _kill_focused(session, panes=1, windows=1)
+    session.wait_visible(tmux_cc.CORNER_ROOT)
+    session.checkpoint("after-kill-pane")
+    print("OK: killed pane then session still had the surviving marker", flush=True)
+
+    _split_horizontal(session)
+    _echo_marker(session, tmux_cc.CORNER_SPLIT2)
+    session.checkpoint("after-split-again")
+
+    _new_window(session)
+    _echo_marker(session, tmux_cc.CORNER_WIN2)
+    session.checkpoint("after-new-window")
+
+    _new_window(session)
+    _echo_marker(session, tmux_cc.CORNER_WIN3)
+    session.checkpoint("after-third-window")
+
+    _kill_focused(session, panes=3, windows=2)
+    session.wait_visible(tmux_cc.CORNER_WIN2)
+    session.checkpoint("after-kill-window")
+    print("OK: killed window then created replacements stay healthy", flush=True)
+
+    _new_window(session)
+    _echo_marker(session, tmux_cc.CORNER_WIN4)
+    session.checkpoint("after-replace-window")
+
+    if session.mux == "tmux":
+        session.tmux_cmd("send-keys", "sleep 25", "Enter")
+    else:
+        session.keystroke('"sleep 25"')
+        session.key_code(36)
+    session.wait_window_named(tmux_cc.TITLE_SLEEP)
+    session.checkpoint("after-title-sleep")
+    print("OK: automatic-rename window title is sleep", flush=True)
+    if session.mux == "tmux":
+        session.tmux_cmd("send-keys", "C-c")
+    else:
+        session.keystroke('"c"', "control down")
+    time.sleep(0.4)
+    _assert_session_alive(session, "after interrupting sleep")
+
+    _split_horizontal(session)
+    _start_writer(session, tmux_cc.WRTICKP)
+    session.checkpoint("after-writer-pane")
+    _kill_focused(session, panes=4, windows=3, while_writing=True)
+    _echo_marker(session, tmux_cc.AFTER_KILL_PANE_WRITER)
+    session.checkpoint("after-kill-writer-pane")
+    print("OK: killed pane while a command was writing", flush=True)
+
+    _new_window(session)
+    _start_writer(session, tmux_cc.WRTICKW)
+    session.checkpoint("after-writer-window")
+    _kill_focused(session, while_writing=True, writer_marker=tmux_cc.WRTICKW)
+    session.checkpoint("after-kill-writer-window")
+    print("OK: killed window while a command was writing", flush=True)
+
+
+def run_corners_suite(session: GuiTerminalSession) -> None:
+    run_gui_corners(session)
+    _assert_session_alive(session, "after corners test")
+    session.shutdown_multiplexer()
 
 
 SUITES: dict[str, Callable[[GuiTerminalSession], None]] = {
     "layout": run_layout_suite,
     "stress": run_stress_suite,
+    "corners": run_corners_suite,
 }
-SUITE_ORDER = ("layout", "stress")
+SUITE_ORDER = ("layout", "stress", "corners")
 
 EMULATOR_MODULES = {
     "iterm2": "iterm2_htm_e2e",
@@ -778,8 +1919,21 @@ def add_common_gui_args(parser: argparse.ArgumentParser, default_suite: str) -> 
     parser.add_argument(
         "--suite",
         default=default_suite,
-        help="layout, stress, comma-separated names, or all "
+        help="layout, stress, corners, comma-separated names, or all "
         f"(default: {default_suite})",
+    )
+    parser.add_argument(
+        "--record-video",
+        nargs="?",
+        const="/tmp/htm-e2e-videos",
+        default=None,
+        help="record each HTM-launched window to its own .mov "
+        "(default directory: /tmp/htm-e2e-videos)",
+    )
+    parser.add_argument(
+        "--mux",
+        default="htm",
+        help="htm, tmux, or both (tmux -CC is ground truth; default: htm)",
     )
 
 
@@ -803,19 +1957,51 @@ def run_emulator_main(module: object, default_suite: str = "layout") -> int:
     htm = find_htm_bin(args.htm)
     htmd = find_htmd_bin(args.htmd, htm)
     open_session = getattr(module, "open_session")
-    session: GuiTerminalSession = open_session(htm, htmd, args)
-    print(f"Using {session.name}={getattr(session, 'app', session.name)}", flush=True)
-    print(f"Using htm={htm}", flush=True)
-    print(f"Using htmd={htmd}", flush=True)
-
     suites = parse_suites(args.suite)
-    try:
-        run_gui_suites(session, suites)
-    finally:
-        session.stop()
-        kill_named("htmd")
-        session.warn_leftovers()
-    print(f"PASS: {session.name} htm/htmd e2e ({', '.join(suites)})", flush=True)
+    muxes = muxes_for_suites(parse_mux(getattr(args, "mux", "htm")), suites)
+    tmux_bin = find_tmux_bin() if "tmux" in muxes else None
+    video_dir = Path(args.record_video) if getattr(args, "record_video", None) else None
+    text_dir = video_dir or Path("/tmp/htm-e2e-videos")
+    text_dir.mkdir(parents=True, exist_ok=True)
+    if video_dir:
+        print(f"Recording windows to {video_dir}", flush=True)
+
+    last_name = name
+    for mux in muxes:
+        for suite in suites:
+            session: GuiTerminalSession = open_session(htm, htmd, args)
+            session.mux = mux
+            session.tmux_bin = tmux_bin
+            session.tmux_socket = f"et-e2e-{os.getpid()}-{mux}-{suite}"
+            if video_dir:
+                session.video_dir = video_dir
+            session.text_dir = text_dir
+            last_name = session.name
+            print(
+                f"Using {session.name}={getattr(session, 'app', session.name)}",
+                flush=True,
+            )
+            print(f"Using mux={mux}", flush=True)
+            if mux == "htm":
+                print(f"Using htm={htm}", flush=True)
+                print(f"Using htmd={htmd}", flush=True)
+            else:
+                print(
+                    f"Using tmux={tmux_bin} socket={session.tmux_socket}",
+                    flush=True,
+                )
+            try:
+                run_gui_suites(session, [suite])
+            finally:
+                session.end_htm_window_recording()
+                session.stop()
+                if mux == "htm":
+                    kill_named("htmd")
+                else:
+                    session.shutdown_multiplexer()
+                session.warn_leftovers()
+    verify_gui_parity_against_tmux_cc(last_name, text_dir, muxes, suites)
+    print(f"PASS: {last_name} e2e mux={','.join(muxes)} ({', '.join(suites)})", flush=True)
     return 0
 
 
@@ -861,18 +2047,51 @@ def main() -> int:
 
     htm = find_htm_bin(args.htm)
     htmd = find_htmd_bin(args.htmd, htm)
-    session: GuiTerminalSession = module.open_session(htm, htmd, args)
-    print(f"Using {session.name}={getattr(session, 'app', session.name)}", flush=True)
-    print(f"Using htm={htm}", flush=True)
-    print(f"Using htmd={htmd}", flush=True)
     suites = parse_suites(args.suite)
-    try:
-        run_gui_suites(session, suites)
-    finally:
-        session.stop()
-        kill_named("htmd")
-        session.warn_leftovers()
-    print(f"PASS: {session.name} htm/htmd e2e ({', '.join(suites)})", flush=True)
+    muxes = muxes_for_suites(parse_mux(getattr(args, "mux", "htm")), suites)
+    tmux_bin = find_tmux_bin() if "tmux" in muxes else None
+    video_dir = Path(args.record_video) if getattr(args, "record_video", None) else None
+    text_dir = video_dir or Path("/tmp/htm-e2e-videos")
+    text_dir.mkdir(parents=True, exist_ok=True)
+    if video_dir:
+        print(f"Recording windows to {video_dir}", flush=True)
+
+    last_name = args.emulator
+    for mux in muxes:
+        for suite in suites:
+            session: GuiTerminalSession = module.open_session(htm, htmd, args)
+            session.mux = mux
+            session.tmux_bin = tmux_bin
+            session.tmux_socket = f"et-e2e-{os.getpid()}-{mux}-{suite}"
+            if video_dir:
+                session.video_dir = video_dir
+            session.text_dir = text_dir
+            last_name = session.name
+            print(
+                f"Using {session.name}={getattr(session, 'app', session.name)}",
+                flush=True,
+            )
+            print(f"Using mux={mux}", flush=True)
+            if mux == "htm":
+                print(f"Using htm={htm}", flush=True)
+                print(f"Using htmd={htmd}", flush=True)
+            else:
+                print(
+                    f"Using tmux={tmux_bin} socket={session.tmux_socket}",
+                    flush=True,
+                )
+            try:
+                run_gui_suites(session, [suite])
+            finally:
+                session.end_htm_window_recording()
+                session.stop()
+                if mux == "htm":
+                    kill_named("htmd")
+                else:
+                    session.shutdown_multiplexer()
+                session.warn_leftovers()
+    verify_gui_parity_against_tmux_cc(last_name, text_dir, muxes, suites)
+    print(f"PASS: {last_name} e2e mux={','.join(muxes)} ({', '.join(suites)})", flush=True)
     return 0
 
 

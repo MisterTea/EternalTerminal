@@ -19,6 +19,40 @@ TEST_CASE("MultiplexerState starts with one session, window, and pane",
   mux.stopAll();
 }
 
+TEST_CASE("MultiplexerState dumpAllPanesText lists the first pane",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("pane %") != string::npos);
+  REQUIRE(dump.find("window @") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState split separators and edge resize match tmux",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  mux.setClientSize(80, 24);
+  uint32_t left = mux.activePaneId();
+  uint32_t right = mux.splitWindow(left, false, "");
+  string before = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                                mux.activeWindowId());
+  REQUIRE(before.find("%" + to_string(left) + " 40 24") != string::npos);
+  REQUIRE(before.find("%" + to_string(right) + " 39 24") != string::npos);
+  REQUIRE(mux.dumpLayout(mux.activeWindowId(), false) ==
+          "8205,80x24,0,0{40x24,0,0,0,39x24,41,0,1}");
+
+  mux.resizePaneDir(right, 'R', 3);
+  string after = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                               mux.activeWindowId());
+  REQUIRE(after.find("%" + to_string(left) + " 43 24") != string::npos);
+  REQUIRE(after.find("%" + to_string(right) + " 36 24") != string::npos);
+  REQUIRE(mux.dumpLayout(mux.activeWindowId(), false) ==
+          "9fa5,80x24,0,0{43x24,0,0,0,36x24,44,0,1}");
+  mux.stopAll();
+}
+
 TEST_CASE("MultiplexerState splits, nested splits, windows, and close",
           "[Htm][MultiplexerState]") {
   skipIfThreadSanitizer();

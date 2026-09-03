@@ -292,8 +292,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
     if (cmd.name == "new-window" || cmd.name == "neww") {
       string cwd = cmd.flags.get('c');
       string name = cmd.flags.get('n');
-      uint32_t id = mux->newWindow(name, cwd);
       writer->begin();
+      uint32_t id = mux->newWindow(name, cwd);
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{window_id}");
         writer->writeOutput(
@@ -308,8 +308,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
         stacked = true;
       }
       uint32_t src = paneTarget();
-      uint32_t id = mux->splitWindow(src, stacked, cmd.flags.get('c'));
       writer->begin();
+      uint32_t id = mux->splitWindow(src, stacked, cmd.flags.get('c'));
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{pane_id}");
         writer->writeOutput(
@@ -319,38 +319,38 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       return ControlAction::None;
     }
     if (cmd.name == "kill-pane" || cmd.name == "killp") {
-      mux->closePane(paneTarget());
       writer->begin();
+      mux->closePane(paneTarget());
       writer->end();
       return mux->empty() ? ControlAction::KillServer : ControlAction::None;
     }
     if (cmd.name == "kill-window" || cmd.name == "killw") {
-      mux->closeWindow(windowTarget());
       writer->begin();
+      mux->closeWindow(windowTarget());
       writer->end();
       return mux->empty() ? ControlAction::KillServer : ControlAction::None;
     }
     if (cmd.name == "send-keys" || cmd.name == "send") {
+      writer->begin();
       mux->sendKeys(paneTarget(),
                     encodeSendKeys(cmd.flags.positional, cmd.flags.has('H'),
                                    cmd.flags.has('l')));
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "select-pane" || cmd.name == "selectp") {
+      writer->begin();
       if (cmd.flags.has('T')) {
         mux->setPaneTitle(paneTarget(), cmd.flags.get('T'));
       } else {
         mux->selectPane(paneTarget());
       }
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "select-window" || cmd.name == "selectw") {
-      mux->selectWindow(windowTarget());
       writer->begin();
+      mux->selectWindow(windowTarget());
       writer->end();
       return ControlAction::None;
     }
@@ -359,6 +359,7 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       int amount = cmd.flags.positional.empty()
                        ? 1
                        : parseInt(cmd.flags.positional[0], 1);
+      writer->begin();
       if (cmd.flags.has('Z')) {
         mux->zoomToggle(pane);
       } else if (cmd.flags.has('L')) {
@@ -370,11 +371,11 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       } else if (cmd.flags.has('D')) {
         mux->resizePaneDir(pane, 'D', amount);
       }
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "refresh-client" || cmd.name == "refresh") {
+      writer->begin();
       if (cmd.flags.has('C')) {
         int cols = mux->clientCols();
         int rows = mux->clientRows();
@@ -401,7 +402,6 @@ ControlAction executeControlCommand(MultiplexerState* mux,
           writer->notify("%continue %" + to_string(pane));
         }
       }
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }
@@ -422,16 +422,16 @@ ControlAction executeControlCommand(MultiplexerState* mux,
     if (cmd.name == "rename-window" || cmd.name == "renamew") {
       string name =
           cmd.flags.positional.empty() ? string() : cmd.flags.positional[0];
-      mux->renameWindow(windowTarget(), name);
       writer->begin();
+      mux->renameWindow(windowTarget(), name);
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "select-layout" || cmd.name == "selectl") {
       string layout = cmd.flags.positional.empty() ? string("tiled")
                                                    : cmd.flags.positional[0];
-      mux->selectLayout(windowTarget(), layout);
       writer->begin();
+      mux->selectLayout(windowTarget(), layout);
       writer->end();
       return ControlAction::None;
     }
@@ -440,8 +440,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       string srcSpec = cmd.flags.get('s');
       uint32_t src =
           srcSpec.empty() ? mux->activePaneId() : mux->parsePaneTarget(srcSpec);
-      mux->swapPanes(src, dst);
       writer->begin();
+      mux->swapPanes(src, dst);
       writer->end();
       return ControlAction::None;
     }
@@ -455,8 +455,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       if (cmd.flags.has('v')) {
         stacked = true;
       }
-      mux->movePane(src, dst, stacked, cmd.flags.has('b'));
       writer->begin();
+      mux->movePane(src, dst, stacked, cmd.flags.has('b'));
       writer->end();
       return mux->empty() ? ControlAction::KillServer : ControlAction::None;
     }
@@ -469,8 +469,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
         spec = cmd.flags.positional[0];
       }
       uint32_t pane = mux->parsePaneTarget(spec);
-      uint32_t wid = mux->breakPane(pane);
       writer->begin();
+      uint32_t wid = mux->breakPane(pane);
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{window_id}");
         writer->writeOutput(
@@ -480,8 +480,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       return ControlAction::None;
     }
     if (cmd.name == "unlink-window" || cmd.name == "unlinkw") {
-      mux->closeWindow(windowTarget());
       writer->begin();
+      mux->closeWindow(windowTarget());
       writer->end();
       return mux->empty() ? ControlAction::KillServer : ControlAction::None;
     }
@@ -493,8 +493,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
     if (cmd.name == "move-window" || cmd.name == "movew") {
       uint32_t wid = mux->parseWindowTarget(cmd.flags.get('s'));
       uint32_t sid = mux->parseSessionTarget(cmd.flags.get('t'));
-      mux->moveWindowToSession(wid, sid);
       writer->begin();
+      mux->moveWindowToSession(wid, sid);
       writer->end();
       return ControlAction::None;
     }
@@ -503,31 +503,31 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       return ControlAction::None;
     }
     if (cmd.name == "new-session" || cmd.name == "new") {
+      writer->begin();
       uint32_t id = mux->newSession(cmd.flags.get('s'));
       if (!cmd.flags.has('d')) {
         mux->attachSession(id);
       }
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "kill-session") {
-      mux->closeSession(sessionTarget());
       writer->begin();
+      mux->closeSession(sessionTarget());
       writer->end();
       return mux->empty() ? ControlAction::KillServer : ControlAction::None;
     }
     if (cmd.name == "rename-session" || cmd.name == "rename") {
       string name =
           cmd.flags.positional.empty() ? string() : cmd.flags.positional[0];
-      mux->renameSession(sessionTarget(), name);
       writer->begin();
+      mux->renameSession(sessionTarget(), name);
       writer->end();
       return ControlAction::None;
     }
     if (cmd.name == "attach-session" || cmd.name == "attach") {
-      mux->attachSession(sessionTarget());
       writer->begin();
+      mux->attachSession(sessionTarget());
       writer->end();
       return ControlAction::None;
     }
@@ -545,11 +545,11 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       string name = cmd.flags.get('b', "buffer0");
       string value =
           cmd.flags.positional.empty() ? string() : cmd.flags.positional[0];
+      writer->begin();
       mux->pasteBuffers[name] = value;
       if (writer) {
         writer->notify("%paste-buffer-changed " + name);
       }
-      writer->begin();
       writer->end();
       return ControlAction::None;
     }

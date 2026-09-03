@@ -21,6 +21,8 @@ class TerminalHandler {
   void start(const string& cwd = "", int cols = 80, int rows = 24);
   /** @brief Child process id, or 0 if unknown. */
   int64_t childProcessId() const;
+  /** @brief Foreground process name on the PTY (tmux #{pane_current_command}). */
+  string foregroundCommand() const;
   /**
    * @brief Drains available bytes from the pty, buffering them and returning
    * the raw bytes that were just read.

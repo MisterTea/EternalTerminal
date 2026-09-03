@@ -360,6 +360,7 @@ end tell
             return self.window_count() > 0
 
         wait_until(window_ready, 25, description="WezTerm window")
+        self.remember_gateway_windows()
         self.focus()
 
     def after_attach(self) -> None:

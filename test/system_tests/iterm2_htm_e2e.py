@@ -46,7 +46,8 @@ SUITE = "EternalTerminalHtmE2E"
 
 PROTOCOL_LEAK_RE = re.compile(
     r"%(?:output|extended-output|layout-change|session-changed|"
-    r"sessions-changed|window-add|window-close|window-pane-changed|"
+    r"sessions-changed|window-add|window-close|unlinked-window-close|"
+    r"window-pane-changed|"
     r"session-window-changed|begin|end|exit)\b"
 )
 CAPTURE_DIR = Path("/tmp/iterm2-htm-e2e")
@@ -99,10 +100,13 @@ def configure_suite_defaults() -> None:
         "PromptOnQuit": False,
         "OnlyWhenMoreTabs": False,
         "OpenArrangementAtStartup": False,
-        "OpenNoWindowsAtStartup": False,
+        "OpenNoWindowsAtStartup": True,
         "SUEnableAutomaticChecks": False,
         "NoSyncNeverRemindPrefsChangesAgain": True,
         "HideTab": False,
+        # Keep the tmux -CC gateway visible so Esc/detach and reattach
+        # can target it instead of a native pane window.
+        "AutoHideTmuxClientSession": False,
     }
     for key, enabled in bools.items():
         subprocess.run(
@@ -131,6 +135,8 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> "ITermHtmSe
 
 class ITermHtmSession(GuiTerminalSession):
     name = "iTerm2"
+    supports_detach = True
+    supports_native_resize = True
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -160,7 +166,13 @@ tell application "System Events"
   end tell
 end tell
 '''
-        return run_osascript(script)
+        try:
+            return run_osascript(script)
+        except subprocess.CalledProcessError:
+            # System Events occasionally loses the target during iTerm's
+            # native-window transition even though the process remains alive.
+            time.sleep(0.3)
+            return run_osascript(script)
 
     @property
     def pid(self) -> int:
@@ -172,12 +184,34 @@ end tell
         self.osascript_pid("set frontmost to true")
         time.sleep(0.15)
 
+    def resize_front_native_window(self, width: int, height: int) -> None:
+        self.osascript_pid(
+            "set frontmost to true\n"
+            f"    set size of front window to {{{width}, {height}}}"
+        )
+        time.sleep(0.3)
+
+    def focus_gateway(self) -> None:
+        super().focus_gateway()
+        try:
+            if self._gateway_clicks:
+                x, y = self._gateway_clicks[0]
+                self.click_screen(x, y)
+            else:
+                x, y, width, height = self.window_frame()
+                self.click_screen(x + width * 0.5, y + height * 0.45)
+        except (ValueError, subprocess.CalledProcessError, SystemExit):
+            pass
+
     def keystroke(self, keys: str, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
         self.osascript_pid(
             f"set frontmost to true\n    keystroke {keys}{using_clause}"
         )
         time.sleep(0.08)
+        if not self._capturing_text:
+            label = f"keystroke {keys} {using}".strip()
+            self.snapshot_all_text(label)
 
     def key_code(self, code: int, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
@@ -185,6 +219,9 @@ end tell
             f"set frontmost to true\n    key code {code}{using_clause}"
         )
         time.sleep(0.08)
+        if not self._capturing_text:
+            label = f"keycode {code} {using}".strip()
+            self.snapshot_all_text(label)
 
     def window_count(self) -> int:
         try:
@@ -241,6 +278,7 @@ end tell
         except subprocess.CalledProcessError:
             self.keystroke('"["', "command down")
         time.sleep(0.35)
+        self.snapshot_all_text("previous-pane")
 
     def next_pane(self) -> None:
         try:
@@ -253,6 +291,7 @@ end tell
         except subprocess.CalledProcessError:
             self.keystroke('"]"', "command down")
         time.sleep(0.35)
+        self.snapshot_all_text("next-pane")
 
     def previous_tab(self) -> None:
         self.keystroke('"["', "{command down, shift down}")
@@ -268,6 +307,7 @@ end tell
         body += f' of menu "{menu_bar_item}" of menu bar 1'
         self.osascript_pid(f"set frontmost to true\n    {body}")
         time.sleep(0.35)
+        self.snapshot_all_text("menu-" + "-".join(path))
 
     def window_frame(self) -> tuple[float, float, float, float]:
         def parse_pair(raw: str) -> tuple[float, float]:
@@ -324,6 +364,7 @@ end tell
         cg.CGEventPost(kCGHIDEventTap, up)
         cg.CFRelease(up)
         time.sleep(0.2)
+        self.snapshot_all_text(f"click-{int(x)}-{int(y)}")
 
     def pane_points(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Approximate centers of the left and right halves of window 1."""
@@ -341,8 +382,9 @@ end tell
 
     def screenshot(self, label: str) -> Path:
         """Capture window 1 of the suite iTerm2 instance."""
-        CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
-        path = CAPTURE_DIR / f"{label}.png"
+        out_dir = CAPTURE_DIR / self.mux
+        out_dir.mkdir(parents=True, exist_ok=True)
+        path = out_dir / f"{label}.png"
         self.focus()
         time.sleep(0.2)
         x, y, width, height = self.window_frame()
@@ -356,6 +398,7 @@ end tell
 
     def visible_contents(self) -> str:
         """Copy the focused session buffer (suite iTerm is not Apple-scriptable)."""
+        self._capturing_text = True
         self.focus()
         previous = ""
         try:
@@ -372,6 +415,7 @@ end tell
             except (subprocess.CalledProcessError, FileNotFoundError):
                 return ""
         finally:
+            self._capturing_text = False
             subprocess.run(
                 ["pbcopy"],
                 input=previous,
@@ -385,9 +429,11 @@ end tell
         """Screenshot + dump session text; fail on leaked tmux -CC protocol."""
         img = self.screenshot(label)
         text = self.visible_contents()
-        dump = CAPTURE_DIR / f"{label}.txt"
+        out_dir = CAPTURE_DIR / self.mux
+        out_dir.mkdir(parents=True, exist_ok=True)
+        dump = out_dir / f"{label}.txt"
         dump.write_text(text)
-        print(f"visible[{label}] screenshot={img} chars={len(text)}", flush=True)
+        print(f"visible[{self.mux}/{label}] screenshot={img} chars={len(text)}", flush=True)
         for line in text.splitlines()[:40]:
             if line.strip():
                 print(f"  | {line[:160]}", flush=True)
@@ -408,10 +454,10 @@ end tell
         configure_suite_defaults()
         self.started_at = time.time() - 1.0
         env = os.environ.copy()
-        env["PATH"] = f"{self.htm.parent}:{env.get('PATH', '')}"
+        env["PATH"] = f"{self.htm.parent}:{self.tmux_bin.parent if self.tmux_bin else ''}:{env.get('PATH', '')}"
         env["IT2_SUITE"] = SUITE
         binary = self.app / "Contents" / "MacOS" / "iTerm2"
-        command = f"{self.htm} -x"
+        command = command.strip() or self.multiplexer_command()
         self.proc = subprocess.Popen(
             [
                 str(binary),
@@ -431,6 +477,7 @@ end tell
             description="iTerm2 process start",
         )
         wait_until(lambda: self.window_count() > 0, 25, description="iTerm2 window")
+        self.remember_gateway_windows()
         self.focus()
 
     def _pid_command(self, pid: int) -> str:
@@ -444,6 +491,13 @@ end tell
             return ""
 
     def stop(self) -> None:
+        if self.mux == "tmux" and self.tmux_bin and self.tmux_socket:
+            subprocess.run(
+                [str(self.tmux_bin), "-L", self.tmux_socket, "kill-server"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                check=False,
+            )
         if self.proc and self.proc.poll() is None:
             try:
                 os.kill(self.proc.pid, signal.SIGTERM)
@@ -482,6 +536,19 @@ end tell
         else:
             print(f"OK: control-mode created native tabs ({tabs_after_init})", flush=True)
 
+        self.remember_gateway_windows()
+
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_has_session()
+                and (self.window_count() >= 1 or self.tab_count() >= 1),
+                20,
+                description="tmux -CC native window",
+            )
+            print("OK: tmux -CC attached", flush=True)
+            self.dump_visible("01-after-attach")
+            return
+
         attach_log = self.wait_log(
             lambda text: (
                 any(
@@ -516,31 +583,37 @@ end tell
             fail(f"Move Session to Split Pane menu failed: {exc.output or exc}")
         time.sleep(0.5)
         self.click_pane_half("left")
-        self.wait_log(
-            lambda text: any(cmd.startswith("move-pane") for cmd in control_commands(text)),
-            20,
-            "move-pane after Move Session to Split Pane",
-        )
+        if self.mux == "tmux":
+            time.sleep(0.8)
+        else:
+            self.wait_log(
+                lambda text: any(cmd.startswith("move-pane") for cmd in control_commands(text)),
+                20,
+                "move-pane after Move Session to Split Pane",
+            )
         if not self.is_alive():
             fail("iTerm2 exited after move-pane")
         print("OK: Move Session to Split Pane sent move-pane", flush=True)
 
-        splits_before = self.log_text().count("split-window")
+        splits_before = self.split_watermark()
         self.keystroke('"d"', "command down")
-        self.wait_log(
-            lambda text: text.count("split-window") > splits_before,
-            20,
-            "split-window after move-pane",
-        )
+        self.wait_split(splits_before)
         try:
             self.click_menu("Session", "Move Session", "Move Session to Window")
         except subprocess.CalledProcessError as exc:
             fail(f"Move Session to Window menu failed: {exc.output or exc}")
-        self.wait_log(
-            lambda text: any(cmd.startswith("break-pane") for cmd in control_commands(text)),
-            20,
-            "break-pane after Move Session to Window",
-        )
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_window_count() >= 1,
+                20,
+                description="tmux window after break-pane",
+            )
+        else:
+            self.wait_log(
+                lambda text: any(cmd.startswith("break-pane") for cmd in control_commands(text)),
+                20,
+                "break-pane after Move Session to Window",
+            )
         if not self.is_alive():
             fail("iTerm2 exited after break-pane")
         print("OK: Move Session to Window sent break-pane", flush=True)
@@ -549,9 +622,46 @@ end tell
         self.dump_visible("02-after-marker", require=marker)
 
     def after_layout_suite(self) -> None:
-        self.select_first_tab()
+        self.detach_client()
+        self.reattach_client()
+
+    def detach_client(self) -> None:
+        self.focus_gateway()
+        log_before = self.log_text() if self.mux == "htm" and self.log_file else ""
+        watermark = len(log_before)
+        clients_before = self.tmux_client_count() if self.mux == "tmux" else 0
+        if self.mux == "tmux" and clients_before < 1:
+            fail("tmux had no control-mode client before Esc")
         self.key_code(53)  # escape
-        time.sleep(1.5)
+        if self.mux == "tmux":
+            deadline = time.time() + 15
+            retry_at = time.time() + 2
+            while time.time() < deadline and self.tmux_client_count() != 0:
+                if time.time() >= retry_at:
+                    self.focus_gateway()
+                    self.key_code(53)
+                    retry_at = time.time() + 2
+                time.sleep(0.2)
+            if self.tmux_client_count() != 0:
+                fail("timed out waiting for tmux -CC client detached after Esc")
+            if not self.tmux_has_session():
+                fail("tmux exited on gateway Esc; expected detach, not shutdown")
+            if not self.is_alive():
+                fail("iTerm2 exited on tmux detach")
+            print("OK: Esc detached without killing tmux", flush=True)
+            return
+
+        def _saw_detach() -> bool:
+            if not self.log_file:
+                return False
+            new = self.log_text()[watermark:]
+            return any(
+                cmd.strip() in ("detach", "detach-client")
+                or cmd.startswith("detach ")
+                for cmd in control_commands(new)
+            )
+
+        wait_until(_saw_detach, 15, description="htmd detach after gateway Esc")
         if not pids_named("htmd"):
             fail("htmd exited on gateway Esc; expected detach, not shutdown")
         if not ipc_path().exists():
@@ -560,20 +670,77 @@ end tell
             fail("iTerm2 exited on HTM detach")
         print("OK: Esc detached without killing htmd", flush=True)
 
+    def reattach_client(self) -> None:
+        self.focus_gateway()
+        time.sleep(0.4)
         self.keystroke('"t"', "command down")
-        time.sleep(1.5)
-        self.keystroke(f'"{self.htm}"')
-        self.key_code(36)
-        self.started_at = time.time() - 1.0
-        self.wait_init(timeout=20)
+        time.sleep(1.8)
+        self.keystroke('"c"', "control down")
+        time.sleep(0.25)
+        if self.mux == "tmux":
+            attach = f"{self.tmux_bin} -L {self.tmux_socket} -CC attach-session"
+        else:
+            attach = str(self.htm)
+        reattach_at = len(self.log_text()) if self.log_file else 0
+        previous = ""
+        try:
+            previous = subprocess.check_output(["pbpaste"], text=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            previous = ""
+        try:
+            subprocess.run(["pbcopy"], input=attach + "\n", text=True, check=False)
+            time.sleep(0.15)
+            self.keystroke('"v"', "command down")
+            time.sleep(0.25)
+            self.key_code(36)
+        finally:
+            subprocess.run(["pbcopy"], input=previous, text=True, check=False)
+        if self.mux == "tmux":
+            deadline = time.time() + 20
+            while time.time() < deadline and self.tmux_client_count() < 1:
+                time.sleep(0.4)
+            if self.tmux_client_count() < 1:
+                subprocess.run(["pbcopy"], input=attach + "\n", text=True, check=False)
+                self.focus_gateway()
+                self.keystroke('"v"', "command down")
+                time.sleep(0.2)
+                self.key_code(36)
+                wait_until(
+                    lambda: self.tmux_client_count() >= 1,
+                    15,
+                    description="tmux -CC client reattached",
+                )
+            time.sleep(1.0)
+            print("OK: reattached to tmux -CC", flush=True)
+            return
+
+        def _saw_reattach_show() -> bool:
+            if not self.log_file:
+                return False
+            new = self.log_text()[reattach_at:]
+            return any(
+                cmd.startswith("show") and "@iterm2_id" in cmd
+                for cmd in control_commands(new)
+            )
+
+        deadline = time.time() + 20
+        while time.time() < deadline and not _saw_reattach_show():
+            time.sleep(0.4)
+        if not _saw_reattach_show():
+            subprocess.run(["pbcopy"], input=attach + "\n", text=True, check=False)
+            self.focus_gateway()
+            self.keystroke('"v"', "command down")
+            time.sleep(0.2)
+            self.key_code(36)
+            subprocess.run(["pbcopy"], input=previous, text=True, check=False)
+            wait_until(
+                _saw_reattach_show,
+                15,
+                description="reattach show @iterm2_id on original htmd",
+            )
         time.sleep(1.0)
         print("OK: reattached", flush=True)
         reattach = self.log_text()
-        if not any(
-            "@iterm2_id" in cmd and cmd.startswith("show")
-            for cmd in control_commands(reattach)
-        ):
-            fail("reattach did not show @iterm2_id")
         set_after = [
             cmd
             for cmd in commands_containing(reattach, "@iterm2_id")
