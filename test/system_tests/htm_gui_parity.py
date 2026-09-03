@@ -213,8 +213,7 @@ def _corner_body(body: str) -> str:
         else line
         for line in lines
     ]
-    while lines and (not lines[0] or SHELL_PROMPT_ONLY.match(lines[0])):
-        lines.pop(0)
+    lines = [line for line in lines if line and not SHELL_PROMPT_ONLY.match(line)]
 
     # iTerm may send the first command while a new shell is painting its
     # prompt. tmux retains that incomplete redraw above the completed command.
@@ -243,11 +242,11 @@ def _corner_body(body: str) -> str:
             and "done" in line
             and index + 1 < len(lines)
             and re.match(
-                r"^\d+(?:\.\d+)?;\s+done$", lines[index + 1].strip()
+                r"^(?:\d+(?:\.\d+)?|\.\d+);\s+done$", lines[index + 1].strip()
             )
         ):
             while index + 1 < len(lines) and re.match(
-                r"^\d+(?:\.\d+)?;\s+done$", lines[index + 1].strip()
+                r"^(?:\d+(?:\.\d+)?|\.\d+);\s+done$", lines[index + 1].strip()
             ):
                 index += 1
                 line += lines[index].lstrip()
@@ -586,6 +585,21 @@ class ParityHelperTests(unittest.TestCase):
             "host% echo CORNER_ROOT\nCORNER_ROOT\n"
         )
         verdict = classify_snapshot(tmux, htm, "after-root")
+        self.assertEqual(verdict["status"], "cosmetic")
+
+    def test_layout_prompt_pid_and_decimal_wrap_are_cosmetic(self) -> None:
+        tmux = (
+            "--- window @0 name=zsh pane %0 active=1 39x24 cursor=0,3\n"
+            "➜  ~\nHTM_E2E_PARITY\n"
+            "[1]  + 98420 done       for i in 1 2; do sleep 0.08; done\n"
+        )
+        htm = (
+            "--- window @1 name=zsh pane %4 active=1 40x24 cursor=0,2\n"
+            "HTM_E2E_PARITY\n"
+            "[1]  + 4100 done       for i in 1 2; do sleep 0\n"
+            ".08; done\n➜  ~\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-close")
         self.assertEqual(verdict["status"], "cosmetic")
 
     def test_different_corner_marker_diverges(self) -> None:

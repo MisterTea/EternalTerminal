@@ -255,7 +255,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       writer->end();
       return ControlAction::None;
     }
-    if (cmd.name == "list-sessions" || cmd.name == "ls") {
+    if (cmd.name == "list-sessions" || cmd.name == "list-session" ||
+        cmd.name == "ls") {
       writer->begin();
       writer->writeOutput(mux->listSessions(cmd.flags.get('F')));
       writer->end();
@@ -371,6 +372,15 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       } else if (cmd.flags.has('D')) {
         mux->resizePaneDir(pane, 'D', amount);
       }
+      writer->end();
+      return ControlAction::None;
+    }
+    if (cmd.name == "resize-window" || cmd.name == "resizew") {
+      uint32_t window = windowTarget();
+      int cols = parseInt(cmd.flags.get('x'), mux->clientCols());
+      int rows = parseInt(cmd.flags.get('y'), mux->clientRows());
+      writer->begin();
+      mux->setWindowSize(window, cols, rows);
       writer->end();
       return ControlAction::None;
     }

@@ -20,7 +20,8 @@ bool isFlagWithValue(const string& name, char f, const string& next) {
     return f == 't';
   }
   if (name == "list-windows" || name == "lsw" || name == "list-panes" ||
-      name == "lsp" || name == "list-sessions" || name == "ls") {
+      name == "lsp" || name == "list-sessions" || name == "list-session" ||
+      name == "ls") {
     return f == 'F' || f == 't' || f == 'f';
   }
   if (name == "new-window" || name == "neww" || name == "split-window" ||
@@ -30,8 +31,9 @@ bool isFlagWithValue(const string& name, char f, const string& next) {
   if (name == "kill-pane" || name == "killp" || name == "kill-window" ||
       name == "killw" || name == "select-pane" || name == "selectp" ||
       name == "select-window" || name == "selectw" || name == "resize-pane" ||
-      name == "resizep" || name == "rename-window" || name == "renamew" ||
-      name == "select-layout" || name == "selectl") {
+      name == "resizep" || name == "resize-window" || name == "resizew" ||
+      name == "rename-window" || name == "renamew" || name == "select-layout" ||
+      name == "selectl") {
     return f == 't' || f == 'T' || f == 'x' || f == 'y';
   }
   if (name == "attach-session" || name == "attach" || name == "new-session" ||

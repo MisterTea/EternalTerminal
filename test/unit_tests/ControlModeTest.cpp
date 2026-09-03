@@ -228,6 +228,8 @@ TEST_CASE("executeControlCommand covers tmux command aliases",
                                     " #{session_id}") == ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "list-sessions") ==
           ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "list-session") ==
+          ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "list-windows") ==
           ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "list-panes -a") ==
@@ -253,6 +255,13 @@ TEST_CASE("executeControlCommand covers tmux command aliases",
           ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "resize-pane -D 1") ==
           ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer,
+                                "resize-window -x 126 -y 39 -t " + window) ==
+          ControlAction::None);
+  REQUIRE(mux.displayFormat("#{window_width}x#{window_height}",
+                            mux.activeSessionId(),
+                            mux.parseWindowTarget(window),
+                            mux.parsePaneTarget(pane)) == "126x39");
   REQUIRE(executeControlCommand(&mux, &writer,
                                 "refresh-client -C 80x24 -f "
                                 "no-output,wait-exit,pause-"
