@@ -14,6 +14,7 @@ missing.
 from __future__ import annotations
 
 import argparse
+import atexit
 import ctypes
 from ctypes import wintypes
 import os
@@ -24,9 +25,19 @@ import sys
 import tempfile
 import time
 import uuid
+import weakref
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from htm_gui_e2e import GuiTerminalSession, fail, run_emulator_main, skip  # noqa: E402
+from htm_gui_e2e import (  # noqa: E402
+    GuiTerminalSession,
+    fail,
+    kill_htm_daemons,
+    log_has_typed,
+    run_emulator_main,
+    skip,
+    typed_from_log,
+    wait_until,
+)
 
 
 SKIP = 77
@@ -44,10 +55,16 @@ VK_SHIFT = 0x10
 VK_MENU = 0x12
 VK_RETURN = 0x0D
 VK_ESCAPE = 0x1B
+VK_TAB = 0x09
+VK_LEFT = 0x25
+VK_RIGHT = 0x27
+VK_OEM_PLUS = 0xBB
+VK_OEM_MINUS = 0xBD
 HWND_TOPMOST = -1
 HWND_NOTOPMOST = -2
 SWP_NOMOVE = 0x0002
 SWP_NOSIZE = 0x0001
+SWP_NOZORDER = 0x0004
 SWP_SHOWWINDOW = 0x0040
 
 
@@ -57,6 +74,16 @@ if os.name == "nt":
     kernel32.OpenProcess.restype = wintypes.HANDLE
     kernel32.CreateToolhelp32Snapshot.restype = wintypes.HANDLE
     user32.GetForegroundWindow.restype = wintypes.HWND
+    user32.GetDpiForWindow.argtypes = [wintypes.HWND]
+    user32.GetDpiForWindow.restype = wintypes.UINT
+    # Match WT's Per-Monitor V2 so SetWindowPos sizes are physical pixels.
+    try:
+        ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
+    except Exception:
+        try:
+            ctypes.windll.shcore.SetProcessDpiAwareness(2)
+        except Exception:
+            pass
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -170,12 +197,101 @@ def processes_named(name: str, image: Path | None = None) -> list[int]:
 
 
 def terminate_pid(pid: int) -> None:
+    if not pid:
+        return
+    # taskkill /F survives CRT "Debug Error!" modal dialogs that block WM_CLOSE
+    # and OpenProcess(PROCESS_TERMINATE) alone.
+    subprocess.run(
+        ["taskkill", "/PID", str(pid), "/T", "/F"],
+        stdout=subprocess.DEVNULL,
+        stderr=subprocess.DEVNULL,
+        check=False,
+    )
     handle = kernel32.OpenProcess(PROCESS_TERMINATE, False, pid)
     if handle:
         try:
             kernel32.TerminateProcess(handle, 1)
         finally:
             kernel32.CloseHandle(handle)
+
+
+def _window_text(hwnd: int) -> str:
+    length = user32.GetWindowTextLengthW(hwnd)
+    buf = ctypes.create_unicode_buffer(length + 1)
+    user32.GetWindowTextW(hwnd, buf, len(buf))
+    return buf.value
+
+
+def collect_runtime_dialog_text(owner_pids: set[int] | None = None) -> list[str]:
+    """Capture MSVC abort/assert dialog text before force-killing owners."""
+    found: list[str] = []
+    if os.name != "nt":
+        return found
+    callback_type = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+    @callback_type
+    def callback(hwnd: int, _param: int) -> bool:
+        if not user32.IsWindowVisible(hwnd):
+            return True
+        title = _window_text(hwnd)
+        if not title:
+            return True
+        lowered = title.casefold()
+        if not any(
+            marker in lowered
+            for marker in (
+                "debug error",
+                "microsoft visual c++ runtime library",
+                "assertion failed",
+                "visual c++",
+            )
+        ):
+            return True
+        pid = wintypes.DWORD()
+        user32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        owner = int(pid.value)
+        if owner_pids is not None and owner not in owner_pids:
+            return True
+        # Child static controls usually hold the abort message body.
+        body_parts: list[str] = [title]
+        enum_child = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+
+        @enum_child
+        def child_cb(child: int, _lp: int) -> bool:
+            text = _window_text(child)
+            if text and text.strip() and text not in body_parts:
+                body_parts.append(text.strip())
+            return True
+
+        user32.EnumChildWindows(hwnd, child_cb, 0)
+        found.append(f"pid={owner}: " + " | ".join(body_parts))
+        return True
+
+    user32.EnumWindows(callback, 0)
+    return found
+
+
+# Runs still alive when the interpreter exits (abort, Ctrl+C, agent interrupt).
+_ACTIVE_WT_RUNS: list[weakref.ref] = []
+
+
+def _atexit_cleanup_wt_runs() -> None:
+    for ref in list(_ACTIVE_WT_RUNS):
+        run = ref()
+        if run is None:
+            continue
+        try:
+            run.close()
+        except Exception:
+            pass
+    try:
+        kill_htm_daemons()
+    except Exception:
+        pass
+
+
+if os.name == "nt":
+    atexit.register(_atexit_cleanup_wt_runs)
 
 
 def windows() -> list[tuple[int, int, str]]:
@@ -210,71 +326,41 @@ def wait_for(predicate, timeout: float, description: str, interval: float = 0.05
 
 
 def focus_window(hwnd: int) -> None:
+    """Bring the e2e Terminal window forward without attaching input queues.
+
+    ``AttachThreadInput`` + ``SetFocus`` can deadlock when Terminal's UI thread
+    is busy creating the native HTM tab (the process then shows as Not
+    Responding and the harness waits forever). CLI actions only need the
+    window activated; keystrokes use ``SendInput`` to the foreground window.
+    """
     user32.ShowWindow(hwnd, SW_RESTORE)
     user32.BringWindowToTop(hwnd)
-    for _ in range(20):
-        # SetForegroundWindow is intentionally restricted across processes.
-        # Temporarily join the current foreground and Terminal input queues so
-        # this interactive test can assign focus without mouse automation.
-        foreground = user32.GetForegroundWindow()
-        foreground_pid = wintypes.DWORD()
-        target_pid = wintypes.DWORD()
-        foreground_thread = user32.GetWindowThreadProcessId(
-            foreground, ctypes.byref(foreground_pid)
+    for _ in range(12):
+        user32.SwitchToThisWindow(hwnd, True)
+        user32.SetWindowPos(
+            hwnd,
+            HWND_TOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
         )
-        target_thread = user32.GetWindowThreadProcessId(
-            hwnd, ctypes.byref(target_pid)
+        user32.SetWindowPos(
+            hwnd,
+            HWND_NOTOPMOST,
+            0,
+            0,
+            0,
+            0,
+            SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
         )
-        current_thread = kernel32.GetCurrentThreadId()
-        attached_current = bool(
-            target_thread
-            and current_thread != target_thread
-            and user32.AttachThreadInput(current_thread, target_thread, True)
-        )
-        attached_foreground = bool(
-            foreground_thread
-            and foreground_thread != target_thread
-            and user32.AttachThreadInput(foreground_thread, target_thread, True)
-        )
-        try:
-            # SwitchToThisWindow is deprecated for applications, but remains
-            # the most reliable way for an interactive desktop test harness to
-            # cross Windows' foreground-lock boundary.
-            user32.SwitchToThisWindow(hwnd, True)
-            user32.SetWindowPos(
-                hwnd,
-                HWND_TOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
-            )
-            user32.SetWindowPos(
-                hwnd,
-                HWND_NOTOPMOST,
-                0,
-                0,
-                0,
-                0,
-                SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW,
-            )
-            user32.SetForegroundWindow(hwnd)
-            user32.SetFocus(hwnd)
-        finally:
-            if attached_foreground:
-                user32.AttachThreadInput(foreground_thread, target_thread, False)
-            if attached_current:
-                user32.AttachThreadInput(current_thread, target_thread, False)
+        user32.SetForegroundWindow(hwnd)
         foreground = user32.GetForegroundWindow()
         if foreground and int(foreground) == hwnd:
-            time.sleep(0.15)
+            time.sleep(0.1)
             return
         time.sleep(0.05)
-    # Windows foreground-lock policy can reject activation from an automated
-    # launcher. Protocol-only setup does not require focus; input assertions
-    # below will still expose a real inability to target the window.
-    return
 
 
 def send_key(vk: int, flags: int = 0) -> None:
@@ -291,8 +377,11 @@ def shortcut(*keys: int) -> None:
 
 
 def type_text(text: str) -> None:
-    for char in text:
-        code = ord(char)
+    # KEYEVENTF_UNICODE wScan is a UTF-16 code *unit*. Astral chars (emoji)
+    # must be sent as surrogate pairs, not a truncated 32-bit ord().
+    utf16 = text.encode("utf-16-le")
+    for index in range(0, len(utf16), 2):
+        code = int.from_bytes(utf16[index : index + 2], "little")
         down = INPUT(
             type=INPUT_KEYBOARD,
             ki=KEYBDINPUT(0, code, KEYEVENTF_UNICODE, 0, None),
@@ -339,25 +428,43 @@ class WindowsTerminalRun:
         self.hwnds: list[int] = []
         self.terminal_pid = 0
         self.preexisting_terminal_pids = set(processes_named("WindowsTerminal.exe"))
+        self.crt_abort_messages: list[str] = []
         self.env = os.environ.copy()
         self.env["TEMP"] = str(temp_dir)
         self.env["TMP"] = str(temp_dir)
         self.env["HTM_BIN_DIR"] = str(htm.parent)
 
     def invoke_in(self, window_name: str, *command: str) -> None:
-        completed = subprocess.run(
-            [str(self.wt), "-w", window_name, *command],
-            env=self.env,
-            stdout=subprocess.DEVNULL,
-            stderr=subprocess.PIPE,
-            text=True,
-            timeout=15,
-        )
-        if completed.returncode:
-            fail(f"Windows Terminal launcher failed: {completed.stderr.strip()}")
+        argv = [str(self.wt), "-w", window_name, *command]
+        # ``wtd new-tab`` often never exits; do not wait. Avoid DETACHED so the
+        # command still reaches this named window instead of a new process.
+        if command and command[0] in ("new-tab", "split-pane", "focus-tab", "move-focus"):
+            subprocess.Popen(
+                argv,
+                env=self.env,
+                cwd=str(Path.cwd()),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+            time.sleep(0.85 if command[0] == "new-tab" else 0.5)
+            return
+        try:
+            subprocess.run(
+                argv,
+                env=self.env,
+                cwd=str(Path.cwd()),
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+                timeout=8,
+            )
+        except subprocess.TimeoutExpired:
+            pass
+        time.sleep(0.4)
 
     def invoke(self, *command: str) -> None:
-        self.invoke_in(self.window_name, *command)
+        # Caller focuses the target window first. Re-focusing the gateway here
+        # would steal ``-w last`` away from native HTM OS windows.
+        self.invoke_in("last", *command)
 
     def new_htm_tab(self, kill_old: bool) -> None:
         args = ["new-tab", "--title", self.title, str(self.htm)]
@@ -372,41 +479,81 @@ class WindowsTerminalRun:
         before = {hwnd for hwnd, _pid, _title in windows()}
         self.window_name = f"htm-e2e-{uuid.uuid4()}"
         self.title = f"HTM E2E {uuid.uuid4()}"
-        args = ["new-tab", "--title", self.title, str(self.htm)]
+        args = [
+            "new-tab",
+            "--title",
+            self.title,
+            "--startingDirectory",
+            str(Path.cwd()),
+            str(self.htm),
+        ]
         if kill_old:
             args.append("-x")
-        self.invoke_in(self.window_name, *args)
+        # ``-w new`` always creates an OS window.
+        self.invoke_in("new", *args)
 
         def find_window():
             titled = [w for w in windows() if self.title in w[2]]
             fresh = [w for w in titled if w[0] not in before]
-            return (fresh or titled or [None])[0]
+            # Do not fall back to a pre-existing window whose tab title changed.
+            return (fresh or [None])[0]
 
         hwnd, pid, _title = wait_for(find_window, 15, "Windows Terminal window")
         self.hwnd = hwnd
         self.hwnds.append(hwnd)
         self.terminal_pid = pid
+        self._register_active()
         focus_window(hwnd)
 
+    def _register_active(self) -> None:
+        _ACTIVE_WT_RUNS[:] = [ref for ref in _ACTIVE_WT_RUNS if ref() is not None]
+        if not any(ref() is self for ref in _ACTIVE_WT_RUNS):
+            _ACTIVE_WT_RUNS.append(weakref.ref(self))
+
+    def _unregister_active(self) -> None:
+        _ACTIVE_WT_RUNS[:] = [
+            ref for ref in _ACTIVE_WT_RUNS if ref() is not None and ref() is not self
+        ]
+
     def close(self) -> None:
+        """Tear down the e2e Terminal window even if a CRT assert dialog is up.
+
+        Debug builds often show a modal ``Debug Error!`` / MSVC Runtime dialog
+        that ignores ``WM_CLOSE``. Always force-kill the process tree we started,
+        plus htm/htmd, so aborted runs do not leave windows on screen.
+        """
+        owned_pids = {
+            pid
+            for pid in processes_named("WindowsTerminal.exe")
+            if pid not in self.preexisting_terminal_pids
+        }
+        if self.terminal_pid:
+            owned_pids.add(self.terminal_pid)
+        for message in collect_runtime_dialog_text(owned_pids or None):
+            print(f"WT runtime dialog: {message}", file=sys.stderr, flush=True)
+            self.crt_abort_messages.append(message)
+
         open_hwnds = list(dict.fromkeys(self.hwnds))
         for hwnd in open_hwnds:
-            user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            try:
+                user32.PostMessageW(hwnd, WM_CLOSE, 0, 0)
+            except Exception:
+                pass
         if open_hwnds:
-            deadline = time.monotonic() + 2
+            deadline = time.monotonic() + 0.8
             while time.monotonic() < deadline and any(
                 item[0] in open_hwnds for item in windows()
             ):
                 time.sleep(0.05)
-            if self.terminal_pid not in self.preexisting_terminal_pids:
-                terminate_pid(self.terminal_pid)
-                wait_for(
-                    lambda: self.terminal_pid not in processes_named("WindowsTerminal.exe"),
-                    10,
-                    "E2E Windows Terminal process to exit",
-                )
+
+        for pid in sorted(owned_pids):
+            terminate_pid(pid)
+
+        kill_htm_daemons()
         self.hwnd = 0
         self.hwnds.clear()
+        self.terminal_pid = 0
+        self._unregister_active()
 
 
 def _wait_for_htm_command(run: WindowsTerminalRun, before_count: int, command: str, action: str) -> None:
@@ -627,48 +774,304 @@ def apply_args(args: argparse.Namespace) -> None:
         os.environ["WT_BIN"] = args.wt
 
 
+TERMINAL_FORK = Path("E:/github/Terminal")
+
+
+def candidate_wt() -> list[Path]:
+    paths: list[Path] = []
+    env = os.environ.get("WT_BIN")
+    if env:
+        paths.append(Path(env))
+    paths.extend(
+        [
+            Path(os.environ.get("LOCALAPPDATA", "")) / "Microsoft" / "WindowsApps" / "wtd.exe",
+            TERMINAL_FORK / "bin" / "x64" / "Debug" / "WindowsTerminal" / "WindowsTerminal.exe",
+            TERMINAL_FORK / "bin" / "x64" / "Debug" / "wt.exe",
+            TERMINAL_FORK / "src" / "cascadia" / "CascadiaPackage" / "bin" / "x64" / "Debug" / "wtd.exe",
+            TERMINAL_FORK / "src" / "cascadia" / "CascadiaPackage" / "bin" / "x64" / "Debug" / "WindowsTerminal.exe",
+        ]
+    )
+    which = shutil.which("wtd.exe") or shutil.which("wt.exe")
+    if which:
+        paths.append(Path(which))
+    seen: set[Path] = set()
+    unique: list[Path] = []
+    for path in paths:
+        resolved = path.resolve() if path.exists() else path
+        if resolved in seen:
+            continue
+        seen.add(resolved)
+        unique.append(path)
+    return unique
+
+
 def find_wt() -> Path:
-    configured = os.environ.get("WT_BIN")
-    candidate = configured if configured and Path(configured).is_file() else shutil.which(configured or "wt.exe")
-    if not candidate or not Path(candidate).is_file():
-        skip("Windows Terminal was not found; set WT_BIN or pass --wt")
-    return Path(candidate).resolve()
+    for path in candidate_wt():
+        if path.is_file():
+            return path.resolve()
+    skip("Windows Terminal was not found; set WT_BIN or pass --wt")
 
 
 class WindowsTerminalControlSession(GuiTerminalSession):
     """Shared GUI-suite adapter for an HTM-enabled Windows Terminal build."""
 
     name = NAME
+    supports_detach = True
+    supports_native_resize = True
 
     def __init__(self, wt: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
         self.wt = wt
         self.run: WindowsTerminalRun | None = None
+        self.app = wt
+        self.native_hwnds: list[int] = []
 
     def start(self, command: str = "") -> None:
+        kill_htm_daemons()
+        time.sleep(2.0)
         self.started_at = time.time() - 1.0
         self.run = WindowsTerminalRun(self.wt, self.htm, self.htmd, Path(tempfile.gettempdir()))
+        self.run.env["PATH"] = f"{self.htm.parent};{self.run.env.get('PATH', '')}"
         self.run.start_new_window(True)
+        self.native_hwnds.clear()
 
     def stop(self) -> None:
-        if self.run:
-            self.run.close()
-            self.run = None
+        abort_msgs: list[str] = []
+        try:
+            if self.run:
+                self.run.close()
+                abort_msgs.extend(self.run.crt_abort_messages)
+                self.run = None
+        finally:
+            kill_htm_daemons()
+            for ref in list(_ACTIVE_WT_RUNS):
+                leftover = ref()
+                if leftover is not None:
+                    try:
+                        leftover.close()
+                        abort_msgs.extend(leftover.crt_abort_messages)
+                    except Exception:
+                        pass
+            self.native_hwnds.clear()
+        if abort_msgs:
+            fail(
+                "Windows Terminal Debug CRT abort during teardown: "
+                + " | ".join(abort_msgs[:3])
+            )
+
+    def _discover_native_windows(self) -> None:
+        """Native HTM panes are separate OS windows, not tabs on the gateway."""
+        if not self.run or not self.run.hwnd:
+            return
+        gateway = self.run.hwnd
+        owned = [
+            h
+            for h, p, _title in windows()
+            if h != gateway and p == self.run.terminal_pid
+        ]
+        # Content moved to a new window may share the same process.
+        if not owned:
+            owned = [
+                h
+                for h, p, _title in windows()
+                if h != gateway
+                and p not in self.run.preexisting_terminal_pids
+                and p in processes_named("WindowsTerminal.exe")
+            ]
+        # Preserve creation order: keep previously known hwnds first, append new.
+        known = [h for h in self.native_hwnds if h in owned]
+        for h in owned:
+            if h not in known:
+                known.append(h)
+        self.native_hwnds = known
 
     def after_attach(self) -> None:
-        deadline = time.monotonic() + 10
-        while time.monotonic() < deadline:
-            if "control command:" in self.log_text():
-                return
-            time.sleep(0.1)
-        skip(
-            "Windows Terminal accepted HTM's DCS but did not send tmux -CC "
-            "commands; use an HTM-enabled wt/wtd build"
+        try:
+            self.wait_log(
+                lambda text: "control command: refresh-client" in text
+                or "control command: split-window" in text,
+                15,
+                "Windows Terminal tmux -CC handshake",
+            )
+        except SystemExit:
+            skip(
+                "Windows Terminal accepted HTM's DCS but did not send tmux -CC "
+                "commands; use an HTM-enabled Debug wt/wtd build"
+            )
+        wait_until(
+            lambda: "resize-pane -t %" in self.log_text(),
+            15,
+            description="native HTM window created",
         )
+        time.sleep(0.8)
+        self._discover_native_windows()
+        self.focus_native()
+        time.sleep(0.3)
+
+    def after_first_split(self) -> None:
+        self.focus_native()
+        self._action("move-focus", "nextInOrder")
+
+    def focus_gateway(self) -> None:
+        if not self.run:
+            fail("Windows Terminal was not started")
+        if self.run.hwnd:
+            focus_window(self.run.hwnd)
+
+    def focus_native(self) -> None:
+        if not self.run:
+            fail("Windows Terminal was not started")
+        self._discover_native_windows()
+        target = self.native_hwnds[-1] if self.native_hwnds else self.run.hwnd
+        if target:
+            focus_window(target)
+            time.sleep(0.15)
+
+    def focus_native_window(self) -> None:
+        """Corners suite uses this after detach/reattach; HWND, not osascript."""
+        self.focus_native()
+
+    def launched_windows(self) -> list[dict]:
+        self._discover_native_windows()
+        out: list[dict] = []
+        for i, hwnd in enumerate(self.native_hwnds):
+            rect = wintypes.RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                continue
+            w = int(rect.right - rect.left)
+            h = int(rect.bottom - rect.top)
+            if w < 2 or h < 2:
+                continue
+            out.append(
+                {
+                    "index": i,
+                    "x": int(rect.left),
+                    "y": int(rect.top),
+                    "w": w,
+                    "h": h,
+                    "name": f"hwnd-{hwnd}",
+                    "hwnd": hwnd,
+                }
+            )
+        return out
+
+    def ax_windows(self) -> list[dict]:
+        return self.launched_windows()
+
+    def resize_front_native_window(self, width: int, height: int) -> None:
+        """Resize the front native HTM pane window so mux geometry updates."""
+        self._discover_native_windows()
+        hwnd = None
+        if self.native_hwnds:
+            hwnd = self.native_hwnds[-1]
+        elif self.run and self.run.hwnd:
+            hwnd = self.run.hwnd
+        if not hwnd:
+            fail("no Windows Terminal HWND available to resize")
+        focus_window(hwnd)
+        rect = wintypes.RECT()
+        if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            fail(f"GetWindowRect failed for hwnd={hwnd}")
+        dpi = user32.GetDpiForWindow(hwnd) or 96
+        scale = max(dpi / 96.0, 1.0)
+        # WezTerm's 900x700 is content-ish; WT SetWindowPos is outer size and
+        # title-bar/DPI eat the client area. Grow so mux can clear 100x30.
+        target_w = max(int(width), int((110 * 9 + 120) * scale), rect.right - rect.left)
+        target_h = max(int(height), int((35 * 18 + 140) * scale), rect.bottom - rect.top)
+        resizes_before = self.log_text().count("resize-pane -t %")
+        refreshes_before = self.log_text().count("refresh-client -C")
+        if not user32.SetWindowPos(
+            hwnd,
+            0,
+            rect.left,
+            rect.top,
+            target_w,
+            target_h,
+            SWP_NOZORDER | SWP_SHOWWINDOW,
+        ):
+            fail(f"SetWindowPos failed for hwnd={hwnd}")
+        wait_until(
+            lambda: self.log_text().count("resize-pane -t %") > resizes_before
+            or self.log_text().count("refresh-client -C") > refreshes_before,
+            8,
+            description="HTM received resize after native window SetWindowPos",
+        )
+        time.sleep(0.25)
+        self.focus_native()
+
+    def detach_client(self) -> None:
+        self.focus_gateway()
+        shortcut(VK_ESCAPE)
+        wait_until(
+            lambda: "detach-client" in self.log_text() or "detach" in self.log_text(),
+            15,
+            description="htmd received detach-client",
+        )
+        # Product ForceCloseUi + page _HtmClosePane must dismiss native HTM
+        # windows. Do not WM_CLOSE them — that hides product regressions.
+        self._discover_native_windows()
+        native_stale = list(self.native_hwnds)
+        deadline = time.time() + 8
+        while time.time() < deadline:
+            self._discover_native_windows()
+            if not any(h in self.native_hwnds for h in native_stale):
+                break
+            time.sleep(0.1)
+        self._discover_native_windows()
+        still_native = [h for h in native_stale if h in self.native_hwnds]
+        if still_native:
+            fail(
+                "native HTM windows still open after detach "
+                f"(hwnds={still_native}); product should ForceCloseUi/_HtmClosePane"
+            )
+        # Gateway is the control plane; Esc does not close it. Close only the
+        # gateway HWND so reattach can start_new_window cleanly (WezTerm keeps
+        # the gateway and reuses it — WT driver reopens a fresh client).
+        if self.run and self.run.hwnd:
+            gateway = self.run.hwnd
+            user32.PostMessageW(gateway, WM_CLOSE, 0, 0)
+            deadline = time.time() + 2
+            while time.time() < deadline:
+                if not any(item[0] == gateway for item in windows()):
+                    break
+                time.sleep(0.1)
+            self.run.hwnd = None
+        self.native_hwnds.clear()
+        time.sleep(0.3)
+
+    def reattach_client(self) -> None:
+        if not self.run:
+            fail("Windows Terminal was not started")
+        starts = self.log_text().count("control command: refresh-client")
+        self.run.start_new_window(False)
+        self.focus()
+        self.wait_log(
+            lambda text: text.count("control command: refresh-client") > starts,
+            15,
+            "HTM reattach",
+        )
+        wait_until(
+            lambda: self.log_text().count("resize-pane -t %") >= 1,
+            15,
+            description="reattach native pane",
+        )
+        time.sleep(0.5)
+        self._discover_native_windows()
+        self.focus_native()
 
     def focus(self) -> None:
-        if self.run and self.run.hwnd:
+        # Default focus for typing/splits is the native HTM window once it exists.
+        if self.native_hwnds or "resize-pane -t %" in self.log_text():
+            self.focus_native()
+        elif self.run and self.run.hwnd:
             focus_window(self.run.hwnd)
+
+    def _action(self, *command: str) -> None:
+        if not self.run:
+            fail("Windows Terminal was not started")
+        self.focus()
+        self.run.invoke(*command)
+        time.sleep(0.35)
 
     def keystroke(self, keys: str, using: str = "") -> None:
         if not self.run:
@@ -676,47 +1079,111 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         value = keys.strip('"')
         if "command" in using:
             if value == "d":
-                self.focus()
-                shortcut(VK_MENU, VK_SHIFT, ord("D"))
+                before = self.log_text().count("split-window")
+                resizes_before = self.log_text().count("resize-pane -t %")
+                self.focus_native()
+                # Match WezTerm/iTerm2: Cmd+D = side-by-side, Cmd+Shift+D = stacked.
+                split_flag = (
+                    "--horizontal" if "shift" in using.lower() else "--vertical"
+                )
+                for _ in range(4):
+                    self._action("split-pane", split_flag, "--duplicate")
+                    deadline = time.time() + 2.5
+                    while time.time() < deadline:
+                        if self.log_text().count("split-window") > before:
+                            deadline_resize = time.time() + 5
+                            while time.time() < deadline_resize:
+                                if (
+                                    self.log_text().count("resize-pane -t %")
+                                    > resizes_before
+                                ):
+                                    break
+                                time.sleep(0.1)
+                            return
+                        time.sleep(0.1)
             elif value == "t":
-                self.run.invoke("new-tab")
-                time.sleep(0.75)
+                self.focus_native()
+                self._action("new-tab")
+                time.sleep(1.0)
+                self._discover_native_windows()
             elif value == "w":
-                self.run.invoke_in(self.run.window_name, "close-pane")
+                self.focus_native()
+                shortcut(VK_CONTROL, VK_SHIFT, ord("W"))
+                time.sleep(0.4)
             elif value == "[":
-                self.run.invoke_in(self.run.window_name, "move-focus", "left")
+                self.focus_native()
+                self._action("move-focus", "previousInOrder")
             elif value == "]":
-                self.run.invoke_in(self.run.window_name, "move-focus", "right")
+                self.focus_native()
+                self._action("move-focus", "nextInOrder")
             else:
                 fail(f"unsupported Windows Terminal action: {keys} {using}")
-            time.sleep(0.25)
             return
-        self.focus()
-        # The first synthetic key after Windows transfers focus can be
-        # consumed by the focus transition. A leading space is harmless to
-        # shell commands and keeps the test payload deterministic.
+        if "control" in using:
+            self.focus_native()
+            shortcut(VK_CONTROL, ord(value.upper()))
+            time.sleep(0.12)
+            return
+        self.focus_native()
         type_text(" " + value)
+        needle = value[-24:] if len(value) > 24 else value
+        if needle.strip():
+            self.wait_log(
+                lambda text: needle in typed_from_log(text) or needle in text,
+                45,
+                f"Windows Terminal send-keys flushed {needle!r}",
+            )
+
+    def submit_text(self, text: str) -> None:
+        """Type a command and Enter without re-focusing between them.
+
+        ``focus_window`` / ``focus_native`` after a split can activate the new
+        sibling pane, so a separate Enter key_code would land in the wrong PTY
+        while the echo line stayed unexecuted in the pane that received typing.
+        """
+        if not self.run:
+            fail("Windows Terminal was not started")
+        self.focus_native()
+        type_text(" " + text + "\r")
+        needle = text[-24:] if len(text) > 24 else text
+        if needle.strip():
+            self.wait_log(
+                lambda text_log: needle in typed_from_log(text_log) or needle in text_log,
+                45,
+                f"Windows Terminal send-keys flushed {needle!r}",
+            )
+        time.sleep(0.12)
 
     def key_code(self, code: int, using: str = "") -> None:
         if code != 36:
             fail(f"unsupported Windows Terminal key code: {code}")
-        self.focus()
-        shortcut(VK_RETURN)
+        # Do not call focus_native(): re-activating the HWND after a split often
+        # gives keyboard focus to the sibling pane. Send CR to the pane that
+        # already has focus from the preceding keystroke.
+        type_text("\r")
         time.sleep(0.12)
 
     def previous_pane(self) -> None:
-        self.keystroke('"]"', "command down")
-
-    def next_pane(self) -> None:
         self.keystroke('"["', "command down")
 
+    def next_pane(self) -> None:
+        self.keystroke('"]"', "command down")
+
     def previous_tab(self) -> None:
-        # Windows Terminal's action API has no stable previous-tab CLI action;
-        # a pane switch still exercises a second control-mode target.
-        self.next_pane()
+        self._discover_native_windows()
+        if len(self.native_hwnds) >= 2:
+            focus_window(self.native_hwnds[-2])
+            time.sleep(0.2)
+        elif self.native_hwnds:
+            focus_window(self.native_hwnds[0])
+            time.sleep(0.2)
 
     def tab_count(self) -> int:
-        return 2 if self.run and self.run.hwnd else 0
+        # Gateway window + native HTM OS windows.
+        if not self.run or not self.run.hwnd:
+            return 0
+        self._discover_native_windows()
+        return 1 + len(self.native_hwnds)
 
     def is_alive(self) -> bool:
         return bool(self.run and self.run.hwnd)
@@ -727,4 +1194,4 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> WindowsTerm
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    raise SystemExit(run_emulator_main(sys.modules[__name__], default_suite="all"))

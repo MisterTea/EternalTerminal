@@ -363,6 +363,10 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       writer->begin();
       if (cmd.flags.has('Z')) {
         mux->zoomToggle(pane);
+      } else if (cmd.flags.has('x') || cmd.flags.has('y')) {
+        int cols = parseInt(cmd.flags.get('x'), 0);
+        int rows = parseInt(cmd.flags.get('y'), 0);
+        mux->resizePaneAbsolute(pane, cols, rows);
       } else if (cmd.flags.has('L')) {
         mux->resizePaneDir(pane, 'L', amount);
       } else if (cmd.flags.has('R')) {

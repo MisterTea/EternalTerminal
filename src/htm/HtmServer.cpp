@@ -202,12 +202,8 @@ string HtmServer::getPipeName() {
 }
 
 string HtmServer::getPaneDumpPath() {
-#ifdef WIN32
-  return string("htm.") + GetHtmIpcUser() + string(".panes");
-#else
   return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() +
          string(".panes");
-#endif
 }
 
 void HtmServer::writePaneDumpIfRequested() {
@@ -235,6 +231,10 @@ void HtmServer::writePaneDumpIfRequested() {
 #ifdef WIN32
 string HtmServer::getShutdownEventName() {
   return string("Local\\EternalTerminal.HtmShutdown.") + GetHtmIpcUser();
+}
+
+string HtmServer::getPaneDumpEventName() {
+  return string("Local\\EternalTerminal.HtmPaneDump.") + GetHtmIpcUser();
 }
 #endif
 }  // namespace et

@@ -4,6 +4,7 @@
 #include "RawSocketUtils.hpp"
 
 #ifdef WIN32
+#include <algorithm>
 #include <windows.h>
 #endif
 
@@ -12,17 +13,51 @@ namespace {
 void writeHtmStdout(const char* buf, size_t n) {
 #ifdef WIN32
   DWORD written = 0;
-  const auto ok = WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf,
-                            static_cast<DWORD>(n), &written, NULL);
-  if (!ok || written != n) {
-    throw std::runtime_error("Cannot write HTM output");
-  }
+  const HANDLE stdoutHandle = GetStdHandle(STD_OUTPUT_HANDLE);
+  DWORD consoleMode = 0;
+  const auto ok =
+      GetConsoleMode(stdoutHandle, &consoleMode)
+          ? WriteConsoleA(stdoutHandle, buf, static_cast<DWORD>(n), &written,
+                          NULL)
+          : WriteFile(stdoutHandle, buf, static_cast<DWORD>(n), &written, NULL);
+    if (!ok || written != n) {
+      return;
+    }
 #else
   RawSocketUtils::writeAll(STDOUT_FILENO, buf, n);
 #endif
 }
 
-void writeDcs() { writeHtmStdout(kControlModeDcs, strlen(kControlModeDcs)); }
+#ifdef WIN32
+void writeControlOutput(const char* buf, size_t n) {
+  DWORD consoleMode = 0;
+  if (!GetConsoleMode(GetStdHandle(STD_OUTPUT_HANDLE), &consoleMode)) {
+    writeHtmStdout(buf, n);
+    return;
+  }
+  // ConPTY strips tmux DCS. Carry control bytes in private CSI sequences
+  // (CSI ?777;b0;b1;...q). ConPTY keeps ~16 CSI parameters; the first is
+  // 777, so each sequence can hold at most 15 payload bytes.
+  constexpr size_t kChunkSize = 15;
+  for (size_t offset = 0; offset < n; offset += kChunkSize) {
+    const size_t end = std::min(n, offset + kChunkSize);
+    string encoded = "\x1b[?777";
+    for (size_t i = offset; i < end; ++i) {
+      encoded += ";" + to_string(static_cast<unsigned char>(buf[i]));
+    }
+    encoded += "q";
+    writeHtmStdout(encoded.data(), encoded.size());
+  }
+}
+#endif
+
+void writeDcs() {
+#ifdef WIN32
+  writeControlOutput(kControlModeDcs, strlen(kControlModeDcs));
+#else
+  writeHtmStdout(kControlModeDcs, strlen(kControlModeDcs));
+#endif
+}
 }  // namespace
 
 HtmClient::HtmClient(shared_ptr<SocketHandler> _socketHandler,
@@ -45,6 +80,9 @@ void HtmClient::run() {
       throw std::runtime_error("Cannot put stdin in raw console mode");
     }
   }
+  // ConPTY synthesizes CTRL_C_EVENT for Ctrl+C / some Ctrl+Shift chords even
+  // when the GUI already handled the shortcut (e.g. Windows Terminal new-tab).
+  SetConsoleCtrlHandler([](DWORD) -> BOOL { return TRUE; }, TRUE);
 
   auto inputStarted = std::make_shared<std::atomic_bool>(false);
   auto inputClosed = std::make_shared<std::atomic_bool>(false);
@@ -114,7 +152,7 @@ void HtmClient::run() {
         endpointFd = -1;
         return;
       }
-      writeHtmStdout(buf, static_cast<size_t>(rc));
+      writeControlOutput(buf, static_cast<size_t>(rc));
       didWork = true;
     }
     if (!didWork) {

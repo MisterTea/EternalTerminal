@@ -13,6 +13,7 @@ diffs htm checkpoints against the tmux -CC checkpoints from the same run.
 
 from __future__ import annotations
 
+import os
 import unittest
 
 import sys
@@ -40,6 +41,8 @@ WRTICKR = "WRTICKR"
 WRTICKP = "WRTICKP"
 WRTICKW = "WRTICKW"
 TITLE_SLEEP = "sleep"
+# Windows ConPTY automatic-rename uses the leaf process image base name.
+TITLE_SLEEP_WIN = "timeout"
 
 # Checkpoints recorded against iTerm2 + tmux -CC. pane/window counts are the
 # live session after each action (not historical command watermarks).
@@ -167,6 +170,7 @@ STEPS: dict[str, dict] = {
         "panes": 4,
         "windows": 3,
         "window_name": TITLE_SLEEP,
+        "window_name_win": TITLE_SLEEP_WIN,
     },
 }
 
@@ -211,6 +215,8 @@ def check_step(step_id: str, dump: str) -> list[str]:
     if writer and dump.count(writer) < 2:
         errors.append(f"writer {writer!r} did not emit output")
     want_name = spec.get("window_name")
+    if os.name == "nt" and spec.get("window_name_win"):
+        want_name = spec["window_name_win"]
     if want_name:
         names = [cosmetic_title(pane["name"]) for pane in panes]
         if want_name not in names:

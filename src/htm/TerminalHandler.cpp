@@ -3,6 +3,7 @@
 #include "RawSocketUtils.hpp"
 
 #ifdef WIN32
+#include <tlhelp32.h>
 #include <windows.h>
 #else
 #include <unistd.h>
@@ -57,6 +58,100 @@ string defaultWindowsHome() {
     return string(home);
   }
   return string();
+}
+
+string wideToUtf8(const wstring& w) {
+  if (w.empty()) {
+    return string();
+  }
+  int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, NULL, 0, NULL, NULL);
+  string out(n ? n : 0, '\0');
+  if (n > 1) {
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &out[0], n, NULL, NULL);
+    out.resize(n - 1);
+  }
+  return out;
+}
+
+string processImageBaseName(DWORD pid) {
+  HANDLE process =
+      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!process) {
+    return string();
+  }
+  wchar_t path[MAX_PATH];
+  DWORD size = MAX_PATH;
+  string name;
+  if (QueryFullProcessImageNameW(process, 0, path, &size)) {
+    wstring wide(path, size);
+    auto slash = wide.find_last_of(L"\\/");
+    wstring base =
+        slash == wstring::npos ? wide : wide.substr(slash + 1);
+    if (base.size() > 4) {
+      auto ext = base.substr(base.size() - 4);
+      if (_wcsicmp(ext.c_str(), L".exe") == 0) {
+        base.resize(base.size() - 4);
+      }
+    }
+    name = wideToUtf8(base);
+    for (char& c : name) {
+      c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    }
+  }
+  CloseHandle(process);
+  return name;
+}
+
+bool isShellLikeProcess(const string& name) {
+  return name.empty() || name == "cmd" || name == "powershell" ||
+         name == "pwsh" || name == "powershell_ise" || name == "conhost" ||
+         name == "openconsole" || name == "wt" || name == "windowsterminal" ||
+         name == "htmd" || name == "htm";
+}
+
+// ConPTY has no tcgetpgrp; walk the shell's process tree and prefer a
+// non-shell leaf (timeout, ping, sleep, …) for automatic-rename.
+string deepestForegroundCommand(DWORD rootPid) {
+  if (rootPid == 0) {
+    return string();
+  }
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) {
+    return processImageBaseName(rootPid);
+  }
+  unordered_map<DWORD, vector<DWORD>> children;
+  PROCESSENTRY32W entry;
+  entry.dwSize = sizeof(entry);
+  if (Process32FirstW(snap, &entry)) {
+    do {
+      children[entry.th32ParentProcessID].push_back(entry.th32ProcessID);
+    } while (Process32NextW(snap, &entry));
+  }
+  CloseHandle(snap);
+
+  string best;
+  vector<DWORD> stack{rootPid};
+  while (!stack.empty()) {
+    DWORD pid = stack.back();
+    stack.pop_back();
+    const auto it = children.find(pid);
+    if (it == children.end() || it->second.empty()) {
+      string name = processImageBaseName(pid);
+      if (!isShellLikeProcess(name)) {
+        best = name;
+      } else if (best.empty() && pid == rootPid) {
+        best = name;
+      }
+      continue;
+    }
+    for (DWORD child : it->second) {
+      stack.push_back(child);
+    }
+  }
+  if (isShellLikeProcess(best)) {
+    return string();
+  }
+  return best;
 }
 }  // namespace
 #endif
@@ -123,7 +218,11 @@ int64_t TerminalHandler::childProcessId() const {
 
 string TerminalHandler::foregroundCommand() const {
 #ifdef WIN32
-  return string();
+  if (processHandle == INVALID_HANDLE_VALUE) {
+    return string();
+  }
+  const DWORD rootPid = GetProcessId(static_cast<HANDLE>(processHandle));
+  return deepestForegroundCommand(rootPid);
 #else
   auto name_of = [](pid_t pid) -> string {
     if (pid <= 0) {

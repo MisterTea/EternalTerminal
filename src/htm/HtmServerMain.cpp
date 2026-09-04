@@ -67,19 +67,36 @@ int main(int argc, char** argv) {
   if (!shutdownEvent) {
     STFATAL << "Failed to create HTM shutdown event: " << GetLastError();
   }
+  HANDLE paneDumpEvent = CreateEventA(
+      NULL, TRUE, FALSE, HtmServer::getPaneDumpEventName().c_str());
+  if (!paneDumpEvent) {
+    CloseHandle(shutdownEvent);
+    STFATAL << "Failed to create HTM pane-dump event: " << GetLastError();
+  }
   // A previous daemon may have signaled the named event while this process was
   // starting. This instance owns the event now, so begin in the nonsignaled
   // state before publishing its listening socket.
   ResetEvent(shutdownEvent);
-  thread shutdownWatcher([&]() {
-    WaitForSingleObject(shutdownEvent, INFINITE);
-    htm.requestStop();
+  ResetEvent(paneDumpEvent);
+  thread eventWatcher([&]() {
+    HANDLE events[2] = {paneDumpEvent, shutdownEvent};
+    while (true) {
+      const DWORD which = WaitForMultipleObjects(2, events, FALSE, INFINITE);
+      if (which == WAIT_OBJECT_0) {
+        ResetEvent(paneDumpEvent);
+        htm.requestPaneDump();
+        continue;
+      }
+      htm.requestStop();
+      return;
+    }
   });
 #endif
   htm.run();
 #ifdef WIN32
   SetEvent(shutdownEvent);
-  shutdownWatcher.join();
+  eventWatcher.join();
+  CloseHandle(paneDumpEvent);
   CloseHandle(shutdownEvent);
 #endif
   gHtmServer = nullptr;
