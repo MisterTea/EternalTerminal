@@ -43,6 +43,13 @@ class JumphostPending {
       }
       toEnqueue = terminalBufferPacket(body);
     }
+    if (toEnqueue.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
+      string body = terminalBufferBody(toEnqueue);
+      if (!body.empty() &&
+          (body[0] == '%' || body.find("\n%") != string::npos)) {
+        seenControlMode = true;
+      }
+    }
     packets.push_back(toEnqueue);
     bytes += toEnqueue.length();
     if (toEnqueue.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
@@ -70,8 +77,9 @@ class JumphostPending {
       return 0;
     }
 
-    TmuxCcFilterResult result = filterTmuxCc(concat);
-    skipUntilNewline = result.skipUntilNewline;
+    bool wasSkipping = skipUntilNewline;
+    TmuxCcFilterResult result = filterTmuxCc(concat, seenControlMode);
+    skipUntilNewline = result.skipUntilNewline || wasSkipping;
 
     for (auto it = packets.begin(); it != packets.end();) {
       if (it->getHeader() != TerminalPacketType::TERMINAL_BUFFER) {
@@ -108,21 +116,33 @@ class JumphostPending {
     return filterTerminalBuffers();
   }
 
-  void drainToClient(Connection* conn, int serverClientFd) {
+  // Returns true when control notifications were just sent and a large
+  // droppable backlog remains.
+  bool drainToClient(Connection* conn, int serverClientFd) {
     if (packets.empty() || conn == nullptr) {
-      return;
+      return false;
     }
+    promoteControlPackets();
+    bool wroteControl = false;
     if (serverClientFd > 0) {
-      if (!isSocketWritable(serverClientFd)) {
-        return;
-      }
       while (!packets.empty()) {
-        popFrontToClient(conn);
+        if (conn->hasData()) {
+          return false;
+        }
         if (!isSocketWritable(serverClientFd)) {
           break;
         }
+        const bool droppable = frontIsDroppableOutput();
+        if (droppable && wroteControl &&
+            terminalBufferBytes >= WriteBuffer::FLUSH_THRESHOLD) {
+          return true;
+        }
+        popFrontToClient(conn);
+        if (!droppable) {
+          wroteControl = true;
+        }
       }
-      return;
+      return false;
     }
     while (!packets.empty()) {
       if (!conn->canBufferWrite(2 * 16 * 1024)) {
@@ -130,6 +150,7 @@ class JumphostPending {
       }
       popFrontToClient(conn);
     }
+    return false;
   }
 
   std::deque<Packet> packets;
@@ -156,9 +177,63 @@ class JumphostPending {
     packets.pop_front();
   }
 
+  bool frontIsDroppableOutput() const {
+    if (packets.empty()) {
+      return false;
+    }
+    if (packets.front().getHeader() != TerminalPacketType::TERMINAL_BUFFER) {
+      return false;
+    }
+    string body = terminalBufferBody(packets.front());
+    string token = tmuxCcFirstToken(body);
+    return token.empty() || tmuxCcIsDroppableOutputToken(token) ||
+           (!token.empty() && token[0] != '%');
+  }
+
+  void promoteControlPackets() {
+    if (!seenControlMode || packets.empty()) {
+      return;
+    }
+    string concat;
+    vector<Packet> nonTerminal;
+    for (const Packet& packet : packets) {
+      if (packet.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
+        concat += terminalBufferBody(packet);
+      } else {
+        nonTerminal.push_back(packet);
+      }
+    }
+    TmuxCcFilterResult result = filterTmuxCc(concat, seenControlMode, false);
+    packets.clear();
+    bytes = 0;
+    terminalBufferBytes = 0;
+    for (const Packet& packet : nonTerminal) {
+      packets.push_back(packet);
+      bytes += packet.length();
+    }
+    if (!result.kept.empty()) {
+      Packet kept = terminalBufferPacket(result.kept);
+      packets.push_back(kept);
+      bytes += kept.length();
+      terminalBufferBytes += kept.length();
+    }
+    if (!result.droppable.empty()) {
+      const string& droppable = result.droppable;
+      for (size_t offset = 0; offset < droppable.size();
+           offset += size_t(16 * 1024)) {
+        Packet chunk =
+            terminalBufferPacket(droppable.substr(offset, size_t(16 * 1024)));
+        packets.push_back(chunk);
+        bytes += chunk.length();
+        terminalBufferBytes += chunk.length();
+      }
+    }
+  }
+
   size_t bytes = 0;
   size_t terminalBufferBytes = 0;
   bool skipUntilNewline = false;
+  bool seenControlMode = false;
 };
 
 }  // namespace et

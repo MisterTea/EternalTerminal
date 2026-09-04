@@ -170,3 +170,57 @@ TEST_CASE("WriteBuffer skipUntilNewline discards the rest of a dropped line",
   const char* data = buffer.peekData(&count);
   REQUIRE(string(data, count) == "%window-add @3\n");
 }
+
+TEST_CASE("WriteBuffer flush finishes a partly-sent %extended-output line",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  const string header = "%extended-output %0 0 : ";
+  const string restOfLine = string(1024, 'y') + "\n";
+  const string flood =
+      "%extended-output %0 0 : " + string(70 * 1024, 'z') + "\n";
+  const string layout = "%layout-change @1 vis\n";
+  buffer.enqueue(header + restOfLine + flood + layout);
+  buffer.consume(header.size());
+  REQUIRE(buffer.flushIfLarge() == flood.size());
+  REQUIRE(buffer.size() == restOfLine.size() + layout.size());
+  size_t count = 0;
+  const char* data = buffer.peekData(&count);
+  REQUIRE(string(data, count) == restOfLine + layout);
+  REQUIRE_FALSE(buffer.skippingUntilNewline());
+}
+
+TEST_CASE("WriteBuffer concatenates the rest of a partly-sent CC line",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  const string header = "%extended-output %0 0 : ";
+  buffer.enqueue(header + string(WriteBuffer::FLUSH_THRESHOLD, 'y'));
+  buffer.consume(header.size());
+  REQUIRE(buffer.filterDroppable() == 0);
+  REQUIRE_FALSE(buffer.skippingUntilNewline());
+  size_t count = 0;
+  REQUIRE(string(buffer.peekData(&count), count) ==
+          string(WriteBuffer::FLUSH_THRESHOLD, 'y'));
+
+  buffer.enqueue("still-the-same-output-line\n%window-add @4\n");
+  REQUIRE(buffer.filterDroppable() == 0);
+  REQUIRE_FALSE(buffer.skippingUntilNewline());
+  REQUIRE(string(buffer.peekData(&count), count) ==
+          string(WriteBuffer::FLUSH_THRESHOLD, 'y') +
+              "still-the-same-output-line\n%window-add @4\n");
+}
+
+TEST_CASE("WriteBuffer promoteControlLines sends notifications before output",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  const string output = "%extended-output %0 0 : " + string(4096, 'y') + "\n";
+  const string endLine = "%end 1 2 3\n";
+  const string layout = "%layout-change @1 vis\n";
+  buffer.enqueue(output + endLine + layout);
+  buffer.promoteControlLines();
+  REQUIRE(buffer.controlBytesAtFront() == endLine.size() + layout.size());
+  size_t count = 0;
+  REQUIRE(string(buffer.peekData(&count), count) == endLine + layout);
+  buffer.consume(count);
+  REQUIRE(buffer.controlBytesAtFront() == 0);
+  REQUIRE(string(buffer.peekData(&count), count) == output);
+}

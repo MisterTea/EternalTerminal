@@ -30,7 +30,13 @@ class WriteBuffer {
    */
   static constexpr size_t MAX_BUFFER_SIZE = 16 * 1024 * 1024;
 
-  WriteBuffer() : totalBytes(0), writeOffset(0), skipUntilNewline(false) {}
+  WriteBuffer()
+      : totalBytes(0),
+        writeOffset(0),
+        skipUntilNewline(false),
+        seenControlMode(false),
+        controlPrefixBytes(0),
+        controlPromoted(false) {}
 
   /**
    * @brief True if @p s contains a TTY interrupt byte (Ctrl+C/Z/\).
@@ -77,8 +83,13 @@ class WriteBuffer {
     if (remaining.empty()) {
       return;
     }
+    if (remaining[0] == '%' || remaining.find("\n%") != string::npos) {
+      seenControlMode = true;
+    }
     pending.push_back(remaining);
     totalBytes += remaining.size();
+    controlPromoted = false;
+    controlPrefixBytes = 0;
   }
 
   /**
@@ -102,6 +113,10 @@ class WriteBuffer {
   void consume(size_t bytesWritten) {
     if (bytesWritten == 0) {
       return;
+    }
+    if (controlPrefixBytes > 0) {
+      size_t take = std::min(bytesWritten, controlPrefixBytes);
+      controlPrefixBytes -= take;
     }
 
     while (bytesWritten > 0 && !pending.empty()) {
@@ -130,6 +145,9 @@ class WriteBuffer {
     totalBytes = 0;
     writeOffset = 0;
     skipUntilNewline = false;
+    seenControlMode = false;
+    controlPrefixBytes = 0;
+    controlPromoted = false;
     return dropped;
   }
 
@@ -152,17 +170,67 @@ class WriteBuffer {
         data.append(chunk);
       }
     }
-    TmuxCcFilterResult result = filterTmuxCc(data);
-    skipUntilNewline = result.skipUntilNewline;
+    bool wasSkipping = skipUntilNewline;
+    TmuxCcFilterResult result = filterTmuxCc(data, seenControlMode);
+    // drainDiscardReadableBytes may re-filter the resync newline while the
+    // rest of the dropped `%output` line is still arriving. enqueue() is
+    // the only path that should clear skipUntilNewline (when it sees `\n`).
+    skipUntilNewline = result.skipUntilNewline || wasSkipping;
     pending.clear();
     writeOffset = 0;
     totalBytes = 0;
+    controlPrefixBytes = 0;
+    controlPromoted = true;
     if (!result.kept.empty()) {
       pending.push_back(result.kept);
       totalBytes = result.kept.size();
+      controlPrefixBytes = result.kept.size();
     }
     return result.dropped;
   }
+
+  /**
+   * @brief Move tmux -CC notifications ahead of pane stdout so a GUI
+   * waiting on `%end` can issue `send-keys` (Ctrl+C) while the flood is
+   * still sitting in this buffer.
+   */
+  void promoteControlLines() {
+    if (!seenControlMode || controlPromoted || pending.empty()) {
+      return;
+    }
+    string data;
+    data.reserve(totalBytes);
+    bool first = true;
+    for (const string& chunk : pending) {
+      if (first) {
+        data.append(chunk, writeOffset, string::npos);
+        first = false;
+      } else {
+        data.append(chunk);
+      }
+    }
+    TmuxCcFilterResult result = filterTmuxCc(data, seenControlMode, false);
+    pending.clear();
+    writeOffset = 0;
+    totalBytes = 0;
+    controlPrefixBytes = 0;
+    if (!result.kept.empty()) {
+      pending.push_back(result.kept);
+      totalBytes += result.kept.size();
+      controlPrefixBytes = result.kept.size();
+    }
+    if (!result.droppable.empty()) {
+      pending.push_back(result.droppable);
+      totalBytes += result.droppable.size();
+    }
+    controlPromoted = true;
+  }
+
+  /** @brief Bytes of promoted control data still at the front of the queue. */
+  size_t controlBytesAtFront() const { return controlPrefixBytes; }
+
+  /** @brief True after `%output` / `%extended-output` has been seen. */
+  bool inControlMode() const { return seenControlMode; }
 
   /**
    * @brief If the queue is at least FLUSH_THRESHOLD, drop droppable bytes.
@@ -183,6 +251,9 @@ class WriteBuffer {
   size_t totalBytes;
   size_t writeOffset;
   bool skipUntilNewline;
+  bool seenControlMode;
+  size_t controlPrefixBytes;
+  bool controlPromoted;
 };
 }  // namespace et
 

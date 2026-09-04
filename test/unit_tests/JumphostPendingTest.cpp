@@ -70,3 +70,20 @@ TEST_CASE("JumphostPending flush keeps tmux -CC control lines",
       stringToProto<et::TerminalBuffer>(pending.packets[1].getPayload());
   REQUIRE(tb.buffer() == "%layout-change @1 layout vis flags\n");
 }
+
+TEST_CASE("JumphostPending flush finishes a partly-sent %extended-output line",
+          "[JumphostPending][TmuxCc]") {
+  JumphostPending pending;
+  const string header = "%extended-output %0 0 : ";
+  pending.enqueue(terminalOutputPacket(header));
+  pending.enqueue(terminalOutputPacket(
+      string(1024, 'y') + "\n%extended-output %0 0 : " +
+      string(70 * 1024, 'z') + "\n%layout-change @1 vis\n"));
+  // The header packet was already written to the client.
+  pending.packets.pop_front();
+  pending.filterTerminalBuffers();
+  REQUIRE(pending.packets.size() == 1);
+  et::TerminalBuffer tb =
+      stringToProto<et::TerminalBuffer>(pending.packets.front().getPayload());
+  REQUIRE(tb.buffer() == string(1024, 'y') + "\n%layout-change @1 vis\n");
+}

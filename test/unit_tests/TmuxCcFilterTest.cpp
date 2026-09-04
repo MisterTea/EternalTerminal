@@ -64,6 +64,34 @@ TEST_CASE("filterTmuxCc keeps %extended-output only if not output",
   REQUIRE(dropped.kept == "%window-add @2\n");
 }
 
+TEST_CASE("filterTmuxCc finishes a mid-line %output remainder",
+          "[TmuxCcFilter]") {
+  const string rest =
+      "OOD_1\\012FLOOD_2\n"
+      "%extended-output %0 0 : more\n"
+      "%layout-change @1 vis\n";
+  TmuxCcFilterResult result = filterTmuxCc(rest, true);
+  REQUIRE(result.kept ==
+          "OOD_1\\012FLOOD_2\n"
+          "%layout-change @1 vis\n");
+  REQUIRE(result.dropped == string("%extended-output %0 0 : more\n").size());
+  REQUIRE_FALSE(result.skipUntilNewline);
+}
+
+TEST_CASE("filterTmuxCc keeps an incomplete mid-line control payload",
+          "[TmuxCcFilter]") {
+  TmuxCcFilterResult result = filterTmuxCc(string(100, 'y'), true);
+  REQUIRE(result.kept == string(100, 'y'));
+  REQUIRE(result.dropped == 0);
+  REQUIRE_FALSE(result.skipUntilNewline);
+}
+
+TEST_CASE("filterTmuxCc TTY incomplete still does not skip", "[TmuxCcFilter]") {
+  TmuxCcFilterResult result = filterTmuxCc("yyyyyyyy", false);
+  REQUIRE(result.kept.empty());
+  REQUIRE_FALSE(result.skipUntilNewline);
+}
+
 // A GUI attached with `tmux -CC` (e.g. iTerm2) sends keystrokes as
 // `send-keys` control-mode commands rather than raw bytes, so Ctrl+C never
 // appears as byte 0x03 on the wire. These cover the command forms that must
@@ -76,6 +104,14 @@ TEST_CASE("tmuxCcContainsInterruptCommand recognizes hex-encoded Ctrl+C/Z/\\",
   REQUIRE(tmuxCcContainsInterruptCommand("send-keys -H 1A\n"));
   REQUIRE(tmuxCcContainsInterruptCommand("send-keys -H 1c\n"));
   REQUIRE(tmuxCcContainsInterruptCommand("send-keys -t %1 -H 3\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -H -t %0 03\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -Ht %0 03\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -t %0 0x03\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -t %0 0x3\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -t %0 0x1a\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand(
+      "send -t %0 0x3\nsend -t %0 0x3\nsend -t %0 0x3\n"));
+  REQUIRE(tmuxCcContainsInterruptCommand("send -t %0 0x3\rsend -t %0 0x3\r"));
 }
 
 TEST_CASE("tmuxCcContainsInterruptCommand recognizes key names",
@@ -94,6 +130,7 @@ TEST_CASE("tmuxCcContainsInterruptCommand ignores non-interrupt input",
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys -H 41\n"));
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys hello Enter\n"));
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys -l C-c\n"));
+  REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys 3\n"));
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("list-windows\n"));
   // A pane echoing the literal text is server->client output, not a client
   // command; the leading token is %output, not send-keys/send.
@@ -104,4 +141,10 @@ TEST_CASE("tmuxCcContainsInterruptCommand scans every line in a chunk",
           "[TmuxCcFilter][TmuxCc]") {
   REQUIRE(tmuxCcContainsInterruptCommand(
       "list-windows\nsend-keys -t %2 -H 3\nrefresh-client\n"));
+}
+
+TEST_CASE("tmuxCcInputRequestsInterrupt joins a split send-keys command",
+          "[TmuxCcFilter][TmuxCc]") {
+  REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys -t %0 -H "));
+  REQUIRE(tmuxCcInputRequestsInterrupt("send-keys -t %0 -H ", "03\n"));
 }

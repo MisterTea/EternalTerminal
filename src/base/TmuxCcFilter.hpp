@@ -17,7 +17,9 @@ namespace et {
  * Incomplete trailing bytes: keep a control notification that has not
  * seen its newline yet; drop an incomplete `%output` line and skip until
  * the next newline so the rest of that line cannot reappear as a new
- * message. Incomplete TTY is dropped without that skip so a following
+ * message. If a `%output` line was already partly sent, keep through its
+ * newline so the client never sees a non-`%` fragment (iTerm2 disconnects
+ * on those). Incomplete TTY is dropped without that skip so a following
  * prompt is not discarded.
  *
  * The client->server direction needs its own classifier: a GUI attached
@@ -28,6 +30,7 @@ namespace et {
  */
 struct TmuxCcFilterResult {
   string kept;
+  string droppable;
   size_t dropped = 0;
   bool skipUntilNewline = false;
 };
@@ -44,7 +47,8 @@ inline bool tmuxCcIsDroppableOutputToken(const string& token) {
   return token == "%output" || token == "%extended-output";
 }
 
-inline bool tmuxCcShouldKeepLine(const string& line, bool* inBeginBlock) {
+inline bool tmuxCcShouldKeepLine(const string& line, bool* inBeginBlock,
+                                 bool inControlMode) {
   string token = tmuxCcFirstToken(line);
   if (*inBeginBlock) {
     if (token == "%end" || token == "%error") {
@@ -56,11 +60,43 @@ inline bool tmuxCcShouldKeepLine(const string& line, bool* inBeginBlock) {
     *inBeginBlock = true;
     return true;
   }
-  return !token.empty() && token[0] == '%' &&
-         !tmuxCcIsDroppableOutputToken(token);
+  if (token.empty()) {
+    // Keep a resync newline after a mid-line `%output` cut so a later
+    // filter pass cannot swallow the line terminator the client needs.
+    return inControlMode;
+  }
+  return token[0] == '%' && !tmuxCcIsDroppableOutputToken(token);
 }
 
-inline TmuxCcFilterResult filterTmuxCc(const string& data) {
+inline bool tmuxCcStartsAtLineBoundary(const string& data) {
+  return data.empty() || data[0] == '%' || data[0] == '\n';
+}
+
+inline TmuxCcFilterResult filterTmuxCc(const string& data,
+                                       bool inControlMode = false,
+                                       bool discarding = true) {
+  if (!data.empty() && inControlMode && !tmuxCcStartsAtLineBoundary(data)) {
+    // A %output / %extended-output line was already partly sent. Cutting it
+    // leaves a non-`%` fragment as the next line; iTerm2 treats that as an
+    // unrecognized command and tears down tmux mode. Finish this line, then
+    // filter complete messages as usual.
+    size_t newline = data.find('\n');
+    if (newline == string::npos) {
+      TmuxCcFilterResult result;
+      result.kept = data;
+      return result;
+    }
+    TmuxCcFilterResult rest =
+        filterTmuxCc(data.substr(newline + 1), true, discarding);
+    TmuxCcFilterResult result;
+    result.kept.assign(data, 0, newline + 1);
+    result.kept += rest.kept;
+    result.droppable = rest.droppable;
+    result.dropped = rest.dropped;
+    result.skipUntilNewline = rest.skipUntilNewline;
+    return result;
+  }
+
   TmuxCcFilterResult result;
   bool inBeginBlock = false;
   size_t lineStart = 0;
@@ -73,9 +109,10 @@ inline TmuxCcFilterResult filterTmuxCc(const string& data) {
       line.pop_back();
     }
     const size_t rawLen = i + 1 - lineStart;
-    if (tmuxCcShouldKeepLine(line, &inBeginBlock)) {
+    if (tmuxCcShouldKeepLine(line, &inBeginBlock, inControlMode)) {
       result.kept.append(data, lineStart, rawLen);
     } else {
+      result.droppable.append(data, lineStart, rawLen);
       result.dropped += rawLen;
     }
     lineStart = i + 1;
@@ -94,13 +131,16 @@ inline TmuxCcFilterResult filterTmuxCc(const string& data) {
   if (inBeginBlock) {
     keep = true;
   } else if (tmuxCcIsDroppableOutputToken(token)) {
-    result.skipUntilNewline = true;
+    if (discarding) {
+      result.skipUntilNewline = true;
+    }
   } else if (!token.empty() && token[0] == '%') {
     keep = true;
   }
   if (keep) {
     result.kept.append(tail);
   } else {
+    result.droppable.append(tail);
     result.dropped += tail.size();
   }
   return result;
@@ -128,16 +168,32 @@ inline bool tmuxCcIsInterruptKeyName(const string& token) {
  * digits are accepted.
  */
 inline bool tmuxCcHexTokenIsInterruptByte(const string& token) {
-  if (token.empty() || token.size() > 2) {
+  string hex = token;
+  if (hex.size() >= 2 && hex[0] == '0' && (hex[1] == 'x' || hex[1] == 'X')) {
+    hex = hex.substr(2);
+  }
+  if (hex.empty() || hex.size() > 2) {
     return false;
   }
-  for (char c : token) {
+  for (char c : hex) {
     if (!::isxdigit(static_cast<unsigned char>(c))) {
       return false;
     }
   }
-  long value = strtol(token.c_str(), nullptr, 16);
+  long value = strtol(hex.c_str(), nullptr, 16);
   return value == 0x03 || value == 0x1a || value == 0x1c;
+}
+
+/**
+ * @brief True for iTerm2's `send -t %pane 0x03` encoding (no `-H` flag).
+ *
+ * Bare `3`/`03` without `0x` is not treated as Ctrl+C: that is the digit
+ * key unless `-H` is set.
+ */
+inline bool tmuxCcHexLiteralIsInterruptByte(const string& token) {
+  return token.size() >= 3 && token[0] == '0' &&
+         (token[1] == 'x' || token[1] == 'X') &&
+         tmuxCcHexTokenIsInterruptByte(token);
 }
 
 /**
@@ -180,20 +236,24 @@ inline bool tmuxCcLineRequestsInterrupt(const string& rawLine) {
   bool literalMode = false;
   for (size_t idx = 1; idx < tokens.size(); ++idx) {
     const string& tok = tokens[idx];
-    if (tok == "-H") {
-      hexMode = true;
-      literalMode = false;
-      continue;
-    }
     if (!tok.empty() && tok[0] == '-') {
-      if (tok == "-l") {
+      const bool combined = tok.size() > 2 && tok[1] != '-';
+      if (tok == "-H" || (combined && tok.find('H') != string::npos)) {
+        hexMode = true;
+        literalMode = false;
+      }
+      if (tok == "-l" || (combined && tok.find('l') != string::npos &&
+                          tok.find('H') == string::npos)) {
         literalMode = true;
         hexMode = false;
       } else if (tok == "-M" || tok == "-R" || tok == "-X" || tok == "-K" ||
                  tok == "-F") {
         hexMode = false;
       }
-      if (tok == "-t" || tok == "-c" || tok == "-N") {
+      if (tok == "-t" || tok == "-c" || tok == "-N" ||
+          (combined &&
+           (tok.find('t') != string::npos || tok.find('c') != string::npos ||
+            tok.find('N') != string::npos))) {
         ++idx;  // Skip the flag's argument so it is never read as a key.
       }
       continue;
@@ -202,7 +262,8 @@ inline bool tmuxCcLineRequestsInterrupt(const string& rawLine) {
       continue;
     }
     if (hexMode ? tmuxCcHexTokenIsInterruptByte(tok)
-                : tmuxCcIsInterruptKeyName(tok)) {
+                : (tmuxCcIsInterruptKeyName(tok) ||
+                   tmuxCcHexLiteralIsInterruptByte(tok))) {
       return true;
     }
   }
@@ -216,15 +277,42 @@ inline bool tmuxCcLineRequestsInterrupt(const string& rawLine) {
 inline bool tmuxCcContainsInterruptCommand(const string& data) {
   size_t lineStart = 0;
   for (size_t i = 0; i <= data.size(); ++i) {
-    if (i == data.size() || data[i] == '\n') {
+    const bool atEnd = i == data.size();
+    const bool newline = !atEnd && (data[i] == '\n' || data[i] == '\r');
+    if (atEnd || newline) {
       if (i > lineStart &&
           tmuxCcLineRequestsInterrupt(data.substr(lineStart, i - lineStart))) {
         return true;
+      }
+      if (!atEnd && data[i] == '\r' && i + 1 < data.size() &&
+          data[i + 1] == '\n') {
+        ++i;
       }
       lineStart = i + 1;
     }
   }
   return false;
+}
+
+/**
+ * @brief True if @p previousIncomplete plus @p chunk contains a send-keys
+ * interrupt, including when the command is split across two reads.
+ */
+inline bool tmuxCcInputRequestsInterrupt(const string& previousIncomplete,
+                                         const string& chunk) {
+  return tmuxCcContainsInterruptCommand(previousIncomplete + chunk);
+}
+
+/** @brief Keep the trailing incomplete line so the next chunk can finish it. */
+inline void tmuxCcRetainIncompleteLine(string* carry, const string& chunk,
+                                       size_t maxCarry = 4096) {
+  carry->append(chunk);
+  size_t newline = carry->rfind('\n');
+  if (newline != string::npos) {
+    *carry = carry->substr(newline + 1);
+  } else if (carry->size() > maxCarry) {
+    *carry = carry->substr(carry->size() - maxCarry);
+  }
 }
 
 }  // namespace et
