@@ -22,6 +22,8 @@ class HtmServer : public IpcPairServer {
 #ifdef WIN32
   /** @brief Returns the per-user event used for graceful Windows restarts. */
   static string getShutdownEventName();
+  /** @brief Returns the per-user event that requests a pane-text dump. */
+  static string getPaneDumpEventName();
 #endif
   virtual void recover();
 

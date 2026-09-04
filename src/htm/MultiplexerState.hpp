@@ -46,6 +46,8 @@ class MultiplexerState {
   void selectPane(uint32_t paneId);
   void selectWindow(uint32_t windowId);
   void resizePaneDir(uint32_t paneId, char dir, int amount);
+  /** Absolute pane size (tmux ``resize-pane -x/-y``). Sole panes resize their window. */
+  void resizePaneAbsolute(uint32_t paneId, int cols, int rows);
   void zoomToggle(uint32_t paneId);
   void setClientSize(int cols, int rows);
   void setWindowSize(uint32_t windowId, int cols, int rows);

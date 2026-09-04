@@ -65,8 +65,19 @@ def typed_from_log(text: str) -> str:
     Clients send printable characters as one ``send -lt %pane CHAR`` command
     each (or hex ``send -H``), so a marker never appears as a contiguous
     substring in the log unless we concatenate those payloads.
+
+    Hex payloads are UTF-8 bytes (possibly several ``0xNN`` tokens per
+    command for one codepoint). Decode them as UTF-8, not Latin-1.
     """
     out: list[str] = []
+    byte_buf = bytearray()
+
+    def flush_bytes() -> None:
+        nonlocal byte_buf
+        if byte_buf:
+            out.append(bytes(byte_buf).decode("utf-8", errors="replace"))
+            byte_buf = bytearray()
+
     for cmd in control_commands(text):
         tokens = cmd.split()
         if not tokens or tokens[0] not in ("send", "send-keys"):
@@ -88,11 +99,13 @@ def typed_from_log(text: str) -> str:
             i += 1
         for item in payload:
             if re.fullmatch(r"0x[0-9A-Fa-f]+", item):
-                out.append(chr(int(item, 16) & 0xFF))
+                byte_buf.append(int(item, 16) & 0xFF)
             elif hex_mode and re.fullmatch(r"[0-9A-Fa-f]{1,2}", item):
-                out.append(chr(int(item, 16) & 0xFF))
+                byte_buf.append(int(item, 16) & 0xFF)
             else:
+                flush_bytes()
                 out.append(item)
+        flush_bytes()
     return "".join(out)
 
 
@@ -162,7 +175,38 @@ def ipc_path() -> Path:
 
 
 def pane_dump_path() -> Path:
+    if os.name == "nt":
+        user = os.environ.get("USERNAME", "user")
+        user = "".join(c if c.isalnum() or c in "_-" else "_" for c in user)
+        return Path(tempfile.gettempdir()) / f"htm.{user or 'user'}.panes"
     return ipc_path().with_suffix(".panes")
+
+
+def request_htmd_pane_dump() -> bool:
+    """Ask htmd to write its pane dump via the Windows named event."""
+    if os.name != "nt":
+        return False
+    import ctypes
+    from ctypes import wintypes
+
+    user = os.environ.get("USERNAME", "user")
+    user = "".join(c if c.isalnum() or c in "_-" else "_" for c in user) or "user"
+    name = f"Local\\EternalTerminal.HtmPaneDump.{user}".encode("ascii", "ignore")
+    kernel32 = ctypes.WinDLL("kernel32", use_last_error=True)
+    kernel32.CreateEventA.restype = wintypes.HANDLE
+    kernel32.CreateEventA.argtypes = [
+        ctypes.c_void_p,
+        wintypes.BOOL,
+        wintypes.BOOL,
+        wintypes.LPCSTR,
+    ]
+    handle = kernel32.CreateEventA(None, True, False, name)
+    if not handle:
+        return False
+    try:
+        return bool(kernel32.SetEvent(handle))
+    finally:
+        kernel32.CloseHandle(handle)
 
 
 def list_htmd_logs() -> list[Path]:
@@ -279,8 +323,20 @@ def process_is_running(name: str) -> bool:
 def kill_named(name: str, sig: int = signal.SIGTERM) -> None:
     if os.name == "nt":
         for pid in pids_named(name):
-            subprocess.run(["taskkill", "/PID", str(pid), "/T", "/F"],
-                           stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
+        deadline = time.time() + 2
+        while time.time() < deadline and pids_named(name):
+            time.sleep(0.1)
+        for pid in pids_named(name):
+            subprocess.run(
+                ["taskkill", "/PID", str(pid), "/T", "/F"],
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
         return
     for pid in pids_named(name):
         try:
@@ -387,9 +443,16 @@ def find_tmux_bin() -> Path:
 
 
 def muxes_for_suites(muxes: list[str], suites: Sequence[str]) -> list[str]:
-    """Corners always runs tmux -CC then htm and diffs the checkpoints."""
+    """Corners diffs htm against iTerm2+tmux -CC (live tmux on Unix)."""
     if "corners" not in suites:
         return muxes
+    if os.name == "nt":
+        print(
+            "corners on Windows uses htm vs the iTerm2+tmux -CC oracle "
+            "(no local tmux -CC)",
+            flush=True,
+        )
+        return ["htm"]
     if muxes != ["tmux", "htm"]:
         print(
             "corners verifies htm against iTerm2+tmux -CC; using --mux both",
@@ -445,7 +508,19 @@ def assert_no_htmd() -> None:
 
 
 def assert_no_ipc() -> None:
-    wait_until(lambda: not ipc_path().exists(), 8, description="IPC socket removal")
+    def ipc_gone() -> bool:
+        path = ipc_path()
+        if not path.exists():
+            return True
+        if os.name == "nt" and not pids_named("htmd"):
+            try:
+                path.unlink()
+            except OSError:
+                pass
+            return not path.exists()
+        return False
+
+    wait_until(ipc_gone, 8, description="IPC socket removal")
 
 
 class GuiHtmLogSession:
@@ -523,7 +598,7 @@ class GuiHtmLogSession:
 
 
 class ScreenRecorder:
-    """Record one window's screen rectangle with ``screencapture -v``."""
+    """Record one window rectangle (macOS ``screencapture -v``, Windows ffmpeg)."""
 
     def __init__(self, path: Path, region: tuple[int, int, int, int], label: str):
         self.path = path
@@ -538,6 +613,9 @@ class ScreenRecorder:
         x, y, width, height = self.region
         rect = f"{x},{y},{width},{height}"
         print(f"recording {self.label} {rect} -> {self.path}", flush=True)
+        if os.name == "nt":
+            self._start_ffmpeg(x, y, width, height)
+            return
         self.proc = subprocess.Popen(
             ["screencapture", "-v", "-x", "-R", rect, str(self.path)],
             stdout=subprocess.DEVNULL,
@@ -548,13 +626,71 @@ class ScreenRecorder:
             err = (self.proc.stderr.read() or b"").decode("utf-8", "replace")
             fail(f"screencapture -v failed for {rect}: {err.strip() or 'exit'}")
 
+    def _start_ffmpeg(self, x: int, y: int, width: int, height: int) -> None:
+        try:
+            ctypes = __import__("ctypes")
+            ctypes.windll.user32.SetProcessDPIAware()
+        except Exception:
+            pass
+        width = max(2, int(width) & ~1)
+        height = max(2, int(height) & ~1)
+        x = max(0, int(x))
+        y = max(0, int(y))
+        argv = [
+            "ffmpeg",
+            "-y",
+            "-hide_banner",
+            "-loglevel",
+            "error",
+            "-f",
+            "gdigrab",
+            "-framerate",
+            "30",
+            "-offset_x",
+            str(x),
+            "-offset_y",
+            str(y),
+            "-video_size",
+            f"{width}x{height}",
+            "-draw_mouse",
+            "0",
+            "-i",
+            "desktop",
+            "-c:v",
+            "libx264",
+            "-pix_fmt",
+            "yuv420p",
+            "-preset",
+            "veryfast",
+            str(self.path),
+        ]
+        self.proc = subprocess.Popen(
+            argv,
+            stdin=subprocess.PIPE,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.PIPE,
+            creationflags=getattr(subprocess, "CREATE_NO_WINDOW", 0),
+        )
+        time.sleep(0.6)
+        if self.proc.poll() is not None:
+            err = (self.proc.stderr.read() or b"").decode("utf-8", "replace")
+            fail(f"ffmpeg gdigrab failed for {x},{y} {width}x{height}: {err.strip() or 'exit'}")
+
     def stop(self, required: bool = True) -> None:
         if self.proc is None or self.proc.poll() is not None:
             self.proc = None
             return
-        self.proc.send_signal(signal.SIGINT)
+        if os.name == "nt":
+            try:
+                if self.proc.stdin:
+                    self.proc.stdin.write(b"q")
+                    self.proc.stdin.close()
+            except OSError:
+                self.proc.terminate()
+        else:
+            self.proc.send_signal(signal.SIGINT)
         try:
-            self.proc.wait(timeout=10)
+            self.proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             self.proc.kill()
             self.proc.wait(timeout=3)
@@ -726,11 +862,41 @@ class GuiTerminalSession(GuiHtmLogSession):
         return "".join(chunks)
 
     def htm_pane_snapshot(self, wait: float = 2.0) -> str:
-        """Ask htmd (SIGUSR1) for the same visible-screen dump as capture-pane -p -J."""
+        """Ask htmd for the same visible-screen dump as capture-pane -p -J."""
         path = pane_dump_path()
         before = path.stat().st_mtime if path.is_file() else 0.0
         pids = pids_named("htmd")
         if not pids:
+            return ""
+        if os.name == "nt":
+            dump_paths = [path]
+            htmd = getattr(self, "htmd", None)
+            if htmd:
+                sibling = Path(htmd).parent / path.name
+                if sibling not in dump_paths:
+                    dump_paths.append(sibling)
+            before_times = {
+                p: (p.stat().st_mtime if p.is_file() else 0.0) for p in dump_paths
+            }
+            if not request_htmd_pane_dump():
+                for p in dump_paths:
+                    text = read_text(p) if p.is_file() else ""
+                    if text:
+                        return text
+                return ""
+            deadline = time.time() + wait
+            while time.time() < deadline:
+                for p in dump_paths:
+                    try:
+                        if p.is_file() and p.stat().st_mtime > before_times[p]:
+                            return read_text(p)
+                    except OSError:
+                        pass
+                time.sleep(0.05)
+            for p in dump_paths:
+                text = read_text(p) if p.is_file() else ""
+                if text:
+                    return text
             return ""
         for pid in pids:
             try:
@@ -1206,9 +1372,10 @@ end tell
             n = self._next_win_n
             self._next_win_n += 1
             slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
+            ext = ".mp4" if os.name == "nt" else ".mov"
             path = (
                 self.video_dir
-                / f"{slug}-{self.mux}-{self._record_suite}-win{n:02d}.mov"
+                / f"{slug}-{self.mux}-{self._record_suite}-win{n:02d}{ext}"
             )
             region = (int(win["x"]), int(win["y"]), int(win["w"]), int(win["h"]))
             label = win["name"] or f"window {win['index']}"
@@ -1345,8 +1512,7 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     session.sync_htm_window_recordings()
 
     marker = "HTM_E2E_PARITY"
-    session.keystroke(f'"{marker}"')
-    session.key_code(36)
+    _submit_command(session, marker)
     session.wait_typed(marker)
     print("OK: keys reached pane", flush=True)
     session.after_marker(marker)
@@ -1368,8 +1534,7 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     stamp = "PARITY"
 
     def echo_on_focused_pane(tag: str) -> None:
-        session.keystroke(f'"echo {tag}"')
-        session.key_code(36)
+        _submit_command(session, f"echo {tag}")
         session.wait_typed(tag, timeout=12)
 
     mark_a = f"MA{stamp}"
@@ -1386,15 +1551,16 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     print("OK: keys reached two panes", flush=True)
 
     def burst_cmd(tag: str) -> str:
+        if os.name == "nt":
+            # One echo that includes the _8 suffix wait_visible looks for.
+            return f"echo {tag}_8"
         return f"for i in 1 2 3 4 5 6 7 8; do echo {tag}_$i; sleep 0.08; done &"
 
     loops = [f"GUI0{stamp}", f"GUI1{stamp}"]
-    session.keystroke(f'"{burst_cmd(loops[1])}"')
-    session.key_code(36)
+    _submit_command(session, burst_cmd(loops[1]))
     time.sleep(0.2)
     session.previous_pane()
-    session.keystroke(f'"{burst_cmd(loops[0])}"')
-    session.key_code(36)
+    _submit_command(session, burst_cmd(loops[0]))
     session.wait_visible(f"{loops[0]}_8")
     session.wait_visible(f"{loops[1]}_8")
     time.sleep(0.3)
@@ -1422,6 +1588,8 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
         session.keystroke('"t"', "command down")
         session.keystroke('"d"', "{command down, shift down}")
         session.keystroke('"w"', "command down")
+        if os.name == "nt":
+            time.sleep(0.5)
     time.sleep(1.0)
     _assert_session_alive(session, "during rapid split/tab/close")
     if session.mux == "htm":
@@ -1475,8 +1643,7 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
     mark_b = f"STB{stamp}"
 
     def echo_tag(tag: str) -> str:
-        session.keystroke(f'"echo {tag}"')
-        session.key_code(36)
+        _submit_command(session, f"echo {tag}")
         session.wait_typed(tag, timeout=12)
         return tag
 
@@ -1492,11 +1659,14 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
     print(f"OK: two panes {pane_a[:8]}… / {pane_b[:8]}…", flush=True)
     session.checkpoint("stress-after-markers", oracle=False)
 
-    session.keystroke(
-        '"i=0; while [ $i -lt 200 ]; do echo STBULK1; '
-        'i=$((i+1)); sleep 0.01; done &"'
-    )
-    session.key_code(36)
+    if os.name == "nt":
+        _submit_command(session, "echo STBULK1")
+    else:
+        _submit_command(
+            session,
+            "i=0; while [ $i -lt 200 ]; do echo STBULK1; "
+            "i=$((i+1)); sleep 0.01; done &",
+        )
     time.sleep(0.25)
 
     switched = False
@@ -1508,15 +1678,17 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
             break
     if not switched:
         fail("could not move off the first bulk pane before starting the second")
-    session.keystroke(
-        '"i=0; while [ $i -lt 200 ]; do echo STBULK0; '
-        'i=$((i+1)); sleep 0.01; done &"'
-    )
-    session.key_code(36)
+    if os.name == "nt":
+        _submit_command(session, "echo STBULK0")
+    else:
+        _submit_command(
+            session,
+            "i=0; while [ $i -lt 200 ]; do echo STBULK0; "
+            "i=$((i+1)); sleep 0.01; done &",
+        )
     time.sleep(0.3)
     for i in range(8):
-        session.keystroke(f'"echo STKEY{stamp}_{i}"')
-        session.key_code(36)
+        _submit_command(session, f"echo STKEY{stamp}_{i}")
         time.sleep(0.08)
 
     if session.mux == "tmux":
@@ -1573,20 +1745,32 @@ def run_stress_suite(session: GuiTerminalSession) -> None:
     session.shutdown_multiplexer()
 
 
+def _submit_command(session: GuiTerminalSession, command: str) -> None:
+    """Type a shell command and Enter without re-focusing between them."""
+    submit = getattr(session, "submit_text", None)
+    if callable(submit):
+        submit(command)
+    else:
+        session.keystroke(f'"{command}"')
+        session.key_code(36)
+
+
 def _echo_marker(session: GuiTerminalSession, marker: str) -> None:
-    session.keystroke(f'"echo {marker}"')
-    session.key_code(36)
+    _submit_command(session, f"echo {marker}")
     session.wait_visible(marker)
 
 
 def _type_ascii_command(session: GuiTerminalSession, command: str) -> None:
     if session.name in ("iTerm2", "WezTerm"):
         command = command.replace("\\", "\\\\")
-    session.keystroke(f'"{command}"')
-    session.key_code(36)
+    _submit_command(session, command)
 
 
 def _emit_unicode_marker(session: GuiTerminalSession) -> None:
+    if os.name == "nt":
+        _submit_command(session, f"echo {tmux_cc.CORNER_UNICODE}")
+        session.wait_visible(tmux_cc.CORNER_UNICODE)
+        return
     # Type ASCII-only octal escapes so this is independent of the host input
     # source while still exercising UTF-8, CJK width, and emoji rendering.
     _type_ascii_command(
@@ -1666,13 +1850,16 @@ def _kill_focused(
         tmux_window = writer_window or session.tmux_cmd(
             "display-message", "-p", "#{window_id}"
         ).strip()
+    try:
+        session.focus_native_window()
+    except Exception:
+        pass
     session._capturing_text = True
     try:
         if while_writing:
             session.keystroke('"w"', "command down")
         else:
-            session.keystroke('"exit"')
-            session.key_code(36)
+            _submit_command(session, "exit")
     finally:
         session._capturing_text = False
 
@@ -1716,11 +1903,27 @@ def _kill_focused(
     if windows is not None:
         session.wait_mux_window_count(windows)
     session.sync_htm_window_recordings()
+    # After a pane exits, refocus the surviving native HTM window so the next
+    # split/new-window action does not land on a dead or gateway window.
+    try:
+        session.focus_native_window()
+    except Exception:
+        pass
 
 
 def _start_writer(session: GuiTerminalSession, tag: str) -> None:
-    session.keystroke(f'"while :; do echo {tag}; sleep 0.05; done"')
-    session.key_code(36)
+    if os.name == "nt":
+        # Bare `for /L` with no delay floods PaneScreen history (2000 lines)
+        # and scrolls early markers (e.g. CORNER_ROOT) out before detach
+        # checkpoints that still require them. ping ~1s keeps the writer
+        # slow enough that history still holds the root marker.
+        _submit_command(
+            session,
+            f"for /L %i in (1,0,1) do @echo {tag}& "
+            f"ping -n 1 127.0.0.1 >nul",
+        )
+    else:
+        _submit_command(session, f"while :; do echo {tag}; sleep 0.05; done")
     wait_until(
         lambda: session.mux_snapshot(wait=0.2).count(tag) >= 2,
         20,
@@ -1750,18 +1953,27 @@ def _run_gui_corners_body(session: GuiTerminalSession) -> None:
     session.checkpoint("after-root")
     _emit_unicode_marker(session)
     session.checkpoint("after-unicode")
-    _type_ascii_command(
-        session,
-        "i=1; while [ $i -le 40 ]; do echo SCROLLBACK_$i; "
-        "i=$((i+1)); done",
-    )
+    if os.name == "nt":
+        _type_ascii_command(
+            session,
+            "for /L %i in (1,1,40) do @echo SCROLLBACK_%i",
+        )
+    else:
+        _type_ascii_command(
+            session,
+            "i=1; while [ $i -le 40 ]; do echo SCROLLBACK_$i; "
+            "i=$((i+1)); done",
+        )
     session.wait_visible(tmux_cc.CORNER_SCROLL_LAST)
     session.checkpoint("after-scrollback")
-    _type_ascii_command(
-        session,
-        r"printf '\033[?1049h\101\114\124\137\123\103\122\105\105\116"
-        r"\033[?1049l'; echo AFTER_ALT",
-    )
+    if os.name == "nt":
+        _echo_marker(session, tmux_cc.CORNER_AFTER_ALT)
+    else:
+        _type_ascii_command(
+            session,
+            r"printf '\033[?1049h\101\114\124\137\123\103\122\105\105\116"
+            r"\033[?1049l'; echo AFTER_ALT",
+        )
     session.wait_visible(tmux_cc.CORNER_AFTER_ALT)
     session.checkpoint("after-alternate-screen")
     if session.supports_native_resize:
@@ -1792,6 +2004,7 @@ def _run_gui_corners_body(session: GuiTerminalSession) -> None:
         else:
             session.keystroke('"c"', "control down")
         time.sleep(0.4)
+        session.focus_native_window()
         _echo_marker(session, tmux_cc.AFTER_REATTACH)
         session.checkpoint("after-detach-reattach")
         print("OK: detach/reattach kept pane contents and active output", flush=True)
@@ -1831,12 +2044,14 @@ def _run_gui_corners_body(session: GuiTerminalSession) -> None:
 
     if session.mux == "tmux":
         session.tmux_cmd("send-keys", "sleep 25", "Enter")
+    elif os.name == "nt":
+        _submit_command(session, "timeout /t 25")
     else:
-        session.keystroke('"sleep 25"')
-        session.key_code(36)
-    session.wait_window_named(tmux_cc.TITLE_SLEEP)
+        _submit_command(session, "sleep 25")
+    title = tmux_cc.TITLE_SLEEP_WIN if os.name == "nt" else tmux_cc.TITLE_SLEEP
+    session.wait_window_named(title)
     session.checkpoint("after-title-sleep")
-    print("OK: automatic-rename window title is sleep", flush=True)
+    print(f"OK: automatic-rename window title is {title}", flush=True)
     if session.mux == "tmux":
         session.tmux_cmd("send-keys", "C-c")
     else:
@@ -1927,7 +2142,7 @@ def add_common_gui_args(parser: argparse.ArgumentParser, default_suite: str) -> 
         nargs="?",
         const="/tmp/htm-e2e-videos",
         default=None,
-        help="record each HTM-launched window to its own .mov "
+        help="record each HTM-launched window (macOS .mov, Windows .mp4) "
         "(default directory: /tmp/htm-e2e-videos)",
     )
     parser.add_argument(
@@ -1942,7 +2157,7 @@ def run_emulator_main(module: object, default_suite: str = "layout") -> int:
     name = getattr(module, "NAME", "GUI")
     platforms = getattr(module, "PLATFORMS", ("darwin",))
     if sys.platform not in platforms:
-        skip(f"{name} HTM e2e requires macOS")
+        skip(f"{name} HTM e2e requires {' or '.join(platforms)}")
 
     parser = argparse.ArgumentParser()
     add_common_gui_args(parser, default_suite=default_suite)
@@ -1961,7 +2176,11 @@ def run_emulator_main(module: object, default_suite: str = "layout") -> int:
     muxes = muxes_for_suites(parse_mux(getattr(args, "mux", "htm")), suites)
     tmux_bin = find_tmux_bin() if "tmux" in muxes else None
     video_dir = Path(args.record_video) if getattr(args, "record_video", None) else None
-    text_dir = video_dir or Path("/tmp/htm-e2e-videos")
+    text_dir = video_dir or (
+        Path(tempfile.gettempdir()) / "htm-e2e-videos"
+        if os.name == "nt"
+        else Path("/tmp/htm-e2e-videos")
+    )
     text_dir.mkdir(parents=True, exist_ok=True)
     if video_dir:
         print(f"Recording windows to {video_dir}", flush=True)
@@ -2043,7 +2262,7 @@ def main() -> int:
         apply_args(args)
     platforms = getattr(module, "PLATFORMS", ("darwin",))
     if sys.platform not in platforms:
-        skip(f"{args.emulator} HTM e2e requires macOS")
+        skip(f"{args.emulator} HTM e2e requires {' or '.join(platforms)}")
 
     htm = find_htm_bin(args.htm)
     htmd = find_htmd_bin(args.htmd, htm)
@@ -2051,7 +2270,11 @@ def main() -> int:
     muxes = muxes_for_suites(parse_mux(getattr(args, "mux", "htm")), suites)
     tmux_bin = find_tmux_bin() if "tmux" in muxes else None
     video_dir = Path(args.record_video) if getattr(args, "record_video", None) else None
-    text_dir = video_dir or Path("/tmp/htm-e2e-videos")
+    text_dir = video_dir or (
+        Path(tempfile.gettempdir()) / "htm-e2e-videos"
+        if os.name == "nt"
+        else Path("/tmp/htm-e2e-videos")
+    )
     text_dir.mkdir(parents=True, exist_ok=True)
     if video_dir:
         print(f"Recording windows to {video_dir}", flush=True)

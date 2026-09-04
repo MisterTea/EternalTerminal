@@ -27,6 +27,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import tempfile
 import time
 from pathlib import Path
 from typing import Optional
@@ -42,16 +43,21 @@ from htm_gui_e2e import (  # noqa: E402
     fail,
     ipc_path,
     kill_htm_daemons,
+    log_has_typed,
     pids_named,
     run_emulator_main,
     run_osascript,
     skip,
+    typed_from_log,
     wait_until,
 )
 
 HERE = Path(__file__).resolve().parent
 CONFIG_LUA = HERE / "wezterm_htm_e2e.lua"
-STDERR_LOG = Path("/tmp") / "wezterm-htm-e2e.stderr"
+STDERR_LOG = Path(tempfile.gettempdir() if os.name == "nt" else "/tmp") / "wezterm-htm-e2e.stderr"
+WEZTERM_FORK = Path("e:/github/wezterm")
+PLATFORMS = ("darwin", "win32")
+NAME = "WezTerm"
 
 
 def wezterm_stderr_excerpt() -> str:
@@ -99,10 +105,14 @@ def candidate_wezterm() -> list[Path]:
         if val:
             paths.append(Path(val))
     home = Path.home()
+    exe = ".exe" if os.name == "nt" else ""
     paths.extend(
         [
-            home / "github" / "wezterm" / "target" / "release" / "wezterm",
-            home / "github" / "wezterm" / "target" / "debug" / "wezterm",
+            WEZTERM_FORK / "target" / "release" / f"wezterm-gui{exe}",
+            WEZTERM_FORK / "target" / "release" / f"wezterm{exe}",
+            home / "github" / "wezterm" / "target" / "release" / f"wezterm-gui{exe}",
+            home / "github" / "wezterm" / "target" / "release" / f"wezterm{exe}",
+            home / "github" / "wezterm" / "target" / "debug" / f"wezterm{exe}",
             Path("/Applications/WezTerm.app"),
         ]
     )
@@ -166,9 +176,6 @@ def descendant_pids(root: int) -> list[int]:
     return found
 
 
-NAME = "WezTerm"
-
-
 def add_arguments(parser: argparse.ArgumentParser) -> None:
     parser.add_argument("--wezterm")
     parser.add_argument("--wezterm-app")
@@ -183,8 +190,365 @@ def apply_args(args: argparse.Namespace) -> None:
         fail(f"missing {CONFIG_LUA}")
 
 
-def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> "WezTermHtmSession":
-    return WezTermHtmSession(find_wezterm_app(), htm, htmd)
+def open_session(htm: Path, htmd: Path, args: argparse.Namespace):
+    app = find_wezterm_app()
+    if os.name == "nt":
+        return WindowsWezTermHtmSession(app, htm, htmd)
+    return WezTermHtmSession(app, htm, htmd)
+
+
+if os.name == "nt":
+    import ctypes
+    from ctypes import wintypes
+    from windows_terminal_htm_e2e import (  # noqa: E402
+        VK_CONTROL,
+        VK_MENU,
+        VK_RETURN,
+        VK_SHIFT,
+        KEYEVENTF_KEYUP,
+        focus_window,
+        processes_named,
+        send_key,
+        shortcut,
+        terminate_pid,
+        type_text,
+        windows,
+    )
+
+    user32 = ctypes.WinDLL("user32", use_last_error=True)
+    VK_TAB = 0x09
+    WEZTERM_CLASS = "org.wezfurlong.wezterm"
+    MOUSEEVENTF_LEFTDOWN = 0x0002
+    MOUSEEVENTF_LEFTUP = 0x0004
+
+    def type_vk_text(text: str) -> None:
+        for char in text:
+            packed = int(user32.VkKeyScanW(ord(char)))
+            if packed in (-1, 0xFFFF, 0xFFFFFFFF):
+                type_text(char)
+                time.sleep(0.012)
+                continue
+            vk = packed & 0xFF
+            mods: list[int] = []
+            if packed & 0x200:
+                mods.append(VK_CONTROL)
+            if packed & 0x100:
+                mods.append(VK_SHIFT)
+            shortcut(*mods, vk)
+            time.sleep(0.012)
+
+    class WindowsWezTermHtmSession(GuiTerminalSession):
+        name = NAME
+        supports_detach = False
+        supports_native_resize = False
+
+        def __init__(self, app: Path, htm: Path, htmd: Path):
+            super().__init__(htm, htmd)
+            self.app = app
+            self.proc: Optional[subprocess.Popen] = None
+            self.hwnd = 0
+            self.gateway_hwnd = 0
+            self.stderr_file = None
+            self.preexisting = set(processes_named("wezterm-gui.exe")) | set(
+                processes_named("wezterm.exe")
+            )
+
+        def wezterm_bin(self) -> Path:
+            gui = self.app.with_name("wezterm-gui.exe")
+            if self.app.name.casefold() == "wezterm.exe" and gui.is_file():
+                return gui
+            return self.app
+
+        def _owned_pids(self) -> set[int]:
+            return (
+                set(processes_named("wezterm-gui.exe"))
+                | set(processes_named("wezterm.exe"))
+            ) - self.preexisting
+
+        def _window_class(self, hwnd: int) -> str:
+            buf = ctypes.create_unicode_buffer(256)
+            user32.GetClassNameW(hwnd, buf, 256)
+            return buf.value
+
+        def _owned_windows(self) -> list[tuple[int, str]]:
+            pids = self._owned_pids()
+            found: list[tuple[int, str]] = []
+            for hwnd, pid, title in windows():
+                if pid not in pids:
+                    continue
+                if self._window_class(hwnd) != WEZTERM_CLASS:
+                    continue
+                found.append((hwnd, title))
+            return found
+
+        def _owned_hwnds(self) -> list[int]:
+            return [hwnd for hwnd, _title in self._owned_windows()]
+
+        def ax_windows(self) -> list[dict]:
+            rect = wintypes.RECT()
+            out: list[dict] = []
+            for index, (hwnd, title) in enumerate(self._owned_windows(), start=1):
+                if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    continue
+                out.append(
+                    {
+                        "index": index,
+                        "name": title,
+                        "x": float(rect.left),
+                        "y": float(rect.top),
+                        "w": float(max(0, rect.right - rect.left)),
+                        "h": float(max(0, rect.bottom - rect.top)),
+                        "id": int(hwnd),
+                    }
+                )
+            return out
+
+        def launched_windows(self) -> list[dict]:
+            return [win for win in self.ax_windows() if win["w"] >= 64 and win["h"] >= 64]
+
+        def _remember_window(self) -> bool:
+            hwnds = self._owned_hwnds()
+            if not hwnds:
+                return False
+            titled = self._owned_windows()
+            for hwnd, title in titled:
+                if "htm" in title.lower():
+                    self.gateway_hwnd = hwnd
+                    break
+            else:
+                if not self.gateway_hwnd:
+                    self.gateway_hwnd = hwnds[0]
+            self.hwnd = self.gateway_hwnd or hwnds[0]
+            return True
+
+        def _native_hwnd(self) -> int:
+            for hwnd, title in self._owned_windows():
+                lower = title.lower()
+                if "cmd.exe" in lower or "powershell" in lower or "pwsh" in lower:
+                    return hwnd
+            hwnds = self._owned_hwnds()
+            natives = [hwnd for hwnd in hwnds if hwnd != self.gateway_hwnd]
+            if natives:
+                return natives[-1]
+            return self.gateway_hwnd or self.hwnd
+
+        def _release_modifiers(self) -> None:
+            for vk in (VK_SHIFT, VK_CONTROL, VK_MENU):
+                send_key(vk, KEYEVENTF_KEYUP)
+
+        def _click_hwnd(self, hwnd: int) -> None:
+            rect = wintypes.RECT()
+            if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return
+            x = (rect.left + rect.right) // 2
+            y = (rect.top + rect.bottom) * 45 // 100
+            user32.SetCursorPos(x, y)
+            user32.mouse_event(MOUSEEVENTF_LEFTDOWN, 0, 0, 0, 0)
+            user32.mouse_event(MOUSEEVENTF_LEFTUP, 0, 0, 0, 0)
+            time.sleep(0.12)
+
+        def focus_gateway(self) -> None:
+            self._remember_window()
+            if self.gateway_hwnd:
+                focus_window(self.gateway_hwnd)
+
+        def focus_native_window(self) -> None:
+            native = self._native_hwnd()
+            if not native:
+                fail("could not identify the native WezTerm HTM window")
+            self.hwnd = native
+            focus_window(native)
+
+        def focus(self) -> None:
+            if self._native_hwnd() and self._native_hwnd() != self.gateway_hwnd:
+                self.focus_native_window()
+            else:
+                self.focus_gateway()
+
+        def _flush_needle(self, value: str) -> str:
+            found: list[str] = []
+            for token in value.replace("&", " ").split():
+                if any(
+                    part in token
+                    for part in ("PARITY", "STBULK", "STKEY", "HTM_E2E")
+                ):
+                    found.append(token.split("%")[0].rstrip("_") or token)
+            if found:
+                return found[-1]
+            return value[-16:] if len(value) > 16 else value
+
+        def keystroke(self, keys: str, using: str = "") -> None:
+            value = keys.strip('"')
+            if "command" in using:
+                self.focus_native_window()
+                action = (value, "shift" in using)
+                mapping = {
+                    ("d", False): (VK_CONTROL, VK_SHIFT, ord("D")),
+                    ("d", True): (VK_CONTROL, VK_MENU, ord("D")),
+                    ("t", False): (VK_CONTROL, VK_SHIFT, ord("T")),
+                    ("w", False): (VK_CONTROL, VK_SHIFT, ord("W")),
+                    ("[", False): (VK_CONTROL, VK_SHIFT, ord("H")),
+                    ("]", False): (VK_CONTROL, VK_SHIFT, ord("L")),
+                    ("[", True): (VK_CONTROL, VK_SHIFT, VK_TAB),
+                }
+                chord = mapping.get(action)
+                if chord is None:
+                    fail(f"unsupported WezTerm Windows action: {keys} {using}")
+                shortcut(*chord)
+                time.sleep(0.2)
+                self._release_modifiers()
+                time.sleep(0.45)
+                self.focus_native_window()
+                return
+            self.focus_native_window()
+            self._release_modifiers()
+            type_text(" " + value)
+            needle = self._flush_needle(value)
+            if len(value) < 28:
+                return
+            self.wait_log(
+                lambda text: needle in typed_from_log(text) or needle in text,
+                90,
+                f"WezTerm send-keys flushed {needle!r}",
+            )
+
+        def mux_snapshot(self, wait: float = 2.0) -> str:
+            text = self.log_text()
+            return text + "\n" + typed_from_log(text)
+
+        def htm_pane_snapshot(self, wait: float = 2.0) -> str:
+            return self.mux_snapshot(wait)
+
+        def wait_typed(self, marker: str, timeout: float = 20.0) -> None:
+            super().wait_typed(marker, timeout=max(timeout, 45.0))
+
+        def wait_visible(self, marker: str, timeout: float = 20.0) -> None:
+            # htmd pane dumps use SIGUSR1, which Windows does not provide.
+            self.wait_log(
+                lambda text: log_has_typed(text, marker),
+                max(timeout, 60.0),
+                f"typed command producing {marker}",
+            )
+            time.sleep(0.5)
+
+        def tab_count(self) -> int:
+            native = self._native_hwnd()
+            if native and native != self.gateway_hwnd:
+                return 2
+            return 1 if self.hwnd else 0
+
+        def key_code(self, code: int, using: str = "") -> None:
+            if code != 36:
+                fail(f"unsupported WezTerm key code: {code}")
+            self.focus_native_window()
+            shortcut(VK_RETURN)
+            time.sleep(0.12)
+
+        def start(self, command: str = "") -> None:
+            if not CONFIG_LUA.is_file():
+                fail(f"missing WezTerm e2e config {CONFIG_LUA}")
+            kill_htm_daemons()
+            self.started_at = time.time() - 1.0
+            env = os.environ.copy()
+            env["PATH"] = f"{self.htm.parent};{self.wezterm_bin().parent};{env.get('PATH', '')}"
+            env["WEZTERM_LOG"] = "info"
+            STDERR_LOG.parent.mkdir(parents=True, exist_ok=True)
+            self.stderr_file = open(STDERR_LOG, "w")
+            self._release_modifiers()
+            argv = [
+                str(self.wezterm_bin()),
+                "--config-file",
+                str(CONFIG_LUA),
+                "start",
+                "--always-new-process",
+                "--",
+                str(self.htm),
+                "-x",
+            ]
+            self.proc = subprocess.Popen(
+                argv,
+                env=env,
+                cwd=str(self.htm.parent),
+                stdout=subprocess.DEVNULL,
+                stderr=self.stderr_file,
+                creationflags=getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)
+                | getattr(subprocess, "DETACHED_PROCESS", 0),
+            )
+            wait_until(
+                lambda: self.proc is not None and self.proc.poll() is None,
+                5,
+                description="WezTerm process start",
+            )
+            wait_until(self._remember_window, 25, description="WezTerm window")
+            print(
+                f"gateway window hwnd={self.gateway_hwnd} "
+                f"windows={self._owned_windows()}",
+                flush=True,
+            )
+            self._release_modifiers()
+            self.focus_gateway()
+            self._release_modifiers()
+
+        def after_attach(self) -> None:
+            self.wait_log(
+                lambda text: "list-panes" in text or "list-windows" in text,
+                20,
+                "WezTerm list-panes/list-windows",
+            )
+            def _native_ready() -> bool:
+                self._release_modifiers()
+                return len(self._owned_hwnds()) >= 2
+
+            wait_until(
+                _native_ready,
+                20,
+                description="HTM session in a separate WezTerm window",
+            )
+            details = self._owned_windows()
+            self._remember_window()
+            self._gateway_keys = {
+                _window_key(win)
+                for win in self.ax_windows()
+                if int(win.get("id") or 0) == self.gateway_hwnd
+            }
+            print(f"WezTerm windows after attach: {details}", flush=True)
+            time.sleep(1.0)
+            if self.proc is not None and self.proc.poll() is not None:
+                fail_wezterm_crash("after tmux -CC attach")
+            self.focus_native_window()
+            self._click_hwnd(self.hwnd)
+            time.sleep(0.3)
+            self._release_modifiers()
+
+        def stop(self) -> None:
+            self._release_modifiers()
+            if self.proc and self.proc.poll() is None:
+                try:
+                    self.proc.terminate()
+                except OSError:
+                    pass
+                try:
+                    self.proc.wait(timeout=5)
+                except subprocess.TimeoutExpired:
+                    try:
+                        self.proc.kill()
+                    except OSError:
+                        pass
+            for pid in self._owned_pids():
+                terminate_pid(pid)
+            if self.stderr_file:
+                try:
+                    self.stderr_file.close()
+                except OSError:
+                    pass
+                self.stderr_file = None
+            kill_htm_daemons()
+
+        def after_layout_suite(self) -> None:
+            text = self.log_text()
+            if command_count(text, "list-windows") < 1 and "list-windows" not in text:
+                fail("WezTerm did not send list-windows after control-mode attach")
+            print("OK: WezTerm enumerated tmux windows", flush=True)
 
 
 class WezTermHtmSession(GuiTerminalSession):

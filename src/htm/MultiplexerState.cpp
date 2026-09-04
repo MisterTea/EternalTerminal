@@ -829,6 +829,21 @@ void MultiplexerState::setWindowSize(uint32_t windowId, int cols, int rows) {
   emitLayout(window.get());
 }
 
+void MultiplexerState::resizePaneAbsolute(uint32_t paneId, int cols, int rows) {
+  auto pane = panes.at(paneId);
+  auto window = windows.at(pane->windowId);
+  const int wantCols = cols > 0 ? cols : pane->cols;
+  const int wantRows = rows > 0 ? rows : pane->rows;
+  // Sole pane: native OS window resize (WezTerm / iTerm2 / WT followers).
+  // Split panes: ignore absolute -x/-y. Terminals flood intermediate sizes
+  // while animating a divider; applying those warped balanced splits. Use
+  // directional resize-pane / layout from split-window instead.
+  if (!pane->parentIsWindow) {
+    return;
+  }
+  setWindowSize(window->id, wantCols, wantRows);
+}
+
 void MultiplexerState::zoomToggle(uint32_t paneId) {
   auto pane = panes.at(paneId);
   auto window = windows.at(pane->windowId);
