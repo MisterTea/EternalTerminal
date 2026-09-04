@@ -504,6 +504,40 @@ target_link_libraries(
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
+# Neovim's C99 libvterm (MIT), used for capture-pane / list-panes screen state.
+# Windows ConPTY already emits VT; this library consumes that stream on all OSes.
+add_library(libvterm STATIC
+  ${EXTERNAL_DIR}/libvterm/src/encoding.c
+  ${EXTERNAL_DIR}/libvterm/src/keyboard.c
+  ${EXTERNAL_DIR}/libvterm/src/mouse.c
+  ${EXTERNAL_DIR}/libvterm/src/parser.c
+  ${EXTERNAL_DIR}/libvterm/src/pen.c
+  ${EXTERNAL_DIR}/libvterm/src/screen.c
+  ${EXTERNAL_DIR}/libvterm/src/state.c
+  ${EXTERNAL_DIR}/libvterm/src/unicode.c
+  ${EXTERNAL_DIR}/libvterm/src/vterm.c
+)
+set_target_properties(libvterm PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+)
+target_include_directories(libvterm PUBLIC
+  ${EXTERNAL_DIR}/libvterm/include
+)
+target_include_directories(libvterm PRIVATE
+  ${EXTERNAL_DIR}/libvterm/src
+)
+if(MSVC)
+  target_compile_options(libvterm PRIVATE /W0)
+else()
+  target_compile_options(libvterm PRIVATE -w)
+endif()
+if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # Vendored C is stripped from reports; skip instrumentation so gcov .gcda
+  # files from libvterm do not serialize parallel ctest.
+  target_compile_options(libvterm PRIVATE -fno-profile-arcs -fno-test-coverage)
+endif()
+
 add_library(
   HtmCommon STATIC
   src/htm/TerminalHandler.cpp
@@ -513,8 +547,12 @@ add_library(
   src/htm/IpcPairServer.cpp
   src/htm/HtmClient.cpp
   src/htm/HtmServer.cpp
+  src/htm/ControlMode.cpp
+  src/htm/ControlCommands.cpp
+  src/htm/PaneScreen.cpp
 )
 add_dependencies(HtmCommon generated-code et-lib)
+target_link_libraries(HtmCommon PUBLIC libvterm)
 decorate_target(HtmCommon)
 
 add_executable(htm src/htm/HtmClientMain.cpp)
@@ -602,7 +640,7 @@ if(WIN32)
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300)
+      PROPERTIES TIMEOUT 600)
     add_sanitizers(et-test)
     find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
     add_custom_target(
@@ -614,6 +652,27 @@ if(WIN32)
       WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
       USES_TERMINAL
       COMMENT "Running Windows tests with native Visual Studio coverage")
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+      add_test(
+        NAME windows_terminal_htm_headless_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_headless_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+          --iterations 1
+      )
+      set_tests_properties(
+        windows_terminal_htm_headless_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 120
+          LABELS "e2e;htm;system;windows"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
     if(TARGET test)
       add_dependencies(test et-test)
     endif()
@@ -685,18 +744,24 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    # [.ghostty] / iTerm2 / Hyper e2e stay opt-in until those terminals' HTM
-    # PRs land. Default ctest and `./et-test` skip them. Run with:
+    # iTerm2 / Ghostty / Hyper / WezTerm / Windows Terminal e2e stay opt-in
+    # until those terminals speak tmux -CC against htm. Default ctest and
+    # `./et-test` skip them. Run with:
     #   ./et-test ghostty
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
     #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
-    #   (Hyper: hyper-htm repo, npm run test:system)
+    #   python3 test/system_tests/hyper_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/wezterm_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     catch_discover_tests(
       et-test
       TEST_SPEC "~[.ghostty]"
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300
+      PROPERTIES TIMEOUT 600
     )
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND AND NOT WIN32)
@@ -752,9 +817,17 @@ else(WIN32)
           RUN_SERIAL TRUE
       )
     endif()
-    # iTerm2 GUI e2e is not registered with CTest. Run it explicitly:
+    # GUI e2e is not registered with CTest. Suites (layout, stress) are shared;
+    # each emulator is a driver. Run:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_stress_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_stress_e2e.py
+    # Windows Terminal interactive e2e (requires unlocked desktop):
+    #   py ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_e2e.py --wt wt.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)

@@ -3,12 +3,25 @@
 #include "RawSocketUtils.hpp"
 
 #ifdef WIN32
+#include <tlhelp32.h>
 #include <windows.h>
 #else
+#include <unistd.h>
+#ifdef __APPLE__
+#include <libproc.h>
+#elif defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#endif
+
 #include <chrono>
+#include <fstream>
 #include <stdexcept>
 
 #include "ETerminal.pb.h"
+
+#ifdef CODE_COVERAGE
+extern "C" void __gcov_reset(void);
+#endif
 #endif
 
 namespace et {
@@ -45,6 +58,100 @@ string defaultWindowsHome() {
     return string(home);
   }
   return string();
+}
+
+string wideToUtf8(const wstring& w) {
+  if (w.empty()) {
+    return string();
+  }
+  int n = WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, NULL, 0, NULL, NULL);
+  string out(n ? n : 0, '\0');
+  if (n > 1) {
+    WideCharToMultiByte(CP_UTF8, 0, w.c_str(), -1, &out[0], n, NULL, NULL);
+    out.resize(n - 1);
+  }
+  return out;
+}
+
+string processImageBaseName(DWORD pid) {
+  HANDLE process =
+      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  if (!process) {
+    return string();
+  }
+  wchar_t path[MAX_PATH];
+  DWORD size = MAX_PATH;
+  string name;
+  if (QueryFullProcessImageNameW(process, 0, path, &size)) {
+    wstring wide(path, size);
+    auto slash = wide.find_last_of(L"\\/");
+    wstring base =
+        slash == wstring::npos ? wide : wide.substr(slash + 1);
+    if (base.size() > 4) {
+      auto ext = base.substr(base.size() - 4);
+      if (_wcsicmp(ext.c_str(), L".exe") == 0) {
+        base.resize(base.size() - 4);
+      }
+    }
+    name = wideToUtf8(base);
+    for (char& c : name) {
+      c = static_cast<char>(tolower(static_cast<unsigned char>(c)));
+    }
+  }
+  CloseHandle(process);
+  return name;
+}
+
+bool isShellLikeProcess(const string& name) {
+  return name.empty() || name == "cmd" || name == "powershell" ||
+         name == "pwsh" || name == "powershell_ise" || name == "conhost" ||
+         name == "openconsole" || name == "wt" || name == "windowsterminal" ||
+         name == "htmd" || name == "htm";
+}
+
+// ConPTY has no tcgetpgrp; walk the shell's process tree and prefer a
+// non-shell leaf (timeout, ping, sleep, …) for automatic-rename.
+string deepestForegroundCommand(DWORD rootPid) {
+  if (rootPid == 0) {
+    return string();
+  }
+  HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
+  if (snap == INVALID_HANDLE_VALUE) {
+    return processImageBaseName(rootPid);
+  }
+  unordered_map<DWORD, vector<DWORD>> children;
+  PROCESSENTRY32W entry;
+  entry.dwSize = sizeof(entry);
+  if (Process32FirstW(snap, &entry)) {
+    do {
+      children[entry.th32ParentProcessID].push_back(entry.th32ProcessID);
+    } while (Process32NextW(snap, &entry));
+  }
+  CloseHandle(snap);
+
+  string best;
+  vector<DWORD> stack{rootPid};
+  while (!stack.empty()) {
+    DWORD pid = stack.back();
+    stack.pop_back();
+    const auto it = children.find(pid);
+    if (it == children.end() || it->second.empty()) {
+      string name = processImageBaseName(pid);
+      if (!isShellLikeProcess(name)) {
+        best = name;
+      } else if (best.empty() && pid == rootPid) {
+        best = name;
+      }
+      continue;
+    }
+    for (DWORD child : it->second) {
+      stack.push_back(child);
+    }
+  }
+  if (isShellLikeProcess(best)) {
+    return string();
+  }
+  return best;
 }
 }  // namespace
 #endif
@@ -98,8 +205,70 @@ string TerminalHandler::bufferOutput(const string& newChars) {
   return newChars;
 }
 
+int64_t TerminalHandler::childProcessId() const {
 #ifdef WIN32
-void TerminalHandler::start() {
+  if (processHandle == INVALID_HANDLE_VALUE) {
+    return 0;
+  }
+  return static_cast<int64_t>(GetProcessId(static_cast<HANDLE>(processHandle)));
+#else
+  return childPid > 0 ? static_cast<int64_t>(childPid) : 0;
+#endif
+}
+
+string TerminalHandler::foregroundCommand() const {
+#ifdef WIN32
+  if (processHandle == INVALID_HANDLE_VALUE) {
+    return string();
+  }
+  const DWORD rootPid = GetProcessId(static_cast<HANDLE>(processHandle));
+  return deepestForegroundCommand(rootPid);
+#else
+  auto name_of = [](pid_t pid) -> string {
+    if (pid <= 0) {
+      return string();
+    }
+    string comm;
+#ifdef __APPLE__
+    char name[128];
+    if (proc_name(pid, name, sizeof(name)) > 0) {
+      comm = string(name);
+    }
+#elif defined(__FreeBSD__)
+    // Avoid sys/user.h: kinfo_proc collides with std::thread.
+    char path[1024] = {};
+    size_t len = sizeof(path);
+    int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, pid};
+    if (sysctl(mib, 4, path, &len, NULL, 0) == 0 && path[0]) {
+      string p(path);
+      auto slash = p.find_last_of('/');
+      comm = slash == string::npos ? p : p.substr(slash + 1);
+    }
+#else
+    ifstream in(string("/proc/") + to_string(pid) + "/comm");
+    getline(in, comm);
+#endif
+    if (comm == "pgrep" || comm == "pkill" || comm == "htmd" || comm == "htm") {
+      return string();
+    }
+    return comm;
+  };
+  string comm;
+  if (masterFd >= 0) {
+    pid_t pgid = tcgetpgrp(masterFd);
+    if (pgid > 0 && pgid != childPid) {
+      comm = name_of(pgid);
+    }
+  }
+  if (comm.empty()) {
+    comm = name_of(childPid);
+  }
+  return comm;
+#endif
+}
+
+#ifdef WIN32
+void TerminalHandler::start(const string& cwd, int cols, int rows) {
   HANDLE ptyIn = INVALID_HANDLE_VALUE;
   HANDLE ptyOut = INVALID_HANDLE_VALUE;
   HANDLE ourIn = INVALID_HANDLE_VALUE;
@@ -110,8 +279,8 @@ void TerminalHandler::start() {
   }
 
   COORD size;
-  size.X = 80;
-  size.Y = 24;
+  size.X = static_cast<SHORT>(cols > 0 ? cols : 80);
+  size.Y = static_cast<SHORT>(rows > 0 ? rows : 24);
   HPCON pc = nullptr;
   HRESULT hr = CreatePseudoConsole(size, ptyIn, ptyOut, 0, &pc);
   if (FAILED(hr)) {
@@ -154,7 +323,7 @@ void TerminalHandler::start() {
   vector<wchar_t> cmdBuf(cmdLine.begin(), cmdLine.end());
   cmdBuf.push_back(L'\0');
 
-  string home = defaultWindowsHome();
+  string home = cwd.empty() ? defaultWindowsHome() : cwd;
   wstring wideHome = utf8ToWide(home);
 
   SetEnvironmentVariableA("HTM_VERSION", ET_VERSION);
@@ -270,8 +439,12 @@ void TerminalHandler::stop() {
   }
 }
 #else
-void TerminalHandler::start() {
-  pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+void TerminalHandler::start(const string& cwd, int cols, int rows) {
+  winsize ws;
+  memset(&ws, 0, sizeof(ws));
+  ws.ws_col = static_cast<unsigned short>(cols > 0 ? cols : 80);
+  ws.ws_row = static_cast<unsigned short>(rows > 0 ? rows : 24);
+  pid_t pid = forkpty(&masterFd, NULL, NULL, &ws);
   switch (pid) {
     case -1:
       throw std::runtime_error(string("forkpty failed: ") +
@@ -282,15 +455,33 @@ void TerminalHandler::start() {
         LOG(FATAL)
             << "Not able to fork a terminal because getpwuid returns null";
       }
-      chdir(pwd->pw_dir);
+      if (!cwd.empty()) {
+        if (chdir(cwd.c_str()) != 0 && pwd->pw_dir) {
+          chdir(pwd->pw_dir);
+        }
+      } else if (pwd->pw_dir) {
+        chdir(pwd->pw_dir);
+      }
       const char* shellEnv = ::getenv("SHELL");
       string terminal =
           (shellEnv && shellEnv[0]) ? string(shellEnv) : string("/bin/sh");
       setenv("HTM_VERSION", ET_VERSION, 1);
+      // Match tmux -f /dev/null (default-terminal screen) so shells send the
+      // same OSC/title sequences iTerm2 sees under tmux -CC.
+      setenv("TERM", "screen", 1);
+      // zsh's default PROMPT_EOL_MARK is a highlighted `%` plus spaces to the
+      // right margin. GUI panes (Hyper, iTerm2) reflow that padding into a
+      // stray `%` on its own line. Empty the mark so a fresh pane is clean.
+      setenv("PROMPT_EOL_MARK", "", 1);
       // Non-login: inherit PATH from htmd and skip login scripts that may
       // switch to csh (FreeBSD's default user shell).
+#ifdef CODE_COVERAGE
+      // Drop inherited counters so the child does not dump .gcda on a failed
+      // execl (exit/atexit) while the parent is still running under ctest.
+      __gcov_reset();
+#endif
       execl(terminal.c_str(), terminal.c_str(), NULL);
-      exit(0);
+      _exit(127);
       break;
     }
     default: {

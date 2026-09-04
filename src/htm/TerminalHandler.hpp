@@ -18,7 +18,12 @@ class TerminalHandler {
   ~TerminalHandler();
   /** @brief Forks a child shell connected to a pty for interactive
    * input/output. */
-  void start();
+  void start(const string& cwd = "", int cols = 80, int rows = 24);
+  /** @brief Child process id, or 0 if unknown. */
+  int64_t childProcessId() const;
+  /** @brief Foreground process name on the PTY
+   * (tmux #{pane_current_command}). */
+  string foregroundCommand() const;
   /**
    * @brief Drains available bytes from the pty, buffering them and returning
    * the raw bytes that were just read.
@@ -30,7 +35,17 @@ class TerminalHandler {
    */
   void appendData(const string& data);
   /** @brief Indicates whether the PTY child is still alive. */
-  inline bool isRunning() { return run; }
+  inline bool isRunning() {
+#ifdef WIN32
+    if (processHandle == INVALID_HANDLE_VALUE) {
+      return false;
+    }
+    return WaitForSingleObject(static_cast<HANDLE>(processHandle), 0) !=
+           WAIT_OBJECT_0;
+#else
+    return run;
+#endif
+  }
   /** @brief Stops the handler's child process and closes PTY handles. */
   void stop();
   /** @brief Returns the buffered output that should be sent to the client. */

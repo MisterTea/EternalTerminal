@@ -1,5 +1,6 @@
 #include <cxxopts.hpp>
 
+#include "ControlMode.hpp"
 #include "DaemonCreator.hpp"
 #include "HtmClient.hpp"
 #include "HtmServer.hpp"
@@ -17,9 +18,11 @@
 #include <windows.h>
 #else
 #ifdef __APPLE__
+#include <libproc.h>
 #include <mach-o/dyld.h>
 #endif
 #include <limits.h>
+#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -55,17 +58,52 @@ string siblingHtmdCommand() {
   }
   return string("\"") + htmd.string() + "\"";
 }
+
+#ifdef __APPLE__
+string htmdPidsForUser(uid_t uid) {
+  int bytes = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
+  if (bytes <= 0) {
+    return "";
+  }
+  vector<pid_t> pids(static_cast<size_t>(bytes) / sizeof(pid_t) + 16);
+  bytes = proc_listpids(PROC_ALL_PIDS, 0, pids.data(),
+                        static_cast<int>(pids.size() * sizeof(pid_t)));
+  int count = bytes > 0 ? bytes / static_cast<int>(sizeof(pid_t)) : 0;
+  string out;
+  for (int i = 0; i < count; i++) {
+    if (pids[i] <= 0) {
+      continue;
+    }
+    char name[128];
+    if (proc_name(pids[i], name, sizeof(name)) <= 0) {
+      continue;
+    }
+    if (strcmp(name, "htmd") != 0) {
+      continue;
+    }
+    struct proc_bsdinfo info;
+    if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) <= 0) {
+      continue;
+    }
+    if (info.pbi_uid != uid) {
+      continue;
+    }
+    out += to_string(pids[i]);
+    out += '\n';
+  }
+  return out;
+}
+#endif
 #endif
 
 void writeHtmExitSequence() {
-  char buf[] = {
-      0x1b, 0x5b, '$', '$', '$', 'q',
-  };
+  const char* st = kControlModeSt;
 #ifdef WIN32
   DWORD written = 0;
-  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), buf, sizeof(buf), &written, NULL);
+  WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), st, static_cast<DWORD>(strlen(st)),
+            &written, NULL);
 #else
-  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
+  RawSocketUtils::writeAll(STDOUT_FILENO, st, strlen(st));
 #endif
   fflush(stdout);
 }
@@ -108,6 +146,37 @@ void killHtmdProcesses() {
   CloseHandle(snap);
 }
 
+bool htmdProcessRunning();
+
+bool requestHtmdShutdown() {
+  HANDLE shutdownEvent = NULL;
+  // htmd creates the event before entering its server loop. A just-spawned
+  // daemon can therefore exist in the process table slightly before the event
+  // is visible.
+  for (int retry = 0; retry < 40 && !shutdownEvent; retry++) {
+    shutdownEvent = OpenEventA(EVENT_MODIFY_STATE, FALSE,
+                               HtmServer::getShutdownEventName().c_str());
+    if (!shutdownEvent) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
+  }
+  if (!shutdownEvent) {
+    return false;
+  }
+  bool signaled = SetEvent(shutdownEvent) != FALSE;
+  CloseHandle(shutdownEvent);
+  if (!signaled) {
+    return false;
+  }
+  for (int retry = 0; retry < 100; retry++) {
+    if (!htmdProcessRunning()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
+  return false;
+}
+
 bool htmdProcessRunning() {
   HANDLE snap = CreateToolhelp32Snapshot(TH32CS_SNAPPROCESS, 0);
   if (snap == INVALID_HANDLE_VALUE) {
@@ -142,10 +211,6 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
-  if (!SetCurrentDirectoryA(GetTempDirectory().c_str())) {
-    STFATAL << "Failed to use the temp directory for HTM IPC: "
-            << GetLastError();
-  }
 #endif
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
@@ -194,26 +259,64 @@ int main(int argc, char** argv) {
 
 #ifdef WIN32
   if (result.count("x")) {
-    LOG(INFO) << "Killing previous htmd";
-    killHtmdProcesses();
-    std::this_thread::sleep_for(std::chrono::milliseconds(200));
+    LOG(INFO) << "Stopping previous htmd";
+    if (htmdProcessRunning() && !requestHtmdShutdown()) {
+      // Compatibility fallback for an older daemon that predates the graceful
+      // shutdown event. New daemons must take the graceful path so Windows can
+      // release the AF_UNIX pathname before the replacement starts.
+      LOG(WARNING) << "Graceful htmd shutdown failed; terminating it";
+      killHtmdProcesses();
+    }
+    for (int retry = 0; retry < 100 && htmdProcessRunning(); retry++) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+    }
   }
   if (!htmdProcessRunning()) {
     DaemonCreator::create(false, "");
   }
+  const string pipeName = HtmServer::getPipeName();
+  for (int retry = 0; retry < 100; retry++) {
+    if (htmdProcessRunning() &&
+        GetFileAttributesA(pipeName.c_str()) != INVALID_FILE_ATTRIBUTES) {
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
 #else
   uid_t myuid = getuid();
   const string pipeName = HtmServer::getPipeName();
+#ifdef __APPLE__
+  auto htmdPids = [&]() { return htmdPidsForUser(myuid); };
+#else
   auto htmdPids = [&]() {
     string command =
         string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
     return SystemToStr(command.c_str());
   };
+#endif
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
+#ifdef __APPLE__
+    string running = htmdPids();
+    string pidStr;
+    for (char ch : running) {
+      if (ch == '\n') {
+        if (!pidStr.empty()) {
+          ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
+          pidStr.clear();
+        }
+      } else {
+        pidStr += ch;
+      }
+    }
+    if (!pidStr.empty()) {
+      ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
+    }
+#else
     string command =
         string("pkill -x -U ") + to_string(myuid) + string(" htmd");
     system(command.c_str());
+#endif
     for (int i = 0; i < 50; i++) {
       if (htmdPids().empty()) {
         break;

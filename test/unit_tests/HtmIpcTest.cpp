@@ -79,10 +79,9 @@ TEST_CASE("IpcPairServer replaces an existing client on a new accept",
   server.pollAccept();
   REQUIRE(server.recoverCount == 2);
 
+  // Replacing the client closes the previous endpoint with no opcode byte.
   string data = readUntil(handler, firstFd, 1, 1000);
-  if (!data.empty()) {
-    REQUIRE(data[0] == SESSION_END);
-  }
+  REQUIRE(data.empty());
 
   second.closeEndpoint();
 }

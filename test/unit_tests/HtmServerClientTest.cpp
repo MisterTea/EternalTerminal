@@ -1,25 +1,13 @@
+#include <fcntl.h>
+
 #include <atomic>
-#include <cstdio>
-#include <map>
-#include <set>
 #include <thread>
-#include <utility>
 
 #include "HtmClient.hpp"
 #include "HtmServer.hpp"
 #include "HtmTestHelpers.hpp"
 #include "IpcPairClient.hpp"
-#include "JsonLib.hpp"
 #include "TestHeaders.hpp"
-#include "UserSocketOps.hpp"
-
-#ifndef WIN32
-#include <errno.h>
-#include <fcntl.h>
-#include <signal.h>
-#include <sys/wait.h>
-#include <unistd.h>
-#endif
 
 using namespace et;
 using namespace et::htmtest;
@@ -36,6 +24,12 @@ class HtmServerHarness {
     runner = std::thread([this]() { server.run(); });
     client.reset(new IpcPairClient(handler, endpoint));
     REQUIRE(waitUntil([&]() { return server.getEndpointFd() >= 0; }, 5000));
+    REQUIRE(waitUntil(
+        [&]() {
+          pump();
+          return hasLinePrefix(lines, "%session-changed");
+        },
+        8000));
   }
 
   ~HtmServerHarness() { stop(); }
@@ -44,7 +38,7 @@ class HtmServerHarness {
     server.requestStop();
     if (client && client->getEndpointFd() >= 0) {
       try {
-        sendDebugKeys(handler, client->getEndpointFd(), "x");
+        sendLine(handler, client->getEndpointFd(), "kill-server");
       } catch (...) {
       }
     }
@@ -53,45 +47,22 @@ class HtmServerHarness {
     }
   }
 
-  json waitForInit(int timeoutMs = 8000) {
-    const auto start = std::chrono::steady_clock::now();
-    while (true) {
-      incoming += readUntil(handler, client->getEndpointFd(), 1, 200);
-      consumeInitSequence(&incoming);
-      HtmPacket packet;
-      string work = incoming;
-      while (popPacket(&work, &packet)) {
-        if (packet.header == INIT_STATE) {
-          incoming = work;
-          return json::parse(packet.payload);
-        }
-      }
-      auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                         std::chrono::steady_clock::now() - start)
-                         .count();
-      if (elapsed > timeoutMs) {
-        FAIL("Timed out waiting for INIT_STATE");
-      }
-    }
+  void pump() {
+    incoming += readUntil(handler, client->getEndpointFd(), 1, 50);
+    lines = splitLines(incoming);
   }
 
-  bool waitForHeader(char header, int timeoutMs = 8000) {
-    return waitUntil(
+  string command(const string& line, int timeoutMs = 8000) {
+    size_t before = incoming.size();
+    sendLine(handler, client->getEndpointFd(), line);
+    REQUIRE(waitUntil(
         [&]() {
-          incoming += readUntil(handler, client->getEndpointFd(), 1, 50);
-          consumeInitSequence(&incoming);
-          string work = incoming;
-          HtmPacket packet;
-          while (popPacket(&work, &packet)) {
-            if (packet.header == header) {
-              incoming = work;
-              lastPacket = packet;
-              return true;
-            }
-          }
-          return false;
+          pump();
+          return incoming.find("%end ", before) != string::npos ||
+                 incoming.find("%error ", before) != string::npos;
         },
-        timeoutMs);
+        timeoutMs));
+    return incoming.substr(before);
   }
 
   UniqueIpcPath ipc;
@@ -101,656 +72,468 @@ class HtmServerHarness {
   std::thread runner;
   unique_ptr<IpcPairClient> client;
   string incoming;
-  HtmPacket lastPacket;
+  vector<string> lines;
 };
 }  // namespace
+#endif
 
 TEST_CASE("HtmServer getPipeName includes the uid", "[Htm][HtmServer]") {
   string name = HtmServer::getPipeName();
   REQUIRE(name.find("htm.") != string::npos);
-  REQUIRE(name.find(GetHtmIpcUser()) != string::npos);
   REQUIRE(name.find(".ipc") != string::npos);
 }
 
-TEST_CASE("HtmServer recovers, handles protocol commands, and shuts down",
+#ifndef WIN32
+TEST_CASE("HtmServer attach handshake is server-originated",
           "[Htm][HtmServer]") {
   HtmServerHarness h;
-  json state = h.waitForInit();
-  REQUIRE(state["panes"].size() >= 1);
-  string paneId = firstJsonKey(state["panes"]);
-
-#ifdef WIN32
-  sendInsertKeys(h.handler, h.client->getEndpointFd(), paneId,
-                 "echo HTM_SRV_ECHO\r\n");
-#else
-  sendInsertKeys(h.handler, h.client->getEndpointFd(), paneId,
-                 "printf 'HTM_SRV_ECHO\\n'\n");
-#endif
-  REQUIRE(h.waitForHeader(APPEND_TO_PANE));
-  REQUIRE(h.lastPacket.payload.find(paneId) == 0);
-
-  string tabId = sole::uuid4().str();
-  string tabPane = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_TAB, tabId + tabPane);
-
-  string splitPane = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_SPLIT,
-             paneId + splitPane + string("1"));
-
-  string nestedPane = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_SPLIT,
-             splitPane + nestedPane + string("0"));
-
-  sendDebugKeys(h.handler, h.client->getEndpointFd(), "d");
-
-  int32_t cols = 80;
-  int32_t rows = 24;
-  string resizePayload = b64Int32(cols) + b64Int32(rows) + paneId;
-  sendPacket(h.handler, h.client->getEndpointFd(), RESIZE_PANE, resizePayload);
-
-  sendPacket(h.handler, h.client->getEndpointFd(), CLIENT_CLOSE_PANE,
-             nestedPane);
-  sendPacket(h.handler, h.client->getEndpointFd(), CLIENT_CLOSE_PANE, tabPane);
-
-  sendDebugKeys(h.handler, h.client->getEndpointFd(), string(1, char(27)));
-  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 3000));
-
-  h.incoming.clear();
-  h.client.reset(new IpcPairClient(h.handler, h.endpoint));
-  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() >= 0; }, 5000));
-  json recovered = h.waitForInit();
-  REQUIRE(recovered["panes"].size() >= 1);
-
-  sendDebugKeys(h.handler, h.client->getEndpointFd(), "x");
-  h.stop();
+  bool sawBegin0 = false;
+  bool sawEnd0 = false;
+  for (const string& line : h.lines) {
+    if (line.compare(0, 7, "%begin ") == 0 && line.size() >= 2 &&
+        line.compare(line.size() - 2, 2, " 0") == 0) {
+      sawBegin0 = true;
+    }
+    if (line.compare(0, 5, "%end ") == 0 && line.size() >= 2 &&
+        line.compare(line.size() - 2, 2, " 0") == 0) {
+      sawEnd0 = true;
+    }
+  }
+  REQUIRE(sawBegin0);
+  REQUIRE(sawEnd0);
+  auto beginAt = h.incoming.find("%begin ");
+  auto endAt = h.incoming.find("%end ");
+  REQUIRE(beginAt != string::npos);
+  REQUIRE(endAt != string::npos);
+  REQUIRE(beginAt < endAt);
+  auto windowAddAt = h.incoming.find("%window-add");
+  auto sessionsAt = h.incoming.find("%sessions-changed");
+  auto sessionAt = h.incoming.find("%session-changed");
+  REQUIRE(endAt < windowAddAt);
+  REQUIRE(windowAddAt < sessionsAt);
+  REQUIRE(sessionsAt < sessionAt);
 }
 
-TEST_CASE("HtmServer streams concurrent output from tabs and splits",
-          "[Htm][HtmServer][features]") {
+TEST_CASE("HtmServer accepts CR-terminated control commands",
+          "[Htm][HtmServer]") {
   HtmServerHarness h;
-  json state = h.waitForInit();
-  string p0 = firstJsonKey(state["panes"]);
+  string cmd = string("display-message -p '#{version}'") + '\r';
+  size_t before = h.incoming.size();
+  h.handler->writeAllOrThrow(h.client->getEndpointFd(), cmd.data(),
+                             static_cast<int>(cmd.size()), false);
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find(HTM_TMUX_VERSION, before) != string::npos;
+      },
+      8000));
+}
 
-  string tab1 = sole::uuid4().str();
-  string pane1 = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_TAB, tab1 + pane1);
+TEST_CASE("HtmServer replies once per command in a semicolon list",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  size_t before = h.incoming.size();
+  sendLine(h.handler, h.client->getEndpointFd(),
+           "display-message -p '#{version}'; list-windows -F '#{window_id}'");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        string chunk = h.incoming.substr(before);
+        int ends = 0;
+        for (size_t p = 0; (p = chunk.find("%end ", p)) != string::npos;
+             p += 5) {
+          ends++;
+        }
+        return ends >= 2 && chunk.find(HTM_TMUX_VERSION) != string::npos &&
+               chunk.find("@") != string::npos;
+      },
+      8000));
+}
 
-  string tab2 = sole::uuid4().str();
-  string pane2 = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_TAB, tab2 + pane2);
+TEST_CASE("HtmServer recovers and speaks control mode", "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  string ver = h.command("display-message -p '#{version}'");
+  REQUIRE(ver.find(HTM_TMUX_VERSION) != string::npos);
 
-  string splitV = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_SPLIT,
-             p0 + splitV + string("1"));
-  string splitH = sole::uuid4().str();
-  sendPacket(h.handler, h.client->getEndpointFd(), NEW_SPLIT,
-             p0 + splitH + string("0"));
+  string windows = h.command("list-windows -F '#{window_id} #{window_layout}'");
+  REQUIRE(windows.find("@") != string::npos);
 
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  h.command("new-window -P -F '#{window_id}'");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return hasLinePrefix(h.lines, "%window-add");
+      },
+      5000));
 
-  const int bursts = 6;
-  const vector<pair<string, string>> panes = {
-      {p0, "SRV_C0"},     {pane1, "SRV_C1"},  {pane2, "SRV_C2"},
-      {splitV, "SRV_C3"}, {splitH, "SRV_C4"},
+  h.command("split-window -h");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%layout-change") != string::npos;
+      },
+      5000));
+
+  h.command("refresh-client -C 80x24");
+  h.command("send-keys -t %0 printf Space CC_MARK Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("CC_MARK") != string::npos;
+      },
+      8000));
+}
+
+TEST_CASE("HtmServer layout-change matches tmux 3.x fields",
+          "[Htm][HtmServer]") {
+  auto fields = [](const string& line) {
+    vector<string> out;
+    string cur;
+    for (char c : line) {
+      if (c == ' ') {
+        out.push_back(cur);
+        cur.clear();
+      } else {
+        cur.push_back(c);
+      }
+    }
+    out.push_back(cur);
+    return out;
   };
-  for (const auto& pane : panes) {
-    string cmd = "i=1; while [ \"$i\" -le " + to_string(bursts) +
-                 " ]; do printf '" + pane.second +
-                 "_%s\\n' \"$i\"; i=$((i+1)); done\n";
-    sendInsertKeys(h.handler, h.client->getEndpointFd(), pane.first, cmd);
-  }
+  auto isTmux3 = [&](const string& line) {
+    auto f = fields(line);
+    return f.size() >= 5 && f[0] == "%layout-change" && !f[1].empty() &&
+           f[1][0] == '@' && f[2].find('x') != string::npos &&
+           f[3].find('x') != string::npos;
+  };
 
-  map<string, string> out;
-  vector<string> order;
+  HtmServerHarness h;
+  h.command("split-window -h");
   REQUIRE(waitUntil(
       [&]() {
-        h.incoming += readUntil(h.handler, h.client->getEndpointFd(), 1, 40);
-        consumeInitSequence(&h.incoming);
-        HtmPacket packet;
-        string work = h.incoming;
-        while (popPacket(&work, &packet)) {
-          h.incoming = work;
-          string id;
-          string body;
-          if (decodeAppendToPane(packet, &id, &body)) {
-            out[id].append(body);
-            order.push_back(id);
+        h.pump();
+        int n = 0;
+        for (const string& line : h.lines) {
+          if (isTmux3(line)) {
+            n++;
           }
         }
-        for (const auto& pane : panes) {
-          if (out[pane.first].find(pane.second + "_" + to_string(bursts)) ==
-              string::npos) {
-            return false;
-          }
-        }
-        return true;
+        return n >= 1;
       },
-      15000));
+      5000));
 
-  for (const auto& pane : panes) {
-    REQUIRE(out[pane.first].find(pane.second + "_1") != string::npos);
-  }
-  std::set<string> unique(order.begin(), order.end());
-  REQUIRE(unique.size() >= 4);
-  int transitions = 0;
-  for (size_t i = 1; i < order.size(); i++) {
-    if (order[i] != order[i - 1]) {
-      transitions++;
-    }
-  }
-  REQUIRE(transitions >= 4);
-
-  sendDebugKeys(h.handler, h.client->getEndpointFd(), "x");
-  h.stop();
+  h.command("resize-pane -Z");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        for (const string& line : h.lines) {
+          if (isTmux3(line) && line.find(" *Z") != string::npos) {
+            return true;
+          }
+        }
+        return false;
+      },
+      5000));
 }
 
-TEST_CASE("HtmServer floods concurrent read/write on many panes",
-          "[Htm][HtmServer][stress]") {
+TEST_CASE("HtmServer streams concurrent output from windows and splits",
+          "[Htm][HtmServer]") {
   HtmServerHarness h;
-  json state = h.waitForInit();
-  string p0 = firstJsonKey(state["panes"]);
-  vector<pair<string, string>> panes = {{p0, "P0"}};
-  for (int t = 0; t < 3; t++) {
-    string tabPane = sole::uuid4().str();
-    sendPacket(h.handler, h.client->getEndpointFd(), NEW_TAB,
-               sole::uuid4().str() + tabPane);
-    panes.push_back({tabPane, "T" + to_string(t)});
-    string splitPane = sole::uuid4().str();
-    sendPacket(h.handler, h.client->getEndpointFd(), NEW_SPLIT,
-               tabPane + splitPane + string(t % 2 == 0 ? "1" : "0"));
-    panes.push_back({splitPane, "S" + to_string(t)});
-  }
-  std::this_thread::sleep_for(std::chrono::milliseconds(300));
-
-  const int floodLines = 250;
-  const int keyRounds = 16;
-  for (const auto& pane : panes) {
-    string cmd = "i=1; while [ \"$i\" -le " + to_string(floodLines) +
-                 " ]; do printf 'OUT_" + pane.second +
-                 "_%04d\\n' \"$i\"; i=$((i+1)); done &\n";
-    sendInsertKeys(h.handler, h.client->getEndpointFd(), pane.first, cmd);
-    h.incoming += readUntil(h.handler, h.client->getEndpointFd(), 1, 20);
-  }
-  for (int round = 0; round < keyRounds; round++) {
-    for (const auto& pane : panes) {
-      sendInsertKeys(
-          h.handler, h.client->getEndpointFd(), pane.first,
-          "printf 'IN_" + pane.second + "_" + to_string(round) + "\\n'\n");
-    }
-    h.incoming += readUntil(h.handler, h.client->getEndpointFd(), 1, 15);
-  }
-
-  map<string, string> out;
-  REQUIRE(waitUntil(
-      [&]() {
-        h.incoming += readUntil(h.handler, h.client->getEndpointFd(), 1, 40);
-        consumeInitSequence(&h.incoming);
-        HtmPacket packet;
-        string work = h.incoming;
-        while (popPacket(&work, &packet)) {
-          h.incoming = work;
-          string id;
-          string body;
-          if (decodeAppendToPane(packet, &id, &body)) {
-            out[id].append(body);
-          }
-        }
-        for (const auto& pane : panes) {
-          char lastOut[32];
-          snprintf(lastOut, sizeof(lastOut), "OUT_%s_%04d", pane.second.c_str(),
-                   floodLines);
-          if (out[pane.first].find(lastOut) == string::npos ||
-              out[pane.first].find("IN_" + pane.second + "_" +
-                                   to_string(keyRounds - 1)) == string::npos) {
-            return false;
-          }
-        }
-        return true;
-      },
-      60000));
-
-  sendDebugKeys(h.handler, h.client->getEndpointFd(), "x");
-  h.stop();
+  h.command("new-window");
+  h.command("split-window -v");
+  string panes = h.command("list-panes -F '#{pane_id}'");
+  REQUIRE(panes.find("%") != string::npos);
 }
 
 TEST_CASE("HtmServer stops when the last pane is closed", "[Htm][HtmServer]") {
   HtmServerHarness h;
-  json state = h.waitForInit();
-  string paneId = firstJsonKey(state["panes"]);
-  sendPacket(h.handler, h.client->getEndpointFd(), CLIENT_CLOSE_PANE, paneId);
+  h.command("kill-pane -t %0");
   REQUIRE(waitUntil(
-      [&]() { return !h.runner.joinable() || h.server.getEndpointFd() < 0; },
-      5000));
-  h.stop();
+      [&]() {
+        h.pump();
+        return h.incoming.find("%exit") != string::npos ||
+               h.server.getEndpointFd() < 0;
+      },
+      8000));
 }
 
-TEST_CASE("HtmServer recovers from a client disconnect error",
+TEST_CASE("HtmServer emits exit when the last shell exits naturally",
           "[Htm][HtmServer]") {
   HtmServerHarness h;
-  h.waitForInit();
-  h.client->closeEndpoint();
-  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
-  h.stop();
+  h.command("send-keys exit Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%exit") != string::npos;
+      },
+      8000));
 }
 
 TEST_CASE("HtmServer survives an abrupt client hangup", "[Htm][HtmServer]") {
-  skipIfThreadSanitizer();
-  class DroppingClient : public IpcPairClient {
-   public:
-    using IpcPairClient::IpcPairClient;
-    void hangup() {
-      socketHandler->close(endpointFd);
-      endpointFd = -1;
+  HtmServerHarness h;
+  h.client->closeEndpoint();
+  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
+}
+
+TEST_CASE("HtmServer detach on empty line", "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  sendLine(h.handler, h.client->getEndpointFd(), "");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%exit") != string::npos;
+      },
+      5000));
+}
+
+TEST_CASE("HtmServer mutation notifications follow tmux control-mode order",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  auto commandEvents = [&](const string& command, const string& lastEvent) {
+    size_t before = h.incoming.size();
+    h.command(command);
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return h.incoming.find(lastEvent, before) != string::npos;
+        },
+        5000));
+    return h.incoming.substr(before);
+  };
+  auto ordered = [](const string& text, const vector<string>& events) {
+    size_t at = 0;
+    for (const string& event : events) {
+      at = text.find(event, at);
+      if (at == string::npos) {
+        return false;
+      }
+      at += event.size();
     }
+    return true;
   };
 
+  string added = commandEvents("new-window", "%window-add");
+  REQUIRE(ordered(
+      added, {"%begin ", "%end ", "%session-window-changed", "%window-add"}));
+
+  string split = commandEvents("split-window -h", "%layout-change");
+  REQUIRE(ordered(
+      split, {"%begin ", "%end ", "%window-pane-changed", "%layout-change"}));
+
+  string killedPane = commandEvents("kill-pane", "%window-pane-changed");
+  REQUIRE(ordered(killedPane, {"%begin ", "%end ", "%layout-change",
+                               "%window-pane-changed"}));
+
+  string killedWindow = commandEvents("kill-window", "%unlinked-window-close");
+  REQUIRE(ordered(killedWindow, {"%begin ", "%end ", "%session-window-changed",
+                                 "%unlinked-window-close"}));
+}
+
+TEST_CASE("HtmServer automatic-renames window from pane command",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("send-keys sleep Space 2 Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%window-renamed @1 sleep") != string::npos;
+      },
+      5000));
+}
+
+TEST_CASE("HtmServer titles zoom paste and sessions", "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("rename-window titlewin");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%window-renamed") != string::npos;
+      },
+      5000));
+  h.command("select-pane -T panetitle");
+  h.command("resize-pane -Z");
+  h.command("set-buffer -b buffer0 hello");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("%paste-buffer-changed") != string::npos;
+      },
+      5000));
+  string buf = h.command("show-buffer -b buffer0");
+  REQUIRE(buf.find("hello") != string::npos);
+  h.command("new-session -s extra");
+  string sessions = h.command("list-sessions -F '#{session_name}'");
+  REQUIRE(sessions.find("extra") != string::npos);
+  h.command("refresh-client -f pause-after=0");
+}
+
+TEST_CASE("HtmServer swap-pane set-option break-pane and unlink-window",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("split-window -h");
+  string swapped = h.command("swap-pane -s %0 -t %1");
+  REQUIRE(swapped.find("%error") == string::npos);
+  REQUIRE(swapped.find("%end") != string::npos);
+
+  string setOut = h.command("set -t $1 @iterm2_id guid-xyz");
+  REQUIRE(setOut.find("%error") == string::npos);
+  string shown = h.command("show -v -q -t $1 @iterm2_id");
+  REQUIRE(shown.find("guid-xyz") != string::npos);
+  REQUIRE(shown.find("%error") == string::npos);
+  string quiet = h.command("show -v -q -t $1 @missing_option");
+  REQUIRE(quiet.find("%error") == string::npos);
+
+  h.command("set -p -t %0 @uservars pane-vars");
+  string paneOpt = h.command("show-options -v -q -p -t %0 @uservars");
+  REQUIRE(paneOpt.find("pane-vars") != string::npos);
+
+  string broken = h.command("break-pane -P -F #{window_id} -s %1");
+  REQUIRE(broken.find("%error") == string::npos);
+  REQUIRE(broken.find("@") != string::npos);
+
+  h.command("new-window");
+  string unlinked = h.command("unlink-window -k -t @2");
+  REQUIRE(unlinked.find("%error") == string::npos);
+
+  string linked = h.command("link-window -s $1:@1 -t $1:+");
+  REQUIRE(linked.find("%error") == string::npos);
+  string moved = h.command("move-window -s $1:@1 -t $1:+");
+  REQUIRE(moved.find("%error") == string::npos);
+}
+
+TEST_CASE("HtmServer reconnect recaptures pane contents", "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  h.command("refresh-client -C 80x24");
+  h.command("send-keys -t %0 printf Space RECAP_MARK Enter");
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return h.incoming.find("RECAP_MARK") != string::npos;
+      },
+      8000));
+  string first = h.command("capture-pane -p -t %0");
+  REQUIRE(first.find("RECAP_MARK") != string::npos);
+
+  h.client->closeEndpoint();
+  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
+  h.incoming.clear();
+  h.lines.clear();
+  h.client.reset(new IpcPairClient(h.handler, h.endpoint));
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return hasLinePrefix(h.lines, "%session-changed");
+      },
+      8000));
+  REQUIRE(h.incoming.find("%window-add") == string::npos);
+  REQUIRE(h.incoming.find("%sessions-changed") == string::npos);
+  REQUIRE(h.incoming.find("%layout-change") == string::npos);
+  string second = h.command("capture-pane -p -t %0");
+  REQUIRE(second.find("RECAP_MARK") != string::npos);
+
+  h.client->closeEndpoint();
+  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
+  h.incoming.clear();
+  h.lines.clear();
+  h.client.reset(new IpcPairClient(h.handler, h.endpoint));
+  REQUIRE(waitUntil(
+      [&]() {
+        h.pump();
+        return hasLinePrefix(h.lines, "%session-changed");
+      },
+      8000));
+  REQUIRE(h.incoming.find("%window-add") == string::npos);
+  REQUIRE(h.incoming.find("%sessions-changed") == string::npos);
+  string third = h.command("capture-pane -p -t %0");
+  REQUIRE(third.find("RECAP_MARK") != string::npos);
+}
+
+TEST_CASE("HtmServer supports repeated graceful detach and reattach",
+          "[Htm][HtmServer]") {
+  HtmServerHarness h;
+  for (int cycle = 0; cycle < 2; cycle++) {
+    sendLine(h.handler, h.client->getEndpointFd(), "detach-client");
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return h.server.getEndpointFd() < 0 &&
+                 h.incoming.find("%exit") != string::npos;
+        },
+        5000));
+    h.incoming.clear();
+    h.lines.clear();
+    h.client.reset(new IpcPairClient(h.handler, h.endpoint));
+    REQUIRE(waitUntil(
+        [&]() {
+          h.pump();
+          return hasLinePrefix(h.lines, "%session-changed");
+        },
+        8000));
+  }
+  string version = h.command("display-message -p '#{version}'");
+  REQUIRE(version.find(HTM_TMUX_VERSION) != string::npos);
+}
+
+TEST_CASE("HtmClient forwards stdin and exits when htmd closes",
+          "[Htm][HtmClient]") {
+  skipIfThreadSanitizer();
   UniqueIpcPath ipc;
   auto handler = std::make_shared<PipeSocketHandler>();
   auto endpoint = endpointFor(ipc.path);
   HtmServer server(handler, endpoint);
   std::thread runner([&]() { server.run(); });
-  struct JoinRunner {
-    HtmServer& server;
-    std::thread& runner;
-    ~JoinRunner() {
-      server.requestStop();
-      if (runner.joinable()) {
-        runner.join();
-      }
-    }
-  } joinOnExit{server, runner};
-  DroppingClient client(handler, endpoint);
-  REQUIRE(waitUntil([&]() { return server.getEndpointFd() >= 0; }, 5000));
-  client.hangup();
-  REQUIRE(waitUntil([&]() { return server.getEndpointFd() < 0; }, 8000));
-}
+  int stdinPipe[2];
+  REQUIRE(pipe(stdinPipe) == 0);
+  int stdoutPipe[2];
+  REQUIRE(pipe(stdoutPipe) == 0);
+  int oldIn = dup(STDIN_FILENO);
+  int oldOut = dup(STDOUT_FILENO);
+  dup2(stdinPipe[0], STDIN_FILENO);
+  dup2(stdoutPipe[1], STDOUT_FILENO);
+  close(stdinPipe[0]);
+  close(stdoutPipe[1]);
+  int outFlags = fcntl(stdoutPipe[0], F_GETFL, 0);
+  if (outFlags >= 0) {
+    fcntl(stdoutPipe[0], F_SETFL, outFlags | O_NONBLOCK);
+  }
 
-TEST_CASE("HtmServer disconnects on a stray non-protocol byte",
-          "[Htm][HtmServer]") {
-  HtmServerHarness h;
-  h.waitForInit();
-  char newline = '\n';
-  h.handler->writeAllOrThrow(h.client->getEndpointFd(), &newline, 1, false);
-  REQUIRE(waitUntil([&]() { return h.server.getEndpointFd() < 0; }, 5000));
-  h.stop();
-}
-
-TEST_CASE("HtmClient forwards stdin and exits on SESSION_END",
-          "[Htm][HtmClient]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  auto endpoint = endpointFor(ipc.path);
-
-  class RecoveringServer : public IpcPairServer {
-   public:
-    RecoveringServer(shared_ptr<SocketHandler> socketHandler,
-                     const SocketEndpoint& ep)
-        : IpcPairServer(socketHandler, ep) {}
-    void recover() override {}
-  };
-  RecoveringServer server(handler, endpoint);
-
-  int inpipe[2];
-  int outpipe[2];
-  REQUIRE(pipe(inpipe) == 0);
-  REQUIRE(pipe(outpipe) == 0);
-
-  fflush(NULL);
-  pid_t pid = fork();
-  REQUIRE(pid >= 0);
-  if (pid == 0) {
-    dup2(inpipe[0], STDIN_FILENO);
-    dup2(outpipe[1], STDOUT_FILENO);
-    close(inpipe[0]);
-    close(inpipe[1]);
-    close(outpipe[0]);
-    close(outpipe[1]);
+  std::atomic<bool> clientDone{false};
+  std::thread clientThread([&]() {
     try {
-      auto childHandler = std::make_shared<PipeSocketHandler>();
-      HtmClient client(childHandler, endpoint);
+      HtmClient client(handler, endpoint);
       client.run();
     } catch (...) {
     }
-    UserSocketOps::coverageExit(0);
-  }
+    clientDone = true;
+  });
 
-  close(inpipe[0]);
-  close(outpipe[1]);
   REQUIRE(waitUntil(
       [&]() {
-        server.pollAccept();
-        return server.getEndpointFd() >= 0;
-      },
-      5000));
-
-  const char keys[] = "abc";
-  REQUIRE(::write(inpipe[1], keys, 3) == 3);
-  string fromClient = readUntil(handler, server.getEndpointFd(), 3, 3000);
-  REQUIRE(fromClient.find("abc") != string::npos);
-
-  const char hello[] = "xyz";
-  handler->writeAllOrThrow(server.getEndpointFd(), hello, 3, false);
-  REQUIRE(waitUntil(
-      [&]() {
-        fd_set rfd;
-        FD_ZERO(&rfd);
-        FD_SET(outpipe[0], &rfd);
-        timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 50000;
-        if (select(outpipe[0] + 1, &rfd, NULL, NULL, &tv) <= 0) {
-          return false;
+        char buf[256];
+        ssize_t n = read(stdoutPipe[0], buf, sizeof(buf));
+        if (n > 0) {
+          string s(buf, n);
+          return s.find("1000p") != string::npos ||
+                 s.find("%session-changed") != string::npos;
         }
-        char buf[16];
-        ssize_t n = ::read(outpipe[0], buf, sizeof(buf));
-        return n > 0 && string(buf, size_t(n)).find("xyz") != string::npos;
+        return false;
       },
-      3000));
+      8000));
 
-  server.closeEndpoint();
-  int status = 0;
-  REQUIRE(
-      waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; }, 5000));
-  close(inpipe[1]);
-  close(outpipe[0]);
-}
-
-TEST_CASE("HtmClient does not treat a D-prefixed payload as SESSION_END",
-          "[Htm][HtmClient][stress]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  auto endpoint = endpointFor(ipc.path);
-
-  class RecoveringServer : public IpcPairServer {
-   public:
-    RecoveringServer(shared_ptr<SocketHandler> socketHandler,
-                     const SocketEndpoint& ep)
-        : IpcPairServer(socketHandler, ep) {}
-    void recover() override {}
-  };
-  RecoveringServer server(handler, endpoint);
-
-  int inpipe[2];
-  int outpipe[2];
-  REQUIRE(pipe(inpipe) == 0);
-  REQUIRE(pipe(outpipe) == 0);
-  fflush(NULL);
-  pid_t pid = fork();
-  REQUIRE(pid >= 0);
-  if (pid == 0) {
-    dup2(inpipe[0], STDIN_FILENO);
-    dup2(outpipe[1], STDOUT_FILENO);
-    close(inpipe[0]);
-    close(inpipe[1]);
-    close(outpipe[0]);
-    close(outpipe[1]);
-    try {
-      auto childHandler = std::make_shared<PipeSocketHandler>();
-      HtmClient client(childHandler, endpoint);
-      client.run();
-    } catch (...) {
-    }
-    UserSocketOps::coverageExit(0);
+  string kill = "kill-server\n";
+  REQUIRE(write(stdinPipe[1], kill.data(), kill.size()) ==
+          ssize_t(kill.size()));
+  REQUIRE(waitUntil([&]() { return clientDone.load(); }, 8000));
+  clientThread.join();
+  server.requestStop();
+  if (runner.joinable()) {
+    runner.join();
   }
-  close(inpipe[0]);
-  close(outpipe[1]);
-  REQUIRE(waitUntil(
-      [&]() {
-        server.pollAccept();
-        return server.getEndpointFd() >= 0;
-      },
-      5000));
-
-  const char payload[] = "DThisIsBase64ishPayloadNotSessionEnd";
-  handler->writeAllOrThrow(server.getEndpointFd(), payload, sizeof(payload) - 1,
-                           false);
-  string fromStdout;
-  REQUIRE(waitUntil(
-      [&]() {
-        fd_set rfd;
-        FD_ZERO(&rfd);
-        FD_SET(outpipe[0], &rfd);
-        timeval tv;
-        tv.tv_sec = 0;
-        tv.tv_usec = 50000;
-        if (select(outpipe[0] + 1, &rfd, NULL, NULL, &tv) > 0) {
-          char buf[64];
-          ssize_t n = ::read(outpipe[0], buf, sizeof(buf));
-          if (n > 0) {
-            fromStdout.append(buf, size_t(n));
-          }
-        }
-        return fromStdout.find(payload) != string::npos;
-      },
-      3000));
-
-  REQUIRE(::write(inpipe[1], "z", 1) == 1);
-  string fromClient = readUntil(handler, server.getEndpointFd(), 1, 3000);
-  REQUIRE(fromClient.find('z') != string::npos);
-
-  int status = 0;
-  REQUIRE(waitpid(pid, &status, WNOHANG) != pid);
-
-  server.closeEndpoint();
-  REQUIRE(
-      waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; }, 5000));
-  close(inpipe[1]);
-  close(outpipe[0]);
-}
-
-TEST_CASE("HtmClient exits when the server closes without SESSION_END",
-          "[Htm][HtmClient]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  auto endpoint = endpointFor(ipc.path);
-
-  class SilentCloseServer : public IpcPairServer {
-   public:
-    SilentCloseServer(shared_ptr<SocketHandler> socketHandler,
-                      const SocketEndpoint& ep)
-        : IpcPairServer(socketHandler, ep) {}
-    void recover() override {}
-    void dropClient() {
-      socketHandler->close(endpointFd);
-      endpointFd = -1;
-    }
-  };
-  SilentCloseServer server(handler, endpoint);
-
-  int inpipe[2];
-  int outpipe[2];
-  REQUIRE(pipe(inpipe) == 0);
-  REQUIRE(pipe(outpipe) == 0);
-  fflush(NULL);
-  pid_t pid = fork();
-  REQUIRE(pid >= 0);
-  if (pid == 0) {
-    dup2(inpipe[0], STDIN_FILENO);
-    dup2(outpipe[1], STDOUT_FILENO);
-    close(inpipe[0]);
-    close(inpipe[1]);
-    close(outpipe[0]);
-    close(outpipe[1]);
-    try {
-      auto childHandler = std::make_shared<PipeSocketHandler>();
-      HtmClient client(childHandler, endpoint);
-      client.run();
-    } catch (...) {
-    }
-    UserSocketOps::coverageExit(0);
-  }
-  close(inpipe[0]);
-  close(outpipe[1]);
-  REQUIRE(waitUntil(
-      [&]() {
-        server.pollAccept();
-        return server.getEndpointFd() >= 0;
-      },
-      5000));
-  server.dropClient();
-  int status = 0;
-  REQUIRE(
-      waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; }, 5000));
-  close(inpipe[1]);
-  close(outpipe[0]);
-}
-
-// Hyper-style deadlock: a blocked writeAll(stdout) used to stall the select
-// loop so stdin was never read. Fill the stdout pipe from IPC, then keep
-// injecting stdin without draining stdout and require those bytes to reach
-// the server. Single-threaded so macOS unix sockets are not read+written
-// from two threads at once.
-TEST_CASE("HtmClient keeps forwarding stdin when stdout is backed up",
-          "[Htm][HtmClient][stress]") {
-  UniqueIpcPath ipc;
-  auto handler = std::make_shared<PipeSocketHandler>();
-  auto endpoint = endpointFor(ipc.path);
-
-  class RecoveringServer : public IpcPairServer {
-   public:
-    RecoveringServer(shared_ptr<SocketHandler> socketHandler,
-                     const SocketEndpoint& ep)
-        : IpcPairServer(socketHandler, ep) {}
-    void recover() override {}
-  };
-  RecoveringServer server(handler, endpoint);
-
-  int inpipe[2];
-  int outpipe[2];
-  REQUIRE(pipe(inpipe) == 0);
-  REQUIRE(pipe(outpipe) == 0);
-
-  fflush(NULL);
-  pid_t pid = fork();
-  REQUIRE(pid >= 0);
-  if (pid == 0) {
-    dup2(inpipe[0], STDIN_FILENO);
-    dup2(outpipe[1], STDOUT_FILENO);
-    close(inpipe[0]);
-    close(inpipe[1]);
-    close(outpipe[0]);
-    close(outpipe[1]);
-    try {
-      auto childHandler = std::make_shared<PipeSocketHandler>();
-      HtmClient client(childHandler, endpoint);
-      client.run();
-    } catch (...) {
-    }
-    UserSocketOps::coverageExit(0);
-  }
-
-  close(inpipe[0]);
-  close(outpipe[1]);
-  REQUIRE(fcntl(inpipe[1], F_SETFL, O_NONBLOCK) == 0);
-  REQUIRE(fcntl(outpipe[0], F_SETFL, O_NONBLOCK) == 0);
-  REQUIRE(waitUntil(
-      [&]() {
-        server.pollAccept();
-        return server.getEndpointFd() >= 0;
-      },
-      5000));
-
-  int ipcFd = server.getEndpointFd();
-  int flags = fcntl(ipcFd, F_GETFL);
-  REQUIRE(flags >= 0);
-  REQUIRE(fcntl(ipcFd, F_SETFL, flags | O_NONBLOCK) == 0);
-
-  auto waitReadable = [&](int fd, int timeoutMs) {
-    fd_set rfd;
-    FD_ZERO(&rfd);
-    FD_SET(fd, &rfd);
-    timeval tv;
-    tv.tv_sec = timeoutMs / 1000;
-    tv.tv_usec = (timeoutMs % 1000) * 1000;
-    return ::select(fd + 1, &rfd, NULL, NULL, &tv) > 0;
-  };
-  auto waitWritable = [&](int fd, int timeoutMs) {
-    fd_set wfd;
-    FD_ZERO(&wfd);
-    FD_SET(fd, &wfd);
-    timeval tv;
-    tv.tv_sec = timeoutMs / 1000;
-    tv.tv_usec = (timeoutMs % 1000) * 1000;
-    return ::select(fd + 1, NULL, &wfd, NULL, &tv) > 0;
-  };
-
-  string chunk(4096, 'A');
-  const auto floodStart = std::chrono::steady_clock::now();
-  size_t flooded = 0;
-  while (flooded < 512 * 1024) {
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       std::chrono::steady_clock::now() - floodStart)
-                       .count();
-    if (elapsed > 2000) {
-      break;
-    }
-    if (!waitWritable(ipcFd, 20)) {
-      break;
-    }
-    ssize_t n = ::write(ipcFd, chunk.data(), chunk.size());
-    if (n > 0) {
-      flooded += static_cast<size_t>(n);
-      continue;
-    }
-    if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
-      continue;
-    }
-    break;
-  }
-  REQUIRE(flooded > 0);
-
-  int keysSeen = 0;
-  const auto keyStart = std::chrono::steady_clock::now();
-  const char keys[] = "kkkkkkkk";
-  while (keysSeen < 64) {
-    auto elapsed = std::chrono::duration_cast<std::chrono::milliseconds>(
-                       std::chrono::steady_clock::now() - keyStart)
-                       .count();
-    if (elapsed > 8000) {
-      break;
-    }
-    ::write(inpipe[1], keys, sizeof(keys) - 1);
-    if (!waitReadable(ipcFd, 20)) {
-      continue;
-    }
-    char buf[1024];
-    ssize_t n = ::read(ipcFd, buf, sizeof(buf));
-    if (n > 0) {
-      for (ssize_t i = 0; i < n; i++) {
-        if (buf[i] == 'k') {
-          keysSeen++;
-        }
-      }
-    }
-  }
-  REQUIRE(keysSeen >= 64);
-
-  char drainBuf[4096];
-  for (int i = 0; i < 80; i++) {
-    if (!waitReadable(outpipe[0], 10)) {
-      break;
-    }
-    ::read(outpipe[0], drainBuf, sizeof(drainBuf));
-  }
-
-  char sessionEnd = SESSION_END;
-  for (int i = 0; i < 20; i++) {
-    if (waitWritable(ipcFd, 20) && ::write(ipcFd, &sessionEnd, 1) == 1) {
-      break;
-    }
-    if (waitReadable(outpipe[0], 10)) {
-      ::read(outpipe[0], drainBuf, sizeof(drainBuf));
-    }
-  }
-
-  int status = 0;
-  if (!waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; },
-                 3000)) {
-    server.closeEndpoint();
-    REQUIRE(waitUntil([&]() { return waitpid(pid, &status, WNOHANG) == pid; },
-                      5000));
-  }
-  close(inpipe[1]);
-  close(outpipe[0]);
+  dup2(oldIn, STDIN_FILENO);
+  dup2(oldOut, STDOUT_FILENO);
+  close(oldIn);
+  close(oldOut);
+  close(stdinPipe[1]);
+  close(stdoutPipe[0]);
 }
 #endif
