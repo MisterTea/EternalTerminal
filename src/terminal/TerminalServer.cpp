@@ -5,6 +5,7 @@
 
 #include "JumphostPending.hpp"
 #include "TelemetryService.hpp"
+#include "TmuxCcFilter.hpp"
 #include "WriteBuffer.hpp"
 
 #define BUF_SIZE (16 * 1024)
@@ -276,7 +277,8 @@ void TerminalServer::runJumpHost(
           if (packet.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
             et::TerminalBuffer tb =
                 stringToProto<et::TerminalBuffer>(packet.getPayload());
-            if (WriteBuffer::containsInterruptByte(tb.buffer())) {
+            if (WriteBuffer::containsInterruptByte(tb.buffer()) ||
+                tmuxCcContainsInterruptCommand(tb.buffer())) {
               size_t dropped = pending.flushTerminalBuffersIfLarge();
               if (dropped > 0) {
                 LOG(INFO) << "Flushed " << dropped
@@ -489,7 +491,8 @@ void TerminalServer::runTerminal(
               VLOG(2) << "Got bytes from client: " << tb.buffer().length()
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
-              if (WriteBuffer::containsInterruptByte(tb.buffer())) {
+              if (WriteBuffer::containsInterruptByte(tb.buffer()) ||
+                  tmuxCcContainsInterruptCommand(tb.buffer())) {
                 size_t dropped = terminalOutputBuffer.flushIfLarge();
                 if (dropped > 0) {
                   LOG(INFO) << "Flushed " << dropped
