@@ -198,15 +198,18 @@ TEST_CASE("WriteBuffer concatenates the rest of a partly-sent CC line",
   REQUIRE(buffer.filterDroppable() == 0);
   REQUIRE_FALSE(buffer.skippingUntilNewline());
   size_t count = 0;
-  REQUIRE(string(buffer.peekData(&count), count) ==
-          string(WriteBuffer::FLUSH_THRESHOLD, 'y'));
+  const char* data = buffer.peekData(&count);
+  REQUIRE(data != nullptr);
+  REQUIRE(string(data, count) == string(WriteBuffer::FLUSH_THRESHOLD, 'y'));
 
   buffer.enqueue("still-the-same-output-line\n%window-add @4\n");
   REQUIRE(buffer.filterDroppable() == 0);
   REQUIRE_FALSE(buffer.skippingUntilNewline());
-  REQUIRE(string(buffer.peekData(&count), count) ==
-          string(WriteBuffer::FLUSH_THRESHOLD, 'y') +
-              "still-the-same-output-line\n%window-add @4\n");
+  data = buffer.peekData(&count);
+  REQUIRE(data != nullptr);
+  REQUIRE(string(data, count) == string(WriteBuffer::FLUSH_THRESHOLD, 'y') +
+                                     "still-the-same-output-line\n%window-add "
+                                     "@4\n");
 }
 
 TEST_CASE("WriteBuffer promoteControlLines sends notifications before output",
@@ -219,8 +222,12 @@ TEST_CASE("WriteBuffer promoteControlLines sends notifications before output",
   buffer.promoteControlLines();
   REQUIRE(buffer.controlBytesAtFront() == endLine.size() + layout.size());
   size_t count = 0;
-  REQUIRE(string(buffer.peekData(&count), count) == endLine + layout);
+  const char* data = buffer.peekData(&count);
+  REQUIRE(data != nullptr);
+  REQUIRE(string(data, count) == endLine + layout);
   buffer.consume(count);
   REQUIRE(buffer.controlBytesAtFront() == 0);
-  REQUIRE(string(buffer.peekData(&count), count) == output);
+  data = buffer.peekData(&count);
+  REQUIRE(data != nullptr);
+  REQUIRE(string(data, count) == output);
 }

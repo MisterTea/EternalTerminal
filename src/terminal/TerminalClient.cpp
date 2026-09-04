@@ -212,8 +212,13 @@ void TerminalClient::run(const string& command, const bool noexit) {
       maxfd = consoleFd;
       FD_SET(consoleFd, &rfd);
 #ifndef WIN32
-      FD_SET(STDIN_FILENO, &rfd);
-      maxfd = max(maxfd, STDIN_FILENO);
+      // PseudoTerminalConsole writes to stdout and reads keystrokes from
+      // stdin. FakeConsole (tests) uses one pipe for both; selecting the
+      // process stdin there races an always-ready EOF and disables input.
+      if (consoleFd == STDOUT_FILENO) {
+        FD_SET(STDIN_FILENO, &rfd);
+        maxfd = max(maxfd, STDIN_FILENO);
+      }
 #endif
     }
     if (console && consoleOut.hasPendingData()) {
@@ -242,7 +247,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
       if (console && consoleFd >= 0) {
         bool inputReady = FD_ISSET(consoleFd, &rfd);
 #ifndef WIN32
-        inputReady = inputReady || FD_ISSET(STDIN_FILENO, &rfd);
+        if (consoleFd == STDOUT_FILENO) {
+          inputReady = inputReady || FD_ISSET(STDIN_FILENO, &rfd);
+        }
 #endif
         if (inputReady) {
           // Read from stdin and write to our client that will then send it to
@@ -286,7 +293,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
 #else
           if (console) {
             int readFd = consoleFd;
-            if (FD_ISSET(STDIN_FILENO, &rfd)) {
+            if (consoleFd == STDOUT_FILENO && FD_ISSET(STDIN_FILENO, &rfd)) {
               readFd = STDIN_FILENO;
             }
             int rc = ::read(readFd, b, BUF_SIZE);

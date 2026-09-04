@@ -184,7 +184,11 @@ class WriteBuffer {
     if (!result.kept.empty()) {
       pending.push_back(result.kept);
       totalBytes = result.kept.size();
-      controlPrefixBytes = result.kept.size();
+      // Mid-line %output remainder is kept for protocol integrity but is not
+      // a control-notification prefix.
+      if (tmuxCcStartsAtLineBoundary(result.kept)) {
+        controlPrefixBytes = result.kept.size();
+      }
     }
     return result.dropped;
   }
