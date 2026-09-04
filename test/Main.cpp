@@ -44,7 +44,8 @@ int main(int argc, char** argv) {
           << "  python3 test/system_tests/iterm2_htm_e2e.py --htm build/htm "
              "--htmd build/htmd\n"
           << "  python3 test/system_tests/iterm2_htm_stress_e2e.py --htm "
-             "build/htm --htmd build/htmd\n";
+             "build/htm --htmd build/htmd\n"
+          << "  python3 test/system_tests/iterm2_tmux_ctrlc_e2e.py\n";
       return 2;
     } else if (argEqualsIgnoreCase(argv[i], "hyper")) {
       std::cerr << "Hyper e2e lives in the hyper-htm repo. Run: npm run "

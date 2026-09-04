@@ -758,10 +758,8 @@ else(WIN32)
     # iTerm2 GUI e2e is not registered with CTest. Run it explicitly:
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
-    # Real tmux -CC control mode driven by a real iTerm2 GUI, macOS only,
-    # not registered with CTest, requires human judgment. Run it explicitly:
-    #   ET_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR} \
-    #     ${CMAKE_SOURCE_DIR}/test/system_tests/tmux_cc_iterm2_manual_test.sh
+    # Autonomous macOS iTerm2 visual tests for tmux / tmux -CC Ctrl+C:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_tmux_ctrlc_e2e.py
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)
