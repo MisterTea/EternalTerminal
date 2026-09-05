@@ -3,7 +3,9 @@
 #include <cstdint>
 
 #include "TelemetryService.hpp"
+#include "TmuxCcFilter.hpp"
 #include "TunnelUtils.hpp"
+#include "WriteBuffer.hpp"
 
 namespace et {
 
@@ -187,6 +189,8 @@ void TerminalClient::run(const string& command, const bool noexit) {
   // user closing an interactive session -- doing so would tear down a
   // backgrounded client and its port forwards immediately.
   bool consoleInputDisabled = false;
+  string consoleInterruptCarry;
+  WriteBuffer consoleOut;
   while (!connection->isShuttingDown()) {
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
@@ -196,19 +200,34 @@ void TerminalClient::run(const string& command, const bool noexit) {
     }
     // Data structures needed for select() and
     // non-blocking I/O.
-    fd_set rfd;
+    fd_set rfd, wfd;
     timeval tv;
 
     FD_ZERO(&rfd);
+    FD_ZERO(&wfd);
     int maxfd = -1;
     int consoleFd = -1;
     if (console && !consoleInputDisabled) {
       consoleFd = console->getFd();
       maxfd = consoleFd;
       FD_SET(consoleFd, &rfd);
+#ifndef WIN32
+      // PseudoTerminalConsole writes to stdout and reads keystrokes from
+      // stdin. FakeConsole (tests) uses one pipe for both; selecting the
+      // process stdin there races an always-ready EOF and disables input.
+      if (consoleFd == STDOUT_FILENO) {
+        FD_SET(STDIN_FILENO, &rfd);
+        maxfd = max(maxfd, STDIN_FILENO);
+      }
+#endif
+    }
+    if (console && consoleOut.hasPendingData()) {
+      int outFd = console->getFd();
+      FD_SET(outFd, &wfd);
+      maxfd = max(maxfd, outFd);
     }
     int clientFd = connection->getSocketFd();
-    if (clientFd > 0) {
+    if (clientFd > 0 && consoleOut.size() < WriteBuffer::FLUSH_THRESHOLD) {
       FD_SET(clientFd, &rfd);
       maxfd = max(maxfd, clientFd);
     }
@@ -221,12 +240,18 @@ void TerminalClient::run(const string& command, const bool noexit) {
     }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
-    select(maxfd + 1, &rfd, NULL, NULL, &tv);
+    select(maxfd + 1, &rfd, &wfd, NULL, &tv);
 
     try {
+      bool skipServerRead = false;
       if (console && consoleFd >= 0) {
-        // Check for data to send.
-        if (FD_ISSET(consoleFd, &rfd)) {
+        bool inputReady = FD_ISSET(consoleFd, &rfd);
+#ifndef WIN32
+        if (consoleFd == STDOUT_FILENO) {
+          inputReady = inputReady || FD_ISSET(STDIN_FILENO, &rfd);
+        }
+#endif
+        if (inputReady) {
           // Read from stdin and write to our client that will then send it to
           // the server.
           VLOG(4) << "Got data from stdin";
@@ -255,11 +280,23 @@ void TerminalClient::run(const string& command, const bool noexit) {
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
               keepaliveTime = time(NULL) + keepaliveDuration;
+              if (WriteBuffer::containsInterruptByte(s) ||
+                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+                skipServerRead = true;
+                consoleOut.filterDroppable();
+                LOG(INFO) << "Interrupt from stdin (" << s.size()
+                          << " bytes), consoleOut=" << consoleOut.size();
+              }
+              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
             }
           }
 #else
           if (console) {
-            int rc = ::read(consoleFd, b, BUF_SIZE);
+            int readFd = consoleFd;
+            if (consoleFd == STDOUT_FILENO && FD_ISSET(STDIN_FILENO, &rfd)) {
+              readFd = STDIN_FILENO;
+            }
+            int rc = ::read(readFd, b, BUF_SIZE);
             int savedErrno = errno;  // Save errno before any logging
             if (rc > 0) {
               // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " "
@@ -271,6 +308,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
               connection->writePacket(Packet(
                   TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
               keepaliveTime = time(NULL) + keepaliveDuration;
+              if (WriteBuffer::containsInterruptByte(s) ||
+                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+                skipServerRead = true;
+                consoleOut.filterDroppable();
+                LOG(INFO) << "Interrupt from stdin (" << s.size()
+                          << " bytes), consoleOut=" << consoleOut.size();
+              }
+              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
             } else if (rc == 0) {
               if (isatty(consoleFd)) {
                 LOG(INFO) << "Console EOF";
@@ -298,15 +343,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
         }
       }
 
-      if (clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
+      if (!skipServerRead && clientFd > 0 && FD_ISSET(clientFd, &rfd)) {
         VLOG(4) << "Clientfd is selected";
-        // Accumulate terminal output across all available packets so we can
-        // write it in a single call.  Writing each packet individually causes
-        // intermediate renders in the client terminal (e.g. a screen-clear
-        // arriving in one write followed by the repaint in the next), which
-        // produces visible flicker.
-        string coalesced;
-        while (connection->hasData()) {
+        // Cap how much we pull from the server so Ctrl+C can be handled
+        // before megabytes of flood are painted. Sequence numbers are
+        // assigned on the server at writePacket, so unread socket data
+        // stays in order.
+        while (connection->hasData() &&
+               consoleOut.size() < WriteBuffer::FLUSH_THRESHOLD) {
           VLOG(4) << "connection has data";
           Packet packet;
           if (!connection->read(&packet)) {
@@ -329,7 +373,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
                 VLOG(3) << "Got terminal buffer";
                 et::TerminalBuffer tb =
                     stringToProto<et::TerminalBuffer>(packet.getPayload());
-                coalesced += tb.buffer();
+                consoleOut.enqueue(tb.buffer());
                 keepaliveTime = time(NULL) + keepaliveDuration;
               }
               break;
@@ -344,8 +388,16 @@ void TerminalClient::run(const string& command, const bool noexit) {
               STFATAL << "Unknown packet type: " << int(packetType);
           }
         }
-        if (console && !coalesced.empty()) {
-          console->write(coalesced);
+      }
+
+      if (console && consoleOut.hasPendingData()) {
+        size_t count = 0;
+        const char* data = consoleOut.peekData(&count);
+        if (data != nullptr && count > 0) {
+          size_t written = console->writeSome(string(data, count));
+          if (written > 0) {
+            consoleOut.consume(written);
+          }
         }
       }
 

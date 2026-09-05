@@ -255,4 +255,17 @@ void PipeSocketHandler::close(int fd) {
   }
 #endif
 }
+
+void PipeSocketHandler::minimizeKernelBuffering(int fd) {
+#ifndef WIN32
+  // Bound the kernel buffer on this unix socket. After a Ctrl+C flush of
+  // the server WriteBuffer, leftover local backlog would otherwise still
+  // drain to the client. 64KB does not limit throughput on a local socket.
+  int sndbuf = 64 * 1024;
+  if (setsockopt(fd, SOL_SOCKET, SO_SNDBUF, (char*)&sndbuf, sizeof(sndbuf)) <
+      0) {
+    LOG(WARNING) << "Failed to set SO_SNDBUF: " << strerror(errno);
+  }
+#endif
+}
 }  // namespace et

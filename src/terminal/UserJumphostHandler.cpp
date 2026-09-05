@@ -50,6 +50,7 @@ void UserJumphostHandler::run() {
     payload = stringToProto<InitialPayload>(initPacket.getPayload());
     break;
   }
+  routerSocketHandler->minimizeKernelBuffering(routerFd);
   // Turn off jumphost
   if (!payload.jumphost()) {
     STFATAL << "Jumphost should be set by the initial client";

@@ -20,6 +20,13 @@ class SocketHandler {
    * descriptor.
    */
   virtual bool hasData(int fd) = 0;
+
+  /**
+   * @brief Shrinks the kernel's outgoing queue on fd so pending terminal
+   * output waits in application-level buffers, where Ctrl+C can drop a
+   * large backlog. Default is a no-op.
+   */
+  virtual void minimizeKernelBuffering(int fd) {}
   /**
    * @brief Reads up to count bytes from fd.
    */

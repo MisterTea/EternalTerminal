@@ -38,6 +38,8 @@ class SocketPairHandler : public SocketHandler {
 #ifdef WIN32
     return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
                   0);
+#elif defined(MSG_NOSIGNAL)
+    return ::send(fd, buf, count, MSG_NOSIGNAL);
 #else
     return ::write(fd, buf, count);
 #endif

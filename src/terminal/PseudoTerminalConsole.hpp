@@ -57,6 +57,14 @@ class PseudoTerminalConsole : public Console {
     memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
     cfmakeraw(&terminal_local);
     tcsetattr(0, TCSANOW, &terminal_local);
+    int inFlags = fcntl(STDIN_FILENO, F_GETFL, 0);
+    if (inFlags >= 0) {
+      fcntl(STDIN_FILENO, F_SETFL, inFlags | O_NONBLOCK);
+    }
+    int outFlags = fcntl(STDOUT_FILENO, F_GETFL, 0);
+    if (outFlags >= 0) {
+      fcntl(STDOUT_FILENO, F_SETFL, outFlags | O_NONBLOCK);
+    }
 #endif
   }
 

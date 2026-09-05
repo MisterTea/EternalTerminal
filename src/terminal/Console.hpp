@@ -40,6 +40,30 @@ class Console {
     RawSocketUtils::writeAll(getFd(), &s[0], s.length());
 #endif
   }
+
+  /**
+   * @brief Write as many bytes as the console will accept without blocking.
+   * @return Bytes written. 0 means try again when the fd is writable.
+   */
+  virtual size_t writeSome(const string& s) {
+    if (s.empty()) {
+      return 0;
+    }
+#ifdef WIN32
+    write(s);
+    return s.size();
+#else
+    ssize_t rc = ::write(getFd(), s.data(), s.size());
+    if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        return 0;
+      }
+      throw std::runtime_error(string("console write failed: ") +
+                               strerror(errno));
+    }
+    return static_cast<size_t>(rc);
+#endif
+  }
 };
 }  // namespace et
 

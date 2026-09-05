@@ -5,6 +5,7 @@
 #include <iostream>
 
 #ifndef WIN32
+#include <signal.h>
 #include <unistd.h>
 #endif
 
@@ -43,7 +44,8 @@ int main(int argc, char** argv) {
           << "  python3 test/system_tests/iterm2_htm_e2e.py --htm build/htm "
              "--htmd build/htmd\n"
           << "  python3 test/system_tests/iterm2_htm_stress_e2e.py --htm "
-             "build/htm --htmd build/htmd\n";
+             "build/htm --htmd build/htmd\n"
+          << "  python3 test/system_tests/iterm2_tmux_ctrlc_e2e.py\n";
       return 2;
     } else if (argEqualsIgnoreCase(argv[i], "hyper")) {
       std::cerr << "Hyper e2e lives in the hyper-htm repo. Run: npm run "
@@ -67,6 +69,12 @@ int main(int argc, char** argv) {
   // el::Loggers::setVerboseLevel(9);
 
   et::HandleTerminate();
+#ifndef WIN32
+  // Match UnixSocketHandler::initSocket(). Tests that drive socketpairs with
+  // raw ::write() never call initSocket, and a peer closing during recover
+  // would otherwise kill the process with SIGPIPE (debian Portability CI).
+  ::signal(SIGPIPE, SIG_IGN);
+#endif
 
   string logDirectory;
 #ifdef WIN32

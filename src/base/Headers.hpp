@@ -426,8 +426,10 @@ inline bool isSocketWritable(int fd) {
   tv.tv_usec = 0;
   const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
   if (selectResult < 0) {
-    if (errno == EINTR) {
-      // Interrupted by the signal, the caller will retry.
+    if (errno == EINTR || errno == EBADF || errno == EINVAL) {
+      // EINTR: interrupted by a signal. EBADF/EINVAL: the fd was closed
+      // under us (e.g. client disconnected). Returning false is safe:
+      // callers use this as a non-blocking "can I write more?" poll.
       return false;
     } else {
       FATAL_FAIL(selectResult);

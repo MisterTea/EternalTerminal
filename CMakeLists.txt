@@ -453,6 +453,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/WriteBuffer.hpp
+  src/base/TmuxCcFilter.hpp
 
   ${ET_HDRS}
   ${ET_SRCS}
@@ -470,6 +472,7 @@ add_library(
   src/terminal/forwarding/ForwardDestinationHandler.cpp
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+  src/terminal/JumphostPending.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
@@ -755,6 +758,8 @@ else(WIN32)
     # iTerm2 GUI e2e is not registered with CTest. Run it explicitly:
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
     #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
+    # Autonomous macOS iTerm2 visual tests for tmux / tmux -CC Ctrl+C:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_tmux_ctrlc_e2e.py
     add_sanitizers(et-test)
     if(TARGET test)
       add_dependencies(test et-test)

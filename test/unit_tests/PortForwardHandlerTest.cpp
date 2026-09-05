@@ -120,6 +120,7 @@ class FakePortForwardSocketHandler : public SocketHandler {
 class FakeConnection : public Connection {
  public:
   FakeConnection() : Connection(nullptr, "", "") {}
+  ~FakeConnection() override { shutdown(); }
 
   void writePacket(const Packet& packet) override {
     sentPackets.push_back(packet);
