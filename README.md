@@ -227,6 +227,10 @@ et dev (etserver running on port 2022 on both hostname and jumphost)
 et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 ```
 
+### Third-party mobile client
+
+[Mobile SSH](https://mobile-ssh.github.io/) is a third-party Android and iOS SSH client with optional Eternal Terminal transport. Beta builds are available through a [Google Play closed test](https://play.google.com/apps/testing/io.github.mobile_ssh) and [TestFlight](https://testflight.apple.com/join/Ku4JtTEg).
+
 ## Building from Source
 
 ### macOS
