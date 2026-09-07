@@ -211,9 +211,23 @@ TEST_CASE("UserTerminalRouter replaces dead registrations only",
   // The router closed the rejected duplicate's fd.
   socketHandler->close(fdDup);
 
+  int fdSameKey = registerFakeTerminal(socketHandler, router, routerEndpoint,
+                                       "term", "owner-key", true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE(router.terminalFd("term") == supersededRouterFd);
+  socketHandler->close(fdSameKey);
+
   // Once the owner's pipe dies, the same id can register again (this is the
   // re-attach path after the connection dropped without the session ending).
   socketHandler->close(fdOwner);
+  // A dead pipe does not authorize another caller to replace its credentials.
+  int fdWrongKey =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           "attacker-key", true, &accepted);
+  CHECK(accepted.id.empty());
+  CHECK(router.terminalFd("term") == supersededRouterFd);
+  CHECK(socketHandler->closeCount(supersededRouterFd) == 0);
+  socketHandler->close(fdWrongKey);
   int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,
                                    "term", "owner-key", true, &accepted);
   REQUIRE(accepted.id == "term");

@@ -6,6 +6,9 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 
+#include <chrono>
+#include <thread>
+
 #if __APPLE__
 #include <sys/ucred.h>
 #include <util.h>
@@ -28,10 +31,13 @@ namespace et {
  */
 class PseudoUserTerminal : public UserTerminal {
  public:
+  PseudoUserTerminal()
+      : pid(-1), processGroupId(-1), masterFd(-1), childReaped(false) {}
+
   virtual ~PseudoUserTerminal() {}
 
   virtual int setup(int routerFd) {
-    pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+    pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
@@ -44,6 +50,11 @@ class PseudoUserTerminal : public UserTerminal {
       }
       default: {
         // parent
+        // forkpty creates a session/process group led by the child shell.
+        // Keep the original identity so later termination never targets a
+        // group inferred from a potentially reused PID.
+        processGroupId = pid;
+        childReaped = false;
       }
     }
 
@@ -109,29 +120,94 @@ class PseudoUserTerminal : public UserTerminal {
 
   /** @brief Waits for the child shell to exit before returning. */
   virtual void handleSessionEnd() {
+    if (getPid() <= 0 || childReaped) {
+      return;
+    }
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
                 // least -CURRENT) sadness for now :/
     int throwaway;
-    FATAL_FAIL(waitpid(getPid(), &throwaway, WUNTRACED));
+    pid_t waitResult;
+    do {
+      waitResult = waitpid(getPid(), &throwaway, 0);
+    } while (waitResult == -1 && errno == EINTR);
+    if (waitResult == getPid()) {
+      childReaped = true;
+    } else if (waitResult == -1 && errno == ECHILD) {
+      childReaped = true;
+      LOG(ERROR) << "waitpid failed, child already reaped.";
+    } else if (waitResult == -1) {
+      LOG(ERROR) << "waitpid failed: " << strerror(errno);
+    }
 #else
     siginfo_t childInfo;
-    if (getPid() > 0) {
-      if (waitid(P_PID, getPid(), &childInfo, WEXITED) == -1) {
+    int waitResult;
+    do {
+      waitResult = waitid(P_PID, getPid(), &childInfo, WEXITED);
+    } while (waitResult == -1 && errno == EINTR);
+    if (waitResult == -1) {
+      const int waitErrno = errno;
+      if (waitErrno == ECHILD || waitErrno == ESRCH) {
+        childReaped = true;
         LOG(ERROR) << "waitid failed, child already reaped.";
+      } else {
+        LOG(ERROR) << "waitid failed: " << strerror(waitErrno);
       }
+    } else {
+      childReaped = true;
     }
 #endif
   }
 
   virtual void terminate() {
-    if (getPid() <= 0) {
+    const pid_t childPid = getPid();
+    const pid_t ownedProcessGroup = processGroupId;
+    if (childPid <= 0 || childReaped || ownedProcessGroup != childPid) {
       return;
     }
-    // forkpty creates a session/process group led by the shell. Signal the
-    // group so background descendants do not keep the session alive.
-    if (::kill(-getPid(), SIGHUP) == -1 && errno != ESRCH) {
+
+    // Check the still-unreaped child before signaling.  That prevents a
+    // stale terminal object from signaling a later process or process group
+    // that reused the old identifiers.
+    if (!childIsRunning(childPid) ||
+        !ownsProcessGroup(childPid, ownedProcessGroup)) {
+      return;
+    }
+
+    // Give the shell and its descendants a chance to exit cleanly first.
+    // Signal the group so background descendants do not keep the session
+    // alive.
+    const int hupResult = ::kill(-ownedProcessGroup, SIGHUP);
+    const int hupErrno = errno;
+    if (hupResult == -1 && hupErrno == ESRCH) {
+      return;
+    }
+    if (hupResult == -1) {
       LOG(ERROR) << "Could not terminate terminal process group: "
-                 << strerror(errno);
+                 << strerror(hupErrno);
+    }
+
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (std::chrono::steady_clock::now() < deadline) {
+      if (!childIsRunning(childPid)) {
+        return;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+
+    // Recheck both identities immediately before escalation.  The child is
+    // still an unreaped direct child when this succeeds, so its PID cannot
+    // have been reused; the group check additionally prevents a reused group
+    // id from receiving SIGKILL.
+    if (!childIsRunning(childPid) ||
+        !ownsProcessGroup(childPid, ownedProcessGroup)) {
+      return;
+    }
+    const int killResult = ::kill(-ownedProcessGroup, SIGKILL);
+    const int killErrno = errno;
+    if (killResult == -1 && killErrno != ESRCH) {
+      LOG(ERROR) << "Could not force terminate terminal process group: "
+                 << strerror(killErrno);
     }
   }
 
@@ -147,10 +223,64 @@ class PseudoUserTerminal : public UserTerminal {
   virtual int getFd() { return masterFd; }
 
  protected:
+  bool childIsRunning(pid_t childPid) {
+    if (childPid <= 0 || childReaped) {
+      return false;
+    }
+#if __NetBSD__
+    int status = 0;
+    pid_t waitResult;
+    do {
+      waitResult = waitpid(childPid, &status, WNOHANG);
+    } while (waitResult == -1 && errno == EINTR);
+    if (waitResult == childPid ||
+        (waitResult == -1 && (errno == ECHILD || errno == ESRCH))) {
+      childReaped = true;
+      return false;
+    }
+    return waitResult == 0;
+#else
+    siginfo_t childInfo{};
+    int waitResult;
+    do {
+      waitResult =
+          waitid(P_PID, childPid, &childInfo, WEXITED | WNOHANG | WNOWAIT);
+    } while (waitResult == -1 && errno == EINTR);
+    if (waitResult == -1) {
+      const int waitErrno = errno;
+      if (waitErrno == ECHILD || waitErrno == ESRCH) {
+        childReaped = true;
+      }
+      return false;
+    }
+    return childInfo.si_pid == 0;
+#endif
+  }
+
+  bool ownsProcessGroup(pid_t childPid, pid_t ownedProcessGroup) {
+    if (ownedProcessGroup <= 0 || childPid != ownedProcessGroup) {
+      return false;
+    }
+    const pid_t currentProcessGroup = ::getpgid(childPid);
+    if (currentProcessGroup == ownedProcessGroup) {
+      return true;
+    }
+    const int groupErrno = errno;
+    if (currentProcessGroup == -1 && groupErrno != ESRCH) {
+      LOG(ERROR) << "Could not verify terminal process group: "
+                 << strerror(groupErrno);
+    }
+    return false;
+  }
+
   /** @brief PID of the child shell spawned by `forkpty`. */
   pid_t pid;
+  /** @brief Process group ID captured when the child was forked. */
+  pid_t processGroupId;
   /** @brief Master PTY file descriptor shared with the router. */
   int masterFd;
+  /** @brief Whether the child has already been reaped. */
+  bool childReaped;
 };
 }  // namespace et
 

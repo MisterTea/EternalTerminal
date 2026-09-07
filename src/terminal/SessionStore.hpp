@@ -48,9 +48,11 @@ string sessionDirPath();
 /**
  * @brief Persists a session atomically. The session directory and file are
  * created with owner-only permissions because the file contains a passkey.
+ * @param replaceExisting Replace an existing record. When false, fail if a
+ * record with the same name already exists.
  * @throws std::runtime_error if the name is invalid or writing fails.
  */
-void saveSession(const SessionInfo& info);
+void saveSession(const SessionInfo& info, bool replaceExisting = true);
 
 /**
  * @brief Lists all valid saved sessions, sorted by name. Corrupt entries are
@@ -80,6 +82,7 @@ string formatLastSeen(int64_t lastSeenAt, int64_t now);
 
 /**
  * @brief Removes a saved session file if present.
+ * Throws on unsafe storage or deletion failure; an absent file is a no-op.
  */
 void deleteSession(const string& name);
 

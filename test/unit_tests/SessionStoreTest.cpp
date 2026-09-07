@@ -151,6 +151,10 @@ TEST_CASE("SessionStore loads version 1 files without a title",
   const string home = env.setHomeDir(env.createTempDir());
   const string dir = home + "/.et/sessions";
   REQUIRE(std::filesystem::create_directories(dir));
+#ifndef WIN32
+  REQUIRE(::chmod((home + "/.et").c_str(), 0700) == 0);
+  REQUIRE(::chmod(dir.c_str(), 0700) == 0);
+#endif
 
   FILE* f = fopen((dir + "/legacy").c_str(), "w");
   REQUIRE(f != nullptr);
@@ -158,6 +162,9 @@ TEST_CASE("SessionStore loads version 1 files without a title",
           "version=1\nname=legacy\nhost=nas\nport=2022\nid=old-id\n"
           "passkey=kkkkkkkkkkkkkkkkkkkkkkkkkkkkkkkk\nsavedat=1755645600\n");
   fclose(f);
+#ifndef WIN32
+  REQUIRE(::chmod((dir + "/legacy").c_str(), 0600) == 0);
+#endif
 
   const optional<SessionInfo> loaded = loadSession("legacy");
   REQUIRE(loaded.has_value());
@@ -267,6 +274,54 @@ TEST_CASE("SessionStore delete removes file", "[SessionStore]") {
   deleteSession("alpha");
 }
 
+TEST_CASE("SessionStore reports deletion failures without exposing credentials",
+          "[SessionStore]") {
+  TestEnvironment env;
+  const string home = env.setHomeDir(env.createTempDir());
+  const string directory = home + "/.et/sessions";
+  const string path = directory + "/alpha";
+  const SessionInfo info = makeInfo("alpha");
+  saveSession(info);
+
+  SECTION("unsafe parent is not reported as a successful deletion") {
+    REQUIRE(::chmod(directory.c_str(), 0750) == 0);
+    bool failed = false;
+    try {
+      deleteSession("alpha");
+    } catch (const std::exception& error) {
+      failed = true;
+      CHECK(string(error.what()).find(info.passkey) == string::npos);
+    }
+    REQUIRE(::chmod(directory.c_str(), 0700) == 0);
+    REQUIRE(failed);
+    REQUIRE(loadSession("alpha").has_value());
+  }
+
+  SECTION("unlink permission errors reach the caller") {
+    if (getuid() == 0) {
+      return;  // Root can unlink despite directory permissions.
+    }
+    REQUIRE(::chmod(directory.c_str(), 0500) == 0);
+    bool failed = false;
+    try {
+      deleteSession("alpha");
+    } catch (const std::exception& error) {
+      failed = true;
+      CHECK(string(error.what()).find(info.passkey) == string::npos);
+    }
+    REQUIRE(::chmod(directory.c_str(), 0700) == 0);
+    REQUIRE(failed);
+    REQUIRE(loadSession("alpha").has_value());
+  }
+
+  SECTION("unsafe records are retained with an explicit failure") {
+    REQUIRE(::chmod(path.c_str(), 0640) == 0);
+    REQUIRE_THROWS(deleteSession("alpha"));
+    struct stat fileStat;
+    REQUIRE(::lstat(path.c_str(), &fileStat) == 0);
+  }
+}
+
 TEST_CASE("SessionStore list is sorted and skips corrupt entries",
           "[SessionStore]") {
   TestEnvironment env;
@@ -330,8 +385,73 @@ TEST_CASE("SessionStore save over existing name replaces atomically",
   REQUIRE(sessions.size() == 1);
 }
 
+TEST_CASE("SessionStore can refuse to replace an existing record",
+          "[SessionStore]") {
+  TestEnvironment env;
+  env.setHomeDir(env.createTempDir());
+
+  saveSession(makeInfo("alpha", "old-host", 2022, "old-id", "old-passkey"));
+  REQUIRE_THROWS(saveSession(
+      makeInfo("alpha", "new-host", 2023, "new-id", "new-passkey"), false));
+
+  const optional<SessionInfo> loaded = loadSession("alpha");
+  REQUIRE(loaded.has_value());
+  REQUIRE(loaded->host == "old-host");
+  REQUIRE(loaded->port == 2022);
+  REQUIRE(loaded->id == "old-id");
+  REQUIRE(loaded->passkey == "old-passkey");
+}
+
 TEST_CASE("SessionStore list on missing directory is empty", "[SessionStore]") {
   TestEnvironment env;
   env.setHomeDir(env.createTempDir());
   REQUIRE(listSessions().empty());
 }
+
+#ifndef WIN32
+TEST_CASE("SessionStore rejects symlinked storage paths", "[SessionStore]") {
+  TestEnvironment env;
+  const string home = env.setHomeDir(env.createTempDir());
+  const string realDir = env.createTempDir();
+  REQUIRE(::symlink(realDir.c_str(), (home + "/.et").c_str()) == 0);
+
+  REQUIRE_FALSE(loadSession("alpha").has_value());
+  REQUIRE(listSessions().empty());
+  REQUIRE_THROWS(saveSession(makeInfo("alpha")));
+}
+
+TEST_CASE("SessionStore rejects unsafe credential permissions",
+          "[SessionStore]") {
+  if (::geteuid() == 0) {
+    WARN("Test running as root: Skipping test");
+    return;
+  }
+  TestEnvironment env;
+  const string home = env.setHomeDir(env.createTempDir());
+  saveSession(makeInfo("alpha"));
+
+  const string path = home + "/.et/sessions/alpha";
+  REQUIRE(::chmod(path.c_str(), 0640) == 0);
+  REQUIRE_FALSE(loadSession("alpha").has_value());
+  REQUIRE_FALSE(touchSession("alpha"));
+  REQUIRE(listSessions().empty());
+}
+
+TEST_CASE("SessionStore rejects hard-linked credential files",
+          "[SessionStore]") {
+  if (::geteuid() == 0) {
+    WARN("Test running as root: Skipping test");
+    return;
+  }
+  TestEnvironment env;
+  const string home = env.setHomeDir(env.createTempDir());
+  saveSession(makeInfo("alpha"));
+
+  const string path = home + "/.et/sessions/alpha";
+  const string linkPath = home + "/.et/sessions/alpha-copy";
+  REQUIRE(::link(path.c_str(), linkPath.c_str()) == 0);
+  REQUIRE_FALSE(loadSession("alpha").has_value());
+  REQUIRE_FALSE(touchSession("alpha"));
+  REQUIRE_THROWS(saveSession(makeInfo("alpha")));
+}
+#endif

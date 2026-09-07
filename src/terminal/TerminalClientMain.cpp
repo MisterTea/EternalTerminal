@@ -96,6 +96,77 @@ void printSessionCandidate(const SessionInfo& session) {
                        << ":" << session.port << ")" << endl;
 }
 
+bool isAsciiAlphaNumeric(char value) {
+  const unsigned char c = static_cast<unsigned char>(value);
+  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+         (c >= '0' && c <= '9');
+}
+
+bool sessionNameIsOccupied(const string& name) {
+  try {
+    const fs::path path = sessionDirPath() + "/" + name;
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(path, ec);
+    // Treat an inspection error as occupied. The eventual save will report
+    // the storage failure instead of replacing an uninspectable entry.
+    if (ec) {
+      return ec.value() != ENOENT;
+    }
+    return status.type() != fs::file_type::not_found;
+  } catch (...) {
+    return true;
+  }
+}
+
+string makeDefaultSessionName(const string& host) {
+  string safeHost;
+  safeHost.reserve(host.size());
+  for (const unsigned char c : host) {
+    if (isAsciiAlphaNumeric(static_cast<char>(c)) || c == '.' || c == '_' ||
+        c == '-') {
+      safeHost.push_back(static_cast<char>(c));
+    } else {
+      safeHost.push_back('-');
+    }
+  }
+  if (safeHost.empty() || !isAsciiAlphaNumeric(safeHost.front())) {
+    safeHost = "session-" + safeHost;
+  }
+
+  char timestamp[32];
+  const time_t now = time(NULL);
+  struct tm localTm;
+#ifdef WIN32
+  localtime_s(&localTm, &now);
+#else
+  localtime_r(&now, &localTm);
+#endif
+  strftime(timestamp, sizeof(timestamp), "%Y%m%d-%H%M%S", &localTm);
+
+  // A short random suffix keeps simultaneous clients distinct while keeping
+  // the host and start time useful to a person reading --list. The name is
+  // generated independently of the client id and passkey.
+  const string base = string("-") + timestamp;
+  string lastCandidate;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    const string randomSuffix =
+        "-" + genRandomAlphaNum(4) +
+        (attempt == 0 ? "" : "-" + to_string(attempt + 1));
+    const size_t maxHostLength = 63 - base.size() - randomSuffix.size();
+    const string hostPart = safeHost.substr(0, maxHostLength);
+    const string candidate = hostPart + base + randomSuffix;
+    lastCandidate = candidate;
+    if (!sessionNameIsOccupied(candidate)) {
+      return candidate;
+    }
+  }
+
+  // If every candidate was occupied or could not be inspected, return the
+  // last one. The no-clobber save below will fail safely and surface the
+  // storage warning without replacing an existing record.
+  return lastCandidate;
+}
+
 optional<SessionInfo> resolveSavedSession(const string& query) {
   const vector<SessionInfo> savedSessions = listSessions();
   for (const auto& candidate : savedSessions) {
@@ -282,9 +353,9 @@ int main(int argc, char** argv) {
 
   // Override easylogging handler for sigint
 
-  // Name of the session being started (empty when unnamed).  The saved file
-  // is deleted when the server ends the session, and kept otherwise so the
-  // session can be reattached later.
+  // Name of the session record (empty when persistence is disabled).  The
+  // saved file is deleted when the server ends the session, and kept
+  // otherwise so the session can be reattached later.
   string sessionName = "";
   // Set after run() returns: true when the server ended the session.
   bool sessionEndedByServer = false;
@@ -384,7 +455,8 @@ int main(int argc, char** argv) {
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
         ("name", "Name this session so it can be reattached later",
-         cxxopts::value<std::string>())  //
+         cxxopts::value<std::string>())                             //
+        ("no-persist", "Do not save credentials for this session")  //
         ("attach", "Reattach by session name or unique title substring",
          cxxopts::value<std::string>())  //
         ("kill", "End a saved session by name or unique title substring",
@@ -415,6 +487,16 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout")
           << "--kill takes a saved session name; it cannot be combined with "
              "--name, --attach, --list, or a host"
+          << endl;
+      exit(1);
+    }
+
+    if (result.count("no-persist") &&
+        (result.count("name") || result.count("attach") ||
+         result.count("kill"))) {
+      CLOG(INFO, "stdout")
+          << "--no-persist cannot be combined with --name, --attach, or "
+             "--kill"
           << endl;
       exit(1);
     }
@@ -661,7 +743,9 @@ int main(int argc, char** argv) {
       }
     }
 
-    // Only explicitly named sessions persist credentials for reattachment.
+    // An explicit name is also an attach-or-create request.  For ordinary
+    // connections without --name, a readable name is generated after the
+    // endpoint is resolved below.
     optional<SessionInfo> namedSession;
     if (result.count("name")) {
       sessionName = result["name"].as<string>();
@@ -669,6 +753,13 @@ int main(int argc, char** argv) {
         CLOG(INFO, "stdout") << "Invalid session name: " << sessionName << endl;
         exit(1);
       }
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+      sessionName.clear();
+#else
       try {
         namedSession = loadSession(sessionName);
       } catch (const std::exception& e) {
@@ -677,6 +768,7 @@ int main(int argc, char** argv) {
             << ". Continuing without saving this session." << endl;
         sessionName.clear();
       }
+#endif
     }
 
     // Parse username: cmdline > sshconfig > localuser
@@ -738,6 +830,51 @@ int main(int argc, char** argv) {
     } else {
       socketEndpoint.set_name(destinationHost);
       socketEndpoint.set_port(destinationPort);
+    }
+
+    bool forwardingRequested =
+        result.count("tunnel") || result.count("reversetunnel");
+#ifndef WIN32
+    forwardingRequested = forwardingRequested || result.count("f") ||
+                          sshConfigOptions.forward_agent ||
+                          !sshConfigOptions.local_forwards.empty();
+#else
+    forwardingRequested = forwardingRequested || result.count("f");
+#endif
+
+    if (is_jumphost) {
+      if (namedSession) {
+        CLOG(INFO, "stdout")
+            << "Session '" << sessionName
+            << "' cannot be reattached through a jumphost because the saved "
+               "record does not contain jumphost metadata; use --attach "
+               "without a jumphost"
+            << endl;
+        exit(1);
+      }
+      if (!result.count("no-persist")) {
+        CLOG(INFO, "stdout")
+            << "Warning: Sessions using a jumphost are not saved because the "
+               "saved record does not contain jumphost metadata"
+            << endl;
+        sessionName.clear();
+      }
+    } else if (!result.count("name") && !result.count("no-persist")) {
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+#else
+      sessionName = makeDefaultSessionName(socketEndpoint.name());
+#endif
+    }
+
+    if (forwardingRequested && !result.count("no-persist")) {
+      CLOG(INFO, "stdout")
+          << "Warning: Saved-session reattach restores the shell but does "
+             "not recreate port or SSH agent forwarding"
+          << endl;
     }
 
     if (namedSession) {
@@ -835,10 +972,43 @@ int main(int argc, char** argv) {
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
+    pair<string, string> idpasskeypair;
+    try {
+      idpasskeypair = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+          etterminal_path, serverFifo, ssh_options);
+    } catch (const runtime_error&) {
+      // SetupSsh deliberately reports a generic message. Keep raw SSH output
+      // and any credential-shaped payload out of the client diagnostics.
+      exit(1);
+    }
+
+    // The remote terminal has been started and returned its credentials.
+    // Save them before constructing the client so a local startup failure
+    // still leaves the remote session recoverable.  Storage is best-effort:
+    // an unavailable store must never take down a working connection.
+    if (!sessionName.empty()) {
+      try {
+        SessionInfo sessionInfo;
+        sessionInfo.name = sessionName;
+        sessionInfo.host = socketEndpoint.name();
+        sessionInfo.port = socketEndpoint.port();
+        sessionInfo.id = idpasskeypair.first;
+        sessionInfo.passkey = idpasskeypair.second;
+        sessionInfo.savedAt = (int64_t)time(NULL);
+        saveSession(sessionInfo, /*replaceExisting=*/false);
+      } catch (const std::exception& se) {
+        LOG(WARNING) << "Could not save session '" << sessionName
+                     << "': " << se.what();
+        CLOG(INFO, "stdout")
+            << "Warning: Could not save session '" << sessionName
+            << "': this connection will not be recoverable "
+               "after the client exits"
+            << endl;
+        sessionName = "";
+      }
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
@@ -852,26 +1022,6 @@ int main(int argc, char** argv) {
           return sessionName.empty() || updateSessionTitle(sessionName, title);
         });
 
-    // The connection is up: persist the session so a rebooted or killed
-    // client can reattach with --attach.
-    // Persist the session for reattach.  A store failure must never kill a
-    // working connection, so this is best-effort.
-    if (!sessionName.empty()) {
-      try {
-        SessionInfo sessionInfo;
-        sessionInfo.name = sessionName;
-        sessionInfo.host = socketEndpoint.name();
-        sessionInfo.port = socketEndpoint.port();
-        sessionInfo.id = idpasskeypair.first;
-        sessionInfo.passkey = idpasskeypair.second;
-        sessionInfo.savedAt = (int64_t)time(NULL);
-        saveSession(sessionInfo);
-      } catch (const std::exception& se) {
-        LOG(WARNING) << "Could not save session '" << sessionName
-                     << "': " << se.what();
-        sessionName = "";
-      }
-    }
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));

@@ -46,6 +46,11 @@ _et() {
         '--telemetry[Allow et to anonymously send errors]'
         '--terminal-path[Path to etterminal on server side]:path:_files'
         '--ssh-option[Options to pass down to `ssh -o`]:option'
+        '--name[Choose a saved session name]:name'
+        '--attach[Reattach by saved name or title]:session'
+        '--kill[End a saved remote session]:session'
+        '--list[List saved sessions]'
+        '--no-persist[Do not save session credentials]'
     )
 
     _arguments -s \

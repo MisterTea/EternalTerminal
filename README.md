@@ -195,25 +195,54 @@ et hostname (etserver running on default port 2022, username is the same as curr
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
 
-### Named sessions
+### Saved sessions
 
-`--name` saves a session so another client can attach later. Sessions without
-`--name` keep their credentials in memory and do not appear in `--list`.
+On macOS and Linux, direct sessions save reattachment credentials by default.
+An ordinary `et hostname` connection gets a generated name. Use `--name`
+to choose a name, or `--no-persist` to keep credentials in memory only.
+After a client crash or reboot, use `--list` and `--attach` to return to a
+surviving remote session.
 
 ```bash
 et --name work hostname
 et --list
 et --attach work
 et --kill work
+et --no-persist hostname
 ```
 
 `--list` reads local records from `~/.et/sessions` and does not contact a
 server. `--attach` accepts an exact name or a unique case-insensitive match in
 the saved name or terminal title. Port forwards, SSH agent forwarding, and
 jumphost options require a fresh connection and cannot be added by `--attach`.
+Direct sessions with forwarding save the shell, but reattachment does not
+recreate the forwards. Jumphost sessions warn and skip persistence because
+the saved record cannot restore their connection path.
 `--kill` uses the same name and title matching rules, ends the remote session,
 and removes its local record. If the server is unreachable, the record is kept
 so the command can be retried.
+
+Saved credentials are plaintext files in `~/.et/sessions`. On macOS and
+Linux, ET creates the directories with mode `0700` and files with mode
+`0600`. These permissions restrict access to the owner. The store does not
+use macOS Keychain or encrypt credentials at rest. Processes running as your
+user and backups can still read them. Use `--no-persist` when you do not want
+credentials written to disk. A storage failure produces a warning and leaves
+the connection running without a saved record.
+
+Client disconnection keeps a saved record. An ended remote session removes
+it once the client learns that it ended. A saved record cannot restore a
+remote shell that has exited, including after the server machine reboots.
+Records have no automatic expiry: an old or disconnected session may still
+contain live work. Reattaching removes a record if the server confirms that
+the session has ended. For a record you no longer need, you can remove that
+specific local file after inspecting it; removing a record does not end its
+remote shell and discards your saved reattachment credentials. Do not delete
+the entire sessions directory as routine cleanup. Files rejected for unsafe
+ownership, permissions, or hard links require manual inspection and repair
+or removal; ET will not read or overwrite them to reclaim the name.
+See [session recovery](docs/session-recovery.md) for read-only investigation
+of sessions created before default persistence was available.
 
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 

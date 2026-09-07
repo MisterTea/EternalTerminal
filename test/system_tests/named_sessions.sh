@@ -19,6 +19,7 @@ MISMATCH_LOG=$LOG_DIR/mismatch.log
 RECREATE_LOG=$LOG_DIR/recreate.log
 AMBIGUOUS_LOG=$LOG_DIR/ambiguous.log
 UNNAMED_LOG=$LOG_DIR/unnamed.log
+NO_PERSIST_LOG=$LOG_DIR/no-persist.log
 UNWRITABLE_LIST_LOG=$LOG_DIR/unwritable-list.log
 UNWRITABLE_NAME_LOG=$LOG_DIR/unwritable-name.log
 ATTACH_OPTIONS_LOG=$LOG_DIR/attach-options.log
@@ -67,6 +68,15 @@ wait_for_file() { # path, seconds
     sleep 0.1
   done
   echo "timed out waiting for file $1" >&2
+  return 1
+}
+
+wait_for_dir() { # path, seconds
+  for _ in $(seq 1 "$(( $2 * 10 ))"); do
+    [ -d "$1" ] && return 0
+    sleep 0.1
+  done
+  echo "timed out waiting for directory $1" >&2
   return 1
 }
 
@@ -120,21 +130,56 @@ for option in tunnel reverse agent jumphost; do
     "$ATTACH_OPTIONS_LOG"
 done
 
-# Unnamed sessions keep their credentials in memory only.
+# Ordinary sessions are persisted under an automatically generated,
+# human-readable name. The name is intentionally independent of the session
+# credentials returned by the SSH bootstrap.
 HOME=$TEST_HOME build/et -N --serverfifo=$ET_FIFO \
   --terminal-path "$PWD/build/etterminal" --logtostdout \
   "localhost:$ET_PORT" >"$UNNAMED_LOG" 2>&1 &
 aux_pid=$!
 wait_for_grep 'ET running, feel free to background' "$UNNAMED_LOG" 30
-if [ -d "$TEST_HOME/.et/sessions" ] &&
-  find "$TEST_HOME/.et/sessions" -type f -print -quit | grep -q .; then
-  echo "unnamed session created a saved session file" >&2
+wait_for_dir "$TEST_HOME/.et/sessions" 30
+default_count=$(find "$TEST_HOME/.et/sessions" -maxdepth 1 -type f | wc -l | tr -d ' ')
+[ "$default_count" -eq 1 ] || {
+  echo "ordinary session did not create exactly one saved session" >&2
   exit 1
-fi
+}
+HOME=$TEST_HOME build/et --list | grep -E -q '^localhost-20[0-9]{6}-[0-9]{6}-[[:alnum:]]{4}'
 kill -9 "$aux_pid" 2>/dev/null || true
 wait "$aux_pid" 2>/dev/null || true
 aux_pid=""
 pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
+
+# --no-persist opts out without deleting already persisted sessions.
+HOME=$TEST_HOME build/et --no-persist -N --serverfifo=$ET_FIFO \
+  --terminal-path "$PWD/build/etterminal" --logtostdout \
+  "localhost:$ET_PORT" >"$NO_PERSIST_LOG" 2>&1 &
+aux_pid=$!
+wait_for_grep 'ET running, feel free to background' "$NO_PERSIST_LOG" 30
+no_persist_count=$(find "$TEST_HOME/.et/sessions" -maxdepth 1 -type f | wc -l | tr -d ' ')
+[ "$no_persist_count" -eq 1 ] || {
+  echo "--no-persist changed the saved session set" >&2
+  exit 1
+}
+kill -9 "$aux_pid" 2>/dev/null || true
+wait "$aux_pid" 2>/dev/null || true
+aux_pid=""
+pkill -9 -f "etterminal.*--serverfifo=$ET_FIFO" 2>/dev/null || true
+
+if HOME=$TEST_HOME build/et --no-persist --name forbidden \
+  >"$ATTACH_OPTIONS_LOG" 2>&1; then
+  echo "--no-persist unexpectedly accepted --name" >&2
+  exit 1
+fi
+grep -F -q -- "--no-persist cannot be combined with --name" \
+  "$ATTACH_OPTIONS_LOG"
+if HOME=$TEST_HOME build/et --no-persist --attach forbidden \
+  >"$ATTACH_OPTIONS_LOG" 2>&1; then
+  echo "--no-persist unexpectedly accepted --attach" >&2
+  exit 1
+fi
+grep -F -q -- "--no-persist cannot be combined with --name, --attach" \
+  "$ATTACH_OPTIONS_LOG"
 
 # Session storage failures are warnings. Listing remains a successful local
 # operation, and --name continues as an unnamed live session.

@@ -46,6 +46,16 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     if (inserted) {
       acceptedRegistrationCount++;
     } else {
+      const string& existingKey = idInfoMap.at(tui.id()).passkey();
+      const string& incomingKey = tui.passkey();
+      if (existingKey.size() != incomingKey.size() ||
+          sodium_memcmp(existingKey.data(), incomingKey.data(),
+                        existingKey.size()) != 0) {
+        LOG(ERROR)
+            << "Rejecting terminal replacement with mismatched credentials";
+        socketHandler->close(terminalFd);
+        return IdKeyPair({"", ""});
+      }
       // A registration for this id already exists.  If the previous owner's
       // pipe is dead (the connection dropped without the session ending),
       // replace it so the terminal can re-attach; a live owner always wins.

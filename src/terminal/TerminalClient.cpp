@@ -168,7 +168,9 @@ TerminalClient::TerminalClient(
                                           el::Level::Info, __FILE__, __LINE__);
     break;
   }
-  VLOG(1) << "Client created with id: " << connection->getId();
+  // Client ids are part of the reconnect credential pair; keep them out of
+  // verbose logs just like passkeys.
+  VLOG(1) << "Client created";
 };
 
 TerminalClient::~TerminalClient() {
