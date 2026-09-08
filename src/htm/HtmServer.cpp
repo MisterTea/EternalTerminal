@@ -7,6 +7,19 @@
 #include "ControlCommands.hpp"
 
 namespace et {
+namespace {
+void finishControlStream(int fd) {
+  if (fd < 0) {
+    return;
+  }
+#ifdef WIN32
+  ::shutdown(fd, SD_SEND);
+#else
+  ::shutdown(fd, SHUT_WR);
+#endif
+}
+}  // namespace
+
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
                      const SocketEndpoint& endpoint)
     : IpcPairServer(_socketHandler, endpoint),
@@ -85,12 +98,14 @@ void HtmServer::processLine(const string& line) {
     }
     if (action == ControlAction::Detach) {
       writer.notify("%exit");
+      finishControlStream(endpointFd);
       closeEndpoint();
       writer.clearSocket();
       return;
     }
     if (action == ControlAction::KillServer) {
       writer.notify("%exit");
+      finishControlStream(endpointFd);
       closeEndpoint();
       writer.clearSocket();
       running.store(false);
@@ -158,6 +173,7 @@ void HtmServer::run() {
         // end control mode the way tmux -CC does when no windows remain.
         if (state.empty()) {
           writer.notify("%exit");
+          finishControlStream(endpointFd);
           closeEndpoint();
           writer.clearSocket();
           running.store(false);
