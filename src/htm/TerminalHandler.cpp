@@ -74,8 +74,7 @@ string wideToUtf8(const wstring& w) {
 }
 
 string processImageBaseName(DWORD pid) {
-  HANDLE process =
-      OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
+  HANDLE process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, FALSE, pid);
   if (!process) {
     return string();
   }
@@ -85,8 +84,7 @@ string processImageBaseName(DWORD pid) {
   if (QueryFullProcessImageNameW(process, 0, path, &size)) {
     wstring wide(path, size);
     auto slash = wide.find_last_of(L"\\/");
-    wstring base =
-        slash == wstring::npos ? wide : wide.substr(slash + 1);
+    wstring base = slash == wstring::npos ? wide : wide.substr(slash + 1);
     if (base.size() > 4) {
       auto ext = base.substr(base.size() - 4);
       if (_wcsicmp(ext.c_str(), L".exe") == 0) {

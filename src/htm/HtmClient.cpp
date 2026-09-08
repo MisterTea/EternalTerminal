@@ -4,8 +4,9 @@
 #include "RawSocketUtils.hpp"
 
 #ifdef WIN32
-#include <algorithm>
 #include <windows.h>
+
+#include <algorithm>
 #endif
 
 namespace et {
@@ -20,9 +21,9 @@ void writeHtmStdout(const char* buf, size_t n) {
           ? WriteConsoleA(stdoutHandle, buf, static_cast<DWORD>(n), &written,
                           NULL)
           : WriteFile(stdoutHandle, buf, static_cast<DWORD>(n), &written, NULL);
-    if (!ok || written != n) {
-      return;
-    }
+  if (!ok || written != n) {
+    return;
+  }
 #else
   RawSocketUtils::writeAll(STDOUT_FILENO, buf, n);
 #endif
