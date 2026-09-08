@@ -190,7 +190,6 @@ void HtmClient::run() {
   char buf[BUF_SIZE];
   string stdoutQueue;
   string ipcOutQueue;
-  bool endpointOpen = true;
   NonBlockingFd nonBlockingStdout(STDOUT_FILENO);
 
   auto flushFd = [](int fd, string* queue) {
@@ -219,13 +218,13 @@ void HtmClient::run() {
 
     FD_ZERO(&rfd);
     FD_ZERO(&wfd);
-    if (endpointOpen && stdoutQueue.size() < MAX_STDOUT_QUEUE) {
+    if (stdoutQueue.size() < MAX_STDOUT_QUEUE) {
       FD_SET(endpointFd, &rfd);
     }
-    if (endpointOpen && ipcOutQueue.size() < MAX_IPC_OUT_QUEUE) {
+    if (ipcOutQueue.size() < MAX_IPC_OUT_QUEUE) {
       FD_SET(STDIN_FILENO, &rfd);
     }
-    int maxFd = endpointOpen ? max(STDIN_FILENO, endpointFd) : STDOUT_FILENO;
+    int maxFd = max(STDIN_FILENO, endpointFd);
     if (!stdoutQueue.empty()) {
       FD_SET(STDOUT_FILENO, &wfd);
       maxFd = max(maxFd, STDOUT_FILENO);
@@ -247,7 +246,7 @@ void HtmClient::run() {
       continue;
     }
 
-    if (endpointOpen && ipcOutQueue.size() < MAX_IPC_OUT_QUEUE &&
+    if (ipcOutQueue.size() < MAX_IPC_OUT_QUEUE &&
         FD_ISSET(STDIN_FILENO, &rfd)) {
       int rc = ::read(STDIN_FILENO, buf, BUF_SIZE);
       if (rc < 0) {
@@ -263,8 +262,7 @@ void HtmClient::run() {
       }
     }
 
-    if (endpointOpen && stdoutQueue.size() < MAX_STDOUT_QUEUE &&
-        FD_ISSET(endpointFd, &rfd)) {
+    if (stdoutQueue.size() < MAX_STDOUT_QUEUE && FD_ISSET(endpointFd, &rfd)) {
       int rc = ::read(endpointFd, buf, BUF_SIZE);
       if (rc < 0) {
         auto localErrno = GetErrno();
@@ -275,21 +273,17 @@ void HtmClient::run() {
       } else if (rc == 0) {
         LOG(INFO) << "htmd has closed";
         endpointFd = -1;
-        endpointOpen = false;
-        ipcOutQueue.clear();
+        return;
       } else {
         stdoutQueue.append(buf, static_cast<size_t>(rc));
       }
     }
 
-    if (endpointOpen && !ipcOutQueue.empty()) {
+    if (!ipcOutQueue.empty()) {
       flushFd(endpointFd, &ipcOutQueue);
     }
     if (!stdoutQueue.empty()) {
       flushFd(STDOUT_FILENO, &stdoutQueue);
-    }
-    if (!endpointOpen && stdoutQueue.empty()) {
-      return;
     }
   }
 }

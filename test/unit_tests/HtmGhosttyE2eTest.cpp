@@ -268,7 +268,7 @@ TEST_CASE("Control-mode PTY: detach leaves htmd running", "[Htm][e2e][pty]") {
   {
     ControlPty pty;
     REQUIRE(pty.waitAttached());
-    pty.sendCommand("");
+    pty.sendCommand("detach-client");
     REQUIRE(pty.waitFor(
         [&]() { return pty.incoming.find("%exit") != string::npos; }));
   }
