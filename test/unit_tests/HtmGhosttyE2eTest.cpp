@@ -173,6 +173,11 @@ class ControlPty {
       if (n < 0 && errno == EINTR) {
         continue;
       }
+      if (n < 0 && errno == EIO) {
+        // A PTY master reports EIO rather than EOF on some Unix platforms
+        // after the last slave descriptor closes.
+        eof = true;
+      }
       return got;
     }
   }
@@ -269,8 +274,9 @@ TEST_CASE("Control-mode PTY: detach leaves htmd running", "[Htm][e2e][pty]") {
     ControlPty pty;
     REQUIRE(pty.waitAttached());
     pty.sendCommand("detach-client");
-    REQUIRE(pty.waitFor(
-        [&]() { return pty.incoming.find("%exit") != string::npos; }));
+    REQUIRE(pty.waitFor([&]() {
+      return pty.incoming.find("%exit") != string::npos || pty.eof;
+    }));
   }
   REQUIRE(htmdRunning());
   ControlPty reconnect(false);
