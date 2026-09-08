@@ -1,3 +1,4 @@
+#ifndef WIN32
 #include <ftw.h>
 #include <utime.h>
 
@@ -455,3 +456,4 @@ TEST_CASE("SessionStore rejects hard-linked credential files",
   REQUIRE_THROWS(saveSession(makeInfo("alpha")));
 }
 #endif
+#endif  // WIN32

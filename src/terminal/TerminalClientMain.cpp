@@ -96,12 +96,6 @@ void printSessionCandidate(const SessionInfo& session) {
                        << ":" << session.port << ")" << endl;
 }
 
-bool isAsciiAlphaNumeric(char value) {
-  const unsigned char c = static_cast<unsigned char>(value);
-  return (c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
-         (c >= '0' && c <= '9');
-}
-
 bool sessionNameIsOccupied(const string& name) {
   try {
     const fs::path path = sessionDirPath() + "/" + name;
@@ -118,22 +112,8 @@ bool sessionNameIsOccupied(const string& name) {
   }
 }
 
-string makeDefaultSessionName(const string& host) {
-  string safeHost;
-  safeHost.reserve(host.size());
-  for (const unsigned char c : host) {
-    if (isAsciiAlphaNumeric(static_cast<char>(c)) || c == '.' || c == '_' ||
-        c == '-') {
-      safeHost.push_back(static_cast<char>(c));
-    } else {
-      safeHost.push_back('-');
-    }
-  }
-  if (safeHost.empty() || !isAsciiAlphaNumeric(safeHost.front())) {
-    safeHost = "session-" + safeHost;
-  }
-
-  char timestamp[32];
+string makeDefaultSessionName() {
+  char date[16];
   const time_t now = time(NULL);
   struct tm localTm;
 #ifdef WIN32
@@ -141,20 +121,14 @@ string makeDefaultSessionName(const string& host) {
 #else
   localtime_r(&now, &localTm);
 #endif
-  strftime(timestamp, sizeof(timestamp), "%Y%m%d-%H%M%S", &localTm);
+  strftime(date, sizeof(date), "%Y%m%d", &localTm);
 
-  // A short random suffix keeps simultaneous clients distinct while keeping
-  // the host and start time useful to a person reading --list. The name is
-  // generated independently of the client id and passkey.
-  const string base = string("-") + timestamp;
+  // A short random suffix keeps simultaneous clients distinct. The name is
+  // generated independently of the host, client id, and passkey.
+  const string base = string(date) + "-";
   string lastCandidate;
   for (int attempt = 0; attempt < 16; ++attempt) {
-    const string randomSuffix =
-        "-" + genRandomAlphaNum(4) +
-        (attempt == 0 ? "" : "-" + to_string(attempt + 1));
-    const size_t maxHostLength = 63 - base.size() - randomSuffix.size();
-    const string hostPart = safeHost.substr(0, maxHostLength);
-    const string candidate = hostPart + base + randomSuffix;
+    const string candidate = base + genRandomAlphaNum(4);
     lastCandidate = candidate;
     if (!sessionNameIsOccupied(candidate)) {
       return candidate;
@@ -503,15 +477,16 @@ int main(int argc, char** argv) {
 
     if (result.count("list")) {
       // Local-only operation: no connection is made.
-      CLOG(INFO, "stdout") << left << setw(24) << "NAME" << setw(34) << "TITLE"
-                           << setw(24) << "HOST" << setw(8) << "PORT"
-                           << "LAST SEEN" << endl;
+      CLOG(INFO, "stdout") << left << setw(24) << "NAME" << ' ' << setw(34)
+                           << "TITLE" << ' ' << setw(24) << "HOST" << ' '
+                           << setw(8) << "PORT" << ' ' << "LAST SEEN" << endl;
       const int64_t now = static_cast<int64_t>(time(NULL));
       for (const auto& session : listSessions()) {
-        CLOG(INFO, "stdout") << left << setw(24) << session.name << setw(34)
-                             << displayTitle(session.title) << setw(24)
-                             << session.host << setw(8) << session.port
-                             << formatLastSeen(session.lastSeenAt, now) << endl;
+        CLOG(INFO, "stdout")
+            << left << setw(24) << session.name << ' ' << setw(34)
+            << displayTitle(session.title) << ' ' << setw(24) << session.host
+            << ' ' << setw(8) << session.port << ' '
+            << formatLastSeen(session.lastSeenAt, now) << endl;
       }
       exit(0);
     }
@@ -866,7 +841,7 @@ int main(int argc, char** argv) {
              "owner-only credential storage is configured"
           << endl;
 #else
-      sessionName = makeDefaultSessionName(socketEndpoint.name());
+      sessionName = makeDefaultSessionName();
 #endif
     }
 

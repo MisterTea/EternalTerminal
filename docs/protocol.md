@@ -118,6 +118,54 @@ Upon reconnect, if the server identifies the ServerClientConnection already exis
 
 Based on this, a CatchupBuffer protobufs are swapped, containing the missing encrypted packets based on the **sequence number**.
 
+If `etserver` has restarted, a client may receive `RETRY_LATER` while the
+surviving `etterminal` re-registers its credentials. Once the registration is
+available, recovery continues normally. If either side has lost its sequence
+history, reset recovery starts both sides at sequence zero and exchanges empty
+catchup buffers; packets buffered before the reset are not replayed.
+
+## Named Sessions
+
+The client can persist the credentials needed to reconnect to a direct
+session after the client process or client machine restarts. Persistence is a
+client-side layer around the normal registration and reconnection protocol; it
+does not add a new server packet or credential lookup mechanism.
+
+During SSH setup, `etterminal` registers a client ID and passkey with
+`etserver`. For newer clients, an initial ID beginning with `XXX` tells
+`etterminal` to generate fresh credentials and return them to `et`. After SSH
+setup returns the final credentials, and before constructing the client
+connection, `et` stores the endpoint, client ID, and passkey together with the
+session name, terminal title, and timestamps.
+
+On Unix-like systems, records are stored as owner-only files below
+`~/.et/sessions`. The records contain plaintext credentials, so they are
+protected by filesystem ownership and permissions rather than encryption.
+Writes are atomic, unsafe ownership or permissions cause records to be
+ignored, and persistence failures do not terminate an otherwise working
+connection. Session names are restricted to filesystem-safe
+alphanumeric-oriented names up to 63 characters.
+
+A disconnected client leaves its saved record in place while the remote
+terminal continues running. The client updates the record's last-seen time
+while the connection is alive and may update its terminal title. When the
+client learns that the remote terminal has ended, it removes the record. The
+records do not expire automatically; deleting one removes the local
+credentials but does not end the remote terminal.
+
+Named-session reattachment uses the same endpoint, client ID, and passkey as
+ordinary reconnection. The server still matches the client ID against its
+in-memory registration and returns the normal `RETURNING_CLIENT` response.
+The saved record does not contain enough connection metadata to recreate a
+jumphost path, port forwarding, or SSH-agent forwarding. A forwarded session's
+shell credentials may still be saved, but reattachment restores only the
+shell; it does not recreate those forwarding features. The command-line attach
+and management workflow is documented in the README.
+
+The current implementation enables persistence on macOS and Linux. Windows
+does not persist session credentials until an equivalent owner-only storage
+boundary is available.
+
 ## Port Forwarding
 
 Port forwarding is supported in Eternal Terminal using the same connection that transmits the terminal updates.  Both forward (server port exposed on client) and reverse forwarding (client port exposed on server) are supported.

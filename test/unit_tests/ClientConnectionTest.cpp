@@ -262,7 +262,7 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   // Past the grace window an unknown id is a hard INVALID_KEY.
   server.expireGrace();
   int gracePair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, gracePair) == 0);
+  REQUIRE(createTestSocketPair(gracePair) == 0);
   handler->writeProto(gracePair[0], missingKeyRequest, true);
   server.clientHandler(gracePair[1]);
   auto expiredGraceResponse =
@@ -314,7 +314,7 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   REQUIRE(server.removeClient("ended"));
 
   int endedPair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, endedPair) == 0);
+  REQUIRE(createTestSocketPair(endedPair) == 0);
   ConnectRequest endedRequest;
   endedRequest.set_clientid("ended");
   endedRequest.set_version(PROTOCOL_VERSION);
@@ -326,7 +326,7 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   handler->close(endedPair[1]);
 
   int unknownPair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, unknownPair) == 0);
+  REQUIRE(createTestSocketPair(unknownPair) == 0);
   ConnectRequest unknownRequest;
   unknownRequest.set_clientid("unknown");
   unknownRequest.set_version(PROTOCOL_VERSION);
@@ -343,7 +343,7 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   // of being treated as sessions that definitely ended.
   server.expireRemovedClient("ended");
   int expiredPair[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, expiredPair) == 0);
+  REQUIRE(createTestSocketPair(expiredPair) == 0);
   handler->writeProto(expiredPair[0], endedRequest, true);
   server.clientHandler(expiredPair[1]);
   auto expiredResponse =
@@ -371,7 +371,7 @@ TEST_CASE("ServerConnection resumes sessions with an active pty",
   server.resumeIds.insert("live-term");
 
   int fds[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   std::thread client([&]() {
     ConnectRequest request;
@@ -545,7 +545,7 @@ TEST_CASE("Connection recover with forceReset performs clean reset exchange",
           "[Connection]") {
   auto handler = make_shared<SocketPairHandler>();
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
 
   const string key = "zyxwvutsrqponmlkjihgfedcba987654";
   auto encryptCrypto = make_shared<CryptoHandler>(key, 0);
@@ -560,7 +560,7 @@ TEST_CASE("Connection recover with forceReset performs clean reset exchange",
   conn.closeSocket();
 
   int reconnect[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+  REQUIRE(createTestSocketPair(reconnect) == 0);
 
   std::thread remote([&]() {
     auto seqHeader = handler->readProto<SequenceHeader>(
@@ -603,7 +603,7 @@ TEST_CASE(
   // A server-side connection with existing history: the old client exited,
   // but the server state (and its buffered output) survives.
   int live[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, live) == 0);
+  REQUIRE(createTestSocketPair(live) == 0);
   ServerClientConnection serverConn(handler, "client-id", live[0], key);
   serverConn.writePacket(Packet(1, "pre-existing-output"));
 
@@ -612,7 +612,7 @@ TEST_CASE(
 
   // A fresh client process connects with the same id.
   int reconnect[2];
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, reconnect) == 0);
+  REQUIRE(createTestSocketPair(reconnect) == 0);
   handler->queueConnectFd(reconnect[0]);
   ClientConnection client(handler, SocketEndpoint(), "client-id", key);
 

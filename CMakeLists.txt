@@ -879,15 +879,9 @@ else(WIN32)
       find_package(Python3 3.9 QUIET COMPONENTS Interpreter)
       if(Python3_Interpreter_FOUND)
         add_test(
-          NAME et-recovery-audit
-          COMMAND ${Python3_EXECUTABLE} -B -m unittest discover
-                  -s ${CMAKE_CURRENT_SOURCE_DIR}/scripts
-                  -p test_et_session_recovery.py)
-        add_test(
           NAME et-default-persistence-cli
           COMMAND ${Python3_EXECUTABLE} -B
                   ${CMAKE_CURRENT_SOURCE_DIR}/test/system_tests/test_default_persistence.py)
-        set_tests_properties(et-recovery-audit PROPERTIES TIMEOUT 30)
         set_tests_properties(et-default-persistence-cli PROPERTIES
           TIMEOUT 180
           ENVIRONMENT "ET_BUILD_DIR=${CMAKE_CURRENT_BINARY_DIR}")

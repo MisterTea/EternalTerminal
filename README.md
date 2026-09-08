@@ -198,8 +198,9 @@ et user@hostname:8000 (etserver running on port 8000, different user)
 ### Saved sessions
 
 On macOS and Linux, direct sessions save reattachment credentials by default.
-An ordinary `et hostname` connection gets a generated name. Use `--name`
-to choose a name, or `--no-persist` to keep credentials in memory only.
+An ordinary `et hostname` connection gets a generated `YYYYMMDD-xxxx` name.
+Use `--name` to choose a name, or `--no-persist` to keep credentials in
+memory only.
 After a client crash or reboot, use `--list` and `--attach` to return to a
 surviving remote session.
 
@@ -241,8 +242,6 @@ remote shell and discards your saved reattachment credentials. Do not delete
 the entire sessions directory as routine cleanup. Files rejected for unsafe
 ownership, permissions, or hard links require manual inspection and repair
 or removal; ET will not read or overwrite them to reclaim the name.
-See [session recovery](docs/session-recovery.md) for read-only investigation
-of sessions created before default persistence was available.
 
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 

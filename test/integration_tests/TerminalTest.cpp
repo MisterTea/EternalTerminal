@@ -237,6 +237,7 @@ class RealPtyEchoTerminal : public UserTerminal {
   }
   virtual void runTerminal() {}
   virtual void handleSessionEnd() {}
+  virtual void terminate() {}
   virtual void cleanup() {
     lock_guard<mutex> guard(cleanupMutex);
     if (cleanedUp) {

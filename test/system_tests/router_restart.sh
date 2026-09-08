@@ -96,10 +96,12 @@ done
 
 printf 'S_ONE=first\n' >&11
 printf 'S_TWO=second\n' >&12
-printf 'echo READY-ONE\n' >&11
-printf 'echo READY-TWO\n' >&12
-wait_for_grep 'READY-ONE' "$LOG_DIR/client_one.log" 30
-wait_for_grep 'READY-TWO' "$LOG_DIR/client_two.log" 30
+# Only the remote shell can expand these sentinels. Matching echoed input
+# would let the router restart before either shell has actually initialized.
+printf 'echo READY-ONE-$S_ONE\n' >&11
+printf 'echo READY-TWO-$S_TWO\n' >&12
+wait_for_grep 'READY-ONE-first' "$LOG_DIR/client_one.log" 30
+wait_for_grep 'READY-TWO-second' "$LOG_DIR/client_two.log" 30
 
 pids_before=$(terminal_pids)
 [ -n "$pids_before" ] || {
@@ -137,6 +139,17 @@ printf 'echo POST-ONE-$S_ONE\n' >&11
 printf 'echo POST-TWO-$S_TWO\n' >&12
 wait_for_grep 'POST-ONE-first' "$LOG_DIR/client_one.log" 60
 wait_for_grep 'POST-TWO-second' "$LOG_DIR/client_two.log" 60
+
+# Stop client one but leave its remote shell running: --attach exists for
+# sessions whose client is gone.  Attaching while the original client is
+# still live would make both clients recover the same id and passkey, and
+# whichever one wins the race tears the session down.
+kill -9 "${client_pids[0]}" 2>/dev/null || true
+pkill -9 -f "build/et --name one --serverfifo=$ET_FIFO" 2>/dev/null || true
+for _ in $(seq 1 100); do
+  pgrep -f "build/et --name one --serverfifo=$ET_FIFO" >/dev/null || break
+  sleep 0.1
+done
 
 # --attach still works against the restarted server.
 HOME=$TEST_HOME build/et --attach one --serverfifo=$ET_FIFO \
