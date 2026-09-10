@@ -27,7 +27,7 @@ class FakePortForwardSocketHandler : public SocketHandler {
     acceptQueue[listenFd].push_back(resultFd);
   }
 
-  void setConnectResult(int fd) { nextConnectFd = fd; }
+  void setConnectResult(int fd) { connectResults = {fd}; }
 
   bool hasData(int fd) override {
     auto it = readQueue.find(fd);
@@ -57,8 +57,11 @@ class FakePortForwardSocketHandler : public SocketHandler {
 
   int connect(const SocketEndpoint& endpoint) override {
     connectEndpoints.push_back(endpoint);
-    int fd = nextConnectFd;
-    nextConnectFd = -1;
+    if (connectResults.empty()) {
+      return -1;
+    }
+    int fd = connectResults.front();
+    connectResults.pop_front();
     return fd;
   }
 
@@ -114,7 +117,7 @@ class FakePortForwardSocketHandler : public SocketHandler {
   vector<SocketEndpoint> stoppedEndpoints;
   vector<SocketEndpoint> connectEndpoints;
   int nextListenFd = 100;
-  int nextConnectFd = -1;
+  std::deque<int> connectResults;
 };
 
 class FakeConnection : public Connection {
@@ -246,14 +249,43 @@ TEST_CASE("PortForwardHandler createDestination with port (IPv6)",
   CHECK(networkHandler->connectEndpoints[0].port() == 8080);
 }
 
+TEST_CASE("PortForwardHandler empty TCP host uses loopback",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  networkHandler->setConnectResult(42);
+
+  PortForwardDestinationRequest request;
+  SocketEndpoint destination;
+  destination.set_name("");
+  destination.set_port(8080);
+  *request.mutable_destination() = destination;
+  request.set_fd(100);
+
+  PortForwardDestinationResponse response = handler.createDestination(request);
+
+  CHECK(response.clientfd() == 100);
+  CHECK_FALSE(response.has_error());
+  CHECK(response.has_socketid());
+  REQUIRE(networkHandler->connectEndpoints.size() == 1);
+  CHECK(networkHandler->connectEndpoints[0].name() == "::1");
+  CHECK(networkHandler->connectEndpoints[0].port() == 8080);
+}
+
 TEST_CASE("PortForwardHandler createDestination with port fallback to IPv4",
           "[PortForwardHandler]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();
   auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
   PortForwardHandler handler(networkHandler, pipeHandler);
 
-  // First connect (IPv6) fails, second (IPv4) succeeds
-  networkHandler->setConnectResult(42);
+  bool ipv4Available = false;
+  SECTION("IPv4 succeeds") {
+    networkHandler->connectResults = {-1, 42};
+    ipv4Available = true;
+  }
+  SECTION("Both addresses fail") { networkHandler->connectResults = {-1, -1}; }
 
   PortForwardDestinationRequest request;
   SocketEndpoint destination;
@@ -261,16 +293,63 @@ TEST_CASE("PortForwardHandler createDestination with port fallback to IPv4",
   *request.mutable_destination() = destination;
   request.set_fd(100);
 
-  // Simulate IPv6 failure by having first connect return -1, then second
-  // succeeds
-  networkHandler->nextConnectFd = -1;
-  PortForwardDestinationResponse response1 = handler.createDestination(request);
+  PortForwardDestinationResponse response = handler.createDestination(request);
 
-  // This will fail because both attempts fail
-  CHECK(response1.has_error());
+  CHECK(response.clientfd() == 100);
+  CHECK(response.has_error() == !ipv4Available);
+  CHECK(response.has_socketid() == ipv4Available);
   REQUIRE(networkHandler->connectEndpoints.size() == 2);
   CHECK(networkHandler->connectEndpoints[0].name() == "::1");
   CHECK(networkHandler->connectEndpoints[1].name() == "127.0.0.1");
+}
+
+TEST_CASE("PortForwardHandler createDestination uses explicit TCP host",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  networkHandler->setConnectResult(42);
+
+  PortForwardDestinationRequest request;
+  SocketEndpoint destination;
+  destination.set_name("destination.example.com");
+  destination.set_port(22);
+  *request.mutable_destination() = destination;
+  request.set_fd(100);
+
+  PortForwardDestinationResponse response = handler.createDestination(request);
+
+  CHECK(response.clientfd() == 100);
+  CHECK_FALSE(response.has_error());
+  CHECK(response.has_socketid());
+  REQUIRE(networkHandler->connectEndpoints.size() == 1);
+  CHECK(networkHandler->connectEndpoints[0].name() ==
+        "destination.example.com");
+  CHECK(networkHandler->connectEndpoints[0].port() == 22);
+}
+
+TEST_CASE("PortForwardHandler does not replace a failed explicit TCP host",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  PortForwardDestinationRequest request;
+  SocketEndpoint destination;
+  destination.set_name("destination.example.com");
+  destination.set_port(22);
+  *request.mutable_destination() = destination;
+  request.set_fd(100);
+
+  PortForwardDestinationResponse response = handler.createDestination(request);
+
+  CHECK(response.has_error());
+  CHECK_FALSE(response.has_socketid());
+  REQUIRE(networkHandler->connectEndpoints.size() == 1);
+  CHECK(networkHandler->connectEndpoints[0].name() ==
+        "destination.example.com");
+  CHECK(networkHandler->connectEndpoints[0].port() == 22);
 }
 
 TEST_CASE("PortForwardHandler createDestination with pipe",
