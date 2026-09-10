@@ -34,6 +34,24 @@ class FakeSshSubprocessHandler : public SubprocessUtils {
 };
 
 /**
+ * @brief Fake subprocess handler that records every SSH invocation.
+ */
+class RecordingSshConfigSubprocessHandler : public SubprocessUtils {
+ public:
+  vector<vector<string>> calls;
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    calls.push_back(args);
+
+    string id = genRandomAlphaNum(16);
+    string passkey = genRandomAlphaNum(32);
+    return string("IDPASSKEY:") + id + "/" + passkey;
+  }
+};
+
+/**
  * @brief Fake subprocess handler that returns empty output
  * to simulate SSH connection failure.
  */
@@ -254,4 +272,102 @@ TEST_CASE("SshSetupHandler with jumphost and jServerFifo",
 
   REQUIRE(id.length() == 16);
   REQUIRE(passkey.length() == 32);
+}
+
+TEST_CASE("SshSetupHandler can select one exact SSH configuration",
+          "[SshSetupHandler]") {
+  auto fakeSubprocess = make_shared<RecordingSshConfigSubprocessHandler>();
+  const string config_path = "/private/et-client/ssh_config";
+  SshSetupHandler handler(fakeSubprocess, config_path);
+
+  auto [id, passkey] = handler.SetupSsh(
+      "exact-target-user", "exact-target.example", "exact-target.example", 2022,
+      "exact-jump-user@exact-jump.example:2222", "", false, 0, "", "", {});
+
+  REQUIRE(id.length() == 16);
+  REQUIRE(passkey.length() == 32);
+  REQUIRE(fakeSubprocess->calls.size() == 2);
+
+  const auto& destination_args = fakeSubprocess->calls[0];
+  REQUIRE(destination_args.size() == 6);
+  REQUIRE(destination_args[0] == "-F");
+  REQUIRE(destination_args[1] == config_path);
+  REQUIRE(destination_args[2] == "-J");
+  REQUIRE(destination_args[3] == "exact-jump-user@exact-jump.example:2222");
+  REQUIRE(destination_args[4] == "exact-target-user@exact-target.example");
+
+  const auto& jump_args = fakeSubprocess->calls[1];
+  REQUIRE(jump_args.size() == 6);
+  REQUIRE(jump_args[0] == "-F");
+  REQUIRE(jump_args[1] == config_path);
+  REQUIRE(jump_args[2] == "-p");
+  REQUIRE(jump_args[3] == "2222");
+  REQUIRE(jump_args[4] == "exact-jump-user@exact-jump.example");
+  REQUIRE(jump_args[5].find(
+              "--jump --dsthost=exact-target.example --dstport=2022") !=
+          string::npos);
+}
+
+TEST_CASE("SshSetupHandler can disable all SSH configuration",
+          "[SshSetupHandler]") {
+  auto fakeSubprocess = make_shared<RecordingSshConfigSubprocessHandler>();
+  SshSetupHandler handler(fakeSubprocess, "none");
+
+  handler.SetupSsh("exact-user", "exact-target.example", "exact-target.example",
+                   2022, "exact-jump-user@exact-jump.example", "", false, 0, "",
+                   "", {});
+
+  REQUIRE(fakeSubprocess->calls.size() == 2);
+  const auto& destination_args = fakeSubprocess->calls[0];
+  REQUIRE(destination_args[0] == "-F");
+  REQUIRE(destination_args[1] == "none");
+  REQUIRE(destination_args[2] == "-J");
+  REQUIRE(destination_args[3] == "exact-jump-user@exact-jump.example");
+  REQUIRE(destination_args[4] == "exact-user@exact-target.example");
+
+  const auto& jump_args = fakeSubprocess->calls[1];
+  REQUIRE(jump_args[0] == "-F");
+  REQUIRE(jump_args[1] == "none");
+  REQUIRE(jump_args[2] == "exact-jump-user@exact-jump.example");
+}
+
+TEST_CASE("SSH config paths are safe for OpenSSH ProxyJump",
+          "[SshSetupHandler]") {
+#ifdef WIN32
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\et-client_1\\ssh.config"));
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:/et-client_1/ssh.config"));
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "\\\\server\\share\\ssh_config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "/private/et-client_1/ssh.config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("C:et\\ssh.config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("\\et\\ssh.config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\Users\\foo bar\\config"));
+  REQUIRE_FALSE(
+      SshSetupHandler::IsSshConfigPathSafeForProxyJump("C:\\et\\config;cmd"));
+#else
+  REQUIRE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "/private/et-client_1/ssh.config"));
+  REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(
+      "C:\\et-client_1\\ssh.config"));
+#endif
+
+  const vector<string> unsafe_paths = {
+      "relative/config",        "/private/config with-space",
+      "/private/config\\path",  "/private/config$variable",
+      "/private/config`cmd`",   "/private/config%token",
+      "/private/config;cmd",    "/private/config&cmd",
+      "/private/config|cmd",    "/private/config(cmd)",
+      "/private/config*glob",   "/private/config?glob",
+      "/private/config[glob]",  "/private/config'quote",
+      "/private/config\"quote", "",
+  };
+  for (const auto& path : unsafe_paths) {
+    REQUIRE_FALSE(SshSetupHandler::IsSshConfigPathSafeForProxyJump(path));
+  }
 }

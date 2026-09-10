@@ -227,6 +227,18 @@ et dev (etserver running on port 2022 on both hostname and jumphost)
 et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 ```
 
+To isolate ET from ambient SSH configuration, pass an absolute path with
+`--ssh-config`. ET reads only that file for its own destination and jumphost
+lookup and passes the same file to every SSH process it starts, including the
+implicit ProxyJump connection. The file must be readable, regular, and not a
+symbolic link. The path must be absolute (`/path` on Unix; `C:\path`,
+`C:/path`, or a UNC path on Windows) and may contain only ASCII letters, digits,
+`/`, `.`, `_`, and `-` (plus `:` and `\` on Windows). Spaces are not allowed:
+OpenSSH does not quote this path when constructing its implicit ProxyJump
+command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
+disable both user and system SSH configuration entirely. The two options are
+mutually exclusive.
+
 ## Building from Source
 
 ### macOS
