@@ -162,7 +162,8 @@ void PaneScreen::feed(const string& bytes) {
   // screen(1), and therefore TERM=screen shells, use the legacy title
   // sequence ESC k ... ESC \. tmux consumes it as a title update, but
   // libvterm does not and otherwise leaves the title text in the grid.
-  // Filter only the screen model; the original bytes still go to %output.
+  // Filter only the screen model; the original bytes still go to %output
+  // (matching tmux -CC). xterm-family clients must consume ESC k themselves.
   string filtered;
   filtered.reserve(bytes.size());
   for (unsigned char c : bytes) {
