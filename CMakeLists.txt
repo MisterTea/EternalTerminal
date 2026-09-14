@@ -222,6 +222,7 @@ endif()
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(RAW_STACKTRACE "Log stack traces without symbolization" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
@@ -247,6 +248,10 @@ if(DISABLE_CRASH_LOG)
   set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
 endif(DISABLE_CRASH_LOG)
+
+if(RAW_STACKTRACE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_RAW_STACKTRACE")
+endif(RAW_STACKTRACE)
 
 if(UNIX)
   # Enable debug info
@@ -350,6 +355,10 @@ else()
   if(HAVE_STDCXXFS)
     list(APPEND CORE_LIBRARIES stdc++fs)
   endif()
+endif()
+
+if(RAW_STACKTRACE)
+  list(APPEND CORE_LIBRARIES ${CMAKE_DL_LIBS})
 endif()
 
 IF(Unwind_FOUND)

@@ -145,7 +145,14 @@ namespace fs = boost::filesystem
 #include "sago/platform_folders.h"
 #include "sole.hpp"
 
-#if !defined(__ANDROID__)
+#if defined(ET_RAW_STACKTRACE) && !defined(__ANDROID__)
+#ifdef _WIN32
+#include <windows.h>
+#else
+#include <dlfcn.h>
+#include <execinfo.h>
+#endif
+#elif !defined(__ANDROID__)
 #include "ust.hpp"
 #endif
 
@@ -204,7 +211,49 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 // rather than waiting for a client that is not coming back.
 const int INITIAL_PAYLOAD_TIMEOUT_DURATION = 600;
 
-#if defined(__ANDROID__)
+#if defined(ET_RAW_STACKTRACE) && !defined(__ANDROID__)
+inline string GetRawStackTrace() {
+  void* frames[64];
+#ifdef _WIN32
+  const int count = CaptureStackBackTrace(0, 64, frames, nullptr);
+#else
+  const int count = backtrace(frames, 64);
+#endif
+  ostringstream trace;
+  for (int i = 0; i < count; ++i) {
+    const char* moduleName = "?";
+    const void* moduleBase = nullptr;
+#ifdef _WIN32
+    HMODULE module = nullptr;
+    char path[4096];
+    if (GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS |
+                               GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+                           static_cast<const char*>(frames[i]), &module)) {
+      const auto length = GetModuleFileNameA(module, path, sizeof(path));
+      if (length > 0 && length < sizeof(path)) {
+        moduleName = path;
+      }
+      moduleBase = module;
+    }
+#else
+    Dl_info info{};
+    if (dladdr(frames[i], &info)) {
+      if (info.dli_fname) {
+        moduleName = info.dli_fname;
+      }
+      moduleBase = info.dli_fbase;
+    }
+#endif
+    trace << "[" << i << "] " << moduleName << " pc=" << frames[i]
+          << " base=" << moduleBase << '\n';
+  }
+  return trace.str();
+}
+
+#define STFATAL LOG(FATAL) << "Stack Trace: " << endl << GetRawStackTrace()
+
+#define STERROR LOG(ERROR) << "Stack Trace: " << endl << GetRawStackTrace()
+#elif defined(__ANDROID__)
 #define STFATAL LOG(FATAL) << "No Stack Trace on Android" << endl
 
 #define STERROR LOG(ERROR) << "No Stack Trace on Android" << endl
