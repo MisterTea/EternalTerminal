@@ -179,7 +179,7 @@ void TerminalServer::run() {
 
 void TerminalServer::runJumpHost(
     shared_ptr<ServerClientConnection> serverClientState,
-    const InitialPayload& payload) {
+    const InitialPayload& payload, const TerminalUserInfo& userInfo) {
   InitialResponse response;
   serverClientState->writePacket(
       Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
@@ -187,16 +187,7 @@ void TerminalServer::runJumpHost(
   el::Helpers::setThreadName(serverClientState->getId());
   bool run = true;
 
-  int terminalFd = -1;
-  if (auto maybeUserInfo =
-          terminalRouter->tryGetInfoForConnection(serverClientState)) {
-    terminalFd = maybeUserInfo->fd();
-  } else {
-    LOG(ERROR) << "Jumphost failed to bind to terminal router";
-    serverClientState->closeSocket();
-    return;
-  }
-
+  int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
   FdPoller poller;
@@ -323,26 +314,11 @@ void TerminalServer::runJumpHost(
       serverClientState->closeSocket();
     }
   }
-  {
-    string id = serverClientState->getId();
-    serverClientState.reset();
-    removeClient(id);
-  }
 }
 
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
-    const InitialPayload& payload) {
-  auto maybeUserInfo =
-      terminalRouter->tryGetInfoForConnection(serverClientState);
-  if (!maybeUserInfo) {
-    LOG(ERROR) << "Terminal client failed to bind to terminal router";
-    serverClientState->closeSocket();
-    return;
-  }
-
-  const auto userInfo = std::move(maybeUserInfo.value());
-
+    const InitialPayload& payload, const TerminalUserInfo& userInfo) {
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
@@ -411,7 +387,7 @@ void TerminalServer::runTerminal(
   while (run) {
     {
       lock_guard<std::mutex> guard(terminalThreadMutex);
-      if (halt) {
+      if (halt || serverClientState->isShuttingDown()) {
         break;
       }
     }
@@ -598,69 +574,65 @@ void TerminalServer::runTerminal(
       STERROR << "Error: " << re.what();
       CLOG(INFO, "stdout") << "Error: " << re.what();
       serverClientState->closeSocket();
-      // If the client disconnects the session, it shouldn't end
-      // because the client may be starting a new one.  TODO: Start a
-      // timer which eventually kills the server.
-
-      // run=false;
+      // recoverClient() resumes this session after a transient disconnect.
     }
-  }
-  {
-    string id = serverClientState->getId();
-    serverClientState.reset();
-    removeClient(id);
   }
 }
 
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
-  Packet packet;
-  const time_t initialPayloadDeadline = time(NULL) + initialPayloadTimeoutSec;
-  while (!serverClientState->readPacket(&packet)) {
-    bool halted;
-    {
-      lock_guard<std::mutex> guard(terminalThreadMutex);
-      halted = halt;
+  std::optional<TerminalUserInfo> userInfo;
+  try {
+    Packet packet;
+    const time_t initialPayloadDeadline = time(NULL) + initialPayloadTimeoutSec;
+    while (!serverClientState->readPacket(&packet)) {
+      bool halted;
+      {
+        lock_guard<std::mutex> guard(terminalThreadMutex);
+        halted = halt;
+      }
+      // Every exit matters: without them this thread spins forever on a client
+      // that never speaks, and run() blocks on join() at shutdown.
+      if (halted || serverClientState->isShuttingDown() ||
+          time(NULL) > initialPayloadDeadline) {
+        LOG(WARNING) << "Giving up waiting for the initial packet from "
+                     << serverClientState->getId();
+        removeClient(serverClientState->getId());
+        return;
+      }
+      LOG_EVERY_N(10, INFO) << "Waiting for initial packet...";
+      sleep(1);
     }
-    // Every exit matters: without them this thread spins forever on a client
-    // that never speaks, and run() blocks on join() at shutdown.
-    if (halted || serverClientState->isShuttingDown() ||
-        time(NULL) > initialPayloadDeadline) {
-      LOG(WARNING) << "Giving up waiting for the initial packet from "
-                   << serverClientState->getId();
-      string id = serverClientState->getId();
-      serverClientState.reset();
-      removeClient(id);
-      return;
+    if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
+      STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
+              << packet.getHeader();
     }
-    LOG_EVERY_N(10, INFO) << "Waiting for initial packet...";
-    sleep(1);
+    InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
+    userInfo = terminalRouter->tryGetInfoForConnection(serverClientState);
+    if (!userInfo) {
+      LOG(ERROR) << "Client failed to bind to terminal router";
+    } else if (payload.jumphost()) {
+      LOG(INFO) << "RUNNING JUMPHOST";
+      runJumpHost(serverClientState, payload, *userInfo);
+    } else {
+      LOG(INFO) << "RUNNING TERMINAL";
+      runTerminal(serverClientState, payload, *userInfo);
+    }
+  } catch (const std::exception& ex) {
+    LOG(ERROR) << "Terminal thread failed: " << ex.what();
   }
-  if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
-    STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
-            << packet.getHeader();
-  }
-  InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
-  if (payload.jumphost()) {
-    LOG(INFO) << "RUNNING JUMPHOST";
-    runJumpHost(serverClientState, payload);
-  } else {
-    LOG(INFO) << "RUNNING TERMINAL";
-    runTerminal(serverClientState, payload);
+
+  removeClient(serverClientState->getId());
+  if (userInfo) {
+    terminalRouter->removeConnection(*userInfo);
   }
 }
 
 bool TerminalServer::newClient(
     shared_ptr<ServerClientConnection> serverClientState) {
   lock_guard<std::mutex> guard(terminalThreadMutex);
-  auto t = make_shared<thread>([this, serverClientState]() {
-    try {
-      handleConnection(serverClientState);
-    } catch (const std::exception& ex) {
-      LOG(ERROR) << "Terminal thread failed: " << ex.what();
-      removeClient(serverClientState->getId());
-    }
-  });
+  auto t = make_shared<thread>(&TerminalServer::handleConnection, this,
+                               serverClientState);
   terminalThreads.push_back(t);
   return true;
 }

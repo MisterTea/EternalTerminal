@@ -32,10 +32,12 @@ class TerminalServer : public ServerConnection {
   virtual ~TerminalServer();
   /** @brief Drives a jumphost proxy session for the authenticated client. */
   void runJumpHost(shared_ptr<ServerClientConnection> serverClientState,
-                   const InitialPayload& payload);
+                   const InitialPayload& payload,
+                   const TerminalUserInfo& userInfo);
   /** @brief Launches the interactive terminal session for a client. */
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
-                   const InitialPayload& payload);
+                   const InitialPayload& payload,
+                   const TerminalUserInfo& userInfo);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
   /** @brief Callback from ServerConnection when a new client is authenticated.

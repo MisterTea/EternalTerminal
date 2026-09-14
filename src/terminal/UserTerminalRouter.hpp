@@ -37,6 +37,8 @@ class UserTerminalRouter {
   std::optional<TerminalUserInfo> tryGetInfoForConnection(
       const shared_ptr<ServerClientConnection>& serverClientState);
 
+  void removeConnection(const TerminalUserInfo& userInfo);
+
   /** @brief Returns the router-side socket handler used by this router. */
   inline shared_ptr<PipeSocketHandler> getSocketHandler() {
     return socketHandler;

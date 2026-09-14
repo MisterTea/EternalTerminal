@@ -13,6 +13,12 @@ ForwardSourceHandler::ForwardSourceHandler(
 }
 
 ForwardSourceHandler::~ForwardSourceHandler() {
+  for (const auto& socket : socketFdMap) {
+    socketHandler->close(socket.second);
+  }
+  for (int fd : unassignedFds) {
+    socketHandler->close(fd);
+  }
   socketHandler->stopListening(source);
 }
 
