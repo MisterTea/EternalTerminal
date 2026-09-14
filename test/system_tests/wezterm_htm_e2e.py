@@ -36,7 +36,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_e2e import (  # noqa: E402
     GuiTerminalSession,
-    ScreenRecorder,
     _window_key,
     command_count,
     control_commands,
@@ -1095,93 +1094,8 @@ end tell
             print(f"WARN: leftover wezterm-gui pids {still}", flush=True)
 
 
-def run_control_plane_checks(session: WezTermHtmSession) -> None:
-    session.start(session.multiplexer_command())
-    session.wait_init()
-    session.after_attach()
-    session.begin_htm_window_recording("control-plane")
-    gateway_recorder = None
-    if session.video_dir:
-        gateway_title = (session.gateway_pane().get("title") or "").strip()
-        gateways = [
-            window
-            for window in session.ax_windows()
-            if (window.get("name") or "").strip() == gateway_title
-        ]
-        if gateways:
-            window = gateways[0]
-            region = (
-                int(window["x"]),
-                int(window["y"]),
-                int(window["w"]),
-                int(window["h"]),
-            )
-            gateway_recorder = ScreenRecorder(
-                session.video_dir
-                / f"wezterm-{session.mux}-control-plane-gateway.mov",
-                region,
-                f"WezTerm {session.mux} control gateway",
-            )
-            gateway_recorder.start()
-    try:
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging enabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging enabled",
-        )
-
-        session.keystroke('"c"')
-        time.sleep(0.4)
-        session.keystroke('"new-window"')
-        session.key_code(36)
-        session.wait_mux_window_count(2, timeout=15)
-        wait_until(
-            lambda: "> new-window" in session.gateway_text()
-            and "< %begin" in session.gateway_text(),
-            10,
-            description="WezTerm displayed raw tmux protocol traffic",
-        )
-        session.sync_htm_window_recordings()
-        print("OK: C ran new-window through the tmux command prompt", flush=True)
-
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging disabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging disabled",
-        )
-
-        session.detach_client()
-        session.reattach_client()
-
-        session.focus_gateway()
-        session.keystroke('"x"')
-        if session.mux == "tmux":
-            wait_until(
-                lambda: session.tmux_has_session()
-                and session.tmux_client_count() == 0,
-                15,
-                description="tmux server survived WezTerm force quit",
-            )
-        else:
-            wait_until(
-                lambda: bool(pids_named("htmd")) and ipc_path().exists(),
-                15,
-                description="htmd survived WezTerm force quit",
-            )
-        wait_until(
-            lambda: session.window_count() == 1,
-            15,
-            description="WezTerm force quit closed native mux windows",
-        )
-        print(f"OK: X force-quit the {session.mux} client only", flush=True)
-    finally:
-        if gateway_recorder:
-            gateway_recorder.stop(required=False)
-        session.end_htm_window_recording()
+# Back-compat for wezterm_control_plane_e2e.py
+from htm_gui_e2e import run_control_plane_suite as run_control_plane_checks  # noqa: E402
 
 
 def main() -> int:

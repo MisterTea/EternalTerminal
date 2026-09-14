@@ -237,7 +237,9 @@ ControlAction executeControlCommand(MultiplexerState* mux,
     if (cmd.name == "display-message" || cmd.name == "display") {
       string fmt = cmd.flags.positional.empty() ? string("#{pane_id}")
                                                 : cmd.flags.positional[0];
-      uint32_t pane = 0, window = 0, session = mux->activeSessionId();
+      uint32_t pane = MultiplexerState::kUnspecifiedId;
+      uint32_t window = MultiplexerState::kUnspecifiedId;
+      uint32_t session = mux->activeSessionId();
       if (cmd.flags.has('t')) {
         string t = cmd.flags.get('t');
         if (!t.empty() && t[0] == '%') {
@@ -297,8 +299,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       uint32_t id = mux->newWindow(name, cwd);
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{window_id}");
-        writer->writeOutput(
-            mux->displayFormat(fmt, mux->activeSessionId(), id, 0));
+        writer->writeOutput(mux->displayFormat(
+            fmt, mux->activeSessionId(), id, MultiplexerState::kUnspecifiedId));
       }
       writer->end();
       return ControlAction::None;
@@ -313,8 +315,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       uint32_t id = mux->splitWindow(src, stacked, cmd.flags.get('c'));
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{pane_id}");
-        writer->writeOutput(
-            mux->displayFormat(fmt, mux->activeSessionId(), 0, id));
+        writer->writeOutput(mux->displayFormat(
+            fmt, mux->activeSessionId(), MultiplexerState::kUnspecifiedId, id));
       }
       writer->end();
       return ControlAction::None;
@@ -426,9 +428,15 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       bool pending = cmd.flags.has('P') && cmd.flags.has('C');
       writer->begin();
       if (cmd.flags.has('p') && !pending) {
-        writer->writeOutput(mux->capturePane(
+        string out = mux->capturePane(
             pane, cmd.flags.has('e'), cmd.flags.has('a'), start, end,
-            cmd.flags.has('J'), cmd.flags.has('N')));
+            cmd.flags.has('J'), cmd.flags.has('N'));
+        // Match tmux: -C octal-escapes controls so raw ESC in pane
+        // contents cannot terminate the client's DCS 1000p stream.
+        if (cmd.flags.has('C')) {
+          out = controlOctalEscape(out);
+        }
+        writer->writeOutput(out);
       }
       writer->end();
       return ControlAction::None;
@@ -487,8 +495,9 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       uint32_t wid = mux->breakPane(pane);
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{window_id}");
-        writer->writeOutput(
-            mux->displayFormat(fmt, mux->activeSessionId(), wid, 0));
+        writer->writeOutput(mux->displayFormat(
+            fmt, mux->activeSessionId(), wid,
+            MultiplexerState::kUnspecifiedId));
       }
       writer->end();
       return ControlAction::None;

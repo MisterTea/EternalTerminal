@@ -53,6 +53,31 @@ TEST_CASE("MultiplexerState split separators and edge resize match tmux",
   mux.stopAll();
 }
 
+TEST_CASE("MultiplexerState absolute resize-pane on splits matches tmux",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  mux.setClientSize(124, 40);
+  uint32_t left = mux.activePaneId();
+  uint32_t right = mux.splitWindow(left, false, "");
+  // Odd content width (123 = 124 - separator): default remainder is on the
+  // left. Ghostty then sends absolute -x/-y for each follower; tmux honors
+  // those, and so must we.
+  mux.resizePaneAbsolute(left, 61, 40);
+  mux.resizePaneAbsolute(right, 62, 40);
+  string panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                               mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 61 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 62 40") != string::npos);
+
+  mux.resizePaneAbsolute(left, 70, 40);
+  panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                        mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 70 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 53 40") != string::npos);
+  mux.stopAll();
+}
+
 TEST_CASE("MultiplexerState splits, nested splits, windows, and close",
           "[Htm][MultiplexerState]") {
   skipIfThreadSanitizer();

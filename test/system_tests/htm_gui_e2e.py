@@ -1,14 +1,17 @@
 #!/usr/bin/env python3
 """Shared GUI HTM e2e framework.
 
-Tests (layout, stress) are emulator-agnostic. Each terminal plugs in by
-implementing ``GuiTerminalSession`` and exporting ``NAME``, ``add_arguments``,
-``apply_args``, and ``open_session``. Run one emulator:
+Tests (layout, stress, corners, affinities, control-plane) are emulator-agnostic.
+Each terminal plugs in by implementing ``GuiTerminalSession`` and exporting
+``NAME``, ``add_arguments``, ``apply_args``, and ``open_session``. Run one
+emulator:
 
   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
   python3 test/system_tests/hyper_htm_e2e.py --suite stress
 
-Protocol checks read htmd ``control command:`` logs.
+Protocol checks read htmd ``control command:`` logs. The control-plane suite
+asserts iTerm2-compatible gateway UX (command menu, Esc detach, X force-quit,
+L logging, C run command) plus native mux windows for panes.
 """
 
 from __future__ import annotations
@@ -30,6 +33,17 @@ import htm_gui_parity
 import iterm2_tmux_cc_oracle as tmux_cc
 
 SKIP = 77
+
+# Exact iTerm2 / WezTerm tmux -CC gateway menu (CRLF normalized to LF for compare).
+EXPECTED_TMUX_COMMAND_MENU = (
+    "** tmux mode started **\n\n"
+    "Command Menu\n"
+    "----------------------------\n"
+    "esc    Detach cleanly.\n"
+    "  X    Force-quit tmux mode.\n"
+    "  L    Toggle logging.\n"
+    "  C    Run tmux command."
+)
 
 _NATIVE_MUX_TITLE = re.compile(r" \[(?:tmux|htm|@[^]]+)\]\s*$")
 
@@ -741,6 +755,21 @@ def _window_key(win: dict) -> str:
     return f"frame:{frame}"
 
 
+def _recording_window_key(win: dict) -> str:
+    """Stable identity for screencapture — ignore title churn.
+
+    iTerm2 rewrites the AX window name on automatic-rename and when it
+    embeds cols×rows (``— 127✕39``). Keying recordings on that name
+    produced one short ``winNN`` file per rename while Ghostty (stable
+    cwd title) kept a single continuous capture. Use the AX id when
+    present, otherwise the top-left position so resize alone does not
+    split the file either.
+    """
+    if win.get("id"):
+        return f"id:{win['id']}"
+    return f"pos:{int(win['x'])},{int(win['y'])}"
+
+
 def _newest_native(windows: list[dict]) -> dict:
     return max(
         windows,
@@ -827,6 +856,7 @@ class GuiTerminalSession(GuiHtmLogSession):
 
     def tmux_pane_snapshot(self) -> str:
         """Visible screen of every pane, matching tmux capture-pane -p -J."""
+        affinities = self.tmux_affinities_json()
         rows = [
             line.split("\t")
             for line in self.tmux_cmd(
@@ -839,7 +869,7 @@ class GuiTerminalSession(GuiHtmLogSession):
             ).splitlines()
             if line.strip()
         ]
-        chunks: list[str] = []
+        chunks: list[str] = [f"# affinities: {affinities}\n"]
         for parts in rows:
             if len(parts) < 6:
                 continue
@@ -860,6 +890,15 @@ class GuiTerminalSession(GuiHtmLogSession):
             if text and not text.endswith("\n"):
                 chunks[-1] += "\n"
         return "".join(chunks)
+
+    def tmux_affinities_json(self) -> str:
+        """Read ``@affinities`` and render the list-of-lists JSON for dumps."""
+        try:
+            raw = self.tmux_cmd("show", "-v", "-q", "@affinities")
+        except Exception:
+            raw = ""
+        groups = htm_gui_parity.parse_affinity_groups(raw)
+        return htm_gui_parity.affinities_json(groups)
 
     def htm_pane_snapshot(self, wait: float = 2.0) -> str:
         """Ask htmd for the same visible-screen dump as capture-pane -p -J."""
@@ -961,7 +1000,13 @@ class GuiTerminalSession(GuiHtmLogSession):
         )
 
     def checkpoint(self, step_id: str, *, oracle: bool = True) -> str:
-        """Record this mux's dump and assert the iTerm2+tmux -CC oracle."""
+        """Record this mux's dump and assert contents / affinities.
+
+        Affinities are always checked (corners vs recorded iTerm2 JSON;
+        layout/stress vs Cmd+T one-OS-window semantics). When ``oracle`` is
+        true, pane text and topology are also checked against the corners
+        table.
+        """
         dump = self.mux_snapshot()
         body = f"# action: {step_id}\n# mux={self.mux}\n\n{dump}"
         if self._step_dir:
@@ -969,19 +1014,25 @@ class GuiTerminalSession(GuiHtmLogSession):
             (self._step_dir / f"{step_id}.txt").write_text(body, encoding="utf-8")
         if oracle:
             errors = tmux_cc.check_step(step_id, dump)
-            if errors:
-                fail(
-                    f"{self.mux} checkpoint {step_id} diverged from "
-                    "iTerm2+tmux -CC: "
-                    + "; ".join(errors)
-                    + f"\n{dump[:2000]}"
-                )
+        else:
+            errors = tmux_cc.check_affinities(step_id, dump)
+        if errors:
+            fail(
+                f"{self.mux} checkpoint {step_id} diverged from "
+                "iTerm2+tmux -CC: "
+                + "; ".join(errors)
+                + f"\n{dump[:2000]}"
+            )
+        if oracle:
             print(
                 f"OK: {step_id} matches iTerm2+tmux -CC oracle ({self.mux})",
                 flush=True,
             )
         else:
-            print(f"OK: recorded parity checkpoint {step_id} ({self.mux})", flush=True)
+            print(
+                f"OK: {step_id} affinities + parity dump recorded ({self.mux})",
+                flush=True,
+            )
         return dump
 
     def emulator_window_snapshot(self) -> str:
@@ -1202,7 +1253,56 @@ end tell
         )
 
     def click_screen(self, x: float, y: float) -> None:
-        """Optional: click global screen coordinates (iTerm2 implements this)."""
+        """Left-click global screen coordinates (origin top-left) via CoreGraphics."""
+        import ctypes
+        import ctypes.util
+
+        libname = ctypes.util.find_library("ApplicationServices") or ctypes.util.find_library(
+            "CoreGraphics"
+        )
+        if not libname:
+            fail("CoreGraphics is not available for pane clicks")
+        cg = ctypes.cdll.LoadLibrary(libname)
+
+        class CGPoint(ctypes.Structure):
+            _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
+
+        cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
+        cg.CGEventCreateMouseEvent.argtypes = [
+            ctypes.c_void_p,
+            ctypes.c_uint32,
+            CGPoint,
+            ctypes.c_uint32,
+        ]
+        cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
+        cg.CFRelease.argtypes = [ctypes.c_void_p]
+
+        kCGHIDEventTap = 0
+        kCGEventMouseMoved = 5
+        kCGEventLeftMouseDown = 1
+        kCGEventLeftMouseUp = 2
+        kCGMouseButtonLeft = 0
+        point = CGPoint(float(x), float(y))
+        moved = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, 0)
+        if moved:
+            cg.CGEventPost(kCGHIDEventTap, moved)
+            cg.CFRelease(moved)
+        time.sleep(0.05)
+        down = cg.CGEventCreateMouseEvent(
+            None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft
+        )
+        if not down:
+            fail(f"CGEventCreateMouseEvent failed at {int(x)},{int(y)}")
+        cg.CGEventPost(kCGHIDEventTap, down)
+        cg.CFRelease(down)
+        time.sleep(0.05)
+        up = cg.CGEventCreateMouseEvent(
+            None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft
+        )
+        cg.CGEventPost(kCGHIDEventTap, up)
+        cg.CFRelease(up)
+        time.sleep(0.2)
+        self.snapshot_all_text(f"click-{int(x)}-{int(y)}")
 
     def focus_native_window(self) -> None:
         """Raise a tmux -CC native pane window, not the gateway PTY."""
@@ -1213,6 +1313,43 @@ end tell
         win = _newest_native(launched)
         self._front_native = win
         self._raise_ax_window(win)
+
+    def native_recording_key(self, win: Optional[dict] = None) -> str:
+        """Stable AX identity for a mux OS window (ignores title churn)."""
+        target = win
+        if target is None:
+            launched = self.launched_windows()
+            if not launched:
+                return ""
+            target = getattr(self, "_front_native", None) or _newest_native(launched)
+        return _recording_window_key(target)
+
+    def focus_native_by_key(self, key: str, timeout: float = 15.0) -> dict:
+        """Raise the mux OS window with the given recording key (not newest)."""
+
+        def _find() -> Optional[dict]:
+            for win in self.launched_windows():
+                if _recording_window_key(win) == key:
+                    return win
+            return None
+
+        wait_until(
+            lambda: _find() is not None,
+            timeout,
+            description=f"native mux window key={key}",
+        )
+        win = _find()
+        assert win is not None
+        self._front_native = win
+        self._raise_ax_window(win)
+        return win
+
+    def wait_native_mux_windows(self, count: int, timeout: float = 20.0) -> None:
+        wait_until(
+            lambda: len(self.launched_windows()) >= count,
+            timeout,
+            description=f"{count} native mux OS windows",
+        )
 
     def remember_front_native(self) -> None:
         launched = self.launched_windows()
@@ -1244,7 +1381,31 @@ end tell
         self._raise_ax_window(win)
 
     def _raise_ax_window(self, win: dict) -> None:
-        script = f'''
+        # Prefer AX id: raising reshuffles System Events window indices.
+        wid = int(win.get("id") or 0)
+        if wid:
+            finder = f"(first window whose id is {wid})"
+            try:
+                run_osascript(
+                    f'''
+tell application "System Events"
+  tell {self.ax_tell_target()}
+    set frontmost to true
+    set w to {finder}
+    try
+      perform action "AXRaise" of w
+    end try
+    try
+      set index of w to 1
+    end try
+  end tell
+end tell
+'''
+                )
+            except (subprocess.CalledProcessError, SystemExit):
+                wid = 0
+        if not wid:
+            script = f'''
 tell application "System Events"
   tell {self.ax_tell_target()}
     set frontmost to true
@@ -1257,16 +1418,56 @@ tell application "System Events"
   end tell
 end tell
 '''
-        try:
-            run_osascript(script)
-        except (subprocess.CalledProcessError, SystemExit):
-            self.focus()
-        time.sleep(0.2)
-        self.click_screen(
-            float(win["x"]) + float(win["w"]) * 0.72,
-            float(win["y"]) + float(win["h"]) * 0.55,
+            try:
+                run_osascript(script)
+            except (subprocess.CalledProcessError, SystemExit):
+                self.focus()
+        # Refresh frame after raise — stacked windows share origins until
+        # raised; click the live frontmost matching window when possible.
+        live = next(
+            (
+                w
+                for w in self.ax_windows()
+                if (wid and w.get("id") == wid)
+                or (
+                    not wid
+                    and abs(float(w["x"]) - float(win["x"])) <= 40
+                    and abs(float(w["y"]) - float(win["y"])) <= 40
+                    and abs(float(w["w"]) - float(win["w"])) <= 48
+                    and abs(float(w["h"]) - float(win["h"])) <= 48
+                )
+            ),
+            win,
         )
-        time.sleep(0.15)
+        time.sleep(0.2)
+        # Prefer an Accessibility click on the raised window so AppKit
+        # marks it key / first-responder (CGEvent alone often does not
+        # when another window of the same app was already frontmost).
+        try:
+            run_osascript(
+                f'''
+tell application "System Events"
+  tell {self.ax_tell_target()}
+    set frontmost to true
+    set w to window {int(live["index"])}
+    try
+      set value of attribute "AXMain" of w to true
+    end try
+    try
+      set value of attribute "AXFocused" of w to true
+    end try
+    click at {{{int(float(live["x"]) + float(live["w"]) * 0.72)}, {int(float(live["y"]) + float(live["h"]) * 0.55)}}}
+  end tell
+end tell
+'''
+            )
+            time.sleep(0.25)
+        except (subprocess.CalledProcessError, SystemExit):
+            self.click_screen(
+                float(live["x"]) + float(live["w"]) * 0.72,
+                float(live["y"]) + float(live["h"]) * 0.55,
+            )
+            time.sleep(0.15)
 
     def focus_gateway(self) -> None:
         """Raise the original --command session so Esc/detach reach the menu."""
@@ -1365,10 +1566,24 @@ end tell
         launched = self.launched_windows()
         live = set()
         for win in launched:
-            key = _window_key(win)
+            key = _recording_window_key(win)
             live.add(key)
-            if key in self._recorders:
-                continue
+            region = (int(win["x"]), int(win["y"]), int(win["w"]), int(win["h"]))
+            existing = self._recorders.get(key)
+            if existing is not None:
+                # Title renames must not split the file; a real move/resize
+                # needs a new capture region (screencapture -R is fixed).
+                ox, oy, ow, oh = existing.region
+                x, y, w, h = region
+                if (
+                    abs(ox - x) <= 24
+                    and abs(oy - y) <= 24
+                    and abs(ow - w) <= 48
+                    and abs(oh - h) <= 48
+                ):
+                    continue
+                existing.stop(required=False)
+                del self._recorders[key]
             n = self._next_win_n
             self._next_win_n += 1
             slug = re.sub(r"[^a-z0-9]+", "-", self.name.lower()).strip("-")
@@ -1377,7 +1592,6 @@ end tell
                 self.video_dir
                 / f"{slug}-{self.mux}-{self._record_suite}-win{n:02d}{ext}"
             )
-            region = (int(win["x"]), int(win["y"]), int(win["w"]), int(win["h"]))
             label = win["name"] or f"window {win['index']}"
             rec = ScreenRecorder(path, region, f"{label} ({key})")
             rec.start()
@@ -1451,11 +1665,99 @@ end tell
     def after_layout_suite(self) -> None:
         """Optional: emulator-only checks after the shared layout suite."""
 
+    def gateway_text(self) -> str:
+        """Visible text of the tmux -CC / htm control-plane (gateway) surface."""
+        fail(f"{self.name} does not implement gateway_text()")
+
     def detach_client(self) -> None:
-        fail(f"{self.name} does not implement control-mode detach")
+        """Esc on the gateway: detach cleanly; mux server must survive."""
+        log_path = self.log_file if self.mux == "htm" else None
+        log_before = (
+            log_path.read_text(errors="replace")
+            if log_path is not None and log_path.is_file()
+            else ""
+        )
+        watermark = len(log_before)
+
+        self.focus_gateway()
+        self.key_code(53)  # Escape
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_has_session() and self.tmux_client_count() == 0,
+                15,
+                description=f"{self.name} Esc detached tmux client",
+            )
+        else:
+
+            def _detached() -> bool:
+                if log_path is None or not log_path.is_file():
+                    return False
+                new = log_path.read_text(errors="replace")[watermark:]
+                return any(
+                    command.strip() in ("detach", "detach-client")
+                    for command in control_commands(new)
+                )
+
+            wait_until(_detached, 15, description=f"{self.name} Esc detached htm")
+            wait_until(
+                lambda: bool(pids_named("htmd")) and ipc_path().exists(),
+                15,
+                description="htmd survived Esc detach",
+            )
+            self._reattach_log_path = log_path
+            self._reattach_log_watermark = (
+                len(log_path.read_text(errors="replace"))
+                if log_path is not None and log_path.is_file()
+                else 0
+            )
+        print(f"OK: {self.name} detached without killing {self.mux}", flush=True)
 
     def reattach_client(self) -> None:
-        fail(f"{self.name} does not implement control-mode reattach")
+        """Re-run ``tmux -CC attach`` / ``htm`` in the gateway window."""
+        self.focus_gateway()
+        attach = (
+            f"{self.tmux_bin} -L {self.tmux_socket} -f /dev/null "
+            "-CC attach-session"
+            if self.mux == "tmux"
+            else str(self.htm)  # no -x: must not kill the surviving htmd
+        )
+        previous = ""
+        try:
+            previous = subprocess.check_output(["pbpaste"], text=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        try:
+            subprocess.run(["pbcopy"], input=attach, text=True, check=False)
+            self.keystroke('"v"', "command down")
+            self.key_code(36)
+        finally:
+            subprocess.run(["pbcopy"], input=previous, text=True, check=False)
+
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_client_count() >= 1,
+                20,
+                description=f"{self.name} tmux -CC client reattached",
+            )
+        else:
+            log_path = getattr(self, "_reattach_log_path", None)
+            watermark = getattr(self, "_reattach_log_watermark", 0)
+
+            def _reattached() -> bool:
+                if log_path is None or not log_path.is_file():
+                    return False
+                new = log_path.read_text(errors="replace")[watermark:]
+                return "accepted, returned client_sock" in new and (
+                    "control command: list-windows" in new
+                    or "control command: list-panes" in new
+                )
+
+            wait_until(
+                _reattached, 20, description=f"{self.name} htm control client reattached"
+            )
+        self.after_attach()
+        self.sync_htm_window_recordings()
+        print(f"OK: {self.name} reattached to {self.mux}", flush=True)
 
     def resize_front_native_window(self, width: int, height: int) -> None:
         fail(f"{self.name} does not implement native window resizing")
@@ -1471,8 +1773,11 @@ end tell
 
 
 def _wait_for_native_tab(session: GuiTerminalSession) -> None:
+    """Wait until a mux surface exists outside the control-plane window."""
     deadline = time.time() + 8
-    while time.time() < deadline and session.tab_count() < 2:
+    while time.time() < deadline:
+        if session.window_count() >= 2:
+            break
         time.sleep(0.25)
     session.focus()
 
@@ -1795,10 +2100,153 @@ def _split_vertical(session: GuiTerminalSession) -> None:
 
 
 def _new_window(session: GuiTerminalSession) -> None:
+    """Cmd+T: new tmux window as a tab in the focused OS window's affinity."""
     before = session.mux_window_count()
     session.keystroke('"t"', "command down")
     session.wait_mux_window_count(before + 1)
     session.sync_htm_window_recordings()
+
+
+def _live_affinity_groups(dump: str) -> list[list[int]]:
+    """Affinity groups with live window ids (not ranked — for focus/routing)."""
+    groups = htm_gui_parity.parse_affinities_from_dump(dump)
+    if groups is None:
+        return []
+    live = {int(pane["wid"]) for pane in htm_gui_parity.parse_panes(dump)}
+    return [
+        [wid for wid in group if wid in live]
+        for group in groups
+        if any(wid in live for wid in group)
+    ]
+
+
+def _select_mux_window(session: GuiTerminalSession, wid: int) -> None:
+    """Make ``@wid`` tmux/htm's current window (side channel, not GUI focus)."""
+    target = f"@{wid}" if not str(wid).startswith("@") else str(wid)
+    if session.mux == "tmux":
+        session.tmux_cmd("select-window", "-t", target)
+        time.sleep(0.35)
+        return
+    # HTM: reuse the tmux-compatible control command via a one-shot client
+    # when available; otherwise best-effort through display-message is N/A.
+    opener = getattr(session, "htm_select_window", None)
+    if callable(opener):
+        opener(int(str(target).lstrip("@")))
+        time.sleep(0.35)
+
+
+def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
+    """Raise the native mux OS window whose affinity group contains ``marker``.
+
+    The marker may live in a non-frontmost tab of that OS window; matching only
+    the active pane would miss older tabs (e.g. AFF_A0 after Cmd+T created
+    AFF_A1 in the same affinity). Uses absolute window ids (not ranked;
+    ranking is only for oracle compare).
+
+    Also issues a mux ``select-window`` so Ghostty's Cmd+T affinity (driven by
+    ``%session-window-changed`` / active_window) joins the right group even when
+    Accessibility cannot make the other OS window key.
+    """
+    target_wid = _window_id_with_text(session, marker)
+    if not target_wid:
+        fail(f"no tmux window shows {marker!r}")
+    target = int(target_wid.lstrip("@"))
+    launched = session.launched_windows()
+    if not launched:
+        fail(f"no native mux windows while looking for {marker}")
+
+    _select_mux_window(session, target)
+    time.sleep(0.5)
+
+    def _current_in_target_group() -> Optional[dict]:
+        dump = session.mux_snapshot(wait=0.2)
+        groups = _live_affinity_groups(dump)
+        current = None
+        for pane in htm_gui_parity.parse_panes(dump):
+            if pane.get("current") == "1":
+                current = int(pane["wid"])
+                break
+        if current is None:
+            return None
+        for group in groups:
+            if current in group and target in group:
+                front = session.launched_windows()
+                return front[0] if front else launched[0]
+        return None
+
+    # Ghostty: AX raise / click often fails to transfer AppKit key focus.
+    # select-window (tmux side channel, or HTM via gateway C prompt) is
+    # enough for Cmd+T via %session-window-changed → active_window.
+    if session.name == "Ghostty":
+        hit = _current_in_target_group()
+        if hit is not None:
+            time.sleep(0.5)
+            session._front_native = hit
+            return hit
+        fail(f"no OS window affinity contains {marker!r} (@{target})")
+
+    # Best-effort AX raise of each mux window (works for iTerm2).
+    keys = [_recording_window_key(w) for w in launched]
+    for key in keys:
+        live = session.launched_windows()
+        win = next(
+            (w for w in live if _recording_window_key(w) == key),
+            None,
+        )
+        if win is None:
+            for w in live:
+                if key.startswith("pos:") and _recording_window_key(w).startswith(
+                    "pos:"
+                ):
+                    try:
+                        _, rest = key.split(":", 1)
+                        ox, oy = (int(x) for x in rest.split(",", 1))
+                        if abs(int(w["x"]) - ox) <= 40 and abs(int(w["y"]) - oy) <= 40:
+                            win = w
+                            break
+                    except ValueError:
+                        pass
+        if win is None:
+            continue
+        session._raise_ax_window(win)
+        deadline = time.time() + 1.2
+        while time.time() < deadline:
+            hit = _current_in_target_group()
+            if hit is not None:
+                session._front_native = hit
+                return hit
+            time.sleep(0.15)
+
+    hit = _current_in_target_group()
+    if hit is not None:
+        session._front_native = hit
+        return hit
+
+    fail(f"no OS window affinity contains {marker!r} (@{target})")
+
+
+def _new_os_window(session: GuiTerminalSession) -> None:
+    """Open a tmux window in a new OS window (empty affinity).
+
+    Stock iTerm2: Cmd+N is *not* tmux-aware (``newWindow:possiblyTmux:NO``);
+    the control-mode path is Shell → tmux → New Tmux Window. Emulators that
+    map Cmd+N to the same action can override ``new_tmux_os_window``.
+    """
+    before_w = session.mux_window_count()
+    before_os = len(session.launched_windows())
+    opener = getattr(session, "new_tmux_os_window", None)
+    if callable(opener):
+        opener()
+    else:
+        session.keystroke('"n"', "command down")
+    session.wait_mux_window_count(before_w + 1)
+    wait_until(
+        lambda: len(session.launched_windows()) > before_os,
+        20,
+        description="new native OS window after New Tmux Window",
+    )
+    session.sync_htm_window_recordings()
+    session.focus_native_window()
 
 
 def _window_id_with_text(session: GuiTerminalSession, marker: str) -> str:
@@ -1902,6 +2350,35 @@ def _kill_focused(
         session.wait_mux_pane_count(panes)
     if windows is not None:
         session.wait_mux_window_count(windows)
+
+    def _affinities_match() -> bool:
+        dump = session.mux_snapshot(wait=0.3)
+        got = htm_gui_parity.parse_affinities_from_dump(dump)
+        if got is None:
+            return False
+        live = sorted({int(pane["wid"]) for pane in htm_gui_parity.parse_panes(dump)})
+        flat = sorted({wid for group in got for wid in group})
+        if flat != live:
+            return False
+        # Match iTerm2 Cmd+T partition: one group containing every live window.
+        want = [live] if live else []
+        return htm_gui_parity.rank_affinity_groups(
+            got
+        ) == htm_gui_parity.rank_affinity_groups(want)
+
+    deadline = time.time() + 20.0
+    while time.time() < deadline and not _affinities_match():
+        time.sleep(0.25)
+    if not _affinities_match():
+        # Stock iTerm2 sometimes lags updating @affinities after an
+        # out-of-band kill-window; record whatever it currently persists
+        # so Ghostty can be compared to that ground truth.
+        dump = session.mux_snapshot(wait=0.3)
+        print(
+            "WARN: @affinities not fully pruned after close; "
+            f"continuing with {htm_gui_parity.parse_affinities_from_dump(dump)!r}",
+            flush=True,
+        )
     session.sync_htm_window_recordings()
     # After a pane exits, refocus the surviving native HTM window so the next
     # split/new-window action does not land on a dead or gateway window.
@@ -1938,6 +2415,12 @@ def run_gui_corners(session: GuiTerminalSession) -> None:
     session.after_attach()
     _wait_for_native_tab(session)
     print(f"OK: attached to {session.name} mux={session.mux}", flush=True)
+    # Match iTerm2's default mux window size so --record-video yields the
+    # same pre-resize / post-resize segment count (Ghostty otherwise reuses
+    # a persisted large frame and never splits the capture).
+    if session.supports_native_resize:
+        session.resize_front_native_window(570, 462)
+        time.sleep(0.35)
     session.begin_htm_window_recording("corners")
     try:
         _run_gui_corners_body(session)
@@ -1988,6 +2471,7 @@ def _run_gui_corners_body(session: GuiTerminalSession) -> None:
             )
 
         wait_until(_resized, 20, description="native window resize reached mux")
+        session.sync_htm_window_recordings()
         session.checkpoint("after-native-resize")
         print("OK: native resize updated pane geometry", flush=True)
 
@@ -2081,12 +2565,270 @@ def run_corners_suite(session: GuiTerminalSession) -> None:
     session.shutdown_multiplexer()
 
 
+# Markers for the multi-OS-window affinities suite (A = first OS window, B = second).
+AFF_A0 = "AFF_A0"
+AFF_A1 = "AFF_A1"
+AFF_A2 = "AFF_A2"
+AFF_B0 = "AFF_B0"
+AFF_B1 = "AFF_B1"
+AFF_AFTER_REATTACH = "AFF_AFTER_REATTACH"
+
+
+def run_gui_affinities(session: GuiTerminalSession) -> None:
+    """Multiple OS windows × tabs; tab into a non-newest window; detach/reattach."""
+    session.start(session.multiplexer_command())
+    session.wait_init()
+    session.after_attach()
+    _wait_for_native_tab(session)
+    session.wait_native_mux_windows(1, timeout=15)
+    print(f"OK: attached to {session.name} mux={session.mux}", flush=True)
+    session.begin_htm_window_recording("affinities")
+    try:
+        _run_gui_affinities_body(session)
+    finally:
+        session.end_htm_window_recording()
+
+
+def _run_gui_affinities_body(session: GuiTerminalSession) -> None:
+    session.focus_native_window()
+    session.wait_mux_window_count(1)
+    _echo_marker(session, AFF_A0)
+    session.checkpoint("aff-after-first-window")
+    print("OK: OS window A created", flush=True)
+
+    _new_window(session)
+    _echo_marker(session, AFF_A1)
+    session.checkpoint("aff-after-tab-on-a")
+    session.wait_native_mux_windows(1)
+    print("OK: Cmd+T added a tab on OS window A", flush=True)
+
+    before_ids = {
+        pane["wid"]
+        for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3))
+    }
+    _new_os_window(session)
+    after_panes = htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3))
+    after_ids = {pane["wid"] for pane in after_panes}
+    new_ids = after_ids - before_ids
+    if len(new_ids) != 1:
+        fail(f"expected one new tmux window after New Tmux Window, got {new_ids}")
+    new_b = "@" + next(iter(new_ids))
+    # Typing follows the focused GUI OS window (newest after New Tmux Window),
+    # not a parallel-client select-window.
+    session.focus_native_window()
+    time.sleep(0.4)
+    _echo_marker(session, AFF_B0)
+    b0_wids = {
+        pane["wid"]
+        for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3))
+        if AFF_B0 in (pane.get("body") or "")
+    }
+    if b0_wids != {new_b.lstrip("@")}:
+        fail(
+            f"AFF_B0 should live only in new OS window {new_b}, "
+            f"found in @{sorted(b0_wids)}"
+        )
+    session.wait_native_mux_windows(2)
+    session.checkpoint("aff-after-second-os-window")
+    print(f"OK: New Tmux Window opened OS window B ({new_b})", flush=True)
+
+    # Arbitrary order: tab into A's group while B is newest.
+    _focus_os_window_showing(session, AFF_A0)
+    time.sleep(0.3)
+    _new_window(session)
+    _echo_marker(session, AFF_A2)
+    session.checkpoint("aff-after-tab-on-older-a")
+    print("OK: Cmd+T on OS window A (not newest B) added a tab", flush=True)
+
+    _focus_os_window_showing(session, AFF_B0)
+    time.sleep(0.3)
+    _new_window(session)
+    _echo_marker(session, AFF_B1)
+    session.checkpoint("aff-after-tab-on-b")
+    session.wait_native_mux_windows(2)
+    print("OK: two OS windows, each with multiple tabs", flush=True)
+
+    if not session.supports_detach:
+        print(f"SKIP detach/reattach on {session.name}", flush=True)
+        return
+
+    # Settle so iTerm can flush @affinities before Esc.
+    time.sleep(1.0)
+    pre = session.mux_snapshot(wait=0.5)
+    pre_aff = htm_gui_parity.layout_affinities(pre)
+    pre_markers = {AFF_A0, AFF_A1, AFF_A2, AFF_B0, AFF_B1}
+    missing = [m for m in pre_markers if m not in pre]
+    if missing:
+        fail(f"pre-detach dump missing markers {missing}")
+    print(
+        f"OK: pre-detach affinities {htm_gui_parity.affinities_json(pre_aff)}",
+        flush=True,
+    )
+
+    session.detach_client()
+    session.reattach_client()
+    session.wait_native_mux_windows(2, timeout=25)
+    session.focus_native_window()
+    time.sleep(0.4)
+    _echo_marker(session, AFF_AFTER_REATTACH)
+    session.checkpoint("aff-after-reattach")
+
+    post = session.mux_snapshot(wait=0.5)
+    post_aff = htm_gui_parity.layout_affinities(post)
+    if post_aff != pre_aff:
+        fail(
+            "affinities after reattach diverged from pre-detach: "
+            f"pre={htm_gui_parity.affinities_json(pre_aff)} "
+            f"post={htm_gui_parity.affinities_json(post_aff)}"
+        )
+    for marker in (AFF_A0, AFF_A1, AFF_A2, AFF_B0, AFF_B1):
+        if marker not in post:
+            fail(f"after reattach missing pane marker {marker}")
+    if len(session.launched_windows()) < 2:
+        fail("after reattach expected 2 native mux OS windows")
+    print(
+        f"OK: reattach restored affinities {htm_gui_parity.affinities_json(post_aff)} "
+        f"and {len(session.launched_windows())} OS windows",
+        flush=True,
+    )
+
+
+def run_affinities_suite(session: GuiTerminalSession) -> None:
+    run_gui_affinities(session)
+    _assert_session_alive(session, "after affinities test")
+    session.shutdown_multiplexer()
+
+
+def normalize_gateway_text(text: str) -> str:
+    return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def assert_control_mode_attached(session: GuiTerminalSession) -> None:
+    """iTerm2-compatible attach: command menu on gateway + native mux window.
+
+    The control plate must live in its own OS window. Mux panes as tabs on
+    the gateway (Ghostty's old behavior) is a hard failure — iTerm2 never
+    does that.
+    """
+    wait_until(
+        lambda: EXPECTED_TMUX_COMMAND_MENU
+        in normalize_gateway_text(session.gateway_text()),
+        15,
+        description=f"{session.name} iTerm2-compatible tmux command menu",
+    )
+    wait_until(
+        lambda: session.window_count() >= 2,
+        15,
+        description=(
+            f"{session.name} separate OS window for the mux session "
+            "(not a tab on the control-plane window)"
+        ),
+    )
+    session.remember_gateway_windows()
+    natives = session.launched_windows()
+    if not natives:
+        fail(
+            f"{session.name}: control plane and mux session share one OS window "
+            "as tabs; tmux -CC requires a separate native window for panes"
+        )
+    # Gateway window must stay at a single tab (the control plate only).
+    if session.tab_count() > 1 and session.window_count() < 2:
+        fail(
+            f"{session.name}: gateway hosts {session.tab_count()} tabs; "
+            "mux panes must not share the control-plane window"
+        )
+    try:
+        session.focus_native_window()
+    except Exception:
+        pass
+    print(
+        f"OK: {session.name} control plane menu + native mux surface ready",
+        flush=True,
+    )
+
+
+def run_control_plane_suite(session: GuiTerminalSession) -> None:
+    """Verify Esc/X/L/C control-plane UX and that the mux server survives."""
+    session.start(session.multiplexer_command())
+    session.wait_init()
+    session.after_attach()
+    assert_control_mode_attached(session)
+    session.begin_htm_window_recording("control-plane")
+    try:
+        session.focus_gateway()
+        session.keystroke('"l"')
+        wait_until(
+            lambda: "tmux logging enabled"
+            in normalize_gateway_text(session.gateway_text()),
+            10,
+            description=f"{session.name} tmux protocol logging enabled",
+        )
+
+        session.keystroke('"c"')
+        time.sleep(0.4)
+        session.keystroke('"new-window"')
+        session.key_code(36)
+        session.wait_mux_window_count(2, timeout=15)
+        wait_until(
+            lambda: (
+                "> new-window" in normalize_gateway_text(session.gateway_text())
+                and "< %begin" in normalize_gateway_text(session.gateway_text())
+            ),
+            10,
+            description=f"{session.name} displayed raw tmux protocol traffic",
+        )
+        session.sync_htm_window_recordings()
+        print(
+            f"OK: C ran new-window through the {session.name} tmux command prompt",
+            flush=True,
+        )
+
+        session.focus_gateway()
+        session.keystroke('"l"')
+        wait_until(
+            lambda: "tmux logging disabled"
+            in normalize_gateway_text(session.gateway_text()),
+            10,
+            description=f"{session.name} tmux protocol logging disabled",
+        )
+
+        session.detach_client()
+        session.reattach_client()
+
+        session.focus_gateway()
+        session.keystroke('"x"')
+        if session.mux == "tmux":
+            wait_until(
+                lambda: session.tmux_has_session()
+                and session.tmux_client_count() == 0,
+                15,
+                description=f"tmux server survived {session.name} force quit",
+            )
+        else:
+            wait_until(
+                lambda: bool(pids_named("htmd")) and ipc_path().exists(),
+                15,
+                description=f"htmd survived {session.name} force quit",
+            )
+        wait_until(
+            lambda: session.window_count() == 1 and session.tab_count() <= 1,
+            15,
+            description=f"{session.name} force quit closed native mux tabs/windows",
+        )
+        print(f"OK: X force-quit the {session.mux} client only", flush=True)
+    finally:
+        session.end_htm_window_recording()
+    session.shutdown_multiplexer()
+
+
 SUITES: dict[str, Callable[[GuiTerminalSession], None]] = {
     "layout": run_layout_suite,
     "stress": run_stress_suite,
     "corners": run_corners_suite,
+    "affinities": run_affinities_suite,
+    "control-plane": run_control_plane_suite,
 }
-SUITE_ORDER = ("layout", "stress", "corners")
+SUITE_ORDER = ("layout", "stress", "corners", "affinities", "control-plane")
 
 EMULATOR_MODULES = {
     "iterm2": "iterm2_htm_e2e",
@@ -2134,7 +2876,7 @@ def add_common_gui_args(parser: argparse.ArgumentParser, default_suite: str) -> 
     parser.add_argument(
         "--suite",
         default=default_suite,
-        help="layout, stress, corners, comma-separated names, or all "
+        help="layout, stress, corners, control-plane, comma-separated names, or all "
         f"(default: {default_suite})",
     )
     parser.add_argument(

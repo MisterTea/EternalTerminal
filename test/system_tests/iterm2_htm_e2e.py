@@ -191,6 +191,22 @@ end tell
         )
         time.sleep(0.3)
 
+    def new_tmux_os_window(self) -> None:
+        """New tmux window in a new OS window (empty affinity).
+
+        Stock iTerm2: plain Cmd+N is *not* tmux-aware. The control-mode
+        action is Shell → tmux → New Tmux Window (menu; Option+Cmd+N is the
+        alternate key equivalent but is unreliable via System Events).
+        """
+        self.focus_native_window()
+        time.sleep(0.25)
+        self.osascript_pid(
+            "set frontmost to true\n"
+            '    click menu item "New Tmux Window" of menu "tmux" '
+            'of menu item "tmux" of menu "Shell" of menu bar 1'
+        )
+        time.sleep(0.5)
+
     def focus_gateway(self) -> None:
         super().focus_gateway()
         try:
@@ -320,51 +336,7 @@ end tell
 
     def click_screen(self, x: float, y: float) -> None:
         """Left-click global screen coordinates (origin top-left) via CoreGraphics."""
-        import ctypes
-        import ctypes.util
-
-        libname = ctypes.util.find_library("ApplicationServices") or ctypes.util.find_library(
-            "CoreGraphics"
-        )
-        if not libname:
-            fail("CoreGraphics is not available for pane clicks")
-        cg = ctypes.cdll.LoadLibrary(libname)
-
-        class CGPoint(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
-
-        cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
-        cg.CGEventCreateMouseEvent.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            CGPoint,
-            ctypes.c_uint32,
-        ]
-        cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
-        cg.CFRelease.argtypes = [ctypes.c_void_p]
-
-        kCGHIDEventTap = 0
-        kCGEventMouseMoved = 5
-        kCGEventLeftMouseDown = 1
-        kCGEventLeftMouseUp = 2
-        kCGMouseButtonLeft = 0
-        point = CGPoint(float(x), float(y))
-        moved = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, 0)
-        if moved:
-            cg.CGEventPost(kCGHIDEventTap, moved)
-            cg.CFRelease(moved)
-        time.sleep(0.05)
-        down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft)
-        if not down:
-            fail(f"CGEventCreateMouseEvent failed at {int(x)},{int(y)}")
-        cg.CGEventPost(kCGHIDEventTap, down)
-        cg.CFRelease(down)
-        time.sleep(0.05)
-        up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft)
-        cg.CGEventPost(kCGHIDEventTap, up)
-        cg.CFRelease(up)
-        time.sleep(0.2)
-        self.snapshot_all_text(f"click-{int(x)}-{int(y)}")
+        super().click_screen(x, y)
 
     def pane_points(self) -> tuple[tuple[float, float], tuple[float, float]]:
         """Approximate centers of the left and right halves of window 1."""
