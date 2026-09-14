@@ -128,12 +128,15 @@ Port forwarding is supported in Eternal Terminal using the same connection that 
 
 Forward port forwarding listens to a port on the client, and forwards connections to it to the server, which "tunnels" the connection to the server's port. It is activated by passing either a `-t` (or `--tunnel`) parameter to `et`, and providing a source and destination port or range.
 
-The port range is in the form of `source:destination` or `srcStart-srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the client, and `destination` is the port on the server.  Multiple ports may be forwarded by specifying a comma-separated list.
+The port range is in the form of `source:destination` or `srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the client, and `destination` is the port on the server. These forms connect to loopback on the server. Multiple two-part ports or ranges may be forwarded by specifying a comma-separated list.
+
+An SSH-style argument in the form `bind_address:source:destination_host:destination` connects to an explicit host from the server. IPv6 addresses in this form must be enclosed in square brackets. SSH-style arguments cannot be combined in a comma-separated list.
 
 | Command | Description |
 | ------- | ----------- |
 | `et -x -t 8080:8080 user@myhost` | Forwards connections to port 8080 on the client to 8080 on the server. |
 | `et -x -t 2222:22 user@myhost` | Forwards connections to port 2222 on the client to port 22 on the server. |
+| `et -x -t 127.0.0.1:2222:destination.example.com:22 user@gateway` | Listens on `127.0.0.1:2222` on the client and forwards through `gateway` to `destination.example.com:22`. |
 | `et -x -t 8080:8080,2222:22 user@myhost` | Forwards connections to both 8080 and 2022 on the client to port 8080 and 22 on the server (respectively). |
 | `et -x -t 8080-8089:8080-8089 user@myhost` | Forwards connections to port 8080-8089 (inclusive) on the client to the server. |
 
