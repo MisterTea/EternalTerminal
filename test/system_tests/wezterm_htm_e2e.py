@@ -298,12 +298,21 @@ if os.name == "nt":
                         "w": float(max(0, rect.right - rect.left)),
                         "h": float(max(0, rect.bottom - rect.top)),
                         "id": int(hwnd),
+                        "hwnd": int(hwnd),
                     }
                 )
             return out
 
         def launched_windows(self) -> list[dict]:
             return [win for win in self.ax_windows() if win["w"] >= 64 and win["h"] >= 64]
+
+        def _raise_ax_window(self, win: dict) -> None:
+            hwnd = int(win.get("hwnd") or win.get("id") or 0)
+            if not hwnd:
+                fail(f"WezTerm window missing hwnd: {win!r}")
+            focus_window(hwnd)
+            time.sleep(0.15)
+            self._click_hwnd(hwnd)
 
         def _remember_window(self) -> bool:
             hwnds = self._owned_hwnds()
@@ -385,6 +394,7 @@ if os.name == "nt":
                     ("d", False): (VK_CONTROL, VK_SHIFT, ord("D")),
                     ("d", True): (VK_CONTROL, VK_MENU, ord("D")),
                     ("t", False): (VK_CONTROL, VK_SHIFT, ord("T")),
+                    ("n", False): (VK_CONTROL, VK_SHIFT, ord("N")),
                     ("w", False): (VK_CONTROL, VK_SHIFT, ord("W")),
                     ("[", False): (VK_CONTROL, VK_SHIFT, ord("H")),
                     ("]", False): (VK_CONTROL, VK_SHIFT, ord("L")),
@@ -1099,7 +1109,7 @@ from htm_gui_e2e import run_control_plane_suite as run_control_plane_checks  # n
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":

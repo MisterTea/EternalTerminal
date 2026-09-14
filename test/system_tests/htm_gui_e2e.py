@@ -2876,7 +2876,8 @@ def add_common_gui_args(parser: argparse.ArgumentParser, default_suite: str) -> 
     parser.add_argument(
         "--suite",
         default=default_suite,
-        help="layout, stress, corners, control-plane, comma-separated names, or all "
+        help="layout, stress, corners, affinities, control-plane, "
+        "comma-separated names, or all "
         f"(default: {default_suite})",
     )
     parser.add_argument(

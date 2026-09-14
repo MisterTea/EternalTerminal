@@ -40,6 +40,12 @@ return {
       action = act.SpawnTab 'CurrentPaneDomain',
     },
     {
+      -- iTerm2 "New Tmux Window": empty affinity → new OS window.
+      key = 'n',
+      mods = 'CMD',
+      action = act.SpawnWindow,
+    },
+    {
       key = 'w',
       mods = 'CMD',
       action = act.CloseCurrentPane { confirm = false },
@@ -78,6 +84,11 @@ return {
       key = 't',
       mods = 'CTRL|SHIFT',
       action = act.SpawnTab 'CurrentPaneDomain',
+    },
+    {
+      key = 'n',
+      mods = 'CTRL|SHIFT',
+      action = act.SpawnWindow,
     },
     {
       key = 'w',

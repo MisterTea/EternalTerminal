@@ -931,6 +931,43 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         """Corners suite uses this after detach/reattach; HWND, not osascript."""
         self.focus_native()
 
+    def _raise_ax_window(self, win: dict) -> None:
+        """Raise a mux OS window by HWND (affinities / multi-window focus)."""
+        hwnd = int(win.get("hwnd") or 0)
+        if not hwnd:
+            fail(f"Windows Terminal window missing hwnd: {win!r}")
+        focus_window(hwnd)
+        time.sleep(0.2)
+        rect = wintypes.RECT()
+        if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+            x = (rect.left + rect.right) // 2
+            y = (rect.top + rect.bottom) * 55 // 100
+            user32.SetCursorPos(x, y)
+            user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+            user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+            time.sleep(0.12)
+
+    def new_tmux_os_window(self) -> None:
+        """New OS window with empty affinity (iTerm ``New Tmux Window``).
+
+        Windows Terminal's control-mode path turns UI ``new-tab`` into the
+        ``new-window`` control command; the terminal is responsible for putting
+        an anonymous window in a fresh OS window (empty affinity). When WT
+        grows a dedicated New Window action, prefer that here over Cmd+T.
+        """
+        self.focus_native()
+        before_os = len(self.launched_windows())
+        before_cmd = self.log_text().count("control command: new-window")
+        self._action("new-tab")
+        wait_until(
+            lambda: len(self.launched_windows()) > before_os
+            or self.log_text().count("control command: new-window") > before_cmd,
+            15,
+            description="Windows Terminal New Tmux Window",
+        )
+        time.sleep(0.5)
+        self._discover_native_windows()
+
     def launched_windows(self) -> list[dict]:
         self._discover_native_windows()
         out: list[dict] = []
@@ -1106,6 +1143,8 @@ class WindowsTerminalControlSession(GuiTerminalSession):
                 self._action("new-tab")
                 time.sleep(1.0)
                 self._discover_native_windows()
+            elif value == "n":
+                self.new_tmux_os_window()
             elif value == "w":
                 self.focus_native()
                 shortcut(VK_CONTROL, VK_SHIFT, ord("W"))

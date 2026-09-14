@@ -141,6 +141,7 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace):
 
 if os.name == "nt":
     import ctypes
+    from ctypes import wintypes
     from windows_terminal_htm_e2e import (  # noqa: E402
         KEYEVENTF_KEYUP,
         VK_CONTROL,
@@ -232,6 +233,36 @@ if os.name == "nt":
         def window_count(self) -> int:
             return self.tab_count()
 
+        def ax_windows(self) -> list[dict]:
+            rect = wintypes.RECT()
+            out: list[dict] = []
+            for index, hwnd in enumerate(self._owned_hwnds(), start=1):
+                if not user32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                    continue
+                out.append(
+                    {
+                        "index": index,
+                        "name": f"hwnd-{hwnd}",
+                        "x": float(rect.left),
+                        "y": float(rect.top),
+                        "w": float(max(0, rect.right - rect.left)),
+                        "h": float(max(0, rect.bottom - rect.top)),
+                        "id": int(hwnd),
+                        "hwnd": int(hwnd),
+                    }
+                )
+            return out
+
+        def launched_windows(self) -> list[dict]:
+            return [win for win in self.ax_windows() if win["w"] >= 64 and win["h"] >= 64]
+
+        def _raise_ax_window(self, win: dict) -> None:
+            hwnd = int(win.get("hwnd") or win.get("id") or 0)
+            if not hwnd:
+                fail(f"Hyper window missing hwnd: {win!r}")
+            focus_window(hwnd)
+            time.sleep(0.2)
+
         def focus(self, *, prefer_front: bool = True) -> None:
             owned = self._owned_hwnds()
             if not owned:
@@ -255,6 +286,7 @@ if os.name == "nt":
                     ("d", False): (VK_CONTROL, VK_SHIFT, ord("D")),
                     ("d", True): (VK_CONTROL, VK_SHIFT, ord("E")),
                     ("t", False): (VK_CONTROL, VK_SHIFT, ord("T")),
+                    ("n", False): (VK_CONTROL, VK_SHIFT, ord("N")),
                     ("w", False): (VK_CONTROL, VK_SHIFT, ord("W")),
                     ("[", False): (VK_CONTROL, VK_NEXT),
                     ("]", False): (VK_CONTROL, VK_PRIOR),
@@ -441,7 +473,7 @@ end tell
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":

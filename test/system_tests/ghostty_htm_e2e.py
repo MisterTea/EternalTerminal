@@ -547,7 +547,7 @@ end tell
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":
