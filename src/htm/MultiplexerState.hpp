@@ -46,8 +46,9 @@ class MultiplexerState {
   void selectPane(uint32_t paneId);
   void selectWindow(uint32_t windowId);
   void resizePaneDir(uint32_t paneId, char dir, int amount);
-  /** Absolute pane size (tmux ``resize-pane -x/-y``). Sole panes resize their
-   * window. */
+  /** Absolute pane size (tmux ``resize-pane -x/-y``). Sole panes resize
+   * their window; split panes move dividers so the target ends up at that
+   * size. */
   void resizePaneAbsolute(uint32_t paneId, int cols, int rows);
   void zoomToggle(uint32_t paneId);
   void setClientSize(int cols, int rows);
@@ -71,6 +72,10 @@ class MultiplexerState {
   string dumpAllPanesText() const;
   string displayFormat(const string& format, uint32_t sessionId,
                        uint32_t windowId, uint32_t paneId);
+
+  /// Sentinel for ``displayFormat`` when window/pane was not specified.
+  /// Window and pane ids start at 0 (tmux-compatible), so 0 is valid.
+  static constexpr uint32_t kUnspecifiedId = 0xFFFFFFFFu;
 
   uint32_t parsePaneTarget(const string& target);
   uint32_t parseWindowTarget(const string& target);
@@ -127,6 +132,9 @@ class MultiplexerState {
                    Pane* pane);
   void applyPaneSize(Pane* pane);
   void collectPanes(uint32_t id, vector<uint32_t>* out) const;
+  /** Move dividers (or grow the window) so ``paneId`` is ``want`` cells
+   * wide (``alongCols``) or tall. Returns true if layout must refresh. */
+  bool resizePaneAbsoluteAlong(uint32_t paneId, int want, bool alongCols);
   string paneCwd(Pane* pane) const;
   void unlinkPaneFromTree(uint32_t paneId, bool* windowEmptied);
   void insertPaneBeside(uint32_t srcPane, uint32_t destPane, bool stacked,

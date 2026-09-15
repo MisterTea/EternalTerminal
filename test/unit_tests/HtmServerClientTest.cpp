@@ -336,7 +336,7 @@ TEST_CASE("HtmServer automatic-renames window from pane command",
   REQUIRE(waitUntil(
       [&]() {
         h.pump();
-        return h.incoming.find("%window-renamed @1 sleep") != string::npos;
+        return h.incoming.find("%window-renamed @0 sleep") != string::npos;
       },
       5000));
 }

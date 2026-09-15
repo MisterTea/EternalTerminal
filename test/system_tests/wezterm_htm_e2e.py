@@ -36,7 +36,6 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_e2e import (  # noqa: E402
     GuiTerminalSession,
-    ScreenRecorder,
     _window_key,
     command_count,
     control_commands,
@@ -299,12 +298,21 @@ if os.name == "nt":
                         "w": float(max(0, rect.right - rect.left)),
                         "h": float(max(0, rect.bottom - rect.top)),
                         "id": int(hwnd),
+                        "hwnd": int(hwnd),
                     }
                 )
             return out
 
         def launched_windows(self) -> list[dict]:
             return [win for win in self.ax_windows() if win["w"] >= 64 and win["h"] >= 64]
+
+        def _raise_ax_window(self, win: dict) -> None:
+            hwnd = int(win.get("hwnd") or win.get("id") or 0)
+            if not hwnd:
+                fail(f"WezTerm window missing hwnd: {win!r}")
+            focus_window(hwnd)
+            time.sleep(0.15)
+            self._click_hwnd(hwnd)
 
         def _remember_window(self) -> bool:
             hwnds = self._owned_hwnds()
@@ -386,6 +394,7 @@ if os.name == "nt":
                     ("d", False): (VK_CONTROL, VK_SHIFT, ord("D")),
                     ("d", True): (VK_CONTROL, VK_MENU, ord("D")),
                     ("t", False): (VK_CONTROL, VK_SHIFT, ord("T")),
+                    ("n", False): (VK_CONTROL, VK_SHIFT, ord("N")),
                     ("w", False): (VK_CONTROL, VK_SHIFT, ord("W")),
                     ("[", False): (VK_CONTROL, VK_SHIFT, ord("H")),
                     ("]", False): (VK_CONTROL, VK_SHIFT, ord("L")),
@@ -545,6 +554,7 @@ if os.name == "nt":
             kill_htm_daemons()
 
         def after_layout_suite(self) -> None:
+            super().after_layout_suite()
             text = self.log_text()
             if command_count(text, "list-windows") < 1 and "list-windows" not in text:
                 fail("WezTerm did not send list-windows after control-mode attach")
@@ -1075,6 +1085,7 @@ end tell
         print(f"OK: WezTerm reattached to {self.mux}", flush=True)
 
     def after_layout_suite(self) -> None:
+        super().after_layout_suite()
         if self.mux == "tmux":
             if not self.tmux_has_session():
                 fail("tmux -CC server exited during WezTerm layout suite")
@@ -1095,97 +1106,12 @@ end tell
             print(f"WARN: leftover wezterm-gui pids {still}", flush=True)
 
 
-def run_control_plane_checks(session: WezTermHtmSession) -> None:
-    session.start(session.multiplexer_command())
-    session.wait_init()
-    session.after_attach()
-    session.begin_htm_window_recording("control-plane")
-    gateway_recorder = None
-    if session.video_dir:
-        gateway_title = (session.gateway_pane().get("title") or "").strip()
-        gateways = [
-            window
-            for window in session.ax_windows()
-            if (window.get("name") or "").strip() == gateway_title
-        ]
-        if gateways:
-            window = gateways[0]
-            region = (
-                int(window["x"]),
-                int(window["y"]),
-                int(window["w"]),
-                int(window["h"]),
-            )
-            gateway_recorder = ScreenRecorder(
-                session.video_dir
-                / f"wezterm-{session.mux}-control-plane-gateway.mov",
-                region,
-                f"WezTerm {session.mux} control gateway",
-            )
-            gateway_recorder.start()
-    try:
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging enabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging enabled",
-        )
-
-        session.keystroke('"c"')
-        time.sleep(0.4)
-        session.keystroke('"new-window"')
-        session.key_code(36)
-        session.wait_mux_window_count(2, timeout=15)
-        wait_until(
-            lambda: "> new-window" in session.gateway_text()
-            and "< %begin" in session.gateway_text(),
-            10,
-            description="WezTerm displayed raw tmux protocol traffic",
-        )
-        session.sync_htm_window_recordings()
-        print("OK: C ran new-window through the tmux command prompt", flush=True)
-
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging disabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging disabled",
-        )
-
-        session.detach_client()
-        session.reattach_client()
-
-        session.focus_gateway()
-        session.keystroke('"x"')
-        if session.mux == "tmux":
-            wait_until(
-                lambda: session.tmux_has_session()
-                and session.tmux_client_count() == 0,
-                15,
-                description="tmux server survived WezTerm force quit",
-            )
-        else:
-            wait_until(
-                lambda: bool(pids_named("htmd")) and ipc_path().exists(),
-                15,
-                description="htmd survived WezTerm force quit",
-            )
-        wait_until(
-            lambda: session.window_count() == 1,
-            15,
-            description="WezTerm force quit closed native mux windows",
-        )
-        print(f"OK: X force-quit the {session.mux} client only", flush=True)
-    finally:
-        if gateway_recorder:
-            gateway_recorder.stop(required=False)
-        session.end_htm_window_recording()
+# Back-compat for wezterm_control_plane_e2e.py
+from htm_gui_e2e import run_control_plane_suite as run_control_plane_checks  # noqa: E402
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":

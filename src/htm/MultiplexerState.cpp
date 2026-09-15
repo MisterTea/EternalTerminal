@@ -2,6 +2,8 @@
 
 #include <limits.h>
 
+#include <algorithm>
+#include <cctype>
 #include <climits>
 #include <cmath>
 
@@ -94,7 +96,7 @@ int splitDim(int total, const vector<float>& sizes, size_t index) {
 MultiplexerState::MultiplexerState()
     : writer(nullptr),
       nextSessionId(1),
-      nextWindowId(1),
+      nextWindowId(0),
       nextPaneId(0),
       nextSplitId(0x40000000u),
       attachedSession(0),
@@ -657,8 +659,10 @@ void MultiplexerState::moveWindowToSession(uint32_t windowId,
       remove(src->windowIds.begin(), src->windowIds.end(), windowId),
       src->windowIds.end());
   if (src->activeWindow == windowId) {
-    src->activeWindow = src->windowIds.empty() ? 0 : src->windowIds.back();
-    if (src->activeWindow) {
+    if (src->windowIds.empty()) {
+      src->activeWindow = 0;
+    } else {
+      src->activeWindow = src->windowIds.back();
       notify("%session-window-changed $" + to_string(src->id) + " @" +
              to_string(src->activeWindow));
     }
@@ -832,16 +836,155 @@ void MultiplexerState::setWindowSize(uint32_t windowId, int cols, int rows) {
 void MultiplexerState::resizePaneAbsolute(uint32_t paneId, int cols, int rows) {
   auto pane = panes.at(paneId);
   auto window = windows.at(pane->windowId);
-  const int wantCols = cols > 0 ? cols : pane->cols;
-  const int wantRows = rows > 0 ? rows : pane->rows;
-  // Sole pane: native OS window resize (WezTerm / iTerm2 / WT followers).
-  // Split panes: ignore absolute -x/-y. Terminals flood intermediate sizes
-  // while animating a divider; applying those warped balanced splits. Use
-  // directional resize-pane / layout from split-window instead.
-  if (!pane->parentIsWindow) {
+  const int wantCols = cols > 0 ? cols : 0;
+  const int wantRows = rows > 0 ? rows : 0;
+
+  // Sole pane: native OS window resize (WezTerm / iTerm2 / WT / Ghostty).
+  if (pane->parentIsWindow) {
+    setWindowSize(window->id, wantCols > 0 ? wantCols : pane->cols,
+                  wantRows > 0 ? wantRows : pane->rows);
     return;
   }
-  setWindowSize(window->id, wantCols, wantRows);
+
+  // Split panes: match tmux — absolute -x/-y moves dividers so this pane
+  // ends up at the requested size (clamped so neighbors keep at least one
+  // cell). Ghostty (and others) size each follower surface this way.
+  bool changed = false;
+  if (wantCols > 0) {
+    changed = resizePaneAbsoluteAlong(paneId, wantCols, true) || changed;
+  }
+  if (wantRows > 0) {
+    changed = resizePaneAbsoluteAlong(paneId, wantRows, false) || changed;
+  }
+  if (!changed) {
+    return;
+  }
+  layoutWindow(window.get());
+  emitLayout(window.get());
+}
+
+bool MultiplexerState::resizePaneAbsoluteAlong(uint32_t paneId, int want,
+                                               bool alongCols) {
+  auto window = windows.at(panes.at(paneId)->windowId);
+  uint32_t node = paneId;
+  while (true) {
+    bool parentIsWindow = false;
+    uint32_t parentId = kNoNode;
+    if (panes.count(node)) {
+      parentIsWindow = panes.at(node)->parentIsWindow;
+      parentId = panes.at(node)->parentId;
+    } else {
+      parentIsWindow = splits.at(node)->parentIsWindow;
+      parentId = splits.at(node)->parentId;
+    }
+
+    if (parentIsWindow) {
+      // No ancestor split controls this axis — change the window size,
+      // same as tmux when the pane already spans the full width/height.
+      if (alongCols) {
+        if (window->cols == want) {
+          return false;
+        }
+        window->cols = max(1, want);
+      } else {
+        if (window->rows == want) {
+          return false;
+        }
+        window->rows = max(1, want);
+      }
+      return true;
+    }
+
+    auto split = splits.at(parentId);
+    // stacked ([]) divides rows; side-by-side ({}) divides columns.
+    if (split->stacked == alongCols) {
+      node = parentId;
+      continue;
+    }
+
+    size_t idx = split->children.size();
+    for (size_t i = 0; i < split->children.size(); i++) {
+      if (split->children[i] == node) {
+        idx = i;
+        break;
+      }
+      vector<uint32_t> ids;
+      collectPanes(split->children[i], &ids);
+      if (find(ids.begin(), ids.end(), paneId) != ids.end()) {
+        idx = i;
+        break;
+      }
+    }
+    if (idx >= split->children.size() ||
+        split->sizes.size() != split->children.size()) {
+      return false;
+    }
+
+    vector<int> childDims;
+    int total = 0;
+    for (uint32_t child : split->children) {
+      vector<uint32_t> childPanes;
+      collectPanes(child, &childPanes);
+      int dimension = 1;
+      if (!childPanes.empty()) {
+        auto first = panes.at(childPanes.front());
+        auto last = panes.at(childPanes.back());
+        if (split->stacked) {
+          dimension = max(1, last->y + last->rows - first->y);
+        } else {
+          dimension = max(1, last->x + last->cols - first->x);
+        }
+      }
+      childDims.push_back(dimension);
+      total += dimension;
+    }
+    if (total <= 0) {
+      return false;
+    }
+
+    // Leave every other child at least one cell.
+    const int maxWant = total - static_cast<int>(childDims.size()) + 1;
+    const int target = max(1, min(want, maxWant));
+    int delta = target - childDims[idx];
+    if (delta == 0) {
+      return false;
+    }
+
+    if (delta > 0) {
+      int need = delta;
+      auto stealFrom = [&](size_t j) {
+        const int take = min(need, max(0, childDims[j] - 1));
+        childDims[j] -= take;
+        childDims[idx] += take;
+        need -= take;
+      };
+      for (size_t j = idx + 1; j < childDims.size() && need > 0; j++) {
+        stealFrom(j);
+      }
+      for (size_t j = idx; j > 0 && need > 0;) {
+        stealFrom(--j);
+      }
+      if (need > 0) {
+        return false;
+      }
+    } else {
+      const int give = -delta;
+      childDims[idx] -= give;
+      if (idx + 1 < childDims.size()) {
+        childDims[idx + 1] += give;
+      } else if (idx > 0) {
+        childDims[idx - 1] += give;
+      } else {
+        return false;
+      }
+    }
+
+    for (size_t i = 0; i < split->sizes.size(); i++) {
+      split->sizes[i] =
+          static_cast<float>(childDims[i]) / static_cast<float>(total);
+    }
+    return true;
+  }
 }
 
 void MultiplexerState::zoomToggle(uint32_t paneId) {
@@ -1434,11 +1577,15 @@ string MultiplexerState::listWindows(const string& format, uint32_t sessionId) {
 string MultiplexerState::listPanes(const string& format, uint32_t windowId) {
   string fmt =
       format.empty() ? "#{pane_id} #{pane_width} #{pane_height}" : format;
-  uint32_t wid = windowId
-                     ? windowId
-                     : windows[sessions[attachedSession]->activeWindow]->id;
-  if (panes.count(windowId)) {
+  // Prefer an explicit window id (including @0). Pane ids are accepted when
+  // list-panes -t %N is routed here; do not treat 0 as "unspecified".
+  uint32_t wid;
+  if (windows.count(windowId)) {
+    wid = windowId;
+  } else if (panes.count(windowId)) {
     wid = panes[windowId]->windowId;
+  } else {
+    wid = windows[sessions[attachedSession]->activeWindow]->id;
   }
   auto window = windows.at(wid);
   auto session = sessions[window->sessionId];
@@ -1486,6 +1633,108 @@ string MultiplexerState::capturePane(uint32_t paneId, bool escapes, bool alt,
 string MultiplexerState::dumpAllPanesText() const {
   // Match tmux capture-pane -p -J on the visible screen (default -S/-E).
   string out;
+  string affinitiesRaw;
+  if (attachedSession) {
+    affinitiesRaw = getUserOption(' ', attachedSession, "@affinities");
+  }
+  // Emit the same list-of-lists JSON the e2e suite records for tmux -CC.
+  // Numeric window ids only; empty when the client has not written @affinities.
+  {
+    // Lightweight parse: groups are space-separated, members comma-separated.
+    // Optional iTerm2 ``a_`` + hex prefix is decoded first.
+    string decoded = affinitiesRaw;
+    if (decoded.size() >= 2 && decoded[0] == 'a' && decoded[1] == '_') {
+      string hex = decoded.substr(2);
+      string plain;
+      bool ok = true;
+      if (hex.size() % 2 != 0) {
+        ok = false;
+      }
+      for (size_t i = 0; ok && i < hex.size(); i += 2) {
+        char byte = 0;
+        for (int n = 0; n < 2; n++) {
+          char c = hex[i + n];
+          int v = -1;
+          if (c >= '0' && c <= '9') {
+            v = c - '0';
+          } else if (c >= 'a' && c <= 'f') {
+            v = 10 + c - 'a';
+          } else if (c >= 'A' && c <= 'F') {
+            v = 10 + c - 'A';
+          }
+          if (v < 0) {
+            ok = false;
+            break;
+          }
+          byte = static_cast<char>((byte << 4) | v);
+        }
+        if (ok) {
+          plain.push_back(byte);
+        }
+      }
+      if (ok) {
+        decoded = plain;
+      }
+    }
+    vector<vector<uint32_t>> groups;
+    size_t pos = 0;
+    while (pos < decoded.size()) {
+      while (pos < decoded.size() && decoded[pos] == ' ') {
+        pos++;
+      }
+      if (pos >= decoded.size()) {
+        break;
+      }
+      size_t end = decoded.find(' ', pos);
+      if (end == string::npos) {
+        end = decoded.size();
+      }
+      string part = decoded.substr(pos, end - pos);
+      pos = end;
+      size_t semi = part.find(';');
+      if (semi != string::npos) {
+        part = part.substr(0, semi);
+      }
+      vector<uint32_t> ids;
+      size_t tokPos = 0;
+      while (tokPos < part.size()) {
+        size_t comma = part.find(',', tokPos);
+        if (comma == string::npos) {
+          comma = part.size();
+        }
+        string tok = part.substr(tokPos, comma - tokPos);
+        tokPos = comma + 1;
+        if (!tok.empty() && all_of(tok.begin(), tok.end(), [](unsigned char c) {
+              return isdigit(c);
+            })) {
+          ids.push_back(static_cast<uint32_t>(stoul(tok)));
+        }
+      }
+      if (!ids.empty()) {
+        sort(ids.begin(), ids.end());
+        groups.push_back(ids);
+      }
+    }
+    sort(groups.begin(), groups.end(),
+         [](const vector<uint32_t>& a, const vector<uint32_t>& b) {
+           return a.front() < b.front();
+         });
+    out += "# affinities: [";
+    for (size_t gi = 0; gi < groups.size(); gi++) {
+      if (gi) {
+        out += ",";
+      }
+      out += "[";
+      for (size_t ii = 0; ii < groups[gi].size(); ii++) {
+        if (ii) {
+          out += ",";
+        }
+        out += to_string(groups[gi][ii]);
+      }
+      out += "]";
+    }
+    out += "]\n";
+  }
   for (const auto& sessIt : sessions) {
     auto session = sessIt.second;
     if (!session) {
@@ -1544,14 +1793,19 @@ string MultiplexerState::displayFormat(const string& format, uint32_t sessionId,
                          : sessions[attachedSession].get();
   Window* window = nullptr;
   Pane* pane = nullptr;
-  if (windowId && windows.count(windowId)) {
+  // 0 is a valid window/pane id (matches tmux). Callers pass kUnspecifiedId
+  // when the target was omitted.
+  if (panes.count(paneId)) {
+    pane = panes[paneId].get();
+  }
+  if (windows.count(windowId)) {
     window = windows[windowId].get();
-  } else if (session) {
+  } else if (pane && windows.count(pane->windowId)) {
+    window = windows[pane->windowId].get();
+  } else if (session && windows.count(session->activeWindow)) {
     window = windows[session->activeWindow].get();
   }
-  if (paneId && panes.count(paneId)) {
-    pane = panes[paneId].get();
-  } else if (window) {
+  if (!pane && window && panes.count(window->activePane)) {
     pane = panes[window->activePane].get();
   }
   return expand(format, session, window, pane);

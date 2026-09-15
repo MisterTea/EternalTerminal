@@ -219,7 +219,10 @@ void HtmClient::run() {
 
     FD_ZERO(&rfd);
     FD_ZERO(&wfd);
-    if (endpointOpen && stdoutQueue.size() < MAX_STDOUT_QUEUE) {
+    // Always watch the server socket while it is open. If we only select
+    // it when stdoutQueue has room, a terminal that stops consuming DCS
+    // (force-quit) fills the queue and we never observe EOF after detach.
+    if (endpointOpen) {
       FD_SET(endpointFd, &rfd);
     }
     if (endpointOpen && ipcOutQueue.size() < MAX_IPC_OUT_QUEUE) {
@@ -263,8 +266,7 @@ void HtmClient::run() {
       }
     }
 
-    if (endpointOpen && stdoutQueue.size() < MAX_STDOUT_QUEUE &&
-        FD_ISSET(endpointFd, &rfd)) {
+    if (endpointOpen && FD_ISSET(endpointFd, &rfd)) {
       int rc = ::read(endpointFd, buf, BUF_SIZE);
       if (rc < 0) {
         auto localErrno = GetErrno();
@@ -277,9 +279,13 @@ void HtmClient::run() {
         endpointFd = -1;
         endpointOpen = false;
         ipcOutQueue.clear();
-      } else {
+        // Terminal may have already abandoned DCS; do not stall flushing.
+        stdoutQueue.clear();
+        return;
+      } else if (stdoutQueue.size() < MAX_STDOUT_QUEUE) {
         stdoutQueue.append(buf, static_cast<size_t>(rc));
       }
+      // else: drop server bytes while backpressured; EOF still handled above
     }
 
     if (endpointOpen && !ipcOutQueue.empty()) {

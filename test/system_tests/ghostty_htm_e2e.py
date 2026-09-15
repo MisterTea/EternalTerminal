@@ -35,9 +35,12 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_e2e import (  # noqa: E402
     GuiTerminalSession,
+    _is_gateway_title,
+    assert_control_mode_attached,
     command_count,
     fail,
     kill_htm_daemons,
+    normalize_gateway_text,
     run_emulator_main,
     run_osascript,
     skip,
@@ -170,6 +173,8 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> "GhosttyHtm
 
 class GhosttyHtmSession(GuiTerminalSession):
     name = "Ghostty"
+    supports_detach = True
+    supports_native_resize = True
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -254,6 +259,66 @@ end tell
         except (ValueError, subprocess.CalledProcessError):
             return 0
 
+    def tab_count(self) -> int:
+        """Best-effort native tab count for the front Ghostty window."""
+        scripts = [
+            'count of (every radio button of tab group 1 of window 1)',
+            'count of (every radio button of window 1)',
+            'count of (every UI element of window 1 whose role is "AXRadioButton")',
+        ]
+        for body in scripts:
+            try:
+                out = self.osascript_pid(body).strip()
+                count = int(out)
+                if count > 0:
+                    return count
+            except (ValueError, subprocess.CalledProcessError):
+                continue
+        return 0
+
+    def reattach_client(self) -> None:
+        # After Esc, the htm client can remain alive while htmd is already
+        # idle (stdout backpressure / DCS teardown). Clear descendant htm
+        # clients so the `htm; exec $SHELL` wrapper can reach the shell
+        # before we paste attach. Leave htmd alone so the session survives.
+        self.focus_gateway()
+        if self.proc is not None:
+            for pid in descendant_pids(self.proc.pid):
+                try:
+                    if "htm" in (pid_comm(pid) or "") and "htmd" not in (
+                        pid_comm(pid) or ""
+                    ):
+                        os.kill(pid, signal.SIGTERM)
+                except OSError:
+                    pass
+        deadline = time.time() + 12
+
+        def _shell_ready() -> bool:
+            windows = self.ax_windows()
+            names = [(w.get("name") or "") for w in windows]
+            if any(
+                n and not _is_gateway_title(n) and n != "ghostty" for n in names
+            ):
+                return True
+            try:
+                text = normalize_gateway_text(self.gateway_text())
+            except Exception:
+                return False
+            # Avoid false positives from dumped `%begin` / `%end` lines.
+            return "➜" in text or ("Command Menu" not in text and "$ " in text)
+
+        while time.time() < deadline and not _shell_ready():
+            time.sleep(0.3)
+        time.sleep(0.4)
+        super().reattach_client()
+
+    def multiplexer_command(self) -> str:
+        # Keep a shell after tmux/htm exits so Esc detach leaves the gateway
+        # usable for reattach (same pattern as WezTerm's e2e driver).
+        command = super().multiplexer_command()
+        shell = f'{command}; exec "${{SHELL:-/bin/zsh}}" -l'
+        return f"/bin/sh -c {shlex.quote(shell)}"
+
     def start(self, command: str = "") -> None:
         if not CONFIG_FILE.is_file():
             fail(f"missing Ghostty e2e config {CONFIG_FILE}")
@@ -297,6 +362,7 @@ end tell
             return self.window_count() > 0
 
         wait_until(window_ready, 25, description="Ghostty window")
+        self.remember_gateway_windows()
         self.focus()
 
     def previous_pane(self) -> None:
@@ -308,12 +374,20 @@ end tell
         time.sleep(0.5)
 
     def after_attach(self) -> None:
-        self.wait_log(
-            lambda text: "list-panes" in text,
-            15,
-            "Ghostty list-panes after attach",
-        )
-        time.sleep(1.2)
+        if self.mux == "tmux":
+            wait_until(
+                lambda: self.tmux_has_session()
+                and self.proc is not None
+                and self.proc.poll() is None,
+                15,
+                description="Ghostty tmux -CC attach",
+            )
+        else:
+            self.wait_log(
+                lambda text: "list-panes" in text,
+                15,
+                "Ghostty list-panes after attach",
+            )
         if self.proc is not None and self.proc.poll() is not None:
             fail_ghostty_exit("after tmux -CC attach")
         self.gui_pid = None
@@ -321,11 +395,94 @@ end tell
             self.focus()
         except subprocess.CalledProcessError:
             pass
+        # Requires iTerm2-compatible control plate + native mux surfaces.
+        assert_control_mode_attached(self)
+        # assert_control_mode reads the menu via gateway_text(), which
+        # leaves key focus on the control plate (Cmd+1). Corners/layout
+        # typing should target a follower pane; drain captures first so
+        # send-keys are not stuck behind the attach snapshot.
+        time.sleep(1.0)
+        self.focus_mux_surface()
+
+    def focus_gateway(self) -> None:
+        """Raise the control-plane OS window (no mux tabs share it)."""
+        super().focus_gateway()
+        time.sleep(0.2)
+
+    def htm_select_window(self, wid: int) -> None:
+        """Send ``select-window`` through Ghostty's control-plate prompt.
+
+        HTM is a single control-mode client (the emulator). A side-channel
+        ``htm -C`` would steal the socket; the gateway ``C`` prompt talks on
+        the same connection Ghostty already holds so ``%session-window-changed``
+        reaches libghostty for Cmd+T affinity.
+        """
+        self.focus_gateway()
+        time.sleep(0.2)
+        # Bare ``c`` opens the tmux/htm command prompt on the plate.
+        self.keystroke('"c"')
+        time.sleep(0.2)
+        self.osascript_pid(
+            "set frontmost to true\n"
+            f'    keystroke "select-window -t @{int(wid)}"\n'
+            "    key code 36"
+        )
+        time.sleep(0.45)
+
+    def gateway_text(self) -> str:
+        """Read gateway visible text via select-all + clipboard."""
+        self.focus_gateway()
+        previous = ""
+        try:
+            previous = subprocess.check_output(["pbpaste"], text=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            pass
+        try:
+            self.keystroke('"a"', "command down")
+            time.sleep(0.1)
+            self.keystroke('"c"', "command down")
+            time.sleep(0.15)
+            try:
+                return subprocess.check_output(["pbpaste"], text=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                return ""
+        finally:
+            subprocess.run(["pbcopy"], input=previous, text=True, check=False)
+
+    def focus_mux_surface(self) -> None:
+        """Raise a native mux window, not the control plate."""
+        self.focus_native_window()
+        time.sleep(0.35)
+
+    def resize_front_native_window(self, width: int, height: int) -> None:
+        """Resize the mux OS window (not the control-plane gateway)."""
+        self.focus_native_window()
+        launched = self.launched_windows()
+        if launched:
+            # Prefer an explicit mux window index over "front window", which
+            # can still be the gateway after a focus race.
+            idx = int(launched[0]["index"])
+            self.osascript_pid(
+                "set frontmost to true\n"
+                f"    set size of window {idx} to {{{width}, {height}}}"
+            )
+        else:
+            self.osascript_pid(
+                "set frontmost to true\n"
+                f"    set size of front window to {{{width}, {height}}}"
+            )
+        time.sleep(0.3)
+
+    def focus_native_window(self) -> None:
+        """Raise a mux pane OS window (separate from the gateway)."""
+        super().focus_native_window()
 
     def after_first_split(self) -> None:
         # Let capture-pane / list-panes drain so send-keys are not queued
-        # behind viewer snapshots.
+        # behind viewer snapshots, then leave the control plate so pane
+        # navigation (Cmd+] / previous_pane) targets a follower surface.
         time.sleep(1.0)
+        self.focus_mux_surface()
 
     def keystroke(self, keys: str, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
@@ -375,6 +532,7 @@ end tell
             self.stderr_file = None
 
     def after_layout_suite(self) -> None:
+        super().after_layout_suite()
         text = self.log_text()
         if command_count(text, "list-windows") < 1 and "list-windows" not in text:
             fail("Ghostty did not send list-windows after control-mode attach")
@@ -391,7 +549,7 @@ end tell
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":
