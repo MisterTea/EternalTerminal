@@ -785,6 +785,8 @@ class GuiTerminalSession(GuiHtmLogSession):
     ax_process_name: Optional[str] = None
     supports_detach = False
     supports_native_resize = False
+    # iTerm2 Move Session → move-pane / break-pane (layout epilogue).
+    supports_move_session = False
 
     def __init__(self, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -1012,6 +1014,13 @@ class GuiTerminalSession(GuiHtmLogSession):
         if self._step_dir:
             self._step_dir.mkdir(parents=True, exist_ok=True)
             (self._step_dir / f"{step_id}.txt").write_text(body, encoding="utf-8")
+        sp = htm_gui_parity.spurious_prompt_sp_lines(dump)
+        if sp:
+            fail(
+                f"{self.mux} checkpoint {step_id} has spurious zsh PROMPT_SP '%': "
+                + "; ".join(sp)
+                + f"\n{dump[:2000]}"
+            )
         if oracle:
             errors = tmux_cc.check_step(step_id, dump)
         else:
@@ -1658,12 +1667,30 @@ end tell
 
     def after_first_split(self) -> None:
         """Optional: emulator-only actions after the first Cmd+D split."""
+        self.after_split(vertical=False)
+
+    def after_split(self, *, vertical: bool = False) -> None:
+        """Optional: focus the new pane after a horizontal or vertical split."""
+
+    def after_new_window(self) -> None:
+        """Optional: focus the new tmux window/tab after Cmd+T."""
 
     def after_marker(self, marker: str) -> None:
         """Optional: assert visible contents after typing ``marker``."""
 
+    def rendered_terminal_text(self) -> Optional[str]:
+        """Rendered text of the currently focused emulator pane, if available."""
+        return None
+
+    def run_move_session_checks(self) -> None:
+        """Optional: Move Session → move-pane / break-pane (iTerm2)."""
+
     def after_layout_suite(self) -> None:
-        """Optional: emulator-only checks after the shared layout suite."""
+        """Shared layout epilogue: detach/reattach when the driver supports it."""
+        if not self.supports_detach:
+            return
+        self.detach_client()
+        self.reattach_client()
 
     def gateway_text(self) -> str:
         """Visible text of the tmux -CC / htm control-plane (gateway) surface."""
@@ -1813,7 +1840,9 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     session.keystroke('"d"', "command down")
     session.wait_split(splits_before)
     print("OK: Cmd+D sent split-window", flush=True)
+    _assert_no_spurious_percent(session, "immediate layout Cmd+D horizontal split")
     session.after_first_split()
+    _assert_no_spurious_percent(session, "layout Cmd+D horizontal split")
     session.sync_htm_window_recordings()
 
     marker = "HTM_E2E_PARITY"
@@ -1833,6 +1862,11 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     session.keystroke('"d"', "{command down, shift down}")
     session.wait_split(splits_before)
     print("OK: Cmd+Shift+D sent second split-window", flush=True)
+    _assert_no_spurious_percent(
+        session, "immediate layout Cmd+Shift+D vertical split"
+    )
+    session.after_split(vertical=True)
+    _assert_no_spurious_percent(session, "layout Cmd+Shift+D vertical split")
     session.checkpoint("layout-after-tabs-splits", oracle=False)
 
     time.sleep(0.5)
@@ -1910,6 +1944,8 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
         f"OK: rapid split/tab/close did not crash {session.name} or {session.mux}",
         flush=True,
     )
+    if session.supports_move_session:
+        session.run_move_session_checks()
     session.after_layout_suite()
     session.sync_htm_window_recordings()
 
@@ -1933,13 +1969,22 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
     splits_before = session.split_watermark()
     session.keystroke('"d"', "command down")
     session.wait_split(splits_before)
+    _assert_no_spurious_percent(session, "immediate stress Cmd+D horizontal split")
+    session.after_split(vertical=False)
+    _assert_no_spurious_percent(session, "stress Cmd+D horizontal split")
     tabs_before = session.window_watermark()
     session.keystroke('"t"', "command down")
     session.wait_new_window(tabs_before)
     session.sync_htm_window_recordings()
+    session.after_new_window()
     splits_before = session.split_watermark()
     session.keystroke('"d"', "{command down, shift down}")
     session.wait_split(splits_before)
+    _assert_no_spurious_percent(
+        session, "immediate stress Cmd+Shift+D vertical split"
+    )
+    session.after_split(vertical=True)
+    _assert_no_spurious_percent(session, "stress Cmd+Shift+D vertical split")
     time.sleep(0.5)
     print("OK: tabs and splits created", flush=True)
 
@@ -1964,13 +2009,18 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
     print(f"OK: two panes {pane_a[:8]}… / {pane_b[:8]}…", flush=True)
     session.checkpoint("stress-after-markers", oracle=False)
 
+    # Re-assert mux key focus after checkpoint I/O / AX churn (Hyper).
+    raise_input = getattr(session, "_raise_mux_for_input", None)
+    if callable(raise_input):
+        raise_input(click=True)
+        time.sleep(0.3)
+
     if os.name == "nt":
         _submit_command(session, "echo STBULK1")
     else:
         _submit_command(
             session,
-            "i=0; while [ $i -lt 200 ]; do echo STBULK1; "
-            "i=$((i+1)); sleep 0.01; done &",
+            "for i in 1 2 3 4 5 6 7 8 9 10; do echo STBULK1; sleep 0.05; done &",
         )
     time.sleep(0.25)
 
@@ -1988,8 +2038,7 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
     else:
         _submit_command(
             session,
-            "i=0; while [ $i -lt 200 ]; do echo STBULK0; "
-            "i=$((i+1)); sleep 0.01; done &",
+            "for i in 1 2 3 4 5 6 7 8 9 10; do echo STBULK0; sleep 0.05; done &",
         )
     time.sleep(0.3)
     for i in range(8):
@@ -1997,7 +2046,7 @@ def _run_gui_stress_body(session: GuiTerminalSession) -> None:
         time.sleep(0.08)
 
     if session.mux == "tmux":
-        session.wait_typed("STBULK", timeout=25)
+        session.wait_visible("STBULK", timeout=25)
     else:
         session.wait_log(
             lambda text: text.count("control command: send") >= 4
@@ -2062,11 +2111,49 @@ def _submit_command(session: GuiTerminalSession, command: str) -> None:
 
 def _echo_marker(session: GuiTerminalSession, marker: str) -> None:
     _submit_command(session, f"echo {marker}")
-    session.wait_visible(marker)
+    # Require the marker on its own line (command output). Matching the typed
+    # ``echo MARKER`` substring alone hides missing Enter keystrokes.
+    wait_until(
+        lambda: any(
+            line.strip() == marker
+            for line in session.mux_snapshot(wait=0.35).splitlines()
+        ),
+        20.0,
+        description=f"executed marker {marker}",
+    )
+
+
+def _assert_no_spurious_percent(
+    session: GuiTerminalSession, action: str
+) -> None:
+    """Check both mux state and the emulator's rendered active-pane buffer."""
+    dump = session.mux_snapshot(wait=0.4)
+    backend_hits = htm_gui_parity.spurious_prompt_sp_lines(dump)
+    rendered = session.rendered_terminal_text()
+    rendered_hits = (
+        htm_gui_parity.spurious_prompt_sp_lines(rendered)
+        if rendered is not None
+        else []
+    )
+    if backend_hits or rendered_hits:
+        detail = []
+        if backend_hits:
+            detail.append("mux=" + ", ".join(backend_hits))
+        if rendered_hits:
+            detail.append("rendered=" + ", ".join(rendered_hits))
+        fail(
+            f"{session.name} {session.mux} {action} has spurious "
+            "zsh PROMPT_SP '%': "
+            + "; ".join(detail)
+            + f"\nMUX:\n{dump[:2000]}"
+            + (f"\nRENDERED:\n{rendered[:2000]}" if rendered is not None else "")
+        )
+    checked = "mux + rendered terminal" if rendered is not None else "mux"
+    print(f"OK: no spurious % after {action} ({checked})", flush=True)
 
 
 def _type_ascii_command(session: GuiTerminalSession, command: str) -> None:
-    if session.name in ("iTerm2", "WezTerm"):
+    if session.name in ("iTerm2", "WezTerm", "Hyper", "Ghostty"):
         command = command.replace("\\", "\\\\")
     _submit_command(session, command)
 
@@ -2088,23 +2175,52 @@ def _emit_unicode_marker(session: GuiTerminalSession) -> None:
 def _split_horizontal(session: GuiTerminalSession) -> None:
     before = session.mux_pane_count()
     session.keystroke('"d"', "command down")
+    deadline = time.time() + 8.0
+    while time.time() < deadline:
+        if session.mux_pane_count() >= before + 1:
+            break
+        time.sleep(0.2)
+    else:
+        if session.mux == "tmux":
+            # Hyper may still focus the gateway after mux side-channel
+            # ops; split tmux's current pane directly.
+            session.tmux_cmd("split-window", "-h")
+        else:
+            fail(f"timed out waiting for {before + 1} live panes")
     session.wait_mux_pane_count(before + 1)
+    _assert_no_spurious_percent(session, "immediate horizontal split")
     session.sync_htm_window_recordings()
+    session.after_split(vertical=False)
+    _assert_no_spurious_percent(session, "horizontal split")
 
 
 def _split_vertical(session: GuiTerminalSession) -> None:
     before = session.mux_pane_count()
     session.keystroke('"d"', "{command down, shift down}")
     session.wait_mux_pane_count(before + 1)
+    _assert_no_spurious_percent(session, "immediate vertical split")
     session.sync_htm_window_recordings()
+    session.after_split(vertical=True)
+    _assert_no_spurious_percent(session, "vertical split")
 
 
 def _new_window(session: GuiTerminalSession) -> None:
     """Cmd+T: new tmux window as a tab in the focused OS window's affinity."""
     before = session.mux_window_count()
+    # Hyper: click the intended OS window before Cmd+T. Modifier keystrokes
+    # skip the mouse click, and Electron often leaves the newest OS window
+    # key — so the follower would join the wrong affinity group.
+    if session.name == "Hyper":
+        raise_input = getattr(session, "_raise_mux_for_input", None)
+        if callable(raise_input):
+            try:
+                raise_input(click=True)
+            except Exception:
+                pass
     session.keystroke('"t"', "command down")
     session.wait_mux_window_count(before + 1)
     session.sync_htm_window_recordings()
+    session.after_new_window()
 
 
 def _live_affinity_groups(dump: str) -> list[list[int]]:
@@ -2158,6 +2274,50 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
     _select_mux_window(session, target)
     time.sleep(0.5)
 
+    # Hyper: after select-window, mux "current" stays in the target group no
+    # matter which OS window we raise — so the AX loop below would happily
+    # bind ``_front_native`` to the newest window B. Prefer the OS window
+    # recorded when this marker (or its affinity sibling) was created.
+    if session.name == "Hyper":
+        hosts = getattr(session, "_marker_host_window", {}) or {}
+        recorded = hosts.get(marker)
+        if recorded is None:
+            dump = session.mux_snapshot(wait=0.2)
+            for group in _live_affinity_groups(dump):
+                if target not in group:
+                    continue
+                for sibling in group:
+                    for m, win in hosts.items():
+                        wid = _window_id_with_text(session, m)
+                        if wid and int(wid.lstrip("@")) == sibling:
+                            recorded = win
+                            break
+                    if recorded is not None:
+                        break
+                break
+        if recorded is not None:
+            live = None
+            tid = int(recorded.get("id") or 0)
+            tkey = _recording_window_key(recorded)
+            for w in session.launched_windows():
+                if tid and int(w.get("id") or 0) == tid:
+                    live = w
+                    break
+                if _recording_window_key(w) == tkey:
+                    live = w
+                    break
+            if live is not None:
+                session._raise_ax_window(live)
+                session._front_native = live
+                raise_input = getattr(session, "_raise_mux_for_input", None)
+                if callable(raise_input):
+                    try:
+                        raise_input(click=True)
+                    except Exception:
+                        pass
+                time.sleep(0.35)
+                return live
+
     def _current_in_target_group() -> Optional[dict]:
         dump = session.mux_snapshot(wait=0.2)
         groups = _live_affinity_groups(dump)
@@ -2185,7 +2345,7 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
             return hit
         fail(f"no OS window affinity contains {marker!r} (@{target})")
 
-    # Best-effort AX raise of each mux window (works for iTerm2).
+    # Best-effort AX raise of each mux window (works for iTerm2 / Hyper).
     keys = [_recording_window_key(w) for w in launched]
     for key in keys:
         live = session.launched_windows()
@@ -2211,10 +2371,12 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
         session._raise_ax_window(win)
         deadline = time.time() + 1.2
         while time.time() < deadline:
-            hit = _current_in_target_group()
-            if hit is not None:
-                session._front_native = hit
-                return hit
+            if _current_in_target_group() is not None:
+                # Keep the window we raised — not launched_windows()[0], which
+                # may still be the newest OS window B. Hyper Cmd+T follows
+                # ``_front_native`` / key focus into that host's affinity.
+                session._front_native = win
+                return win
             time.sleep(0.15)
 
     hit = _current_in_target_group()
@@ -2302,9 +2464,32 @@ def _kill_focused(
         session.focus_native_window()
     except Exception:
         pass
+    # Hyper: re-select the newest tab so Cmd+W closes the window we just
+    # created (WIN3), not an older affinity sibling that still holds markers.
+    focus_tab = getattr(session, "focus_newest_tab", None)
+    if session.name == "Hyper" and callable(focus_tab):
+        try:
+            focus_tab()
+        except Exception:
+            pass
+    raise_input = getattr(session, "_raise_mux_for_input", None)
+    if callable(raise_input):
+        try:
+            raise_input(click=True)
+        except Exception:
+            pass
     session._capturing_text = True
     try:
         if while_writing:
+            session.keystroke('"w"', "command down")
+        elif session.name == "Hyper" and session.mux == "tmux":
+            # Prefer the mux side-channel: Hyper Cmd+W often hits the wrong
+            # AX tab. kill-window when the caller expects fewer windows.
+            if windows is not None and windows < before_w:
+                session.tmux_cmd("kill-window")
+            else:
+                session.tmux_cmd("kill-pane")
+        elif session.name == "Hyper":
             session.keystroke('"w"', "command down")
         else:
             _submit_command(session, "exit")
@@ -2526,27 +2711,127 @@ def _run_gui_corners_body(session: GuiTerminalSession) -> None:
     _echo_marker(session, tmux_cc.CORNER_WIN4)
     session.checkpoint("after-replace-window")
 
+    sleep_pane = ""
     if session.mux == "tmux":
-        session.tmux_cmd("send-keys", "sleep 25", "Enter")
+        # Aim sleep at the pane that still shows CORNER_WIN4 (pane id, not
+        # window id — ``send-keys -t @W`` is unreliable here). Clear any
+        # half-typed line first. Hyper GUI Enter is flaky on this step even
+        # when ``echo CORNER_WIN4`` just succeeded, so always use the mux
+        # side-channel for the title probe.
+        for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.4)):
+            if tmux_cc.CORNER_WIN4 in (pane.get("body") or ""):
+                sleep_pane = f"%{pane['pid']}"
+                break
+        sk = ["send-keys"]
+        if sleep_pane:
+            sk.extend(["-t", sleep_pane])
+        session.tmux_cmd(*sk, "C-u")
+        session.tmux_cmd(*sk, "-l", "sleep 25")
+        session.tmux_cmd(*sk, "Enter")
     elif os.name == "nt":
         _submit_command(session, "timeout /t 25")
     else:
+        # htm mux: no tmux side-channel. Re-focus the newest tab (WIN4)
+        # so sleep does not land on an older affinity sibling.
+        if session.name == "Hyper":
+            focus_tab = getattr(session, "focus_newest_tab", None)
+            if callable(focus_tab):
+                try:
+                    focus_tab()
+                except Exception:
+                    pass
+            raise_input = getattr(session, "_raise_mux_for_input", None)
+            if callable(raise_input):
+                try:
+                    raise_input(click=True)
+                except Exception:
+                    pass
         _submit_command(session, "sleep 25")
     title = tmux_cc.TITLE_SLEEP_WIN if os.name == "nt" else tmux_cc.TITLE_SLEEP
     session.wait_window_named(title)
     session.checkpoint("after-title-sleep")
     print(f"OK: automatic-rename window title is {title}", flush=True)
     if session.mux == "tmux":
-        session.tmux_cmd("send-keys", "C-c")
+        sk = ["send-keys"]
+        if sleep_pane:
+            sk.extend(["-t", sleep_pane])
+        session.tmux_cmd(*sk, "C-c")
     else:
+        # Ensure Ctrl+C hits the sleep pane (newest WIN4 tab). Do not
+        # click first: a mouse click can select text in Hyper, and then
+        # Ctrl+C copies instead of sending SIGINT to the shell.
+        if session.name == "Hyper":
+            focus_tab = getattr(session, "focus_newest_tab", None)
+            if callable(focus_tab):
+                try:
+                    focus_tab()
+                except Exception:
+                    pass
+            raise_input = getattr(session, "_raise_mux_for_input", None)
+            if callable(raise_input):
+                try:
+                    raise_input(click=False)
+                except Exception:
+                    pass
         session.keystroke('"c"', "control down")
     time.sleep(0.4)
+    if session.mux != "tmux":
+        # Wait until automatic-rename drops ``sleep`` so the next split is on
+        # an idle WIN4 shell, matching the tmux side-channel interrupt.
+        wait_until(
+            lambda: tmux_cc.TITLE_SLEEP not in session.mux_window_names()
+            and (
+                os.name != "nt"
+                or tmux_cc.TITLE_SLEEP_WIN not in session.mux_window_names()
+            ),
+            10.0,
+            description="sleep title cleared after Ctrl+C",
+        )
     _assert_session_alive(session, "after interrupting sleep")
+
+    # Mux side-channel sleep does not move Hyper focus; select the sleep
+    # pane and raise a follower so Cmd+D splits it (not a spurious new
+    # window from the gateway plate).
+    if sleep_pane:
+        session.tmux_cmd("select-pane", "-t", sleep_pane)
+    if session.name == "Hyper":
+        focus_tab = getattr(session, "focus_newest_tab", None)
+        if callable(focus_tab):
+            try:
+                focus_tab()
+            except Exception:
+                pass
+        raise_input = getattr(session, "_raise_mux_for_input", None)
+        if callable(raise_input):
+            try:
+                raise_input(click=True)
+            except Exception:
+                pass
 
     _split_horizontal(session)
     _start_writer(session, tmux_cc.WRTICKP)
     session.checkpoint("after-writer-pane")
     _kill_focused(session, panes=4, windows=3, while_writing=True)
+    # Hyper Cmd+W can leave focus on an older tab; land back on the window
+    # that still shows CORNER_WIN4 (surviving half of the writer split).
+    if session.name == "Hyper":
+        focus_tab = getattr(session, "focus_newest_tab", None)
+        if callable(focus_tab):
+            try:
+                focus_tab()
+            except Exception:
+                pass
+        raise_input = getattr(session, "_raise_mux_for_input", None)
+        if callable(raise_input):
+            try:
+                raise_input(click=True)
+            except Exception:
+                pass
+        if session.mux == "tmux":
+            for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3)):
+                if tmux_cc.CORNER_WIN4 in (pane.get("body") or ""):
+                    session.tmux_cmd("select-pane", "-t", f"%{pane['pid']}")
+                    break
     _echo_marker(session, tmux_cc.AFTER_KILL_PANE_WRITER)
     session.checkpoint("after-kill-writer-pane")
     print("OK: killed pane while a command was writing", flush=True)
@@ -2590,14 +2875,22 @@ def run_gui_affinities(session: GuiTerminalSession) -> None:
 
 
 def _run_gui_affinities_body(session: GuiTerminalSession) -> None:
+    session._marker_host_window = {}
     session.focus_native_window()
     session.wait_mux_window_count(1)
     _echo_marker(session, AFF_A0)
+    if session._front_native is not None:
+        session._marker_host_window[AFF_A0] = dict(session._front_native)
     session.checkpoint("aff-after-first-window")
     print("OK: OS window A created", flush=True)
 
     _new_window(session)
     _echo_marker(session, AFF_A1)
+    if session._front_native is not None:
+        session._marker_host_window[AFF_A1] = dict(session._front_native)
+        session._marker_host_window.setdefault(
+            AFF_A0, dict(session._front_native)
+        )
     session.checkpoint("aff-after-tab-on-a")
     session.wait_native_mux_windows(1)
     print("OK: Cmd+T added a tab on OS window A", flush=True)
@@ -2618,6 +2911,8 @@ def _run_gui_affinities_body(session: GuiTerminalSession) -> None:
     session.focus_native_window()
     time.sleep(0.4)
     _echo_marker(session, AFF_B0)
+    if session._front_native is not None:
+        session._marker_host_window[AFF_B0] = dict(session._front_native)
     b0_wids = {
         pane["wid"]
         for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.3))
@@ -2724,7 +3019,9 @@ def assert_control_mode_attached(session: GuiTerminalSession) -> None:
             "(not a tab on the control-plane window)"
         ),
     )
-    session.remember_gateway_windows()
+    # Do not re-run remember_gateway_windows here: Hyper mux OS windows often
+    # share the generic AX title ``Hyper``, so a late snapshot would mark them
+    # as gateways and launched_windows() would go empty.
     natives = session.launched_windows()
     if not natives:
         fail(

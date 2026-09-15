@@ -173,6 +173,7 @@ def open_session(htm: Path, htmd: Path, args: argparse.Namespace) -> "GhosttyHtm
 
 class GhosttyHtmSession(GuiTerminalSession):
     name = "Ghostty"
+    supports_detach = True
     supports_native_resize = True
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
@@ -531,6 +532,7 @@ end tell
             self.stderr_file = None
 
     def after_layout_suite(self) -> None:
+        super().after_layout_suite()
         text = self.log_text()
         if command_count(text, "list-windows") < 1 and "list-windows" not in text:
             fail("Ghostty did not send list-windows after control-mode attach")

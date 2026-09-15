@@ -554,6 +554,7 @@ if os.name == "nt":
             kill_htm_daemons()
 
         def after_layout_suite(self) -> None:
+            super().after_layout_suite()
             text = self.log_text()
             if command_count(text, "list-windows") < 1 and "list-windows" not in text:
                 fail("WezTerm did not send list-windows after control-mode attach")
@@ -1084,6 +1085,7 @@ end tell
         print(f"OK: WezTerm reattached to {self.mux}", flush=True)
 
     def after_layout_suite(self) -> None:
+        super().after_layout_suite()
         if self.mux == "tmux":
             if not self.tmux_has_session():
                 fail("tmux -CC server exited during WezTerm layout suite")

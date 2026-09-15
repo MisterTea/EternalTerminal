@@ -34,7 +34,7 @@ PROMPTISH = re.compile(r"[%$#>]\s*$")
 WORKLOAD_TOKEN = re.compile(
     r"(?:CORNER|AFTER)_[A-Z0-9_]+|"
     r"(?:WRTICK|HTM_E2E_|MA|MB|GUI0|GUI1|STA|STB|SW|STKEY|STBULK|"
-    r"SCROLLBACK_|AFTER_ALT)"
+    r"SCROLLBACK_|AFTER_ALT|AFF_)"
     r"[A-Z0-9_]*"
 )
 STRESS_RESULT = re.compile(
@@ -50,6 +50,32 @@ EARLY_MARKER_REDRAW = re.compile(
 PROMPT_ECHO = re.compile(
     r"^(?:➜\s+\S+\s+|(?:.*[%$#>])\s+)echo\s+(?P<arg>\S*)\s*$"
 )
+
+
+def spurious_prompt_sp_lines(text: str) -> list[str]:
+    """zsh PROMPT_SP leaves a lone ``%`` when prior output lacked a newline.
+
+    That should not appear after a clean pane create in these suites (iTerm2
+    does not produce it). Return human-readable locations when present.
+    """
+    hits: list[str] = []
+    panes = parse_panes(text)
+    for pane in panes:
+        for line_no, line in enumerate(
+            (pane.get("body") or "").splitlines(), start=1
+        ):
+            if line.strip() == "%":
+                hits.append(
+                    f"window @{pane['wid']} pane %{pane['pid']} line {line_no}"
+                )
+    # Emulator clipboard captures contain only rendered terminal text, with no
+    # mux pane headers. Check those directly so backend capture-pane cannot
+    # hide a renderer/client-side race.
+    if not panes:
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if line.strip() == "%":
+                hits.append(f"rendered terminal line {line_no}")
+    return hits
 
 
 def cosmetic_title(name: str) -> str:
@@ -414,6 +440,21 @@ def _corner_body(body: str) -> str:
         index += 1
     normalized = "\n".join(joined)
     normalized = re.sub(r"\bsleep\s*(\d+\.\d+)", r"sleep \1", normalized)
+    # Job-done lines wrap or get truncated when the prompt redraws over the
+    # wrapped ``0.08; done`` fragment. The command text is already present on
+    # the earlier for-loop line, so drop the remainder after ``done``.
+    normalized = re.sub(
+        r"(?m)^(\s*\[\d+\](?:\s+[+~-])?\s+PID\s+done)\b.*$",
+        r"\1",
+        normalized,
+    )
+    # Writer commands may run under different cwd / git prompts between the
+    # sequential tmux and htm Hyper runs; keep the command, drop the chrome.
+    normalized = re.sub(
+        r"➜\s+\S[^\n]*?(while :; do echo WRTICK[A-Z0-9]*; sleep [0-9.]+; done)",
+        r"➜  ~ \1",
+        normalized,
+    )
     return _collapse_writer(normalized)
 
 
@@ -453,6 +494,17 @@ def _stress_semantics(
 
 def classify_snapshot(tmux_text: str, htm_text: str, action: str) -> dict:
     """Return status identical | cosmetic | timing | diverge."""
+    t_sp = spurious_prompt_sp_lines(tmux_text)
+    h_sp = spurious_prompt_sp_lines(htm_text)
+    if t_sp or h_sp:
+        return {
+            "action": action,
+            "status": "diverge",
+            "detail": (
+                "spurious zsh PROMPT_SP '%' "
+                f"(tmux={t_sp or 'none'} htm={h_sp or 'none'})"
+            ),
+        }
     t_aff = parse_affinities_from_dump(tmux_text)
     h_aff = parse_affinities_from_dump(htm_text)
     if t_aff is None or h_aff is None:
@@ -579,6 +631,19 @@ def classify_snapshot(tmux_text: str, htm_text: str, action: str) -> dict:
         and t_topology == h_topology
         and t_bodies == h_bodies
         and (t_titles == h_titles or _titles_timing(t_titles, h_titles))
+    ):
+        return {
+            "action": action,
+            "status": "cosmetic",
+            "detail": "shell startup chrome or iTerm native-window geometry",
+        }
+    # Writer split may attach to a different affinity sibling between runs
+    # (same pane-count multiset and normalized bodies, different window order).
+    if (
+        WORKLOAD_TOKEN.search(tmux_text)
+        and WORKLOAD_TOKEN.search(htm_text)
+        and sorted(t_topology) == sorted(h_topology)
+        and sorted(t_bodies) == sorted(h_bodies)
     ):
         return {
             "action": action,
@@ -889,6 +954,78 @@ class ParityHelperTests(unittest.TestCase):
         )
         verdict = classify_snapshot(tmux, htm, "layout-after-close")
         self.assertEqual(verdict["status"], "cosmetic")
+
+    def test_layout_truncated_job_done_line_is_cosmetic(self) -> None:
+        # Hyper+htm capture sometimes loses the wrapped ``0.08; done`` fragment
+        # when the prompt redraws over it; tmux keeps the full done line.
+        tmux = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=0 82x43 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @0 name=zsh pane %1 active=1 82x43 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "zsh: command not found: HTM_E2E_PARITY\n"
+            "--- window @1 name=zsh pane %2 active=1 165x43 cursor=0,0\n"
+            "➜  ~ echo MBPARITYnext_pane\n"
+            "MBPARITYnext_pane\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "GUI1PARITY_1\nGUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 28462 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep 0.08; done\n"
+        )
+        htm = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=0 82x43 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @0 name=zsh pane %1 active=1 82x43 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "zsh: command not found: HTM_E2E_PARITY\n"
+            "--- window @1 name=zsh pane %2 active=1 165x43 cursor=0,0\n"
+            "➜  ~ echo MBPARITYnext_pane\n"
+            "MBPARITYnext_pane\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "GUI1PARITY_1\nGUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 43990 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-close")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+
+    def test_lone_percent_prompt_sp_diverges(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
+            "%\n"
+            "➜  ~ echo AFF_A0\n"
+            "AFF_A0\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
+            "➜  ~ echo AFF_A0\n"
+            "AFF_A0\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-marker")
+        self.assertEqual(verdict["status"], "diverge", verdict)
+        self.assertIn("PROMPT_SP", verdict["detail"])
+        self.assertEqual(
+            spurious_prompt_sp_lines("%\n➜  ~\n"),
+            ["rendered terminal line 1"],
+        )
+
+    def test_affinity_marker_shell_chrome_is_cosmetic(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
+            "\n➜  ~ echo AFF_A0\nAFF_A0\n➜  ~\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
+            "➜  ~ echo AFF_A0\nAFF_A0\n➜  ~\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "aff-after-first-window")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
 
     def test_layout_job_start_interleave_is_cosmetic(self) -> None:
         # zsh ``[1] pid`` can print before or after the first GUI tick.

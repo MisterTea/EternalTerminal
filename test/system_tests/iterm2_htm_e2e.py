@@ -137,6 +137,7 @@ class ITermHtmSession(GuiTerminalSession):
     name = "iTerm2"
     supports_detach = True
     supports_native_resize = True
+    supports_move_session = True
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -548,7 +549,16 @@ end tell
         print("OK: attach stored and queried @ user options", flush=True)
         self.dump_visible("01-after-attach")
 
+    def gateway_text(self) -> str:
+        """Control-plane / gateway buffer (same clipboard path as dump_visible)."""
+        self.focus_gateway()
+        time.sleep(0.15)
+        return self.visible_contents()
+
     def after_first_split(self) -> None:
+        self.after_split(vertical=False)
+
+    def run_move_session_checks(self) -> None:
         try:
             self.click_menu("Session", "Move Session", "Move Session to Split Pane")
         except subprocess.CalledProcessError as exc:
@@ -592,10 +602,6 @@ end tell
 
     def after_marker(self, marker: str) -> None:
         self.dump_visible("02-after-marker", require=marker)
-
-    def after_layout_suite(self) -> None:
-        self.detach_client()
-        self.reattach_client()
 
     def detach_client(self) -> None:
         self.focus_gateway()
