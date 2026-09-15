@@ -278,6 +278,8 @@ TEST_CASE("executeControlCommand covers tmux command aliases",
   REQUIRE(
       executeControlCommand(&mux, &writer, "capture-pane -p -e -S 0 -E 0") ==
       ControlAction::None);
+  REQUIRE(executeControlCommand(&mux, &writer, "capture-pane -p -C") ==
+          ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "rename-window extra") ==
           ControlAction::None);
   REQUIRE(executeControlCommand(&mux, &writer, "select-layout tiled") ==

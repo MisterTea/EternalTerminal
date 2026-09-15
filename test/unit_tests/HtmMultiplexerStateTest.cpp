@@ -24,8 +24,68 @@ TEST_CASE("MultiplexerState dumpAllPanesText lists the first pane",
   skipIfThreadSanitizer();
   MultiplexerState mux;
   string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
   REQUIRE(dump.find("pane %") != string::npos);
   REQUIRE(dump.find("window @") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState dumpAllPanesText parses @affinities groups",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t sid = mux.activeSessionId();
+  mux.setUserOption(' ', sid, "@affinities", "2,1,pty-guid;style=fs 4");
+  string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[4]]") != string::npos);
+
+  string encoded = "a_312c322033";  // hex of "1,2 3"
+  mux.setUserOption(' ', sid, "@affinities", encoded);
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312C322033");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_30zz");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState listPanes treats 0 as a real window id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p0 = mux.activePaneId();
+  uint32_t p1 = mux.splitWindow(p0, false, "");
+  REQUIRE(mux.activeWindowId() == 0);
+  string fromWindow = mux.listPanes("#{pane_id}", 0);
+  REQUIRE(fromWindow.find("%" + to_string(p0)) != string::npos);
+  REQUIRE(fromWindow.find("%" + to_string(p1)) != string::npos);
+  string fromPane = mux.listPanes("#{pane_id}", p1);
+  REQUIRE(fromPane.find("%" + to_string(p1)) != string::npos);
+  string fallback = mux.listPanes("#{pane_id}", 99);
+  REQUIRE(fallback.find("%" + to_string(p0)) != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState displayFormat treats 0 as a real id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(), 0,
+                            MultiplexerState::kUnspecifiedId) == "@0");
+  REQUIRE(mux.displayFormat("#{pane_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId, 0) == "%0");
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "@0");
   mux.stopAll();
 }
 
