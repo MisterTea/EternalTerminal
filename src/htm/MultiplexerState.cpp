@@ -943,8 +943,7 @@ bool MultiplexerState::resizePaneAbsoluteAlong(uint32_t paneId, int want,
     }
 
     // Leave every other child at least one cell.
-    const int maxWant =
-        total - static_cast<int>(childDims.size()) + 1;
+    const int maxWant = total - static_cast<int>(childDims.size()) + 1;
     const int target = max(1, min(want, maxWant));
     int delta = target - childDims[idx];
     if (delta == 0) {
@@ -1712,9 +1711,9 @@ string MultiplexerState::dumpAllPanesText() const {
         }
         string tok = part.substr(tokPos, comma - tokPos);
         tokPos = comma + 1;
-        if (!tok.empty() &&
-            all_of(tok.begin(), tok.end(),
-                   [](unsigned char c) { return isdigit(c); })) {
+        if (!tok.empty() && all_of(tok.begin(), tok.end(), [](unsigned char c) {
+              return isdigit(c);
+            })) {
           ids.push_back(static_cast<uint32_t>(stoul(tok)));
         }
       }

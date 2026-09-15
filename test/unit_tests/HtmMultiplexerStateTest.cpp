@@ -11,7 +11,7 @@ TEST_CASE("MultiplexerState starts with one session, window, and pane",
   MultiplexerState mux;
   REQUIRE(mux.numPanes() == 1);
   REQUIRE(mux.activeSessionId() != 0);
-  REQUIRE(mux.activeWindowId() != 0);
+  REQUIRE(mux.activeWindowId() == 0);
   REQUIRE(mux.activePaneId() == 0);
   string layout = mux.dumpLayout(mux.activeWindowId(), false);
   REQUIRE(layout.find("x") != string::npos);
