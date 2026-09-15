@@ -428,9 +428,9 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       bool pending = cmd.flags.has('P') && cmd.flags.has('C');
       writer->begin();
       if (cmd.flags.has('p') && !pending) {
-        string out = mux->capturePane(
-            pane, cmd.flags.has('e'), cmd.flags.has('a'), start, end,
-            cmd.flags.has('J'), cmd.flags.has('N'));
+        string out = mux->capturePane(pane, cmd.flags.has('e'),
+                                      cmd.flags.has('a'), start, end,
+                                      cmd.flags.has('J'), cmd.flags.has('N'));
         // Match tmux: -C octal-escapes controls so raw ESC in pane
         // contents cannot terminate the client's DCS 1000p stream.
         if (cmd.flags.has('C')) {
@@ -495,9 +495,9 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       uint32_t wid = mux->breakPane(pane);
       if (cmd.flags.has('P')) {
         string fmt = cmd.flags.get('F', "#{window_id}");
-        writer->writeOutput(mux->displayFormat(
-            fmt, mux->activeSessionId(), wid,
-            MultiplexerState::kUnspecifiedId));
+        writer->writeOutput(
+            mux->displayFormat(fmt, mux->activeSessionId(), wid,
+                               MultiplexerState::kUnspecifiedId));
       }
       writer->end();
       return ControlAction::None;
