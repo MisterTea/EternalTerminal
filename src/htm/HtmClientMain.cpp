@@ -130,6 +130,9 @@ string htmdPidsForUser(uid_t uid) {
 
 #ifdef __APPLE__
 string htmdPidsForUser(uid_t uid) {
+  // proc_bsdinfo::pbi_status contains the BSD p_stat value. SZOMB is not
+  // exposed by the public macOS SDK headers, but its ABI value is 5.
+  constexpr uint32_t kZombieProcessStatus = 5;
   int bytes = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
   if (bytes <= 0) {
     return "";
@@ -154,7 +157,7 @@ string htmdPidsForUser(uid_t uid) {
     if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) <= 0) {
       continue;
     }
-    if (info.pbi_uid != uid || info.pbi_status == SZOMB) {
+    if (info.pbi_uid != uid || info.pbi_status == kZombieProcessStatus) {
       continue;
     }
     out += to_string(pids[i]);
