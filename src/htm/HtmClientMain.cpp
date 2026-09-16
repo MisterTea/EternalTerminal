@@ -23,6 +23,7 @@
 #endif
 #include <limits.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #endif
 
@@ -103,10 +104,25 @@ void writeHtmExitSequence() {
   WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), st, static_cast<DWORD>(strlen(st)),
             &written, NULL);
 #else
-  RawSocketUtils::writeAll(STDOUT_FILENO, st, strlen(st));
+  int flags = fcntl(STDOUT_FILENO, F_GETFL);
+  if (flags >= 0) {
+    fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
+  }
+  ::write(STDOUT_FILENO, st, strlen(st));
 #endif
-  fflush(stdout);
 }
+
+#ifndef WIN32
+void brutalExit(int code) {
+  writeHtmExitSequence();
+  drainHtmStdin();
+  int outFlags = fcntl(STDOUT_FILENO, F_GETFL);
+  if (outFlags >= 0) {
+    fcntl(STDOUT_FILENO, F_SETFL, outFlags & ~O_NONBLOCK);
+  }
+  ::_exit(code);
+}
+#endif
 
 void restoreTerminal() {
   if (gConsole) {
@@ -199,9 +215,9 @@ bool htmdProcessRunning() {
 }
 #else
 void term(int) {
-  writeHtmExitSequence();
-  restoreTerminal();
-  exit(1);
+  // Never write to the PTY or restore the tty from a signal handler: both
+  // can block forever when the GUI has stopped draining DCS. tmux just dies.
+  ::_exit(1);
 }
 #endif
 }  // namespace
@@ -211,6 +227,20 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
+  {
+    char cwd[MAX_PATH];
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, cwd);
+    if (len > 0 && len < MAX_PATH) {
+      SetEnvironmentVariableA("HTM_INITIAL_CWD", cwd);
+    }
+  }
+#else
+  {
+    char cwd[PATH_MAX];
+    if (::getcwd(cwd, sizeof(cwd))) {
+      ::setenv("HTM_INITIAL_CWD", cwd, 1);
+    }
+  }
 #endif
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
@@ -345,17 +375,24 @@ int main(int argc, char** argv) {
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());
   try {
-    HtmClient htmClient(socketHandler, pipeEndpoint);
-    htmClient.run();
+    auto* htmClient = new HtmClient(socketHandler, pipeEndpoint);
+    htmClient->run();
   } catch (const std::exception& ex) {
     LOG(ERROR) << "htm client exiting: " << ex.what();
+#ifdef WIN32
     writeHtmExitSequence();
     restoreTerminal();
     return 1;
+#else
+    brutalExit(1);
+#endif
   }
 
+#ifdef WIN32
   writeHtmExitSequence();
   restoreTerminal();
-
   return 0;
+#else
+  brutalExit(0);
+#endif
 }

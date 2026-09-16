@@ -42,7 +42,7 @@ STRESS_RESULT = re.compile(
 )
 SHELL_PROMPT_ONLY = re.compile(r"^(?:➜\s+\S+|.*[%$#>])\s*$")
 EARLY_MARKER_REDRAW = re.compile(
-    r"^(?:echo\s+)?((?:CORNER|AFTER)_[A-Z0-9_]+)[%$#>]?\s*$"
+    r"^(?:echo\s+)?((?:CORNER|AFTER|AFF)_[A-Z0-9_]+)[%$#>]?\s*$"
 )
 # tmux capture often keeps a partial "prompt + echo …" line above the
 # completed command (Ghostty typing into a freshly focused pane), including
@@ -314,7 +314,10 @@ def _corner_body(body: str) -> str:
                 interrupted.append(line[prompt:])
         else:
             interrupted.append(line)
-    lines = interrupted
+    # A shell prompt painted while the pane is being attached can begin at
+    # the old cursor column on one mux and column zero on the other. The
+    # leading cells are presentation residue; preserve the complete prompt.
+    lines = [re.sub(r"^\s+(?=➜)", "", line) for line in interrupted]
     lines = [
         re.sub(r"^(\s*\[\d+\](?:\s+[+~-])?\s+)\d+", r"\1PID", line)
         if line.lstrip().startswith("[")
@@ -328,9 +331,31 @@ def _corner_body(body: str) -> str:
         for line in lines
         if not re.match(r"^\s*\[\d+\](?:\s+[+~-])?\s+PID\s*$", line)
     ]
-    # The ASCII escape command wraps at different columns as the native
-    # window width changes; the emitted Unicode line is compared separately.
-    lines = [line for line in lines if "printf 'CORNER_UNICODE_" not in line]
+    # Typed workload commands wrap at different columns as native Ghostty
+    # windows cascade. Compare their emitted marker/output lines, not zsh's
+    # geometry-dependent command echo.
+    filtered_commands: list[str] = []
+    skipping_unicode = False
+    skipping_scrollback = False
+    for line in lines:
+        if "printf 'CORNER_UNICODE_" in line:
+            skipping_unicode = True
+            continue
+        if skipping_unicode:
+            if line.strip().startswith("CORNER_UNICODE_"):
+                filtered_commands.append(line)
+                skipping_unicode = False
+            continue
+        if "i=1; while [ $i -le 40 ]" in line:
+            skipping_scrollback = True
+            continue
+        if skipping_scrollback:
+            if line.strip() == "SCROLLBACK_1":
+                filtered_commands.append(line)
+                skipping_scrollback = False
+            continue
+        filtered_commands.append(line)
+    lines = filtered_commands
     # Drop the alt-screen printf command (and its wraps), but keep the
     # ``AFTER_ALT`` echo *output*. tmux often keeps the command on one line
     # (``printf '...'; echo AFTER_ALT``); htm wraps mid-octal, so the
@@ -361,7 +386,51 @@ def _corner_body(body: str) -> str:
         else line
         for line in lines
     ]
-    lines = [line for line in lines if line and not SHELL_PROMPT_ONLY.match(line)]
+    prompt_fragments: list[str] = []
+    for index, line in enumerate(lines):
+        fragment = line.strip()
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        next_marker = WORKLOAD_TOKEN.search(next_line)
+        if (
+            fragment
+            and next_line.lstrip().startswith("➜")
+            and "echo " in next_line
+            and next_marker
+            and fragment != next_marker.group(0)
+            and next_marker.group(0).endswith(fragment)
+        ):
+            continue
+        command_error = re.match(
+            r"zsh: command not found: (?P<command>\S+)$",
+            next_line.strip(),
+        )
+        if (
+            fragment
+            and command_error
+            and command_error.group("command").endswith(fragment)
+        ):
+            continue
+        prompt_fragments.append(line)
+    lines = [
+        line
+        for line in prompt_fragments
+        if line
+        and not SHELL_PROMPT_ONLY.match(line)
+        and not line.lstrip().startswith("➜")
+    ]
+    # Wrapped prompt/command fragments can survive on their own rows (for
+    # example the tail of a git prompt or ``… ✗ echo CORNER_WIN2``). The
+    # corner comparison is based on emitted workload markers and errors.
+    lines = [
+        line
+        for line in lines
+        if not ("echo " in line and WORKLOAD_TOKEN.search(line))
+        and not re.search(r"(?:sleep|ep)?\s*0\.05;\s*done$", line.strip())
+        and not (
+            re.search(r"GUI[01][A-Z0-9_]*_\$i", line)
+            and line.rstrip().endswith("done &")
+        )
+    ]
 
     # iTerm may send the first command while a new shell is painting its
     # prompt. tmux retains that incomplete redraw above the completed command.

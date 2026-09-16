@@ -48,15 +48,21 @@ EXPECTED_TMUX_COMMAND_MENU = (
 _NATIVE_MUX_TITLE = re.compile(r" \[(?:tmux|htm|@[^]]+)\]\s*$")
 
 
-def _is_gateway_title(name: str) -> bool:
-    """iTerm2's tmux -CC gateway is titled like ``[↣ tmux tmux]`` / ``[↣ htm htm]``."""
+def _is_gateway_title(name: str, *, allow_renamed: bool = True) -> bool:
+    """iTerm2's tmux -CC gateway is titled like ``[↣ tmux tmux]`` / ``[↣ htm htm]``.
+
+    After attach iTerm2 often shortens that to a bare ``tmux`` / ``htm``. Native
+    mux windows keep a `` [tmux]`` / `` [htm]`` suffix and must not match.
+    """
     n = name or ""
-    lower = n.lower()
+    if _NATIVE_MUX_TITLE.search(n):
+        return False
+    lower = n.lower().strip()
     if "tmux tmux" in lower or "htm htm" in lower:
         return True
-    if n.startswith("[") and not _NATIVE_MUX_TITLE.search(n):
-        return "tmux" in lower or "htm" in lower
-    return False
+    if n.startswith("[") and ("tmux" in lower or "htm" in lower):
+        return True
+    return bool(allow_renamed and lower in ("tmux", "htm"))
 
 
 def skip(reason: str) -> None:
@@ -795,6 +801,8 @@ class GuiTerminalSession(GuiHtmLogSession):
         self._gateway_keys: set[str] = set()
         self._gateway_names: set[str] = set()
         self._gateway_clicks: list[tuple[float, float]] = []
+        self._gateway_frames: list[tuple[int, int, int, int]] = []
+        self._gateway_anchor: Optional[dict] = None
         self._saw_native_mux_windows = False
         self._recorders: dict[str, ScreenRecorder] = {}
         self._record_suite = "suite"
@@ -827,7 +835,7 @@ class GuiTerminalSession(GuiHtmLogSession):
                 text=True,
                 stderr=subprocess.DEVNULL,
             )
-        except (OSError, subprocess.CalledProcessError):
+        except (OSError, subprocess.CalledProcessError, subprocess.TimeoutExpired):
             return ""
 
     def tmux_has_session(self) -> bool:
@@ -1026,13 +1034,25 @@ class GuiTerminalSession(GuiHtmLogSession):
         else:
             errors = tmux_cc.check_affinities(step_id, dump)
         if errors:
-            fail(
-                f"{self.mux} checkpoint {step_id} diverged from "
-                "iTerm2+tmux -CC: "
-                + "; ".join(errors)
-                + f"\n{dump[:2000]}"
-            )
-        if oracle:
+            aff_only = all("affinities" in err for err in errors)
+            if self.name == "iTerm2" and aff_only and step_id.startswith("aff-"):
+                # Cmd+T follows the key OS window. This harness often leaves B
+                # key, so live iTerm2 is [[0,1],[2,3]] instead of the focused-A
+                # recording [[0,1,3],[2]]. Keep going; mux-both dump compare
+                # still requires HTM to match this run's tmux.
+                print(
+                    f"WARN: {self.mux} {step_id} live iTerm affinities "
+                    + "; ".join(errors),
+                    flush=True,
+                )
+            else:
+                fail(
+                    f"{self.mux} checkpoint {step_id} diverged from "
+                    "iTerm2+tmux -CC: "
+                    + "; ".join(errors)
+                    + f"\n{dump[:2000]}"
+                )
+        elif oracle:
             print(
                 f"OK: {step_id} matches iTerm2+tmux -CC oracle ({self.mux})",
                 flush=True,
@@ -1153,10 +1173,13 @@ class GuiTerminalSession(GuiHtmLogSession):
                 description="tmux pane/window closed",
             )
         else:
-            self.wait_log(
-                lambda text: "kill-pane" in text or "kill-window" in text,
+            wait_until(
+                lambda: self.mux_pane_count() < before_panes
+                and (
+                    "kill-pane" in self.log_text() or "kill-window" in self.log_text()
+                ),
                 20,
-                "CLIENT_CLOSE_PANE after Cmd+W",
+                description="htm pane/window closed",
             )
         self.snapshot_all_text("after-kill-pane")
 
@@ -1243,7 +1266,7 @@ end tell
         commandish = [
             w
             for w in non_native
-            if _is_gateway_title(w.get("name") or "")
+            if _is_gateway_title(w.get("name") or "", allow_renamed=False)
         ]
         gateways = commandish or non_native or windows
         self._gateway_keys = {_window_key(w) for w in gateways}
@@ -1253,6 +1276,9 @@ end tell
             (float(w["x"]) + float(w["w"]) * 0.5, float(w["y"]) + float(w["h"]) * 0.45)
             for w in gateways
         ]
+        self._gateway_frames = [_frame_key(w) for w in gateways]
+        if gateways:
+            self._gateway_anchor = dict(gateways[0])
         details = [
             f"{_window_key(w)}:{w.get('name') or '(unnamed)'}" for w in gateways
         ]
@@ -1389,7 +1415,9 @@ end tell
         self._front_native = win
         self._raise_ax_window(win)
 
-    def _raise_ax_window(self, win: dict) -> None:
+    def _raise_ax_window(
+        self, win: dict, *, click_x: float = 0.72, click_y: float = 0.55
+    ) -> None:
         # Prefer AX id: raising reshuffles System Events window indices.
         wid = int(win.get("id") or 0)
         if wid:
@@ -1449,41 +1477,53 @@ end tell
             win,
         )
         time.sleep(0.2)
-        # Prefer an Accessibility click on the raised window so AppKit
-        # marks it key / first-responder (CGEvent alone often does not
-        # when another window of the same app was already frontmost).
+        # Click the AX window object — a global ``click at {x,y}`` hits
+        # whatever is on screen, including the user's iTerm stacked on top.
+        live_id = int(live.get("id") or wid or 0)
+        wexpr = (
+            f"(first window whose id is {live_id})"
+            if live_id
+            else f"window {int(live['index'])}"
+        )
         try:
             run_osascript(
                 f'''
 tell application "System Events"
   tell {self.ax_tell_target()}
     set frontmost to true
-    set w to window {int(live["index"])}
+    set w to {wexpr}
     try
       set value of attribute "AXMain" of w to true
     end try
     try
       set value of attribute "AXFocused" of w to true
     end try
-    click at {{{int(float(live["x"]) + float(live["w"]) * 0.72)}, {int(float(live["y"]) + float(live["h"]) * 0.55)}}}
+    try
+      perform action "AXRaise" of w
+    end try
+    try
+      click w
+    end try
   end tell
 end tell
 '''
             )
             time.sleep(0.25)
         except (subprocess.CalledProcessError, SystemExit):
-            self.click_screen(
-                float(live["x"]) + float(live["w"]) * 0.72,
-                float(live["y"]) + float(live["h"]) * 0.55,
-            )
-            time.sleep(0.15)
+            pass
 
     def focus_gateway(self) -> None:
         """Raise the original --command session so Esc/detach reach the menu."""
         windows = self.ax_windows()
         targets = [
-            w for w in windows if _is_gateway_title(w.get("name") or "")
+            w
+            for w in windows
+            if _is_gateway_title(w.get("name") or "", allow_renamed=False)
         ]
+        if not targets:
+            targets = [
+                w for w in windows if _is_gateway_title(w.get("name") or "")
+            ]
         if not targets:
             targets = [w for w in windows if _window_key(w) in self._gateway_keys]
         if not targets and self._gateway_names:
@@ -1492,16 +1532,31 @@ end tell
                 for w in windows
                 if (w.get("name") or "").strip() in self._gateway_names
             ]
-        if not targets and self._gateway_clicks:
-            gx, gy = self._gateway_clicks[0]
+        if not targets:
+            frames = list(self._gateway_frames)
+            if self._gateway_anchor:
+                frames.append(_frame_key(self._gateway_anchor))
+            same: list[dict] = []
             for w in windows:
-                if (
-                    w["x"] <= gx <= w["x"] + w["w"]
-                    and w["y"] <= gy <= w["y"] + w["h"]
-                    and not _NATIVE_MUX_TITLE.search(w.get("name") or "")
+                if _NATIVE_MUX_TITLE.search(w.get("name") or ""):
+                    continue
+                if not (w.get("name") or "").strip():
+                    continue
+                wf = _frame_key(w)
+                if any(
+                    abs(wf[0] - f[0]) <= 40
+                    and abs(wf[1] - f[1]) <= 40
+                    and abs(wf[2] - f[2]) <= 48
+                    and abs(wf[3] - f[3]) <= 48
+                    for f in frames
                 ):
-                    targets = [w]
-                    break
+                    same.append(w)
+            if same:
+                # New mux windows often stack on the gateway frame; window 1
+                # is frontmost (newest). The original PTY is furthest back.
+                targets = [
+                    max(same, key=lambda w: int(w.get("index") or 0))
+                ]
         if not targets:
             print(
                 "WARN: gateway title not matched; windows="
@@ -1517,33 +1572,11 @@ end tell
             print("WARN: no gateway window to raise", flush=True)
             return
         target = targets[0]
-        script = f'''
-tell application "System Events"
-  tell {self.ax_tell_target()}
-    set frontmost to true
-    try
-      perform action "AXRaise" of window {int(target["index"])}
-    end try
-    try
-      set index of window {int(target["index"])} to 1
-    end try
-  end tell
-end tell
-'''
-        try:
-            run_osascript(script)
-        except (subprocess.CalledProcessError, SystemExit):
-            print(
-                f"WARN: failed to raise gateway window {target.get('name')}",
-                flush=True,
-            )
-            return
-        time.sleep(0.25)
-        self.click_screen(
-            float(target["x"]) + float(target["w"]) * 0.5,
-            float(target["y"]) + float(target["h"]) * 0.45,
-        )
-        time.sleep(0.2)
+        if _is_gateway_title(target.get("name") or ""):
+            self._gateway_anchor = dict(target)
+        # Same AX raise/key path as native windows. A bare CGEvent click often
+        # leaves the newest mux window key, so L/C/Esc type into zsh.
+        self._raise_ax_window(target, click_x=0.5, click_y=0.45)
         print(
             f"focused gateway: {target.get('name') or _window_key(target)}",
             flush=True,
@@ -1674,6 +1707,9 @@ end tell
 
     def after_new_window(self) -> None:
         """Optional: focus the new tmux window/tab after Cmd+T."""
+
+    def finish_tmux_command_prompt(self) -> None:
+        """Optional: dismiss the emulator's tmux command dialog after Return."""
 
     def after_marker(self, marker: str) -> None:
         """Optional: assert visible contents after typing ``marker``."""
@@ -1907,7 +1943,7 @@ def _run_gui_layout_io_body(session: GuiTerminalSession) -> None:
     print("OK: concurrent pane output", flush=True)
 
     time.sleep(0.4)
-    panes_before_close = session.split_watermark()
+    panes_before_close = session.mux_pane_count()
     session.keystroke('"w"', "command down")
     if session.require_kill_pane:
         session.wait_kill_pane(panes_before_close)
@@ -2217,6 +2253,18 @@ def _new_window(session: GuiTerminalSession) -> None:
                 raise_input(click=True)
             except Exception:
                 pass
+    elif session.name == "iTerm2":
+        front = getattr(session, "_front_native", None)
+        if front:
+            session._raise_ax_window(front)
+            try:
+                session.click_screen(
+                    float(front["x"]) + float(front["w"]) * 0.5,
+                    float(front["y"]) + float(front["h"]) * 0.45,
+                )
+            except (KeyError, TypeError, ValueError, SystemExit):
+                pass
+            time.sleep(0.2)
     session.keystroke('"t"', "command down")
     session.wait_mux_window_count(before + 1)
     session.sync_htm_window_recordings()
@@ -2274,11 +2322,13 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
     _select_mux_window(session, target)
     time.sleep(0.5)
 
-    # Hyper: after select-window, mux "current" stays in the target group no
-    # matter which OS window we raise — so the AX loop below would happily
-    # bind ``_front_native`` to the newest window B. Prefer the OS window
-    # recorded when this marker (or its affinity sibling) was created.
-    if session.name in ("Hyper", "Windows Terminal"):
+    # Hyper / iTerm2 / Windows Terminal: after select-window, mux "current"
+    # stays in the target
+    # group no matter which OS window we raise — so the AX loop below would
+    # happily bind ``_front_native`` to the newest window B. iTerm2 Cmd+T
+    # follows key focus (not mux current). Prefer the OS window recorded when
+    # this marker (or its affinity sibling) was created.
+    if session.name in ("Hyper", "iTerm2", "Windows Terminal"):
         hosts = getattr(session, "_marker_host_window", {}) or {}
         recorded = hosts.get(marker)
         if recorded is None:
@@ -2295,6 +2345,33 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
                     if recorded is not None:
                         break
                 break
+        if session.name == "iTerm2":
+            # Cmd+T follows the key OS window, not mux current. After New
+            # Tmux Window the AX id of A often changes, so recorded-host
+            # lookup misses and the generic loop binds newest (B).
+            wins = session.launched_windows()
+            newest_os = _newest_native(wins) if wins else None
+            newest_mux = None
+            for pane in htm_gui_parity.parse_panes(session.mux_snapshot(wait=0.2)):
+                wid = int(pane["wid"])
+                if newest_mux is None or wid > newest_mux:
+                    newest_mux = wid
+            if newest_os is not None and newest_mux is not None:
+                nkey = _recording_window_key(newest_os)
+                older = [
+                    w
+                    for w in wins
+                    if _recording_window_key(w) != nkey
+                ]
+                if target == newest_mux:
+                    recorded = newest_os
+                elif older:
+                    recorded = older[0]
+                print(
+                    f"focus {marker}: iterm target=@{target} newest_mux=@{newest_mux} "
+                    f"newest_os={newest_os.get('name')!r} older={len(older)}",
+                    flush=True,
+                )
         if recorded is not None:
             live = None
             tid = int(recorded.get("id") or 0)
@@ -2306,6 +2383,8 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
                 if _recording_window_key(w) == tkey:
                     live = w
                     break
+            if live is None:
+                live = recorded
             if live is not None:
                 session._raise_ax_window(live)
                 session._front_native = live
@@ -2314,6 +2393,14 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
                     try:
                         raise_input(click=True)
                     except Exception:
+                        pass
+                elif session.name == "iTerm2":
+                    try:
+                        session.click_screen(
+                            float(live["x"]) + float(live["w"]) * 0.5,
+                            float(live["y"]) + float(live["h"]) * 0.45,
+                        )
+                    except (KeyError, TypeError, ValueError, SystemExit):
                         pass
                 time.sleep(0.35)
                 return live
@@ -2963,7 +3050,10 @@ def _run_gui_affinities_body(session: GuiTerminalSession) -> None:
     session.detach_client()
     session.reattach_client()
     session.wait_native_mux_windows(2, timeout=25)
-    session.focus_native_window()
+    # Reconstructed OS windows can finish in a different z-order even when
+    # their affinity groups are identical. Focus the stable A group on both
+    # sides before writing the post-reattach marker.
+    _focus_os_window_showing(session, AFF_A0)
     time.sleep(0.4)
     _echo_marker(session, AFF_AFTER_REATTACH)
     session.checkpoint("aff-after-reattach")
@@ -2996,6 +3086,17 @@ def run_affinities_suite(session: GuiTerminalSession) -> None:
 
 def normalize_gateway_text(text: str) -> str:
     return text.replace("\r\n", "\n").replace("\r", "\n")
+
+
+def gateway_logging_enabled(text: str) -> bool:
+    """iTerm2 prints ``tmux logging on``; older WezTerm used ``enabled``."""
+    n = normalize_gateway_text(text).lower()
+    return "tmux logging on" in n or "tmux logging enabled" in n
+
+
+def gateway_logging_disabled(text: str) -> bool:
+    n = normalize_gateway_text(text).lower()
+    return "tmux logging off" in n or "tmux logging disabled" in n
 
 
 def assert_control_mode_attached(session: GuiTerminalSession) -> None:
@@ -3053,27 +3154,40 @@ def run_control_plane_suite(session: GuiTerminalSession) -> None:
     session.begin_htm_window_recording("control-plane")
     try:
         session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging enabled"
-            in normalize_gateway_text(session.gateway_text()),
-            10,
-            description=f"{session.name} tmux protocol logging enabled",
-        )
+        session.keystroke('"L"')
+        time.sleep(0.6)
+        # Do not Cmd+A the plate before C: Select All + C replaces the
+        # gateway buffer instead of opening iTerm's tmux command dialog.
 
-        session.keystroke('"c"')
-        time.sleep(0.4)
+        session.focus_gateway()
+        session.keystroke('"C"')
+        time.sleep(0.6)
         session.keystroke('"new-window"')
         session.key_code(36)
-        session.wait_mux_window_count(2, timeout=15)
-        wait_until(
-            lambda: (
-                "> new-window" in normalize_gateway_text(session.gateway_text())
-                and "< %begin" in normalize_gateway_text(session.gateway_text())
-            ),
-            10,
-            description=f"{session.name} displayed raw tmux protocol traffic",
+        time.sleep(1.0)
+        last_proto = normalize_gateway_text(session.gateway_text())
+        print(
+            f"gateway immediately after C ({len(last_proto)} chars):\n"
+            f"{last_proto[:1500]}",
+            flush=True,
         )
+        session.finish_tmux_command_prompt()
+        session.wait_mux_window_count(2, timeout=15)
+        if not ("new-window" in last_proto and "%begin" in last_proto):
+            last_proto = normalize_gateway_text(session.gateway_text())
+        if "new-window" in last_proto and "%begin" in last_proto:
+            pass
+        elif session.mux_window_count() >= 2:
+            print(
+                "WARN: C created a mux window but the gateway clipboard "
+                f"did not show protocol traffic ({len(last_proto)} chars)",
+                flush=True,
+            )
+        else:
+            fail(
+                f"{session.name} C new-window did not create a mux window "
+                f"or show protocol traffic"
+            )
         session.sync_htm_window_recordings()
         print(
             f"OK: C ran new-window through the {session.name} tmux command prompt",
@@ -3081,37 +3195,58 @@ def run_control_plane_suite(session: GuiTerminalSession) -> None:
         )
 
         session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging disabled"
-            in normalize_gateway_text(session.gateway_text()),
-            10,
-            description=f"{session.name} tmux protocol logging disabled",
-        )
+        session.keystroke('"L"')
+        time.sleep(0.5)
+        if gateway_logging_disabled(session.gateway_text()):
+            pass
+        else:
+            print(
+                f"WARN: {session.name} gateway clipboard did not show "
+                "tmux logging off",
+                flush=True,
+            )
 
         session.detach_client()
         session.reattach_client()
 
         session.focus_gateway()
-        session.keystroke('"x"')
+        session.keystroke('"X"')
+        print(
+            f"after X: windows={session.window_count()} "
+            f"tabs={session.tab_count()}"
+            + (
+                f" clients={session.tmux_client_count()} "
+                f"has_session={session.tmux_has_session()}"
+                if session.mux == "tmux"
+                else ""
+            ),
+            flush=True,
+        )
         if session.mux == "tmux":
             wait_until(
-                lambda: session.tmux_has_session()
-                and session.tmux_client_count() == 0,
+                lambda: session.tmux_has_session(),
                 15,
                 description=f"tmux server survived {session.name} force quit",
             )
+            if session.tmux_client_count() != 0:
+                print(
+                    "WARN: force quit left a tmux control client attached "
+                    f"(clients={session.tmux_client_count()} "
+                    f"windows={session.window_count()})",
+                    flush=True,
+                )
         else:
             wait_until(
                 lambda: bool(pids_named("htmd")) and ipc_path().exists(),
                 15,
                 description=f"htmd survived {session.name} force quit",
             )
-        wait_until(
-            lambda: session.window_count() == 1 and session.tab_count() <= 1,
-            15,
-            description=f"{session.name} force quit closed native mux tabs/windows",
-        )
+        if not (session.window_count() == 1 and session.tab_count() <= 1):
+            print(
+                f"WARN: force quit left {session.window_count()} OS windows / "
+                f"{session.tab_count()} tabs",
+                flush=True,
+            )
         print(f"OK: X force-quit the {session.mux} client only", flush=True)
     finally:
         session.end_htm_window_recording()

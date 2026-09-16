@@ -106,9 +106,19 @@ return {
       action = act.ActivatePaneDirection 'Next',
     },
     {
-      key = 'Tab',
+      key = 'v',
+      mods = 'CMD',
+      action = act.PasteFrom 'Clipboard',
+    },
+    {
+      key = 'c',
+      mods = 'CMD',
+      action = act.CopyTo 'Clipboard',
+    },
+    {
+      key = 'v',
       mods = 'CTRL|SHIFT',
-      action = act.ActivateTabRelative(-1),
+      action = act.PasteFrom 'Clipboard',
     },
   },
 }

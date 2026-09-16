@@ -20,6 +20,10 @@ class HtmClient : public IpcPairClient {
   /** @brief Event loop that forwards data between stdin and the HTM daemon. */
   void run();
 };
+
+/** @brief Discard pending stdin so leftover tmux -CC lines do not reach the
+ * wrapping shell after ``htm`` exits (``/bin/sh -c 'htm; exec $SHELL'``). */
+void drainHtmStdin();
 }  // namespace et
 
 #endif  // __HTM_CLIENT_H__

@@ -16,6 +16,10 @@
 #ifndef WIN32
 #include <unistd.h>
 #endif
+#ifdef __APPLE__
+#include <libproc.h>
+#include <sys/proc_info.h>
+#endif
 
 namespace et {
 struct MultiplexerState::Pane {
@@ -68,6 +72,10 @@ struct MultiplexerState::Session {
 
 namespace {
 string defaultCwd() {
+  const char* initial = ::getenv("HTM_INITIAL_CWD");
+  if (initial && *initial) {
+    return string(initial);
+  }
 #ifdef WIN32
   const char* home = ::getenv("USERPROFILE");
   return home ? string(home) : string();
@@ -157,6 +165,16 @@ uint32_t MultiplexerState::newSession(const string& name) {
 uint32_t MultiplexerState::newWindow(const string& name, const string& cwd) {
   auto session = sessions[attachedSession];
   bool firstWindow = session->windowIds.empty();
+  string startCwd = cwd;
+  if (startCwd.empty() && !firstWindow) {
+    auto activeWindow = windows[session->activeWindow];
+    if (activeWindow) {
+      auto activePane = panes[activeWindow->activePane];
+      if (activePane) {
+        startCwd = paneCwd(activePane.get());
+      }
+    }
+  }
   auto window = make_shared<Window>();
   window->id = nextWindowId++;
   window->sessionId = session->id;
@@ -164,7 +182,7 @@ uint32_t MultiplexerState::newWindow(const string& name, const string& cwd) {
   window->order = int(session->windowIds.size());
   window->cols = width;
   window->rows = height;
-  auto pane = makePane(window->id, cwd);
+  auto pane = makePane(window->id, startCwd);
   pane->parentId = window->id;
   pane->parentIsWindow = true;
   window->rootId = pane->id;
@@ -186,7 +204,8 @@ uint32_t MultiplexerState::splitWindow(uint32_t sourcePane, bool stacked,
                                        const string& cwd) {
   auto src = panes.at(sourcePane);
   auto window = windows.at(src->windowId);
-  auto newPane = makePane(window->id, cwd);
+  auto newPane =
+      makePane(window->id, cwd.empty() ? paneCwd(src.get()) : cwd);
   newPane->cols = src->cols;
   newPane->rows = src->rows;
 
@@ -1323,6 +1342,17 @@ string MultiplexerState::paneCwd(Pane* pane) const {
       return string(buf);
     }
   }
+#elif defined(__APPLE__)
+  int64_t pid = pane->terminal->childProcessId();
+  if (pid > 0) {
+    struct proc_vnodepathinfo info;
+    memset(&info, 0, sizeof(info));
+    int bytes = proc_pidinfo(static_cast<int>(pid), PROC_PIDVNODEPATHINFO, 0,
+                            &info, sizeof(info));
+    if (bytes == sizeof(info) && info.pvi_cdir.vip_path[0]) {
+      return string(info.pvi_cdir.vip_path);
+    }
+  }
 #endif
   (void)pane;
   return defaultCwd();
@@ -1330,6 +1360,9 @@ string MultiplexerState::paneCwd(Pane* pane) const {
 
 string MultiplexerState::expandOne(const string& name, Session* session,
                                    Window* window, Pane* pane) {
+  if (session && !name.empty() && name[0] == '@') {
+    return getUserOption(' ', session->id, name);
+  }
   if (name == "version") {
     return HTM_TMUX_VERSION;
   }

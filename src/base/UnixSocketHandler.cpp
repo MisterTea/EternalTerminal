@@ -169,15 +169,16 @@ void UnixSocketHandler::close(int fd) {
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
   VLOG(1) << "Closing connection: " << fd;
-  setBlocking(fd, true);
 #ifdef _MSC_VER
-  FATAL_FAIL_UNLESS_ZERO(::closesocket(fd));
+  ::closesocket(fd);
 #else
-#ifdef __FreeBSD__
-  FATAL_FAIL_UNLESS_EAGAIN(::close(fd));
-#else
-  FATAL_FAIL(::close(fd));
-#endif
+  {
+    struct linger lin;
+    lin.l_onoff = 1;
+    lin.l_linger = 0;
+    ::setsockopt(fd, SOL_SOCKET, SO_LINGER, &lin, sizeof(lin));
+  }
+  ::close(fd);
 #endif
   activeSocketMutexes.erase(it);
 }

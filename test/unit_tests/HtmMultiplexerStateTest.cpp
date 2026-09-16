@@ -290,6 +290,9 @@ TEST_CASE("MultiplexerState user options persist on session and pane",
   uint32_t pane = mux.activePaneId();
   mux.setUserOption(' ', sid, "@iterm2_id", "guid-1");
   REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id") == "guid-1");
+  REQUIRE(mux.displayFormat("#{@iterm2_id}", sid,
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "guid-1");
   mux.setUserOption('p', pane, "@uservars", "a=b");
   REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b");
   mux.setUserOption('p', pane, "@uservars", ",c=d", true);

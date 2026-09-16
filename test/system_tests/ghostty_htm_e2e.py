@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import argparse
 import os
+import shlex
 import signal
 import subprocess
 import sys
@@ -183,6 +184,7 @@ class GhosttyHtmSession(GuiTerminalSession):
         self.gui_pid: Optional[int] = None
         self.preexisting_gui = set(self._ghostty_pids())
         self.stderr_file = None
+        self._initial_attach_cleared = False
 
     def _ghostty_pids(self) -> list[int]:
         pids = []
@@ -228,14 +230,20 @@ class GhosttyHtmSession(GuiTerminalSession):
         return self.resolve_gui_pid()
 
     def osascript_pid(self, body: str) -> str:
-        script = f'''
+        def script() -> str:
+            return f'''
 tell application "System Events"
   tell (first process whose unix id is {self.pid})
     {body}
   end tell
 end tell
 '''
-        return run_osascript(script)
+        try:
+            return run_osascript(script())
+        except subprocess.CalledProcessError:
+            time.sleep(0.3)
+            self.gui_pid = None
+            return run_osascript(script())
 
     def focus(self) -> None:
         try:
@@ -330,14 +338,14 @@ end tell
         STDERR_LOG.parent.mkdir(parents=True, exist_ok=True)
         self.stderr_file = open(STDERR_LOG, "w")
         binary = self.ghostty_bin()
+        command_argv = shlex.split(command.strip() or self.multiplexer_command())
         self.proc = subprocess.Popen(
             [
                 str(binary),
                 "--config-default-files=false",
                 f"--config-file={CONFIG_FILE}",
                 "-e",
-                str(self.htm),
-                "-x",
+                *command_argv,
             ],
             env=env,
             cwd=str(self.htm.parent),
@@ -403,6 +411,10 @@ end tell
         # send-keys are not stuck behind the attach snapshot.
         time.sleep(1.0)
         self.focus_mux_surface()
+        if not self._initial_attach_cleared:
+            self.keystroke('"l"', "control down")
+            time.sleep(0.25)
+            self._initial_attach_cleared = True
 
     def focus_gateway(self) -> None:
         """Raise the control-plane OS window (no mux tabs share it)."""
@@ -475,7 +487,16 @@ end tell
 
     def focus_native_window(self) -> None:
         """Raise a mux pane OS window (separate from the gateway)."""
-        super().focus_native_window()
+        launched = self.launched_windows()
+        self.focus()
+        if not launched:
+            return
+        # System Events orders windows front-to-back. Ghostty's New Tmux
+        # Window activates the new native window, so preserve that selection
+        # instead of choosing the highest (oldest/backmost) AX index.
+        win = min(launched, key=lambda item: int(item.get("index") or 0))
+        self._front_native = win
+        self._raise_ax_window(win)
 
     def after_first_split(self) -> None:
         # Let capture-pane / list-panes drain so send-keys are not queued
@@ -533,6 +554,11 @@ end tell
 
     def after_layout_suite(self) -> None:
         super().after_layout_suite()
+        if self.mux == "tmux":
+            if not self.tmux_has_session():
+                fail("tmux -CC server exited during Ghostty layout suite")
+            print("OK: Ghostty kept the tmux -CC session alive", flush=True)
+            return
         text = self.log_text()
         if command_count(text, "list-windows") < 1 and "list-windows" not in text:
             fail("Ghostty did not send list-windows after control-mode attach")

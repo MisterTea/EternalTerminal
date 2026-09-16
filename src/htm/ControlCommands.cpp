@@ -233,13 +233,12 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       if (!affinity.empty()) {
         mux->setUserOption('g', 0, "@affinities", affinity);
       }
-      writer->begin();
-      writer->end();
+      // Do not %begin/%end: writeAllOrThrow can hang on a full AF_UNIX
+      // socket, so htmd never closes and the wrapping `htm; exec $SHELL`
+      // never resumes. tmux -CC just ends the client.
       return ControlAction::Detach;
     }
     if (cmd.name == "kill-server") {
-      writer->begin();
-      writer->end();
       return ControlAction::KillServer;
     }
     if (cmd.name == "display-message" || cmd.name == "display") {

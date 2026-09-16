@@ -524,6 +524,93 @@ TEST_CASE("HtmClient forwards stdin and exits when htmd closes",
   REQUIRE(write(stdinPipe[1], kill.data(), kill.size()) ==
           ssize_t(kill.size()));
   REQUIRE(waitUntil([&]() { return clientDone.load(); }, 8000));
+  string rest;
+  char drain[256];
+  while (true) {
+    ssize_t n = read(stdoutPipe[0], drain, sizeof(drain));
+    if (n > 0) {
+      rest.append(drain, static_cast<size_t>(n));
+    } else {
+      break;
+    }
+  }
+  REQUIRE(rest.find("%exit") != string::npos);
+  clientThread.join();
+  server.requestStop();
+  if (runner.joinable()) {
+    runner.join();
+  }
+  dup2(oldIn, STDIN_FILENO);
+  dup2(oldOut, STDOUT_FILENO);
+  close(oldIn);
+  close(oldOut);
+  close(stdinPipe[1]);
+  close(stdoutPipe[0]);
+}
+
+TEST_CASE("HtmClient exits on detach-client while htmd stays up",
+          "[Htm][HtmClient]") {
+  skipIfThreadSanitizer();
+  UniqueIpcPath ipc;
+  auto handler = std::make_shared<PipeSocketHandler>();
+  auto endpoint = endpointFor(ipc.path);
+  HtmServer server(handler, endpoint);
+  std::thread runner([&]() { server.run(); });
+  int stdinPipe[2];
+  REQUIRE(pipe(stdinPipe) == 0);
+  int stdoutPipe[2];
+  REQUIRE(pipe(stdoutPipe) == 0);
+  int oldIn = dup(STDIN_FILENO);
+  int oldOut = dup(STDOUT_FILENO);
+  dup2(stdinPipe[0], STDIN_FILENO);
+  dup2(stdoutPipe[1], STDOUT_FILENO);
+  close(stdinPipe[0]);
+  close(stdoutPipe[1]);
+  int outFlags = fcntl(stdoutPipe[0], F_GETFL, 0);
+  if (outFlags >= 0) {
+    fcntl(stdoutPipe[0], F_SETFL, outFlags | O_NONBLOCK);
+  }
+
+  std::atomic<bool> clientDone{false};
+  std::thread clientThread([&]() {
+    try {
+      HtmClient client(handler, endpoint);
+      client.run();
+    } catch (...) {
+    }
+    clientDone = true;
+  });
+
+  REQUIRE(waitUntil(
+      [&]() {
+        char buf[256];
+        ssize_t n = read(stdoutPipe[0], buf, sizeof(buf));
+        if (n > 0) {
+          string s(buf, n);
+          return s.find("1000p") != string::npos ||
+                 s.find("%session-changed") != string::npos;
+        }
+        return false;
+      },
+      8000));
+
+  string detach = "detach-client\n";
+  REQUIRE(write(stdinPipe[1], detach.data(), detach.size()) ==
+          ssize_t(detach.size()));
+  REQUIRE(waitUntil([&]() { return clientDone.load(); }, 8000));
+  REQUIRE(waitUntil([&]() { return server.getEndpointFd() < 0; }, 5000));
+  string rest;
+  char drain[256];
+  while (true) {
+    ssize_t n = read(stdoutPipe[0], drain, sizeof(drain));
+    if (n > 0) {
+      rest.append(drain, static_cast<size_t>(n));
+    } else {
+      break;
+    }
+  }
+  REQUIRE((rest.find("%exit") != string::npos ||
+           rest.find("\x1b\\") != string::npos));
   clientThread.join();
   server.requestStop();
   if (runner.joinable()) {
