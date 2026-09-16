@@ -2210,7 +2210,7 @@ def _new_window(session: GuiTerminalSession) -> None:
     # Hyper: click the intended OS window before Cmd+T. Modifier keystrokes
     # skip the mouse click, and Electron often leaves the newest OS window
     # key — so the follower would join the wrong affinity group.
-    if session.name == "Hyper":
+    if session.name in ("Hyper", "Windows Terminal"):
         raise_input = getattr(session, "_raise_mux_for_input", None)
         if callable(raise_input):
             try:
@@ -2278,7 +2278,7 @@ def _focus_os_window_showing(session: GuiTerminalSession, marker: str) -> dict:
     # matter which OS window we raise — so the AX loop below would happily
     # bind ``_front_native`` to the newest window B. Prefer the OS window
     # recorded when this marker (or its affinity sibling) was created.
-    if session.name == "Hyper":
+    if session.name in ("Hyper", "Windows Terminal"):
         hosts = getattr(session, "_marker_host_window", {}) or {}
         recorded = hosts.get(marker)
         if recorded is None:

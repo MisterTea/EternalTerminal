@@ -292,7 +292,10 @@ def check_step(step_id: str, dump: str) -> list[str]:
     if spec.get("balanced_horizontal") and len(panes) == 2:
         cols = [int(pane["cols"]) for pane in panes]
         rows = [int(pane["rows"]) for pane in panes]
-        if max(cols) - min(cols) > 1 or len(set(rows)) != 1:
+        # Terminal grids divide an odd cell count around a splitter. Windows
+        # Terminal also reserves cells for its pane chrome, so its two halves
+        # can differ by up to three columns while retaining the same rows.
+        if max(cols) - min(cols) > 3 or len(set(rows)) != 1:
             errors.append(
                 f"horizontal split not balanced: cols={cols} rows={rows}"
             )

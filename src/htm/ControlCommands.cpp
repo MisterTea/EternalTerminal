@@ -225,6 +225,14 @@ ControlAction executeControlCommand(MultiplexerState* mux,
   try {
     if (cmd.name == "detach-client" || cmd.name == "detach" ||
         cmd.name == "exit") {
+      // A GUI reconnect creates a new control session. Preserve the native
+      // window grouping at the detach boundary, before that old session's
+      // session-scoped option becomes unreachable.
+      const auto affinity = mux->getUserOption(' ', mux->activeSessionId(),
+                                                "@affinities");
+      if (!affinity.empty()) {
+        mux->setUserOption('g', 0, "@affinities", affinity);
+      }
       writer->begin();
       writer->end();
       return ControlAction::Detach;

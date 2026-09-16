@@ -76,6 +76,8 @@ if os.name == "nt":
     user32.GetForegroundWindow.restype = wintypes.HWND
     user32.GetDpiForWindow.argtypes = [wintypes.HWND]
     user32.GetDpiForWindow.restype = wintypes.UINT
+    user32.SendInput.argtypes = [wintypes.UINT, ctypes.c_void_p, ctypes.c_int]
+    user32.SendInput.restype = wintypes.UINT
     # Match WT's Per-Monitor V2 so SetWindowPos sizes are physical pixels.
     try:
         ctypes.windll.user32.SetProcessDpiAwarenessContext(ctypes.c_void_p(-4))
@@ -84,6 +86,12 @@ if os.name == "nt":
             ctypes.windll.shcore.SetProcessDpiAwareness(2)
         except Exception:
             pass
+    try:
+        hdesk = user32.OpenDesktopW("Default", 0, False, 0x01FF)
+        if hdesk:
+            user32.SetThreadDesktop(hdesk)
+    except Exception:
+        pass
 
 
 class PROCESSENTRY32W(ctypes.Structure):
@@ -365,8 +373,11 @@ def focus_window(hwnd: int) -> None:
 
 def send_key(vk: int, flags: int = 0) -> None:
     item = INPUT(type=INPUT_KEYBOARD, ki=KEYBDINPUT(vk, 0, flags, 0, None))
-    if user32.SendInput(1, ctypes.byref(item), ctypes.sizeof(INPUT)) != 1:
-        fail(f"SendInput failed for virtual key {vk}: {ctypes.get_last_error()}")
+    for attempt in range(5):
+        if user32.SendInput(1, ctypes.byref(item), ctypes.sizeof(INPUT)) == 1:
+            return
+        time.sleep(0.02)
+    fail(f"SendInput failed for virtual key {vk}: {ctypes.get_last_error()}")
 
 
 def shortcut(*keys: int) -> None:
@@ -391,7 +402,13 @@ def type_text(text: str) -> None:
             ki=KEYBDINPUT(0, code, KEYEVENTF_UNICODE | KEYEVENTF_KEYUP, 0, None),
         )
         inputs = (INPUT * 2)(down, up)
-        if user32.SendInput(2, inputs, ctypes.sizeof(INPUT)) != 2:
+        sent = False
+        for attempt in range(5):
+            if user32.SendInput(2, ctypes.byref(inputs), ctypes.sizeof(INPUT)) == 2:
+                sent = True
+                break
+            time.sleep(0.02)
+        if not sent:
             fail(f"SendInput failed while typing: {ctypes.get_last_error()}")
         time.sleep(0.006)
 
@@ -495,8 +512,19 @@ class WindowsTerminalRun:
         def find_window():
             titled = [w for w in windows() if self.title in w[2]]
             fresh = [w for w in titled if w[0] not in before]
-            # Do not fall back to a pre-existing window whose tab title changed.
-            return (fresh or [None])[0]
+            if fresh:
+                return fresh[0]
+            # HTM immediately changes the gateway title after it recognizes
+            # the tmux-control DCS. The title can therefore disappear before
+            # this polling loop observes it. A fresh terminal HWND is still
+            # unambiguous for this launch and avoids a title-change race.
+            candidates = [
+                w
+                for w in windows()
+                if w[0] not in before
+                and w[1] in processes_named("WindowsTerminal.exe")
+            ]
+            return (candidates or [None])[0]
 
         hwnd, pid, _title = wait_for(find_window, 15, "Windows Terminal window")
         self.hwnd = hwnd
@@ -903,8 +931,11 @@ class WindowsTerminalControlSession(GuiTerminalSession):
             15,
             description="native HTM window created",
         )
-        time.sleep(0.8)
-        self._discover_native_windows()
+        wait_until(
+            lambda: (self._discover_native_windows() or True) and bool(self.native_hwnds),
+            15,
+            description="Windows Terminal native HTM HWND",
+        )
         self.focus_native()
         time.sleep(0.3)
 
@@ -917,19 +948,78 @@ class WindowsTerminalControlSession(GuiTerminalSession):
             fail("Windows Terminal was not started")
         if self.run.hwnd:
             focus_window(self.run.hwnd)
+            rect = wintypes.RECT()
+            if user32.GetWindowRect(self.run.hwnd, ctypes.byref(rect)):
+                x = (rect.left + rect.right) // 2
+                # Below the tab row/title bar, safely inside the terminal grid.
+                y = rect.top + (rect.bottom - rect.top) * 55 // 100
+                user32.SetCursorPos(x, y)
+                user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+                user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+                time.sleep(0.15)
+        self._gateway_focused = True
+
+    def gateway_text(self) -> str:
+        """Copy the gateway buffer through Windows Terminal's real shortcut."""
+        self.focus_gateway()
+        # Windows Terminal's default terminal-selection bindings are the
+        # Shift variants: Ctrl+A is passed through to the ConPTY application.
+        shortcut(VK_CONTROL, VK_SHIFT, ord("A"))
+        time.sleep(0.08)
+        shortcut(VK_CONTROL, VK_SHIFT, ord("C"))
+        time.sleep(0.15)
+        try:
+            text = subprocess.check_output(
+                ["powershell", "-NoProfile", "-Command", "Get-Clipboard -Raw"],
+                text=True,
+                stderr=subprocess.DEVNULL,
+            )
+            return text
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            return ""
 
     def focus_native(self) -> None:
         if not self.run:
             fail("Windows Terminal was not started")
         self._discover_native_windows()
-        target = self.native_hwnds[-1] if self.native_hwnds else self.run.hwnd
+        front = getattr(self, "_front_native", None) or {}
+        front_hwnd = int(front.get("hwnd") or 0)
+        target = (
+            front_hwnd
+            if front_hwnd in self.native_hwnds
+            else self.native_hwnds[-1] if self.native_hwnds else self.run.hwnd
+        )
         if target:
             focus_window(target)
+            self._gateway_focused = False
+            rect = wintypes.RECT()
+            if user32.GetWindowRect(target, ctypes.byref(rect)):
+                user32.SetCursorPos(
+                    # Never click the center: after a side-by-side split that
+                    # is the splitter divider, which does not focus a pane.
+                    (rect.left + rect.right * 3) // 4,
+                    rect.top + (rect.bottom - rect.top) * 55 // 100,
+                )
+                user32.mouse_event(0x0002, 0, 0, 0, 0)  # LEFTDOWN
+                user32.mouse_event(0x0004, 0, 0, 0, 0)  # LEFTUP
+            self._front_native = next(
+                (win for win in self.launched_windows() if int(win.get("hwnd") or 0) == target),
+                {"hwnd": target},
+            )
             time.sleep(0.15)
 
     def focus_native_window(self) -> None:
         """Corners suite uses this after detach/reattach; HWND, not osascript."""
         self.focus_native()
+
+    def htm_select_window(self, wid: int) -> None:
+        """Native HWND focus selects Windows Terminal's tab host.
+
+        The shared helper raises the recorded native window immediately after
+        this hook. Sending a gateway ``select-window`` as well changes HTM's
+        session state without changing WT's action dispatch target.
+        """
+        del wid
 
     def _raise_ax_window(self, win: dict) -> None:
         """Raise a mux OS window by HWND (affinities / multi-window focus)."""
@@ -937,6 +1027,7 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         if not hwnd:
             fail(f"Windows Terminal window missing hwnd: {win!r}")
         focus_window(hwnd)
+        self._front_native = win
         time.sleep(0.2)
         rect = wintypes.RECT()
         if user32.GetWindowRect(hwnd, ctypes.byref(rect)):
@@ -950,15 +1041,17 @@ class WindowsTerminalControlSession(GuiTerminalSession):
     def new_tmux_os_window(self) -> None:
         """New OS window with empty affinity (iTerm ``New Tmux Window``).
 
-        Windows Terminal's control-mode path turns UI ``new-tab`` into the
-        ``new-window`` control command; the terminal is responsible for putting
-        an anonymous window in a fresh OS window (empty affinity). When WT
-        grows a dedicated New Window action, prefer that here over Cmd+T.
+        Windows Terminal's New Window action asks the active HTM session for a
+        fresh tmux window and hosts its follower in a new native window.
+        Use its keyboard binding rather than a ``wtd`` subcommand: ``wtd``
+        does not expose a ``new-window`` subcommand and parses that spelling as
+        a new-tab launch. ``new-tab`` is deliberately not used here, either;
+        it is the affinity-preserving operation exercised by ``_new_window``.
         """
         self.focus_native()
         before_os = len(self.launched_windows())
         before_cmd = self.log_text().count("control command: new-window")
-        self._action("new-tab")
+        shortcut(VK_CONTROL, VK_SHIFT, ord("N"))
         wait_until(
             lambda: len(self.launched_windows()) > before_os
             or self.log_text().count("control command: new-window") > before_cmd,
@@ -967,6 +1060,13 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         )
         time.sleep(0.5)
         self._discover_native_windows()
+        if self.native_hwnds:
+            newest = self.native_hwnds[-1]
+            focus_window(newest)
+            self._front_native = next(
+                (win for win in self.launched_windows() if int(win.get("hwnd") or 0) == newest),
+                {"hwnd": newest},
+            )
 
     def launched_windows(self) -> list[dict]:
         self._discover_native_windows()
@@ -1013,8 +1113,15 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         scale = max(dpi / 96.0, 1.0)
         # WezTerm's 900x700 is content-ish; WT SetWindowPos is outer size and
         # title-bar/DPI eat the client area. Grow so mux can clear 100x30.
-        target_w = max(int(width), int((110 * 9 + 120) * scale), rect.right - rect.left)
-        target_h = max(int(height), int((35 * 18 + 140) * scale), rect.bottom - rect.top)
+        # A same-size SetWindowPos produces no WM_SIZE, making this check a
+        # false timeout when a previous suite has already enlarged the host.
+        # Grow by one cell-ish increment so HTM must receive a real resize.
+        target_w = max(
+            int(width), int((110 * 9 + 120) * scale), rect.right - rect.left + 32
+        )
+        target_h = max(
+            int(height), int((35 * 18 + 140) * scale), rect.bottom - rect.top + 32
+        )
         resizes_before = self.log_text().count("resize-pane -t %")
         refreshes_before = self.log_text().count("refresh-client -C")
         if not user32.SetWindowPos(
@@ -1139,9 +1246,24 @@ class WindowsTerminalControlSession(GuiTerminalSession):
                             return
                         time.sleep(0.1)
             elif value == "t":
-                self.focus_native()
-                self._action("new-tab")
-                time.sleep(1.0)
+                # Dispatch the real Windows Terminal New Tab action. Sending
+                # Ctrl+Shift+T through SendInput is unreliable after a native
+                # HTM split because the inner XAML control can retain keyboard
+                # focus while the top-level Terminal window is foreground.
+                # TerminalPage keeps this CLI action in the active HTM session.
+                before = self.log_text().count("control command: new-window")
+                for _ in range(3):
+                    self._action("new-tab")
+                    deadline = time.time() + 2.5
+                    while time.time() < deadline:
+                        if self.log_text().count("control command: new-window") > before:
+                            break
+                        time.sleep(0.1)
+                    else:
+                        # New-tab may race creation of the split follower.
+                        self.focus_native()
+                        continue
+                    break
                 self._discover_native_windows()
             elif value == "n":
                 self.new_tmux_os_window()
@@ -1160,11 +1282,26 @@ class WindowsTerminalControlSession(GuiTerminalSession):
             return
         if "control" in using:
             self.focus_native()
+            if value.lower() == "c":
+                # Windows Terminal can claim Ctrl+C as Copy before it reaches
+                # a freshly reattached TermControl. Send the terminal's ETX
+                # character through the same native input path instead; HTM
+                # must forward it as byte 0x03 to interrupt the pane.
+                type_text("\x03")
+                time.sleep(0.12)
+                return
             shortcut(VK_CONTROL, ord(value.upper()))
             time.sleep(0.12)
             return
-        self.focus_native()
-        type_text(" " + value)
+        gateway_focused = getattr(self, "_gateway_focused", False)
+        if not gateway_focused:
+            self.focus_native()
+        type_text(value if gateway_focused else " " + value)
+        # Gateway keystrokes are consumed by HTM's local command menu, not
+        # forwarded as tmux send-keys; their visible result is asserted by the
+        # shared control-plane suite through gateway_text().
+        if gateway_focused:
+            return
         needle = value[-24:] if len(value) > 24 else value
         if needle.strip():
             self.wait_log(
@@ -1186,6 +1323,19 @@ class WindowsTerminalControlSession(GuiTerminalSession):
         type_text(" " + text + "\r")
         needle = text[-24:] if len(text) > 24 else text
         if needle.strip():
+            # A just-created split follower can consume the click which gives
+            # it XAML focus, dropping the first injected text. Retry only when
+            # HTM recorded no bytes at all; this retains the end-to-end oracle
+            # while avoiding duplicate commands after a successful delivery.
+            deadline = time.time() + 2.0
+            while time.time() < deadline:
+                text_log = self.log_text()
+                if needle in typed_from_log(text_log) or needle in text_log:
+                    break
+                time.sleep(0.1)
+            else:
+                self.focus_native()
+                type_text(" " + text + "\r")
             self.wait_log(
                 lambda text_log: needle in typed_from_log(text_log) or needle in text_log,
                 45,
@@ -1223,6 +1373,12 @@ class WindowsTerminalControlSession(GuiTerminalSession):
             return 0
         self._discover_native_windows()
         return 1 + len(self.native_hwnds)
+
+    def window_count(self) -> int:
+        # HTM presents the gateway and every mux surface in a distinct native
+        # Windows Terminal window. Keep the shared driver's window invariant
+        # explicit instead of relying on its unrelated tab terminology.
+        return self.tab_count()
 
     def is_alive(self) -> bool:
         return bool(self.run and self.run.hwnd)
