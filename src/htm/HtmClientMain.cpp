@@ -101,18 +101,24 @@ string htmdPidsForUser(uid_t uid) {
     }
     char lineBuf[256];
     bool uidMatches = false;
+    bool isZombie = false;
     while (fgets(lineBuf, sizeof(lineBuf), sfp)) {
-      if (strncmp(lineBuf, "Uid:", 4) == 0) {
+      if (strncmp(lineBuf, "State:", 6) == 0) {
+        const char* state = lineBuf + 6;
+        while (*state == ' ' || *state == '\t') {
+          ++state;
+        }
+        isZombie = (*state == 'Z');
+      } else if (strncmp(lineBuf, "Uid:", 4) == 0) {
         int ruid = -1;
         if (sscanf(lineBuf + 4, "%d", &ruid) == 1 &&
             static_cast<uid_t>(ruid) == uid) {
           uidMatches = true;
         }
-        break;
       }
     }
     fclose(sfp);
-    if (uidMatches) {
+    if (uidMatches && !isZombie) {
       out += pidStr;
       out += '\n';
     }
