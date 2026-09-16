@@ -220,8 +220,7 @@ void HtmClient::run() {
   writeDcs();
 #ifndef WIN32
   {
-    string path =
-        GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
+    string path = GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
     int pidFd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
     if (pidFd >= 0) {
       char buf[32];

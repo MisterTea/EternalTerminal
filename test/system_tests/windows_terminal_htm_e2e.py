@@ -510,7 +510,8 @@ class WindowsTerminalRun:
         self.invoke_in("new", *args)
 
         def find_window():
-            titled = [w for w in windows() if self.title in w[2]]
+            wins = windows()
+            titled = [w for w in wins if self.title in w[2]]
             fresh = [w for w in titled if w[0] not in before]
             if fresh:
                 return fresh[0]
@@ -518,11 +519,12 @@ class WindowsTerminalRun:
             # the tmux-control DCS. The title can therefore disappear before
             # this polling loop observes it. A fresh terminal HWND is still
             # unambiguous for this launch and avoids a title-change race.
+            wt_pids = processes_named("WindowsTerminal.exe")
             candidates = [
                 w
-                for w in windows()
+                for w in wins
                 if w[0] not in before
-                and w[1] in processes_named("WindowsTerminal.exe")
+                and w[1] in wt_pids
             ]
             return (candidates or [None])[0]
 

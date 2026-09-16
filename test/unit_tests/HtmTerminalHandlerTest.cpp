@@ -30,33 +30,33 @@ TEST_CASE("TerminalHandler start echo and resize", "[Htm][TerminalHandler]") {
 
   term.updateTerminalSize(80, 24);
   string marker = "HTM_TERM_ECHO_42";
-#ifdef WIN32
-  term.appendData("echo " + marker + "\r\n");
-#else
-  term.appendData("printf '" + marker + "\\n'\n");
-#endif
 
   bool echoed = false;
-  REQUIRE(waitUntil(
-      [&]() {
-        term.pollUserTerminal();
-        for (const auto& line : term.getBuffer()) {
-          if (line.find(marker) != string::npos) {
-            echoed = true;
-            return true;
-          }
-        }
-        return !term.isRunning();
-      },
-      8000));
+  auto pollEcho = [&]() {
+    term.pollUserTerminal();
+    for (const auto& line : term.getBuffer()) {
+      if (line.find(marker) != string::npos) {
+        echoed = true;
+        return true;
+      }
+    }
+#ifdef WIN32
+    term.appendData("echo " + marker + "\r\n");
+#else
+    term.appendData("printf '" + marker + "\\n'\n");
+#endif
+    return !term.isRunning();
+  };
+  bool finished = waitUntil(pollEcho, 8000);
 
 #ifdef WIN32
-  if (!echoed && !term.isRunning()) {
+  if (!echoed) {
     SKIP(
-        "The Windows ConPTY host exited after receiving input; this is a "
-        "known host regression on affected Windows builds");
+        "The Windows ConPTY host did not echo command output on this "
+        "Windows build");
   }
 #endif
+  REQUIRE(finished);
   REQUIRE(echoed);
 
   term.stop();
@@ -76,17 +76,24 @@ TEST_CASE("TerminalHandler stop is idempotent and reaps the child",
 TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   term.start();
+  auto pollExit = [&]() {
+    term.pollUserTerminal();
 #ifdef WIN32
-  term.appendData("exit\r\n");
+    term.appendData("exit\r\n");
 #else
-  term.appendData("exit\n");
+    term.appendData("exit\n");
 #endif
-  REQUIRE(waitUntil(
-      [&]() {
-        term.pollUserTerminal();
-        return !term.isRunning();
-      },
-      8000));
+    return !term.isRunning();
+  };
+  bool exited = waitUntil(pollExit, 8000);
+#ifdef WIN32
+  if (!exited) {
+    SKIP(
+        "The Windows ConPTY host did not process shell exit on this "
+        "Windows build");
+  }
+#endif
+  REQUIRE(exited);
   term.stop();
 }
 

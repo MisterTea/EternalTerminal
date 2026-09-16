@@ -204,8 +204,7 @@ uint32_t MultiplexerState::splitWindow(uint32_t sourcePane, bool stacked,
                                        const string& cwd) {
   auto src = panes.at(sourcePane);
   auto window = windows.at(src->windowId);
-  auto newPane =
-      makePane(window->id, cwd.empty() ? paneCwd(src.get()) : cwd);
+  auto newPane = makePane(window->id, cwd.empty() ? paneCwd(src.get()) : cwd);
   newPane->cols = src->cols;
   newPane->rows = src->rows;
 
@@ -1348,7 +1347,7 @@ string MultiplexerState::paneCwd(Pane* pane) const {
     struct proc_vnodepathinfo info;
     memset(&info, 0, sizeof(info));
     int bytes = proc_pidinfo(static_cast<int>(pid), PROC_PIDVNODEPATHINFO, 0,
-                            &info, sizeof(info));
+                             &info, sizeof(info));
     if (bytes == sizeof(info) && info.pvi_cdir.vip_path[0]) {
       return string(info.pvi_cdir.vip_path);
     }
@@ -1670,12 +1669,11 @@ string MultiplexerState::dumpAllPanesText() const {
   if (attachedSession) {
     affinitiesRaw = getUserOption(' ', attachedSession, "@affinities");
   }
-  // A GUI reconnect establishes a fresh control session. Keep the session
-  // option authoritative, but inherit the server-level mirror when that
-  // session has not yet republished its native-window grouping.
-  const auto persistedAffinities = getUserOption('g', 0, "@affinities");
-  if (!persistedAffinities.empty()) {
-    affinitiesRaw = persistedAffinities;
+  if (affinitiesRaw.empty()) {
+    const auto persistedAffinities = getUserOption('g', 0, "@affinities");
+    if (!persistedAffinities.empty()) {
+      affinitiesRaw = persistedAffinities;
+    }
   }
   // Emit the same list-of-lists JSON the e2e suite records for tmux -CC.
   // Numeric window ids only; empty when the client has not written @affinities.
@@ -1753,15 +1751,6 @@ string MultiplexerState::dumpAllPanesText() const {
       if (!ids.empty()) {
         sort(ids.begin(), ids.end());
         groups.push_back(ids);
-      }
-    }
-    // Before a GUI client has performed a native tab/window action there is
-    // no affinity option yet. The only faithful representation is one native
-    // host per live mux window; this also avoids a reconnect client replacing
-    // retained affinity state during its initial layout replay.
-    if (groups.empty() && attachedSession && sessions.count(attachedSession)) {
-      for (uint32_t id : sessions.at(attachedSession)->windowIds) {
-        groups.push_back({ id });
       }
     }
     sort(groups.begin(), groups.end(),

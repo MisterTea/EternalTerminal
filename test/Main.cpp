@@ -70,15 +70,15 @@ int main(int argc, char** argv) {
           << "Windows Terminal e2e is not part of default Catch2/CTest. Run:\n"
           << "  py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe "
              "--htm build/Release/htm.exe --htmd build/Release/htmd.exe\n"
-           << "  py test/system_tests/windows_terminal_htm_affinities_e2e.py "
-              "--wt wtd.exe --htm build/Release/htm.exe --htmd "
-              "build/Release/htmd.exe\n"
-           << "  py test/system_tests/windows_terminal_htm_stress_e2e.py "
-              "--wt wtd.exe --htm build/Release/htm.exe --htmd "
-              "build/Release/htmd.exe\n"
-           << "  py test/system_tests/windows_terminal_control_plane_e2e.py "
-              "--wt wtd.exe --htm build/Release/htm.exe --htmd "
-              "build/Release/htmd.exe\n";
+          << "  py test/system_tests/windows_terminal_htm_affinities_e2e.py "
+             "--wt wtd.exe --htm build/Release/htm.exe --htmd "
+             "build/Release/htmd.exe\n"
+          << "  py test/system_tests/windows_terminal_htm_stress_e2e.py "
+             "--wt wtd.exe --htm build/Release/htm.exe --htmd "
+             "build/Release/htmd.exe\n"
+          << "  py test/system_tests/windows_terminal_control_plane_e2e.py "
+             "--wt wtd.exe --htm build/Release/htm.exe --htmd "
+             "build/Release/htmd.exe\n";
       return 2;
     }
   }

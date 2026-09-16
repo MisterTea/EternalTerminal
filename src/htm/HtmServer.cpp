@@ -26,7 +26,7 @@ pid_t unixPeerPid(int fd) {
   if (::getsockopt(fd, SOL_LOCAL, LOCAL_PEERPID, &pid, &len) == 0) {
     return pid;
   }
-#else
+#elif defined(SO_PEERCRED)
   struct ucred cred;
   memset(&cred, 0, sizeof(cred));
   socklen_t len = sizeof(cred);
@@ -46,8 +46,7 @@ void reapControlClient(pid_t peer) {
   };
   consider(peer);
   {
-    string path =
-        GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
+    string path = GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
     FILE* fp = fopen(path.c_str(), "r");
     if (fp) {
       int parsed = -1;
@@ -114,12 +113,25 @@ void reapControlClient(pid_t peer) {
     }
   }
 #endif
-  LOG(INFO) << "detach reap " << targets.size() << " htm client(s) self="
-            << ::getpid();
+  LOG(INFO) << "detach reap " << targets.size()
+            << " htm client(s) self=" << ::getpid();
   // Give a healthy client time to drain leftover PTY input, restore blocking
   // stdio, and _exit. SIGKILL leftover `htm` only if it is still wedged so
   // `htm; exec $SHELL` matches tmux -CC.
-  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(3);
+  while (std::chrono::steady_clock::now() < deadline) {
+    bool anyAlive = false;
+    for (pid_t pid : targets) {
+      if (::kill(pid, 0) == 0) {
+        anyAlive = true;
+        break;
+      }
+    }
+    if (!anyAlive) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  }
   for (pid_t pid : targets) {
     if (::kill(pid, 0) == 0) {
       LOG(INFO) << "SIGKILL htm client " << pid;

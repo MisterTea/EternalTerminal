@@ -228,8 +228,8 @@ ControlAction executeControlCommand(MultiplexerState* mux,
       // A GUI reconnect creates a new control session. Preserve the native
       // window grouping at the detach boundary, before that old session's
       // session-scoped option becomes unreachable.
-      const auto affinity = mux->getUserOption(' ', mux->activeSessionId(),
-                                                "@affinities");
+      const auto affinity =
+          mux->getUserOption(' ', mux->activeSessionId(), "@affinities");
       if (!affinity.empty()) {
         mux->setUserOption('g', 0, "@affinities", affinity);
       }
