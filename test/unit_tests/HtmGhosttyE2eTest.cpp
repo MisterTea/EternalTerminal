@@ -197,8 +197,12 @@ class ControlPty {
   }
 
   bool waitAttached() {
+    // HtmClientMain allows up to 10 seconds for a newly spawned htmd to
+    // publish its IPC socket. Give the daemon startup plus control handshake
+    // enough headroom when the portability jobs run CTest in parallel.
     return waitFor(
-        [&]() { return incoming.find("%session-changed") != string::npos; });
+        [&]() { return incoming.find("%session-changed") != string::npos; },
+        20000);
   }
 
   string incoming;
