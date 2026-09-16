@@ -856,7 +856,9 @@ class WindowsTerminalControlSession(GuiTerminalSession):
 
     def start(self, command: str = "") -> None:
         kill_htm_daemons()
-        time.sleep(2.0)
+        subprocess.run(["taskkill", "/F", "/IM", "WindowsTerminal.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        subprocess.run(["taskkill", "/F", "/IM", "wtd.exe"], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, check=False)
+        time.sleep(1.0)
         self.started_at = time.time() - 1.0
         self.run = WindowsTerminalRun(self.wt, self.htm, self.htmd, Path(tempfile.gettempdir()))
         self.run.env["PATH"] = f"{self.htm.parent};{self.run.env.get('PATH', '')}"

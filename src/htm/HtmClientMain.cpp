@@ -21,6 +21,7 @@
 #include <libproc.h>
 #include <mach-o/dyld.h>
 #endif
+#include <dirent.h>
 #include <limits.h>
 #include <signal.h>
 #include <sys/socket.h>
@@ -33,7 +34,7 @@ namespace {
 unique_ptr<PseudoTerminalConsole> gConsole;
 
 #ifndef WIN32
-string siblingHtmdCommand() {
+string siblingHtmdPath() {
   char buf[PATH_MAX];
   buf[0] = '\0';
 #ifdef __APPLE__
@@ -57,8 +58,69 @@ string siblingHtmdCommand() {
   if (!fs::exists(htmd)) {
     return "htmd";
   }
-  return string("\"") + htmd.string() + "\"";
+  return htmd.string();
 }
+
+#if defined(__linux__)
+string htmdPidsForUser(uid_t uid) {
+  DIR* dir = opendir("/proc");
+  if (!dir) {
+    string command = string("pgrep -x -U ") + to_string(uid) + string(" htmd");
+    return SystemToStr(command.c_str());
+  }
+  string out;
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (!isdigit(entry->d_name[0])) {
+      continue;
+    }
+    string pidStr(entry->d_name);
+    string commPath = string("/proc/") + pidStr + "/comm";
+    FILE* fp = fopen(commPath.c_str(), "r");
+    if (!fp) {
+      continue;
+    }
+    char commBuf[64];
+    bool isHtmd = false;
+    if (fgets(commBuf, sizeof(commBuf), fp)) {
+      size_t len = strlen(commBuf);
+      while (len > 0 &&
+             (commBuf[len - 1] == '\r' || commBuf[len - 1] == '\n')) {
+        commBuf[--len] = '\0';
+      }
+      isHtmd = (strcmp(commBuf, "htmd") == 0);
+    }
+    fclose(fp);
+    if (!isHtmd) {
+      continue;
+    }
+    string statusPath = string("/proc/") + pidStr + "/status";
+    FILE* sfp = fopen(statusPath.c_str(), "r");
+    if (!sfp) {
+      continue;
+    }
+    char lineBuf[256];
+    bool uidMatches = false;
+    while (fgets(lineBuf, sizeof(lineBuf), sfp)) {
+      if (strncmp(lineBuf, "Uid:", 4) == 0) {
+        int ruid = -1;
+        if (sscanf(lineBuf + 4, "%d", &ruid) == 1 &&
+            static_cast<uid_t>(ruid) == uid) {
+          uidMatches = true;
+        }
+        break;
+      }
+    }
+    fclose(sfp);
+    if (uidMatches) {
+      out += pidStr;
+      out += '\n';
+    }
+  }
+  closedir(dir);
+  return out;
+}
+#endif
 
 #ifdef __APPLE__
 string htmdPidsForUser(uid_t uid) {
@@ -315,7 +377,7 @@ int main(int argc, char** argv) {
 #else
   uid_t myuid = getuid();
   const string pipeName = HtmServer::getPipeName();
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
   auto htmdPids = [&]() { return htmdPidsForUser(myuid); };
 #else
   auto htmdPids = [&]() {
@@ -326,7 +388,6 @@ int main(int argc, char** argv) {
 #endif
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
-#ifdef __APPLE__
     string running = htmdPids();
     string pidStr;
     for (char ch : running) {
@@ -342,11 +403,6 @@ int main(int argc, char** argv) {
     if (!pidStr.empty()) {
       ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
     }
-#else
-    string command =
-        string("pkill -x -U ") + to_string(myuid) + string(" htmd");
-    system(command.c_str());
-#endif
     for (int i = 0; i < 50; i++) {
       if (htmdPids().empty()) {
         break;
@@ -354,17 +410,23 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     ::unlink(pipeName.c_str());
+    string clientPidPath =
+        GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
+    ::unlink(clientPidPath.c_str());
   }
 
   if (htmdPids().empty()) {
     int daemonResult = DaemonCreator::create(false, "");
     if (daemonResult == DaemonCreator::CHILD) {
-      exit(system(siblingHtmdCommand().c_str()));
+      string path = siblingHtmdPath();
+      execl(path.c_str(), "htmd", (char*)nullptr);
+      execlp("htmd", "htmd", (char*)nullptr);
+      _exit(1);
     }
   }
 
   for (int i = 0; i < 100; i++) {
-    if (!htmdPids().empty() && ::access(pipeName.c_str(), F_OK) == 0) {
+    if (::access(pipeName.c_str(), F_OK) == 0) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));

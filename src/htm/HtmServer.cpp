@@ -51,10 +51,35 @@ void reapControlClient(pid_t peer) {
     FILE* fp = fopen(path.c_str(), "r");
     if (fp) {
       int parsed = -1;
-      if (fscanf(fp, "%d", &parsed) == 1) {
-        consider(static_cast<pid_t>(parsed));
+      if (fscanf(fp, "%d", &parsed) == 1 && parsed > 1 &&
+          parsed != ::getpid()) {
+        bool isHtm = true;
+#if defined(__linux__)
+        string commPath = string("/proc/") + to_string(parsed) + "/comm";
+        FILE* commFp = fopen(commPath.c_str(), "r");
+        if (commFp) {
+          char commBuf[64];
+          if (fgets(commBuf, sizeof(commBuf), commFp)) {
+            size_t len = strlen(commBuf);
+            while (len > 0 &&
+                   (commBuf[len - 1] == '\r' || commBuf[len - 1] == '\n')) {
+              commBuf[--len] = '\0';
+            }
+            isHtm = (strcmp(commBuf, "htm") == 0);
+          } else {
+            isHtm = false;
+          }
+          fclose(commFp);
+        } else {
+          isHtm = false;
+        }
+#endif
+        if (isHtm) {
+          consider(static_cast<pid_t>(parsed));
+        }
       }
       fclose(fp);
+      ::unlink(path.c_str());
     }
   }
 #ifdef __APPLE__

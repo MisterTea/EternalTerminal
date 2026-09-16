@@ -8,6 +8,7 @@ Drive the control protocol over a PTY: DCS 1000p, %session-changed, commands,
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import pty
 import re
@@ -16,6 +17,7 @@ import shlex
 import signal
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 from typing import Optional
@@ -132,6 +134,14 @@ class HtmPty:
         self.text = ""
         self.lines = []
         self.master_fd, slave_fd = pty.openpty()
+
+        def _setup_slave() -> None:
+            os.setsid()
+            try:
+                fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+            except OSError:
+                pass
+
         self.proc = subprocess.Popen(
             args,
             stdin=slave_fd,
@@ -139,7 +149,7 @@ class HtmPty:
             stderr=slave_fd,
             env=env,
             close_fds=True,
-            start_new_session=True,
+            preexec_fn=_setup_slave,
         )
         os.close(slave_fd)
         self.wait_until(
@@ -285,6 +295,14 @@ def run_leftover_stdin_test(htm: Path, htmd: Path) -> None:
         "printf '\\nWRAPPER_STARTED\\n'; "
         "exec cat"
     )
+
+    def _setup_wrapper_slave() -> None:
+        os.setsid()
+        try:
+            fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+        except OSError:
+            pass
+
     proc = subprocess.Popen(
         ["/bin/sh", "-c", wrapper],
         stdin=slave_fd,
@@ -292,7 +310,7 @@ def run_leftover_stdin_test(htm: Path, htmd: Path) -> None:
         stderr=slave_fd,
         env=env,
         close_fds=True,
-        start_new_session=True,
+        preexec_fn=_setup_wrapper_slave,
     )
     os.close(slave_fd)
     text = ""
@@ -381,6 +399,9 @@ def run_leftover_stdin_test(htm: Path, htmd: Path) -> None:
 
 
 def run_tests(htm: Path, htmd: Path) -> None:
+    kill_named("htm")
+    kill_named("htmd")
+    time.sleep(0.3)
     session = HtmPty(htm, htmd)
     try:
         session.start()

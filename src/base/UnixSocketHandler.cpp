@@ -172,12 +172,6 @@ void UnixSocketHandler::close(int fd) {
 #ifdef _MSC_VER
   ::closesocket(fd);
 #else
-  {
-    struct linger lin;
-    lin.l_onoff = 1;
-    lin.l_linger = 0;
-    ::setsockopt(fd, SOL_SOCKET, SO_LINGER, &lin, sizeof(lin));
-  }
   ::close(fd);
 #endif
   activeSocketMutexes.erase(it);
