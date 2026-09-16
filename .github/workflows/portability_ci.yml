@@ -46,6 +46,7 @@ jobs:
                 libutempter-dev \
                 ninja-build \
                 pkg-config \
+                procps \
                 protobuf-compiler \
                 tar \
                 unzip \
