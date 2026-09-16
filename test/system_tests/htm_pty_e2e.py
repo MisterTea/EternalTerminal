@@ -68,12 +68,29 @@ def pids_named_from_proc(name: str) -> list[int]:
             status = (entry / "status").read_text(encoding="utf-8")
         except OSError:
             continue
+        is_zombie = False
+        uid_matches = False
         for line in status.splitlines():
+            if line.startswith("State:"):
+                fields = line.split()
+                is_zombie = len(fields) > 1 and fields[1] == "Z"
             if line.startswith("Uid:"):
-                if int(line.split()[1]) == my_uid:
-                    pids.append(int(entry.name))
-                break
+                uid_matches = int(line.split()[1]) == my_uid
+        if uid_matches and not is_zombie:
+            pids.append(int(entry.name))
     return pids
+
+
+def pid_is_live(pid: int) -> bool:
+    try:
+        state = subprocess.check_output(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return bool(state) and not state.startswith("Z")
 
 
 def pids_named(name: str) -> list[int]:
@@ -87,7 +104,7 @@ def pids_named(name: str) -> list[int]:
         return pids_named_from_proc(name)
     except subprocess.CalledProcessError:
         return []
-    return [int(p) for p in out.split() if p.isdigit()]
+    return [int(p) for p in out.split() if p.isdigit() and pid_is_live(int(p))]
 
 
 def find_bin(cli: Optional[str], env_key: str, name: str) -> Path:
