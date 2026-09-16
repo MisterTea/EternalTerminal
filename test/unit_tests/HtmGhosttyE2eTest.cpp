@@ -53,8 +53,11 @@ bool htmdRunning() {
   // Container PID 1 may not reap a daemon immediately. A zombie still
   // matches plain pgrep but cannot serve the IPC socket and must not prevent
   // the next test from starting a replacement htmd.
-  string cmd = string("pgrep -r R,S,D,T,t,W,I -x -U ") + to_string(selfUid()) +
-               " htmd >/dev/null 2>&1";
+  string cmd = string("for pid in $(pgrep -x -U ") + to_string(selfUid()) +
+               " htmd 2>/dev/null); do "
+               "state=$(ps -o stat= -p \"$pid\" 2>/dev/null); "
+               "case \"$state\" in Z*) ;; ?*) exit 0 ;; esac; "
+               "done; exit 1";
   return system(cmd.c_str()) == 0;
 }
 void killHtmd() {

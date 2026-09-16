@@ -154,7 +154,7 @@ string htmdPidsForUser(uid_t uid) {
     if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) <= 0) {
       continue;
     }
-    if (info.pbi_uid != uid) {
+    if (info.pbi_uid != uid || info.pbi_status == SZOMB) {
       continue;
     }
     out += to_string(pids[i]);
