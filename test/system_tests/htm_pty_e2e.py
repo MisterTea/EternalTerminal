@@ -8,13 +8,16 @@ Drive the control protocol over a PTY: DCS 1000p, %session-changed, commands,
 from __future__ import annotations
 
 import argparse
+import fcntl
 import os
 import pty
 import re
 import select
+import shlex
 import signal
 import subprocess
 import sys
+import termios
 import time
 from pathlib import Path
 from typing import Optional
@@ -65,12 +68,29 @@ def pids_named_from_proc(name: str) -> list[int]:
             status = (entry / "status").read_text(encoding="utf-8")
         except OSError:
             continue
+        is_zombie = False
+        uid_matches = False
         for line in status.splitlines():
+            if line.startswith("State:"):
+                fields = line.split()
+                is_zombie = len(fields) > 1 and fields[1] == "Z"
             if line.startswith("Uid:"):
-                if int(line.split()[1]) == my_uid:
-                    pids.append(int(entry.name))
-                break
+                uid_matches = int(line.split()[1]) == my_uid
+        if uid_matches and not is_zombie:
+            pids.append(int(entry.name))
     return pids
+
+
+def pid_is_live(pid: int) -> bool:
+    try:
+        state = subprocess.check_output(
+            ["ps", "-o", "stat=", "-p", str(pid)],
+            text=True,
+            stderr=subprocess.DEVNULL,
+        ).strip()
+    except (FileNotFoundError, subprocess.CalledProcessError):
+        return False
+    return bool(state) and not state.startswith("Z")
 
 
 def pids_named(name: str) -> list[int]:
@@ -84,7 +104,7 @@ def pids_named(name: str) -> list[int]:
         return pids_named_from_proc(name)
     except subprocess.CalledProcessError:
         return []
-    return [int(p) for p in out.split() if p.isdigit()]
+    return [int(p) for p in out.split() if p.isdigit() and pid_is_live(int(p))]
 
 
 def find_bin(cli: Optional[str], env_key: str, name: str) -> Path:
@@ -131,6 +151,14 @@ class HtmPty:
         self.text = ""
         self.lines = []
         self.master_fd, slave_fd = pty.openpty()
+
+        def _setup_slave() -> None:
+            os.setsid()
+            try:
+                fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+            except OSError:
+                pass
+
         self.proc = subprocess.Popen(
             args,
             stdin=slave_fd,
@@ -138,7 +166,7 @@ class HtmPty:
             stderr=slave_fd,
             env=env,
             close_fds=True,
-            start_new_session=True,
+            preexec_fn=_setup_slave,
         )
         os.close(slave_fd)
         self.wait_until(
@@ -256,7 +284,141 @@ class HtmPty:
                     pass
 
 
+def kill_named(name: str) -> None:
+    for pid in pids_named(name):
+        try:
+            os.kill(pid, signal.SIGTERM)
+        except OSError:
+            pass
+
+
+def run_leftover_stdin_test(htm: Path, htmd: Path) -> None:
+    """Control lines queued with detach must not reach ``exec $SHELL`` / cat.
+
+    WezTerm writes ``kill-pane`` on the PTY while HTM is tearing down. tmux
+    consumes those bytes inside DCS; without a stdin drain, ``htm; exec cat``
+    would echo them after WRAPPER_STARTED.
+    """
+    kill_named("htm")
+    kill_named("htmd")
+    time.sleep(0.3)
+
+    env = os.environ.copy()
+    env["PATH"] = f"{htm.parent.resolve()}:{env.get('PATH', '')}"
+    env.setdefault("SHELL", "/bin/sh")
+    master_fd, slave_fd = pty.openpty()
+    wrapper = (
+        f"{shlex.quote(str(htm))} -x; "
+        "printf '\\nWRAPPER_STARTED\\n'; "
+        "exec cat"
+    )
+
+    def _setup_wrapper_slave() -> None:
+        os.setsid()
+        try:
+            fcntl.ioctl(slave_fd, termios.TIOCSCTTY, 0)
+        except OSError:
+            pass
+
+    proc = subprocess.Popen(
+        ["/bin/sh", "-c", wrapper],
+        stdin=slave_fd,
+        stdout=slave_fd,
+        stderr=slave_fd,
+        env=env,
+        close_fds=True,
+        preexec_fn=_setup_wrapper_slave,
+    )
+    os.close(slave_fd)
+    text = ""
+    try:
+
+        def pump(timeout: float) -> None:
+            nonlocal text
+            end = time.time() + timeout
+            while time.time() < end:
+                remaining = max(0.0, end - time.time())
+                ready, _, _ = select.select([master_fd], [], [], remaining)
+                if not ready:
+                    break
+                try:
+                    chunk = os.read(master_fd, 65536)
+                except OSError:
+                    break
+                if not chunk:
+                    break
+                text += chunk.decode("utf-8", "replace")
+
+        deadline = time.time() + 15
+        while time.time() < deadline:
+            pump(0.1)
+            if "%session-changed" in text or "1000p" in text:
+                break
+            if proc.poll() is not None:
+                fail(f"wrapper exited before attach (rc={proc.returncode}): {text[-400:]!r}")
+        else:
+            fail(f"timed out waiting for DCS: {text[-400:]!r}")
+
+        os.write(master_fd, b"detach-client\nkill-pane -t %1\n")
+        deadline = time.time() + 10
+        while time.time() < deadline:
+            pump(0.1)
+            if "WRAPPER_STARTED" in text:
+                break
+        else:
+            fail(f"wrapper did not resume after detach: {text[-800:]!r}")
+
+        if "Killed: 9" in text:
+            fail(f"htmd SIGKILL'd htm before a clean detach exit: {text[-800:]!r}")
+
+        after = text.split("WRAPPER_STARTED", 1)[1]
+        if "kill-pane" in after or "command not found" in after:
+            fail(
+                "detach leftover input reached the wrapping process: "
+                f"{after[:500]!r}"
+            )
+
+        os.write(master_fd, b"POST_WRAPPER_MARK\n")
+        deadline = time.time() + 5
+        while time.time() < deadline:
+            pump(0.1)
+            if "POST_WRAPPER_MARK" in text:
+                break
+        else:
+            fail(
+                f"wrapping cat did not echo POST_WRAPPER_MARK rc={proc.poll()} "
+                f"tail={text[-400:]!r}"
+            )
+        after = text.split("WRAPPER_STARTED", 1)[1]
+        if "kill-pane" in after or "command not found" in after:
+            fail(
+                "detach leftover input reached the wrapping process: "
+                f"{after[:500]!r}"
+            )
+        print("OK: detach leftover kill-pane did not reach wrapping shell", flush=True)
+    finally:
+        if proc.poll() is None:
+            try:
+                proc.send_signal(signal.SIGTERM)
+            except OSError:
+                pass
+            try:
+                proc.wait(timeout=4)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                proc.wait(timeout=2)
+        try:
+            os.close(master_fd)
+        except OSError:
+            pass
+        kill_named("htm")
+        kill_named("htmd")
+
+
 def run_tests(htm: Path, htmd: Path) -> None:
+    kill_named("htm")
+    kill_named("htmd")
+    time.sleep(0.3)
     session = HtmPty(htm, htmd)
     try:
         session.start()
@@ -307,6 +469,7 @@ def run_tests(htm: Path, htmd: Path) -> None:
     finally:
         session.stop()
 
+    run_leftover_stdin_test(htm, htmd)
     print("PASS: htm control-mode pty", flush=True)
 
 

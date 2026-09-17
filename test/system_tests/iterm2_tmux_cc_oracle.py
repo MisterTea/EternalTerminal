@@ -13,6 +13,7 @@ diffs htm checkpoints against the tmux -CC checkpoints from the same run.
 
 from __future__ import annotations
 
+import json
 import os
 import unittest
 
@@ -22,6 +23,13 @@ from pathlib import Path
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_parity import cosmetic_title, parse_panes
+from htm_gui_parity import (
+    affinities_json,
+    expected_affinities_cmd_t_tabs,
+    layout_affinities,
+    parse_affinities_from_dump,
+    rank_affinity_groups,
+)
 
 # Markers the suite types. They are the comparable "results" from tmux -CC.
 CORNER_ROOT = "CORNER_ROOT"
@@ -43,6 +51,22 @@ WRTICKW = "WRTICKW"
 TITLE_SLEEP = "sleep"
 # Windows ConPTY automatic-rename uses the leaf process image base name.
 TITLE_SLEEP_WIN = "timeout"
+
+# Multi-OS-window affinities suite markers (see run_gui_affinities).
+AFF_A0 = "AFF_A0"
+AFF_A1 = "AFF_A1"
+AFF_A2 = "AFF_A2"
+AFF_B0 = "AFF_B0"
+AFF_B1 = "AFF_B1"
+AFF_AFTER_REATTACH = "AFF_AFTER_REATTACH"
+
+# Ranked affinity groups recorded from stock iTerm2 + tmux -CC corners.
+# Absolute window ids are remapped to ranks so Ghostty/htm can differ on
+# @0 vs @3 while still matching the window/tab partition.
+_AFFINITIES_PATH = Path(__file__).with_name("iterm2_tmux_cc_affinities.json")
+AFFINITIES: dict[str, list[list[int]]] = json.loads(
+    _AFFINITIES_PATH.read_text(encoding="utf-8")
+)
 
 # Checkpoints recorded against iTerm2 + tmux -CC. pane/window counts are the
 # live session after each action (not historical command watermarks).
@@ -172,11 +196,78 @@ STEPS: dict[str, dict] = {
         "window_name": TITLE_SLEEP,
         "window_name_win": TITLE_SLEEP_WIN,
     },
+    # Multi-OS-window affinities suite (Cmd+N new window, Cmd+T into older).
+    "aff-after-first-window": {
+        "panes": 1,
+        "windows": 1,
+        "contains": [AFF_A0],
+    },
+    "aff-after-tab-on-a": {
+        "panes": 2,
+        "windows": 2,
+        "contains": [AFF_A0, AFF_A1],
+    },
+    "aff-after-second-os-window": {
+        "panes": 3,
+        "windows": 3,
+        "contains": [AFF_A0, AFF_A1, AFF_B0],
+    },
+    "aff-after-tab-on-older-a": {
+        "panes": 4,
+        "windows": 4,
+        "contains": [AFF_A0, AFF_A1, AFF_A2, AFF_B0],
+    },
+    "aff-after-tab-on-b": {
+        "panes": 5,
+        "windows": 5,
+        "contains": [AFF_A0, AFF_A1, AFF_A2, AFF_B0, AFF_B1],
+    },
+    "aff-after-reattach": {
+        "panes": 5,
+        "windows": 5,
+        "contains": [
+            AFF_A0,
+            AFF_A1,
+            AFF_A2,
+            AFF_B0,
+            AFF_B1,
+            AFF_AFTER_REATTACH,
+        ],
+    },
 }
 
 
 def window_ids(panes: list[dict]) -> set[str]:
     return {pane["wid"] for pane in panes}
+
+
+def check_affinities(step_id: str, dump: str) -> list[str]:
+    """Require window/tab affinities whenever pane contents are asserted.
+
+    Corners steps use the recorded iTerm2+tmux -CC JSON. Layout/stress (and
+    any other content dump without a recorded table entry) must still match
+    iTerm2 Cmd+T semantics: every live window is a tab in one OS window.
+    """
+    got_aff = parse_affinities_from_dump(dump)
+    if got_aff is None:
+        return [
+            "missing # affinities: JSON (iTerm2 persists @affinities on the session)"
+        ]
+    want = AFFINITIES.get(step_id)
+    if want is not None:
+        want_ranked = rank_affinity_groups(want)
+        source = "iTerm2+tmux-CC"
+    else:
+        want_ranked = rank_affinity_groups(expected_affinities_cmd_t_tabs(dump))
+        source = "iTerm2 Cmd+T (all live windows as tabs)"
+    got_ranked = layout_affinities(dump)
+    if got_ranked != want_ranked:
+        return [
+            f"affinities {source}={affinities_json(want_ranked)} "
+            f"got={affinities_json(got_ranked)} "
+            f"(abs={affinities_json(got_aff)})"
+        ]
+    return []
 
 
 def check_step(step_id: str, dump: str) -> list[str]:
@@ -201,7 +292,10 @@ def check_step(step_id: str, dump: str) -> list[str]:
     if spec.get("balanced_horizontal") and len(panes) == 2:
         cols = [int(pane["cols"]) for pane in panes]
         rows = [int(pane["rows"]) for pane in panes]
-        if max(cols) - min(cols) > 1 or len(set(rows)) != 1:
+        # Terminal grids divide an odd cell count around a splitter. Windows
+        # Terminal also reserves cells for its pane chrome, so its two halves
+        # can differ by up to three columns while retaining the same rows.
+        if max(cols) - min(cols) > 3 or len(set(rows)) != 1:
             errors.append(
                 f"horizontal split not balanced: cols={cols} rows={rows}"
             )
@@ -224,12 +318,14 @@ def check_step(step_id: str, dump: str) -> list[str]:
                 f"window name {want_name!r} missing; tmux -CC automatic-rename "
                 f"names the pane's window {want_name!r} (got {names})"
             )
+    errors.extend(check_affinities(step_id, dump))
     return errors
 
 
 class OracleTests(unittest.TestCase):
     def test_root_checkpoint(self) -> None:
         dump = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             f"echo {CORNER_ROOT}\n{CORNER_ROOT}\n"
         )
@@ -237,6 +333,7 @@ class OracleTests(unittest.TestCase):
 
     def test_kill_pane_drops_split_marker(self) -> None:
         dump = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             f"{CORNER_ROOT}\n"
         )
@@ -246,6 +343,7 @@ class OracleTests(unittest.TestCase):
 
     def test_sleep_title(self) -> None:
         dump = (
+            "# affinities: [[0,1,2]]\n"
             "--- window @2 name=sleep pane %4 active=1 80x24 cursor=0,0\n"
             "sleep 25\n"
             "--- window @0 name=zsh pane %0 active=0 80x24 cursor=0,0\n"
@@ -258,7 +356,10 @@ class OracleTests(unittest.TestCase):
         self.assertEqual(check_step("after-title-sleep", dump), [])
 
     def test_writer_requires_emitted_tick(self) -> None:
-        header = "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
+        header = (
+            "# affinities: [[0,1,2]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
+        )
         panes = "".join(
             f"--- window @{wid} name=zsh pane %{pid} active=1 80x24 cursor=0,1\n"
             for pid, wid in ((1, 0), (2, 1), (3, 2), (4, 2))
@@ -269,6 +370,75 @@ class OracleTests(unittest.TestCase):
             check_step("after-writer-pane", header + panes + command + WRTICKP),
             [],
         )
+
+    def test_affinities_must_match_iterm_ground_truth(self) -> None:
+        # iTerm2 recorded [[0,1]] (ranked) after Cmd+T; singleton groups fail.
+        dump = (
+            "# affinities: [[0],[1]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            f"{CORNER_ROOT}\n"
+            "--- window @0 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "x\n"
+            "--- window @1 name=zsh pane %2 active=1 80x24 cursor=0,0\n"
+            f"{CORNER_WIN2}\n"
+        )
+        errors = check_step("after-new-window", dump)
+        self.assertTrue(any("affinities" in e for e in errors))
+
+    def test_affinity_ranks_ignore_absolute_ids(self) -> None:
+        dump = (
+            "# affinities: [[5,9]]\n"
+            "--- window @5 name=zsh pane %0 active=0 80x24 cursor=0,0\n"
+            f"{CORNER_ROOT}\n"
+            "--- window @5 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "x\n"
+            "--- window @9 name=zsh pane %2 active=1 80x24 cursor=0,0\n"
+            f"{CORNER_WIN2}\n"
+        )
+        self.assertEqual(check_step("after-new-window", dump), [])
+
+    def test_stale_dead_window_ids_are_ignored_for_layout(self) -> None:
+        # iTerm2 may keep destroyed @4 in @affinities; layout uses live ids only.
+        dump = (
+            "# affinities: [[0,1,3,4]]\n"
+            "--- window @0 name=zsh pane %0 active=0 80x24 cursor=0,0\n"
+            f"{CORNER_ROOT}\n"
+            "--- window @0 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "x\n"
+            "--- window @1 name=zsh pane %2 active=1 80x24 cursor=0,0\n"
+            f"{CORNER_WIN2}\n"
+            "--- window @3 name=zsh pane %3 active=1 80x24 cursor=0,0\n"
+            f"{AFTER_KILL_WIN_WRITER}\n"
+        )
+        self.assertEqual(check_step("after-kill-writer-window", dump), [])
+
+    def test_layout_checkpoint_requires_affinities(self) -> None:
+        dump = (
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            "HTM_E2E_PARITY\n"
+        )
+        errors = check_affinities("layout-after-marker", dump)
+        self.assertTrue(any("affinities" in e for e in errors))
+
+    def test_layout_tabs_must_share_one_os_window(self) -> None:
+        # Cmd+T creates a sibling tab; separate OS windows fail.
+        dump = (
+            "# affinities: [[0],[1]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            "x\n"
+            "--- window @1 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "y\n"
+        )
+        errors = check_affinities("layout-after-tabs-splits", dump)
+        self.assertTrue(any("affinities" in e for e in errors))
+        dump_ok = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            "x\n"
+            "--- window @1 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "y\n"
+        )
+        self.assertEqual(check_affinities("layout-after-tabs-splits", dump_ok), [])
 
 
 if __name__ == "__main__":

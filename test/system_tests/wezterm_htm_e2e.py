@@ -36,7 +36,7 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_e2e import (  # noqa: E402
     GuiTerminalSession,
-    ScreenRecorder,
+    _newest_native,
     _window_key,
     command_count,
     control_commands,
@@ -299,12 +299,21 @@ if os.name == "nt":
                         "w": float(max(0, rect.right - rect.left)),
                         "h": float(max(0, rect.bottom - rect.top)),
                         "id": int(hwnd),
+                        "hwnd": int(hwnd),
                     }
                 )
             return out
 
         def launched_windows(self) -> list[dict]:
             return [win for win in self.ax_windows() if win["w"] >= 64 and win["h"] >= 64]
+
+        def _raise_ax_window(self, win: dict) -> None:
+            hwnd = int(win.get("hwnd") or win.get("id") or 0)
+            if not hwnd:
+                fail(f"WezTerm window missing hwnd: {win!r}")
+            focus_window(hwnd)
+            time.sleep(0.15)
+            self._click_hwnd(hwnd)
 
         def _remember_window(self) -> bool:
             hwnds = self._owned_hwnds()
@@ -386,6 +395,7 @@ if os.name == "nt":
                     ("d", False): (VK_CONTROL, VK_SHIFT, ord("D")),
                     ("d", True): (VK_CONTROL, VK_MENU, ord("D")),
                     ("t", False): (VK_CONTROL, VK_SHIFT, ord("T")),
+                    ("n", False): (VK_CONTROL, VK_SHIFT, ord("N")),
                     ("w", False): (VK_CONTROL, VK_SHIFT, ord("W")),
                     ("[", False): (VK_CONTROL, VK_SHIFT, ord("H")),
                     ("]", False): (VK_CONTROL, VK_SHIFT, ord("L")),
@@ -545,6 +555,7 @@ if os.name == "nt":
             kill_htm_daemons()
 
         def after_layout_suite(self) -> None:
+            super().after_layout_suite()
             text = self.log_text()
             if command_count(text, "list-windows") < 1 and "list-windows" not in text:
                 fail("WezTerm did not send list-windows after control-mode attach")
@@ -590,11 +601,27 @@ class WezTermHtmSession(GuiTerminalSession):
     def wezterm_bin(self) -> Path:
         app = self.app
         if app.is_dir() and (app.suffix == ".app" or str(app).endswith(".app")):
-            cli = app / "Contents" / "MacOS" / "wezterm"
+            gui = app / "Contents" / "MacOS" / "wezterm-gui"
+            if gui.is_file():
+                return gui
+            return app / "Contents" / "MacOS" / "wezterm"
+        return app
+
+    def wezterm_cli_bin(self) -> Path:
+        """``wezterm cli`` lives on the wrapper binary, not wezterm-gui."""
+        binary = self.wezterm_bin()
+        name = binary.name.lower()
+        if name in {"wezterm-gui", "wezterm-gui.exe"}:
+            sibling = binary.with_name(
+                "wezterm.exe" if name.endswith(".exe") else "wezterm"
+            )
+            if sibling.is_file():
+                return sibling
+        if binary.is_dir() or str(binary).endswith(".app"):
+            cli = binary / "Contents" / "MacOS" / "wezterm"
             if cli.is_file():
                 return cli
-            return app / "Contents" / "MacOS" / "wezterm-gui"
-        return app
+        return binary
 
     def resolve_gui_pid(self) -> int:
         if self.gui_pid and pid_comm(self.gui_pid):
@@ -638,17 +665,43 @@ end tell
             self.osascript_pid("set frontmost to true")
         time.sleep(0.15)
 
+    def _mux_keystroke_prefix(self, using: str) -> str:
+        """Raise a native mux window for Cmd/Ctrl chords so they cannot close the gateway.
+
+        iTerm2 sends those keys to the key OS window. WezTerm's gateway is a
+        separate window; ``set frontmost`` alone often leaves it key after
+        control-mode traffic, so Cmd+W would quit ``htm`` instead of kill-pane.
+        """
+        mods = using.lower()
+        if "command" not in mods and "control" not in mods:
+            return "set frontmost to true\n    "
+        launched = self.launched_windows()
+        if not launched:
+            return "set frontmost to true\n    "
+        win = getattr(self, "_front_native", None)
+        keys = {_window_key(w) for w in launched}
+        if win is None or _window_key(win) not in keys:
+            win = _newest_native(launched)
+        self._front_native = win
+        index = int(win["index"])
+        return (
+            "set frontmost to true\n"
+            f'    set value of attribute "AXMain" of window {index} to true\n'
+            f'    set value of attribute "AXFocused" of window {index} to true\n'
+            f'    perform action "AXRaise" of window {index}\n    '
+        )
+
     def keystroke(self, keys: str, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
         self.osascript_pid(
-            f"set frontmost to true\n    keystroke {keys}{using_clause}"
+            f"{self._mux_keystroke_prefix(using)}keystroke {keys}{using_clause}"
         )
         time.sleep(0.08)
 
     def key_code(self, code: int, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
         self.osascript_pid(
-            f"set frontmost to true\n    key code {code}{using_clause}"
+            f"{self._mux_keystroke_prefix(using)}key code {code}{using_clause}"
         )
         time.sleep(0.08)
 
@@ -698,32 +751,52 @@ end tell
             / "wezterm"
             / f"gui-sock-{self.resolve_gui_pid()}"
         )
-        return subprocess.check_output(
-            [str(self.wezterm_bin()), "cli", "--no-auto-start", *args],
-            text=True,
-            stderr=subprocess.STDOUT,
-            env=env,
-        )
+        try:
+            return subprocess.check_output(
+                [str(self.wezterm_cli_bin()), "cli", "--no-auto-start", *args],
+                text=True,
+                stderr=subprocess.STDOUT,
+                env=env,
+            )
+        except (OSError, subprocess.CalledProcessError):
+            return ""
 
     def gateway_pane(self) -> dict:
-        panes = json.loads(self.wezterm_cli("list", "--format", "json"))
+        pane = self._gateway_pane()
+        if pane is None:
+            fail(f"could not identify WezTerm {self.mux} gateway pane")
+        return pane
+
+    def _gateway_pane(self) -> Optional[dict]:
+        raw = self.wezterm_cli("list", "--format", "json")
+        if not raw.strip():
+            return None
+        try:
+            panes = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(panes, list):
+            return None
         candidates = [
             pane
             for pane in panes
-            if pane.get("cursor_visibility") == "Hidden"
+            if isinstance(pane, dict) and pane.get("cursor_visibility") == "Hidden"
         ]
         if not candidates:
-            fail(f"could not identify WezTerm {self.mux} gateway pane")
+            return None
         return min(candidates, key=lambda pane: int(pane["pane_id"]))
 
     def gateway_pane_id(self) -> int:
         return int(self.gateway_pane()["pane_id"])
 
     def gateway_text(self) -> str:
+        pane = self._gateway_pane()
+        if pane is None:
+            return ""
         return self.wezterm_cli(
             "get-text",
             "--pane-id",
-            str(self.gateway_pane_id()),
+            str(int(pane["pane_id"])),
             "--start-line",
             "-10000",
         )
@@ -795,6 +868,17 @@ end tell
             for window in windows
             if (window.get("name") or "").strip() == gateway_title
         ]
+        # WezTerm titles both the DCS gateway and a home-directory pane "~".
+        # Keep the pre-attach window key so native mux windows are not
+        # swallowed as extra gateways.
+        if len(gateways) != 1 and self._gateway_keys:
+            keyed = [
+                window
+                for window in windows
+                if _window_key(window) in self._gateway_keys
+            ]
+            if keyed:
+                gateways = keyed
         if not gateways:
             fail(f"could not identify the attached WezTerm {self.mux} gateway")
         self._gateway_keys = {_window_key(window) for window in gateways}
@@ -947,6 +1031,25 @@ end tell
         except subprocess.CalledProcessError:
             pass
 
+    def htm_select_window(self, wid: int) -> None:
+        """Send ``select-window`` through WezTerm's tmux command prompt.
+
+        HTM is a single control-mode client. A second ``htm`` would steal the
+        socket; the gateway ``C`` prompt uses the connection WezTerm already
+        holds so ``%session-window-changed`` updates mux ``active_window``
+        the same way ``tmux select-window`` does for the tmux -CC path.
+        """
+        self.focus_gateway()
+        time.sleep(0.2)
+        self.keystroke('"c"')
+        time.sleep(0.2)
+        self.osascript_pid(
+            "set frontmost to true\n"
+            f'    keystroke "select-window -t @{int(wid)}"\n'
+            "    key code 36"
+        )
+        time.sleep(0.45)
+
     def stop(self) -> None:
         if self.proc and self.proc.poll() is None:
             try:
@@ -1021,6 +1124,12 @@ end tell
                 15,
                 description="htmd survived WezTerm detach",
             )
+            wait_until(
+                lambda: not pids_named("htm"),
+                15,
+                description="htm control client exited after detach",
+            )
+            time.sleep(0.35)
         if self.mux == "htm":
             self._reattach_log_path = log_path
             self._reattach_log_watermark = (
@@ -1075,6 +1184,7 @@ end tell
         print(f"OK: WezTerm reattached to {self.mux}", flush=True)
 
     def after_layout_suite(self) -> None:
+        super().after_layout_suite()
         if self.mux == "tmux":
             if not self.tmux_has_session():
                 fail("tmux -CC server exited during WezTerm layout suite")
@@ -1095,97 +1205,12 @@ end tell
             print(f"WARN: leftover wezterm-gui pids {still}", flush=True)
 
 
-def run_control_plane_checks(session: WezTermHtmSession) -> None:
-    session.start(session.multiplexer_command())
-    session.wait_init()
-    session.after_attach()
-    session.begin_htm_window_recording("control-plane")
-    gateway_recorder = None
-    if session.video_dir:
-        gateway_title = (session.gateway_pane().get("title") or "").strip()
-        gateways = [
-            window
-            for window in session.ax_windows()
-            if (window.get("name") or "").strip() == gateway_title
-        ]
-        if gateways:
-            window = gateways[0]
-            region = (
-                int(window["x"]),
-                int(window["y"]),
-                int(window["w"]),
-                int(window["h"]),
-            )
-            gateway_recorder = ScreenRecorder(
-                session.video_dir
-                / f"wezterm-{session.mux}-control-plane-gateway.mov",
-                region,
-                f"WezTerm {session.mux} control gateway",
-            )
-            gateway_recorder.start()
-    try:
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging enabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging enabled",
-        )
-
-        session.keystroke('"c"')
-        time.sleep(0.4)
-        session.keystroke('"new-window"')
-        session.key_code(36)
-        session.wait_mux_window_count(2, timeout=15)
-        wait_until(
-            lambda: "> new-window" in session.gateway_text()
-            and "< %begin" in session.gateway_text(),
-            10,
-            description="WezTerm displayed raw tmux protocol traffic",
-        )
-        session.sync_htm_window_recordings()
-        print("OK: C ran new-window through the tmux command prompt", flush=True)
-
-        session.focus_gateway()
-        session.keystroke('"l"')
-        wait_until(
-            lambda: "tmux logging disabled" in session.gateway_text(),
-            10,
-            description="WezTerm tmux protocol logging disabled",
-        )
-
-        session.detach_client()
-        session.reattach_client()
-
-        session.focus_gateway()
-        session.keystroke('"x"')
-        if session.mux == "tmux":
-            wait_until(
-                lambda: session.tmux_has_session()
-                and session.tmux_client_count() == 0,
-                15,
-                description="tmux server survived WezTerm force quit",
-            )
-        else:
-            wait_until(
-                lambda: bool(pids_named("htmd")) and ipc_path().exists(),
-                15,
-                description="htmd survived WezTerm force quit",
-            )
-        wait_until(
-            lambda: session.window_count() == 1,
-            15,
-            description="WezTerm force quit closed native mux windows",
-        )
-        print(f"OK: X force-quit the {session.mux} client only", flush=True)
-    finally:
-        if gateway_recorder:
-            gateway_recorder.stop(required=False)
-        session.end_htm_window_recording()
+# Back-compat for wezterm_control_plane_e2e.py
+from htm_gui_e2e import run_control_plane_suite as run_control_plane_checks  # noqa: E402
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":

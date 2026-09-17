@@ -765,13 +765,15 @@ else(WIN32)
     # iTerm2 / Ghostty / Hyper / WezTerm / Windows Terminal e2e stay opt-in
     # until those terminals speak tmux -CC against htm. Default ctest and
     # `./et-test` skip them. Run with:
-    #   ./et-test ghostty
+    # Shared suites: layout, stress, corners, affinities, control-plane
+    # (`--suite all`). Defaults for each emulator driver are `--suite all`.
     #   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
     #   python3 test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
     #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/hyper_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/wezterm_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/hyper_htm_affinities_e2e.py --htm ./htm --htmd ./htmd
     #   py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     catch_discover_tests(
       et-test

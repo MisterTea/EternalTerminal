@@ -40,6 +40,12 @@ return {
       action = act.SpawnTab 'CurrentPaneDomain',
     },
     {
+      -- iTerm2 "New Tmux Window": empty affinity → new OS window.
+      key = 'n',
+      mods = 'CMD',
+      action = act.SpawnWindow,
+    },
+    {
       key = 'w',
       mods = 'CMD',
       action = act.CloseCurrentPane { confirm = false },
@@ -80,6 +86,11 @@ return {
       action = act.SpawnTab 'CurrentPaneDomain',
     },
     {
+      key = 'n',
+      mods = 'CTRL|SHIFT',
+      action = act.SpawnWindow,
+    },
+    {
       key = 'w',
       mods = 'CTRL|SHIFT',
       action = act.CloseCurrentPane { confirm = false },
@@ -95,9 +106,19 @@ return {
       action = act.ActivatePaneDirection 'Next',
     },
     {
-      key = 'Tab',
+      key = 'v',
+      mods = 'CMD',
+      action = act.PasteFrom 'Clipboard',
+    },
+    {
+      key = 'c',
+      mods = 'CMD',
+      action = act.CopyTo 'Clipboard',
+    },
+    {
+      key = 'v',
       mods = 'CTRL|SHIFT',
-      action = act.ActivateTabRelative(-1),
+      action = act.PasteFrom 'Clipboard',
     },
   },
 }

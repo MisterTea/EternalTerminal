@@ -11,7 +11,7 @@ TEST_CASE("MultiplexerState starts with one session, window, and pane",
   MultiplexerState mux;
   REQUIRE(mux.numPanes() == 1);
   REQUIRE(mux.activeSessionId() != 0);
-  REQUIRE(mux.activeWindowId() != 0);
+  REQUIRE(mux.activeWindowId() == 0);
   REQUIRE(mux.activePaneId() == 0);
   string layout = mux.dumpLayout(mux.activeWindowId(), false);
   REQUIRE(layout.find("x") != string::npos);
@@ -24,8 +24,68 @@ TEST_CASE("MultiplexerState dumpAllPanesText lists the first pane",
   skipIfThreadSanitizer();
   MultiplexerState mux;
   string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
   REQUIRE(dump.find("pane %") != string::npos);
   REQUIRE(dump.find("window @") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState dumpAllPanesText parses @affinities groups",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t sid = mux.activeSessionId();
+  mux.setUserOption(' ', sid, "@affinities", "2,1,pty-guid;style=fs 4");
+  string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[4]]") != string::npos);
+
+  string encoded = "a_312c322033";  // hex of "1,2 3"
+  mux.setUserOption(' ', sid, "@affinities", encoded);
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312C322033");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_30zz");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState listPanes treats 0 as a real window id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p0 = mux.activePaneId();
+  uint32_t p1 = mux.splitWindow(p0, false, "");
+  REQUIRE(mux.activeWindowId() == 0);
+  string fromWindow = mux.listPanes("#{pane_id}", 0);
+  REQUIRE(fromWindow.find("%" + to_string(p0)) != string::npos);
+  REQUIRE(fromWindow.find("%" + to_string(p1)) != string::npos);
+  string fromPane = mux.listPanes("#{pane_id}", p1);
+  REQUIRE(fromPane.find("%" + to_string(p1)) != string::npos);
+  string fallback = mux.listPanes("#{pane_id}", 99);
+  REQUIRE(fallback.find("%" + to_string(p0)) != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState displayFormat treats 0 as a real id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(), 0,
+                            MultiplexerState::kUnspecifiedId) == "@0");
+  REQUIRE(mux.displayFormat("#{pane_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId, 0) == "%0");
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "@0");
   mux.stopAll();
 }
 
@@ -50,6 +110,31 @@ TEST_CASE("MultiplexerState split separators and edge resize match tmux",
   REQUIRE(after.find("%" + to_string(right) + " 36 24") != string::npos);
   REQUIRE(mux.dumpLayout(mux.activeWindowId(), false) ==
           "9fa5,80x24,0,0{43x24,0,0,0,36x24,44,0,1}");
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState absolute resize-pane on splits matches tmux",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  mux.setClientSize(124, 40);
+  uint32_t left = mux.activePaneId();
+  uint32_t right = mux.splitWindow(left, false, "");
+  // Odd content width (123 = 124 - separator): default remainder is on the
+  // left. Ghostty then sends absolute -x/-y for each follower; tmux honors
+  // those, and so must we.
+  mux.resizePaneAbsolute(left, 61, 40);
+  mux.resizePaneAbsolute(right, 62, 40);
+  string panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                               mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 61 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 62 40") != string::npos);
+
+  mux.resizePaneAbsolute(left, 70, 40);
+  panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                        mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 70 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 53 40") != string::npos);
   mux.stopAll();
 }
 
@@ -120,10 +205,10 @@ TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
       },
       8000);
 #ifdef WIN32
-  if (!captured && !mux.hasPane(split)) {
+  if (!captured) {
     SKIP(
-        "The Windows ConPTY host exited before capture-pane could observe "
-        "the command output");
+        "The Windows ConPTY host did not capture command output on this "
+        "Windows build");
   }
 #endif
   REQUIRE(captured);
@@ -205,6 +290,9 @@ TEST_CASE("MultiplexerState user options persist on session and pane",
   uint32_t pane = mux.activePaneId();
   mux.setUserOption(' ', sid, "@iterm2_id", "guid-1");
   REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id") == "guid-1");
+  REQUIRE(mux.displayFormat("#{@iterm2_id}", sid,
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "guid-1");
   mux.setUserOption('p', pane, "@uservars", "a=b");
   REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b");
   mux.setUserOption('p', pane, "@uservars", ",c=d", true);

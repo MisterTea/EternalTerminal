@@ -304,6 +304,20 @@ void ControlWriter::notify(const string& line) {
   writeLine(line);
 }
 
+void ControlWriter::tryNotify(const string& line) {
+  if (!hasClient()) {
+    return;
+  }
+  string payload = line;
+  if (payload.empty() || payload.back() != '\n') {
+    payload.push_back('\n');
+  }
+  try {
+    socketHandler->write(fd, payload.data(), payload.size());
+  } catch (const std::exception&) {
+  }
+}
+
 void ControlWriter::flushNotifications() {
   for (const string& line : pendingNotify) {
     writeLine(line);

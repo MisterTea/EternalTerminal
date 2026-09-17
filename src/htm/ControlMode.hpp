@@ -74,6 +74,13 @@ class ControlWriter {
   void end();
   void error(const string& message);
   void notify(const string& line);
+  /**
+   * One-shot write of a notification. Detach/%exit must not use writeAll:
+   * a GUI that has stopped draining DCS leaves the AF_UNIX buffer full, and
+   * writeAllOrThrow retries ETIMEDOUT forever so htmd never close()s. tmux
+   * just emits %exit and drops the client.
+   */
+  void tryNotify(const string& line);
   void flushNotifications();
 
   uint32_t commandNumber() const { return cmdNumber; }

@@ -146,10 +146,11 @@ string deepestForegroundCommand(DWORD rootPid) {
       stack.push_back(child);
     }
   }
-  if (isShellLikeProcess(best)) {
-    return string();
-  }
-  return best;
+  // Once a foreground child such as timeout.exe exits, the command shell is
+  // again the active ConPTY process. Returning an empty string leaves the
+  // previous automatic-rename title stuck on the exited child forever.
+  // Reporting the root shell lets MultiplexerState publish the transition.
+  return best.empty() ? processImageBaseName(rootPid) : best;
 }
 }  // namespace
 #endif

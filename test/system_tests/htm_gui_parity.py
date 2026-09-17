@@ -10,6 +10,7 @@ still running, trailing blank lines that appear later).
 from __future__ import annotations
 
 import difflib
+import json
 import re
 import unittest
 from pathlib import Path
@@ -26,13 +27,14 @@ EMULATOR_WIN = re.compile(
     r"^win\d+\s+\S+\s+name=(?P<name>.*?)\s+frame="
 )
 ACTION_HEADER = re.compile(r"^# action:\s*(?P<action>.*)\s*$")
+AFFINITIES_HEADER = re.compile(r"^# affinities:\s*(?P<json>.*)\s*$")
 CLICK_ACTION = re.compile(r"^click-\d+-\d+$")
 WRITER_LINE = re.compile(r"^(?:WRTICK[A-Z0-9]*|STBULK\d*)(?:_.*)?$")
 PROMPTISH = re.compile(r"[%$#>]\s*$")
 WORKLOAD_TOKEN = re.compile(
     r"(?:CORNER|AFTER)_[A-Z0-9_]+|"
     r"(?:WRTICK|HTM_E2E_|MA|MB|GUI0|GUI1|STA|STB|SW|STKEY|STBULK|"
-    r"SCROLLBACK_|AFTER_ALT)"
+    r"SCROLLBACK_|AFTER_ALT|AFF_)"
     r"[A-Z0-9_]*"
 )
 STRESS_RESULT = re.compile(
@@ -40,8 +42,40 @@ STRESS_RESULT = re.compile(
 )
 SHELL_PROMPT_ONLY = re.compile(r"^(?:➜\s+\S+|.*[%$#>])\s*$")
 EARLY_MARKER_REDRAW = re.compile(
-    r"^(?:echo\s+)?((?:CORNER|AFTER)_[A-Z0-9_]+)[%$#>]?\s*$"
+    r"^(?:echo\s+)?((?:CORNER|AFTER|AFF)_[A-Z0-9_]+)[%$#>]?\s*$"
 )
+# tmux capture often keeps a partial "prompt + echo …" line above the
+# completed command (Ghostty typing into a freshly focused pane), including
+# mid-token truncations like ``echo COR`` before ``echo CORNER_WIN4``.
+PROMPT_ECHO = re.compile(
+    r"^(?:➜\s+\S+\s+|(?:.*[%$#>])\s+)echo\s+(?P<arg>\S*)\s*$"
+)
+
+
+def spurious_prompt_sp_lines(text: str) -> list[str]:
+    """zsh PROMPT_SP leaves a lone ``%`` when prior output lacked a newline.
+
+    That should not appear after a clean pane create in these suites (iTerm2
+    does not produce it). Return human-readable locations when present.
+    """
+    hits: list[str] = []
+    panes = parse_panes(text)
+    for pane in panes:
+        for line_no, line in enumerate(
+            (pane.get("body") or "").splitlines(), start=1
+        ):
+            if line.strip() == "%":
+                hits.append(
+                    f"window @{pane['wid']} pane %{pane['pid']} line {line_no}"
+                )
+    # Emulator clipboard captures contain only rendered terminal text, with no
+    # mux pane headers. Check those directly so backend capture-pane cannot
+    # hide a renderer/client-side race.
+    if not panes:
+        for line_no, line in enumerate(text.splitlines(), start=1):
+            if line.strip() == "%":
+                hits.append(f"rendered terminal line {line_no}")
+    return hits
 
 
 def cosmetic_title(name: str) -> str:
@@ -65,6 +99,8 @@ def _strip_meta(text: str) -> str:
     for line in text.splitlines():
         if line.startswith("# t=") or line.startswith("# n=") or line.startswith("# action:"):
             continue
+        if line.startswith("# affinities:"):
+            continue
         if re.match(r"^# t=", line) or re.match(r"^# .*mux=", line):
             continue
         lines.append(line)
@@ -77,6 +113,100 @@ def parse_action(text: str, fallback: str) -> str:
         if match:
             return match.group("action").strip()
     return fallback
+
+
+def decode_affinities_option(raw: str) -> str:
+    """Decode iTerm2 ``a_`` + hex @affinities, or return plain text."""
+    text = (raw or "").strip().strip('"')
+    if text.startswith("a_") and len(text) > 2:
+        try:
+            return bytes.fromhex(text[2:]).decode("utf-8")
+        except ValueError:
+            pass
+    return text
+
+
+def parse_affinity_groups(raw: str) -> list[list[int]]:
+    """Parse tmux ``@affinities`` into [[window_id, …], …] (one OS window each)."""
+    text = decode_affinities_option(raw)
+    if not text:
+        return []
+    groups: list[list[int]] = []
+    for part in text.split():
+        siblings = part.split(";", 1)[0]
+        ids: list[int] = []
+        for tok in siblings.split(","):
+            tok = tok.strip()
+            if tok.isdigit():
+                ids.append(int(tok))
+        if ids:
+            groups.append(ids)
+    return normalize_affinity_groups(groups)
+
+
+def normalize_affinity_groups(groups: list[list[int]]) -> list[list[int]]:
+    """Stable compare: sort within each group, then by first id."""
+    return sorted(
+        (sorted(g) for g in groups if g),
+        key=lambda g: (g[0], g),
+    )
+
+
+def rank_affinity_groups(groups: list[list[int]]) -> list[list[int]]:
+    """Map absolute window ids to ranks so tmux/@N vs htm/@M can match."""
+    ids = sorted({wid for group in groups for wid in group})
+    rank = {wid: i for i, wid in enumerate(ids)}
+    return normalize_affinity_groups(
+        [[rank[wid] for wid in group] for group in groups]
+    )
+
+
+def affinities_json(groups: list[list[int]]) -> str:
+    return json.dumps(normalize_affinity_groups(groups), separators=(",", ":"))
+
+
+def parse_affinities_from_dump(text: str) -> Optional[list[list[int]]]:
+    for line in text.splitlines():
+        match = AFFINITIES_HEADER.match(line)
+        if not match:
+            continue
+        raw = match.group("json").strip()
+        if not raw:
+            return []
+        try:
+            data = json.loads(raw)
+        except json.JSONDecodeError:
+            return None
+        if not isinstance(data, list):
+            return None
+        groups: list[list[int]] = []
+        for item in data:
+            if not isinstance(item, list):
+                return None
+            groups.append([int(x) for x in item])
+        return normalize_affinity_groups(groups)
+    return None
+
+
+def expected_affinities_cmd_t_tabs(dump: str) -> list[list[int]]:
+    """iTerm2 Cmd+T under -CC: every live tmux window is a tab in one OS window."""
+    wids = sorted({int(pane["wid"]) for pane in parse_panes(dump)})
+    return [wids] if wids else []
+
+
+def layout_affinities(dump: str) -> list[list[int]]:
+    """Affinity groups restricted to live window ids, then ranked.
+
+    iTerm2 can leave destroyed window ids in ``@affinities`` briefly (or
+    longer after an out-of-band kill-window). Layout comparison only cares
+    about how *live* windows are partitioned into OS windows/tabs.
+    """
+    groups = parse_affinities_from_dump(dump)
+    if groups is None:
+        return []
+    live = {int(pane["wid"]) for pane in parse_panes(dump)}
+    filtered = [[wid for wid in group if wid in live] for group in groups]
+    return rank_affinity_groups([group for group in filtered if group])
 
 
 def parse_panes(text: str) -> list[dict]:
@@ -184,25 +314,68 @@ def _corner_body(body: str) -> str:
                 interrupted.append(line[prompt:])
         else:
             interrupted.append(line)
-    lines = interrupted
+    # A shell prompt painted while the pane is being attached can begin at
+    # the old cursor column on one mux and column zero on the other. The
+    # leading cells are presentation residue; preserve the complete prompt.
+    lines = [re.sub(r"^\s+(?=➜)", "", line) for line in interrupted]
     lines = [
         re.sub(r"^(\s*\[\d+\](?:\s+[+~-])?\s+)\d+", r"\1PID", line)
         if line.lstrip().startswith("[")
         else line
         for line in lines
     ]
-    # The ASCII escape command wraps at different columns as the native
-    # window width changes; the emitted Unicode line is compared separately.
-    lines = [line for line in lines if "printf 'CORNER_UNICODE_" not in line]
+    # Background-job *start* lines race with the job's stdout (layout
+    # concurrent-output). Keep ``… done`` lines; drop bare ``[n] PID``.
+    lines = [
+        line
+        for line in lines
+        if not re.match(r"^\s*\[\d+\](?:\s+[+~-])?\s+PID\s*$", line)
+    ]
+    # Typed workload commands wrap at different columns as native Ghostty
+    # windows cascade. Compare their emitted marker/output lines, not zsh's
+    # geometry-dependent command echo.
+    filtered_commands: list[str] = []
+    skipping_unicode = False
+    skipping_scrollback = False
+    for line in lines:
+        if "printf 'CORNER_UNICODE_" in line:
+            skipping_unicode = True
+            continue
+        if skipping_unicode:
+            if line.strip().startswith("CORNER_UNICODE_"):
+                filtered_commands.append(line)
+                skipping_unicode = False
+            continue
+        if "i=1; while [ $i -le 40 ]" in line:
+            skipping_scrollback = True
+            continue
+        if skipping_scrollback:
+            if line.strip() == "SCROLLBACK_1":
+                filtered_commands.append(line)
+                skipping_scrollback = False
+            continue
+        filtered_commands.append(line)
+    lines = filtered_commands
+    # Drop the alt-screen printf command (and its wraps), but keep the
+    # ``AFTER_ALT`` echo *output*. tmux often keeps the command on one line
+    # (``printf '...'; echo AFTER_ALT``); htm wraps mid-octal, so the
+    # output marker lands alone on the next line — older logic skipped that
+    # too and made corner semantics diverge.
     filtered: list[str] = []
     skipping_alt_command = False
     for line in lines:
         if "printf '\\033[?1049h" in line:
+            # Command (with or without "; echo AFTER_ALT") is discarded;
+            # the echo output line is what we keep.
             skipping_alt_command = "AFTER_ALT" not in line
             continue
         if skipping_alt_command:
-            if "AFTER_ALT" in line:
+            stripped = line.strip()
+            if stripped == "AFTER_ALT":
+                filtered.append("AFTER_ALT")
                 skipping_alt_command = False
+                continue
+            # Still eating wrapped octal / command fragments.
             continue
         filtered.append(line)
     lines = filtered
@@ -213,7 +386,51 @@ def _corner_body(body: str) -> str:
         else line
         for line in lines
     ]
-    lines = [line for line in lines if line and not SHELL_PROMPT_ONLY.match(line)]
+    prompt_fragments: list[str] = []
+    for index, line in enumerate(lines):
+        fragment = line.strip()
+        next_line = lines[index + 1] if index + 1 < len(lines) else ""
+        next_marker = WORKLOAD_TOKEN.search(next_line)
+        if (
+            fragment
+            and next_line.lstrip().startswith("➜")
+            and "echo " in next_line
+            and next_marker
+            and fragment != next_marker.group(0)
+            and next_marker.group(0).endswith(fragment)
+        ):
+            continue
+        command_error = re.match(
+            r"zsh: command not found: (?P<command>\S+)$",
+            next_line.strip(),
+        )
+        if (
+            fragment
+            and command_error
+            and command_error.group("command").endswith(fragment)
+        ):
+            continue
+        prompt_fragments.append(line)
+    lines = [
+        line
+        for line in prompt_fragments
+        if line
+        and not SHELL_PROMPT_ONLY.match(line)
+        and not line.lstrip().startswith("➜")
+    ]
+    # Wrapped prompt/command fragments can survive on their own rows (for
+    # example the tail of a git prompt or ``… ✗ echo CORNER_WIN2``). The
+    # corner comparison is based on emitted workload markers and errors.
+    lines = [
+        line
+        for line in lines
+        if not ("echo " in line and WORKLOAD_TOKEN.search(line))
+        and not re.search(r"(?:sleep|ep)?\s*0\.05;\s*done$", line.strip())
+        and not (
+            re.search(r"GUI[01][A-Z0-9_]*_\$i", line)
+            and line.rstrip().endswith("done &")
+        )
+    ]
 
     # iTerm may send the first command while a new shell is painting its
     # prompt. tmux retains that incomplete redraw above the completed command.
@@ -224,6 +441,44 @@ def _corner_body(body: str) -> str:
     if lines and lines[0].startswith("while :; do echo WRTICK"):
         if any(lines[0] in line for line in lines[1:]):
             lines.pop(0)
+
+    # Mid-scrollback redraws: tmux often keeps a truncated prompt line
+    # (``➜  ~ e`` / ``➜  ~ echo COR``) above the completed command. Drop a
+    # ➜-line when a later ➜-line equals it or continues it.
+    collapsed: list[str] = []
+    for index, line in enumerate(lines):
+        if line.startswith("➜"):
+            drop = False
+            for other in lines[index + 1 :]:
+                if not other.startswith("➜"):
+                    continue
+                if other == line or (
+                    other.startswith(line) and len(other) > len(line)
+                ):
+                    drop = True
+                    break
+            if drop:
+                continue
+        else:
+            # Non-zsh prompts: keep the echo-arg prefix rule.
+            match = PROMPT_ECHO.match(line)
+            if match:
+                arg = match.group("arg")
+                drop = False
+                for other in lines[index + 1 :]:
+                    later = PROMPT_ECHO.match(other)
+                    if not later:
+                        continue
+                    arg2 = later.group("arg")
+                    if arg2 == arg or (
+                        arg and arg2.startswith(arg) and len(arg2) > len(arg)
+                    ):
+                        drop = True
+                        break
+                if drop:
+                    continue
+        collapsed.append(line)
+    lines = collapsed
 
     # The same command can wrap at different columns because iTerm cascades
     # native windows between the sequential tmux and htm runs. capture-pane -J
@@ -254,6 +509,21 @@ def _corner_body(body: str) -> str:
         index += 1
     normalized = "\n".join(joined)
     normalized = re.sub(r"\bsleep\s*(\d+\.\d+)", r"sleep \1", normalized)
+    # Job-done lines wrap or get truncated when the prompt redraws over the
+    # wrapped ``0.08; done`` fragment. The command text is already present on
+    # the earlier for-loop line, so drop the remainder after ``done``.
+    normalized = re.sub(
+        r"(?m)^(\s*\[\d+\](?:\s+[+~-])?\s+PID\s+done)\b.*$",
+        r"\1",
+        normalized,
+    )
+    # Writer commands may run under different cwd / git prompts between the
+    # sequential tmux and htm Hyper runs; keep the command, drop the chrome.
+    normalized = re.sub(
+        r"➜\s+\S[^\n]*?(while :; do echo WRTICK[A-Z0-9]*; sleep [0-9.]+; done)",
+        r"➜  ~ \1",
+        normalized,
+    )
     return _collapse_writer(normalized)
 
 
@@ -293,6 +563,40 @@ def _stress_semantics(
 
 def classify_snapshot(tmux_text: str, htm_text: str, action: str) -> dict:
     """Return status identical | cosmetic | timing | diverge."""
+    t_sp = spurious_prompt_sp_lines(tmux_text)
+    h_sp = spurious_prompt_sp_lines(htm_text)
+    if t_sp or h_sp:
+        return {
+            "action": action,
+            "status": "diverge",
+            "detail": (
+                "spurious zsh PROMPT_SP '%' "
+                f"(tmux={t_sp or 'none'} htm={h_sp or 'none'})"
+            ),
+        }
+    t_aff = parse_affinities_from_dump(tmux_text)
+    h_aff = parse_affinities_from_dump(htm_text)
+    if t_aff is None or h_aff is None:
+        return {
+            "action": action,
+            "status": "diverge",
+            "detail": (
+                f"affinities missing or invalid; tmux={t_aff!r} htm={h_aff!r}"
+            ),
+        }
+    t_layout = layout_affinities(tmux_text)
+    h_layout = layout_affinities(htm_text)
+    if t_layout != h_layout:
+        return {
+            "action": action,
+            "status": "diverge",
+            "detail": (
+                f"affinities tmux={affinities_json(t_layout)} "
+                f"htm={affinities_json(h_layout)} "
+                f"(abs tmux={affinities_json(t_aff)} htm={affinities_json(h_aff)})"
+            ),
+        }
+
     if tmux_text == htm_text:
         return {"action": action, "status": "identical", "detail": ""}
     t_panes = parse_panes(tmux_text)
@@ -396,6 +700,19 @@ def classify_snapshot(tmux_text: str, htm_text: str, action: str) -> dict:
         and t_topology == h_topology
         and t_bodies == h_bodies
         and (t_titles == h_titles or _titles_timing(t_titles, h_titles))
+    ):
+        return {
+            "action": action,
+            "status": "cosmetic",
+            "detail": "shell startup chrome or iTerm native-window geometry",
+        }
+    # Writer split may attach to a different affinity sibling between runs
+    # (same pane-count multiset and normalized bodies, different window order).
+    if (
+        WORKLOAD_TOKEN.search(tmux_text)
+        and WORKLOAD_TOKEN.search(htm_text)
+        and sorted(t_topology) == sorted(h_topology)
+        and sorted(t_bodies) == sorted(h_bodies)
     ):
         return {
             "action": action,
@@ -522,14 +839,50 @@ class ParityHelperTests(unittest.TestCase):
         self.assertEqual(cosmetic_title("[↣ htm htm]"), "[↣ tmux tmux]")
         self.assertEqual(cosmetic_title("sleep [tmux]"), "sleep [tmux]")
 
+    def test_affinity_parse_plain_and_hex(self) -> None:
+        self.assertEqual(parse_affinity_groups("1,2 3"), [[1, 2], [3]])
+        self.assertEqual(
+            parse_affinity_groups("2,1,pty-guid;style=fs 4"),
+            [[1, 2], [4]],
+        )
+        encoded = "a_" + "1,2 3".encode("utf-8").hex()
+        self.assertEqual(parse_affinity_groups(encoded), [[1, 2], [3]])
+
+    def test_affinity_rank_ignores_absolute_ids(self) -> None:
+        self.assertEqual(
+            rank_affinity_groups([[5, 7], [9]]),
+            rank_affinity_groups([[0, 1], [2]]),
+        )
+
+    def test_affinities_mismatch_is_diverge(self) -> None:
+        tmux = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            "hi\n"
+            "--- window @1 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "hi\n"
+        )
+        htm = (
+            "# affinities: [[0],[1]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
+            "hi\n"
+            "--- window @1 name=zsh pane %1 active=1 80x24 cursor=0,0\n"
+            "hi\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "tabs")
+        self.assertEqual(verdict["status"], "diverge")
+        self.assertIn("affinities", verdict["detail"])
+
     def test_writer_ticks_are_timing(self) -> None:
         tmux = (
-            "# action: writer\n\n"
+            "# action: writer\n"
+            "# affinities: [[0]]\n\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "WRTICK\nWRTICK\n"
         )
         htm = (
-            "# action: writer\n\n"
+            "# action: writer\n"
+            "# affinities: [[1]]\n\n"
             "--- window @1 name=zsh pane %0 active=1 80x24 cursor=0,4\n"
             "WRTICK\nWRTICK\nWRTICK\nWRTICK\n"
         )
@@ -538,14 +891,16 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_htm_suffix_is_cosmetic(self) -> None:
         tmux = (
-            "# action: titles\n\n"
+            "# action: titles\n"
+            "# affinities: [[0]]\n\n"
             "--- emulator windows ---\n"
             "win1 id:1 name=zsh [tmux] frame=0,0,100,100\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
             "hi\n"
         )
         htm = (
-            "# action: titles\n\n"
+            "# action: titles\n"
+            "# affinities: [[1]]\n\n"
             "--- emulator windows ---\n"
             "win1 id:2 name=zsh [htm] frame=1,1,100,100\n"
             "--- window @1 name=zsh pane %0 active=1 80x24 cursor=0,0\n"
@@ -556,11 +911,13 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_extra_prompt_is_diverge(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "host% \n"
             "host% \n"
         )
         htm = (
+            "# affinities: [[1]]\n"
             "--- window @1 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
             "host% \n"
         )
@@ -569,31 +926,96 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_identical_markers_pass(self) -> None:
         body = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
             "echo CORNER_ROOT\nCORNER_ROOT\n"
         )
-        verdict = classify_snapshot(body, body.replace("@0", "@1"), "root")
+        other = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
+            "echo CORNER_ROOT\nCORNER_ROOT\n"
+        )
+        verdict = classify_snapshot(body, other, "root")
         self.assertIn(verdict["status"], ("identical", "cosmetic", "timing"))
 
     def test_corner_shell_chrome_and_geometry_are_cosmetic(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=tmux pane %0 active=1 39x24 cursor=0,3\n"
             "host% \nhost% echo CORNER_ROOT\nCORNER_ROOT\n"
         )
         htm = (
+            "# affinities: [[7]]\n"
             "--- window @7 name=zsh pane %4 active=1 42x24 cursor=0,2\n"
             "host% echo CORNER_ROOT\nCORNER_ROOT\n"
         )
         verdict = classify_snapshot(tmux, htm, "after-root")
         self.assertEqual(verdict["status"], "cosmetic")
 
+    def test_alt_screen_printf_wrap_keeps_after_alt_marker(self) -> None:
+        """tmux unwrapped vs htm wrapped alt-screen command must both keep AFTER_ALT."""
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 61x40 cursor=0,10\n"
+            "\n➜  ~\n"
+            "➜  ~ echo CORNER_ROOT\nCORNER_ROOT\n"
+            "➜  ~ printf '\\033[?1049h\\101\\114\\124\\137\\123\\103\\122\\105\\105\\116"
+            "\\033[?1049l'; echo AFTER_ALT\n"
+            "AFTER_ALT\n➜  ~\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 61x40 cursor=0,10\n"
+            "➜  ~ echo CORNER_ROOT\nCORNER_ROOT\n"
+            "➜  ~ printf '\\033[?1049h\\101\\114\\124\\137\\123\\103\\122\\105\\105\\\n"
+            "AFTER_ALT\n➜  ~\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "after-split")
+        self.assertIn(verdict["status"], ("identical", "cosmetic", "timing"), verdict)
+
+    def test_truncated_echo_redraw_before_completed_command_is_cosmetic(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 61x40 cursor=0,3\n"
+            "➜  ~ echo COR\n"
+            "➜  ~ echo CORNER_WIN4\n"
+            "CORNER_WIN4\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 61x40 cursor=0,2\n"
+            "➜  ~ echo CORNER_WIN4\n"
+            "CORNER_WIN4\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "after-replace-window")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+
+    def test_truncated_prompt_prefix_redraw_is_cosmetic(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 61x40 cursor=0,3\n"
+            "➜  ~ e\n"
+            "➜  ~ echo CORNER_WIN2\n"
+            "CORNER_WIN2\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 61x40 cursor=0,2\n"
+            "➜  ~ echo CORNER_WIN2\n"
+            "CORNER_WIN2\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "after-new-window")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+
     def test_layout_prompt_pid_and_decimal_wrap_are_cosmetic(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 39x24 cursor=0,3\n"
             "➜  ~\nHTM_E2E_PARITY\n"
             "[1]  + 98420 done       for i in 1 2; do sleep 0.08; done\n"
         )
         htm = (
+            "# affinities: [[1]]\n"
             "--- window @1 name=zsh pane %4 active=1 40x24 cursor=0,2\n"
             "HTM_E2E_PARITY\n"
             "[1]  + 4100 done       for i in 1 2; do sleep 0\n"
@@ -602,8 +1024,148 @@ class ParityHelperTests(unittest.TestCase):
         verdict = classify_snapshot(tmux, htm, "layout-after-close")
         self.assertEqual(verdict["status"], "cosmetic")
 
+    def test_layout_truncated_job_done_line_is_cosmetic(self) -> None:
+        # Hyper+htm capture sometimes loses the wrapped ``0.08; done`` fragment
+        # when the prompt redraws over it; tmux keeps the full done line.
+        tmux = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=0 82x43 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @0 name=zsh pane %1 active=1 82x43 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "zsh: command not found: HTM_E2E_PARITY\n"
+            "--- window @1 name=zsh pane %2 active=1 165x43 cursor=0,0\n"
+            "➜  ~ echo MBPARITYnext_pane\n"
+            "MBPARITYnext_pane\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "GUI1PARITY_1\nGUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 28462 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep 0.08; done\n"
+        )
+        htm = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=0 82x43 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @0 name=zsh pane %1 active=1 82x43 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "zsh: command not found: HTM_E2E_PARITY\n"
+            "--- window @1 name=zsh pane %2 active=1 165x43 cursor=0,0\n"
+            "➜  ~ echo MBPARITYnext_pane\n"
+            "MBPARITYnext_pane\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "GUI1PARITY_1\nGUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 43990 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-close")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+
+    def test_lone_percent_prompt_sp_diverges(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
+            "%\n"
+            "➜  ~ echo AFF_A0\n"
+            "AFF_A0\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
+            "➜  ~ echo AFF_A0\n"
+            "AFF_A0\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-marker")
+        self.assertEqual(verdict["status"], "diverge", verdict)
+        self.assertIn("PROMPT_SP", verdict["detail"])
+        self.assertEqual(
+            spurious_prompt_sp_lines("%\n➜  ~\n"),
+            ["rendered terminal line 1"],
+        )
+
+    def test_affinity_marker_shell_chrome_is_cosmetic(self) -> None:
+        tmux = (
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
+            "\n➜  ~ echo AFF_A0\nAFF_A0\n➜  ~\n"
+        )
+        htm = (
+            "# affinities: [[1]]\n"
+            "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
+            "➜  ~ echo AFF_A0\nAFF_A0\n➜  ~\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "aff-after-first-window")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+
+    def test_layout_job_start_interleave_is_cosmetic(self) -> None:
+        # zsh ``[1] pid`` can print before or after the first GUI tick.
+        tmux = (
+            "# affinities: [[0,1]]\n"
+            "--- window @0 name=zsh pane %0 active=0 61x43 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @0 name=zsh pane %1 active=0 62x43 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "--- window @1 name=zsh pane %2 active=1 124x20 cursor=0,0\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "GUI1PARITY_1\n"
+            "[1] 78815\n"
+            "GUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 78815 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep 0.08; done\n"
+            "--- window @1 name=zsh pane %3 active=0 124x19 cursor=0,0\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI0PARITY_$i; sleep 0.08; done &\n"
+            "[1] 78896\n"
+            "GUI0PARITY_1\nGUI0PARITY_2\nGUI0PARITY_3\nGUI0PARITY_4\n"
+            "GUI0PARITY_5\nGUI0PARITY_6\nGUI0PARITY_7\nGUI0PARITY_8\n"
+            "[1]  + 78896 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI0PARITY_$i; sleep 0.08; done\n"
+        )
+        htm = (
+            "# affinities: [[1,2]]\n"
+            "--- window @1 name=zsh pane %0 active=0 61x40 cursor=0,0\n"
+            "➜  ~\n"
+            "--- window @1 name=zsh pane %1 active=0 62x40 cursor=0,0\n"
+            "➜  ~ HTM_E2E_PARITY\n"
+            "--- window @2 name=zsh pane %2 active=1 124x20 cursor=0,0\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI1PARITY_$i; sleep 0.08; done &\n"
+            "[1] 82204\n"
+            "GUI1PARITY_1\nGUI1PARITY_2\nGUI1PARITY_3\nGUI1PARITY_4\n"
+            "GUI1PARITY_5\nGUI1PARITY_6\nGUI1PARITY_7\nGUI1PARITY_8\n"
+            "[1]  + 82204 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI1PARITY_$i; sleep 0.08; done\n"
+            "--- window @2 name=zsh pane %3 active=0 124x19 cursor=0,0\n"
+            "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI0PARITY_$i; sleep 0.08; done &\n"
+            "[1] 82275\n"
+            "GUI0PARITY_1\nGUI0PARITY_2\nGUI0PARITY_3\nGUI0PARITY_4\n"
+            "GUI0PARITY_5\nGUI0PARITY_6\nGUI0PARITY_7\nGUI0PARITY_8\n"
+            "[1]  + 82275 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI0PARITY_$i; sleep 0.08; done\n"
+        )
+        verdict = classify_snapshot(tmux, htm, "layout-after-concurrent-output")
+        self.assertEqual(verdict["status"], "cosmetic", verdict)
+        verdict_close = classify_snapshot(
+            # After Cmd+W: one split pane gone; keep the job-start race.
+            tmux.replace(
+                "--- window @1 name=zsh pane %3 active=0 124x19 cursor=0,0\n"
+                "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI0PARITY_$i; sleep 0.08; done &\n"
+                "[1] 78896\n"
+                "GUI0PARITY_1\nGUI0PARITY_2\nGUI0PARITY_3\nGUI0PARITY_4\n"
+                "GUI0PARITY_5\nGUI0PARITY_6\nGUI0PARITY_7\nGUI0PARITY_8\n"
+                "[1]  + 78896 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI0PARITY_$i; sleep 0.08; done\n",
+                "",
+            ).replace("124x20", "124x40").replace("124x19", "124x40"),
+            htm.replace(
+                "--- window @2 name=zsh pane %3 active=0 124x19 cursor=0,0\n"
+                "➜  ~ for i in 1 2 3 4 5 6 7 8; do echo GUI0PARITY_$i; sleep 0.08; done &\n"
+                "[1] 82275\n"
+                "GUI0PARITY_1\nGUI0PARITY_2\nGUI0PARITY_3\nGUI0PARITY_4\n"
+                "GUI0PARITY_5\nGUI0PARITY_6\nGUI0PARITY_7\nGUI0PARITY_8\n"
+                "[1]  + 82275 done       for i in 1 2 3 4 5 6 7 8; do; echo GUI0PARITY_$i; sleep 0.08; done\n",
+                "",
+            ).replace("124x20", "124x40").replace("124x19", "124x40"),
+            "layout-after-close",
+        )
+        self.assertEqual(verdict_close["status"], "cosmetic", verdict_close)
+
     def test_different_corner_marker_diverges(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
             "CORNER_ROOT\n"
         )
@@ -613,6 +1175,7 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_unrelated_output_with_same_marker_diverges(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "CORNER_ROOT\nexpected output\n"
         )
@@ -622,10 +1185,12 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_stress_writer_interleaving_is_timing(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "STAPARITY\nSTBULK0\nSTKEYPARITY_0\nSTBULK0\n"
         )
         htm = (
+            "# affinities: [[1]]\n"
             "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,3\n"
             "STAPARITY\nSTBULK0\necho STKSTBULK0\n"
             "STKEYPARITY_0\nSTBULK0\n"
@@ -635,6 +1200,7 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_stress_missing_result_diverges(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "STAPARITY\nSTKEYPARITY_0\nSTKEYPARITY_1\n"
         )
@@ -644,11 +1210,13 @@ class ParityHelperTests(unittest.TestCase):
 
     def test_interrupt_prompt_redraw_is_cosmetic(self) -> None:
         tmux = (
+            "# affinities: [[0]]\n"
             "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,2\n"
             "CORNER_ROOT\n^C%\n➜  ~ echo AFTER_REATTACH\nAFTER_REATTACH\n"
         )
         htm = (
-            "--- window @1 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
+            "# affinities: [[0]]\n"
+            "--- window @0 name=zsh pane %0 active=1 81x24 cursor=0,2\n"
             "CORNER_ROOT\n^C    ➜  ~ echo AFTER_REATTACH\nAFTER_REATTACH\n"
         )
         verdict = classify_snapshot(tmux, htm, "after-detach-reattach")
@@ -664,14 +1232,15 @@ class ParityHelperTests(unittest.TestCase):
             tmux_dir.mkdir()
             htm_dir.mkdir()
             body = (
+                "# affinities: [[0]]\n"
                 "--- window @0 name=zsh pane %0 active=1 80x24 cursor=0,1\n"
-                "echo CORNER_ROOT\nCORNER_ROOT\n"
+                "CORNER_ROOT\n"
             )
-            (tmux_dir / "after-root.txt").write_text(body)
-            (htm_dir / "after-root.txt").write_text(body.replace("@0", "@1"))
+            (tmux_dir / "after-root.txt").write_text(body, encoding="utf-8")
+            (htm_dir / "after-root.txt").write_text(body, encoding="utf-8")
             verdicts = compare_step_dirs(tmux_dir, htm_dir)
             self.assertTrue(verdicts)
-            self.assertFalse(divergences(verdicts))
+            self.assertNotIn("diverge", {v["status"] for v in verdicts})
 
 
 if __name__ == "__main__":

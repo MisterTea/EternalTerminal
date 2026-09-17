@@ -50,8 +50,14 @@ string ipcPath() {
   return string(_PATH_TMP) + "htm." + GetHtmIpcUser() + ".ipc";
 }
 bool htmdRunning() {
-  string cmd =
-      string("pgrep -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
+  // Container PID 1 may not reap a daemon immediately. A zombie still
+  // matches plain pgrep but cannot serve the IPC socket and must not prevent
+  // the next test from starting a replacement htmd.
+  string cmd = string("for pid in $(pgrep -x -U ") + to_string(selfUid()) +
+               " htmd 2>/dev/null); do "
+               "state=$(ps -o stat= -p \"$pid\" 2>/dev/null); "
+               "case \"$state\" in Z*) ;; ?*) exit 0 ;; esac; "
+               "done; exit 1";
   return system(cmd.c_str()) == 0;
 }
 void killHtmd() {
@@ -197,8 +203,12 @@ class ControlPty {
   }
 
   bool waitAttached() {
+    // HtmClientMain allows up to 10 seconds for a newly spawned htmd to
+    // publish its IPC socket. Give the daemon startup plus control handshake
+    // enough headroom when the portability jobs run CTest in parallel.
     return waitFor(
-        [&]() { return incoming.find("%session-changed") != string::npos; });
+        [&]() { return incoming.find("%session-changed") != string::npos; },
+        20000);
   }
 
   string incoming;

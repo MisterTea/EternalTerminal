@@ -21,8 +21,10 @@
 #include <libproc.h>
 #include <mach-o/dyld.h>
 #endif
+#include <dirent.h>
 #include <limits.h>
 #include <signal.h>
+#include <sys/socket.h>
 #include <unistd.h>
 #endif
 
@@ -32,7 +34,7 @@ namespace {
 unique_ptr<PseudoTerminalConsole> gConsole;
 
 #ifndef WIN32
-string siblingHtmdCommand() {
+string siblingHtmdPath() {
   char buf[PATH_MAX];
   buf[0] = '\0';
 #ifdef __APPLE__
@@ -56,11 +58,81 @@ string siblingHtmdCommand() {
   if (!fs::exists(htmd)) {
     return "htmd";
   }
-  return string("\"") + htmd.string() + "\"";
+  return htmd.string();
 }
+
+#if defined(__linux__)
+string htmdPidsForUser(uid_t uid) {
+  DIR* dir = opendir("/proc");
+  if (!dir) {
+    string command = string("pgrep -x -U ") + to_string(uid) + string(" htmd");
+    return SystemToStr(command.c_str());
+  }
+  string out;
+  struct dirent* entry;
+  while ((entry = readdir(dir)) != nullptr) {
+    if (!isdigit(entry->d_name[0])) {
+      continue;
+    }
+    string pidStr(entry->d_name);
+    string commPath = string("/proc/") + pidStr + "/comm";
+    FILE* fp = fopen(commPath.c_str(), "r");
+    if (!fp) {
+      continue;
+    }
+    char commBuf[64];
+    bool isHtmd = false;
+    if (fgets(commBuf, sizeof(commBuf), fp)) {
+      size_t len = strlen(commBuf);
+      while (len > 0 &&
+             (commBuf[len - 1] == '\r' || commBuf[len - 1] == '\n')) {
+        commBuf[--len] = '\0';
+      }
+      isHtmd = (strcmp(commBuf, "htmd") == 0);
+    }
+    fclose(fp);
+    if (!isHtmd) {
+      continue;
+    }
+    string statusPath = string("/proc/") + pidStr + "/status";
+    FILE* sfp = fopen(statusPath.c_str(), "r");
+    if (!sfp) {
+      continue;
+    }
+    char lineBuf[256];
+    bool uidMatches = false;
+    bool isZombie = false;
+    while (fgets(lineBuf, sizeof(lineBuf), sfp)) {
+      if (strncmp(lineBuf, "State:", 6) == 0) {
+        const char* state = lineBuf + 6;
+        while (*state == ' ' || *state == '\t') {
+          ++state;
+        }
+        isZombie = (*state == 'Z');
+      } else if (strncmp(lineBuf, "Uid:", 4) == 0) {
+        int ruid = -1;
+        if (sscanf(lineBuf + 4, "%d", &ruid) == 1 &&
+            static_cast<uid_t>(ruid) == uid) {
+          uidMatches = true;
+        }
+      }
+    }
+    fclose(sfp);
+    if (uidMatches && !isZombie) {
+      out += pidStr;
+      out += '\n';
+    }
+  }
+  closedir(dir);
+  return out;
+}
+#endif
 
 #ifdef __APPLE__
 string htmdPidsForUser(uid_t uid) {
+  // proc_bsdinfo::pbi_status contains the BSD p_stat value. SZOMB is not
+  // exposed by the public macOS SDK headers, but its ABI value is 5.
+  constexpr uint32_t kZombieProcessStatus = 5;
   int bytes = proc_listpids(PROC_ALL_PIDS, 0, nullptr, 0);
   if (bytes <= 0) {
     return "";
@@ -85,7 +157,7 @@ string htmdPidsForUser(uid_t uid) {
     if (proc_pidinfo(pids[i], PROC_PIDTBSDINFO, 0, &info, sizeof(info)) <= 0) {
       continue;
     }
-    if (info.pbi_uid != uid) {
+    if (info.pbi_uid != uid || info.pbi_status == kZombieProcessStatus) {
       continue;
     }
     out += to_string(pids[i]);
@@ -103,10 +175,25 @@ void writeHtmExitSequence() {
   WriteFile(GetStdHandle(STD_OUTPUT_HANDLE), st, static_cast<DWORD>(strlen(st)),
             &written, NULL);
 #else
-  RawSocketUtils::writeAll(STDOUT_FILENO, st, strlen(st));
+  int flags = fcntl(STDOUT_FILENO, F_GETFL);
+  if (flags >= 0) {
+    fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
+  }
+  ::write(STDOUT_FILENO, st, strlen(st));
 #endif
-  fflush(stdout);
 }
+
+#ifndef WIN32
+void brutalExit(int code) {
+  writeHtmExitSequence();
+  drainHtmStdin();
+  int outFlags = fcntl(STDOUT_FILENO, F_GETFL);
+  if (outFlags >= 0) {
+    fcntl(STDOUT_FILENO, F_SETFL, outFlags & ~O_NONBLOCK);
+  }
+  ::_exit(code);
+}
+#endif
 
 void restoreTerminal() {
   if (gConsole) {
@@ -199,9 +286,9 @@ bool htmdProcessRunning() {
 }
 #else
 void term(int) {
-  writeHtmExitSequence();
-  restoreTerminal();
-  exit(1);
+  // Never write to the PTY or restore the tty from a signal handler: both
+  // can block forever when the GUI has stopped draining DCS. tmux just dies.
+  ::_exit(1);
 }
 #endif
 }  // namespace
@@ -211,6 +298,20 @@ int main(int argc, char** argv) {
   srand(1);
 #ifdef WIN32
   WinsockContext winsockContext;
+  {
+    char cwd[MAX_PATH];
+    DWORD len = GetCurrentDirectoryA(MAX_PATH, cwd);
+    if (len > 0 && len < MAX_PATH) {
+      SetEnvironmentVariableA("HTM_INITIAL_CWD", cwd);
+    }
+  }
+#else
+  {
+    char cwd[PATH_MAX];
+    if (::getcwd(cwd, sizeof(cwd))) {
+      ::setenv("HTM_INITIAL_CWD", cwd, 1);
+    }
+  }
 #endif
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
@@ -285,7 +386,7 @@ int main(int argc, char** argv) {
 #else
   uid_t myuid = getuid();
   const string pipeName = HtmServer::getPipeName();
-#ifdef __APPLE__
+#if defined(__APPLE__) || defined(__linux__)
   auto htmdPids = [&]() { return htmdPidsForUser(myuid); };
 #else
   auto htmdPids = [&]() {
@@ -296,7 +397,6 @@ int main(int argc, char** argv) {
 #endif
   if (result.count("x")) {
     LOG(INFO) << "Killing previous htmd";
-#ifdef __APPLE__
     string running = htmdPids();
     string pidStr;
     for (char ch : running) {
@@ -312,11 +412,6 @@ int main(int argc, char** argv) {
     if (!pidStr.empty()) {
       ::kill(static_cast<pid_t>(atoi(pidStr.c_str())), SIGTERM);
     }
-#else
-    string command =
-        string("pkill -x -U ") + to_string(myuid) + string(" htmd");
-    system(command.c_str());
-#endif
     for (int i = 0; i < 50; i++) {
       if (htmdPids().empty()) {
         break;
@@ -324,17 +419,23 @@ int main(int argc, char** argv) {
       std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     ::unlink(pipeName.c_str());
+    string clientPidPath =
+        GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
+    ::unlink(clientPidPath.c_str());
   }
 
   if (htmdPids().empty()) {
     int daemonResult = DaemonCreator::create(false, "");
     if (daemonResult == DaemonCreator::CHILD) {
-      exit(system(siblingHtmdCommand().c_str()));
+      string path = siblingHtmdPath();
+      execl(path.c_str(), "htmd", (char*)nullptr);
+      execlp("htmd", "htmd", (char*)nullptr);
+      _exit(1);
     }
   }
 
   for (int i = 0; i < 100; i++) {
-    if (!htmdPids().empty() && ::access(pipeName.c_str(), F_OK) == 0) {
+    if (::access(pipeName.c_str(), F_OK) == 0) {
       break;
     }
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -345,17 +446,24 @@ int main(int argc, char** argv) {
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());
   try {
-    HtmClient htmClient(socketHandler, pipeEndpoint);
-    htmClient.run();
+    auto* htmClient = new HtmClient(socketHandler, pipeEndpoint);
+    htmClient->run();
   } catch (const std::exception& ex) {
     LOG(ERROR) << "htm client exiting: " << ex.what();
+#ifdef WIN32
     writeHtmExitSequence();
     restoreTerminal();
     return 1;
+#else
+    brutalExit(1);
+#endif
   }
 
+#ifdef WIN32
   writeHtmExitSequence();
   restoreTerminal();
-
   return 0;
+#else
+  brutalExit(0);
+#endif
 }

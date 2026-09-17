@@ -10,7 +10,7 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 
-from htm_pty_e2e import HtmPty, fail, find_bin, pids_named  # noqa: E402
+from htm_pty_e2e import HtmPty, fail, find_bin, kill_named, pids_named  # noqa: E402
 
 
 def burst_cmd(tag: str, n: int) -> str:
@@ -19,6 +19,9 @@ def burst_cmd(tag: str, n: int) -> str:
 
 
 def run_features(htm: Path, htmd: Path) -> None:
+    kill_named("htm")
+    kill_named("htmd")
+    time.sleep(0.3)
     session = HtmPty(htm, htmd)
     try:
         session.start()
