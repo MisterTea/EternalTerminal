@@ -34,24 +34,6 @@ class FakeSshSubprocessHandler : public SubprocessUtils {
 };
 
 /**
- * @brief Fake subprocess handler that records every SSH invocation.
- */
-class RecordingSshConfigSubprocessHandler : public SubprocessUtils {
- public:
-  vector<vector<string>> calls;
-
-  string SubprocessToStringInteractive(const string& command,
-                                       const vector<string>& args) override {
-    REQUIRE(command == "ssh");
-    calls.push_back(args);
-
-    string id = genRandomAlphaNum(16);
-    string passkey = genRandomAlphaNum(32);
-    return string("IDPASSKEY:") + id + "/" + passkey;
-  }
-};
-
-/**
  * @brief Fake subprocess handler that returns empty output
  * to simulate SSH connection failure.
  */
@@ -105,7 +87,7 @@ class FakeSshSubprocessHandlerWithJumphost : public SubprocessUtils {
 };
 
 /**
- * @brief Fake subprocess handler that records both jumphost-mode SSH calls.
+ * @brief Fake subprocess handler that records every SSH invocation.
  */
 class RecordingSshSubprocessHandler : public SubprocessUtils {
  public:
@@ -337,7 +319,7 @@ TEST_CASE("SshSetupHandler with jumphost and jServerFifo",
 
 TEST_CASE("SshSetupHandler can select one exact SSH configuration",
           "[SshSetupHandler]") {
-  auto fakeSubprocess = make_shared<RecordingSshConfigSubprocessHandler>();
+  auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
   const string config_path = "/private/et-client/ssh_config";
   SshSetupHandler handler(fakeSubprocess, config_path);
 
@@ -371,7 +353,7 @@ TEST_CASE("SshSetupHandler can select one exact SSH configuration",
 
 TEST_CASE("SshSetupHandler can disable all SSH configuration",
           "[SshSetupHandler]") {
-  auto fakeSubprocess = make_shared<RecordingSshConfigSubprocessHandler>();
+  auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
   SshSetupHandler handler(fakeSubprocess, "none");
 
   handler.SetupSsh("exact-user", "exact-target.example", "exact-target.example",
