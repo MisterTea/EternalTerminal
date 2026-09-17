@@ -63,10 +63,10 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   }
   // Try to write for around 5 seconds before giving up
   time_t startTime = time(NULL);
-  int bytesWritten = 0;
-  while (bytesWritten < int(count)) {
+  ssize_t bytesWritten = 0;
+  while (static_cast<size_t>(bytesWritten) < count) {
     lock_guard<recursive_mutex> guard(*(it->second));
-    int w;
+    ssize_t w;
 #ifdef WIN32
     w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
 #else
@@ -83,16 +83,16 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if (time(NULL) > startTime + 5) {
           // Give up
-          return -1;
+          return bytesWritten > 0 ? bytesWritten : -1;
         }
       } else {
-        return -1;
+        return bytesWritten > 0 ? bytesWritten : -1;
       }
     } else {
       bytesWritten += w;
     }
   }
-  return count;
+  return bytesWritten;
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
