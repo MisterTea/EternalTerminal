@@ -134,6 +134,53 @@ TEST_CASE("ForwardSourceHandler stops listening on destruction",
   REQUIRE(socketHandler->stopListeningCalls[0].port() == source.port());
 }
 
+TEST_CASE("ForwardSourceHandler closes remaining sockets on destruction",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+  socketHandler->enqueueAccept(43);
+
+  {
+    ForwardSourceHandler handler(socketHandler, SocketEndpoint(),
+                                 SocketEndpoint());
+    handler.addSocket(123, handler.listen());
+    REQUIRE(handler.listen() == 43);
+    CHECK(socketHandler->closedFds.empty());
+  }
+
+  std::sort(socketHandler->closedFds.begin(), socketHandler->closedFds.end());
+  CHECK(socketHandler->closedFds == std::vector<int>{42, 43});
+  CHECK(socketHandler->stopListeningCalls.size() == 1);
+}
+
+TEST_CASE("ForwardSourceHandler does not close released sockets twice",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  {
+    ForwardSourceHandler handler(socketHandler, SocketEndpoint(),
+                                 SocketEndpoint());
+    int fd = handler.listen();
+    SECTION("Pending socket") { handler.closeUnassignedFd(fd); }
+    SECTION("Assigned socket") {
+      handler.addSocket(123, fd);
+      handler.closeSocket(123);
+    }
+    SECTION("Peer EOF") {
+      handler.addSocket(123, fd);
+      socketHandler->enqueueHasData(true);
+      socketHandler->enqueueRead(0);
+      std::vector<PortForwardData> data;
+      handler.update(&data);
+    }
+  }
+
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
 TEST_CASE("ForwardSourceHandler listen accepts new connections",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();

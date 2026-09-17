@@ -5,7 +5,15 @@ ForwardDestinationHandler::ForwardDestinationHandler(
     shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId)
     : socketHandler(_socketHandler), fd(_fd), socketId(_socketId) {}
 
-void ForwardDestinationHandler::close() { socketHandler->close(fd); }
+ForwardDestinationHandler::~ForwardDestinationHandler() { close(); }
+
+void ForwardDestinationHandler::close() {
+  if (fd >= 0) {
+    int closedFd = fd;
+    fd = -1;
+    socketHandler->close(closedFd);
+  }
+}
 
 void ForwardDestinationHandler::write(const string& s) {
   VLOG(1) << "Writing " << s.length() << " bytes to port destination";
@@ -50,8 +58,7 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval,
         STERROR << "Socket " << socketId << " closed with error " << readErrno
                 << ' ' << strerror(readErrno);
       }
-      socketHandler->close(fd);
-      fd = -1;
+      close();
       break;
     }
   }

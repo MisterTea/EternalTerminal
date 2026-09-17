@@ -24,6 +24,11 @@ class PortForwardHandler {
                               shared_ptr<SocketHandler> _pipeSocketHandler,
                               uid_t userid = static_cast<uid_t>(-1),
                               gid_t groupid = static_cast<gid_t>(-1));
+  ~PortForwardHandler();
+
+  PortForwardHandler(const PortForwardHandler&) = delete;
+  PortForwardHandler& operator=(const PortForwardHandler&) = delete;
+
   /** @brief Polls handlers and collects destination requests and
    * `PortForwardData` for the caller to send. Touches only the descriptors
    * named in `readyFds`; `nullptr` polls every one. */
@@ -63,7 +68,7 @@ class PortForwardHandler {
   /** @brief Session gid for UNIX connect/listen; (gid_t)-1 disables drop. */
   gid_t sessionGid;
   /** @brief Active destination handlers keyed by socket id. */
-  unordered_map<int, shared_ptr<ForwardDestinationHandler>> destinationHandlers;
+  unordered_map<int, unique_ptr<ForwardDestinationHandler>> destinationHandlers;
 
   /** @brief Handlers for the listening port forward sources. */
   vector<shared_ptr<ForwardSourceHandler>> sourceHandlers;
@@ -74,6 +79,7 @@ class PortForwardHandler {
    * `getForwardFds`: a recycled fd number yields an identical set, so this is
    * a poller's only signal that it must re-register. */
   uint64_t forwardFdsGeneration = 0;
+  vector<string> temporaryDirectories;
 };
 }  // namespace et
 

@@ -79,4 +79,15 @@ std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
   return it->second;
 }
 
+void UserTerminalRouter::removeConnection(const TerminalUserInfo& userInfo) {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  auto it = idInfoMap.find(userInfo.id());
+  if (it == idInfoMap.end() || it->second.fd() != userInfo.fd() ||
+      it->second.passkey() != userInfo.passkey()) {
+    return;
+  }
+  socketHandler->close(it->second.fd());
+  idInfoMap.erase(it);
+}
+
 }  // namespace et

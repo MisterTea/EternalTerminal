@@ -15,6 +15,12 @@ class ForwardDestinationHandler {
    * downstream. */
   ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
                             int _socketId);
+  ~ForwardDestinationHandler();
+
+  ForwardDestinationHandler(const ForwardDestinationHandler&) = delete;
+  ForwardDestinationHandler& operator=(const ForwardDestinationHandler&) =
+      delete;
+
   /** @brief Sends bytes that need to travel to the destination socket. */
   void write(const string& s);
 

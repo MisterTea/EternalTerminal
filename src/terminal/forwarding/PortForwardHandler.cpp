@@ -13,6 +13,18 @@ PortForwardHandler::PortForwardHandler(
       sessionUid(userid),
       sessionGid(groupid) {}
 
+PortForwardHandler::~PortForwardHandler() {
+  socketIdSourceHandlerMap.clear();
+  sourceHandlers.clear();
+  for (const auto& directory : temporaryDirectories) {
+    try {
+      fs::remove(directory);
+    } catch (const fs::filesystem_error& ex) {
+      LOG(WARNING) << "Could not remove forwarding directory: " << ex.what();
+    }
+  }
+}
+
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend,
                                 const set<int>* readyFds) {
@@ -65,6 +77,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       string sourceDirectory = mktemp(&sourcePattern[0]);
       FATAL_FAIL(mkdir(&sourceDirectory[0]));
 #endif
+      temporaryDirectories.push_back(sourceDirectory);
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
@@ -167,9 +180,8 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     }
     if (!pfdresponse.has_error()) {
       LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
-      destinationHandlers[socketId] =
-          shared_ptr<ForwardDestinationHandler>(new ForwardDestinationHandler(
-              isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId));
+      destinationHandlers[socketId] = make_unique<ForwardDestinationHandler>(
+          isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId);
       pfdresponse.set_socketid(socketId);
       ++forwardFdsGeneration;
     }
@@ -188,33 +200,23 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         if (it == destinationHandlers.end()) {
           LOG(WARNING) << "Got data for a socket id that has already closed: "
                        << pwd.socketid();
+        } else if (pwd.has_closed() || pwd.has_error()) {
+          LOG(INFO) << "Port forward socket "
+                    << (pwd.has_closed() ? "closed: " : "errored: ")
+                    << pwd.socketid();
+          destinationHandlers.erase(it);
+          ++forwardFdsGeneration;
         } else {
-          if (pwd.has_closed()) {
-            LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-            it->second->close();
-            destinationHandlers.erase(it);
-            ++forwardFdsGeneration;
-          } else if (pwd.has_error()) {
-            // TODO: Probably need to do something better here
-            LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-            it->second->close();
-            destinationHandlers.erase(it);
-            ++forwardFdsGeneration;
-          } else {
-            it->second->write(pwd.buffer());
-          }
+          it->second->write(pwd.buffer());
         }
+      } else if (pwd.has_closed() || pwd.has_error()) {
+        LOG(INFO) << "Port forward socket "
+                  << (pwd.has_closed() ? "closed: " : "errored: ")
+                  << pwd.socketid();
+        closeSourceSocketId(pwd.socketid());
       } else {
-        if (pwd.has_closed()) {
-          LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-          closeSourceSocketId(pwd.socketid());
-        } else if (pwd.has_error()) {
-          LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-          closeSourceSocketId(pwd.socketid());
-        } else {
-          VLOG(1) << "Got data for source socket: " << pwd.socketid();
-          sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
-        }
+        VLOG(1) << "Got data for source socket: " << pwd.socketid();
+        sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
       }
       break;
     }

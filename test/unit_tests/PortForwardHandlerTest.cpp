@@ -1,3 +1,4 @@
+#include "PipeSocketHandler.hpp"
 #include "PortForwardHandler.hpp"
 #include "TestHeaders.hpp"
 
@@ -177,6 +178,84 @@ TEST_CASE("PortForwardHandler createSource with port forward",
   CHECK_FALSE(response.has_error());
 }
 
+#ifndef WIN32
+TEST_CASE("PortForwardHandler removes its generated socket directory",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<PipeSocketHandler>();
+  string sourceName;
+  {
+    PortForwardHandler handler(networkHandler, pipeHandler);
+    PortForwardSourceRequest request;
+    request.mutable_destination()->set_name("/unused/destination");
+    auto response =
+        handler.createSource(request, &sourceName, getuid(), getgid());
+    REQUIRE_FALSE(response.has_error());
+    REQUIRE_FALSE(sourceName.empty());
+    CHECK(fs::exists(sourceName));
+  }
+  CHECK_FALSE(fs::exists(sourceName));
+  CHECK_FALSE(fs::exists(fs::path(sourceName).parent_path()));
+}
+
+TEST_CASE("PortForwardHandler preserves user-specified socket directories",
+          "[PortForwardHandler]") {
+  string pattern = GetTempDirectory() + "et_forward_test_XXXXXX";
+  char* directory = mkdtemp(&pattern[0]);
+  REQUIRE(directory != nullptr);
+  const string sourceName = string(directory) + "/sock";
+  {
+    auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+    auto pipeHandler = make_shared<PipeSocketHandler>();
+    PortForwardHandler handler(networkHandler, pipeHandler);
+    PortForwardSourceRequest request;
+    request.mutable_source()->set_name(sourceName);
+    request.mutable_destination()->set_name("/unused/destination");
+    auto response = handler.createSource(request, nullptr, getuid(), getgid());
+    REQUIRE_FALSE(response.has_error());
+  }
+  CHECK(fs::exists(directory));
+  fs::remove(sourceName);
+  fs::remove(directory);
+}
+
+TEST_CASE("PortForwardHandler directory removal does not follow symlinks",
+          "[PortForwardHandler]") {
+  string pattern = GetTempDirectory() + "et_forward_test_XXXXXX";
+  char* directory = mkdtemp(&pattern[0]);
+  REQUIRE(directory != nullptr);
+  const fs::path root(directory);
+  const auto target = root / "target";
+  const auto moved = root / "moved";
+  fs::create_directory(target);
+  {
+    std::ofstream marker((target / "sock").string());
+    marker << "preserve this file";
+  }
+  string sourceName;
+  {
+    auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+    auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+    PortForwardHandler handler(networkHandler, pipeHandler);
+    PortForwardSourceRequest request;
+    request.mutable_destination()->set_name("/unused/destination");
+    auto response =
+        handler.createSource(request, &sourceName, getuid(), getgid());
+    REQUIRE_FALSE(response.has_error());
+    auto sourceDirectory = fs::path(sourceName).parent_path();
+    fs::rename(sourceDirectory, moved);
+    fs::create_directory_symlink(target, sourceDirectory);
+  }
+  CHECK(fs::exists(target / "sock"));
+  CHECK_FALSE(fs::exists(fs::path(sourceName).parent_path()));
+  fs::remove(moved / "sock");
+  fs::remove(moved);
+  fs::remove(target / "sock");
+  fs::remove(target);
+  fs::remove(root);
+}
+#endif
+
 // SKIPPED: Test creates actual Unix sockets and chmod fails in some
 // environments (WSL) Error: chmod fails with EINVAL (22) on Unix domain sockets
 // in WSL2
@@ -351,74 +430,31 @@ TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DATA destination",
   CHECK(networkHandler->writes[42][0] == "test data");
 }
 
-TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DATA close destination",
+TEST_CASE("PortForwardHandler closes destinations on remote close or error",
           "[PortForwardHandler]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();
   auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
   PortForwardHandler handler(networkHandler, pipeHandler);
   auto connection = make_shared<FakeConnection>();
 
-  // First create a destination
   networkHandler->setConnectResult(42);
   PortForwardDestinationRequest destRequest;
-  SocketEndpoint destination;
-  destination.set_port(8080);
-  *destRequest.mutable_destination() = destination;
+  destRequest.mutable_destination()->set_port(8080);
   destRequest.set_fd(100);
   PortForwardDestinationResponse destResponse =
       handler.createDestination(destRequest);
   REQUIRE_FALSE(destResponse.has_error());
-  int socketId = destResponse.socketid();
-
-  // Send close signal
   PortForwardData data;
   data.set_sourcetodestination(true);
-  data.set_socketid(socketId);
-  data.set_closed(true);
+  data.set_socketid(destResponse.socketid());
+  SECTION("Close") { data.set_closed(true); }
+  SECTION("Error") { data.set_error("connection error"); }
 
   Packet packet(uint8_t(TerminalPacketType::PORT_FORWARD_DATA),
                 protoToString(data));
   handler.handlePacket(packet, connection);
 
-  // Check that socket was closed
-  CHECK(std::find(networkHandler->closedFds.begin(),
-                  networkHandler->closedFds.end(),
-                  42) != networkHandler->closedFds.end());
-}
-
-TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DATA error destination",
-          "[PortForwardHandler]") {
-  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
-  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
-  PortForwardHandler handler(networkHandler, pipeHandler);
-  auto connection = make_shared<FakeConnection>();
-
-  // First create a destination
-  networkHandler->setConnectResult(42);
-  PortForwardDestinationRequest destRequest;
-  SocketEndpoint destination;
-  destination.set_port(8080);
-  *destRequest.mutable_destination() = destination;
-  destRequest.set_fd(100);
-  PortForwardDestinationResponse destResponse =
-      handler.createDestination(destRequest);
-  REQUIRE_FALSE(destResponse.has_error());
-  int socketId = destResponse.socketid();
-
-  // Send error signal
-  PortForwardData data;
-  data.set_sourcetodestination(true);
-  data.set_socketid(socketId);
-  data.set_error("connection error");
-
-  Packet packet(uint8_t(TerminalPacketType::PORT_FORWARD_DATA),
-                protoToString(data));
-  handler.handlePacket(packet, connection);
-
-  // Check that socket was closed
-  CHECK(std::find(networkHandler->closedFds.begin(),
-                  networkHandler->closedFds.end(),
-                  42) != networkHandler->closedFds.end());
+  CHECK(networkHandler->closedFds == vector<int>{42});
 }
 
 TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DESTINATION_REQUEST",

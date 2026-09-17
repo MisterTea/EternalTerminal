@@ -23,6 +23,9 @@ class ForwardSourceHandler {
 
   ~ForwardSourceHandler();
 
+  ForwardSourceHandler(const ForwardSourceHandler&) = delete;
+  ForwardSourceHandler& operator=(const ForwardSourceHandler&) = delete;
+
   /** @brief Accepts one pending connection and returns its fd, or -1 if none.
    * Accepts only on endpoints named in `readyFds`; `nullptr` tries every one.
    */

@@ -71,6 +71,33 @@ class MockSocketHandler : public SocketHandler {
 };
 }  // namespace
 
+TEST_CASE("ForwardDestinationHandler closes its socket on destruction",
+          "[ForwardDestinationHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  { ForwardDestinationHandler handler(socketHandler, 42, 123); }
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
+TEST_CASE("ForwardDestinationHandler does not close released sockets twice",
+          "[ForwardDestinationHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  {
+    ForwardDestinationHandler handler(socketHandler, 42, 123);
+    SECTION("Explicit close") {
+      handler.close();
+      handler.close();
+    }
+    SECTION("Peer EOF") {
+      socketHandler->enqueueHasData(true);
+      socketHandler->enqueueRead(0);
+      std::vector<PortForwardData> data;
+      handler.update(&data);
+    }
+    CHECK(handler.getFd() == -1);
+  }
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
 TEST_CASE("ForwardDestinationHandler forwards outbound payloads",
           "[ForwardDestinationHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
