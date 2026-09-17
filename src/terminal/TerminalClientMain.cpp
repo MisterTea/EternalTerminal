@@ -1,4 +1,6 @@
 #include <cxxopts.hpp>
+#include <filesystem>
+#include <fstream>
 
 #include "Headers.hpp"
 #include "HostParsing.hpp"
@@ -55,19 +57,39 @@ struct ResolvedSshConfig {
   string username;  // Username from SSH config (empty if not specified)
 };
 
+// Parse the selected SSH policy. An empty path preserves ET's legacy ambient
+// behavior, "none" disables parsing, and every other value names the sole
+// configuration file to read.
+void parseSelectedSshConfig(const string& host, Options* options,
+                            const string& sshConfigPath) {
+  if (sshConfigPath == "none") {
+    return;
+  }
+  if (!sshConfigPath.empty()) {
+    parse_ssh_config_file(host.c_str(), options, sshConfigPath);
+    return;
+  }
+
+  char* homeDir = ssh_get_user_home_dir();
+  if (homeDir != NULL) {
+    parse_ssh_config_file(host.c_str(), options,
+                          string(homeDir) + USER_SSH_CONFIG_PATH);
+    free(homeDir);
+  }
+  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH);
+}
+
 // Resolve a host alias via SSH config lookup
-ResolvedSshConfig resolveSshConfigHost(const string& hostAlias) {
+ResolvedSshConfig resolveSshConfigHost(const string& hostAlias,
+                                       const string& sshConfigPath) {
   ResolvedSshConfig result;
   result.hostname = hostAlias;  // Default to original if not resolved
 
-  char* home_dir = ssh_get_user_home_dir();
   Options opts = {NULL, NULL, NULL, NULL, NULL, NULL, 0,    0, 0,
                   0,    0,    NULL, NULL, 0,    0,    NULL, {}};
 
   ssh_options_set(&opts, SSH_OPTIONS_HOST, hostAlias.c_str());
-  parse_ssh_config_file(hostAlias.c_str(), &opts,
-                        string(home_dir) + USER_SSH_CONFIG_PATH);
-  parse_ssh_config_file(hostAlias.c_str(), &opts, SYSTEM_SSH_CONFIG_PATH);
+  parseSelectedSshConfig(hostAlias, &opts, sshConfigPath);
 
   if (opts.host) {
     result.hostname = string(opts.host);
@@ -77,7 +99,6 @@ ResolvedSshConfig resolveSshConfigHost(const string& hostAlias) {
   }
 
   freeOptionsFields(&opts);
-  free(home_dir);
   return result;
 }
 
@@ -178,6 +199,12 @@ int main(int argc, char** argv) {
         ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
+        ("ssh-config",
+         "Read only this absolute SSH configuration file (or 'none')",
+         cxxopts::value<std::string>())  //
+        ("no-ssh-config",
+         "Do not read user or system SSH configuration for the destination "
+         "or jumphost")  //
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
@@ -280,6 +307,54 @@ int main(int argc, char** argv) {
 
     string jumphost =
         extractSingleOptionWithDefault<string>(result, options, "jumphost", "");
+    if (result.count("ssh-config") && result.count("no-ssh-config")) {
+      CLOG(INFO, "stdout")
+          << "--ssh-config and --no-ssh-config are mutually exclusive" << endl;
+      exit(1);
+    }
+    string sshConfigPath;
+    if (result.count("ssh-config")) {
+      sshConfigPath = result["ssh-config"].as<string>();
+      if (sshConfigPath != "none" &&
+          !std::filesystem::path(sshConfigPath).is_absolute()) {
+        CLOG(INFO, "stdout")
+            << "--ssh-config must be an absolute path or 'none': "
+            << sshConfigPath << endl;
+        exit(1);
+      }
+      if (sshConfigPath != "none" &&
+          !SshSetupHandler::IsSshConfigPathSafeForProxyJump(sshConfigPath)) {
+        CLOG(INFO, "stdout")
+            << "--ssh-config must contain only ASCII letters, digits, '/', "
+#ifdef WIN32
+               "'\\\\', ':', "
+#endif
+               "'.', '_', and '-'; OpenSSH does not quote this path when "
+               "propagating it through ProxyJump"
+            << endl;
+        exit(1);
+      }
+      if (sshConfigPath != "none") {
+        std::error_code configError;
+        std::filesystem::file_status configStatus =
+            std::filesystem::symlink_status(sshConfigPath, configError);
+        bool regularFile = std::filesystem::is_regular_file(configStatus);
+        bool readableFile = false;
+        if (!configError && regularFile) {
+          std::ifstream configFile(sshConfigPath);
+          readableFile = configFile.good();
+        }
+        if (!readableFile) {
+          CLOG(INFO, "stdout")
+              << "--ssh-config must name a readable, non-symlink regular file"
+              << endl;
+          exit(1);
+        }
+      }
+    } else if (result.count("no-ssh-config")) {
+      sshConfigPath = "none";
+    }
+    bool noSshConfig = sshConfigPath == "none";
     int keepaliveDuration = extractSingleOptionWithDefault<int>(
         result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
     if (keepaliveDuration < 1 ||
@@ -291,22 +366,15 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
-    {
-      char* home_dir = ssh_get_user_home_dir();
-      const char* host_from_command = destinationHost.c_str();
+    if (!noSshConfig) {
       ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                       destinationHost.c_str());
-      // First parse user-specific ssh config, then system-wide config.
-      parse_ssh_config_file(host_from_command, &sshConfigOptions,
-                            string(home_dir) + USER_SSH_CONFIG_PATH);
-      parse_ssh_config_file(host_from_command, &sshConfigOptions,
-                            SYSTEM_SSH_CONFIG_PATH);
+      parseSelectedSshConfig(destinationHost, &sshConfigOptions, sshConfigPath);
       if (sshConfigOptions.host) {
         LOG(INFO) << "Parsed ssh config file, connecting to "
                   << sshConfigOptions.host;
         destinationHost = string(sshConfigOptions.host);
       }
-      free(home_dir);
     }
 
     // Parse username: cmdline > sshconfig > localuser
@@ -337,8 +405,10 @@ int main(int argc, char** argv) {
       // Parse [user@]host[:sshport] format
       ParsedHostString parsed = parseHostString(jumphost);
 
-      // Resolve jumphost alias to actual hostname via SSH config
-      ResolvedSshConfig resolved = resolveSshConfigHost(parsed.host);
+      // Resolve jumphost aliases only when SSH configuration is enabled.
+      // In --no-ssh-config mode, keep the command-line host and user exact.
+      ResolvedSshConfig resolved =
+          resolveSshConfigHost(parsed.host, sshConfigPath);
       if (resolved.hostname != parsed.host) {
         LOG(INFO) << "Resolved jumphost alias '" << parsed.host
                   << "' to hostname: " << resolved.hostname;
@@ -351,14 +421,15 @@ int main(int argc, char** argv) {
         LOG(INFO) << "Using jumphost username from SSH config: "
                   << jumphostUser;
       }
-      if (jumphostUser.empty()) {
+      if (jumphostUser.empty() && !noSshConfig) {
         char* localUsernamePtr = ssh_get_local_username();
         jumphostUser = string(localUsernamePtr);
         SAFE_FREE(localUsernamePtr);
       }
 
       // Reconstruct jumphost with resolved hostname for SSH -J flag
-      jumphost = jumphostUser + "@" + resolved.hostname + parsed.portSuffix;
+      jumphost = (jumphostUser.empty() ? "" : jumphostUser + "@") +
+                 resolved.hostname + parsed.portSuffix;
 
       socketEndpoint.set_name(resolved.hostname);
       socketEndpoint.set_port(result["jport"].as<int>());
@@ -433,7 +504,7 @@ int main(int argc, char** argv) {
     }
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
-    SshSetupHandler sshSetupHandler(subprocessUtils);
+    SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
     pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost,
         jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
