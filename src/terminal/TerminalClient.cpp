@@ -89,6 +89,7 @@ TerminalClient::TerminalClient(
   if (attachExisting) {
     if (connection->attach()) {
       VLOG(1) << "Attached to existing session: " << connection->getId();
+      attachedExisting = true;
       TelemetryService::get()->logToDatadog("Session Attached", el::Level::Info,
                                             __FILE__, __LINE__);
       return;
