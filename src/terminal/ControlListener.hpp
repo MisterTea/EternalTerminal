@@ -45,7 +45,9 @@ class ControlListener {
   std::function<bool()> isConnected;
   string host;
 
-  int listenFd;
+  // Accessed from both the caller's thread (shutdown) and the accept thread
+  // (acceptLoop), so it needs to be atomic rather than a plain int.
+  std::atomic<int> listenFd;
   std::atomic<bool> running;
   std::thread acceptThread;
 };

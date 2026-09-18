@@ -1,8 +1,6 @@
 #ifndef __ET_CONTROL_PATHS_HPP__
 #define __ET_CONTROL_PATHS_HPP__
 
-#include <dirent.h>
-
 #include "Headers.hpp"
 #include "SessionStore.hpp"
 
@@ -65,20 +63,19 @@ inline string socketPathForName(const string& name) {
  */
 inline vector<string> listSessionNames() {
   vector<string> names;
-  DIR* d = ::opendir(controlDir().c_str());
-  if (!d) {
+  std::error_code ec;
+  fs::directory_iterator it(controlDir(), ec);
+  if (ec) {
     return names;  // no directory yet => no sessions
   }
   const string suffix = ".sock";
-  struct dirent* ent;
-  while ((ent = ::readdir(d)) != NULL) {
-    string n(ent->d_name);
+  for (const auto& entry : it) {
+    const string n = entry.path().filename().string();
     if (n.size() > suffix.size() &&
         n.compare(n.size() - suffix.size(), suffix.size(), suffix) == 0) {
       names.push_back(n.substr(0, n.size() - suffix.size()));
     }
   }
-  ::closedir(d);
   std::sort(names.begin(), names.end());
   return names;
 }
