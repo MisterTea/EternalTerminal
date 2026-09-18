@@ -260,5 +260,9 @@ jobs:
               /usr/bin/et --help || true
               echo "Verifying etserver help output..."
               /usr/bin/etserver --help || true
+              if [ -x /usr/bin/et-test ]; then
+                echo "Running unit tests with et-test..."
+                /usr/bin/et-test "~[.ghostty]"
+              fi
               echo "OpenWrt package verified successfully!"
             '

@@ -31,7 +31,7 @@ CMAKE_OPTIONS += \
 	-DDISABLE_CRASH_LOG=ON \
 	-DDISABLE_STACKTRACE=ON \
 	-DCODE_COVERAGE=OFF \
-	-DBUILD_TESTING=OFF \
+	-DBUILD_TESTING=ON \
 	-DINSTALL_BASH_COMPLETION=OFF \
 	-DINSTALL_ZSH_COMPLETION=OFF \
 	-DProtobuf_PROTOC_EXECUTABLE=$(STAGING_DIR_HOSTPKG)/bin/protoc
@@ -53,6 +53,9 @@ define Package/eternalterminal/install
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/et $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/etserver $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/etterminal $(1)/usr/bin/
+	if [ -f $(PKG_BUILD_DIR)/et-test ]; then \
+		$(INSTALL_BIN) $(PKG_BUILD_DIR)/et-test $(1)/usr/bin/; \
+	fi
 
 	$(INSTALL_DIR) $(1)/etc/init.d
 	$(INSTALL_BIN) ./files/etserver.init $(1)/etc/init.d/etserver

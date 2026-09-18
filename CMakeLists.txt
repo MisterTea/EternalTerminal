@@ -781,14 +781,18 @@ else(WIN32)
     #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
     #   python3 test/system_tests/hyper_htm_affinities_e2e.py --htm ./htm --htmd ./htmd
     #   py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
-    catch_discover_tests(
-      et-test
-      TEST_SPEC "~[.ghostty]"
-      TEST_PREFIX "et-test."
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 600
-    )
+    if(NOT CMAKE_CROSSCOMPILING)
+      catch_discover_tests(
+        et-test
+        TEST_SPEC "~[.ghostty]"
+        TEST_PREFIX "et-test."
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        ADD_TAGS_AS_LABELS
+        PROPERTIES TIMEOUT 600
+      )
+    else()
+      add_test(NAME et-test COMMAND et-test "~[.ghostty]")
+    endif()
     find_package(Python3 COMPONENTS Interpreter)
     if(Python3_Interpreter_FOUND AND NOT WIN32)
       add_test(
