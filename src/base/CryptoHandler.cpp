@@ -44,6 +44,13 @@ string CryptoHandler::decrypt(const string& buffer) {
   return retval;
 }
 
+void CryptoHandler::advanceNonce(int64_t count) {
+  lock_guard<std::mutex> guard(cryptoMutex);
+  for (int64_t i = 0; i < count; i++) {
+    incrementNonce();
+  }
+}
+
 void CryptoHandler::incrementNonce() {
   // Increment nonce
   for (int a = 0; a < int(crypto_secretbox_NONCEBYTES); a++) {

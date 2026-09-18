@@ -68,6 +68,27 @@ class BackedReader {
    */
   inline int64_t getSequenceNumber() { return sequenceNumber; }
 
+  /**
+   * @brief Declares this reader caught up with `peerSequenceNumber` packets it
+   * never actually read.
+   *
+   * Only valid on a reader that has read nothing. A process adopting a live
+   * session has genuinely received none of the session's output, but it does
+   * not want it: replaying the history would feed the setup packets of a
+   * session that is already past setup back through the run loop. Advancing
+   * both the counter and the nonce declares the backlog consumed, so the peer
+   * replays nothing and the next real packet decrypts under the nonce the peer
+   * is about to use.
+   */
+  inline void adoptSequenceNumber(int64_t peerSequenceNumber) {
+    if (sequenceNumber != 0) {
+      STFATAL << "adoptSequenceNumber on a reader that already read "
+              << sequenceNumber << " packets";
+    }
+    sequenceNumber = peerSequenceNumber;
+    cryptoHandler->advanceNonce(peerSequenceNumber);
+  }
+
  protected:
   /** @brief Guards socket and buffer mutations when recovering state. */
   mutex recoverMutex;

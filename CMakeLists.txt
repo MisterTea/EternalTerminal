@@ -481,8 +481,17 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
+  src/terminal/ControlListener.hpp
+  src/terminal/ControlListener.cpp
+  src/terminal/ControlProtocol.hpp
+  src/terminal/ControlPaths.hpp
+  src/terminal/SessionScrollback.hpp
+  src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/ServerFifoPath.cpp
+  src/terminal/SessionCredentials.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
@@ -614,14 +623,20 @@ if(WIN32)
 
     # These tests exercise production facilities that do not exist on Windows:
     # fork/SCM_RIGHTS privilege dropping, Unix server/terminal handlers, a
-    # POSIX PTY/terminal host, or epoll/kqueue readiness polling. Keep this
-    # exclusion list explicit so every new portable test is included on
-    # Windows automatically.
+    # POSIX PTY/terminal host, epoll/kqueue readiness polling, or the
+    # POSIX-only `--ctl` control plane (Unix-domain socket, non-blocking pipe).
+    # Keep this exclusion list explicit so every new portable test is included
+    # on Windows automatically.
     set(WINDOWS_UNSUPPORTED_TEST_SRCS
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/ControlListenerTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/EtctlBinaryTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/EtctlOsc133Test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/EtctlRunTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/HandleConnectionTimeoutTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/JumphostTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalServerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ControlConsoleTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/FdPollerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/HtmGhosttyE2eTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ServerFifoPathTest.cpp
@@ -719,6 +734,22 @@ else(WIN32)
     ${CORE_LIBRARIES})
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
+
+  add_executable(etctl src/terminal/EtctlMain.cpp)
+  target_link_libraries(
+    etctl
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${SELINUX_LIBRARIES}
+    ${UTEMPTER_LIBRARIES}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etctl generated-code et-lib)
+  decorate_target(etctl)
 
   include(CTest)
 
@@ -888,7 +919,7 @@ else(WIN32)
   endif(BUILD_TESTING AND FUZZING)
 
   install(
-    TARGETS etserver etterminal et htm htmd
+    TARGETS etserver etterminal et etctl htm htmd
     PERMISSIONS
     OWNER_EXECUTE
     OWNER_WRITE
