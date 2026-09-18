@@ -185,14 +185,17 @@ void driveZsh(const char* rc,
 }
 
 // Drive `body` against an interactive fish behind a pty. Default fish has
-// bracketed paste on but emits no OSC 133 and cannot parse the eval here-doc, so
-// etctl detects kBracketMark. An isolated HOME keeps the user's fish config out,
-// and an empty greeting keeps the first prompt clean.
+// bracketed paste on but emits no OSC 133 and cannot parse the eval here-doc,
+// so etctl detects kBracketMark. An isolated HOME keeps the user's fish config
+// out, and an empty greeting keeps the first prompt clean.
 void driveFish(const std::function<void(const string& name)>& body) {
   char dirTmpl[] = "/tmp/etctl_fish_XXXXXX";
   const string home = ::mkdtemp(dirTmpl);
   const string cfgDir = home + "/.config/fish";
-  { const string cmd = "mkdir -p '" + cfgDir + "'"; (void)::system(cmd.c_str()); }
+  {
+    const string cmd = "mkdir -p '" + cfgDir + "'";
+    (void)::system(cmd.c_str());
+  }
   const string cfg = cfgDir + "/config.fish";
   int fd = ::open(cfg.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
   REQUIRE(fd >= 0);
@@ -323,12 +326,14 @@ TEST_CASE("EtctlRunBracketMark (fish)", "[EtctlOsc133]") {
   driveFish([&](const string& name) {
     // Force fresh detection: a single-process run can leave a stale cache under
     // the pid-based name from an earlier (zsh) case.
-    const string cachePath = control_paths::controlDir() + "/" + name + ".framing";
+    const string cachePath =
+        control_paths::controlDir() + "/" + name + ".framing";
     ::unlink(cachePath.c_str());
     // Probe detection once. fish 4.x blocks its interactive startup on a full
     // terminal-query handshake (XTVERSION/color/XTGETTCAP/DA1) that a headless
     // control session cannot fully satisfy, so it is not drivable here; detect
-    // that and skip rather than fail. fish 3.x drives fine and runs the battery.
+    // that and skip rather than fail. fish 3.x drives fine and runs the
+    // battery.
     runEtctl("run " + name + " 'true' --timeout 6");
     {
       std::ifstream cf(cachePath);
@@ -336,15 +341,16 @@ TEST_CASE("EtctlRunBracketMark (fish)", "[EtctlOsc133]") {
       std::getline(cf, cached);
       if (cached != "1 0 1") {
         WARN("fish not headless-drivable (detected framing '"
-             << cached << "', e.g. fish 4.x query handshake); skipping battery");
+             << cached
+             << "', e.g. fish 4.x query handshake); skipping battery");
         SUCCEED();
         return;
       }
     }
     {
-      // Auto-detect -> kBracketMark: fish has bracketed paste but no OSC 133 and
-      // cannot parse the eval here-doc. The bare command is pasted; output comes
-      // from echo-markers, which must not leak into the body.
+      // Auto-detect -> kBracketMark: fish has bracketed paste but no OSC 133
+      // and cannot parse the eval here-doc. The bare command is pasted; output
+      // comes from echo-markers, which must not leak into the body.
       RunResult r = runEtctl("run " + name + " 'echo hi_fish' --timeout 10");
       INFO("auto -> code=" << r.code << " out=[" << r.out << "]");
       CHECK(r.code == 0);
@@ -362,16 +368,16 @@ TEST_CASE("EtctlRunBracketMark (fish)", "[EtctlOsc133]") {
     }
     {
       // Multi-line body (fish syntax) runs as one command via the paste.
-      RunResult r =
-          runEtctl("run " + name +
-                   " 'set X 42\nprintf \"v=[%s]\" \"$X\"' --timeout 10");
+      RunResult r = runEtctl(
+          "run " + name + " 'set X 42\nprintf \"v=[%s]\" \"$X\"' --timeout 10");
       INFO("multiline -> code=" << r.code << " out=[" << r.out << "]");
       CHECK(r.code == 0);
       CHECK(r.out == "v=[42]");
     }
     {
       // Exit code flows through fish's $status (not $?).
-      RunResult r = runEtctl("run " + name + " 'sh -c \"exit 7\"' --timeout 10");
+      RunResult r =
+          runEtctl("run " + name + " 'sh -c \"exit 7\"' --timeout 10");
       CHECK(r.code == 7);
       CHECK(r.out.find("ETCTL_") == string::npos);
     }
