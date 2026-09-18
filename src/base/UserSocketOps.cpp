@@ -1,9 +1,8 @@
 #include "UserSocketOps.hpp"
 
 #ifdef WIN32
-#include <windows.h>
-
 #include <io.h>
+#include <windows.h>
 
 namespace et {
 namespace {

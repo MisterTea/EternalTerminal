@@ -417,8 +417,8 @@ inline bool waitOnSocketData(int fd, int64_t sec = 1, int64_t usec = 0) {
     FATAL_FAIL(pollResult);
   }
   return pollResult > 0 &&
-         (pollFd.revents & (POLLRDNORM | POLLRDBAND | POLLHUP | POLLERR |
-                            POLLNVAL)) != 0;
+         (pollFd.revents &
+          (POLLRDNORM | POLLRDBAND | POLLHUP | POLLERR | POLLNVAL)) != 0;
 #else
   struct pollfd pollFd = {fd, POLLIN, 0};
   const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
