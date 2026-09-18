@@ -10,7 +10,6 @@
 #ifndef WIN32
 
 namespace et {
-namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
     bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,

@@ -467,6 +467,16 @@ add_library(
 add_dependencies(et-lib generated-code)
 decorate_target(et-lib)
 
+if(WIN32)
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ServerFifoPathWindows.cpp
+    src/terminal/UserTerminalHandlerWindows.cpp)
+else()
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ServerFifoPathUnix.cpp
+    src/terminal/UserTerminalHandlerUnix.cpp)
+endif()
+
 add_library(
   TerminalCommon STATIC
   src/terminal/forwarding/PortForwardHandler.hpp
@@ -483,17 +493,14 @@ add_library(
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/ServerFifoPath.hpp
-  src/terminal/ServerFifoPathWindows.cpp
-  src/terminal/ServerFifoPathUnix.cpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
-  src/terminal/UserTerminalHandlerWindows.cpp
-  src/terminal/UserTerminalHandlerUnix.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
   src/terminal/TelemetryService.cpp
+  ${TERMINAL_PLATFORM_SRCS}
   ${ETERMINAL_SRCS}
   ${ETERMINAL_HDRS})
 add_dependencies(TerminalCommon generated-code et-lib)
