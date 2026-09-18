@@ -2,11 +2,16 @@
 #include <filesystem>
 #include <fstream>
 
+#include "ControlConsole.hpp"
+#include "ControlListener.hpp"
+#include "ControlPaths.hpp"
+#include "DaemonCreator.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SessionCredentials.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -15,6 +20,17 @@
 #include "WinsockContext.hpp"
 
 using namespace et;
+
+// A short random suffix for an unnamed --ctl session's socket name.
+static string genRandomHandle() {
+  static const char* kHex = "0123456789abcdef";
+  std::random_device rd;
+  string handle;
+  for (int i = 0; i < 6; i++) {
+    handle.push_back(kHex[rd() % 16]);
+  }
+  return handle;
+}
 
 bool ping(SocketEndpoint socketEndpoint,
           shared_ptr<SocketHandler> clientSocketHandler) {
@@ -196,7 +212,22 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
         ("N,no-terminal", "Do not create a terminal")           //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
+        ("attach",
+         "Name this session NAME and adopt the one already running under that "
+         "name on the host, keeping its shell, cwd and running jobs. Starts a "
+         "new session (and remembers it as NAME) when there is nothing to "
+         "adopt, so it is safe to use every time.",
+         cxxopts::value<std::string>())  //
+        ("ctl",
+         "Run as a background control session driven by etctl (no local "
+         "terminal); name it with --attach, relocate its socket with "
+         "--ctl-socket. With -c/--command, that command runs once on connect "
+         "and the session stays alive.")  //
+        ("ctl-socket",
+         "Path for the --ctl socket (default ~/.et/sessions/<name>.sock, "
+         "or under $ET_SESSION_DIR)",
+         cxxopts::value<std::string>())                      //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("ssh-config",
@@ -469,7 +500,14 @@ int main(int argc, char** argv) {
     }
 
     shared_ptr<Console> console;
-    if (!result.count("N")) {
+    shared_ptr<ControlConsole> controlConsole;
+    if (result.count("ctl")) {
+      // Programmatic control mode: drive the session through a local socket
+      // instead of a TTY.  ControlConsole is a Console, so TerminalClient is
+      // unchanged.
+      controlConsole.reset(new ControlConsole());
+      console = controlConsole;
+    } else if (!result.count("N")) {
       console.reset(new PseudoTerminalConsole());
     }
 
@@ -505,18 +543,125 @@ int main(int argc, char** argv) {
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
+
+    // Bootstrapping over SSH mints fresh credentials and a fresh remote shell.
+    // Under --attach, cache them under the session name so a later `et` can
+    // adopt this session rather than stranding it.
+    const bool attachRequested = result.count("attach") > 0;
+    const string sessionName =
+        attachRequested ? result["attach"].as<string>() : string();
+    auto bootstrapNewSession = [&]() -> pair<string, string> {
+      pair<string, string> fresh = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
+          etterminal_path, serverFifo, ssh_options);
+      if (attachRequested) {
+        session_creds::save(sessionName, fresh.first, fresh.second);
+      }
+      return fresh;
+    };
+
+    // With --attach, try the cached credentials first. Nothing cached simply
+    // means there is no session under that name yet, so fall through and make
+    // one; the client does the same if the server turns out to disagree.
+    pair<string, string> idpasskeypair;
+    bool attachExisting = false;
+    if (attachRequested) {
+      string savedId, savedKey;
+      if (session_creds::load(sessionName, &savedId, &savedKey)) {
+        idpasskeypair = std::make_pair(savedId, savedKey);
+        attachExisting = true;
+      }
+    }
+    if (!attachExisting) {
+      idpasskeypair = bootstrapNewSession();
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
-        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
-    terminalClient.run(
-        result.count("command") ? result["command"].as<string>() : "",
-        result.count("noexit"));
+        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
+        attachExisting, bootstrapNewSession);
+    if (controlConsole) {
+#ifdef WIN32
+      CLOG(INFO, "stdout") << "--ctl is not supported on Windows" << endl;
+      exit(1);
+#else
+      // Resolve a stable session name and its local control socket, announce
+      // them on the real stdout, then detach and serve etctl requests.
+      // --attach already names the session, so it names the control socket too
+      // and the two cannot drift apart.
+      string ctlName = attachRequested
+                           ? sessionName
+                           : (destinationHost + "-" + genRandomHandle());
+      string socketPath;
+      try {
+        if (result.count("ctl-socket")) {
+          // Explicit location: honor it verbatim, creating parent dirs as
+          // needed. Such a session won't appear in `etctl sessions` (it lives
+          // outside the control dir); address it by path.
+          socketPath = result["ctl-socket"].as<string>();
+          size_t slash = socketPath.find_last_of('/');
+          if (slash != string::npos && slash > 0) {
+            control_paths::mkdirp0700(socketPath.substr(0, slash));
+          }
+        } else {
+          control_paths::ensureControlDir();
+          socketPath = control_paths::socketPathForName(ctlName);
+        }
+      } catch (const std::exception& e) {
+        CLOG(INFO, "stdout")
+            << "Could not prepare control socket: " << e.what() << endl;
+        exit(1);
+      }
+      // This name is starting, so whatever ended it last time no longer
+      // applies; clear the note before anyone can read a stale one.
+      session_creds::clearTombstone(ctlName);
+      CLOG(INFO, "stdout") << "et control session: " << ctlName << endl;
+      CLOG(INFO, "stdout") << "control socket: " << socketPath << endl;
+
+      // Double-fork into the background; the parent exits here.
+      DaemonCreator::create(true, "");
+
+      ControlListener listener(
+          controlConsole, socketPath,
+          [&terminalClient]() { terminalClient.shutdown(); },
+          [&terminalClient]() { return terminalClient.isConnected(); },
+          username.empty() ? destinationHost
+                           : (username + "@" + destinationHost));
+      listener.start();
+      // A control session is always persistent, so honor -c/--command as a
+      // one-shot startup command run on connect (e.g. to set up a clean-room
+      // shell) instead of silently dropping it.  noexit is implied, so run()
+      // injects "<command>\n" and does not append "; exit".  An adopted session
+      // already ran it when it was created, and its shell may have something in
+      // the foreground now, so it is not replayed.
+      const bool adopted = terminalClient.attachedToExisting();
+      terminalClient.run((!adopted && result.count("command"))
+                             ? result["command"].as<string>()
+                             : "",
+                         /*noexit=*/true);
+      // run() returning is what ends a control session, and unlinking the
+      // socket below is all the next `etctl` command would otherwise see. Leave
+      // the reason behind first, so that command can say what happened instead
+      // of reporting a missing file. When the server has genuinely forgotten
+      // the session, drop the cached credentials too: they name a session that
+      // no longer exists, and --attach would present them to a server that has
+      // already discarded the key.
+      const string endedBecause = terminalClient.exitReason();
+      LOG(INFO) << "Control session '" << ctlName
+                << "' ending: " << endedBecause;
+      session_creds::writeTombstone(ctlName, endedBecause);
+      if (terminalClient.sessionEndedByServer()) {
+        session_creds::forget(ctlName);
+      }
+      listener.shutdown();
+#endif
+    } else {
+      terminalClient.run(
+          result.count("command") ? result["command"].as<string>() : "",
+          result.count("noexit"));
+    }
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {
