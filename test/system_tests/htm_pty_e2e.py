@@ -82,6 +82,15 @@ def pids_named_from_proc(name: str) -> list[int]:
 
 
 def pid_is_live(pid: int) -> bool:
+    status_file = Path(f"/proc/{pid}/status")
+    if status_file.is_file():
+        try:
+            for line in status_file.read_text(encoding="utf-8").splitlines():
+                if line.startswith("State:"):
+                    fields = line.split()
+                    return len(fields) > 1 and fields[1] != "Z"
+        except OSError:
+            return False
     try:
         state = subprocess.check_output(
             ["ps", "-o", "stat=", "-p", str(pid)],
@@ -89,11 +98,20 @@ def pid_is_live(pid: int) -> bool:
             stderr=subprocess.DEVNULL,
         ).strip()
     except (FileNotFoundError, subprocess.CalledProcessError):
-        return False
+        try:
+            os.kill(pid, 0)
+            return True
+        except OSError:
+            return False
     return bool(state) and not state.startswith("Z")
 
 
 def pids_named(name: str) -> list[int]:
+    proc = Path("/proc")
+    if proc.is_dir():
+        pids = pids_named_from_proc(name)
+        if pids or not sys.platform.startswith("darwin"):
+            return pids
     try:
         out = subprocess.check_output(
             ["pgrep", "-x", "-U", str(uid()), name],
@@ -103,7 +121,7 @@ def pids_named(name: str) -> list[int]:
     except FileNotFoundError:
         return pids_named_from_proc(name)
     except subprocess.CalledProcessError:
-        return []
+        return pids_named_from_proc(name)
     return [int(p) for p in out.split() if p.isdigit() and pid_is_live(int(p))]
 
 

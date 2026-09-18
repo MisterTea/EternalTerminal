@@ -68,7 +68,7 @@ jobs:
               set -eu
               mkdir -p /var/lock
               opkg update
-              opkg install libsodium protobuf libopenssl zlib libstdcpp
+              opkg install libsodium protobuf libopenssl zlib libstdcpp python3
               ipk=$(find /workspace/bin/openwrt -name "eternalterminal*.ipk" | head -n 1)
               if [ -z "$ipk" ]; then
                 echo "Error: No eternalterminal IPK found in /workspace/bin/openwrt"
@@ -88,6 +88,12 @@ jobs:
               if [ -x /usr/bin/et-test ]; then
                 echo "Running unit tests with et-test..."
                 /usr/bin/et-test "~[.ghostty]"
+              fi
+              if [ -x /usr/bin/htm ] && [ -x /usr/bin/htmd ]; then
+                echo "Running htm e2e tests..."
+                python3 /workspace/test/system_tests/htm_pty_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
+                python3 /workspace/test/system_tests/htm_features_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
+                python3 /workspace/test/system_tests/htm_stress_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
               fi
               echo "OpenWrt package verified successfully!"
             '
