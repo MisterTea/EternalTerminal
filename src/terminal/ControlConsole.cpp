@@ -45,7 +45,7 @@ ControlConsole::~ControlConsole() {
 #endif
 }
 
-TerminalInfo ControlConsole::getTerminalInfo() {
+std::optional<TerminalInfo> ControlConsole::getTerminalInfo() {
   lock_guard<std::mutex> guard(sizeMutex);
   return size;
 }
@@ -57,6 +57,11 @@ void ControlConsole::write(const string& s) {
   scrollback.append(s);
   transcript.append('<', s);
   touchActivity();
+}
+
+size_t ControlConsole::writeSome(const string& s) {
+  write(s);
+  return s.size();
 }
 
 void ControlConsole::injectInput(const string& bytes, bool secret) {
