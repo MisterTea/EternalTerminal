@@ -121,6 +121,7 @@ jobs:
                 dev-libs/protobuf \
                 dev-libs/userspace-rcu \
                 dev-util/pkgconf \
+                dev-vcs/git \
                 net-misc/curl \
                 sys-libs/libunwind \
                 sys-libs/libutempter \
