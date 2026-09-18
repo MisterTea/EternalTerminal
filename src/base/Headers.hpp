@@ -248,12 +248,53 @@ inline int GetErrno() {
         return EACCES;
       case WSAEADDRNOTAVAIL:
         return EADDRNOTAVAIL;
+      case WSAENETDOWN:
+        return ENETDOWN;
       case WSAENETUNREACH:
         return ENETUNREACH;
+      case WSAENETRESET:
+        return ENETRESET;
+      case WSAENOBUFS:
+        return ENOBUFS;
+      case WSAEISCONN:
+        return EISCONN;
+      case WSAENOTCONN:
+        return ENOTCONN;
+      case WSAENAMETOOLONG:
+        return ENAMETOOLONG;
+      case WSAEAFNOSUPPORT:
+        return EAFNOSUPPORT;
+      case WSAEALREADY:
+        return EALREADY;
+      case WSAEDESTADDRREQ:
+        return EDESTADDRREQ;
+      case WSAEMSGSIZE:
+        return EMSGSIZE;
+      case WSAEPROTOTYPE:
+        return EPROTOTYPE;
+      case WSAENOPROTOOPT:
+        return ENOPROTOOPT;
+      case WSAEPROTONOSUPPORT:
+        return EPROTONOSUPPORT;
+      case WSAESOCKTNOSUPPORT:
+        return ENOTSUP;
+      case WSAEOPNOTSUPP:
+        return EOPNOTSUPP;
+      case WSAEPFNOSUPPORT:
+        return EAFNOSUPPORT;
+      case WSAEBADF:
+        return EBADF;
+      case WSAEFAULT:
+        return EFAULT;
+      case WSAELOOP:
+        return ELOOP;
+      case WSAEHOSTDOWN:
+        return EHOSTUNREACH;
       case WSAEHOSTUNREACH:
         return EHOSTUNREACH;
       default:
-        STFATAL << "Unmapped WSA error: " << retval;
+        LOG(WARNING) << "Unmapped WSA error: " << retval;
+        return retval;
     }
   }
   return retval;

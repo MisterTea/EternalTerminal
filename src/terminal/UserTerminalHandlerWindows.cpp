@@ -60,11 +60,9 @@ void UserTerminalHandler::run() {
     break;
   }
 
-  // ConPTY terminal ignores the router fd for I/O; output is drained via
-  // PseudoUserTerminal::drainOutput() and input via writeInput().
-  term->setup(routerFd);
+  int masterfd = term->setup(routerFd);
   // Apply the initial size if the client sent one before first output.
-  runUserTerminal(0);
+  runUserTerminal(masterfd);
   socketHandler->close(routerFd);
 }
 
@@ -180,7 +178,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
     // (WSAPoll-based checks: no FD_SETSIZE ceiling to worry about.)
     const bool routerWritable = isSocketWritable(routerFd);
     const bool termReadable =
-        routerWritable && socketHandler->hasData(masterFd);
+        routerWritable && waitOnSocketData(masterFd, 0, 0);
     const bool routerReadable = pendingInput.length() < maxPendingInput &&
                                 socketHandler->hasData(routerFd);
     if (!termReadable && !routerReadable && pendingInput.empty()) {
@@ -192,7 +190,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
     try {
       if (termReadable) {
         memset(b, 0, BUF_SIZE);
-        ssize_t rc = socketHandler->read(masterFd, b, BUF_SIZE);
+        ssize_t rc = ::recv(masterFd, b, BUF_SIZE, 0);
         int readErrno = GetErrno();
         if (rc > 0) {
           VLOG(4) << "Read from terminal";
@@ -259,8 +257,8 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
       }
 
       if (!pendingInput.empty()) {
-        ssize_t rc = socketHandler->write(masterFd, pendingInput.data(),
-                                          pendingInput.length());
+        ssize_t rc = ::send(masterFd, pendingInput.data(),
+                            static_cast<int>(pendingInput.length()), 0);
         int writeErrno = GetErrno();
         if (rc > 0) {
           pendingInput.erase(0, rc);

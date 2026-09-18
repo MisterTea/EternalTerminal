@@ -2,6 +2,7 @@
 
 #include <cstdint>
 
+#include "PseudoTerminalConsole.hpp"
 #include "TelemetryService.hpp"
 #include "TmuxCcFilter.hpp"
 #include "TunnelUtils.hpp"
@@ -205,40 +206,47 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
     set<int> readyFds;
 #ifdef WIN32
-    fd_set rfd, wfd;
-    FD_ZERO(&rfd);
-    FD_ZERO(&wfd);
-    int maxfd = -1;
-    if (consoleFd >= 0) {
-      FD_SET(consoleFd, &rfd);
-      maxfd = consoleFd;
+    vector<WSAPOLLFD> pollFds;
+    auto watch = [&pollFds](int fd, short events) {
+      if (fd <= 0) return;
+      for (auto& pollFd : pollFds) {
+        if (pollFd.fd == static_cast<SOCKET>(fd)) {
+          pollFd.events |= events;
+          return;
+        }
+      }
+      WSAPOLLFD pfd = {};
+      pfd.fd = static_cast<SOCKET>(fd);
+      pfd.events = events;
+      pollFds.push_back(pfd);
+    };
+    auto* pseudoConsole = dynamic_cast<PseudoTerminalConsole*>(console.get());
+    if (consoleFd >= 0 && !pseudoConsole) {
+      watch(consoleFd, POLLRDNORM);
     }
-    if (consoleWritable) {
-      FD_SET(console->getFd(), &wfd);
-      maxfd = max(maxfd, console->getFd());
+    if (consoleWritable && !pseudoConsole) {
+      watch(console->getFd(), POLLWRNORM);
     }
     if (watchClient) {
-      FD_SET(clientFd, &rfd);
-      maxfd = max(maxfd, clientFd);
+      watch(clientFd, POLLRDNORM);
     }
     for (int fd : pfFds) {
-      FD_SET(fd, &rfd);
-      maxfd = max(maxfd, fd);
+      watch(fd, POLLRDNORM);
     }
-    timeval tv;
-    tv.tv_sec = 0;
-    tv.tv_usec = 10000;
-    select(maxfd + 1, &rfd, &wfd, NULL, &tv);
-    if (consoleFd >= 0 && FD_ISSET(consoleFd, &rfd)) {
-      readyFds.insert(consoleFd);
-    }
-    if (watchClient && FD_ISSET(clientFd, &rfd)) {
-      readyFds.insert(clientFd);
-    }
-    for (int fd : pfFds) {
-      if (FD_ISSET(fd, &rfd)) {
-        readyFds.insert(fd);
+    if (!pollFds.empty()) {
+      const int pollResult =
+          ::WSAPoll(pollFds.data(), static_cast<ULONG>(pollFds.size()), 10);
+      if (pollResult > 0) {
+        for (const auto& pollFd : pollFds) {
+          if ((pollFd.events & (POLLRDNORM | POLLRDBAND)) != 0 &&
+              (pollFd.revents &
+               (POLLRDNORM | POLLRDBAND | POLLERR | POLLHUP | POLLNVAL)) != 0) {
+            readyFds.insert(static_cast<int>(pollFd.fd));
+          }
+        }
       }
+    } else {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
 #else
     // poll() has no FD_SETSIZE ceiling, and unlike epoll it accepts the
@@ -301,52 +309,90 @@ void TerminalClient::run(const string& command, const bool noexit) {
           // the server.
           VLOG(4) << "Got data from stdin";
 #ifdef WIN32
-          HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
-          DWORD consoleMode = 0;
-          if (handle == NULL || handle == INVALID_HANDLE_VALUE ||
-              !GetConsoleMode(handle, &consoleMode)) {
-            // stdin is redirected (nohup/background/service): there is no
-            // keyboard to read, but the session must survive. Mirrors the
-            // Unix non-tty path below.
-            LOG(INFO) << "Console stdin is not a console, disabling "
-                         "console input";
-            consoleInputDisabled = true;
-          } else {
-            DWORD events = 0;
-            INPUT_RECORD buffer[128];
-            if (!PeekConsoleInput(handle, buffer, 128, &events)) {
-              events = 0;
-            }
-            if (events > 0) {
-              if (!ReadConsoleInput(handle, buffer, 128, &events)) {
+          auto* pseudoConsole =
+              dynamic_cast<PseudoTerminalConsole*>(console.get());
+          if (pseudoConsole) {
+            HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
+            DWORD consoleMode = 0;
+            if (handle == NULL || handle == INVALID_HANDLE_VALUE ||
+                !GetConsoleMode(handle, &consoleMode)) {
+              // stdin is redirected (nohup/background/service): there is no
+              // keyboard to read, but the session must survive. Mirrors the
+              // Unix non-tty path below.
+              LOG(INFO) << "Console stdin is not a console, disabling "
+                           "console input";
+              consoleInputDisabled = true;
+            } else {
+              DWORD events = 0;
+              INPUT_RECORD buffer[128];
+              if (!PeekConsoleInput(handle, buffer, 128, &events)) {
                 events = 0;
               }
-              string s;
-              for (int keyEvent = 0; keyEvent < events; keyEvent++) {
-                if (buffer[keyEvent].EventType == KEY_EVENT &&
-                    buffer[keyEvent].Event.KeyEvent.bKeyDown) {
-                  char charPressed =
-                      ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
-                  if (charPressed) {
-                    s += charPressed;
+              if (events > 0) {
+                if (!ReadConsoleInput(handle, buffer, 128, &events)) {
+                  events = 0;
+                }
+                string s;
+                for (int keyEvent = 0; keyEvent < events; keyEvent++) {
+                  if (buffer[keyEvent].EventType == KEY_EVENT &&
+                      buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+                    char charPressed =
+                        ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+                    if (charPressed) {
+                      s += charPressed;
+                    }
                   }
                 }
-              }
-              if (s.length()) {
-                et::TerminalBuffer tb;
-                tb.set_buffer(s);
+                if (s.length()) {
+                  et::TerminalBuffer tb;
+                  tb.set_buffer(s);
 
-                connection->writePacket(Packet(
-                    TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-                keepaliveTime = time(NULL) + keepaliveDuration;
-                if (WriteBuffer::containsInterruptByte(s) ||
-                    tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
-                  skipServerRead = true;
-                  consoleOut.filterDroppable();
-                  LOG(INFO) << "Interrupt from stdin (" << s.size()
-                            << " bytes), consoleOut=" << consoleOut.size();
+                  connection->writePacket(Packet(
+                      TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+                  keepaliveTime = time(NULL) + keepaliveDuration;
+                  if (WriteBuffer::containsInterruptByte(s) ||
+                      tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+                    skipServerRead = true;
+                    consoleOut.filterDroppable();
+                    LOG(INFO) << "Interrupt from stdin (" << s.size()
+                              << " bytes), consoleOut=" << consoleOut.size();
+                  }
+                  tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
                 }
-                tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
+              }
+            }
+          } else {
+            // Socket-backed console (e.g. FakeConsole in integration tests).
+            char b[BUF_SIZE];
+            int rc = ::recv(consoleFd, b, BUF_SIZE, 0);
+            int savedErrno = GetErrno();
+            if (rc > 0) {
+              string s(b, rc);
+              et::TerminalBuffer tb;
+              tb.set_buffer(s);
+
+              connection->writePacket(Packet(
+                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+              keepaliveTime = time(NULL) + keepaliveDuration;
+              if (WriteBuffer::containsInterruptByte(s) ||
+                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+                skipServerRead = true;
+                consoleOut.filterDroppable();
+                LOG(INFO) << "Interrupt from stdin (" << s.size()
+                          << " bytes), consoleOut=" << consoleOut.size();
+              }
+              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
+            } else if (rc == 0) {
+              LOG(INFO) << "Console is at EOF, disabling console input";
+              consoleInputDisabled = true;
+            } else {
+              if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
+                // Transient error, retry
+              } else {
+                LOG(INFO) << "Console read error (" << savedErrno
+                          << "): " << strerror(savedErrno)
+                          << ", disabling console input";
+                consoleInputDisabled = true;
               }
             }
           }

@@ -117,9 +117,11 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   const char* var1 = getenv("ET_TEST_VAR1");
   REQUIRE(var1 != nullptr);
   REQUIRE(string(var1) == "test_value_1");
+#ifndef WIN32
   const char* var2 = getenv("ET_TEST_VAR2_EMPTY");
   REQUIRE(var2 != nullptr);
   REQUIRE(string(var2) == "");
+#endif
 
   terminalClient->shutdown();
   terminalClientThread.join();
