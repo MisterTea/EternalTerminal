@@ -82,15 +82,16 @@ def pids_named_from_proc(name: str) -> list[int]:
 
 
 def pid_is_live(pid: int) -> bool:
-    status_file = Path(f"/proc/{pid}/status")
-    if status_file.is_file():
-        try:
-            for line in status_file.read_text(encoding="utf-8").splitlines():
-                if line.startswith("State:"):
-                    fields = line.split()
-                    return len(fields) > 1 and fields[1] != "Z"
-        except OSError:
-            return False
+    if sys.platform.startswith("linux"):
+        status_file = Path(f"/proc/{pid}/status")
+        if status_file.is_file():
+            try:
+                for line in status_file.read_text(encoding="utf-8").splitlines():
+                    if line.startswith("State:"):
+                        fields = line.split()
+                        return len(fields) > 1 and fields[1] != "Z"
+            except OSError:
+                return False
     try:
         state = subprocess.check_output(
             ["ps", "-o", "stat=", "-p", str(pid)],
@@ -107,10 +108,9 @@ def pid_is_live(pid: int) -> bool:
 
 
 def pids_named(name: str) -> list[int]:
-    proc = Path("/proc")
-    if proc.is_dir():
+    if sys.platform.startswith("linux") and Path("/proc").is_dir():
         pids = pids_named_from_proc(name)
-        if pids or not sys.platform.startswith("darwin"):
+        if pids:
             return pids
     try:
         out = subprocess.check_output(

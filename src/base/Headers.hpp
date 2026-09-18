@@ -145,8 +145,7 @@ namespace fs = boost::filesystem
 #include "sago/platform_folders.h"
 #include "sole.hpp"
 
-#if defined(ET_NO_STACKTRACE) || \
-    (!defined(_WIN32) && !__has_include(<execinfo.h>) && \
+#if defined(ET_NO_STACKTRACE) || (!defined(_WIN32) && !__has_include(<execinfo.h>) && \
      !__has_include(<libunwind.h>))
 #define ET_DISABLE_STACKTRACE 1
 #endif
