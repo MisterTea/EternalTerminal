@@ -4,6 +4,9 @@
 #include "SimpleIni.h"
 #include "TelemetryService.hpp"
 #include "TerminalServer.hpp"
+#ifdef WIN32
+#include "WinsockContext.hpp"
+#endif
 
 using namespace et;
 namespace google {}
@@ -12,6 +15,9 @@ using namespace google;
 using namespace gflags;
 
 int main(int argc, char** argv) {
+#ifdef WIN32
+  WinsockContext winsockContext;
+#endif
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
@@ -42,7 +48,12 @@ int main(int argc, char** argv) {
         ("logtostdout", "log to stdout")  //
         ("pidfile", "Location of the pid file",
          cxxopts::value<std::string>()->default_value(
-             "/var/run/etserver.pid"))  //
+#ifdef WIN32
+             (GetTempDirectory() + "etserver.pid")
+#else
+             "/var/run/etserver.pid"
+#endif
+                 ))  //
         ("v,verbose", "Enable verbose logging",
          cxxopts::value<int>()->default_value("0"), "LEVEL")  //
         ("serverfifo",

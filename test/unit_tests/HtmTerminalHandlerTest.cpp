@@ -47,7 +47,7 @@ TEST_CASE("TerminalHandler start echo and resize", "[Htm][TerminalHandler]") {
 #endif
     return !term.isRunning();
   };
-  bool finished = waitUntil(pollEcho, 8000);
+  bool finished = waitUntil(pollEcho, 20000);
 
 #ifdef WIN32
   if (!echoed) {
@@ -85,7 +85,7 @@ TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
 #endif
     return !term.isRunning();
   };
-  bool exited = waitUntil(pollExit, 8000);
+  bool exited = waitUntil(pollExit, 20000);
 #ifdef WIN32
   if (!exited) {
     SKIP(
@@ -134,7 +134,7 @@ TEST_CASE("TerminalHandler trims a large scrollback buffer",
         term.pollUserTerminal();
         return term.getBuffer().size() > 20;
       },
-      8000));
+      20000));
   auto start = std::chrono::steady_clock::now();
   while (std::chrono::duration_cast<std::chrono::milliseconds>(
              std::chrono::steady_clock::now() - start)

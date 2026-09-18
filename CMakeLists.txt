@@ -432,6 +432,7 @@ add_library(
   src/base/FdPoller.cpp
   src/base/FdPollerKqueue.cpp
   src/base/FdPollerLinux.cpp
+  src/base/FdPollerWindows.cpp
   src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
   src/base/ServerConnection.hpp
@@ -466,6 +467,16 @@ add_library(
 add_dependencies(et-lib generated-code)
 decorate_target(et-lib)
 
+if(WIN32)
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ServerFifoPathWindows.cpp
+    src/terminal/UserTerminalHandlerWindows.cpp)
+else()
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ServerFifoPathUnix.cpp
+    src/terminal/UserTerminalHandlerUnix.cpp)
+endif()
+
 add_library(
   TerminalCommon STATIC
   src/terminal/forwarding/PortForwardHandler.hpp
@@ -482,15 +493,14 @@ add_library(
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/ServerFifoPath.hpp
-  src/terminal/ServerFifoPath.cpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
-  src/terminal/UserTerminalHandler.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
   src/terminal/TelemetryService.cpp
+  ${TERMINAL_PLATFORM_SRCS}
   ${ETERMINAL_SRCS}
   ${ETERMINAL_HDRS})
 add_dependencies(TerminalCommon generated-code et-lib)
@@ -595,8 +605,36 @@ target_link_libraries(
 decorate_target(htmd)
 
 if(WIN32)
+  add_executable(etserver src/terminal/TerminalServerMain.cpp)
+  target_link_libraries(
+    etserver
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etserver generated-code et-lib)
+  decorate_target(etserver)
+
+  add_executable(etterminal src/terminal/TerminalMain.cpp)
+  target_link_libraries(
+    etterminal
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etterminal generated-code et-lib)
+  decorate_target(etterminal)
+
   install(
-    TARGETS et htm htmd
+    TARGETS et htm htmd etserver etterminal
     DESTINATION "bin"
     COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
@@ -612,22 +650,9 @@ if(WIN32)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/*Test.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/*Test.cpp)
 
-    # These tests exercise production facilities that do not exist on Windows:
-    # fork/SCM_RIGHTS privilege dropping, Unix server/terminal handlers, a
-    # POSIX PTY/terminal host, or epoll/kqueue readiness polling. Keep this
-    # exclusion list explicit so every new portable test is included on
-    # Windows automatically.
-    set(WINDOWS_UNSUPPORTED_TEST_SRCS
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/HandleConnectionTimeoutTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/JumphostTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalServerTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/FdPollerTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/HtmGhosttyE2eTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ServerFifoPathTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/UserSocketOpsTest.cpp
-      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/UserTerminalHandlerTest.cpp)
-    list(REMOVE_ITEM WINDOWS_TEST_SRCS ${WINDOWS_UNSUPPORTED_TEST_SRCS})
+    # Same test set as Unix (see the else(WIN32) branch below): every test is
+    # expected to compile and pass on Windows. Platform-impossible cases
+    # SKIP at runtime with a reason instead of being excluded here.
     add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
     target_include_directories(
       et-test PRIVATE test test/integration_tests test/unit_tests)
@@ -646,6 +671,7 @@ if(WIN32)
       ${CORE_LIBRARIES})
     catch_discover_tests(
       et-test
+      TEST_SPEC "~[.ghostty]"
       TEST_PREFIX "et-test."
       WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
       ADD_TAGS_AS_LABELS

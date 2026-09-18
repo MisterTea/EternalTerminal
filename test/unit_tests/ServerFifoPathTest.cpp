@@ -1,16 +1,22 @@
-#include <ftw.h>
-
 #include <optional>
+
+#ifdef WIN32
+#include <windows.h>
+#else
+#include <ftw.h>
+#endif
 
 #include "ServerFifoPath.hpp"
 #include "TestHeaders.hpp"
 
 using namespace et;
+using namespace et::test;
 
 namespace {
 
 struct FileInfo {
   bool exists = false;
+#ifndef WIN32
   mode_t mode = 0;
 
   mode_t fileMode() const { return mode & 0777; }
@@ -22,8 +28,10 @@ struct FileInfo {
     INFO("fileMode()=" << fileMode() << ", highestMode=" << highestMode);
     REQUIRE((fileMode() & highestMode) == fileMode());
   }
+#endif
 };
 
+#ifndef WIN32
 bool IsRoot() { return ::geteuid() == 0; }
 
 int RemoveDirectory(const char* path) {
@@ -35,18 +43,22 @@ int RemoveDirectory(const char* path) {
       64,  // Maximum open fds.
       FTW_DEPTH | FTW_PHYS);
 }
+#endif
 
 class TestEnvironment {
  public:
   string createTempDir() {
-    string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
-    const string dir = string(mkdtemp(&tmpPath[0]));
-
+    string dir = test::makeTempDir("et_test");
     temporaryDirs.push_back(dir);
     return dir;
   }
 
   FileInfo getFileInfo(const string& name) {
+#ifdef WIN32
+    FileInfo result;
+    result.exists = GetFileAttributesA(name.c_str()) != INVALID_FILE_ATTRIBUTES;
+    return result;
+#else
     struct stat fileStat;
     const int statResult = ::stat(name.c_str(), &fileStat);
     if (statResult != 0) {
@@ -57,38 +69,61 @@ class TestEnvironment {
     result.exists = true;
     result.mode = fileStat.st_mode;
     return result;
+#endif
   }
 
   void setEnv(const char* name, const string& value) {
     backupEnv(name);
 
+#ifdef WIN32
+    SetEnvironmentVariableA(name, value.c_str());
+#else
     const int replace = 1;  // non-zero to replace.
     ::setenv(name, value.c_str(), replace);
+#endif
   }
 
   void unsetEnv(const char* name) {
     backupEnv(name);
+#ifdef WIN32
+    SetEnvironmentVariableA(name, nullptr);
+#else
     ::unsetenv(name);
+#endif
   }
 
   ~TestEnvironment() {
     // Remove temporary dirs.
     for (const string& dir : temporaryDirs) {
+#ifdef WIN32
+      std::error_code ec;
+      fs::remove_all(dir, ec);
+      if (ec) {
+        LOG(ERROR) << "Error when removing dir: " << dir << ": "
+                   << ec.message();
+      }
+#else
       const int removeResult = RemoveDirectory(dir.c_str());
       if (removeResult == -1) {
         LOG(ERROR) << "Error when removing dir: " << dir;
         FATAL_FAIL(removeResult);
       }
+#endif
     }
 
     // Restore env.
     for (const auto& [key, value] : savedEnvs) {
+#ifdef WIN32
+      SetEnvironmentVariableA(key.c_str(),
+                              value.has_value() ? value->c_str() : nullptr);
+#else
       if (value) {
         const int replace = 1;  // non-zero to replace.
         ::setenv(key.c_str(), value->c_str(), replace);
       } else {
         ::unsetenv(key.c_str());
       }
+#endif
     }
   }
 
@@ -110,6 +145,61 @@ class TestEnvironment {
 
 }  // namespace
 
+#ifdef WIN32
+TEST_CASE("Creation", "[ServerFifoPath]") {
+  TestEnvironment env;
+
+  // Windows has no root/XDG split: one per-user path under %TEMP%.
+  string tmp = GetTempDirectory();
+  for (char& c : tmp) {
+    if (c == '\\') {
+      c = '/';
+    }
+  }
+  if (!tmp.empty() && tmp.back() != '/') {
+    tmp += '/';
+  }
+  const string expectedFifoPath = tmp + "etserver." + GetHtmIpcUser() + ".fifo";
+
+  ServerFifoPath serverFifo;
+  REQUIRE(serverFifo.getPathForCreation() == expectedFifoPath);
+  REQUIRE(serverFifo.getEndpointForConnect() ==
+          std::nullopt);  // Expected to be null unless the path is overridden.
+
+  SECTION("Create directories is a no-op for the existing temp dir") {
+    serverFifo.createDirectoriesIfRequired();
+    REQUIRE(env.getFileInfo(tmp).exists);
+  }
+
+  SECTION("Override path skips directory creation") {
+    const string pathOverride = env.createTempDir() + "/etserver.fifo";
+    serverFifo.setPathOverride(pathOverride);
+    REQUIRE(serverFifo.getPathForCreation() == pathOverride);
+    serverFifo.createDirectoriesIfRequired();
+    const optional<SocketEndpoint> endpoint =
+        serverFifo.getEndpointForConnect();
+    REQUIRE(endpoint != std::nullopt);
+    REQUIRE(endpoint.value().name() == pathOverride);
+  }
+}
+
+TEST_CASE("Override", "[ServerFifoPath]") {
+  TestEnvironment env;
+
+  ServerFifoPath serverFifo;
+  REQUIRE(serverFifo.getEndpointForConnect() == std::nullopt);
+
+  // Override and re-test.
+  const string pathOverride = env.createTempDir() + "/etserver.idpasskey.fifo";
+  serverFifo.setPathOverride(pathOverride);
+
+  REQUIRE(serverFifo.getPathForCreation() == pathOverride);
+
+  const optional<SocketEndpoint> endpoint = serverFifo.getEndpointForConnect();
+  REQUIRE(endpoint != std::nullopt);
+  REQUIRE(endpoint.value().name() == pathOverride);
+}
+#else
 TEST_CASE("Creation", "[ServerFifoPath]") {
   if (IsRoot()) {
     WARN("Test running as root: Skipping test");
@@ -250,3 +340,4 @@ TEST_CASE("Override", "[ServerFifoPath]") {
   REQUIRE(endpoint != std::nullopt);
   REQUIRE(endpoint.value().name() == pathOverride);
 }
+#endif

@@ -44,6 +44,12 @@ class UserTerminalHandler {
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
+#ifdef WIN32
+  /** @brief Pumps a ConPTY terminal (see PseudoUserTerminal). */
+  void runConPtyTerminal(class PseudoUserTerminal& conpty);
+  /** @brief Pumps a socket-backed terminal (test doubles, same protocol). */
+  void runSocketTerminal(int masterFd);
+#endif
 };
 }  // namespace et
 

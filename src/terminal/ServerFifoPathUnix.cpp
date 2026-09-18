@@ -1,5 +1,6 @@
-#ifndef WIN32
 #include "ServerFifoPath.hpp"
+
+#ifndef WIN32
 
 namespace et {
 

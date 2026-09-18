@@ -1,4 +1,3 @@
-#ifndef WIN32
 #include "FakeConsole.hpp"
 #include "PipeSocketHandler.hpp"
 #include "TestHeaders.hpp"
@@ -14,8 +13,7 @@ TEST_CASE("UserTerminalHandler shutdown method exists",
   auto socketHandler = std::make_shared<PipeSocketHandler>();
   auto term = std::make_shared<FakeUserTerminal>(socketHandler);
 
-  string tmpPath = GetTempDirectory() + string("et_test_handler_XXXXXXXX");
-  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  string pipeDirectory = test::makeTempDir("et_test_handler");
   string pipePath = pipeDirectory + "/router_pipe";
 
   SocketEndpoint routerEndpoint;
@@ -24,13 +22,13 @@ TEST_CASE("UserTerminalHandler shutdown method exists",
   // Just verify that the shutdown method exists and can be called
   // without causing compilation errors
   UserTerminalHandler* handler = nullptr;
+  (void)handler;
+  (void)term;
   // Note: We're not actually creating the handler here because it requires
   // a running router endpoint, which would require complex setup.
   // The shutdown() method is already tested in integration tests.
 
   REQUIRE(true);  // Placeholder to indicate this test passes
 
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  test::removeTempDir(pipeDirectory);
 }
-
-#endif

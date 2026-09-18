@@ -1,4 +1,3 @@
-#ifndef WIN32
 #include "TerminalServer.hpp"
 
 #include <cstdint>
@@ -14,14 +13,15 @@
 namespace et {
 namespace {
 
-void drainDiscardReadableBytes(int fd, WriteBuffer* buf) {
+void drainDiscardReadableBytes(shared_ptr<SocketHandler> handler, int fd,
+                               WriteBuffer* buf) {
   char bufBytes[BUF_SIZE];
   bool got = false;
   while (true) {
     if (!waitOnSocketData(fd, 0, 0)) {
       break;
     }
-    int rc = ::read(fd, bufBytes, BUF_SIZE);
+    ssize_t rc = handler->read(fd, bufBytes, BUF_SIZE);
     if (rc <= 0) {
       break;
     }
@@ -472,7 +472,8 @@ void TerminalServer::runTerminal(
                 if (dropped > 0) {
                   LOG(INFO) << "Flushed " << dropped
                             << " bytes of terminal output on interrupt";
-                  drainDiscardReadableBytes(terminalFd, &terminalOutputBuffer);
+                  drainDiscardReadableBytes(terminalSocketHandler, terminalFd,
+                                            &terminalOutputBuffer);
                 }
               }
               tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
@@ -526,7 +527,7 @@ void TerminalServer::runTerminal(
       if (readyFds.count(terminalFd) != 0) {
         // Read from terminal and write to client
         memset(b, 0, BUF_SIZE);
-        int rc = read(terminalFd, b, BUF_SIZE);
+        ssize_t rc = terminalSocketHandler->read(terminalFd, b, BUF_SIZE);
         if (rc > 0) {
           VLOG(2) << "Sending bytes from terminal: " << rc << " "
                   << serverClientState->getWriter()->getSequenceNumber();
@@ -547,12 +548,13 @@ void TerminalServer::runTerminal(
           LOG(INFO) << "Terminal session ended";
           run = false;
           break;
-        } else if ((errno == EAGAIN) || (errno == EWOULDBLOCK)) {
+        } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
           // Common after a Ctrl+C drain-discard of already-readable bytes.
           continue;
         } else {
-          LOG(ERROR) << "Error reading from socket: " << errno << " "
-                     << strerror(errno);
+          int readErr = GetErrno();
+          LOG(ERROR) << "Error reading from socket: " << readErr << " "
+                     << strerror(readErr);
           run = false;
           break;
         }
@@ -601,7 +603,7 @@ void TerminalServer::handleConnection(
         return;
       }
       LOG_EVERY_N(10, INFO) << "Waiting for initial packet...";
-      sleep(1);
+      std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
       STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
@@ -637,4 +639,3 @@ bool TerminalServer::newClient(
   return true;
 }
 }  // namespace et
-#endif

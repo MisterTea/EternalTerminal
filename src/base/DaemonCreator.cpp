@@ -10,16 +10,44 @@ int DaemonCreator::createSessionLeader() { return 0; }
 
 int DaemonCreator::create(bool parentExit, string childPidFile) {
   wchar_t modulePath[MAX_PATH];
+  DWORD moduleLen = GetModuleFileNameW(NULL, modulePath, MAX_PATH);
+  fs::path currentExe;
+  wstring currentStem;
+  if (moduleLen != 0) {
+    currentExe = fs::path(modulePath);
+    currentStem = currentExe.stem().wstring();
+    for (auto& c : currentStem) {
+      c = towlower(c);
+    }
+  }
+
+  // htm.exe daemonizes htmd.exe (sibling or on PATH). Every other binary
+  // (etserver.exe, etterminal.exe) daemonizes itself detached, mirroring the
+  // Unix double-fork.
+  bool launchHtmd = (currentStem == L"htm");
   fs::path htmdPath;
-  if (GetModuleFileNameW(NULL, modulePath, MAX_PATH) != 0) {
-    htmdPath = fs::path(modulePath).parent_path() / L"htmd.exe";
+  if (launchHtmd && moduleLen != 0) {
+    htmdPath = currentExe.parent_path() / L"htmd.exe";
   }
 
   wstring cmdLine;
   const wchar_t* application = nullptr;
-  if (!htmdPath.empty() && fs::exists(htmdPath)) {
-    application = htmdPath.c_str();
-    cmdLine = L"\"" + htmdPath.wstring() + L"\"";
+  if (launchHtmd) {
+    if (!htmdPath.empty() && fs::exists(htmdPath)) {
+      application = htmdPath.c_str();
+      cmdLine = L"\"" + htmdPath.wstring() + L"\"";
+    } else {
+      cmdLine = L"htmd.exe";
+    }
+  } else if (moduleLen != 0) {
+    // Relaunch self detached with the same arguments (minus --daemon, which
+    // the child does not need to re-handle).
+    application = nullptr;  // Use command line's executable.
+    wstring fullCmd = GetCommandLineW();
+    // GetCommandLineW includes the exe; reuse it verbatim so all flags
+    // survive. The child sees --daemon again but create() is idempotent: it
+    // will spawn once more only if --daemon handling loops, so strip it.
+    cmdLine = fullCmd;
   } else {
     cmdLine = L"htmd.exe";
   }

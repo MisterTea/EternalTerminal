@@ -107,8 +107,7 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest][integration]") {
   fakeUserTerminal.reset(new FakeUserTerminal(terminalUserSocketHandler));
   fakeUserTerminal->setup(-1);
 
-  string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-  pipeDirectory = string(mkdtemp(&tmpPath[0]));
+  pipeDirectory = test::makeTempDir("etserver_test");
 
   string routerPipePath = string(pipeDirectory) + "/pipe_router";
   SocketEndpoint routerEndpoint;
@@ -165,6 +164,6 @@ TEST_CASE("JumphostEndToEndTest", "[JumphostEndToEndTest][integration]") {
   removeOrMissing(jumphostServerPipePath);
   removeOrMissing(routerPipePath);
   removeOrMissing(serverPipePath);
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  test::removeTempDir(pipeDirectory);
 }
 }  // namespace et

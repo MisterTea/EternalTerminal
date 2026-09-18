@@ -4,34 +4,48 @@
  * never speaks, and run() never finishes joining it at shutdown.
  */
 
-#include <fcntl.h>
-#include <sys/socket.h>
-#include <unistd.h>
-
 #include <chrono>
 #include <future>
 #include <thread>
+
+#ifndef WIN32
+#include <fcntl.h>
+#include <sys/socket.h>
+#include <unistd.h>
+#endif
 
 #include "PipeSocketHandler.hpp"
 #include "ServerClientConnection.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 
 using namespace et;
+using namespace et::test;
 
 namespace {
-// Reads and writes raw descriptors, so a plain socketpair can stand in for a
-// connected client. UnixSocketHandler refuses descriptors it did not create.
+// Reads and writes raw descriptors, so a connected socket pair can stand in
+// for a connected client. UnixSocketHandler refuses descriptors it did not
+// create.
 class FdSocketHandler : public SocketHandler {
  public:
   bool hasData(int fd) override { return waitOnSocketData(fd); }
 
   ssize_t read(int fd, void* buf, size_t count) override {
+#ifdef WIN32
+    return ::recv(fd, static_cast<char*>(buf), static_cast<int>(count), 0);
+#else
     return ::read(fd, buf, count);
+#endif
   }
 
   ssize_t write(int fd, const void* buf, size_t count) override {
+#ifdef WIN32
+    return ::send(fd, static_cast<const char*>(buf), static_cast<int>(count),
+                  0);
+#else
     return ::write(fd, buf, count);
+#endif
   }
 
   int connect(const SocketEndpoint&) override { return -1; }
@@ -39,7 +53,7 @@ class FdSocketHandler : public SocketHandler {
   set<int> getEndpointFds(const SocketEndpoint&) override { return {}; }
   int accept(int) override { return -1; }
   void stopListening(const SocketEndpoint&) override {}
-  void close(int fd) override { ::close(fd); }
+  void close(int fd) override { test::closeTestFd(fd); }
   vector<int> getActiveSockets() override { return {}; }
 };
 
@@ -73,10 +87,7 @@ struct ServerFixture {
   SocketEndpoint routerEndpoint;
 
   ServerFixture() {
-    string pattern = GetTempDirectory() + string("et_handleconn_XXXXXX");
-    const char* created = mkdtemp(&pattern[0]);
-    REQUIRE(created != nullptr);
-    directory = string(created);
+    directory = test::makeTempDir("et_handleconn");
     serverPipePath = directory + "/pipe_server";
     routerPipePath = directory + "/pipe_router";
 
@@ -97,7 +108,7 @@ struct ServerFixture {
     routerSocketHandler->stopListening(routerEndpoint);
     ::remove(serverPipePath.c_str());
     ::remove(routerPipePath.c_str());
-    ::rmdir(directory.c_str());
+    test::removeTempDir(directory);
   }
 };
 
@@ -140,11 +151,16 @@ struct HandleConnectionRun {
 // connection gets its own handler because UnixSocketHandler refuses
 // descriptors it did not create.
 shared_ptr<ServerClientConnection> makeSilentClient(int fds[2]) {
-  REQUIRE(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
   // Non-blocking, as initSocket() leaves every socket the server owns. A
   // blocking descriptor would park BackedReader::read() instead of reporting
   // that no data is available.
+#ifdef WIN32
+  u_long nonBlocking = 1;
+  REQUIRE(ioctlsocket(fds[0], FIONBIO, &nonBlocking) == NO_ERROR);
+#else
   REQUIRE(::fcntl(fds[0], F_SETFL, O_NONBLOCK) == 0);
+#endif
   return make_shared<ServerClientConnection>(
       make_shared<FdSocketHandler>(), "silent-client", fds[0],
       "abcdefghijklmnopqrstuvwxyz012345");
@@ -182,7 +198,7 @@ TEST_CASE("handleConnection returns when the server is halted",
     // mutex it holds. Skipping it on failure keeps teardown from hanging.
     connection->shutdown();
   }
-  ::close(fds[1]);
+  test::closeTestFd(fds[1]);
   REQUIRE(returned);
 }
 
@@ -201,6 +217,6 @@ TEST_CASE("handleConnection gives up on a client that never sends a payload",
   if (returned) {
     connection->shutdown();
   }
-  ::close(fds[1]);
+  test::closeTestFd(fds[1]);
   REQUIRE(returned);
 }

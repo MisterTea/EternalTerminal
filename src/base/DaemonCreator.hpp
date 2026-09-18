@@ -7,9 +7,10 @@ namespace et {
 /**
  * @brief Helper to daemonize or spawn a detached child.
  *
- * On Unix this double-forks and returns CHILD inside the daemon. On Windows it
- * launches `htmd.exe` (next to the current module, or on PATH) with
- * `DETACHED_PROCESS` and always returns PARENT.
+ * On Unix this double-forks and returns CHILD inside the daemon. On Windows
+ * htm launches `htmd.exe` (next to the current module, or on PATH) while
+ * etserver/etterminal relaunch themselves with `DETACHED_PROCESS`; both always
+ * return PARENT.
  */
 class DaemonCreator {
  public:

@@ -10,10 +10,44 @@
 #include "UserJumphostHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
+#include "WinsockContext.hpp"
+#ifdef WIN32
+#include <windows.h>
+#endif
 
 using namespace et;
 
+namespace {
+inline bool HasNonEmptyOption(const cxxopts::ParseResult& result,
+                              const string& name) {
+  if (result.count(name) == 0) {
+    return false;
+  }
+  // cxxopts counts default_value("") as present; treat empty as absent so
+  // stdin fallback still works.
+  try {
+    return !result[name].as<string>().empty();
+  } catch (...) {
+    return true;
+  }
+}
+
+inline void SetTermEnv(const char* value) {
+#ifdef WIN32
+  SetEnvironmentVariableA("TERM", value);
+  // Also update the CRT environment for getenv("TERM") consumers.
+  string entry = string("TERM=") + value;
+  _putenv(entry.c_str());
+#else
+  FATAL_FAIL(setenv("TERM", value, 1));
+#endif
+}
+}  // namespace
+
 int main(int argc, char** argv) {
+#ifdef WIN32
+  WinsockContext winsockContext;
+#endif
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();
@@ -77,8 +111,19 @@ int main(int argc, char** argv) {
     shared_ptr<PseudoUserTerminal> term(new PseudoUserTerminal());
 
     string idpasskey;
-    if (result.count("idpasskey") == 0 && result.count("idpasskeyfile") == 0) {
+    if (!HasNonEmptyOption(result, "idpasskey") &&
+        !HasNonEmptyOption(result, "idpasskeyfile")) {
       // Try to read from stdin
+#ifdef WIN32
+      HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
+      DWORD waitResult = WaitForSingleObject(stdinHandle, 1000);
+      if (waitResult != WAIT_OBJECT_0) {
+        CLOG(INFO, "stdout")
+            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
+               "this information on stdin\n";
+        exit(1);
+      }
+#else
       struct timeval timeout;
       timeout.tv_sec = 1;
       timeout.tv_usec = 0;
@@ -100,6 +145,7 @@ int main(int argc, char** argv) {
                "this information on stdin\n";
         exit(1);
       }
+#endif
 
       string stdinData;
       if (!getline(cin, stdinData)) {
@@ -119,13 +165,13 @@ int main(int argc, char** argv) {
           idpasskey = id + string("/") + passkey;
         }
 
-        FATAL_FAIL(setenv("TERM", tokens[1].c_str(), 1));
+        SetTermEnv(tokens[1].c_str());
       } else {
         STFATAL << "Invalid number of tokens: " << tokens.size();
       }
     } else {
-      string idpasskey = result["idpasskey"].as<string>();
-      if (result.count("idpasskeyfile")) {
+      idpasskey = result["idpasskey"].as<string>();
+      if (HasNonEmptyOption(result, "idpasskeyfile")) {
         // Check for passkey file
         std::ifstream t(result["idpasskeyfile"].as<string>().c_str());
         std::stringstream buffer;
