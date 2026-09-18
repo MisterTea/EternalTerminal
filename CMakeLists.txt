@@ -483,11 +483,13 @@ add_library(
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/ServerFifoPath.hpp
-  src/terminal/ServerFifoPath.cpp
+  src/terminal/ServerFifoPathWindows.cpp
+  src/terminal/ServerFifoPathUnix.cpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
-  src/terminal/UserTerminalHandler.cpp
+  src/terminal/UserTerminalHandlerWindows.cpp
+  src/terminal/UserTerminalHandlerUnix.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
