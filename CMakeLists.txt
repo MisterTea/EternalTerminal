@@ -623,15 +623,17 @@ if(WIN32)
 
     # These tests exercise production facilities that do not exist on Windows:
     # fork/SCM_RIGHTS privilege dropping, Unix server/terminal handlers, a
-    # POSIX PTY/terminal host, or epoll/kqueue readiness polling. Keep this
-    # exclusion list explicit so every new portable test is included on
-    # Windows automatically.
+    # POSIX PTY/terminal host, epoll/kqueue readiness polling, or the
+    # POSIX-only `--ctl` control plane (Unix-domain socket, non-blocking pipe).
+    # Keep this exclusion list explicit so every new portable test is included
+    # on Windows automatically.
     set(WINDOWS_UNSUPPORTED_TEST_SRCS
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/ControlListenerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/HandleConnectionTimeoutTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/JumphostTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalServerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/TerminalTest.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ControlConsoleTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/FdPollerTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/HtmGhosttyE2eTest.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/ServerFifoPathTest.cpp
