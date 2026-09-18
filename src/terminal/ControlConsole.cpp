@@ -6,9 +6,9 @@ namespace et {
 
 namespace {
 const int kDefaultRows = 24;
-// 132 columns is the standard "wide" terminal (the VT100/VT220 132-column mode);
-// it is a better default than 80 for a session whose viewer hasn't sized it yet,
-// since attach/observe only learn the real width once someone connects.
+// 132 columns is the standard "wide" terminal (the VT100/VT220 132-column
+// mode); it is a better default than 80 for a session whose viewer hasn't sized
+// it yet, since attach/observe only learn the real width once someone connects.
 const int kDefaultCols = 132;
 
 int64_t nowSeconds() { return (int64_t)time(NULL); }
