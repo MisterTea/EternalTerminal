@@ -1,9 +1,10 @@
-#include "UserTerminalHandler.hpp"
 #include <cstdint>
+
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
+#include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 #ifdef WIN32
 #include "PseudoUserTerminalWindows.hpp"
@@ -79,8 +80,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
   runSocketTerminal(masterFd);
 }
 
-void UserTerminalHandler::runConPtyTerminal(
-    PseudoUserTerminal& conpty) {
+void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
   while (true) {
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
@@ -133,7 +133,7 @@ void UserTerminalHandler::runConPtyTerminal(
       string output = conpty.drainOutput();
       if (!output.empty()) {
         socketHandler->writeAllOrThrow(routerFd, output.data(), output.size(),
-                                      false);
+                                       false);
       }
 
       if (!conpty.isRunning()) {
@@ -141,7 +141,7 @@ void UserTerminalHandler::runConPtyTerminal(
         string tail = conpty.drainOutput();
         if (!tail.empty()) {
           socketHandler->writeAllOrThrow(routerFd, tail.data(), tail.size(),
-                                        false);
+                                         false);
         }
         LOG(INFO) << "Terminal session ended";
         term->handleSessionEnd();
@@ -181,9 +181,8 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
     const bool routerWritable = isSocketWritable(routerFd);
     const bool termReadable =
         routerWritable && socketHandler->hasData(masterFd);
-    const bool routerReadable =
-        pendingInput.length() < maxPendingInput &&
-        socketHandler->hasData(routerFd);
+    const bool routerReadable = pendingInput.length() < maxPendingInput &&
+                                socketHandler->hasData(routerFd);
     if (!termReadable && !routerReadable && pendingInput.empty()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;

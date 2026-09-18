@@ -2,9 +2,8 @@
 #include "UserSocketOps.hpp"
 
 #ifdef WIN32
-#include <windows.h>
-
 #include <io.h>
+#include <windows.h>
 #else
 #include <sys/stat.h>
 #include <sys/un.h>
@@ -164,8 +163,8 @@ TEST_CASE("UserSocketOps connectAtPath rejects oversized path",
 
 TEST_CASE("UserSocketOps listenUnixAsUser rejects oversized path",
           "[UserSocketOps]") {
-  int fd =
-      UserSocketOps::listenUnixAsUser(longUnixPath(), currentUid(), currentGid());
+  int fd = UserSocketOps::listenUnixAsUser(longUnixPath(), currentUid(),
+                                           currentGid());
   REQUIRE(fd < 0);
   REQUIRE(GetErrno() == ENAMETOOLONG);
 }
@@ -202,8 +201,7 @@ TEST_CASE("UserSocketOps connectUnixAsUser fails when nothing listens",
           "[UserSocketOps]") {
   string dir = makeTempDir();
   string path = dir + "/missing";
-  int fd =
-      UserSocketOps::connectUnixAsUser(path, currentUid(), currentGid());
+  int fd = UserSocketOps::connectUnixAsUser(path, currentUid(), currentGid());
   REQUIRE(fd < 0);
 
   test::removeTempDir(dir);
@@ -223,8 +221,7 @@ TEST_CASE("UserSocketOps listen as user cannot unlink privileged path",
   // not exist cannot be bound by anyone.
   string path = "et_no_such_dir_xyzzy/null_et_should_not_bind";
 #endif
-  int fd =
-      UserSocketOps::listenUnixAsUser(path, currentUid(), currentGid());
+  int fd = UserSocketOps::listenUnixAsUser(path, currentUid(), currentGid());
   REQUIRE(fd < 0);
 }
 

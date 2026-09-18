@@ -1,7 +1,6 @@
 #ifndef __PSUEDO_USER_TERMINAL_HPP__
 #define __PSUEDO_USER_TERMINAL_HPP__
 
-
 #include <fcntl.h>
 #include <stdlib.h>
 #include <sys/types.h>
@@ -140,6 +139,5 @@ class PseudoUserTerminal : public UserTerminal {
   int masterFd;
 };
 }  // namespace et
-
 
 #endif

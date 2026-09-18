@@ -1,9 +1,10 @@
-#include "UserTerminalHandler.hpp"
 #include <cstdint>
+
 #include "ETerminal.pb.h"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
+#include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
 #ifndef WIN32

@@ -321,33 +321,33 @@ void TerminalClient::run(const string& command, const bool noexit) {
               if (!ReadConsoleInput(handle, buffer, 128, &events)) {
                 events = 0;
               }
-            string s;
-            for (int keyEvent = 0; keyEvent < events; keyEvent++) {
-              if (buffer[keyEvent].EventType == KEY_EVENT &&
-                  buffer[keyEvent].Event.KeyEvent.bKeyDown) {
-                char charPressed =
-                    ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
-                if (charPressed) {
-                  s += charPressed;
+              string s;
+              for (int keyEvent = 0; keyEvent < events; keyEvent++) {
+                if (buffer[keyEvent].EventType == KEY_EVENT &&
+                    buffer[keyEvent].Event.KeyEvent.bKeyDown) {
+                  char charPressed =
+                      ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
+                  if (charPressed) {
+                    s += charPressed;
+                  }
                 }
               }
-            }
-            if (s.length()) {
-              et::TerminalBuffer tb;
-              tb.set_buffer(s);
+              if (s.length()) {
+                et::TerminalBuffer tb;
+                tb.set_buffer(s);
 
-              connection->writePacket(Packet(
-                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-              keepaliveTime = time(NULL) + keepaliveDuration;
-              if (WriteBuffer::containsInterruptByte(s) ||
-                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
-                skipServerRead = true;
-                consoleOut.filterDroppable();
-                LOG(INFO) << "Interrupt from stdin (" << s.size()
-                          << " bytes), consoleOut=" << consoleOut.size();
+                connection->writePacket(Packet(
+                    TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+                keepaliveTime = time(NULL) + keepaliveDuration;
+                if (WriteBuffer::containsInterruptByte(s) ||
+                    tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+                  skipServerRead = true;
+                  consoleOut.filterDroppable();
+                  LOG(INFO) << "Interrupt from stdin (" << s.size()
+                            << " bytes), consoleOut=" << consoleOut.size();
+                }
+                tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
               }
-              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
-            }
             }
           }
 #else

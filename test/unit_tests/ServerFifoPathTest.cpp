@@ -56,8 +56,7 @@ class TestEnvironment {
   FileInfo getFileInfo(const string& name) {
 #ifdef WIN32
     FileInfo result;
-    result.exists =
-        GetFileAttributesA(name.c_str()) != INVALID_FILE_ATTRIBUTES;
+    result.exists = GetFileAttributesA(name.c_str()) != INVALID_FILE_ATTRIBUTES;
     return result;
 #else
     struct stat fileStat;
@@ -115,8 +114,8 @@ class TestEnvironment {
     // Restore env.
     for (const auto& [key, value] : savedEnvs) {
 #ifdef WIN32
-      SetEnvironmentVariableA(
-          key.c_str(), value.has_value() ? value->c_str() : nullptr);
+      SetEnvironmentVariableA(key.c_str(),
+                              value.has_value() ? value->c_str() : nullptr);
 #else
       if (value) {
         const int replace = 1;  // non-zero to replace.
@@ -160,8 +159,7 @@ TEST_CASE("Creation", "[ServerFifoPath]") {
   if (!tmp.empty() && tmp.back() != '/') {
     tmp += '/';
   }
-  const string expectedFifoPath =
-      tmp + "etserver." + GetHtmIpcUser() + ".fifo";
+  const string expectedFifoPath = tmp + "etserver." + GetHtmIpcUser() + ".fifo";
 
   ServerFifoPath serverFifo;
   REQUIRE(serverFifo.getPathForCreation() == expectedFifoPath);
