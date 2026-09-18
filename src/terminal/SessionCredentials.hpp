@@ -120,6 +120,80 @@ inline void save(const string& name, const string& id, const string& passkey) {
   }
 }
 
+/*
+ * Forget a session's credentials. Call this once the session is known to be
+ * gone rather than merely unreachable, so a later `--attach` bootstraps a new
+ * session instead of presenting a key the server has already discarded.
+ */
+inline void forget(const string& name) {
+  try {
+    ::unlink(credsPathForName(name).c_str());
+  } catch (const std::runtime_error& err) {
+    LOG(WARNING) << "Could not drop session credentials: " << err.what();
+  }
+}
+
+/*
+ * Where a session records why it ended.
+ *
+ * A control session's socket is unlinked when its daemon exits, so the next
+ * command gets ENOENT and cannot tell "this session ended, here is why" from
+ * "you never opened it" or "something removed it". The daemon knows the reason
+ * at the moment it exits; the tombstone is where it leaves that reason behind.
+ */
+inline string tombstonePathForName(const string& name) {
+  return sessionDir() + "/" + name + ".gone";
+}
+
+// Record why a session ended. Best effort: a session that cannot leave a note
+// is no worse off than one that never wrote one.
+inline void writeTombstone(const string& name, const string& reason) {
+  try {
+    ensureSessionDir();
+    std::ofstream out(tombstonePathForName(name), std::ios::trunc);
+    if (!out) {
+      return;
+    }
+    out << (long long)::time(nullptr) << " " << reason << "\n";
+  } catch (const std::runtime_error& err) {
+    LOG(WARNING) << "Could not write session tombstone: " << err.what();
+  }
+}
+
+// Read back a tombstone as "<reason> (N seconds ago)", or "" if there is none.
+inline string readTombstone(const string& name) {
+  try {
+    std::ifstream in(tombstonePathForName(name));
+    long long when = 0;
+    if (!(in >> when)) {
+      return "";
+    }
+    string reason;
+    std::getline(in, reason);
+    while (!reason.empty() && reason.front() == ' ') {
+      reason.erase(reason.begin());
+    }
+    if (reason.empty()) {
+      return "";
+    }
+    const long long age = (long long)::time(nullptr) - when;
+    if (age < 0) {
+      return reason;
+    }
+    return reason + " (" + std::to_string(age) + "s ago)";
+  } catch (const std::runtime_error&) {
+    return "";
+  }
+}
+
+// Clear any previous tombstone; a session that is starting has not ended.
+inline void clearTombstone(const string& name) {
+  try {
+    ::unlink(tombstonePathForName(name).c_str());
+  } catch (const std::runtime_error&) {
+  }
+}
+
 }  // namespace session_creds
 }  // namespace et
 

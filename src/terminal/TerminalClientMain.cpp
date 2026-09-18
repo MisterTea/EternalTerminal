@@ -615,6 +615,9 @@ int main(int argc, char** argv) {
             << "Could not prepare control socket: " << e.what() << endl;
         exit(1);
       }
+      // This name is starting, so whatever ended it last time no longer
+      // applies; clear the note before anyone can read a stale one.
+      session_creds::clearTombstone(ctlName);
       CLOG(INFO, "stdout") << "et control session: " << ctlName << endl;
       CLOG(INFO, "stdout") << "control socket: " << socketPath << endl;
 
@@ -639,6 +642,20 @@ int main(int argc, char** argv) {
                              ? result["command"].as<string>()
                              : "",
                          /*noexit=*/true);
+      // run() returning is what ends a control session, and unlinking the
+      // socket below is all the next `etctl` command would otherwise see. Leave
+      // the reason behind first, so that command can say what happened instead
+      // of reporting a missing file. When the server has genuinely forgotten
+      // the session, drop the cached credentials too: they name a session that
+      // no longer exists, and --attach would present them to a server that has
+      // already discarded the key.
+      const string endedBecause = terminalClient.exitReason();
+      LOG(INFO) << "Control session '" << ctlName
+                << "' ending: " << endedBecause;
+      session_creds::writeTombstone(ctlName, endedBecause);
+      if (terminalClient.sessionEndedByServer()) {
+        session_creds::forget(ctlName);
+      }
       listener.shutdown();
 #endif
     } else {

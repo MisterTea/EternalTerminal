@@ -55,6 +55,17 @@ class ClientConnection : public Connection {
    */
   void waitReconnect();
 
+  /**
+   * @brief True when the server answered a reconnect with INVALID_KEY.
+   *
+   * The server keeps a session alive across a dropped link, so it only forgets
+   * a client id once the session itself is gone (its terminal exited, or the
+   * server restarted). Reconnecting is then pointless, but the distinction
+   * matters to whoever is driving: this says the far end ended, as opposed to
+   * a link that is merely down.
+   */
+  bool serverEndedSession() const { return sessionEndedByServer; }
+
  protected:
   /**
    * @brief Background loop used to re-establish a connection when lost.
@@ -65,6 +76,8 @@ class ClientConnection : public Connection {
   SocketEndpoint remoteEndpoint;
   /** @brief Thread that keeps retrying the handshake after disconnects. */
   std::shared_ptr<std::thread> reconnectThread;
+  /** @brief Set when a reconnect was refused with INVALID_KEY. */
+  std::atomic<bool> sessionEndedByServer{false};
 };
 }  // namespace et
 
