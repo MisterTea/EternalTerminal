@@ -222,6 +222,7 @@ endif()
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
+option(DISABLE_STACKTRACE "Disable stack trace generation" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
@@ -247,6 +248,10 @@ if(DISABLE_CRASH_LOG)
   set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
 endif(DISABLE_CRASH_LOG)
+
+if(DISABLE_STACKTRACE)
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_NO_STACKTRACE")
+endif(DISABLE_STACKTRACE)
 
 if(UNIX)
   # Enable debug info
@@ -274,6 +279,16 @@ if(WIN32)
 endif()
 
 set(PROTOBUF_LIBS protobuf::libprotobuf)
+
+if(NOT TARGET protobuf::protoc)
+  if(Protobuf_PROTOC_EXECUTABLE)
+    add_executable(protobuf::protoc IMPORTED)
+    set_target_properties(protobuf::protoc PROPERTIES IMPORTED_LOCATION "${Protobuf_PROTOC_EXECUTABLE}")
+  elseif(PROTOBUF_PROTOC_EXECUTABLE)
+    add_executable(protobuf::protoc IMPORTED)
+    set_target_properties(protobuf::protoc PROPERTIES IMPORTED_LOCATION "${PROTOBUF_PROTOC_EXECUTABLE}")
+  endif()
+endif()
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)

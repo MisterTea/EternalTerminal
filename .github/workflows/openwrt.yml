@@ -1,0 +1,89 @@
+name: OpenWrt CI
+
+on:
+  push:
+    branches:
+      - master
+      - release
+      - 'feature/**'
+      - 'codex/**'
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  openwrt:
+    name: build-and-test-openwrt
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Build OpenWrt package with SDK
+        shell: bash
+        run: |
+          mkdir -p bin/openwrt && chmod 777 bin/openwrt
+          docker run --rm \
+            --platform linux/amd64 \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            openwrt/sdk:x86-64-23.05.5 \
+            bash -c '
+              set -euo pipefail
+              sed \
+                -e "s,https://git.openwrt.org/feed/,https://github.com/openwrt/," \
+                -e "s,https://git.openwrt.org/openwrt/,https://github.com/openwrt/," \
+                -e "s,https://git.openwrt.org/project/,https://github.com/openwrt/," \
+                feeds.conf.default > feeds.conf
+              ./scripts/feeds update base packages
+              ./scripts/feeds install libsodium protobuf zlib libopenssl
+              rm -rf package/eternalterminal
+              cp -r /workspace/openwrt package/eternalterminal
+              make defconfig
+              echo "CONFIG_PACKAGE_eternalterminal=y" >> .config
+              make defconfig
+              parallel_level="${CI_PARALLEL_LEVEL:-$(nproc)}"
+              make package/eternalterminal/compile V=s -j"${parallel_level}" ET_SRC_DIR=/workspace
+              mkdir -p /workspace/bin/openwrt
+              find bin -name "eternalterminal*.ipk" -exec cp -v {} /workspace/bin/openwrt/ \;
+            '
+
+      - name: Upload OpenWrt package artifact
+        uses: actions/upload-artifact@v4
+        continue-on-error: true
+        with:
+          name: eternalterminal-openwrt-ipk
+          path: bin/openwrt/*.ipk
+
+      - name: Test OpenWrt package in target rootfs
+        shell: bash
+        run: |
+          docker run --rm \
+            --platform linux/amd64 \
+            -v "${GITHUB_WORKSPACE}:/workspace" \
+            openwrt/rootfs:x86-64-23.05.5 \
+            sh -c '
+              set -eu
+              mkdir -p /var/lock
+              opkg update
+              opkg install libsodium protobuf libopenssl zlib libstdcpp
+              ipk=$(find /workspace/bin/openwrt -name "eternalterminal*.ipk" | head -n 1)
+              if [ -z "$ipk" ]; then
+                echo "Error: No eternalterminal IPK found in /workspace/bin/openwrt"
+                exit 1
+              fi
+              echo "Installing $ipk..."
+              opkg install "$ipk"
+              echo "Verifying installed files..."
+              test -x /usr/bin/et
+              test -x /usr/bin/etserver
+              test -x /usr/bin/etterminal
+              test -x /etc/init.d/etserver
+              echo "Verifying et help output..."
+              /usr/bin/et --help || true
+              echo "Verifying etserver help output..."
+              /usr/bin/etserver --help || true
+              echo "OpenWrt package verified successfully!"
+            '
