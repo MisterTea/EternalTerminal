@@ -1,5 +1,5 @@
-#ifndef __PSUEDO_USER_TERMINAL_HPP__
-#define __PSUEDO_USER_TERMINAL_HPP__
+#ifndef __PSUEDO_USER_TERMINAL_WINDOWS_HPP__
+#define __PSUEDO_USER_TERMINAL_WINDOWS_HPP__
 
 #ifdef WIN32
 #include <windows.h>

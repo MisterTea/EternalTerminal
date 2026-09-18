@@ -1,5 +1,5 @@
-#ifndef __PSUEDO_USER_TERMINAL_HPP__
-#define __PSUEDO_USER_TERMINAL_HPP__
+#ifndef __PSUEDO_USER_TERMINAL_UNIX_HPP__
+#define __PSUEDO_USER_TERMINAL_UNIX_HPP__
 
 #include <fcntl.h>
 #include <stdlib.h>
@@ -12,6 +12,7 @@
 #elif __FreeBSD__
 #include <libutil.h>
 #elif __NetBSD__  // do not need pty.h on NetBSD
+#else
 #include <pty.h>
 #endif
 
@@ -112,6 +113,7 @@ class PseudoUserTerminal : public UserTerminal {
                 // least -CURRENT) sadness for now :/
     int throwaway;
     FATAL_FAIL(waitpid(getPid(), &throwaway, WUNTRACED));
+#else
     siginfo_t childInfo;
     if (getPid() > 0) {
       if (waitid(P_PID, getPid(), &childInfo, WEXITED) == -1) {
