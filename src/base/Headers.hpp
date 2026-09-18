@@ -145,12 +145,7 @@ namespace fs = boost::filesystem
 #include "sago/platform_folders.h"
 #include "sole.hpp"
 
-#if defined(ET_NO_STACKTRACE) || (!defined(_WIN32) && !__has_include(<execinfo.h>) && \
-     !__has_include(<libunwind.h>))
-#define ET_DISABLE_STACKTRACE 1
-#endif
-
-#if !defined(ET_DISABLE_STACKTRACE) && !defined(__ANDROID__)
+#if !defined(__ANDROID__)
 #include "ust.hpp"
 #endif
 
@@ -209,10 +204,10 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 // rather than waiting for a client that is not coming back.
 const int INITIAL_PAYLOAD_TIMEOUT_DURATION = 600;
 
-#if defined(ET_DISABLE_STACKTRACE) || defined(__ANDROID__)
-#define STFATAL LOG(FATAL) << "No Stack Trace supported" << endl
+#if defined(__ANDROID__)
+#define STFATAL LOG(FATAL) << "No Stack Trace on Android" << endl
 
-#define STERROR LOG(ERROR) << "No Stack Trace supported" << endl
+#define STERROR LOG(ERROR) << "No Stack Trace on Android" << endl
 #else
 #define STFATAL LOG(FATAL) << "Stack Trace: " << endl << ust::generate()
 

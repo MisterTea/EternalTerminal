@@ -38,7 +38,7 @@ jobs:
                 -e "s,https://git.openwrt.org/project/,https://github.com/openwrt/," \
                 feeds.conf.default > feeds.conf
               ./scripts/feeds update base packages
-              ./scripts/feeds install libsodium protobuf zlib libopenssl
+              ./scripts/feeds install libsodium protobuf zlib libopenssl libunwind
               rm -rf package/eternalterminal
               cp -r /workspace/openwrt package/eternalterminal
               make defconfig
@@ -68,7 +68,7 @@ jobs:
               set -eu
               mkdir -p /var/lock
               opkg update
-              opkg install libsodium protobuf libopenssl zlib libstdcpp python3
+              opkg install libsodium protobuf libopenssl zlib libstdcpp libunwind8 python3
               ipk=$(find /workspace/bin/openwrt -name "eternalterminal*.ipk" | head -n 1)
               if [ -z "$ipk" ]; then
                 echo "Error: No eternalterminal IPK found in /workspace/bin/openwrt"

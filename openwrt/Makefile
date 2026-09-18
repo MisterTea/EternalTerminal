@@ -17,7 +17,7 @@ define Package/eternalterminal
   CATEGORY:=Network
   TITLE:=Eternal Terminal (Remote shell)
   URL:=https://mistertea.github.io/EternalTerminal/
-  DEPENDS:=+libsodium +protobuf +libopenssl +zlib +libstdcpp
+  DEPENDS:=+libsodium +protobuf +libopenssl +zlib +libstdcpp +libunwind
 endef
 
 define Package/eternalterminal/description
@@ -29,7 +29,6 @@ CMAKE_OPTIONS += \
 	-DDISABLE_TELEMETRY=ON \
 	-DDISABLE_SENTRY=ON \
 	-DDISABLE_CRASH_LOG=ON \
-	-DDISABLE_STACKTRACE=ON \
 	-DCODE_COVERAGE=OFF \
 	-DBUILD_TESTING=ON \
 	-DINSTALL_BASH_COMPLETION=OFF \

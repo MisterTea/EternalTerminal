@@ -130,7 +130,13 @@ find_package(Sanitizers REQUIRED)
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(Unwind)
+include(CheckIncludeFile)
+check_include_file("execinfo.h" HAVE_EXECINFO_H)
+if(NOT HAVE_EXECINFO_H AND NOT WIN32 AND NOT ANDROID)
+  find_package(Unwind REQUIRED)
+else()
+  find_package(Unwind)
+endif()
 
 if(DISABLE_VCPKG)
   if(BUILD_TESTING)
@@ -222,7 +228,6 @@ endif()
 option(CODE_COVERAGE "Enable code coverage" OFF)
 option(FUZZING "Enable builds for fuzz testing" OFF)
 option(DISABLE_CRASH_LOG "Disable installing easylogging crash handler" OFF)
-option(DISABLE_STACKTRACE "Disable stack trace generation" OFF)
 option(INSTALL_BASH_COMPLETION "Install bash completion script" ON)
 option(INSTALL_ZSH_COMPLETION "Install zsh completion script" ON)
 
@@ -248,10 +253,6 @@ if(DISABLE_CRASH_LOG)
   set(CMAKE_CXX_FLAGS
     "${CMAKE_CXX_FLAGS} -DELPP_DISABLE_DEFAULT_CRASH_HANDLING")
 endif(DISABLE_CRASH_LOG)
-
-if(DISABLE_STACKTRACE)
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DET_NO_STACKTRACE")
-endif(DISABLE_STACKTRACE)
 
 if(UNIX)
   # Enable debug info
