@@ -83,7 +83,13 @@ void ControlListener::acceptLoop() {
       if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK) {
         continue;
       }
-      break;  // listen socket closed during shutdown
+      // `running` is still true, so nobody asked for this. Say so: an accept
+      // failure here silently ends the control plane while the session itself
+      // keeps going, which is indistinguishable from a clean shutdown unless
+      // the reason is recorded.
+      LOG(ERROR) << "Control listener stopping: accept failed with errno "
+                 << errno << " (" << strerror(errno) << ")";
+      break;
     }
     try {
       handleConnection(connFd);

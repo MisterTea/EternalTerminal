@@ -63,6 +63,32 @@ class TerminalClient {
   // happened and re-running it would type into whatever is in the foreground.
   bool attachedToExisting() { return attachedExisting; }
 
+  /**
+   * @brief Why `run()` returned, in a form fit to show a user.
+   *
+   * `run()` returning is what ends a control session, and every caller so far
+   * has had to guess which of several very different things happened. Ask here
+   * instead of inferring it.
+   */
+  string exitReason() {
+    if (connection && connection->serverEndedSession()) {
+      return "the remote session ended (server no longer has it)";
+    }
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return "shutdown was requested";
+      }
+    }
+    return "the connection closed";
+  }
+
+  // True when the server refused a reconnect because it no longer holds this
+  // session, as opposed to any other reason the client stopped.
+  bool sessionEndedByServer() {
+    return connection && connection->serverEndedSession();
+  }
+
  protected:
   /** @brief Console wrapper used for local terminal input/output. */
   shared_ptr<Console> console;

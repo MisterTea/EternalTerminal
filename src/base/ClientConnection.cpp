@@ -187,7 +187,11 @@ void ClientConnection::pollReconnect() {
           if (response.status() == INVALID_KEY) {
             LOG(INFO) << "Got invalid key on reconnect, assume that server has "
                          "terminated the session.";
-            // This means that the server has terminated the connection.
+            // The server keeps a session across a dropped link, so forgetting
+            // the key means the session itself is gone. Record that, because
+            // "the far end ended" and "the link is down" look identical to a
+            // caller once this thread has exited.
+            sessionEndedByServer = true;
             shuttingDown = true;
             socketHandler->close(newSocketFd);
             return;
