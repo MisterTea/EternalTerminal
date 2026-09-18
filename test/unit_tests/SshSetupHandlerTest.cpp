@@ -130,6 +130,19 @@ TEST_CASE("SshSetupHandler basic connection", "[SshSetupHandler]") {
   }
 }
 
+TEST_CASE("SshSetupHandler removes credentials from login output",
+          "[SshSetupHandler]") {
+  const string credential = string(16, 'i') + "/" + string(32, 'p');
+
+  REQUIRE(SshSetupHandler::ExtractLoginOutput(
+              "Welcome to the server\nIDPASSKEY:" + credential + "\n") ==
+          "Welcome to the server\n");
+  REQUIRE(SshSetupHandler::ExtractLoginOutput("IDPASSKEY:" + credential +
+                                              "\r\n") == "");
+  REQUIRE(SshSetupHandler::ExtractLoginOutput("plain login output") ==
+          "plain login output");
+}
+
 TEST_CASE("SshSetupHandler with custom options", "[SshSetupHandler]") {
   auto fakeSubprocess = make_shared<FakeSshSubprocessHandler>();
   SshSetupHandler handler(fakeSubprocess);

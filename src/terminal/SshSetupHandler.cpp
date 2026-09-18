@@ -139,6 +139,15 @@ pair<string, string> SshSetupHandler::SetupSsh(
     auto idpasskey_splited = split(idpasskey, '/');
     id = idpasskey_splited[0];
     passkey = idpasskey_splited[1];
+    if (displayLoginOutput_) {
+      const string loginOutput = ExtractLoginOutput(sshBuffer);
+      if (!loginOutput.empty()) {
+        CLOG(INFO, "stdout") << loginOutput;
+        if (loginOutput.back() != '\n') {
+          CLOG(INFO, "stdout") << endl;
+        }
+      }
+    }
     LOG(INFO) << "etserver started";
   } catch (const runtime_error& err) {
     CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
@@ -214,5 +223,30 @@ pair<string, string> SshSetupHandler::SetupSsh(
             << passkey.length();
   }
   return {id, passkey};
+}
+
+string SshSetupHandler::ExtractLoginOutput(const string& sshOutput) {
+  const string marker = "IDPASSKEY:";
+  const auto markerPosition = sshOutput.find(marker);
+  if (markerPosition == string::npos) {
+    return sshOutput;
+  }
+
+  constexpr size_t credentialLength = 16 + 1 + 32;
+  const size_t credentialEnd =
+      min(sshOutput.size(), markerPosition + marker.size() + credentialLength);
+  string output = sshOutput.substr(0, markerPosition);
+  string suffix = sshOutput.substr(credentialEnd);
+
+  // etterminal prints the credential on its own line. Remove that line break,
+  // while preserving all actual login output around it.
+  if (!suffix.empty() && suffix.front() == '\r') {
+    suffix.erase(0, 1);
+  }
+  if (!suffix.empty() && suffix.front() == '\n') {
+    suffix.erase(0, 1);
+  }
+  output += suffix;
+  return output;
 }
 }  // namespace et

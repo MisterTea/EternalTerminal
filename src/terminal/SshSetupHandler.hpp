@@ -30,6 +30,12 @@ class SshSetupHandler {
       int vlevel, const string& etterminal_path, const string& serverFifo,
       const std::vector<std::string>& ssh_options);
 
+  /** Controls whether non-secret SSH login output is shown to the user. */
+  void setDisplayLoginOutput(bool display) { displayLoginOutput_ = display; }
+
+  /** Returns SSH login output with the ET handshake credential removed. */
+  static string ExtractLoginOutput(const string& sshOutput);
+
   /** @brief Path to the packaged `etterminal` helper binary. */
   static const string ETTERMINAL_BIN;
 
@@ -46,6 +52,7 @@ class SshSetupHandler {
  private:
   shared_ptr<SubprocessUtils> subprocessUtils_;
   string sshConfigPath_;
+  bool displayLoginOutput_ = false;
 };
 }  // namespace et
 #endif  // __ET_SSH_SETUP_HANDLER__
