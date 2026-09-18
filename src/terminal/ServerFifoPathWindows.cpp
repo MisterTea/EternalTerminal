@@ -107,5 +107,4 @@ int ServerFifoPath::detectAndConnect(
 }
 
 }  // namespace et
-}  // namespace et
 #endif

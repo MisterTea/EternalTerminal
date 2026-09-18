@@ -285,4 +285,3 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
   term->cleanup();
 }
 }  // namespace et
-#endif
