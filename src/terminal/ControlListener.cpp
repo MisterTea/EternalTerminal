@@ -60,10 +60,10 @@ void ControlListener::start() {
 
 void ControlListener::shutdown() {
   bool wasRunning = running.exchange(false);
-  if (listenFd >= 0) {
-    ::shutdown(listenFd, SHUT_RDWR);
-    ::close(listenFd);
-    listenFd = -1;
+  int fd = listenFd.exchange(-1);
+  if (fd >= 0) {
+    ::shutdown(fd, SHUT_RDWR);
+    ::close(fd);
   }
   if (acceptThread.joinable()) {
     acceptThread.join();
@@ -76,7 +76,7 @@ void ControlListener::shutdown() {
 void ControlListener::acceptLoop() {
   el::Helpers::setThreadName("control-listener");
   while (running) {
-    int connFd = ::accept(listenFd, NULL, NULL);
+    int connFd = ::accept(listenFd.load(), NULL, NULL);
     if (connFd < 0) {
       if (!running) {
         break;
