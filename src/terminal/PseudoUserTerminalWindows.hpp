@@ -262,4 +262,5 @@ class PseudoUserTerminal : public UserTerminal {
   std::atomic<bool> running;
 };
 }  // namespace et
-#endif
+#endif  // WIN32
+#endif  // __PSUEDO_USER_TERMINAL_WINDOWS_HPP__
