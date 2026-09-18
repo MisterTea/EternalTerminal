@@ -2,7 +2,7 @@
  * etctl: the client-side control CLI for backgrounded `et --ctl` sessions.
  *
  * It is a thin, stateless translator: each invocation resolves a session's local
- * control socket (~/.et/ctl/<name>.sock), sends one native control frame, and
+ * control socket (~/.et/sessions/<name>.sock), sends one native control frame, and
  * prints the response.  The transport carries ET's own vocabulary (raw input
  * bytes and scrollback reads); the verbs here are ergonomic sugar composed from it.
  */
@@ -149,7 +149,7 @@ void printOverview() {
           "output and\n"
           "  send it input. Run 'etctl <command> --help' for a command's "
           "options.\n"
-          "  NAME is a session name (under ~/.et/ctl, or $ETCTL_HOME) or a "
+          "  NAME is a session name (under ~/.et/sessions, or $ET_SESSION_DIR) or a "
           "socket path.\n"
           "\n"
           "  open        start a control session in the background (idempotent)\n"
@@ -711,14 +711,19 @@ int cmdRun(const string& name, const string& command, double timeoutSec) {
 
 int cmdOpen(int argc, char** argv) {
   /*
-   * etctl open NAME [et-args...]  ->  et --ctl --name NAME [et-args...]
+   * etctl open NAME [et-args...]  ->  et --ctl --attach NAME [et-args...]
    *
    * NAME is a positional (consistent with the other verbs); etctl owns it and
-   * translates it to et's --name.  The call is idempotent: if NAME is already a
-   * live session, do nothing.  That makes `open` a cheap "ensure this session
-   * exists" step you can safely run before driving it, which is the clean
-   * version of etch's autospawn -- the connection details live only here, not on
-   * every command.
+   * hands it to et as --attach, which both names the session and adopts one
+   * already running under that name.  The call is idempotent at two levels: a
+   * live session short-circuits below, and a session whose *client* died is
+   * adopted rather than duplicated.  That second case is the one that used to
+   * strand sessions: the socket is gone, so the checks below see nothing and a
+   * plain open would bootstrap a second session over SSH while the first kept
+   * running on the host, holding its shell, cwd and jobs with nothing able to
+   * reach them.  Either way `open` is a cheap "ensure this session exists" step
+   * you can safely run before driving it, which is the clean version of etch's
+   * autospawn -- the connection details live only here, not on every command.
    */
   if (argc < 3) {
     fprintf(stderr,
@@ -741,8 +746,8 @@ int cmdOpen(int argc, char** argv) {
       i++;
     } else if (a.rfind("--ctl-socket=", 0) == 0) {
       checkTarget = a.substr(strlen("--ctl-socket="));
-    } else if (a == "--name" && i + 1 < argc) {
-      i++;  // skip et's --name value, it isn't the destination
+    } else if (a == "--attach" && i + 1 < argc) {
+      i++;  // skip et's --attach value, it isn't the destination
     } else if ((a == "-c" || a == "--command") && i + 1 < argc) {
       // Pull out a user-supplied connect command so we can merge it with our
       // own setup (below) rather than fight over et's single -c.  Marking its
@@ -808,7 +813,7 @@ int cmdOpen(int argc, char** argv) {
   vector<char*> args;
   args.push_back(strdup(etPath.c_str()));
   args.push_back(strdup("--ctl"));
-  args.push_back(strdup("--name"));
+  args.push_back(strdup("--attach"));
   args.push_back(strdup(name.c_str()));
   for (int i = 3; i < argc; i++) {
     if (skip[i]) continue;  // user's -c is folded into setupCommand below
@@ -867,7 +872,7 @@ int main(int argc, char** argv) {
         printf(
             "  ...         Passed directly to et (see `et --help`)\n"
             "\n"
-            "  NAME is the session name (etctl supplies et's --name);\n"
+            "  NAME is the session name (etctl supplies et's --attach);\n"
             "  if NAME is already running it does nothing.\n");
         return 0;
       }
