@@ -3,6 +3,12 @@
 
 #include "Headers.hpp"
 
+#ifdef WIN32
+// Windows has no symlinks to guard against on this path; O_NOFOLLOW does not
+// exist there.
+#define O_NOFOLLOW 0
+#endif
+
 /*
  * Where a named session's credentials live, so a later `et` can adopt the
  * session instead of stranding it.
@@ -26,11 +32,17 @@ namespace session_creds {
 // paths only); defaults to ~/.et/sessions.
 inline string sessionDir() {
   const char* env = getenv("ET_SESSION_DIR");
-  if (env && env[0] == '/') {
+  if (env && fs::path(env).is_absolute()) {
     return string(env);
   }
   const char* home = getenv("HOME");
-  if (!home || home[0] != '/') {
+#ifdef WIN32
+  // Windows has no HOME by convention; USERPROFILE is its closest analog.
+  if (!home) {
+    home = getenv("USERPROFILE");
+  }
+#endif
+  if (!home || !fs::path(home).is_absolute()) {
     throw std::runtime_error("HOME is unset or not an absolute path");
   }
   return string(home) + "/.et/sessions";
@@ -69,15 +81,16 @@ inline string credsPathForName(const string& name) {
 // Create the credential directory (and any missing parents) at 0700.
 inline void ensureSessionDir() {
   const string dir = sessionDir();
-  for (size_t p = 1; p <= dir.size(); ++p) {
-    if (p == dir.size() || dir[p] == '/') {
-      const string sub = dir.substr(0, p);
-      if (!sub.empty() && ::mkdir(sub.c_str(), 0700) == -1 && errno != EEXIST) {
-        throw std::runtime_error("could not create " + sub + ": " +
-                                 strerror(errno));
-      }
-    }
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  if (ec && !fs::is_directory(dir)) {
+    throw std::runtime_error("could not create " + dir + ": " + ec.message());
   }
+#ifndef WIN32
+  // POSIX permission bits have no Windows equivalent; the directory is only
+  // access-restricted on platforms where that concept applies.
+  fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, ec);
+#endif
 }
 
 /*
