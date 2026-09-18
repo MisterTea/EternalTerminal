@@ -18,6 +18,7 @@
 #include "ControlProtocol.hpp"
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
+#include "SessionCredentials.hpp"
 
 using namespace et;
 
@@ -205,9 +206,20 @@ bool oneShot(const string& name, uint8_t opcode, const string& payload,
              uint8_t* respOpcode, string* respPayload, bool quiet = false) {
   int fd = connectControl(name);
   if (fd < 0) {
-    if (!quiet)
-      fprintf(stderr, "etctl: cannot reach session '%s' (%s)\n", name.c_str(),
-              strerror(errno));
+    if (!quiet) {
+      // A session that ended leaves a note saying why. Prefer it to errno,
+      // which can only say the socket is missing and cannot distinguish a
+      // session that ended from a name that never existed.
+      const int savedErrno = errno;
+      const string ended = session_creds::readTombstone(name);
+      if (!ended.empty()) {
+        fprintf(stderr, "etctl: session '%s' ended: %s\n", name.c_str(),
+                ended.c_str());
+      } else {
+        fprintf(stderr, "etctl: cannot reach session '%s' (%s)\n", name.c_str(),
+                strerror(savedErrno));
+      }
+    }
     return false;
   }
   bool ok = false;
