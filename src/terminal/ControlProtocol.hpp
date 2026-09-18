@@ -15,9 +15,9 @@
  *   [1 byte opcode][4 byte big-endian payload length][payload bytes]
  *
  * Requests carry ET's native vocabulary verbatim where one exists: WRITE is a
- * raw TERMINAL_BUFFER payload, RESIZE is a TerminalInfo protobuf.  READ/INFO/KILL
- * are the only additions, for things ET has no native packet for (read-at-cursor,
- * liveness, end-session).
+ * raw TERMINAL_BUFFER payload, RESIZE is a TerminalInfo protobuf.
+ * READ/INFO/KILL are the only additions, for things ET has no native packet for
+ * (read-at-cursor, liveness, end-session).
  */
 namespace et {
 
@@ -25,19 +25,20 @@ enum ControlOpcode : uint8_t {
   // Requests (etctl -> daemon)
   CTL_WRITE = 1,   // payload: raw input bytes to inject
   CTL_RESIZE = 2,  // payload: TerminalInfo protobuf
-  CTL_READ = 3,    // payload: 8-byte big-endian int64 cursor (<0 => from oldest)
-  CTL_INFO = 4,    // payload: empty
-  CTL_KILL = 5,    // payload: empty
-  CTL_SNIFF = 6,    // payload: 8-byte int64 record cursor (<0 => from oldest)
-  CTL_WRITE_SECRET =
-      7,  // payload: raw input bytes; like CTL_WRITE but redacted from transcript
+  CTL_READ = 3,   // payload: 8-byte big-endian int64 cursor (<0 => from oldest)
+  CTL_INFO = 4,   // payload: empty
+  CTL_KILL = 5,   // payload: empty
+  CTL_SNIFF = 6,  // payload: 8-byte int64 record cursor (<0 => from oldest)
+  CTL_WRITE_SECRET = 7,  // payload: raw input bytes; like CTL_WRITE but
+                         // redacted from transcript
 
   // Responses (daemon -> etctl)
   CTL_OK = 64,         // payload: empty
   CTL_ERR = 65,        // payload: error message (utf-8)
   CTL_READ_RESP = 66,  // payload: [8B nextCursor][1B truncated][data...]
   CTL_INFO_RESP = 67,  // payload: "key=value\n" lines
-  CTL_SNIFF_RESP = 68,  // payload: [8B next][1B trunc][rec: 1B dir,4B len,bytes]*
+  CTL_SNIFF_RESP =
+      68,  // payload: [8B next][1B trunc][rec: 1B dir,4B len,bytes]*
 };
 
 namespace control_proto {

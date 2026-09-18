@@ -226,8 +226,8 @@ int main(int argc, char** argv) {
         ("ctl-socket",
          "Path for the --ctl socket (default ~/.et/sessions/<name>.sock, "
          "or under $ET_SESSION_DIR)",
-         cxxopts::value<std::string>())  //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
+         cxxopts::value<std::string>())                      //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("ssh-config",
