@@ -99,6 +99,7 @@ jobs:
                 ninja-build \
                 openssl-devel \
                 pkgconf-pkg-config \
+                procps-ng \
                 protobuf-compiler \
                 protobuf-devel \
                 tar \
@@ -122,7 +123,8 @@ jobs:
                 dev-util/pkgconf \
                 net-misc/curl \
                 sys-libs/libunwind \
-                sys-libs/libutempter
+                sys-libs/libutempter \
+                sys-process/procps
           - distro: archlinux
             container: archlinux:latest
             install: |
