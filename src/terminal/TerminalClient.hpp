@@ -58,6 +58,11 @@ class TerminalClient {
     return connection && !connection->isDisconnected();
   }
 
+  // True when this client adopted a session that was already running rather
+  // than creating one. The shell is mid-life, so connect-time setup has already
+  // happened and re-running it would type into whatever is in the foreground.
+  bool attachedToExisting() { return attachedExisting; }
+
  protected:
   /** @brief Console wrapper used for local terminal input/output. */
   shared_ptr<Console> console;
@@ -71,6 +76,8 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
+  /** @brief Set when the constructor adopted an already-running session. */
+  bool attachedExisting = false;
 };
 
 }  // namespace et

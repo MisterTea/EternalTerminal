@@ -631,10 +631,14 @@ int main(int argc, char** argv) {
       // A control session is always persistent, so honor -c/--command as a
       // one-shot startup command run on connect (e.g. to set up a clean-room
       // shell) instead of silently dropping it.  noexit is implied, so run()
-      // injects "<command>\n" and does not append "; exit".
-      terminalClient.run(
-          result.count("command") ? result["command"].as<string>() : "",
-          /*noexit=*/true);
+      // injects "<command>\n" and does not append "; exit".  An adopted session
+      // already ran it when it was created, and its shell may have something in
+      // the foreground now, so it is not replayed.
+      const bool adopted = terminalClient.attachedToExisting();
+      terminalClient.run((!adopted && result.count("command"))
+                             ? result["command"].as<string>()
+                             : "",
+                         /*noexit=*/true);
       listener.shutdown();
 #endif
     } else {
