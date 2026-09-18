@@ -170,7 +170,7 @@ void ControlListener::handleConnection(int connFd) {
       break;
     }
     case CTL_INFO: {
-      TerminalInfo ti = console->getTerminalInfo();
+      TerminalInfo ti = console->getTerminalInfo().value();
       const bool connected = isConnected ? isConnected() : true;
       std::ostringstream out;
       out << "alive=1\n"

@@ -120,7 +120,9 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
     ti.SerializeToString(&payload);
     auto [op, resp] = rpc(path, CTL_RESIZE, payload);
     REQUIRE(op == CTL_OK);
-    TerminalInfo got = console->getTerminalInfo();
+    auto info = console->getTerminalInfo();
+    REQUIRE(info.has_value());
+    TerminalInfo got = *info;
     REQUIRE(got.row() == 40);
     REQUIRE(got.column() == 120);
   }

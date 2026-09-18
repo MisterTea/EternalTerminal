@@ -73,12 +73,31 @@ TEST_CASE("ControlConsoleWriteFeedsScrollback", "[ControlConsole]") {
 TEST_CASE("ControlConsoleResizeReflectedInTerminalInfo", "[ControlConsole]") {
   ControlConsole console;
   // Default size is 132x24 (the standard wide terminal).
-  TerminalInfo def = console.getTerminalInfo();
+  auto initial = console.getTerminalInfo();
+  REQUIRE(initial.has_value());
+  TerminalInfo def = *initial;
   REQUIRE(def.row() == 24);
   REQUIRE(def.column() == 132);
 
   console.setSize(40, 120, 0, 0);
-  TerminalInfo ti = console.getTerminalInfo();
+  auto resized = console.getTerminalInfo();
+  REQUIRE(resized.has_value());
+  TerminalInfo ti = *resized;
   REQUIRE(ti.row() == 40);
   REQUIRE(ti.column() == 120);
+}
+
+TEST_CASE("ControlConsolePartialWriteCapturesOutput", "[ControlConsole]") {
+  ControlConsole console;
+  Console& output = console;
+  REQUIRE(output.writeSome("hello") == 5);
+  REQUIRE(output.writeSome(" world") == 6);
+  REQUIRE(console.readOutput(0).data == "hello world");
+  auto transcript = console.readTranscript(-1);
+  REQUIRE(transcript.records.size() == 2);
+  REQUIRE(transcript.records[0].dir == '<');
+  REQUIRE(transcript.records[0].bytes == "hello");
+  REQUIRE(transcript.records[1].bytes == " world");
+  // Output must not be sent to the input pipe or echoed as keystrokes.
+  REQUIRE(drainFd(console.getFd()).empty());
 }
