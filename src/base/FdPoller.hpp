@@ -5,7 +5,8 @@
 
 namespace et {
 /**
- * @brief Readiness poller backed by epoll on Linux and kqueue on BSD/macOS.
+ * @brief Readiness poller backed by epoll on Linux, kqueue on BSD/macOS, and
+ * WSAPoll on Windows.
  *
  * Unlike select() there is no FD_SETSIZE ceiling, so a descriptor at or above
  * 1024 is safe to watch.

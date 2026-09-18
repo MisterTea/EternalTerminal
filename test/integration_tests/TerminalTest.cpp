@@ -2,6 +2,7 @@
 #include <chrono>
 #include <future>
 
+#ifndef WIN32
 #if __APPLE__
 #include <util.h>
 #elif __FreeBSD__
@@ -9,9 +10,13 @@
 #else
 #include <pty.h>
 #endif
-#include <fcntl.h>
 #include <sys/wait.h>
 #include <termios.h>
+#endif
+#include <fcntl.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
@@ -20,6 +25,7 @@
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 #include "TunnelUtils.hpp"
 
 namespace et {
@@ -123,8 +129,13 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   uthThread.join();
   uth.reset();
 
+#ifdef WIN32
+  _putenv("ET_TEST_VAR1=");
+  _putenv("ET_TEST_VAR2_EMPTY=");
+#else
   unsetenv("ET_TEST_VAR1");
   unsetenv("ET_TEST_VAR2_EMPTY");
+#endif
 }
 
 void terminalInfoQueryFailureTest(
@@ -185,6 +196,76 @@ void terminalInfoQueryFailureTest(
 // and cannot reproduce the input-write deadlock -- which is exactly why that
 // bug went unnoticed.  `cat` echoes input back byte-for-byte; the pty is raw +
 // no-echo so the round-trip is exactly 1:1.
+#ifdef WIN32
+// Windows has no forkpty: echo through a loopback socket pair instead. The
+// handler pumps the returned fd exactly like a pty master (bidirectional),
+// and the background thread plays the role of `cat`, echoing input back
+// byte-for-byte so the round-trip is exactly 1:1.
+class RealPtyEchoTerminal : public UserTerminal {
+ public:
+  RealPtyEchoTerminal() : cleanedUp(false) { fds[0] = fds[1] = -1; }
+  virtual ~RealPtyEchoTerminal() { cleanup(); }
+
+  virtual int setup(int /*routerFd*/) {
+    if (test::createTestSocketPair(fds) != 0) {
+      STFATAL << "Failed to create echo socket pair";
+    }
+    running = true;
+    echoThread = thread([this]() {
+      char buf[4096];
+      while (running.load()) {
+        int n = ::recv(fds[1], buf, sizeof(buf), 0);
+        if (n <= 0) {
+          break;
+        }
+        int off = 0;
+        while (off < n) {
+          int m = ::send(fds[1], buf + off, n - off, 0);
+          if (m <= 0) {
+            break;
+          }
+          off += m;
+        }
+        if (off < n) {
+          break;
+        }
+      }
+    });
+    return fds[0];
+  }
+  virtual void runTerminal() {}
+  virtual void handleSessionEnd() {}
+  virtual void cleanup() {
+    lock_guard<mutex> guard(cleanupMutex);
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    running = false;
+    if (fds[1] >= 0) {
+      // Unblocks the echo thread's recv so join() below completes.
+      test::closeTestFd(fds[1]);
+      fds[1] = -1;
+    }
+    if (echoThread.joinable()) {
+      echoThread.join();
+    }
+    if (fds[0] >= 0) {
+      test::closeTestFd(fds[0]);
+      fds[0] = -1;
+    }
+  }
+  virtual int getFd() { return fds[0]; }
+  virtual void setInfo(const winsize& /*tmpwin*/) {}
+
+ private:
+  int fds[2];
+  thread echoThread;
+  atomic<bool> running{false};
+  mutex cleanupMutex;
+  bool cleanedUp;
+};
+#else
 class RealPtyEchoTerminal : public UserTerminal {
  public:
   RealPtyEchoTerminal() : masterFd(-1), childPid(-1) {}
@@ -231,6 +312,7 @@ class RealPtyEchoTerminal : public UserTerminal {
   int masterFd;
   pid_t childPid;
 };
+#endif
 
 // Pushes a payload much larger than one pty buffer through the real handler and
 // a real pty, and requires that every byte echoes back within a deadline.  The
@@ -354,10 +436,14 @@ void largeInputNoDeadlockTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
 class FileBackedConsole : public Console {
  public:
   FileBackedConsole() : fd(-1) {
-    string tmpPath = GetTempDirectory() + string("et_test_nohup_XXXXXXXX");
-    directory = string(mkdtemp(&tmpPath[0]));
+    directory = test::makeTempDir("et_test_nohup");
     path = directory + "/nohup.out";
+#ifdef WIN32
+    fd = _open(path.c_str(), _O_RDWR | _O_CREAT | _O_APPEND,
+               _S_IREAD | _S_IWRITE);
+#else
     fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
+#endif
     FATAL_FAIL(fd);
   }
 
@@ -367,11 +453,15 @@ class FileBackedConsole : public Console {
 
   virtual void teardown() {
     if (fd >= 0) {
+#ifdef WIN32
+      _close(fd);
+#else
       ::close(fd);
+#endif
       fd = -1;
     }
     ::remove(path.c_str());
-    ::remove(directory.c_str());
+    test::removeTempDir(directory);
   }
 
   virtual std::optional<TerminalInfo> getTerminalInfo() {
@@ -385,18 +475,42 @@ class FileBackedConsole : public Console {
 
   virtual int getFd() { return fd; }
 
+  void write(const string& data) override {
+#ifdef WIN32
+    // The base-class write() targets the Win32 console, but this double must
+    // capture output in the backing file, mirroring the Unix path where the
+    // base implementation writes to getFd().
+    if (!data.empty()) {
+      _write(fd, data.data(), static_cast<unsigned int>(data.size()));
+    }
+#else
+    Console::write(data);
+#endif
+  }
+
   string readBackContents() {
     string contents;
+#ifdef WIN32
+    int readFd = _open(path.c_str(), _O_RDONLY);
+#else
     int readFd = ::open(path.c_str(), O_RDONLY);
+#endif
     if (readFd < 0) {
       return contents;
     }
     char buf[4096];
     int rc;
+#ifdef WIN32
+    while ((rc = _read(readFd, buf, sizeof(buf))) > 0) {
+      contents.append(buf, rc);
+    }
+    _close(readFd);
+#else
     while ((rc = ::read(readFd, buf, sizeof(buf))) > 0) {
       contents.append(buf, rc);
     }
     ::close(readFd);
+#endif
     return contents;
   }
 
@@ -456,7 +570,7 @@ void nonTtyConsoleKeepsSessionAliveTest(
   auto sawOutputFuture = sawOutputPromise.get_future();
   thread readThread([&sawOutputPromise, fileConsole, remoteOutput]() {
     while (fileConsole->readBackContents().find(remoteOutput) == string::npos) {
-      ::usleep(100 * 1000);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
     }
     sawOutputPromise.set_value(true);
   });
@@ -534,8 +648,7 @@ class EndToEndTestFixture {
     userTerminalSocketHandler.reset(new PipeSocketHandler());
     fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
 
-    string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipeDirectory = test::makeTempDir("etserver_test");
 
     routerPipePath = string(pipeDirectory) + "/pipe_router";
     routerEndpoint.set_name(routerPipePath);
@@ -562,7 +675,7 @@ class EndToEndTestFixture {
     routerSocketHandler.reset();
     removeOrMissing(routerPipePath);
     removeOrMissing(serverPipePath);
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    test::removeTempDir(pipeDirectory);
 
     el::Helpers::uninstallLogDispatchCallback<LogInterceptHandler>(
         "LogInterceptHandler");

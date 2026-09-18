@@ -1,10 +1,13 @@
-#include <fcntl.h>
 #include <limits.h>
-#include <signal.h>
 #include <stdio.h>
+
+#ifndef WIN32
+#include <fcntl.h>
+#include <signal.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#endif
 
 #include <chrono>
 #include <thread>
@@ -324,4 +327,28 @@ TEST_CASE("Ghostty GUI: control-mode attach is opt-in until Ghostty speaks -CC",
       "CI");
 }
 
+#else
+// Ghostty has no Windows build and this suite drives htm through a Unix pty
+// (openpty/fork), so the cases below cannot execute on Windows. They are
+// listed as skips so the suite stays green and the reason is visible.
+TEST_CASE("Control-mode PTY: DCS, session-changed, commands, shutdown",
+          "[Htm][e2e][pty]") {
+  SKIP("Control-mode PTY e2e requires a Unix pty");
+}
+
+TEST_CASE("Control-mode PTY: detach leaves htmd running", "[Htm][e2e][pty]") {
+  SKIP("Control-mode PTY e2e requires a Unix pty");
+}
+
+TEST_CASE("Control-mode PTY: SIGKILL of htm lets htmd accept a new client",
+          "[Htm][e2e][pty]") {
+  SKIP("Control-mode PTY e2e requires a Unix pty");
+}
+
+TEST_CASE("Ghostty GUI: control-mode attach is opt-in until Ghostty speaks -CC",
+          "[Htm][.ghostty][e2e][gui]") {
+  SKIP(
+      "Ghostty control-mode / tmux -CC integration is not required in default "
+      "CI");
+}
 #endif

@@ -213,8 +213,7 @@ class ServerEndToEndTestFixture {
     userTerminalSocketHandler.reset(new PipeSocketHandler());
     fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
 
-    string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipeDirectory = test::makeTempDir("etserver_test");
 
     routerPipePath = string(pipeDirectory) + "/pipe_router";
     routerEndpoint.set_name(routerPipePath);
@@ -277,7 +276,7 @@ class ServerEndToEndTestFixture {
     removeOrMissing(serverPipePath);
     removeOrMissing(jumphostRouterPipePath);
     removeOrMissing(jumphostServerPipePath);
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    test::removeTempDir(pipeDirectory);
   }
 
  protected:

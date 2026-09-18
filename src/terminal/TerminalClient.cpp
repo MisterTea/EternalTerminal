@@ -301,12 +301,26 @@ void TerminalClient::run(const string& command, const bool noexit) {
           // the server.
           VLOG(4) << "Got data from stdin";
 #ifdef WIN32
-          DWORD events;
-          INPUT_RECORD buffer[128];
           HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
-          PeekConsoleInput(handle, buffer, 128, &events);
-          if (events > 0) {
-            ReadConsoleInput(handle, buffer, 128, &events);
+          DWORD consoleMode = 0;
+          if (handle == NULL || handle == INVALID_HANDLE_VALUE ||
+              !GetConsoleMode(handle, &consoleMode)) {
+            // stdin is redirected (nohup/background/service): there is no
+            // keyboard to read, but the session must survive. Mirrors the
+            // Unix non-tty path below.
+            LOG(INFO) << "Console stdin is not a console, disabling "
+                         "console input";
+            consoleInputDisabled = true;
+          } else {
+            DWORD events = 0;
+            INPUT_RECORD buffer[128];
+            if (!PeekConsoleInput(handle, buffer, 128, &events)) {
+              events = 0;
+            }
+            if (events > 0) {
+              if (!ReadConsoleInput(handle, buffer, 128, &events)) {
+                events = 0;
+              }
             string s;
             for (int keyEvent = 0; keyEvent < events; keyEvent++) {
               if (buffer[keyEvent].EventType == KEY_EVENT &&
@@ -333,6 +347,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
                           << " bytes), consoleOut=" << consoleOut.size();
               }
               tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
+            }
             }
           }
 #else

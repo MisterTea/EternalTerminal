@@ -389,29 +389,36 @@ inline string protoToString(const T& t) {
 /**
  * Wait on a fd to have data available.
  *
- * @return true if the fd is readable, or (POSIX only) has hung up, errored, or
- *   become invalid, so the caller's read reports the condition; false if the
- *   timeout is reached or the call is interrupted by a syscall.
+ * @return true if the fd is readable, or has hung up, errored, or become
+ *   invalid, so the caller's read reports the condition; false if the timeout
+ *   is reached or the call is interrupted by a syscall.
  */
 inline bool waitOnSocketData(int fd, int64_t sec = 1, int64_t usec = 0) {
 #ifdef WIN32
-  fd_set fdset;
-  FD_ZERO(&fdset);
-  FD_SET(fd, &fdset);
-  timeval tv;
-  tv.tv_sec = sec;
-  tv.tv_usec = usec;
-  VLOG(4) << "Before selecting sockFd";
-  const int selectResult = select(fd + 1, &fdset, NULL, NULL, &tv);
-  if (selectResult < 0) {
-    if (errno == EINTR) {
+  // WSAPoll (rather than select) so there is no FD_SETSIZE ceiling and an
+  // invalid socket surfaces as POLLNVAL, matching poll() below.
+  WSAPOLLFD pollFd = {};
+  pollFd.fd = static_cast<SOCKET>(fd);
+  pollFd.events = POLLRDNORM | POLLRDBAND;
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  VLOG(4) << "Before polling sockFd";
+  const int pollResult = ::WSAPoll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
+    const int err = WSAGetLastError();
+    if (err == WSAEINTR) {
       // Interrupted by the signal, the caller will retry.
       return false;
-    } else {
-      FATAL_FAIL(selectResult);
     }
+    if (err == WSAENOTSOCK || err == WSAEINVAL) {
+      // Invalid socket: surface it like poll() reports POLLNVAL so the
+      // caller's read observes the condition instead of hanging.
+      return true;
+    }
+    FATAL_FAIL(pollResult);
   }
-  return FD_ISSET(fd, &fdset);
+  return pollResult > 0 &&
+         (pollFd.revents & (POLLRDNORM | POLLRDBAND | POLLHUP | POLLERR |
+                            POLLNVAL)) != 0;
 #else
   struct pollfd pollFd = {fd, POLLIN, 0};
   const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
@@ -436,24 +443,25 @@ inline bool waitOnSocketData(int fd, int64_t sec = 1, int64_t usec = 0) {
  */
 inline bool isSocketWritable(int fd, int64_t sec = 0, int64_t usec = 0) {
 #ifdef WIN32
-  fd_set fdset;
-  FD_ZERO(&fdset);
-  FD_SET(fd, &fdset);
-  timeval tv;
-  tv.tv_sec = sec;
-  tv.tv_usec = usec;
-  const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
-  if (selectResult < 0) {
-    if (errno == EINTR || errno == EBADF || errno == EINVAL) {
-      // EINTR: interrupted by a signal. EBADF/EINVAL: the fd was closed
+  WSAPOLLFD pollFd = {};
+  pollFd.fd = static_cast<SOCKET>(fd);
+  pollFd.events = POLLWRNORM;
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  const int pollResult = ::WSAPoll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
+    const int err = WSAGetLastError();
+    if (err == WSAEINTR || err == WSAENOTSOCK || err == WSAEINVAL) {
+      // EINTR: interrupted by a signal. ENOTSOCK/EINVAL: the fd was closed
       // under us (e.g. client disconnected). Returning false is safe:
       // callers use this as a non-blocking "can I write more?" poll.
       return false;
-    } else {
-      FATAL_FAIL(selectResult);
     }
+    FATAL_FAIL(pollResult);
   }
-  return FD_ISSET(fd, &fdset);
+  // POLLNVAL is deliberately excluded: an fd closed under us reports "not
+  // writable" here, matching the poll() branch below.
+  return pollResult > 0 &&
+         (pollFd.revents & (POLLWRNORM | POLLWRBAND | POLLHUP | POLLERR)) != 0;
 #else
   struct pollfd pollFd = {fd, POLLOUT, 0};
   const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);

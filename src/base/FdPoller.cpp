@@ -1,8 +1,9 @@
-#ifndef WIN32
 #include "FdPoller.hpp"
 
 namespace et {
+#ifndef WIN32
 FdPoller::~FdPoller() { ::close(pollerFd); }
+#endif
 
 void FdPoller::setFds(const set<int>& readFds, const set<int>& writeFds,
                       const set<int>& refreshFds) {
@@ -44,4 +45,3 @@ FdPoller::Ready FdPoller::wait(int timeoutMs) {
                   timeoutMs);
 }
 }  // namespace et
-#endif
