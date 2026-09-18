@@ -113,7 +113,7 @@ TEST_CASE("EtctlBinaryDrivesAControlSession", "[EtctlBinary]") {
     RunResult r = runEtctl("read " + name);
     REQUIRE(r.code == 0);
     REQUIRE(r.out.find("\x1b[A") != string::npos);  // up arrow
-    REQUIRE(r.out.find("\r") != string::npos);       // enter
+    REQUIRE(r.out.find("\r") != string::npos);      // enter
   }
 
   SECTION("sessions lists this session") {
