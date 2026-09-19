@@ -1264,6 +1264,8 @@ static void local_parse_file(const char* targethost, struct Options* options,
                              const char* filename, int* parsing, int seen[]) {
   string line;
   int len = 0;
+  std::string fileDir = fs::path(filename).parent_path().string();
+  if (fileDir.empty()) fileDir = ".";
 
   unsigned int count = 0;
 
@@ -1276,7 +1278,7 @@ static void local_parse_file(const char* targethost, struct Options* options,
   while (std::getline(infile, line)) {
     count++;
     if (ssh_config_parse_line(targethost, options, line.c_str(), count, parsing,
-                              seen) < 0) {
+                              seen, fileDir.c_str()) < 0) {
       infile.close();
       return;
     }
@@ -1287,7 +1289,8 @@ static void local_parse_file(const char* targethost, struct Options* options,
 
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
-                                 unsigned int count, int* parsing, int seen[]) {
+                                 unsigned int count, int* parsing, int seen[],
+                                 const char* fileDir) {
   enum ssh_config_opcode_e opcode;
   const char* p;
   char *s, *x;
@@ -1336,7 +1339,7 @@ static int ssh_config_parse_line(const char* targethost,
         char* filename = ssh_path_expand_tilde(p);
         if (filename) {
           if (strchr(filename, '*') || strchr(filename, '?')) {
-            std::string dir = fs::path(filename).parent_path().string();
+            std::string dir = fileDir;
             std::string pattern = fs::path(filename).filename().string();
             std::regex pattern_regex(std::regex_replace(
                 std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
@@ -1350,7 +1353,12 @@ static int ssh_config_parse_line(const char* targethost,
               }
             }
           } else {
-            local_parse_file(targethost, options, filename, parsing, seen);
+            std::string resolved = fileDir;
+            if (!resolved.empty() && resolved.back() != '/') {
+              resolved += '/';
+            }
+            resolved += filename;
+            local_parse_file(targethost, options, resolved, parsing, seen);
           }
         }
         SAFE_FREE(filename);
@@ -1387,7 +1395,7 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_MATCH:
-      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen);
+      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen, fileDir);
       SAFE_FREE(x);
       return i;
       break;
@@ -1556,6 +1564,8 @@ int parse_ssh_config_file(const char* targethost, struct Options* options,
     return 0;
   }
 
+  std::string fileDir = fs::path(expandedFilename ? expandedFilename : filename.c_str()).parent_path().string();
+  if (fileDir.empty()) fileDir = ".";
   ifstream infile(expandedFilename);
   free(expandedFilename);
   if (!infile.good()) {
@@ -1568,7 +1578,7 @@ int parse_ssh_config_file(const char* targethost, struct Options* options,
   while (std::getline(infile, line)) {
     count++;
     if (ssh_config_parse_line(targethost, options, line.c_str(), count,
-                              &parsing, seen) < 0) {
+                              &parsing, seen, fileDir.c_str()) < 0) {
       infile.close();
       return -1;
     }
