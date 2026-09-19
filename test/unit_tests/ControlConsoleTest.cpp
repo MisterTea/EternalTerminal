@@ -4,6 +4,7 @@
 using namespace et;
 
 namespace {
+#ifndef WIN32
 string drainFd(int fd, size_t maxBytes = 4096) {
   string buf(maxBytes, '\0');
   ssize_t rc = ::read(fd, &buf[0], maxBytes);
@@ -13,9 +14,13 @@ string drainFd(int fd, size_t maxBytes = 4096) {
   buf.resize((size_t)rc);
   return buf;
 }
+#endif
 }  // namespace
 
 TEST_CASE("ControlConsoleInjectedInputAppearsOnFd", "[ControlConsole]") {
+#ifdef WIN32
+  SKIP("ControlConsole's input pipe is POSIX-only (#ifndef WIN32 in its ctor)");
+#else
   ControlConsole console;
   REQUIRE(console.getFd() >= 0);
 
@@ -25,10 +30,14 @@ TEST_CASE("ControlConsoleInjectedInputAppearsOnFd", "[ControlConsole]") {
   // Control bytes ride the same path (Ctrl-C, Ctrl-D, ESC).
   console.injectInput(string("\x03\x04\x1b", 3));
   REQUIRE(drainFd(console.getFd()) == string("\x03\x04\x1b", 3));
+#endif
 }
 
 TEST_CASE("ControlConsoleSecretInputRedactedFromTranscript",
           "[ControlConsole]") {
+#ifdef WIN32
+  SKIP("ControlConsole's input pipe is POSIX-only (#ifndef WIN32 in its ctor)");
+#else
   ControlConsole console;
 
   // A secret write still reaches the shell verbatim...
@@ -47,6 +56,7 @@ TEST_CASE("ControlConsoleSecretInputRedactedFromTranscript",
   TranscriptRead tr2 = console.readTranscript(-1);
   REQUIRE(tr2.records.size() == 2);
   REQUIRE(tr2.records[1].bytes == "whoami\n");
+#endif
 }
 
 TEST_CASE("ControlConsoleWriteFeedsScrollback", "[ControlConsole]") {
@@ -99,5 +109,8 @@ TEST_CASE("ControlConsolePartialWriteCapturesOutput", "[ControlConsole]") {
   REQUIRE(transcript.records[0].bytes == "hello");
   REQUIRE(transcript.records[1].bytes == " world");
   // Output must not be sent to the input pipe or echoed as keystrokes.
+  // (The pipe itself is POSIX-only; see ControlConsole's ctor.)
+#ifndef WIN32
   REQUIRE(drainFd(console.getFd()).empty());
+#endif
 }
