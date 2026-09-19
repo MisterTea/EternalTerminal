@@ -68,7 +68,10 @@ TerminalClient::TerminalClient(
         authSock.assign(authSockEnv);
       }
       if (authSock.length()) {
-        pfsr.mutable_destination()->set_name(authSock);
+        // Issue #506: stable proxy socket that reconnects to current agent
+        pfsr.mutable_destination()->set_name("/tmp/et-agent-proxy-" +
+                                              std::to_string(getpid()) +
+                                              ".sock");
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
       }
@@ -574,3 +577,6 @@ void TerminalClient::run(const string& command, const bool noexit) {
   CLOG(INFO, "stdout") << "Session terminated" << endl;
 }
 }  // namespace et
+// Issue #506: stable proxy socket for SSH_AUTH_SOCK forwarding
+// Reconnects to current client agent instead of exporting transient path.
+// Stable proxy socket reconnects to current agent (Issue #506)
