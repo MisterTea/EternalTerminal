@@ -13,6 +13,16 @@
 
 using namespace et;
 
+#ifdef WIN32
+
+// etctl itself is POSIX-only (see the else(WIN32) branch in CMakeLists.txt
+// that builds it), so it isn't built or present to test on Windows.
+TEST_CASE("EtctlBinaryDrivesAControlSession", "[EtctlBinary]") {
+  SKIP("etctl is not built on Windows");
+}
+
+#else
+
 namespace {
 
 string etctlBinary() {
@@ -126,3 +136,5 @@ TEST_CASE("EtctlBinaryDrivesAControlSession", "[EtctlBinary]") {
   echo.join();
   listener.shutdown();
 }
+
+#endif  // WIN32

@@ -16,6 +16,16 @@
 
 using namespace et;
 
+#ifdef WIN32
+
+// etctl itself is POSIX-only (see the else(WIN32) branch in CMakeLists.txt
+// that builds it), so it isn't built or present to test on Windows.
+TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
+  SKIP("etctl is not built on Windows");
+}
+
+#else
+
 namespace {
 
 string etctlBin() {
@@ -216,3 +226,5 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
   int st;
   ::waitpid(pid, &st, 0);
 }
+
+#endif  // WIN32

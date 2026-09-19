@@ -18,6 +18,28 @@
 #include <functional>
 #include <thread>
 
+#include "TestHeaders.hpp"
+
+using namespace et;
+
+#ifdef WIN32
+
+// etctl itself is POSIX-only (see the else(WIN32) branch in CMakeLists.txt
+// that builds it), and forkpty()/pty.h have no Windows equivalent here, so
+// none of this is built or present to test on Windows.
+TEST_CASE("EtctlRunBracketedOsc133 (zsh)", "[EtctlOsc133]") {
+  SKIP("etctl is not built on Windows");
+}
+TEST_CASE("EtctlRunEvalOsc133AndMarkers (zsh, no bracketed paste)",
+          "[EtctlOsc133]") {
+  SKIP("etctl is not built on Windows");
+}
+TEST_CASE("EtctlRunBracketMark (fish)", "[EtctlOsc133]") {
+  SKIP("etctl is not built on Windows");
+}
+
+#else
+
 #if __APPLE__
 #include <util.h>
 #elif __FreeBSD__
@@ -33,9 +55,6 @@
 #include "ControlListener.hpp"
 #include "ControlPaths.hpp"
 #include "RawSocketUtils.hpp"
-#include "TestHeaders.hpp"
-
-using namespace et;
 
 namespace {
 
@@ -409,3 +428,5 @@ TEST_CASE("EtctlRunBracketMark (fish)", "[EtctlOsc133]") {
     }
   });
 }
+
+#endif  // WIN32
