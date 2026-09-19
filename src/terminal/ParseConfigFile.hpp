@@ -912,10 +912,15 @@ int ssh_options_set(struct Options* options, enum ssh_options_e type,
         CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else { /* ProxyJump provided */
-        options->ProxyJump = strdup(static_cast<const char*>(value));
-        if (options->ProxyJump == NULL) {
-          CLOG(INFO, "stdout") << "error" << endl;
-          return -1;
+        /* Setting ProxyJump to 'none' disables this option */
+        if (strcasecmp(v, "none") == 0) {
+          options->ProxyJump = NULL;
+        } else {
+          options->ProxyJump = strdup(static_cast<const char*>(value));
+          if (options->ProxyJump == NULL) {
+            CLOG(INFO, "stdout") << "error" << endl;
+            return -1;
+          }
         }
       }
       break;

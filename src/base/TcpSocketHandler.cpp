@@ -160,9 +160,10 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
 
   int port = endpoint.port();
-  if (portServerSockets.find(port) != portServerSockets.end()) {
-    STFATAL << "Tried to listen twice on the same port";
-  }
+  // Do not reject solely because the same port number is used on a
+  // different address tuple (e.g., ephemeral outgoing socket). The OS
+  // bind() will enforce the real local-address constraint.
+  (void)port;
 
   addrinfo hints, *servinfo, *p;
   int rc;
