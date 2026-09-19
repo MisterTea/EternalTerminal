@@ -33,6 +33,16 @@ class FakeSshSubprocessHandler : public SubprocessUtils {
   }
 };
 
+class FakeSshSubprocessHandlerWithMotd : public SubprocessUtils {
+ public:
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    return "Welcome to the test server\nIDPASSKEY:" + string(16, 'i') + "/" +
+           string(32, 'p') + "\n";
+  }
+};
+
 /**
  * @brief Fake subprocess handler that returns empty output
  * to simulate SSH connection failure.
@@ -128,6 +138,44 @@ TEST_CASE("SshSetupHandler basic connection", "[SshSetupHandler]") {
     REQUIRE(id.length() == 16);
     REQUIRE(passkey.length() == 32);
   }
+}
+
+TEST_CASE("SshSetupHandler removes credentials from login output",
+          "[SshSetupHandler]") {
+  const string credential = string(16, 'i') + "/" + string(32, 'p');
+
+  REQUIRE(SshSetupHandler::ExtractLoginOutput(
+              "Welcome to the server\nIDPASSKEY:" + credential + "\n") ==
+          "Welcome to the server\n");
+  REQUIRE(SshSetupHandler::ExtractLoginOutput("IDPASSKEY:" + credential +
+                                              "\r\n") == "");
+  REQUIRE(SshSetupHandler::ExtractLoginOutput("plain login output") ==
+          "plain login output");
+}
+
+TEST_CASE("SshSetupHandler displays login output only when enabled",
+          "[SshSetupHandler]") {
+  auto runSetup = [](bool displayLoginOutput) {
+    auto fakeSubprocess = make_shared<FakeSshSubprocessHandlerWithMotd>();
+    SshSetupHandler handler(fakeSubprocess);
+    handler.setDisplayLoginOutput(displayLoginOutput);
+
+    std::ostringstream output;
+    auto* previousBuffer = std::cout.rdbuf(output.rdbuf());
+    handler.SetupSsh("testuser", "testhost", "testhost", 2022, "", "", false, 0,
+                     "", "", {});
+    el::Loggers::flushAll();
+    std::cout.rdbuf(previousBuffer);
+    return output.str();
+  };
+
+  const string interactiveOutput = runSetup(true);
+  REQUIRE(interactiveOutput.find("Welcome to the test server") != string::npos);
+  REQUIRE(interactiveOutput.find("IDPASSKEY:") == string::npos);
+  REQUIRE(interactiveOutput.find(string(16, 'i') + "/" + string(32, 'p')) ==
+          string::npos);
+
+  REQUIRE(runSetup(false).find("Welcome to the test server") == string::npos);
 }
 
 TEST_CASE("SshSetupHandler with custom options", "[SshSetupHandler]") {

@@ -75,6 +75,57 @@ jobs:
                 tar \
                 unzip \
                 zip
+          - distro: rocky-linux
+            container: rockylinux:9
+            install: |
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb
+              dnf install -y \
+                autoconf \
+                automake \
+                boost-devel \
+                ca-certificates \
+                cmake \
+                curl-devel \
+                gcc \
+                gcc-c++ \
+                git \
+                gflags-devel \
+                libatomic \
+                libsodium-devel \
+                libtool \
+                libunwind-devel \
+                libutempter-devel \
+                ninja-build \
+                openssl-devel \
+                pkgconf-pkg-config \
+                procps-ng \
+                protobuf-compiler \
+                protobuf-devel \
+                tar \
+                unzip \
+                zip
+          - distro: gentoo
+            container: gentoo/stage3:latest
+            install: |
+              emerge-webrsync
+              emerge --jobs=2 \
+                dev-build/autoconf \
+                dev-build/automake \
+                dev-build/cmake \
+                dev-build/libtool \
+                dev-build/ninja \
+                dev-libs/boost \
+                dev-libs/libsodium \
+                dev-libs/openssl \
+                dev-libs/protobuf \
+                dev-libs/userspace-rcu \
+                dev-util/pkgconf \
+                dev-vcs/git \
+                net-misc/curl \
+                sys-libs/libunwind \
+                sys-libs/libutempter \
+                sys-process/procps
           - distro: archlinux
             container: archlinux:latest
             install: |

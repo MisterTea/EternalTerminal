@@ -505,6 +505,7 @@ int main(int argc, char** argv) {
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
+    sshSetupHandler.setDisplayLoginOutput(console != nullptr);
     pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
         username, destinationHost, host_alias, destinationPort, jumphost,
         jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
