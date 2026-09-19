@@ -1,0 +1,28 @@
+{
+  "criteriaSatisfied": [
+    {
+      "id": "criterion-1",
+      "status": "not-satisfied",
+      "evidence": "Cannot implement a regression test for Ctrl-D/coredump on Oracle Linux ARM without the reporter's exact package version and symbolized backtrace. The ISSUE_TRIAGE.md file is missing from the repository."
+    },
+    {
+      "id": "criterion-2",
+      "status": "not-satisfied",
+      "evidence": "No test files were added. The issue requires specific data (package version, backtrace) that was not provided by the reporter."
+    }
+  ],
+  "changedFiles": [],
+  "testsAddedOrUpdated": [],
+  "commandsRun": [],
+  "validationOutput": "ISSUE_TRIAGE.md not found in repository root. Required reporter data (package version, symbolized backtrace) is missing.",
+  "residualRisks": [
+    "High: Crash on Oracle Linux ARM remains unreproduced without specific package version and backtrace. Blind test addition would be invalid.",
+    "Medium: Issue may require deeper investigation into Oracle Linux ARM environment (kernel version, libraries, etc.) beyond current data."
+  ],
+  "noStagedFiles": true,
+  "diffSummary": "No changes made. The issue cannot be addressed without reporter-provided data.",
+  "reviewFindings": [
+    "blocker: Missing ISSUE_TRIAGE.md and reporter data (package version, symbolized backtrace) prevents implementation of regression test for Ctrl-D/coredump on Oracle Linux ARM."
+  ],
+  "manualNotes": "The ISSUE_TRIAGE.md file is absent from the repository. Per user instruction, no regression test was added and no PR was created. The issue must be reopened with the reporter providing the exact package version and symbolized backtrace before a testable solution can be implemented."
+}
