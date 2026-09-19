@@ -523,6 +523,10 @@ void TerminalClient::run(const string& command, const bool noexit) {
       if (clientFd < 0) {
         // We are disconnected, so stop waiting for keepalive.
         waitingOnKeepalive = false;
+        if (console) {
+          const string status = "\033[s\033[999;1H\033[K⏳ Reconnecting...\033[u";
+          console->writeSome(status);
+        }
       }
 
       if (console) {
