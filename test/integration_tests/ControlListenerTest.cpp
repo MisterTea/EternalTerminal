@@ -6,6 +6,17 @@
 
 using namespace et;
 
+#ifdef WIN32
+
+// ControlListener (the `--ctl` daemon side) is POSIX-only: it is compiled out
+// entirely on Windows, and `et --ctl` exits with an explicit "not supported"
+// message there. Nothing below this line exists to test yet.
+TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
+  SKIP("--ctl has no ControlListener implementation on Windows");
+}
+
+#else
+
 namespace {
 
 string makeTempSocketPath() {
@@ -150,3 +161,5 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
   // Socket is unlinked on shutdown.
   REQUIRE(::access(path.c_str(), F_OK) != 0);
 }
+
+#endif  // WIN32
