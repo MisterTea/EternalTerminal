@@ -1,6 +1,8 @@
 #include "TerminalServer.hpp"
 
+#include <chrono>
 #include <cstdint>
+#include <thread>
 
 #include "FdPoller.hpp"
 #include "JumphostPending.hpp"
@@ -318,7 +320,8 @@ void TerminalServer::runJumpHost(
 
 void TerminalServer::runTerminal(
     shared_ptr<ServerClientConnection> serverClientState,
-    const InitialPayload& payload, const TerminalUserInfo& userInfo) {
+    const InitialPayload& payload, const TerminalUserInfo& userInfo,
+    bool resume, bool* terminalEofOut) {
   InitialResponse response;
   shared_ptr<SocketHandler> serverSocketHandler = getSocketHandler();
   shared_ptr<SocketHandler> pipeSocketHandler(new PipeSocketHandler());
@@ -331,36 +334,40 @@ void TerminalServer::runTerminal(
     LOG(INFO) << "SetEnv: " << envVar.first << "=" << envVar.second;
   }
 
-  vector<string> pipePaths;
-  for (const PortForwardSourceRequest& pfsr : payload.reversetunnels()) {
-    string sourceName;
-    PortForwardSourceResponse pfsresponse;
-    if (pfsr.has_environmentvariable()) {
-      pfsresponse = portForwardHandler->createSource(
-          pfsr, &sourceName, userInfo.uid(), userInfo.gid());
-    } else {
-      pfsresponse = portForwardHandler->createSource(
-          pfsr, nullptr, userInfo.uid(), userInfo.gid());
+  if (!resume) {
+    vector<string> pipePaths;
+    for (const PortForwardSourceRequest& pfsr : payload.reversetunnels()) {
+      string sourceName;
+      PortForwardSourceResponse pfsresponse;
+      if (pfsr.has_environmentvariable()) {
+        pfsresponse = portForwardHandler->createSource(
+            pfsr, &sourceName, userInfo.uid(), userInfo.gid());
+      } else {
+        pfsresponse = portForwardHandler->createSource(
+            pfsr, nullptr, userInfo.uid(), userInfo.gid());
+      }
+      if (pfsresponse.has_error()) {
+        InitialResponse response;
+        response.set_error(pfsresponse.error());
+        serverClientState->writePacket(Packet(
+            uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+        return;
+      }
+      if (pfsr.has_environmentvariable()) {
+        environmentVariables[pfsr.environmentvariable()] = sourceName;
+        pipePaths.push_back(sourceName);
+      }
     }
-    if (pfsresponse.has_error()) {
-      InitialResponse response;
-      response.set_error(pfsresponse.error());
-      serverClientState->writePacket(Packet(
-          uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
-      return;
-    }
-    if (pfsr.has_environmentvariable()) {
-      environmentVariables[pfsr.environmentvariable()] = sourceName;
-      pipePaths.push_back(sourceName);
-    }
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
   }
-  serverClientState->writePacket(
-      Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
 
   // Set thread name
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
   bool run = true;
+  bool killRequested = false;
+  bool terminalEof = false;
 
   // TE sends/receives data to/from the shell one char at a time.
   char b[BUF_SIZE];
@@ -371,14 +378,26 @@ void TerminalServer::runTerminal(
   FdPoller poller;
   uint64_t forwardFdsGeneration = portForwardHandler->getForwardFdsGeneration();
 
-  TermInit termInit;
-  for (auto& it : environmentVariables) {
-    *(termInit.add_environmentnames()) = it.first;
-    *(termInit.add_environmentvalues()) = it.second;
+  if (!resume) {
+    TermInit termInit;
+    termInit.set_hadreversetunnels(payload.reversetunnels_size() > 0);
+    for (auto& it : environmentVariables) {
+      *(termInit.add_environmentnames()) = it.first;
+      *(termInit.add_environmentvalues()) = it.second;
+    }
+    terminalSocketHandler->writePacket(
+        terminalFd,
+        Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
   }
-  terminalSocketHandler->writePacket(
-      terminalFd,
-      Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
+
+  if (resume && userInfo.hadreversetunnels()) {
+    TerminalBuffer notice;
+    notice.set_buffer(
+        "et: port forwards were not restored across the server restart; "
+        "reconnect to re-establish\r\n");
+    serverClientState->writePacket(
+        Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(notice)));
+  }
 
   WriteBuffer terminalOutputBuffer;
   string clientInterruptCarry;
@@ -494,6 +513,10 @@ void TerminalServer::runTerminal(
               LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   stringToProto<et::TerminalInfo>(packet.getPayload());
+              if (ti.command() == TerminalInfo::KILL_SESSION &&
+                  ti.commandversion() == SESSION_KILL_COMMAND_VERSION) {
+                killRequested = true;
+              }
               char c = TERMINAL_INFO;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
@@ -546,6 +569,10 @@ void TerminalServer::runTerminal(
           }
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          if (killRequested) {
+            serverClientState->writePacket(
+                Packet(TerminalPacketType::KEEP_ALIVE, SESSION_KILL_ACK));
+          }
           run = false;
           break;
         } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
@@ -579,11 +606,15 @@ void TerminalServer::runTerminal(
       // recoverClient() resumes this session after a transient disconnect.
     }
   }
+  if (terminalEofOut != nullptr) {
+    *terminalEofOut = terminalEof;
+  }
 }
 
 void TerminalServer::handleConnection(
     shared_ptr<ServerClientConnection> serverClientState) {
   std::optional<TerminalUserInfo> userInfo;
+  bool terminalEof = false;
   try {
     Packet packet;
     const time_t initialPayloadDeadline = time(NULL) + initialPayloadTimeoutSec;
@@ -618,16 +649,14 @@ void TerminalServer::handleConnection(
       runJumpHost(serverClientState, payload, *userInfo);
     } else {
       LOG(INFO) << "RUNNING TERMINAL";
-      runTerminal(serverClientState, payload, *userInfo);
+      runTerminal(serverClientState, payload, *userInfo, /*resume=*/false,
+                  &terminalEof);
     }
   } catch (const std::exception& ex) {
     LOG(ERROR) << "Terminal thread failed: " << ex.what();
   }
 
-  removeClient(serverClientState->getId());
-  if (userInfo) {
-    terminalRouter->removeConnection(*userInfo);
-  }
+  finishSession(serverClientState, userInfo, terminalEof);
 }
 
 bool TerminalServer::newClient(
@@ -637,5 +666,95 @@ bool TerminalServer::newClient(
                                serverClientState);
   terminalThreads.push_back(t);
   return true;
+}
+
+bool TerminalServer::shouldResumeAsReturning(const string& clientId) {
+  return terminalRouter->isPtyActive(clientId);
+}
+
+void TerminalServer::resumeClient(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  lock_guard<std::mutex> guard(terminalThreadMutex);
+  shared_ptr<thread> t = shared_ptr<thread>(new thread(
+      &TerminalServer::handleConnectionResume, this, serverClientState));
+  terminalThreads.push_back(t);
+}
+
+void TerminalServer::handleConnectionResume(
+    shared_ptr<ServerClientConnection> serverClientState) {
+  // The session's bootstrap (INITIAL_PAYLOAD / INITIAL_RESPONSE /
+  // TERMINAL_INIT) already ran before the server restart; the pty is alive.
+  // Go straight to the pump for the existing terminal.
+  std::optional<TerminalUserInfo> userInfo;
+  bool terminalEof = false;
+  try {
+    userInfo = terminalRouter->tryGetInfoForConnection(serverClientState);
+    if (!userInfo) {
+      LOG(ERROR) << "Resuming client failed to bind to terminal router";
+    } else {
+      LOG(INFO) << "RESUMING TERMINAL";
+      runTerminal(serverClientState, InitialPayload(), *userInfo,
+                  /*resume=*/true, &terminalEof);
+    }
+  } catch (const std::exception& ex) {
+    LOG(ERROR) << "Resumed terminal thread failed: " << ex.what();
+  }
+
+  finishSession(serverClientState, userInfo, terminalEof);
+}
+
+void TerminalServer::finishSession(
+    const shared_ptr<ServerClientConnection>& serverClientState,
+    const std::optional<TerminalUserInfo>& userInfo, bool terminalEof) {
+  const string id = serverClientState->getId();
+  // Drop the router entry only when the terminal side ended the session (its
+  // pipe hit EOF or errored), so a future same-id registration is not rejected
+  // (also fixes the MisterTea#428 leak).  On a server halt the terminal is
+  // still alive: the entry must survive so a clean shutdown can close the pipe
+  // and hand the terminal its EOF, and the id must not be marked as ended so
+  // the recovery grace window still applies after the restart.
+  const auto serverIsHalted = [this]() {
+    lock_guard<std::mutex> guard(terminalThreadMutex);
+    return halt;
+  };
+  if (serverIsHalted()) {
+    return;
+  }
+  if (!userInfo) {
+    removeClient(id, true);
+    return;
+  }
+  const int terminalFd = userInfo->fd();
+  bool currentRegistration =
+      terminalRouter->isCurrentRegistration(id, terminalFd);
+  if (terminalEof) {
+    // A live etterminal reconnects immediately when only its pipe dies.
+    // Give the replacement time to win without holding router state.
+    const auto replacementDeadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (currentRegistration &&
+           std::chrono::steady_clock::now() < replacementDeadline) {
+      if (serverIsHalted() || serverClientState->isShuttingDown()) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      currentRegistration =
+          terminalRouter->isCurrentRegistration(id, terminalFd);
+    }
+  }
+  if (serverIsHalted()) {
+    return;
+  }
+  if (!currentRegistration) {
+    // This pump belonged to a superseded terminal pipe. Preserve the fresh
+    // registration and key, but close the obsolete client connection so it
+    // reconnects and gets a new pump for the new fd.
+    destroyPartialConnection(id);
+  } else if (terminalRouter->removeTerminal(id, terminalFd)) {
+    removeClient(id, true);
+  } else {
+    // The registration changed after the last query.
+    destroyPartialConnection(id);
+  }
 }
 }  // namespace et

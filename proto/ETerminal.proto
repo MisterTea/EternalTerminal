@@ -21,11 +21,18 @@ message TerminalBuffer {
 }
 
 message TerminalInfo {
+  enum Command {
+    NONE = 0;
+    KILL_SESSION = 1;
+  }
+
   optional string id = 1;
   optional int32 row = 2;
   optional int32 column = 3;
   optional int32 width = 4;
   optional int32 height = 5;
+  optional Command command = 6 [default = NONE];
+  optional int32 commandversion = 7 [default = 0];
 }
 
 message PortForwardSourceRequest {
@@ -75,6 +82,7 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  optional bool hadreversetunnels = 3 [default = false];
 }
 
 message TerminalUserInfo {
@@ -83,4 +91,11 @@ message TerminalUserInfo {
   optional int64 uid = 3;
   optional int64 gid = 4;
   optional int64 fd = 5;
+  // Set when a terminal re-registers after its router went away: the pty and
+  // its shell are already running, so the server must resume the session
+  // instead of bootstrapping a fresh one.
+  optional bool ptyactive = 6;
+  // Preserved by etterminal so a replacement server can warn that the
+  // server-side listeners from the original bootstrap no longer exist.
+  optional bool hadreversetunnels = 7 [default = false];
 }

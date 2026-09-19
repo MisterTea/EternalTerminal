@@ -210,6 +210,12 @@ class PseudoUserTerminal : public UserTerminal {
     running = false;
   }
 
+  virtual void terminate() override {
+    if (processHandle != INVALID_HANDLE_VALUE) {
+      TerminateProcess(static_cast<HANDLE>(processHandle), 1);
+    }
+  }
+
   virtual void setInfo(const winsize& tmpwin) override {
     if (hPC == nullptr) {
       return;

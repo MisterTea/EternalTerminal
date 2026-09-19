@@ -7,7 +7,8 @@
   }
 namespace et {
 
-CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
+CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB)
+    : nonceMSB(nonceMSB) {
   lock_guard<std::mutex> guard(cryptoMutex);
   if (-1 == sodium_init()) {
     STFATAL << "libsodium init failed";
@@ -15,7 +16,23 @@ CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB) {
   if (_key.length() != crypto_secretbox_KEYBYTES) {
     STFATAL << "Invalid key length";
   }
+  memcpy(baseKey, &_key[0], _key.length());
   memcpy(key, &_key[0], _key.length());
+  memset(nonce, 0, crypto_secretbox_NONCEBYTES);
+  nonce[crypto_secretbox_NONCEBYTES - 1] = nonceMSB;
+}
+
+void CryptoHandler::rekey(const string& salt) {
+  lock_guard<std::mutex> guard(cryptoMutex);
+  if (salt.length() != EPOCH_SALT_BYTES) {
+    throw std::runtime_error("Invalid epoch salt length");
+  }
+  if (crypto_generichash(key, crypto_secretbox_KEYBYTES,
+                         reinterpret_cast<const unsigned char*>(salt.data()),
+                         salt.length(), baseKey,
+                         crypto_secretbox_KEYBYTES) != 0) {
+    throw std::runtime_error("Epoch key derivation failed");
+  }
   memset(nonce, 0, crypto_secretbox_NONCEBYTES);
   nonce[crypto_secretbox_NONCEBYTES - 1] = nonceMSB;
 }
@@ -39,7 +56,7 @@ string CryptoHandler::decrypt(const string& buffer) {
   if (crypto_secretbox_open_easy((unsigned char*)&retval[0],
                                  (const unsigned char*)buffer.c_str(),
                                  buffer.length(), nonce, key) == -1) {
-    STFATAL << "Decrypt failed.  Possible key mismatch?";
+    throw std::runtime_error("Decrypt failed. Possible key mismatch?");
   }
   return retval;
 }

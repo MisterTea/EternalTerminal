@@ -54,6 +54,14 @@ class BackedWriter {
    * peer.
    */
   vector<std::string> recover(int64_t lastValidSequenceNumber);
+  /**
+   * @brief Discards all buffered state so the next packet starts at
+   * sequence 0. Used by the reset handshake when the peer's sequence
+   * history is unusable (fresh process on one side).
+   * @param salt Fresh epoch salt agreed during the reset handshake.
+   * @note Caller must hold the recover mutex (see getRecoverMutex).
+   */
+  void reset(const string& salt);
 
   /**
    * @brief Points the writer at a new socket fd so writes can resume.

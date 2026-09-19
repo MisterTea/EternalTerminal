@@ -30,15 +30,43 @@ bool ClientConnection::connect() {
     request.set_version(PROTOCOL_VERSION);
     socketHandler->writeProto(socketFd, request, true);
     VLOG(1) << "Receiving client id";
+    // Bound the wait: a server that accepted into its listen backlog but
+    // never answers (e.g. mid-restart) must not wedge the caller's retry
+    // loop.
+    bool responded = false;
+    for (int a = 0; a < 50; a++) {
+      if (socketHandler->hasData(socketFd)) {
+        responded = true;
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    if (!responded) {
+      throw std::runtime_error("Server did not answer the connect handshake");
+    }
     et::ConnectResponse response =
         socketHandler->readProto<et::ConnectResponse>(socketFd, true);
+    lastStatus_.store(response.status());
+    if (response.status() == RETRY_LATER) {
+      // The server is still recovering after a restart; surface a plain
+      // failure so the caller's retry loop continues without error spam.
+      throw std::runtime_error("Server is recovering; retry later");
+    }
     if (response.status() != NEW_CLIENT &&
         response.status() != RETURNING_CLIENT) {
       // Note: the response can be returning client if the client died while
       // performing the initial connection but the server thought the client
       // survived.
-      STERROR << "Error connecting to server: " << response.status() << ": "
-              << response.error();
+      if (response.status() == INVALID_KEY) {
+        // A saved session whose shell has ended is an expected attach result,
+        // not an internal error.  Avoid the expensive stack trace before the
+        // caller discards the stale record and creates a new session.
+        LOG(INFO) << "Server rejected an ended client session: "
+                  << response.error();
+      } else {
+        STERROR << "Error connecting to server: " << response.status() << ": "
+                << response.error();
+      }
       CLOG(INFO, "stdout") << "Error connecting to server: "
                            << response.status() << ": " << response.error()
                            << endl;
@@ -58,12 +86,27 @@ bool ClientConnection::connect() {
                          shared_ptr<CryptoHandler>(
                              new CryptoHandler(key, CLIENT_SERVER_NONCE_MSB)),
                          socketFd));
+    if (response.status() == RETURNING_CLIENT) {
+      // The server already holds state for this id but our process is fresh,
+      // so the sequence history on one side is unusable. Recover with a
+      // reset so both sides start at sequence 0 and the INITIAL_PAYLOAD
+      // bootstrap is skipped by the caller.
+      VLOG(1) << "Returning client: performing reset recovery";
+      if (!recover(socketFd, /*forceReset=*/true)) {
+        LOG(WARNING) << "Reset recovery failed during connect";
+        return false;
+      }
+      recovered_.store(true);
+    }
     VLOG(1) << "Client Connection established";
     return true;
   } catch (const runtime_error& err) {
     LOG(INFO) << "Got failure during connect";
     if (socketFd != -1) {
-      socketHandler->close(socketFd);
+      // Keep Connection's descriptor state in sync with the socket handler.
+      // A raw close here leaves socketFd live, so destruction closes it twice
+      // and reports two additional stack traces on this expected failure path.
+      closeSocket();
     }
   }
   return false;
@@ -109,6 +152,23 @@ void ClientConnection::pollReconnect() {
           request.set_clientid(id);
           request.set_version(PROTOCOL_VERSION);
           socketHandler->writeProto(newSocketFd, request, true);
+          // A half-dead server can complete the TCP/pipe handshake into its
+          // listen backlog but never answer; bound the wait so the loop can
+          // retry instead of wedging on readProto.
+          bool responded = false;
+          for (int a = 0; a < 50; a++) {
+            if (socketHandler->hasData(newSocketFd)) {
+              responded = true;
+              break;
+            }
+            std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          }
+          if (!responded) {
+            LOG(INFO) << "Server did not answer the reconnect handshake; "
+                         "retrying.";
+            socketHandler->close(newSocketFd);
+            continue;
+          }
           et::ConnectResponse response =
               socketHandler->readProto<et::ConnectResponse>(newSocketFd, true);
           LOG(INFO) << "Got response with status: " << response.status() << " "
@@ -117,11 +177,18 @@ void ClientConnection::pollReconnect() {
             LOG(INFO) << "Got invalid key on reconnect, assume that server has "
                          "terminated the session.";
             // This means that the server has terminated the connection.
+            lastStatus_.store(INVALID_KEY);
             shuttingDown = true;
             socketHandler->close(newSocketFd);
             return;
           }
-          if (response.status() != RETURNING_CLIENT) {
+          if (response.status() == RETRY_LATER) {
+            // The server restarted and the terminal has not re-registered
+            // yet; keep retrying quietly at the loop's 1 Hz pace.
+            LOG(INFO) << "Server is still recovering; retrying reconnect "
+                         "shortly.";
+            socketHandler->close(newSocketFd);
+          } else if (response.status() != RETURNING_CLIENT) {
             STERROR << "Error reconnecting to server: " << response.status()
                     << ": " << response.error();
             CLOG(INFO, "stdout")

@@ -185,6 +185,12 @@ using namespace std;
 // The ET protocol version supported by this binary
 static const int PROTOCOL_VERSION = 6;
 
+// Versioned terminal-control command used by --kill. It rides in the existing
+// TERMINAL_INFO packet so unsupported peers fail safely instead of aborting on
+// an unknown packet type.
+static const int SESSION_KILL_COMMAND_VERSION = 1;
+const string SESSION_KILL_ACK = "ET_SESSION_KILLED_V1";
+
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
 static const unsigned char SERVER_CLIENT_NONCE_MSB = 1;

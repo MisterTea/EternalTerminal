@@ -3,6 +3,66 @@
 #include "HostParsing.hpp"
 
 namespace et {
+namespace {
+
+constexpr size_t kIdLength = 16;
+constexpr size_t kPasskeyLength = 32;
+constexpr size_t kIdPasskeyLength = kIdLength + 1 + kPasskeyLength;
+const string kIdPasskeyMarker = "IDPASSKEY:";
+
+bool isAlphaNumeric(const string& value) {
+  return !value.empty() &&
+         all_of(value.begin(), value.end(), [](unsigned char character) {
+           return (character >= '0' && character <= '9') ||
+                  (character >= 'A' && character <= 'Z') ||
+                  (character >= 'a' && character <= 'z');
+         });
+}
+
+bool isWhitespace(char character) {
+  return character == ' ' || character == '\t' || character == '\n' ||
+         character == '\r';
+}
+
+optional<pair<string, string>> parseIdPasskey(const string& output) {
+  const size_t markerIndex = output.find(kIdPasskeyMarker);
+  if (markerIndex == string::npos) {
+    return nullopt;
+  }
+
+  const size_t payloadIndex = markerIndex + kIdPasskeyMarker.length();
+  if (payloadIndex > output.length() ||
+      output.length() - payloadIndex < kIdPasskeyLength) {
+    return nullopt;
+  }
+
+  const string payload = output.substr(payloadIndex, kIdPasskeyLength);
+  if (payload[kIdLength] != '/') {
+    return nullopt;
+  }
+  const size_t suffixIndex = payloadIndex + kIdPasskeyLength;
+  if (suffixIndex < output.length() && !isWhitespace(output[suffixIndex])) {
+    return nullopt;
+  }
+
+  const string id = payload.substr(0, kIdLength);
+  const string passkey = payload.substr(kIdLength + 1, kPasskeyLength);
+  if (!isAlphaNumeric(id) || !isAlphaNumeric(passkey)) {
+    return nullopt;
+  }
+
+  return make_pair(id, passkey);
+}
+
+[[noreturn]] void failSshSetup(const string& message) {
+  // Do not include either the command used to bootstrap etterminal or the
+  // server's output here. Both may contain an id/passkey pair.
+  CLOG(INFO, "stdout") << message << endl;
+  throw runtime_error(message);
+}
+
+}  // namespace
+
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
 
 namespace {
@@ -105,45 +165,34 @@ pair<string, string> SshSetupHandler::SetupSsh(
 
   ssh_args.push_back(SSH_SCRIPT_DST);
 
-  std::string ssh_concat;
-  for (const auto& piece : ssh_args) ssh_concat += piece + " ";
-  VLOG(1) << "Trying ssh with args: " << ssh_concat << endl;
-  auto sshBuffer =
-      subprocessUtils_->SubprocessToStringInteractive("ssh", ssh_args);
-
+  VLOG(1) << "Trying ssh connection to " << SSH_USER_PREFIX + host_alias
+          << endl;
+  string sshBuffer;
   try {
-    if (sshBuffer.length() <= 0) {
-      // Ssh failed
-      CLOG(INFO, "stdout")
-          << "Error starting ET process through ssh, please make sure your "
-             "ssh works first"
-          << endl;
-      throw std::runtime_error(
-          "Error starting ET process through ssh, please make sure your ssh "
-          "works first");
-    }
-    auto passKeyIndex = sshBuffer.find(string("IDPASSKEY:"));
-    if (passKeyIndex == string::npos) {
-      // Returned value not contain "IDPASSKEY:"
-      CLOG(INFO, "stdout")
-          << "Error in authentication with etserver: " << sshBuffer
-          << ", please make sure you don't print anything in server's "
-             ".bashrc/.zshrc"
-          << endl;
-      throw std::runtime_error(
-          "Error in authentication with etserver, please make sure you don't "
-          "print anything in server's .bashrc/.zshrc. Server output: " +
-          sshBuffer);
-    }
-    auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
-    auto idpasskey_splited = split(idpasskey, '/');
-    id = idpasskey_splited[0];
-    passkey = idpasskey_splited[1];
-    LOG(INFO) << "etserver started";
-  } catch (const runtime_error& err) {
-    CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
-                         << endl;
+    sshBuffer =
+        subprocessUtils_->SubprocessToStringInteractive("ssh", ssh_args);
+  } catch (const std::exception&) {
+    failSshSetup(
+        "Error starting ET process through ssh, please make sure your ssh "
+        "works first");
   }
+
+  if (sshBuffer.empty()) {
+    failSshSetup(
+        "Error starting ET process through ssh, please make sure your ssh "
+        "works first");
+  }
+
+  const auto serverCredentials = parseIdPasskey(sshBuffer);
+  if (!serverCredentials) {
+    failSshSetup(
+        "Error in authentication with etserver, please make sure you don't "
+        "print anything in server's .bashrc/.zshrc and that etserver returns "
+        "a valid IDPASSKEY response");
+  }
+  id = serverCredentials->first;
+  passkey = serverCredentials->second;
+  LOG(INFO) << "etserver started";
 
   // start jumpclient daemon on jumphost.
   if (!jumphost.empty()) {
@@ -189,24 +238,26 @@ pair<string, string> SshSetupHandler::SetupSsh(
     jump_ssh_args.push_back(jumphostDest);
     jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
 
-    string sshLinkBuffer =
-        subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
+    string sshLinkBuffer;
+    try {
+      sshLinkBuffer =
+          subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
+    } catch (const std::exception&) {
+      failSshSetup("etserver jumpclient failed to start");
+    }
     if (sshLinkBuffer.length() <= 0) {
       // At this point "ssh -J jumphost dst" already works.
-      CLOG(INFO, "stdout") << "etserver jumpclient failed to start" << endl;
-      throw std::runtime_error("etserver jumpclient failed to start");
+      failSshSetup("etserver jumpclient failed to start");
     }
-    try {
-      auto idpasskey = split(sshLinkBuffer, ':')[1];
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-      idpasskey = idpasskey.substr(0, 16 + 1 + 32);
-      auto idpasskey_splited = split(idpasskey, '/');
-      id = idpasskey_splited[0];
-      passkey = idpasskey_splited[1];
-    } catch (const runtime_error& err) {
-      CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
-                           << endl;
+
+    const auto jumpCredentials = parseIdPasskey(sshLinkBuffer);
+    if (!jumpCredentials) {
+      failSshSetup(
+          "Error initializing connection: etserver jumpclient returned an "
+          "invalid IDPASSKEY response");
     }
+    id = jumpCredentials->first;
+    passkey = jumpCredentials->second;
   }
 
   if (id.length() == 0 || passkey.length() == 0) {

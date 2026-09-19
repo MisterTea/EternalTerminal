@@ -32,7 +32,7 @@ class UserTerminalRouter {
 
   /**
    * @brief Returns the previously-registered `TerminalUserInfo` for a
-   * reconnecting client.
+   * reconnecting client, or nullopt when no registration exists.
    */
   std::optional<TerminalUserInfo> tryGetInfoForConnection(
       const shared_ptr<ServerClientConnection>& serverClientState);
@@ -44,15 +44,48 @@ class UserTerminalRouter {
     return socketHandler;
   }
 
+  /**
+   * @brief Returns true when the terminal for `id` re-registered with its pty
+   * already running (a resumed session, not a fresh bootstrap).
+   */
+  bool isPtyActive(const string& id);
+
+  /** @brief Returns true when `terminalFd` still owns the registration. */
+  bool isCurrentRegistration(const string& id, int terminalFd) const;
+
+  /**
+   * @brief Returns how many terminal registrations this router has accepted,
+   * counting replacements of an existing id.  Descriptor numbers are reused
+   * as soon as a dead pipe is closed, so this is the stable way to tell one
+   * registration from its replacement.
+   */
+  uint64_t getAcceptedRegistrationCount() const;
+
+  /**
+   * @brief Closes and drops the registration only when `terminalFd` is still
+   * the current fd for `id`. Returns false when a replacement registration
+   * has already superseded this pump.
+   */
+  bool removeTerminal(const string& id, int terminalFd);
+
+  /**
+   * @brief Closes the listen fd and every registered terminal pipe.  On a
+   * clean server shutdown this makes connected terminals observe EOF (they
+   * keep their pty alive and wait for a replacement router).  Idempotent.
+   */
+  void shutdown();
+
  protected:
   /** @brief File descriptor used by external clients to reach the router. */
   int serverFd;
   /** @brief Terminal metadata registered by `handleConnection` clients. */
   unordered_map<string, TerminalUserInfo> idInfoMap;
+  /** @brief Registrations accepted so far, including replacements. */
+  uint64_t acceptedRegistrationCount = 0;
   /** @brief Pipe handler used for communicating with router clients. */
   shared_ptr<PipeSocketHandler> socketHandler;
   /** @brief Synchronizes access to the router state. */
-  recursive_mutex routerMutex;
+  mutable recursive_mutex routerMutex;
 };
 }  // namespace et
 

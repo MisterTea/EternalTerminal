@@ -1,6 +1,28 @@
 #include "Connection.hpp"
 
 namespace et {
+namespace {
+string combineResetSalts(const string& localSalt, const string& remoteSalt) {
+  if (localSalt.empty()) {
+    return remoteSalt;
+  }
+  if (remoteSalt.empty()) {
+    return localSalt;
+  }
+
+  const string input =
+      localSalt < remoteSalt ? localSalt + remoteSalt : remoteSalt + localSalt;
+  string combined(CryptoHandler::EPOCH_SALT_BYTES, '\0');
+  if (crypto_generichash(reinterpret_cast<unsigned char*>(&combined[0]),
+                         combined.length(),
+                         reinterpret_cast<const unsigned char*>(input.data()),
+                         input.length(), nullptr, 0) != 0) {
+    throw std::runtime_error("Reset salt combination failed");
+  }
+  return combined;
+}
+}  // namespace
+
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
     : socketHandler(_socketHandler),
@@ -102,7 +124,7 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool forceReset) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -114,12 +136,22 @@ bool Connection::recover(int newSocketFd) {
   }
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
-  LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
+  LOG(INFO) << "Recovering with socket fd " << newSocketFd
+            << (forceReset ? " (reset)" : "") << "...";
   try {
+    string localResetSalt;
     {
       // Write the current sequence number
       et::SequenceHeader sh;
-      sh.set_sequencenumber(reader->getSequenceNumber());
+      if (forceReset) {
+        localResetSalt.resize(CryptoHandler::EPOCH_SALT_BYTES);
+        randombytes_buf(&localResetSalt[0], localResetSalt.length());
+        sh.set_sequencenumber(0);
+        sh.set_reset(true);
+        sh.set_resetsalt(localResetSalt);
+      } else {
+        sh.set_sequencenumber(reader->getSequenceNumber());
+      }
       socketHandler->writeProto(newSocketFd, sh, true);
     }
 
@@ -127,6 +159,33 @@ bool Connection::recover(int newSocketFd) {
     et::SequenceHeader remoteHeader =
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+
+    if (forceReset || remoteHeader.reset()) {
+      if (remoteHeader.reset() && remoteHeader.resetsalt().length() !=
+                                      CryptoHandler::EPOCH_SALT_BYTES) {
+        throw std::runtime_error("Reset request has invalid salt length");
+      }
+
+      // At least one side has unusable sequence history (a fresh process).
+      // Derive fresh keys, zero both sides, and exchange empty catchup buffers
+      // so the handshake wire sequence stays identical to a normal recover.
+      LOG(INFO) << "Performing reset recovery";
+      const string resetSalt = combineResetSalts(
+          localResetSalt,
+          remoteHeader.reset() ? remoteHeader.resetsalt() : string());
+
+      et::CatchupBuffer emptyCatchup;
+      socketHandler->writeProto(newSocketFd, emptyCatchup, true);
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+
+      writer->reset(resetSalt);
+      reader->reset(resetSalt);
+      socketFd = newSocketFd;
+      reader->revive(socketFd, {});
+      writer->revive(socketFd);
+      LOG(INFO) << "Finished reset recovery with socket fd: " << socketFd;
+      return true;
+    }
 
     {
       // Fetch the catchup bytes and send
