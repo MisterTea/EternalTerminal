@@ -318,6 +318,10 @@ if(NOT Boost_FOUND)
 endif()
 
 IF(NOT APPLE AND NOT WIN32)
+  # Hardening: prevent executable stack (fixes RPM/ELF check for Issue #677)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,noexecstack")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,noexecstack")
+
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
   endif()
@@ -722,6 +726,17 @@ if(WIN32)
           LABELS "e2e;htm;system;windows"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
+      )
+    endif()
+    # RPM/ELF hardening check: verify binaries have no executable stack
+    if(NOT APPLE AND NOT WIN32)
+      add_test(
+        NAME rpm_elf_noexecstack
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        RESULT_QUIET
       )
     endif()
     if(TARGET test)
