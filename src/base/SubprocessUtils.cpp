@@ -155,7 +155,6 @@ string SubprocessUtils::SubprocessToStringInteractive(
   if (pid == 0) {
     // child process
     dup2(link_client[1], STDOUT_FILENO);
-    dup2(link_client[1], STDERR_FILENO);
     close(link_client[0]);
     close(link_client[1]);
 
