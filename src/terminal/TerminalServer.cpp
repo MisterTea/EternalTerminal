@@ -501,7 +501,11 @@ void TerminalServer::runTerminal(
               break;
             }
             default:
-              STFATAL << "Unknown packet type: " << int(packetType);
+              LOG(WARNING) << "Rejecting untrusted packet type from client: "
+                           << int(packetType) << "; closing connection";
+              serverClientState->closeSocket();
+              run = false;
+              break;
           }
         }
       }
