@@ -13,8 +13,8 @@ TEST_CASE("SubprocessToStringInteractive tees stderr to stdout (banner)",
   string result = utils.SubprocessToStringInteractive(
       "cmd.exe", {"/D", "/S", "/C", "echo banner message 1>&2"});
 #else
-  string result =
-      utils.SubprocessToStringInteractive("sh", {"-c", "echo banner message >&2"});
+  string result = utils.SubprocessToStringInteractive(
+      "sh", {"-c", "echo banner message >&2"});
 #endif
   REQUIRE(result.find("banner message") != string::npos);
 }
@@ -24,7 +24,7 @@ TEST_CASE("SubprocessToStringInteractive captures stdout and stderr",
   SubprocessUtils utils;
 #ifdef WIN32
   string result = utils.SubprocessToStringInteractive(
-      "cmd.exe", {"/D", "/S", "/C", "echo out & echo err 1>&2"});
+      "cmd.exe", {"/D", "/S", "/C", "echo stdout & echo stderr 1>&2"});
 #else
   string result = utils.SubprocessToStringInteractive(
       "sh", {"-c", "printf stdout; printf stderr >&2"});
