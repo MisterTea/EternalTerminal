@@ -126,6 +126,16 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     select(maxfd + 1, &rfd, &wfd, NULL, &tv);
     VLOG(4) << "select is done";
 
+    // A background descendant can keep the PTY slave open after the login
+    // shell exits. End the ET session when the shell itself is gone, matching
+    // SSH behavior, rather than waiting for unrelated descendants.
+    if (term->sessionHasEnded()) {
+      LOG(INFO) << "Terminal shell exited";
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      shuttingDown = true;
+      break;
+    }
+
     time_t currentSecond = time(NULL);
     if (lastSecond != currentSecond) {
       outputPerSecond = 0;

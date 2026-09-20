@@ -31,7 +31,7 @@ class PseudoUserTerminal : public UserTerminal {
   virtual ~PseudoUserTerminal() {}
 
   virtual int setup(int routerFd) {
-    pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+    pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
@@ -109,6 +109,9 @@ class PseudoUserTerminal : public UserTerminal {
 
   /** @brief Waits for the child shell to exit before returning. */
   virtual void handleSessionEnd() {
+    if (childReaped) {
+      return;
+    }
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
                 // least -CURRENT) sadness for now :/
     int throwaway;
@@ -121,6 +124,19 @@ class PseudoUserTerminal : public UserTerminal {
       }
     }
 #endif
+  }
+
+  bool sessionHasEnded() override {
+    if (childReaped || pid <= 0) {
+      return childReaped;
+    }
+    int status = 0;
+    const pid_t result = waitpid(pid, &status, WNOHANG);
+    if (result == pid) {
+      childReaped = true;
+      return true;
+    }
+    return false;
   }
 
   /**
@@ -137,6 +153,7 @@ class PseudoUserTerminal : public UserTerminal {
  protected:
   /** @brief PID of the child shell spawned by `forkpty`. */
   pid_t pid;
+  bool childReaped = false;
   /** @brief Master PTY file descriptor shared with the router. */
   int masterFd;
 };

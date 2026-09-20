@@ -28,6 +28,8 @@ class UserTerminal {
   /** @brief Blocks until the terminal child process ends and any cleanup
    * finishes. */
   virtual void handleSessionEnd() = 0;
+  /** Returns true once the foreground shell has exited. */
+  virtual bool sessionHasEnded() { return false; }
   /** @brief Reclaims resources allocated by the terminal implementation. */
   virtual void cleanup() = 0;
   /** @brief Returns the descriptor that can be polled for terminal output. */
