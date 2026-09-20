@@ -152,6 +152,33 @@ jobs:
                 tar \
                 unzip \
                 zip
+          - distro: opensuse
+            container: opensuse/tumbleweed:latest
+            install: |
+              zypper --non-interactive install --no-recommends \
+                autoconf \
+                automake \
+                binutils \
+                ca-certificates \
+                cmake \
+                curl \
+                gcc \
+                gcc-c++ \
+                git \
+                gzip \
+                libcurl-devel \
+                libopenssl-devel \
+                libsodium-devel \
+                libtool \
+                libunwind-devel \
+                ninja \
+                pkgconf \
+                procps \
+                protobuf-devel \
+                /usr/bin/python3 \
+                tar \
+                unzip \
+                zip
     steps:
       - name: Install dependencies
         shell: bash
