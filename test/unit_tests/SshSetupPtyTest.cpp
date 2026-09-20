@@ -1,15 +1,21 @@
-// Issue 655: PTY allocation for SSH bootstrap changes behavior.
-// Subprocess tests for -t / -T flag handling and PTY selection.
-
-#include <string>
-#include <cassert>
+#include "SubprocessUtils.hpp"
 #include "TestHeaders.hpp"
 
-TEST_CASE("SshSetup handles -t PTY explicitly", "[655][subprocess]") {
-  // Allocating a PTY for the SSH bootstrap affects hang behavior.
-  std::string ssh_t = "-t";  // force pseudo-tty
-  std::string ssh_T = "-T";  // disable pseudo-tty
-  REQUIRE(!ssh_t.empty());
-  REQUIRE(!ssh_T.empty());
-  REQUIRE(ssh_t != ssh_T);
+using namespace et;
+
+#ifndef _WIN32
+TEST_CASE("subprocess output is drained before waiting for child",
+          "[issue655]") {
+  SubprocessUtils subprocess;
+  const string output = subprocess.SubprocessToStringInteractive(
+      "sh", {"-c", "head -c 131072 /dev/zero | tr '\\0' x"});
+  REQUIRE(output.size() == 131072);
 }
+
+TEST_CASE("subprocess captures stderr used by SSH banners", "[issue655]") {
+  SubprocessUtils subprocess;
+  const string output = subprocess.SubprocessToStringInteractive(
+      "sh", {"-c", "printf login-banner >&2"});
+  REQUIRE(output == "login-banner");
+}
+#endif

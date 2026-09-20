@@ -155,6 +155,7 @@ string SubprocessUtils::SubprocessToStringInteractive(
   if (pid == 0) {
     // child process
     dup2(link_client[1], STDOUT_FILENO);
+    dup2(link_client[1], STDERR_FILENO);
     close(link_client[0]);
     close(link_client[1]);
 
@@ -175,7 +176,6 @@ string SubprocessUtils::SubprocessToStringInteractive(
   } else if (pid > 0) {
     // parent process
     close(link_client[1]);
-    wait(NULL);
     string sshBuffer;
     while (true) {
       int nbytes = read(link_client[0], buf_client, sizeof(buf_client));
@@ -183,6 +183,10 @@ string SubprocessUtils::SubprocessToStringInteractive(
         break;
       }
       sshBuffer += string(buf_client, nbytes);
+    }
+    close(link_client[0]);
+    int status = 0;
+    while (waitpid(pid, &status, 0) == -1 && errno == EINTR) {
     }
     return sshBuffer;
   } else {
