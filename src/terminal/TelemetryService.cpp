@@ -153,29 +153,15 @@ TelemetryService::TelemetryService(const bool _allow,
 
     sentry_init(options);
 
-    auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
     sentry_value_t user = sentry_value_new_object();
     sentry_value_set_by_key(user, "id",
                             sentry_value_new_string(telemetryId.str().c_str()));
     sentry_set_user(user);
 
-    vector<int> signalsToCatch = {
-#ifdef SIGILL
-        SIGILL,
-#endif
-#ifdef SIGABRT
-        SIGABRT,
-#endif
-#ifdef SIGFPE
-        SIGFPE,
-#endif
-#ifdef SIGSEGV
-        SIGSEGV
-#endif
-    };
-    for (auto it : signalsToCatch) {
-      signal(it, sentryShutdownHandler);
-    }
+    // Do not install returning handlers for synchronous fatal signals such as
+    // SIGSEGV. Returning retries the faulting instruction and can produce an
+    // endless "Shutting down sentry" loop. sentry-native owns crash capture
+    // for those signals and preserves the process's fatal semantics.
 
 #ifdef SIGTERM
     signal(SIGTERM, [](int i) {
