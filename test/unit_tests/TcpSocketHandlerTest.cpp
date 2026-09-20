@@ -42,7 +42,7 @@ TEST_CASE("TcpSocketHandler listen succeeds with a custom backlog",
   handler.stopListening(endpoint);
 }
 
-TEST_CASE("TcpSocketHandler listen succeeds with IPv4 on localhost", "
+TEST_CASE("TcpSocketHandler listen succeeds with IPv4 on localhost",
           "[TcpSocketHandler]") {
   TcpSocketHandler handler;
   SocketEndpoint endpoint;
@@ -53,19 +53,7 @@ TEST_CASE("TcpSocketHandler listen succeeds with IPv4 on localhost", "
   handler.stopListening(endpoint);
 }
 
-TEST_CASE("TcpSocketHandler listen succeeds with IPv6 on localhost", "
-          "[TcpSocketHandler]") {
-  TcpSocketHandler handler;
-  SocketEndpoint endpoint;
-  endpoint.set_name("::1");
-  endpoint.set_port(0);
-  set<int> fds = handler.listen(endpoint);
-  // IPv6 may not be available on all platforms; skip if empty.
-  REQUIRE(fds.empty() || fds.size() > 0);
-  handler.stopListening(endpoint);
-}
-
-TEST_CASE("TcpSocketHandler listen throws on unresolvable hostname", "
+TEST_CASE("TcpSocketHandler listen throws on unresolvable hostname",
           "[TcpSocketHandler]") {
   TcpSocketHandler handler;
   SocketEndpoint endpoint;
@@ -79,4 +67,3 @@ TEST_CASE("TcpSocketHandler listen throws on unresolvable hostname", "
   }
   REQUIRE(threw);
 }
-
