@@ -78,7 +78,7 @@ TEST_CASE("Parses ssh style -L/-R arg", "[TunnelUtils]") {
 }
 
 TEST_CASE("Multiple comma-separated ssh-style reverse tunnels",
-          "[TunnelUtils][#789]") {
+          "[TunnelUtils][issue-789]") {
   // #789: parse each four-part entry as SSH style.
   auto requests = parseRangesToRequests(
       "localhost:8888:0.0.0.0:9999,localhost:7777:1.2.3.4:6666");
