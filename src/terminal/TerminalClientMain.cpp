@@ -305,8 +305,12 @@ int main(int argc, char** argv) {
     // overridden port or pass --ssh-option Port=<sshd_port>
     string host_alias = destinationHost;
 
+    const bool jumphostSpecified = result.count("jumphost") > 0;
     string jumphost =
         extractSingleOptionWithDefault<string>(result, options, "jumphost", "");
+    if (strcasecmp(jumphost.c_str(), "none") == 0) {
+      jumphost.clear();
+    }
     if (result.count("ssh-config") && result.count("no-ssh-config")) {
       CLOG(INFO, "stdout")
           << "--ssh-config and --no-ssh-config are mutually exclusive" << endl;
@@ -389,7 +393,9 @@ int main(int argc, char** argv) {
     }
 
     // Parse jumphost: cmd > sshconfig
-    if (sshConfigOptions.ProxyJump && jumphost.length() == 0) {
+    if (!jumphostSpecified && sshConfigOptions.ProxyJump &&
+        strcasecmp(sshConfigOptions.ProxyJump, "none") != 0 &&
+        jumphost.length() == 0) {
       string proxyjump = string(sshConfigOptions.ProxyJump);
       // Keep full ProxyJump value including SSH port for ssh -J command
       jumphost = proxyjump;

@@ -912,15 +912,10 @@ int ssh_options_set(struct Options* options, enum ssh_options_e type,
         CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
       } else { /* ProxyJump provided */
-        /* Setting ProxyJump to 'none' disables this option */
-        if (strcasecmp(v, "none") == 0) {
-          options->ProxyJump = NULL;
-        } else {
-          options->ProxyJump = strdup(static_cast<const char*>(value));
-          if (options->ProxyJump == NULL) {
-            CLOG(INFO, "stdout") << "error" << endl;
-            return -1;
-          }
+        options->ProxyJump = strdup(static_cast<const char*>(value));
+        if (options->ProxyJump == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
         }
       }
       break;
@@ -1413,9 +1408,11 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_PROXYJUMP:
-      p = ssh_config_get_str_tok(&s, NULL);
-      if (p && *parsing) {
-        ssh_options_set(options, SSH_OPTIONS_PROXYJUMP, p);
+      if (options->ProxyJump == NULL) {
+        p = ssh_config_get_str_tok(&s, NULL);
+        if (p && *parsing) {
+          ssh_options_set(options, SSH_OPTIONS_PROXYJUMP, p);
+        }
       }
       break;
     case SOC_PROTOCOL:

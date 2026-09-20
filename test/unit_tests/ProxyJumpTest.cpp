@@ -7,7 +7,7 @@ TEST_CASE("ProxyJump none disables jump host (explicit-none override)",
           "[ProxyJump]") {
   Options opts = {NULL,NULL,NULL,NULL,NULL,NULL,0,0,0,0,0,NULL,NULL,0,0,NULL,{}};
   ssh_options_set(&opts, SSH_OPTIONS_PROXYJUMP, "none");
-  REQUIRE(opts.ProxyJump == NULL); // disabled, not "none"
+  REQUIRE(string(opts.ProxyJump) == "none");
   freeOptionsFields(&opts);
 }
 
@@ -20,7 +20,7 @@ TEST_CASE("ProxyJump precedence: unset vs set to none vs value",
   REQUIRE(string(opts.ProxyJump) == "jump.example");
 
   ssh_options_set(&opts, SSH_OPTIONS_PROXYJUMP, "none");
-  REQUIRE(opts.ProxyJump == NULL); // explicit-none override disables
+  REQUIRE(string(opts.ProxyJump) == "none");
 
   ssh_options_set(&opts, SSH_OPTIONS_PROXYJUMP, "other");
   REQUIRE(string(opts.ProxyJump) == "other");
