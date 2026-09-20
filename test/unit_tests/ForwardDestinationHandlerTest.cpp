@@ -187,3 +187,21 @@ TEST_CASE("ForwardDestinationHandler ignores transient EAGAIN reads",
   REQUIRE(handler.getFd() == 70);
   REQUIRE(socketHandler->closedFds.empty());
 }
+
+TEST_CASE("ForwardDestinationHandler yields after a bounded data batch",
+          "[ForwardDestinationHandler][#298]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  ForwardDestinationHandler handler(socketHandler, /*fd=*/71, /*socketId=*/6);
+
+  const string chunk(16 * 1024, 'x');
+  for (int i = 0; i < 5; ++i) {
+    socketHandler->enqueueHasData(true);
+    socketHandler->enqueueRead(chunk.size(), chunk);
+  }
+
+  std::vector<PortForwardData> responses;
+  handler.update(&responses);
+
+  REQUIRE(responses.size() == 4);
+  REQUIRE(socketHandler->performedReads.size() == 4);
+}

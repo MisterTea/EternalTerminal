@@ -29,9 +29,10 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval,
     return;
   }
 
-  while (socketHandler->hasData(fd)) {
-    char buf[1024];
-    int bytesRead = socketHandler->read(fd, buf, 1024);
+  size_t bytesThisUpdate = 0;
+  while (bytesThisUpdate < MAX_BYTES_PER_UPDATE && socketHandler->hasData(fd)) {
+    char buf[16 * 1024];
+    int bytesRead = socketHandler->read(fd, buf, sizeof(buf));
     auto readErrno = GetErrno();
     if (bytesRead == -1 && (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
       // Bail for now
@@ -50,6 +51,7 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval,
     } else {
       VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
       pwd.set_buffer(string(buf, bytesRead));
+      bytesThisUpdate += bytesRead;
     }
     retval->push_back(pwd);
     if (bytesRead < 1) {

@@ -11,6 +11,7 @@ namespace et {
  */
 class ForwardSourceHandler {
  public:
+  static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
   /**
    * @brief Creates source/destination handlers used for local port forwarding.
    * @param alreadyListening If true, skip listen(); caller already registered

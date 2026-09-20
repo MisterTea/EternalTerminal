@@ -41,6 +41,7 @@ int ForwardSourceHandler::listen(const set<int>* readyFds) {
 bool ForwardSourceHandler::update(vector<PortForwardData>* data,
                                   const set<int>* readyFds) {
   vector<int> socketsToRemove;
+  size_t bytesThisUpdate = 0;
 
   for (auto& it : socketFdMap) {
     int socketId = it.first;
@@ -49,9 +50,10 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
       continue;
     }
 
-    while (socketHandler->hasData(fd)) {
-      char buf[1024];
-      int bytesRead = socketHandler->read(fd, buf, 1024);
+    while (bytesThisUpdate < MAX_BYTES_PER_UPDATE &&
+           socketHandler->hasData(fd)) {
+      char buf[16 * 1024];
+      int bytesRead = socketHandler->read(fd, buf, sizeof(buf));
       auto readErrno = GetErrno();
       if (bytesRead == -1 &&
           (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
@@ -71,6 +73,7 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
       } else {
         VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
         pwd.set_buffer(string(buf, bytesRead));
+        bytesThisUpdate += bytesRead;
       }
       data->push_back(pwd);
       if (bytesRead < 1) {
