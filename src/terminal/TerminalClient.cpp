@@ -9,6 +9,14 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+string TerminalClient::reconnectStatusMessage() {
+  return "\033[s\033[999;1H\033[K[et] disconnected; reconnecting...\033[u";
+}
+
+string TerminalClient::clearReconnectStatusMessage() {
+  return "\033[s\033[999;1H\033[K\033[u";
+}
+
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -185,6 +193,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
   bool consoleInputDisabled = false;
   string consoleInterruptCarry;
   WriteBuffer consoleOut;
+  bool reconnectStatusVisible = false;
   while (!connection->isShuttingDown()) {
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
@@ -523,10 +532,13 @@ void TerminalClient::run(const string& command, const bool noexit) {
       if (clientFd < 0) {
         // We are disconnected, so stop waiting for keepalive.
         waitingOnKeepalive = false;
-        if (console) {
-          const string status = "\033[s\033[999;1H\033[K⏳ Reconnecting...\033[u";
-          console->writeSome(status);
+        if (console && !reconnectStatusVisible) {
+          console->writeSome(reconnectStatusMessage());
+          reconnectStatusVisible = true;
         }
+      } else if (console && reconnectStatusVisible) {
+        console->writeSome(clearReconnectStatusMessage());
+        reconnectStatusVisible = false;
       }
 
       if (console) {

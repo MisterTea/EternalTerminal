@@ -39,6 +39,8 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  static string reconnectStatusMessage();
+  static string clearReconnectStatusMessage();
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
