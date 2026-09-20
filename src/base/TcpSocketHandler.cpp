@@ -211,8 +211,18 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       // interfaces.  We will create another socket object for IPV4
       // if it doesn't already exist.
       int flag = 1;
-      FATAL_FAIL(setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
-                            sizeof(int)));
+      if (setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
+                     sizeof(int)) == -1) {
+        auto localErrno = GetErrno();
+        LOG(INFO) << "Unable to configure IPv6 listener: " << localErrno << " "
+                  << strerror(localErrno) << " (continuing)";
+#ifdef _MSC_VER
+        ::closesocket(sockFd);
+#else
+        ::close(sockFd);
+#endif
+        continue;
+      }
     }
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -238,7 +248,18 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
     }
 
     // Listen
-    FATAL_FAIL(::listen(sockFd, listenBacklog));
+    if (::listen(sockFd, listenBacklog) == -1) {
+      auto localErrno = GetErrno();
+      LOG(INFO) << "Unable to listen on family " << p->ai_family << ": "
+                << localErrno << " " << strerror(localErrno)
+                << " (continuing)";
+#ifdef _MSC_VER
+      ::closesocket(sockFd);
+#else
+      ::close(sockFd);
+#endif
+      continue;
+    }
     LOG(INFO) << "Listening on "
               << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"
