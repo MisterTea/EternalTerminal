@@ -1,8 +1,11 @@
-#include <catch2/catch_test_macros.hpp>
-#include <fstream>
 #include "ParseConfigFile.hpp"
+#include "TestHeaders.hpp"
 
 TEST_CASE("Relative Include resolves against including file", "[SSHConfig]") {
-  // The fix ensures relative Include paths follow ~/.ssh / including-file rules.
-  REQUIRE(true); // placeholder for relative-include resolution verification
+  REQUIRE(resolveIncludePath("hosts/work", "/home/user/.ssh") ==
+          "/home/user/.ssh/hosts/work");
+  REQUIRE(resolveIncludePath("../shared", "/home/user/.ssh/conf.d") ==
+          "/home/user/.ssh/shared");
+  REQUIRE(resolveIncludePath("/etc/ssh/common", "/home/user/.ssh") ==
+          "/etc/ssh/common");
 }

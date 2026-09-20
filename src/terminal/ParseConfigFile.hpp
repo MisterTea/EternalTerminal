@@ -1287,6 +1287,15 @@ static void local_parse_file(const char* targethost, struct Options* options,
   return;
 }
 
+static std::string resolveIncludePath(const std::string& includePath,
+                                      const std::string& fileDir) {
+  const fs::path path(includePath);
+  if (path.is_absolute()) {
+    return path.lexically_normal().string();
+  }
+  return (fs::path(fileDir) / path).lexically_normal().string();
+}
+
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
                                  unsigned int count, int* parsing, int seen[],
@@ -1338,9 +1347,10 @@ static int ssh_config_parse_line(const char* targethost,
       if (p) {
         char* filename = ssh_path_expand_tilde(p);
         if (filename) {
+          const std::string resolved = resolveIncludePath(filename, fileDir);
           if (strchr(filename, '*') || strchr(filename, '?')) {
-            std::string dir = fileDir;
-            std::string pattern = fs::path(filename).filename().string();
+            std::string dir = fs::path(resolved).parent_path().string();
+            std::string pattern = fs::path(resolved).filename().string();
             std::regex pattern_regex(std::regex_replace(
                 std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
                 std::regex(R"(\*)"), ".*"));
@@ -1353,11 +1363,6 @@ static int ssh_config_parse_line(const char* targethost,
               }
             }
           } else {
-            std::string resolved = fileDir;
-            if (!resolved.empty() && resolved.back() != '/') {
-              resolved += '/';
-            }
-            resolved += filename;
             local_parse_file(targethost, options, resolved, parsing, seen);
           }
         }
@@ -1395,7 +1400,8 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_MATCH:
-      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen, fileDir);
+      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen,
+                                fileDir);
       SAFE_FREE(x);
       return i;
       break;
@@ -1564,7 +1570,10 @@ int parse_ssh_config_file(const char* targethost, struct Options* options,
     return 0;
   }
 
-  std::string fileDir = fs::path(expandedFilename ? expandedFilename : filename.c_str()).parent_path().string();
+  std::string fileDir =
+      fs::path(expandedFilename ? expandedFilename : filename.c_str())
+          .parent_path()
+          .string();
   if (fileDir.empty()) fileDir = ".";
   ifstream infile(expandedFilename);
   free(expandedFilename);
