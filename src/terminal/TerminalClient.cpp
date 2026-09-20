@@ -9,6 +9,8 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+volatile sig_atomic_t TerminalClient::closeOnHangup = 0;
+volatile sig_atomic_t TerminalClient::hangupCloseRequested = 0;
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -186,6 +188,12 @@ void TerminalClient::run(const string& command, const bool noexit) {
   string consoleInterruptCarry;
   WriteBuffer consoleOut;
   while (!connection->isShuttingDown()) {
+    if (closeOnHangup && hangupCloseRequested) {
+      if (connection->getSocketFd() > 0) {
+        connection->writePacket(Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
+      }
+      break;
+    }
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
       if (shuttingDown) {

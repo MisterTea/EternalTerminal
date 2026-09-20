@@ -39,6 +39,10 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  static void configureCloseOnHangup(bool enabled) {
+    closeOnHangup = enabled ? 1 : 0;
+  }
+  static void requestHangupClose(int) { hangupCloseRequested = 1; }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
@@ -60,6 +64,8 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
+  static volatile sig_atomic_t closeOnHangup;
+  static volatile sig_atomic_t hangupCloseRequested;
 };
 
 }  // namespace et

@@ -500,6 +500,13 @@ void TerminalServer::runTerminal(
               terminalSocketHandler->writeProto(terminalFd, ti, false);
               break;
             }
+            case et::TerminalPacketType::TERMINAL_CLOSE: {
+              char c = TERMINAL_CLOSE;
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
+              run = false;
+              break;
+            }
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
