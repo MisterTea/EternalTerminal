@@ -1,3 +1,4 @@
+#include <stdexcept>
 #include "TcpSocketHandler.hpp"
 #include "TestHeaders.hpp"
 
@@ -39,4 +40,30 @@ TEST_CASE("TcpSocketHandler listen succeeds with a custom backlog",
   set<int> fds = handler.listen(endpoint);
   REQUIRE_FALSE(fds.empty());
   handler.stopListening(endpoint);
+}
+
+TEST_CASE("TcpSocketHandler listen succeeds with IPv4 on localhost",
+          "[TcpSocketHandler]") {
+  TcpSocketHandler handler;
+  SocketEndpoint endpoint;
+  endpoint.set_name("127.0.0.1");
+  endpoint.set_port(0);
+  set<int> fds = handler.listen(endpoint);
+  REQUIRE_FALSE(fds.empty());
+  handler.stopListening(endpoint);
+}
+
+TEST_CASE("TcpSocketHandler listen throws on unresolvable hostname",
+          "[TcpSocketHandler]") {
+  TcpSocketHandler handler;
+  SocketEndpoint endpoint;
+  endpoint.set_name("nonexistent.invalid");
+  endpoint.set_port(0);
+  bool threw = false;
+  try {
+    set<int> fds = handler.listen(endpoint);
+  } catch (const std::runtime_error&) {
+    threw = true;
+  }
+  REQUIRE(threw);
 }
