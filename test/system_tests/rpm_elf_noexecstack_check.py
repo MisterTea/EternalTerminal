@@ -3,35 +3,32 @@
 import subprocess
 import sys
 
-binaries = [
-    "build/htm",
-    "build/htmd",
-    "build/et",
-    "build/etserver",
-    "build/etterminal",
-]
+if len(sys.argv) < 2:
+    raise SystemExit("usage: rpm_elf_noexecstack_check.py BINARY...")
+
+binaries = sys.argv[1:]
 
 failed = False
 for b in binaries:
     try:
         result = subprocess.run(
-            ["readelf", "-l", b], capture_output=True, text=True
+            ["readelf", "-W", "-l", b], capture_output=True, text=True,
+            check=True,
         )
-        if "GNU_STACK" not in result.stdout:
-            # GNU_STACK note missing; if no RWX flags in stack segment, it's ok.
-            pass
-        # Check that there is no executable stack (no RWX in GNU_STACK or no GNU_STACK at all is OK if linker hardening is set)
-        # We verify linker hardening via objdump / readelf: GNU_STACK segment should have R (not RWX)
-        if "GNU_STACK" in result.stdout:
-            stack_line = [l for l in result.stdout.splitlines() if "GNU_STACK" in l]
-            if stack_line:
-                if "RWE" in stack_line[0]:
-                    print(f"FAIL: executable stack detected in {b}")
-                    failed = True
-                    continue
+        stack_lines = [
+            line for line in result.stdout.splitlines() if "GNU_STACK" in line
+        ]
+        if not stack_lines:
+            print(f"FAIL: {b} has no GNU_STACK program header")
+            failed = True
+            continue
+        if any("RWE" in line for line in stack_lines):
+            print(f"FAIL: executable stack detected in {b}")
+            failed = True
+            continue
         print(f"PASS: {b}")
-    except FileNotFoundError:
-        # Binary may not exist; skip for optional targets
-        print(f"SKIP: {b} not found")
+    except (FileNotFoundError, subprocess.CalledProcessError) as error:
+        print(f"FAIL: could not inspect {b}: {error}")
+        failed = True
 
 sys.exit(1 if failed else 0)

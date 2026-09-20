@@ -728,17 +728,6 @@ if(WIN32)
           RUN_SERIAL TRUE
       )
     endif()
-    # RPM/ELF hardening check: verify binaries have no executable stack
-    if(NOT APPLE AND NOT WIN32)
-      add_test(
-        NAME rpm_elf_noexecstack
-        COMMAND
-          ${Python3_EXECUTABLE}
-          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
-        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-        RESULT_QUIET
-      )
-    endif()
     if(TARGET test)
       add_dependencies(test et-test)
     endif()
@@ -836,6 +825,20 @@ else(WIN32)
       add_test(NAME et-test COMMAND et-test "~[.ghostty]")
     endif()
     find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(
+        NAME rpm_elf_noexecstack
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
+          $<TARGET_FILE:et>
+          $<TARGET_FILE:etserver>
+          $<TARGET_FILE:etterminal>
+          $<TARGET_FILE:htm>
+          $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(rpm_elf_noexecstack PROPERTIES LABELS "security;packaging")
+    endif()
     if(Python3_Interpreter_FOUND AND NOT WIN32)
       add_test(
         NAME htm_pty_e2e
