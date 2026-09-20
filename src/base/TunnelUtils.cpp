@@ -131,7 +131,17 @@ vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
   if (splitByComma.size() > 1) {
     for (auto& element : splitByComma) {
       vector<string> sourceDestination = split(element, ':');
-      processEtStyleTunnelArg(pfsrs, sourceDestination, input);
+      if (sourceDestination.size() <= 2) {
+        processEtStyleTunnelArg(pfsrs, sourceDestination, element);
+      } else {
+        auto sshStyleArgParts = parseSshTunnelArg(element);
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_source()->set_name(sshStyleArgParts[0]);
+        pfsr.mutable_source()->set_port(stoi(sshStyleArgParts[1]));
+        pfsr.mutable_destination()->set_name(sshStyleArgParts[2]);
+        pfsr.mutable_destination()->set_port(stoi(sshStyleArgParts[3]));
+        pfsrs.push_back(pfsr);
+      }
     }
   } else {
     // no commas

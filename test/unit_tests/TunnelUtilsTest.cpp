@@ -77,8 +77,9 @@ TEST_CASE("Parses ssh style -L/-R arg", "[TunnelUtils]") {
   REQUIRE(requests[0].destination().port() == 9999);
 }
 
-TEST_CASE("Multiple comma-separated ssh-style reverse tunnels", "[TunnelUtils][#789]") {
-  // #789: parser must handle multiple four-part entries, not route through ET-style
+TEST_CASE("Multiple comma-separated ssh-style reverse tunnels",
+          "[TunnelUtils][#789]") {
+  // #789: parse each four-part entry as SSH style.
   auto requests = parseRangesToRequests(
       "localhost:8888:0.0.0.0:9999,localhost:7777:1.2.3.4:6666");
   REQUIRE(requests.size() == 2);
