@@ -28,10 +28,10 @@ enum class BackedWriterWriteState {
  */
 class BackedWriter {
  public:
-  /** @brief Maximum bytes to buffer for recovery (64MB). */
-  static const int64_t MAX_BACKUP_BYTES = 64 * 1024 * 1024;
-  /** @brief Max bytes buffered while disconnected before blocking (64MB). */
-  static const int64_t DISCONNECT_BUFFER_BYTES = 64 * 1024 * 1024;
+  /** @brief Maximum bytes retained per connection for recovery. */
+  static const int64_t MAX_BACKUP_BYTES = 8 * 1024 * 1024;
+  /** @brief Max bytes buffered per disconnected connection. */
+  static const int64_t DISCONNECT_BUFFER_BYTES = 8 * 1024 * 1024;
 
   /**
    * @brief Creates a writer bound to a socket and crypto pair.
