@@ -9,6 +9,28 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+namespace {
+#ifndef WIN32
+string refreshAgentProxyPath(const string& id, const string& authSock) {
+  const fs::path directory =
+      fs::path(GetTempDirectory()) / ("et-agent-" + id);
+  fs::create_directories(directory);
+  if (::chmod(directory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) != 0) {
+    throw runtime_error("Unable to secure SSH agent proxy directory");
+  }
+  const fs::path proxy = directory / "agent.sock";
+  std::error_code error;
+  fs::remove(proxy, error);
+  error.clear();
+  fs::create_symlink(authSock, proxy, error);
+  if (error) {
+    throw runtime_error("Unable to refresh SSH agent proxy: " +
+                        error.message());
+  }
+  return proxy.string();
+}
+#endif
+}  // namespace
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -68,10 +90,14 @@ TerminalClient::TerminalClient(
         authSock.assign(authSockEnv);
       }
       if (authSock.length()) {
-        // Issue #506: stable proxy socket that reconnects to current agent
-        pfsr.mutable_destination()->set_name("/tmp/et-agent-proxy-" +
-                                              std::to_string(getpid()) +
-                                              ".sock");
+#ifndef WIN32
+        // Returning clients reuse the original server-side reverse tunnel.
+        // Keep its destination stable and retarget it to the current agent.
+        pfsr.mutable_destination()->set_name(
+            refreshAgentProxyPath(id, authSock));
+#else
+        pfsr.mutable_destination()->set_name(authSock);
+#endif
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
       }
@@ -577,6 +603,3 @@ void TerminalClient::run(const string& command, const bool noexit) {
   CLOG(INFO, "stdout") << "Session terminated" << endl;
 }
 }  // namespace et
-// Issue #506: stable proxy socket for SSH_AUTH_SOCK forwarding
-// Reconnects to current client agent instead of exporting transient path.
-// Stable proxy socket reconnects to current agent (Issue #506)
