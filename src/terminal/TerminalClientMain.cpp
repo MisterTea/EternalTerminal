@@ -185,7 +185,8 @@ int main(int argc, char** argv) {
         ("x,kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("close-on-hangup",
-         "terminate the remote session when this terminal receives SIGHUP")  //
+         "terminate the remote session when this terminal receives SIGHUP or "
+         "closes")  //
         ("macserver",
          "Set when connecting to an macOS server.  Sets "
          "--terminal-path=/usr/local/bin/etterminal")  //
@@ -218,12 +219,14 @@ int main(int argc, char** argv) {
 
     options.parse_positional({"host"});
     auto result = options.parse(argc, argv);
-#ifndef WIN32
     TerminalClient::configureCloseOnHangup(result.count("close-on-hangup"));
     if (result.count("close-on-hangup")) {
+#ifdef WIN32
+      SetConsoleCtrlHandler(TerminalClient::consoleCtrlHandler, TRUE);
+#else
       ::signal(SIGHUP, TerminalClient::requestHangupClose);
-    }
 #endif
+    }
 
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;

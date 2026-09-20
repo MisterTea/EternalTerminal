@@ -11,6 +11,7 @@
 namespace et {
 volatile sig_atomic_t TerminalClient::closeOnHangup = 0;
 volatile sig_atomic_t TerminalClient::hangupCloseRequested = 0;
+volatile sig_atomic_t TerminalClient::hangupCloseCompleted = 0;
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -189,9 +190,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
   WriteBuffer consoleOut;
   while (!connection->isShuttingDown()) {
     if (closeOnHangup && hangupCloseRequested) {
-      if (connection->getSocketFd() > 0) {
-        connection->writePacket(Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
+      try {
+        if (!connection->isDisconnected()) {
+          connection->writePacket(
+              Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
+        }
+      } catch (...) {
       }
+      hangupCloseCompleted = 1;
       break;
     }
     {
@@ -581,4 +587,24 @@ void TerminalClient::run(const string& command, const bool noexit) {
   }
   CLOG(INFO, "stdout") << "Session terminated" << endl;
 }
+
+#ifdef WIN32
+BOOL WINAPI TerminalClient::consoleCtrlHandler(DWORD ctrlType) {
+  switch (ctrlType) {
+    case CTRL_CLOSE_EVENT:
+    case CTRL_LOGOFF_EVENT:
+    case CTRL_SHUTDOWN_EVENT:
+    case CTRL_BREAK_EVENT:
+      if (closeOnHangup) {
+        requestHangupClose(0);
+        waitForHangupClose(3000);
+        return TRUE;
+      }
+      return FALSE;
+    default:
+      return FALSE;
+  }
+}
+#endif
+
 }  // namespace et
