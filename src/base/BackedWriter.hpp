@@ -94,6 +94,26 @@ class BackedWriter {
    */
   inline int64_t getSequenceNumber() { return sequenceNumber; }
 
+  /**
+   * @brief Adopts the peer's count of how many packets it has received from us.
+   *
+   * Only valid on a writer that has sent nothing. A process taking over an
+   * existing session starts its counters at zero, while the peer has already
+   * accepted N packets from the process that died. Two things must move
+   * together: the sequence number (or the recovery diff goes negative and the
+   * peer looks "ahead of the server") and the crypto nonce (or our first packet
+   * is sealed under a nonce the peer already consumed, and its decrypt aborts).
+   * Both are per-packet counters, so both become exactly N.
+   */
+  inline void adoptSequenceNumber(int64_t peerSequenceNumber) {
+    if (sequenceNumber != 0) {
+      STFATAL << "adoptSequenceNumber on a writer that already sent "
+              << sequenceNumber << " packets";
+    }
+    sequenceNumber = peerSequenceNumber;
+    cryptoHandler->advanceNonce(peerSequenceNumber);
+  }
+
  protected:
   /** @brief Synchronizes access to socket state and backup buffer. */
   mutex recoverMutex;

@@ -35,6 +35,17 @@ class CryptoHandler {
    */
   string decrypt(const string& buffer);
 
+  /**
+   * @brief Fast-forwards the nonce as if `count` messages had been processed.
+   *
+   * The nonce is a per-message counter, so it advances in lockstep with the
+   * stream's sequence number. A process adopting a session someone else was
+   * holding starts at zero while the peer is at N: every packet it sent would
+   * be sealed under a nonce the peer already consumed, and the peer's decrypt
+   * fails. Skipping ahead to N puts both sides back on the same counter.
+   */
+  void advanceNonce(int64_t count);
+
  protected:
   /**
    * @brief Increments the nonce to guarantee a unique per-message secretbox

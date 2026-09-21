@@ -117,6 +117,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     } else {
       et::ConnectResponse response;
       response.set_status(RETURNING_CLIENT);
+      // Tell the client how much we have already sent, so a process adopting
+      // this session can mark itself caught up instead of pulling the whole
+      // history back through the recovery buffer.
+      response.set_writesequencenumber(
+          serverClientState->getWriterSequenceNumber());
       socketHandler->writeProto(clientSocketFd, response, true);
 
       // Deliberately not under classMutex: recover() blocks on socket I/O for
