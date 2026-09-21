@@ -253,8 +253,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
     if (::listen(sockFd, listenBacklog) == -1) {
       auto localErrno = GetErrno();
       LOG(INFO) << "Unable to listen on family " << p->ai_family << ": "
-                << localErrno << " " << strerror(localErrno)
-                << " (continuing)";
+                << localErrno << " " << strerror(localErrno) << " (continuing)";
 #ifdef _MSC_VER
       ::closesocket(sockFd);
 #else
