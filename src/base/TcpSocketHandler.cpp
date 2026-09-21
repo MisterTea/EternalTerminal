@@ -164,7 +164,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
     STFATAL << "Tried to listen twice on the same port";
   }
 
-  addrinfo hints, *servinfo, *p;
+  addrinfo hints, *servinfo = NULL, *p;
   int rc;
 
   memset(&hints, 0, sizeof hints);
@@ -181,7 +181,9 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
   if ((rc = getaddrinfo(bindIp, portname.c_str(), &hints, &servinfo)) != 0) {
     STERROR << "Error getting address info for " << port << ": " << rc << " ("
             << GaiStrError(rc) << ")";
-    exit(1);
+    throw std::runtime_error(
+        std::string("Failed to resolve address for port ") +
+        std::to_string(port));
   }
 
   set<int> serverSockets;
@@ -211,8 +213,18 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       // interfaces.  We will create another socket object for IPV4
       // if it doesn't already exist.
       int flag = 1;
-      FATAL_FAIL(setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
-                            sizeof(int)));
+      if (setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
+                     sizeof(int)) == -1) {
+        auto localErrno = GetErrno();
+        LOG(INFO) << "Unable to configure IPv6 listener: " << localErrno << " "
+                  << strerror(localErrno) << " (continuing)";
+#ifdef _MSC_VER
+        ::closesocket(sockFd);
+#else
+        ::close(sockFd);
+#endif
+        continue;
+      }
     }
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -233,12 +245,22 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
 #else
       FATAL_FAIL(::close(sockFd));
 #endif
-      freeaddrinfo(servinfo);
-      throw std::runtime_error(s.c_str());
+      LOG(INFO) << s << " (continuing for other families)";
+      continue;
     }
 
     // Listen
-    FATAL_FAIL(::listen(sockFd, listenBacklog));
+    if (::listen(sockFd, listenBacklog) == -1) {
+      auto localErrno = GetErrno();
+      LOG(INFO) << "Unable to listen on family " << p->ai_family << ": "
+                << localErrno << " " << strerror(localErrno) << " (continuing)";
+#ifdef _MSC_VER
+      ::closesocket(sockFd);
+#else
+      ::close(sockFd);
+#endif
+      continue;
+    }
     LOG(INFO) << "Listening on "
               << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"
@@ -249,7 +271,10 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
   }
 
   if (serverSockets.empty()) {
-    STFATAL << "Could not bind to any interface!";
+    if (servinfo) freeaddrinfo(servinfo);
+    throw std::runtime_error(
+        std::string("Could not bind to any interface for port ") +
+        std::to_string(port));
   }
 
   portServerSockets[port] = serverSockets;
