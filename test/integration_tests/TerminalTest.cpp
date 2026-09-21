@@ -596,6 +596,66 @@ void nonTtyConsoleKeepsSessionAliveTest(
   uth.reset();
 }
 
+void closeOnHangupTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                       shared_ptr<FakeUserTerminal> fakeUserTerminal,
+                       SocketEndpoint serverEndpoint,
+                       shared_ptr<SocketHandler> clientSocketHandler,
+                       shared_ptr<SocketHandler> clientPipeSocketHandler,
+                       const SocketEndpoint& routerEndpoint) {
+  TerminalClient::resetHangupClose();
+  TerminalClient::configureCloseOnHangup(true);
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  auto fileConsole = make_shared<FileBackedConsole>();
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fileConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+  sleep(2);
+
+  REQUIRE(!runReturned.load());
+
+#ifdef WIN32
+  // Exercise the Windows console control handler directly.
+  BOOL handled = TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT);
+  REQUIRE(handled == TRUE);
+#else
+  TerminalClient::requestHangupClose(0);
+#endif
+
+  REQUIRE(TerminalClient::waitForHangupClose(5000));
+
+  terminalClientThread.join();
+  REQUIRE(runReturned.load());
+  terminalClient.reset();
+
+  uthThread.join();
+  uth.reset();
+
+#ifdef WIN32
+  TerminalClient::configureCloseOnHangup(false);
+  REQUIRE(TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT) == FALSE);
+#endif
+
+  TerminalClient::resetHangupClose();
+}
+
 class LogInterceptHandler : public el::LogDispatchCallback {
  public:
   void handle(const el::LogDispatchData* data) {
@@ -775,6 +835,13 @@ TEST_CASE_METHOD(EndToEndTestFixture, "NonTtyConsoleKeepsSessionAlive",
   nonTtyConsoleKeepsSessionAliveTest(routerSocketHandler, fakeUserTerminal,
                                      serverEndpoint, clientSocketHandler,
                                      clientPipeSocketHandler, routerEndpoint);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "CloseOnHangup",
+                 "[EndToEndTest][integration]") {
+  closeOnHangupTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
+                    clientSocketHandler, clientPipeSocketHandler,
+                    routerEndpoint);
 }
 
 void simultaneousTerminalConnectionTest(
