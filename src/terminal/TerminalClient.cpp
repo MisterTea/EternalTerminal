@@ -9,9 +9,9 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
-volatile sig_atomic_t TerminalClient::closeOnHangup = 0;
-volatile sig_atomic_t TerminalClient::hangupCloseRequested = 0;
-volatile sig_atomic_t TerminalClient::hangupCloseCompleted = 0;
+std::atomic<bool> TerminalClient::closeOnHangup(false);
+std::atomic<bool> TerminalClient::hangupCloseRequested(false);
+std::atomic<bool> TerminalClient::hangupCloseCompleted(false);
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -197,7 +197,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
         }
       } catch (...) {
       }
-      hangupCloseCompleted = 1;
+      hangupCloseCompleted = true;
       break;
     }
     {

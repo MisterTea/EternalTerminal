@@ -1,6 +1,7 @@
 #ifndef __ET_TERMINAL_CLIENT__
 #define __ET_TERMINAL_CLIENT__
 
+#include <atomic>
 #include <chrono>
 
 #include "ClientConnection.hpp"
@@ -41,10 +42,8 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
-  static void configureCloseOnHangup(bool enabled) {
-    closeOnHangup = enabled ? 1 : 0;
-  }
-  static void requestHangupClose(int = 0) { hangupCloseRequested = 1; }
+  static void configureCloseOnHangup(bool enabled) { closeOnHangup = enabled; }
+  static void requestHangupClose(int = 0) { hangupCloseRequested = true; }
   static bool waitForHangupClose(int timeoutMs) {
     const auto deadline =
         std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
@@ -52,12 +51,12 @@ class TerminalClient {
            std::chrono::steady_clock::now() < deadline) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
     }
-    return hangupCloseCompleted != 0;
+    return hangupCloseCompleted;
   }
   static void resetHangupClose() {
-    closeOnHangup = 0;
-    hangupCloseRequested = 0;
-    hangupCloseCompleted = 0;
+    closeOnHangup = false;
+    hangupCloseRequested = false;
+    hangupCloseCompleted = false;
   }
 #ifdef WIN32
   static BOOL WINAPI consoleCtrlHandler(DWORD ctrlType);
@@ -83,9 +82,9 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
-  static volatile sig_atomic_t closeOnHangup;
-  static volatile sig_atomic_t hangupCloseRequested;
-  static volatile sig_atomic_t hangupCloseCompleted;
+  static std::atomic<bool> closeOnHangup;
+  static std::atomic<bool> hangupCloseRequested;
+  static std::atomic<bool> hangupCloseCompleted;
 };
 
 }  // namespace et
