@@ -512,7 +512,16 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
+  src/terminal/ControlListener.hpp
+  src/terminal/ControlListener.cpp
+  src/terminal/ControlProtocol.hpp
+  src/terminal/ControlPaths.hpp
+  src/terminal/SessionScrollback.hpp
+  src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
+  src/terminal/SessionCredentials.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp

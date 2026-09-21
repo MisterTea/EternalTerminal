@@ -102,7 +102,7 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool takingOverSession) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -127,6 +127,11 @@ bool Connection::recover(int newSocketFd) {
     et::SequenceHeader remoteHeader =
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+
+    if (takingOverSession) {
+      // We never sent the packets the peer already has; see the header.
+      writer->adoptSequenceNumber(remoteHeader.sequencenumber());
+    }
 
     {
       // Fetch the catchup bytes and send
