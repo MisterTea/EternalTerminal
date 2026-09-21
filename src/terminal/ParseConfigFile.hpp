@@ -217,7 +217,8 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char* keyword) {
 /** @brief Parses a single line of ssh config, updating the provided Options. */
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
-                                 unsigned int count, int* parsing, int seen[]);
+                                 unsigned int count, int* parsing, int seen[],
+                                 const char* fileDir);
 
 char* ssh_get_user_home_dir(void) {
 #ifdef WIN32
@@ -1290,10 +1291,10 @@ static void local_parse_file(const char* targethost, struct Options* options,
 static std::string resolveIncludePath(const std::string& includePath,
                                       const std::string& fileDir) {
   const fs::path path(includePath);
-  if (path.is_absolute()) {
-    return path.lexically_normal().string();
+  if (path.is_absolute() || path.has_root_directory()) {
+    return path.lexically_normal().generic_string();
   }
-  return (fs::path(fileDir) / path).lexically_normal().string();
+  return (fs::path(fileDir) / path).lexically_normal().generic_string();
 }
 
 static int ssh_config_parse_line(const char* targethost,
@@ -1354,16 +1355,18 @@ static int ssh_config_parse_line(const char* targethost,
             std::regex pattern_regex(std::regex_replace(
                 std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
                 std::regex(R"(\*)"), ".*"));
-            for (const auto& entry :
-                 fs::directory_iterator(dir.empty() ? "." : dir)) {
-              if (std::regex_match(entry.path().filename().string(),
+            std::error_code ec;
+            for (fs::directory_iterator it(dir.empty() ? "." : dir, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+              if (std::regex_match(it->path().filename().string(),
                                    pattern_regex)) {
                 local_parse_file(targethost, options,
-                                 entry.path().string().c_str(), parsing, seen);
+                                 it->path().string().c_str(), parsing, seen);
               }
             }
           } else {
-            local_parse_file(targethost, options, resolved, parsing, seen);
+            local_parse_file(targethost, options, resolved.c_str(), parsing,
+                             seen);
           }
         }
         SAFE_FREE(filename);
