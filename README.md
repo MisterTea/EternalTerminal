@@ -383,6 +383,22 @@ Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: C
 
 If you have any problems with installation or usage, please [file an issue on GitHub](https://github.com/MisterTea/EternalTerminal/issues).
 
+## Server/Client Overview
+
+Eternal Terminal uses three binaries:
+
+- **`et`** (client): Runs on the user's machine (client). Connects to a remote server over SSH to launch the terminal session, then connects to `etserver` on port 2022 for the persistent session.
+- **`etterminal`** (server-side user process): Runs on the server as the user (launched by `et` via SSH). Hosts the terminal session and connects to `etserver` via a FIFO to register the session.
+- **`etserver`** (server daemon): Runs permanently on the server (usually as root/system service). Listens on TCP port 2022 (default) and manages connections between `et` clients and `etterminal` sessions.
+
+**Which machines need each part:**
+- Client machine: needs `et`.
+- Server machine: needs `etserver` (service/demon) and `etterminal` (installed for users; launched by `et` over SSH).
+
+**Port:** By default `etserver` listens on TCP 2022 (configured in `/etc/et.cfg` via the `Networking.port` setting).
+
+**Service setup:** After installation, start/enable `etserver` via systemd (`systemctl enable --now et`) or launchd (macOS), or run `./etserver` for testing.
+
 ## Protocol and design documentation
 
 - [Eternal Terminal protocol](docs/protocol.md)
