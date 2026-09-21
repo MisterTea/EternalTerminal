@@ -174,6 +174,26 @@ Verify that the server is installed correctly by checking the service status: `s
 
 You are ready to start using ET!
 
+### Installed programs
+
+An Eternal Terminal installation may provide these executables:
+
+- `et` is the command-line client. It uses SSH to authenticate and start the
+  remote session, then maintains the reconnectable ET connection.
+- `etserver` is the system service that accepts ET client connections and
+  routes them to the correct user's session. Its default TCP port is 2022.
+- `etterminal` is an internal server-side helper launched through SSH. Normal
+  users do not invoke it directly.
+- `htm` is the foreground client for HTM, the bundled terminal multiplexer.
+  It speaks tmux control mode so compatible terminal emulators can show native
+  windows, tabs, and splits.
+- `htmd` is the per-user HTM daemon. It owns persistent multiplexer sessions
+  and is started automatically by `htm` when needed.
+
+For the protocol-level relationship between `et`, `etserver`, and
+`etterminal`, see [the protocol documentation](docs/protocol.md). For HTM, see
+[the HTM design documentation](docs/htm-design.md).
+
 ## Configuring
 
 If you'd like to modify the server settings (e.g. to change the listening
