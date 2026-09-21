@@ -9,6 +9,45 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+string refreshAgentProxyPath(const string& id, const string& authSock) {
+  const fs::path directory = fs::path(GetTempDirectory()) / ("et-agent-" + id);
+  std::error_code error;
+  fs::create_directories(directory, error);
+  if (error) {
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to create SSH agent proxy directory: " +
+                        error.message());
+#endif
+  }
+#ifndef WIN32
+  if (::chmod(directory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) != 0) {
+    throw runtime_error("Unable to secure SSH agent proxy directory");
+  }
+#endif
+  const fs::path proxy = directory / "agent.sock";
+  fs::remove(proxy, error);
+  error.clear();
+  fs::create_symlink(authSock, proxy, error);
+  if (error) {
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to refresh SSH agent proxy: " +
+                        error.message());
+#endif
+  }
+  string proxyPath = proxy.string();
+#ifdef WIN32
+  for (char& c : proxyPath) {
+    if (c == '\\') {
+      c = '/';
+    }
+  }
+#endif
+  return proxyPath;
+}
 
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
@@ -68,7 +107,10 @@ TerminalClient::TerminalClient(
         authSock.assign(authSockEnv);
       }
       if (authSock.length()) {
-        pfsr.mutable_destination()->set_name(authSock);
+        // Returning clients reuse the original server-side reverse tunnel.
+        // Keep its destination stable and retarget it to the current agent.
+        pfsr.mutable_destination()->set_name(
+            refreshAgentProxyPath(id, authSock));
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
       }

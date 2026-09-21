@@ -16,6 +16,11 @@
 
 namespace et {
 /**
+ * @brief Prepares and returns a stable SSH agent proxy socket path.
+ */
+string refreshAgentProxyPath(const string& id, const string& authSock);
+
+/**
  * @brief Coordinates the lifecycle of a client connection, console, and
  * tunnels.
  */
