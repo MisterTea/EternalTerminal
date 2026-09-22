@@ -14,6 +14,7 @@ enum TerminalPacketType {
   TERMINAL_USER_INFO = 8;
   TERMINAL_INIT = 9;
   JUMPHOST_INIT = 10;
+  TERMINAL_CLOSE = 11;
 }
 
 message TerminalBuffer {

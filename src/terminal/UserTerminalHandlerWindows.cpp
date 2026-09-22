@@ -121,6 +121,11 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
               term->setInfo(tmpwin);
               break;
             }
+            case TERMINAL_CLOSE: {
+              lock_guard<recursive_mutex> guard(shutdownMutex);
+              shuttingDown = true;
+              break;
+            }
             default:
               break;
           }
@@ -249,6 +254,11 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
             tmpwin.ws_xpixel = static_cast<unsigned short>(ti.width());
             tmpwin.ws_ypixel = static_cast<unsigned short>(ti.height());
             term->setInfo(tmpwin);
+            break;
+          }
+          case TERMINAL_CLOSE: {
+            lock_guard<recursive_mutex> guard(shutdownMutex);
+            shuttingDown = true;
             break;
           }
           default:

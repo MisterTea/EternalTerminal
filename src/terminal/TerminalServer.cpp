@@ -500,8 +500,19 @@ void TerminalServer::runTerminal(
               terminalSocketHandler->writeProto(terminalFd, ti, false);
               break;
             }
+            case et::TerminalPacketType::TERMINAL_CLOSE: {
+              char c = TERMINAL_CLOSE;
+              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                     sizeof(char), false);
+              run = false;
+              break;
+            }
             default:
-              STFATAL << "Unknown packet type: " << int(packetType);
+              LOG(WARNING) << "Rejecting untrusted packet type from client: "
+                           << int(packetType) << "; closing connection";
+              serverClientState->closeSocket();
+              run = false;
+              break;
           }
         }
       }

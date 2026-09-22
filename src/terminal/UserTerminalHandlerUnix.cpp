@@ -205,6 +205,11 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
             term->setInfo(tmpwin);
             break;
           }
+          case TERMINAL_CLOSE: {
+            lock_guard<recursive_mutex> guard(shutdownMutex);
+            shuttingDown = true;
+            break;
+          }
         }
       }
 

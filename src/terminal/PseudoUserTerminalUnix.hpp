@@ -31,6 +31,11 @@ class PseudoUserTerminal : public UserTerminal {
   PseudoUserTerminal() : pid(-1), masterFd(-1) {}
   virtual ~PseudoUserTerminal() {}
 
+  static string loginShellArg0(const string& shell) {
+    const size_t slash = shell.find_last_of('/');
+    return "-" + shell.substr(slash == string::npos ? 0 : slash + 1);
+  }
+
   virtual int setup(int routerFd) {
     pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
@@ -105,7 +110,10 @@ class PseudoUserTerminal : public UserTerminal {
     // no requirements for any wait(2) on our part.
     //
     signal(SIGCHLD, SIG_DFL);
-    FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "-l", NULL));
+    // POSIX login shells are selected by prefixing argv[0] with '-'. Passing
+    // `-l` as an option is not portable; FreeBSD /bin/sh rejects it.
+    const string arg0 = loginShellArg0(terminal);
+    FATAL_FAIL(execl(terminal.c_str(), arg0.c_str(), NULL));
   }
 
   /** @brief Removes any temporary PTY bookkeeping (utempter). */
