@@ -25,9 +25,12 @@ class UserTerminal {
   virtual int setup(int routerFd) = 0;
   /** @brief Drives the interactive shell loop until the session exits. */
   virtual void runTerminal() = 0;
-  /** @brief Blocks until the terminal child process ends and any cleanup
-   * finishes. */
-  virtual void handleSessionEnd() = 0;
+  /**
+   * @brief Blocks until the terminal child process ends and any cleanup
+   * finishes.
+   * @return OpenSSH-style exit code of the child (0 if unknown).
+   */
+  virtual int handleSessionEnd() = 0;
   /** @brief Reclaims resources allocated by the terminal implementation. */
   virtual void cleanup() = 0;
   /** @brief Returns the descriptor that can be polled for terminal output. */

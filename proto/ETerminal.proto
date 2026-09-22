@@ -15,10 +15,18 @@ enum TerminalPacketType {
   TERMINAL_INIT = 9;
   JUMPHOST_INIT = 10;
   TERMINAL_CLOSE = 11;
+  // Wait status of the remote shell/command, sent once when the session ends.
+  TERMINAL_EXIT_STATUS = 12;
 }
 
 message TerminalBuffer {
   optional bytes buffer = 1;
+}
+
+// Process status for the remote terminal child (OpenSSH-style exit code).
+message TerminalExitStatus {
+  // Normalized status: WEXITSTATUS when exited, or 128+signal when signaled.
+  optional int32 exitcode = 1;
 }
 
 message TerminalInfo {

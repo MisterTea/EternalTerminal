@@ -222,8 +222,11 @@ TEST_CASE_METHOD(TerminalSessionFixture,
   waitForInit();
   REQUIRE(client->isDisconnected());
   const string text = "terminal still alive";
-  REQUIRE(peerHandler->write(terminalPeer, text.data(), text.size()) ==
-          static_cast<ssize_t>(text.size()));
+  TerminalBuffer tb;
+  tb.set_buffer(text);
+  peerHandler->writePacket(
+      terminalPeer,
+      Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
   REQUIRE(output.wait_for(std::chrono::seconds(2)) ==
           std::future_status::ready);
   CHECK(output.get() == text);

@@ -239,11 +239,12 @@ It then forwards the InitialPayload to the destination server, and waits for an 
 
 The terminal run loop is within [`UserTerminalHandler::runUserTerminal`](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/UserTerminalHandler.cpp#L64), within the `etterminal` process, and starts after the `TERMINAL_INIT` (with a TermInit payload) is received.
 
-It proxies between the user terminal fd (`masterFd`) and the router fifo. When terminal output is generated, it is read and the raw bytes are forwarded to the router fifo.
+It proxies between the user terminal fd (`masterFd`) and the router fifo. When terminal output is generated, it is read and forwarded to the router as a length-prefixed `TERMINAL_BUFFER` packet. When the session ends, etterminal reaps the child shell and sends a `TERMINAL_EXIT_STATUS` packet (with a `TerminalExitStatus` payload) before closing the router connection.
 
 From the router fifo, packets may be sent to either forward input to the terminal or configure the terminal state:
 - `TERMINAL_BUFFER` (with a TerminalBuffer payload) data is written to the terminal as user input.
 - `TERMINAL_INFO` (with a TerminalInfo) is used to adjust the window size of the terminal.
+- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client so `et -c` can exit with the remote command status.
 
 ## Jumphost Run Loop
 

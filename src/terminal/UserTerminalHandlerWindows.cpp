@@ -39,6 +39,29 @@ UserTerminalHandler::UserTerminalHandler(
   }
 }
 
+void UserTerminalHandler::writeTerminalOutput(const char* data, size_t length) {
+  if (length == 0) {
+    return;
+  }
+  TerminalBuffer tb;
+  tb.set_buffer(string(data, length));
+  socketHandler->writePacket(
+      routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+}
+
+void UserTerminalHandler::finishSession() {
+  const int exitCode = term->handleSessionEnd();
+  TerminalExitStatus tes;
+  tes.set_exitcode(exitCode);
+  try {
+    socketHandler->writePacket(
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_EXIT_STATUS, protoToString(tes)));
+  } catch (const std::exception& ex) {
+    LOG(INFO) << "Failed to send terminal exit status: " << ex.what();
+  }
+}
+
 void UserTerminalHandler::run() {
   while (true) {
     Packet termInitPacket;
@@ -73,8 +96,8 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     return;
   }
   // Test doubles (e.g. FakeUserTerminal) expose a socket fd instead of a
-  // ConPTY. Pump it with the same wire protocol as Unix: raw terminal output
-  // bytes to the router, packet-framed input from the router.
+  // ConPTY. Pump it with the same wire protocol as Unix: packet-framed
+  // terminal output to the router, packet-framed input from the router.
   runSocketTerminal(masterFd);
 }
 
@@ -132,22 +155,20 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
         }
       }
 
-      // ConPTY -> router output as raw bytes (matches Unix handler).
+      // ConPTY -> router output as TERMINAL_BUFFER packets (matches Unix).
       string output = conpty.drainOutput();
       if (!output.empty()) {
-        socketHandler->writeAllOrThrow(routerFd, output.data(), output.size(),
-                                       false);
+        writeTerminalOutput(output.data(), output.size());
       }
 
       if (!conpty.isRunning()) {
         // Drain any final output before exiting.
         string tail = conpty.drainOutput();
         if (!tail.empty()) {
-          socketHandler->writeAllOrThrow(routerFd, tail.data(), tail.size(),
-                                         false);
+          writeTerminalOutput(tail.data(), tail.size());
         }
         LOG(INFO) << "Terminal session ended";
-        term->handleSessionEnd();
+        finishSession();
         lock_guard<recursive_mutex> guard(shutdownMutex);
         shuttingDown = true;
         break;
@@ -199,12 +220,11 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         int readErrno = GetErrno();
         if (rc > 0) {
           VLOG(4) << "Read from terminal";
-          string s(b, rc);
-          socketHandler->writeAllOrThrow(routerFd, b, rc, false);
+          writeTerminalOutput(b, static_cast<size_t>(rc));
           VLOG(4) << "Write to client";
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -214,7 +234,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         } else {
           LOG(ERROR) << "Terminal read error: " << readErrno << " "
                      << strerror(readErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -276,7 +296,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
                    writeErrno != EWOULDBLOCK) {
           LOG(ERROR) << "Terminal write error: " << writeErrno << " "
                      << strerror(writeErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;

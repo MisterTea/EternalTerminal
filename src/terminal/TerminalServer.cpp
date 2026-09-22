@@ -15,18 +15,27 @@ namespace {
 
 void drainDiscardReadableBytes(shared_ptr<SocketHandler> handler, int fd,
                                WriteBuffer* buf) {
-  char bufBytes[BUF_SIZE];
   bool got = false;
   while (true) {
     if (!waitOnSocketData(fd, 0, 0)) {
       break;
     }
-    ssize_t rc = handler->read(fd, bufBytes, BUF_SIZE);
-    if (rc <= 0) {
+    Packet packet;
+    try {
+      if (!handler->readPacket(fd, &packet)) {
+        continue;
+      }
+    } catch (const std::runtime_error&) {
       break;
     }
-    buf->enqueue(string(bufBytes, rc));
-    got = true;
+    // Only TERMINAL_BUFFER flood is discarded on interrupt. EXIT_STATUS
+    // arrives at session end, after the stream of pane output.
+    if (packet.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
+      et::TerminalBuffer tb =
+          stringToProto<et::TerminalBuffer>(packet.getPayload());
+      buf->enqueue(tb.buffer());
+      got = true;
+    }
   }
   if (got) {
     buf->filterDroppable();
@@ -362,9 +371,6 @@ void TerminalServer::runTerminal(
   // Whether the TE should keep running.
   bool run = true;
 
-  // TE sends/receives data to/from the shell one char at a time.
-  char b[BUF_SIZE];
-
   int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
       terminalRouter->getSocketHandler();
@@ -532,40 +538,41 @@ void TerminalServer::runTerminal(
                                      stillConnected ? serverClientFd : -1);
       }
 
-      // Check for data to receive; the received
-      // data includes also the data previously sent
-      // on the same master descriptor (line 90).
+      // Packet-framed terminal output and session exit status from etterminal.
       if (readyFds.count(terminalFd) != 0) {
-        // Read from terminal and write to client
-        memset(b, 0, BUF_SIZE);
-        ssize_t rc = terminalSocketHandler->read(terminalFd, b, BUF_SIZE);
-        if (rc > 0) {
-          VLOG(2) << "Sending bytes from terminal: " << rc << " "
-                  << serverClientState->getWriter()->getSequenceNumber();
-          string s(b, rc);
-          if (stillConnected) {
-            terminalOutputBuffer.enqueue(s);
-            if (!holdDroppableForClient) {
+        try {
+          Packet packet;
+          if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
+            const uint8_t header = packet.getHeader();
+            if (header == TerminalPacketType::TERMINAL_BUFFER) {
+              et::TerminalBuffer tb =
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
+              VLOG(2) << "Sending bytes from terminal: " << tb.buffer().size()
+                      << " "
+                      << serverClientState->getWriter()->getSequenceNumber();
+              if (stillConnected) {
+                terminalOutputBuffer.enqueue(tb.buffer());
+                if (!holdDroppableForClient) {
+                  holdDroppableForClient = drainWriteBufferToClient(
+                      &terminalOutputBuffer, serverClientState, serverClientFd);
+                }
+              } else {
+                serverClientState->writePacket(packet);
+              }
+            } else if (header == TerminalPacketType::TERMINAL_EXIT_STATUS) {
+              // Flush pending output so the client sees bytes before status.
               holdDroppableForClient = drainWriteBufferToClient(
-                  &terminalOutputBuffer, serverClientState, serverClientFd);
+                  &terminalOutputBuffer, serverClientState,
+                  stillConnected ? serverClientFd : -1);
+              serverClientState->writePacket(packet);
+              LOG(INFO) << "Forwarded terminal exit status";
+            } else {
+              LOG(WARNING) << "Unexpected packet from terminal: "
+                           << int(header);
             }
-          } else {
-            et::TerminalBuffer tb;
-            tb.set_buffer(s);
-            serverClientState->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
           }
-        } else if (rc == 0) {
-          LOG(INFO) << "Terminal session ended";
-          run = false;
-          break;
-        } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
-          // Common after a Ctrl+C drain-discard of already-readable bytes.
-          continue;
-        } else {
-          int readErr = GetErrno();
-          LOG(ERROR) << "Error reading from socket: " << readErr << " "
-                     << strerror(readErr);
+        } catch (const std::runtime_error& ex) {
+          LOG(INFO) << "Terminal session ended: " << ex.what();
           run = false;
           break;
         }

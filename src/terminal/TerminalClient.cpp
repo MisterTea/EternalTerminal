@@ -147,7 +147,7 @@ TerminalClient::~TerminalClient() {
   connection.reset();
 }
 
-void TerminalClient::run(const string& command, const bool noexit) {
+int TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->setup();
   }
@@ -158,6 +158,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
+  const bool wantRemoteExitStatus = !command.empty() && !noexit;
+  int remoteExitStatus = 0;
+  bool haveRemoteExitStatus = false;
 
   if (command.length()) {
     LOG(INFO) << "Got command: " << command;
@@ -505,6 +508,20 @@ void TerminalClient::run(const string& command, const bool noexit) {
               // latency issues.
               LOG(INFO) << "Got a keepalive";
               break;
+            case et::TerminalPacketType::TERMINAL_EXIT_STATUS: {
+              et::TerminalExitStatus tes =
+                  stringToProto<et::TerminalExitStatus>(packet.getPayload());
+              if (tes.has_exitcode()) {
+                remoteExitStatus = tes.exitcode();
+                haveRemoteExitStatus = true;
+                LOG(INFO) << "Got remote exit status " << remoteExitStatus;
+              }
+              if (wantRemoteExitStatus) {
+                lock_guard<recursive_mutex> guard(shutdownMutex);
+                shuttingDown = true;
+              }
+              break;
+            }
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
@@ -586,6 +603,10 @@ void TerminalClient::run(const string& command, const bool noexit) {
     console->teardown();
   }
   CLOG(INFO, "stdout") << "Session terminated" << endl;
+  if (wantRemoteExitStatus && haveRemoteExitStatus) {
+    return remoteExitStatus;
+  }
+  return 0;
 }
 
 #ifdef WIN32

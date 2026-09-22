@@ -39,6 +39,29 @@ UserTerminalHandler::UserTerminalHandler(
   }
 }
 
+void UserTerminalHandler::writeTerminalOutput(const char* data, size_t length) {
+  if (length == 0) {
+    return;
+  }
+  TerminalBuffer tb;
+  tb.set_buffer(string(data, length));
+  socketHandler->writePacket(
+      routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+}
+
+void UserTerminalHandler::finishSession() {
+  const int exitCode = term->handleSessionEnd();
+  TerminalExitStatus tes;
+  tes.set_exitcode(exitCode);
+  try {
+    socketHandler->writePacket(
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_EXIT_STATUS, protoToString(tes)));
+  } catch (const std::exception& ex) {
+    LOG(INFO) << "Failed to send terminal exit status: " << ex.what();
+  }
+}
+
 void UserTerminalHandler::run() {
   while (true) {
     Packet termInitPacket;
@@ -145,12 +168,12 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           VLOG(4) << "Read from terminal";
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
-          socketHandler->writeAllOrThrow(routerFd, b, rc, false);
+          writeTerminalOutput(b, static_cast<size_t>(rc));
           VLOG(4) << "Write to client: "
                   << std::count(s.begin(), s.end(), '\n');
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -162,7 +185,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           // Fatal read error - log with correct errno and exit gracefully
           LOG(ERROR) << "Terminal read error: " << readErrno << " "
                      << strerror(readErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -226,7 +249,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           // Fatal write error - log with correct errno and exit gracefully
           LOG(ERROR) << "Terminal write error: " << writeErrno << " "
                      << strerror(writeErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;

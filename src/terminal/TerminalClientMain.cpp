@@ -532,9 +532,24 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
-    terminalClient.run(
+    const int remoteExitStatus = terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
+
+    // Clean up ssh config options
+    freeOptionsFields(&sshConfigOptions);
+
+#ifdef WIN32
+    WSACleanup();
+#endif
+
+    TelemetryService::get()->shutdown();
+    TelemetryService::destroy();
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
+
+    return remoteExitStatus;
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {

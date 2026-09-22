@@ -236,7 +236,7 @@ class RealPtyEchoTerminal : public UserTerminal {
     return fds[0];
   }
   virtual void runTerminal() {}
-  virtual void handleSessionEnd() {}
+  virtual int handleSessionEnd() { return 0; }
   virtual void cleanup() {
     lock_guard<mutex> guard(cleanupMutex);
     if (cleanedUp) {
@@ -295,7 +295,7 @@ class RealPtyEchoTerminal : public UserTerminal {
     return masterFd;
   }
   virtual void runTerminal() {}
-  virtual void handleSessionEnd() {}
+  virtual int handleSessionEnd() { return 0; }
   virtual void cleanup() {
     if (masterFd >= 0) {
       close(masterFd);
@@ -988,6 +988,118 @@ TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
         clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 }
+
+#ifndef WIN32
+// Shell child that exits immediately with a fixed status so the client can
+// observe TERMINAL_EXIT_STATUS over a real pty session.
+class RealPtyFixedExitTerminal : public UserTerminal {
+ public:
+  explicit RealPtyFixedExitTerminal(int code)
+      : masterFd(-1), childPid(-1), exitCode(code) {}
+  virtual ~RealPtyFixedExitTerminal() { cleanup(); }
+
+  virtual int setup(int /*routerFd*/) {
+    childPid = forkpty(&masterFd, NULL, NULL, NULL);
+    if (childPid == -1) {
+      FATAL_FAIL(childPid);
+    }
+    if (childPid == 0) {
+      // Give the client time to connect and enter run() before exiting.
+      string script = "sleep 2; exit " + to_string(exitCode);
+      execl("/bin/sh", "sh", "-c", script.c_str(), (char*)NULL);
+      _exit(127);
+    }
+    int flags = fcntl(masterFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+    }
+    return masterFd;
+  }
+  virtual void runTerminal() {}
+  virtual int handleSessionEnd() {
+    if (childPid <= 0) {
+      return 0;
+    }
+    int status = 0;
+    FATAL_FAIL(waitpid(childPid, &status, 0));
+    childPid = -1;
+    if (WIFEXITED(status)) {
+      return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+      return 128 + WTERMSIG(status);
+    }
+    return 0;
+  }
+  virtual void cleanup() {
+    if (masterFd >= 0) {
+      close(masterFd);
+      masterFd = -1;
+    }
+    if (childPid > 0) {
+      int status = 0;
+      waitpid(childPid, &status, 0);
+      childPid = -1;
+    }
+  }
+  virtual int getFd() { return masterFd; }
+  virtual void setInfo(const winsize& /*tmpwin*/) {}
+
+ private:
+  int masterFd;
+  pid_t childPid;
+  int exitCode;
+};
+
+void remoteExitStatusTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                          SocketEndpoint serverEndpoint,
+                          shared_ptr<SocketHandler> clientSocketHandler,
+                          shared_ptr<SocketHandler> clientPipeSocketHandler,
+                          shared_ptr<FakeConsole> fakeConsole,
+                          const SocketEndpoint& routerEndpoint,
+                          const string& command, int expectedStatus) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, command, &runStatus]() {
+    runStatus = terminalClient->run(command, false);
+  });
+  terminalClientThread.join();
+  REQUIRE(runStatus == expectedStatus);
+
+  uth->shutdown();
+  uthThread.join();
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_CommandPath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // -c path: client must exit with the remote shell's status (42).
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint,
+                       "true", 42);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_InteractivePath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // No command: keep today's success exit even when the remote exits 42.
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint, "",
+                       0);
+}
+#endif
 
 // TODO: Multiple clients
 
