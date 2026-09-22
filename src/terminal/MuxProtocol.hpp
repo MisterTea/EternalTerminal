@@ -106,6 +106,9 @@ class MuxConnection {
 
 bool muxWriteAll(int fd, const char* data, size_t len);
 bool muxReadExact(int fd, char* data, size_t len, int timeoutMs);
+/** @brief Wait until fd is readable (events bit POLLIN) or writable (POLLOUT).
+ */
+int muxPollFd(int fd, short events, int timeoutMs);
 
 struct MuxParseResult {
   MuxOptions options;

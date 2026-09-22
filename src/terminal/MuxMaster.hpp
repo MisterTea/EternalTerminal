@@ -65,11 +65,19 @@ class MuxMaster {
   bool openForward(const MuxTrackedForward& fwd, string* error);
   bool closeForward(const MuxTrackedForward& fwd);
 
+  struct ClientSlot {
+    int fd = -1;
+    thread thr;
+  };
+
+  void closeListenFd();
+
   string path;
   ControlPersistConfig persistConfig;
   shared_ptr<PortForwardHandler> portForwardHandler;
 
   int listenFd = -1;
+  vector<ClientSlot> clientSlots;
   atomic<bool> running{false};
   atomic<bool> acceptNew{true};
   atomic<bool> terminateRequested{false};

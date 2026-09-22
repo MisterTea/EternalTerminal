@@ -110,14 +110,30 @@ bool muxWriteAll(int fd, const char* data, size_t len) {
   return true;
 }
 
+int muxPollFd(int fd, short events, int timeoutMs) {
+#ifdef WIN32
+  WSAPOLLFD pfd{};
+  pfd.fd = static_cast<SOCKET>(fd);
+  if (events & POLLIN) {
+    pfd.events = static_cast<short>(pfd.events | POLLRDNORM);
+  }
+  if (events & POLLOUT) {
+    pfd.events = static_cast<short>(pfd.events | POLLWRNORM);
+  }
+  return ::WSAPoll(&pfd, 1, timeoutMs);
+#else
+  pollfd pfd{};
+  pfd.fd = fd;
+  pfd.events = events;
+  return ::poll(&pfd, 1, timeoutMs);
+#endif
+}
+
 bool muxReadExact(int fd, char* data, size_t len, int timeoutMs) {
   size_t got = 0;
   while (got < len) {
     if (timeoutMs >= 0) {
-      pollfd pfd{};
-      pfd.fd = fd;
-      pfd.events = POLLIN;
-      int rc = ::poll(&pfd, 1, timeoutMs);
+      int rc = muxPollFd(fd, POLLIN, timeoutMs);
       if (rc == 0) {
         errno = ETIMEDOUT;
         return false;
@@ -327,7 +343,7 @@ bool controlPathSocketExists(const string& path) {
   if (path.empty()) {
     return false;
   }
-  struct stat st{};
+  struct stat st {};
   if (::stat(path.c_str(), &st) != 0) {
     return false;
   }

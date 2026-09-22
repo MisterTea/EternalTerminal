@@ -3,6 +3,8 @@
 #ifndef WIN32
 #include <sys/socket.h>
 #include <sys/un.h>
+#else
+#include <afunix.h>
 #endif
 
 namespace et {
@@ -55,10 +57,7 @@ bool MuxClient::connect(int timeoutMs) {
       ::close(fd);
       return false;
     }
-    pollfd pfd{};
-    pfd.fd = fd;
-    pfd.events = POLLOUT;
-    int prc = ::poll(&pfd, 1, timeoutMs);
+    int prc = muxPollFd(fd, POLLOUT, timeoutMs);
     if (prc <= 0) {
       ::close(fd);
       return false;

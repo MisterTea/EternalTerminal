@@ -3,6 +3,10 @@
 #include "PipeSocketHandler.hpp"
 #include "TunnelUtils.hpp"
 
+#ifdef WIN32
+#include <afunix.h>
+#endif
+
 namespace et {
 namespace {
 
@@ -124,14 +128,32 @@ void MuxMaster::start() {
   worker = thread([this]() { acceptLoop(); });
 }
 
-void MuxMaster::stop() {
-  terminateRequested = true;
-  running = false;
-  acceptNew = false;
+void MuxMaster::closeListenFd() {
+  lock_guard<recursive_mutex> guard(mutex);
   if (listenFd >= 0) {
     ::shutdown(listenFd, SHUT_RDWR);
     ::close(listenFd);
     listenFd = -1;
+  }
+}
+
+void MuxMaster::stop() {
+  terminateRequested = true;
+  running = false;
+  acceptNew = false;
+  closeListenFd();
+  vector<int> clientFds;
+  {
+    lock_guard<recursive_mutex> guard(mutex);
+    clientFds.reserve(clientSlots.size());
+    for (const auto& slot : clientSlots) {
+      clientFds.push_back(slot.fd);
+    }
+  }
+  for (int fd : clientFds) {
+    if (fd >= 0) {
+      ::shutdown(fd, SHUT_RDWR);
+    }
   }
   if (worker.joinable()) {
     if (worker.get_id() != this_thread::get_id()) {
@@ -139,6 +161,24 @@ void MuxMaster::stop() {
     } else {
       worker.detach();
     }
+  }
+  vector<thread> joining;
+  {
+    lock_guard<recursive_mutex> guard(mutex);
+    for (auto& slot : clientSlots) {
+      if (!slot.thr.joinable()) {
+        continue;
+      }
+      if (slot.thr.get_id() == this_thread::get_id()) {
+        slot.thr.detach();
+      } else {
+        joining.push_back(std::move(slot.thr));
+      }
+    }
+    clientSlots.clear();
+  }
+  for (auto& thr : joining) {
+    thr.join();
   }
   if (!path.empty()) {
     ::unlink(path.c_str());
@@ -168,10 +208,7 @@ void MuxMaster::acceptLoop() {
       continue;
     }
 
-    pollfd pfd{};
-    pfd.fd = listenFd;
-    pfd.events = POLLIN;
-    int rc = ::poll(&pfd, 1, 100);
+    int rc = muxPollFd(listenFd, POLLIN, 100);
     if (rc < 0) {
       if (errno == EINTR) {
         continue;
@@ -202,28 +239,28 @@ void MuxMaster::acceptLoop() {
     {
       lock_guard<recursive_mutex> guard(mutex);
       ++clients;
-    }
-    thread([this, clientFd]() {
-      try {
-        serveClient(clientFd);
-      } catch (const std::exception& ex) {
-        LOG(WARNING) << "Mux client handler failed: " << ex.what();
-      }
-      ::close(clientFd);
-      {
-        lock_guard<recursive_mutex> guard(mutex);
-        if (clients > 0) {
-          --clients;
+      clientSlots.push_back(ClientSlot{});
+      ClientSlot& slot = clientSlots.back();
+      slot.fd = clientFd;
+      slot.thr = thread([this, clientFd]() {
+        try {
+          serveClient(clientFd);
+        } catch (const std::exception& ex) {
+          LOG(WARNING) << "Mux client handler failed: " << ex.what();
         }
-      }
-    }).detach();
+        ::close(clientFd);
+        {
+          lock_guard<recursive_mutex> guard(mutex);
+          if (clients > 0) {
+            --clients;
+          }
+        }
+      });
+    }
   }
 
   running = false;
-  if (listenFd >= 0) {
-    ::close(listenFd);
-    listenFd = -1;
-  }
+  closeListenFd();
   ::unlink(path.c_str());
 }
 
