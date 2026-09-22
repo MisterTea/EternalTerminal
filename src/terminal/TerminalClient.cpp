@@ -28,6 +28,7 @@ TerminalClient::TerminalClient(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+  payload.set_supports_exit_status(true);
 
   for (const auto& envVar : envVars) {
     (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;

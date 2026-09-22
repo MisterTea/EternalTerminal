@@ -244,7 +244,7 @@ It proxies between the user terminal fd (`masterFd`) and the router fifo. When t
 From the router fifo, packets may be sent to either forward input to the terminal or configure the terminal state:
 - `TERMINAL_BUFFER` (with a TerminalBuffer payload) data is written to the terminal as user input.
 - `TERMINAL_INFO` (with a TerminalInfo) is used to adjust the window size of the terminal.
-- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client so `et -c` can exit with the remote command status.
+- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client only when `InitialPayload.supports_exit_status` is set, so `et -c` can exit with the remote command status. Clients that leave the field unset (including et-v7.0.0) never see packet type 12.
 
 ## Jumphost Run Loop
 

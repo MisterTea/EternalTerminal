@@ -301,7 +301,12 @@ void TerminalServer::runJumpHost(
         try {
           Packet packet;
           if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
-            if (stillConnected) {
+            if (packet.getHeader() ==
+                    TerminalPacketType::TERMINAL_EXIT_STATUS &&
+                !payload.supports_exit_status()) {
+              LOG(INFO) << "Dropping jumphost terminal exit status for a "
+                           "client that did not request it";
+            } else if (stillConnected) {
               pending.enqueue(packet);
               if (!holdDroppableForClient) {
                 holdDroppableForClient = pending.drainToClient(
@@ -560,12 +565,17 @@ void TerminalServer::runTerminal(
                 serverClientState->writePacket(packet);
               }
             } else if (header == TerminalPacketType::TERMINAL_EXIT_STATUS) {
-              // Flush pending output so the client sees bytes before status.
-              holdDroppableForClient = drainWriteBufferToClient(
-                  &terminalOutputBuffer, serverClientState,
-                  stillConnected ? serverClientFd : -1);
-              serverClientState->writePacket(packet);
-              LOG(INFO) << "Forwarded terminal exit status";
+              if (!payload.supports_exit_status()) {
+                LOG(INFO) << "Dropping terminal exit status for a client "
+                             "that did not request it";
+              } else {
+                // Flush pending output so the client sees bytes before status.
+                holdDroppableForClient = drainWriteBufferToClient(
+                    &terminalOutputBuffer, serverClientState,
+                    stillConnected ? serverClientFd : -1);
+                serverClientState->writePacket(packet);
+                LOG(INFO) << "Forwarded terminal exit status";
+              }
             } else {
               LOG(WARNING) << "Unexpected packet from terminal: "
                            << int(header);
