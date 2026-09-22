@@ -33,6 +33,18 @@ class UserTerminal {
   /** @brief Returns the descriptor that can be polled for terminal output. */
   virtual int getFd() = 0;
   /**
+   * @brief Descriptor that accepts client input.
+   *
+   * For a pty this is the same as {@link getFd()}. For a raw pipe session it
+   * is the write end of the child's stdin pipe.
+   */
+  virtual int getInputFd() { return getFd(); }
+  /**
+   * @brief Descriptor for the child's stderr pipe, or -1 when stderr is not
+   * separate (pty sessions).
+   */
+  virtual int getStderrFd() { return -1; }
+  /**
    * @brief Applies the current window geometry to the running terminal.
    * @param tmpwin Window size structure provided by the client.
    */

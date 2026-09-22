@@ -41,9 +41,13 @@ class UserTerminalHandler {
   bool shuttingDown;
   /** @brief Guards `shuttingDown` across threads. */
   recursive_mutex shutdownMutex;
+  /** @brief True when TermInit requested a raw pipe command session. */
+  bool pipeMode;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
+  /** @brief Writes terminal output to the router (raw or packet-framed). */
+  void forwardOutputToRouter(const char* data, size_t length, bool isStderr);
 #ifdef WIN32
   /** @brief Pumps a ConPTY terminal (see PseudoUserTerminal). */
   void runConPtyTerminal(class PseudoUserTerminal& conpty);

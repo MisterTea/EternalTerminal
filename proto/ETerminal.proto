@@ -19,6 +19,8 @@ enum TerminalPacketType {
 
 message TerminalBuffer {
   optional bytes buffer = 1;
+  // When true, buffer is remote stderr (raw pipe / -T sessions only).
+  optional bool stderr = 2 [default = false];
 }
 
 message TerminalInfo {
@@ -62,6 +64,9 @@ message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
   map<string, string> environmentvariables = 3;
+  // When true, etterminal runs `command` on pipes instead of a login pty.
+  optional bool no_pty = 4 [default = false];
+  optional string command = 5;
 }
 
 message InitialResponse {
@@ -76,6 +81,8 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  optional bool no_pty = 3 [default = false];
+  optional string command = 4;
 }
 
 message TerminalUserInfo {
