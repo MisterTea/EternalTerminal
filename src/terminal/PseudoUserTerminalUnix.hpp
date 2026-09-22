@@ -28,10 +28,11 @@ namespace et {
  */
 class PseudoUserTerminal : public UserTerminal {
  public:
+  PseudoUserTerminal() : pid(-1), masterFd(-1) {}
   virtual ~PseudoUserTerminal() {}
 
   virtual int setup(int routerFd) {
-    pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+    pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
@@ -73,7 +74,11 @@ class PseudoUserTerminal : public UserTerminal {
   virtual void runTerminal() {
     passwd* pwd = getpwuid(getuid());
     chdir(pwd->pw_dir);
-    string terminal = string(::getenv("SHELL"));
+    const char* shellEnv = ::getenv("SHELL");
+    string terminal = (shellEnv && *shellEnv)
+                          ? string(shellEnv)
+                          : (pwd && pwd->pw_shell ? string(pwd->pw_shell)
+                                                  : string("/bin/sh"));
     VLOG(1) << "Child process launching terminal " << terminal;
     setenv("ET_VERSION", ET_VERSION, 1);
     if (const char* tty = ttyname(STDIN_FILENO)) {
