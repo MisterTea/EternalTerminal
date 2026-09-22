@@ -1,5 +1,8 @@
+#include "OpenSshLocalQueries.hpp"
 #include "ParseConfigFile.hpp"
 #include "TestHeaders.hpp"
+
+using namespace et;
 
 TEST_CASE("Relative Include resolves against including file", "[SSHConfig]") {
   REQUIRE(resolveIncludePath("hosts/work", "/home/user/.ssh") ==
@@ -36,6 +39,112 @@ TEST_CASE("Relative Include parses nested configs and skips missing wildcards",
   REQUIRE(opts.username != nullptr);
   REQUIRE(string(opts.username) == "testuser");
   REQUIRE(opts.port == 2222);
+
+  freeOptionsFields(&opts);
+  fs::remove_all(tempDir);
+}
+
+TEST_CASE("OpenSSH -o session options update resolved config",
+          "[OpenSshLocalQueries]") {
+  Options opts = {};
+  REQUIRE(applySessionOption(&opts, "ConnectTimeout=10"));
+  REQUIRE(opts.timeout == 10);
+  REQUIRE(applySessionOption(&opts, "ServerAliveInterval=5"));
+  REQUIRE(opts.server_alive_interval == 5);
+  REQUIRE(applySessionOption(&opts, "ClearAllForwardings=yes"));
+  REQUIRE(opts.clear_all_forwardings == 1);
+  REQUIRE(applySessionOption(&opts, "ExitOnForwardFailure=yes"));
+  REQUIRE(opts.exit_on_forward_failure == 1);
+  REQUIRE(applySessionOption(&opts, "BatchMode=yes"));
+  REQUIRE(opts.batch_mode == 1);
+  REQUIRE(applySessionOption(&opts, "RemoteCommand=echo hi"));
+  REQUIRE(string(opts.remote_command) == "echo hi");
+  REQUIRE(applySessionOption(&opts, "ControlMaster=auto"));
+  REQUIRE(string(opts.control_master) == "auto");
+  REQUIRE(applySessionOption(&opts, "ControlPath=/tmp/cm"));
+  REQUIRE(string(opts.control_path) == "/tmp/cm");
+  REQUIRE(applySessionOption(&opts, "ControlPersist=yes"));
+  REQUIRE(string(opts.control_persist) == "yes");
+  REQUIRE(applySessionOption(&opts, "Port=2222"));
+  REQUIRE(opts.port == 2222);
+  REQUIRE(applySessionOption(&opts, "User=alice"));
+  REQUIRE(string(opts.username) == "alice");
+  freeOptionsFields(&opts);
+}
+
+TEST_CASE("OpenSSH -G dump prints required keywords", "[OpenSshLocalQueries]") {
+  Options opts = {};
+  REQUIRE(applySessionOption(&opts, "ConnectTimeout=10"));
+  REQUIRE(applySessionOption(&opts, "ServerAliveInterval=5"));
+  REQUIRE(applySessionOption(&opts, "ClearAllForwardings=yes"));
+  REQUIRE(applySessionOption(&opts, "ExitOnForwardFailure=yes"));
+  REQUIRE(applySessionOption(&opts, "BatchMode=yes"));
+  REQUIRE(applySessionOption(&opts, "RemoteCommand=echo hi"));
+  REQUIRE(applySessionOption(&opts, "ControlMaster=auto"));
+  REQUIRE(applySessionOption(&opts, "ControlPath=/tmp/cm"));
+  REQUIRE(applySessionOption(&opts, "ControlPersist=yes"));
+  REQUIRE(applySessionOption(&opts, "Port=2222"));
+
+  const string dump =
+      formatOpenSshResolvedConfig("alias", "example.com", "alice", opts);
+  REQUIRE(dump.find("host alias\n") != string::npos);
+  REQUIRE(dump.find("user alice\n") != string::npos);
+  REQUIRE(dump.find("hostname example.com\n") != string::npos);
+  REQUIRE(dump.find("port 2222\n") != string::npos);
+  REQUIRE(dump.find("connecttimeout 10\n") != string::npos);
+  REQUIRE(dump.find("serveraliveinterval 5\n") != string::npos);
+  REQUIRE(dump.find("clearallforwardings yes\n") != string::npos);
+  REQUIRE(dump.find("exitonforwardfailure yes\n") != string::npos);
+  REQUIRE(dump.find("batchmode yes\n") != string::npos);
+  REQUIRE(dump.find("remotecommand echo hi\n") != string::npos);
+  REQUIRE(dump.find("controlmaster auto\n") != string::npos);
+  REQUIRE(dump.find("controlpath /tmp/cm\n") != string::npos);
+  REQUIRE(dump.find("controlpersist yes\n") != string::npos);
+  freeOptionsFields(&opts);
+}
+
+TEST_CASE("OpenSSH config file keywords feed -G resolution",
+          "[OpenSshLocalQueries][SSHConfig]") {
+  const fs::path tempDir =
+      fs::temp_directory_path() / ("et_test_openssh_g_" + sole::uuid4().str());
+  fs::remove_all(tempDir);
+  fs::create_directories(tempDir);
+  const fs::path configPath = tempDir / "config";
+  std::ofstream(configPath) << "Host demo\n"
+                               "  HostName 10.0.0.5\n"
+                               "  User bob\n"
+                               "  Port 2201\n"
+                               "  ConnectTimeout 7\n"
+                               "  ServerAliveInterval 3\n"
+                               "  BatchMode yes\n"
+                               "  RemoteCommand uname -a\n"
+                               "  ControlMaster auto\n"
+                               "  ControlPath /tmp/et-%r@%h:%p\n"
+                               "  ControlPersist 10m\n"
+                               "  ClearAllForwardings yes\n"
+                               "  ExitOnForwardFailure yes\n";
+
+  Options opts = {};
+  ssh_options_set(&opts, SSH_OPTIONS_HOST, "demo");
+  REQUIRE(parse_ssh_config_file("demo", &opts, configPath.string()) == 0);
+  REQUIRE(string(opts.host) == "10.0.0.5");
+  REQUIRE(string(opts.username) == "bob");
+  REQUIRE(opts.port == 2201);
+  REQUIRE(opts.timeout == 7);
+  REQUIRE(opts.server_alive_interval == 3);
+  REQUIRE(opts.batch_mode == 1);
+  REQUIRE(string(opts.remote_command) == "uname -a");
+  REQUIRE(string(opts.control_master) == "auto");
+  REQUIRE(string(opts.control_path) == "/tmp/et-%r@%h:%p");
+  REQUIRE(string(opts.control_persist) == "10m");
+  REQUIRE(opts.clear_all_forwardings == 1);
+  REQUIRE(opts.exit_on_forward_failure == 1);
+
+  const string dump =
+      formatOpenSshResolvedConfig("demo", opts.host, opts.username, opts);
+  REQUIRE(dump.find("connecttimeout 7\n") != string::npos);
+  REQUIRE(dump.find("remotecommand uname -a\n") != string::npos);
+  REQUIRE(dump.find("controlpath /tmp/et-%r@%h:%p\n") != string::npos);
 
   freeOptionsFields(&opts);
   fs::remove_all(tempDir);
