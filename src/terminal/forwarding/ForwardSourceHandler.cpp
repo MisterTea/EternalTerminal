@@ -29,9 +29,9 @@ ForwardSourceHandler::~ForwardSourceHandler() {
   for (const auto& socket : socketFdMap) {
     int readFd = socket.second;
     int writeFd = readFd;
-    auto wit = socketWriteFdMap.find(socket.first);
-    if (wit != socketWriteFdMap.end()) {
-      writeFd = wit->second;
+    auto writeIt = socketWriteFdMap.find(socket.first);
+    if (writeIt != socketWriteFdMap.end()) {
+      writeFd = writeIt->second;
     }
     if (closeOwnedFds) {
       socketHandler->close(readFd);
@@ -243,9 +243,9 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
       if (bytesRead < 1) {
         if (closeOwnedFds) {
           socketHandler->close(fd);
-          auto wit = socketWriteFdMap.find(socketId);
-          if (wit != socketWriteFdMap.end() && wit->second != fd) {
-            socketHandler->close(wit->second);
+          auto writeIt = socketWriteFdMap.find(socketId);
+          if (writeIt != socketWriteFdMap.end() && writeIt->second != fd) {
+            socketHandler->close(writeIt->second);
           }
         }
         socketsToRemove.push_back(socketId);
@@ -319,9 +319,9 @@ void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
   }
 
   int fd = socketFdMap[socketId];
-  auto wit = socketWriteFdMap.find(socketId);
-  if (wit != socketWriteFdMap.end()) {
-    fd = wit->second;
+  auto writeIt = socketWriteFdMap.find(socketId);
+  if (writeIt != socketWriteFdMap.end()) {
+    fd = writeIt->second;
   }
   const char* buf = data.c_str();
   int count = data.length();
@@ -354,9 +354,9 @@ void ForwardSourceHandler::closeSocket(int socketId) {
   } else {
     if (closeOwnedFds) {
       socketHandler->close(it->second);
-      auto wit = socketWriteFdMap.find(socketId);
-      if (wit != socketWriteFdMap.end() && wit->second != it->second) {
-        socketHandler->close(wit->second);
+      auto writeIt = socketWriteFdMap.find(socketId);
+      if (writeIt != socketWriteFdMap.end() && writeIt->second != it->second) {
+        socketHandler->close(writeIt->second);
       }
     }
     socketFdMap.erase(it);
