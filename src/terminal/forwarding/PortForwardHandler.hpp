@@ -49,9 +49,9 @@ class PortForwardHandler {
    * @brief Bridges `readFd`/`writeFd` (typically stdin/stdout) to a remote
    * destination chosen at connect time (ssh -W). Does not start a shell.
    */
-  PortForwardSourceResponse createStdioForward(const SocketEndpoint& destination,
-                                               int readFd, int writeFd,
-                                               bool closeFds = false);
+  PortForwardSourceResponse createStdioForward(
+      const SocketEndpoint& destination, int readFd, int writeFd,
+      bool closeFds = false);
   /** @brief Creates a remote destination handler that forwards data to a user's
    * socket. */
   PortForwardDestinationResponse createDestination(

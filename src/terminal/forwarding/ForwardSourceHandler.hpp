@@ -2,8 +2,8 @@
 #define __FORWARD_SOURCE_HANDLER_H__
 
 #include "Headers.hpp"
-#include "SocksUtils.hpp"
 #include "SocketHandler.hpp"
+#include "SocksUtils.hpp"
 
 namespace et {
 /**
@@ -73,7 +73,8 @@ class ForwardSourceHandler {
 
   inline SocketEndpoint getDestination() { return destination; }
 
-  /** @brief True when this handler bridges stdio (-W) rather than a listener. */
+  /** @brief True when this handler bridges stdio (-W) rather than a listener.
+   */
   bool isStdioForward() const { return stdioMode; }
 
  protected:

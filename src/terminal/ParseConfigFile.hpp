@@ -435,7 +435,8 @@ static int match_pattern_list(const char* string, const char* pattern,
  * Returns -1 if negation matches, 1 if there is a positive match, 0 if there
  * is no match at all.
  */
-inline int match_hostname(const char* host, const char* pattern, unsigned int len) {
+inline int match_hostname(const char* host, const char* pattern,
+                          unsigned int len) {
   return match_pattern_list(host, pattern, len, 1);
 }
 
@@ -800,7 +801,7 @@ inline char* ssh_path_expand_escape(struct Options* options, const char* s) {
  * @return       0 on success, < 0 on error.
  */
 inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
-                    const void* value) {
+                           const void* value) {
   const char* v;
   char *p, *q;
   long int i;
@@ -1558,8 +1559,8 @@ static int ssh_config_parse_line(const char* targethost,
   return 0;
 }
 
-inline int parse_ssh_config_file(const char* targethost, struct Options* options,
-                          string filename) {
+inline int parse_ssh_config_file(const char* targethost,
+                                 struct Options* options, string filename) {
   string line;
   int len = 0;
   int read = 0;

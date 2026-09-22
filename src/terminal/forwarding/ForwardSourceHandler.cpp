@@ -142,8 +142,8 @@ int ForwardSourceHandler::takeCompletedSocks(SocketEndpoint* destinationOut,
       if (destinationOut) {
         *destinationOut = it->second.destination;
       }
-      LOG(INFO) << "SOCKS tunnel " << source << " -> "
-                << it->second.destination << " ready on fd " << fd;
+      LOG(INFO) << "SOCKS tunnel " << source << " -> " << it->second.destination
+                << " ready on fd " << fd;
       unassignedFds.insert(fd);
       socksPending.erase(it);
       return fd;

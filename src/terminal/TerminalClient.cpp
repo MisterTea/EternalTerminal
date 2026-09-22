@@ -65,8 +65,8 @@ TerminalClient::TerminalClient(
       auto response = portForwardHandler->createStdioForward(
           destination, STDIN_FILENO, STDOUT_FILENO, false);
 #else
-      auto response = portForwardHandler->createStdioForward(
-          destination, 0, 1, false);
+      auto response =
+          portForwardHandler->createStdioForward(destination, 0, 1, false);
 #endif
       if (response.has_error()) {
         CLOG(INFO, "stdout")

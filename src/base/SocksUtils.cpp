@@ -28,8 +28,8 @@ SocksParseStatus parseSocks4(SocksHandshake* state) {
     state->error = "SOCKS4 only supports CONNECT";
     return SocksParseStatus::Error;
   }
-  uint16_t port = (static_cast<uint8_t>(in[2]) << 8) |
-                  static_cast<uint8_t>(in[3]);
+  uint16_t port =
+      (static_cast<uint8_t>(in[2]) << 8) | static_cast<uint8_t>(in[3]);
   const uint8_t* ip = reinterpret_cast<const uint8_t*>(in.data() + 4);
   bool socks4a = (ip[0] == 0 && ip[1] == 0 && ip[2] == 0 && ip[3] != 0);
 

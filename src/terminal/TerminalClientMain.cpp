@@ -209,8 +209,8 @@ int main(int argc, char** argv) {
          "Forward client stdio to host:port (or a Unix socket path) over the "
          "secure channel without a remote shell (ssh -W). Implies no local "
          "terminal.",
-         cxxopts::value<std::string>())  //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
+         cxxopts::value<std::string>())                      //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("ssh-config",

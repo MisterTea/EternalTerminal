@@ -945,8 +945,8 @@ TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
   REQUIRE_FALSE(listenFds.empty());
   int listenFd = *listenFds.begin();
   networkHandler->queueAccept(listenFd, 200);
-  networkHandler->queueRead(
-      200, static_cast<int>(socks5AuthNoAuth().size()), socks5AuthNoAuth());
+  networkHandler->queueRead(200, static_cast<int>(socks5AuthNoAuth().size()),
+                            socks5AuthNoAuth());
   networkHandler->queueRead(
       200, static_cast<int>(socks5ConnectIpv4(10, 0, 0, 2, 443).size()),
       socks5ConnectIpv4(10, 0, 0, 2, 443));
@@ -1115,4 +1115,3 @@ TEST_CASE("PortForwardHandler -W stdio byte forward without shell",
   close(outPipe[1]);
 }
 #endif
-
