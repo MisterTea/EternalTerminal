@@ -2,6 +2,7 @@
 #define __FORWARD_SOURCE_HANDLER_H__
 
 #include "Headers.hpp"
+#include "SocksUtils.hpp"
 #include "SocketHandler.hpp"
 
 namespace et {
@@ -15,21 +16,37 @@ class ForwardSourceHandler {
    * @brief Creates source/destination handlers used for local port forwarding.
    * @param alreadyListening If true, skip listen(); caller already registered
    * the source endpoint (e.g. via listenAsUser).
+   * @param socksDynamic If true, destination is chosen per-connection via a
+   * SOCKS4/SOCKS5 handshake after accept (ssh -D).
    */
   ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
                        const SocketEndpoint& _source,
                        const SocketEndpoint& _destination,
-                       bool alreadyListening = false);
+                       bool alreadyListening = false,
+                       bool socksDynamic = false);
+
+  /**
+   * @brief Bridges an already-open read/write pair (e.g. stdio for -W) to a
+   * fixed remote destination without listening.
+   * @param closeFds If false, destruction leaves the fds open (stdin/stdout).
+   */
+  ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
+                       const SocketEndpoint& _destination, int readFd,
+                       int writeFd, bool closeFds);
 
   ~ForwardSourceHandler();
 
   ForwardSourceHandler(const ForwardSourceHandler&) = delete;
   ForwardSourceHandler& operator=(const ForwardSourceHandler&) = delete;
 
-  /** @brief Accepts one pending connection and returns its fd, or -1 if none.
+  /**
+   * @brief Accepts one pending connection (or completes one SOCKS/stdio
+   * handshake) and returns its fd, or -1 if none. When non-null,
+   * `destinationOut` receives the remote endpoint for this connection.
    * Accepts only on endpoints named in `readyFds`; `nullptr` tries every one.
    */
-  int listen(const set<int>* readyFds = nullptr);
+  int listen(SocketEndpoint* destinationOut = nullptr,
+             const set<int>* readyFds = nullptr);
 
   /** @brief Reads the sockets named in `readyFds` (all of them when `nullptr`)
    * and stages `PortForwardData` for destinations.
@@ -56,17 +73,39 @@ class ForwardSourceHandler {
 
   inline SocketEndpoint getDestination() { return destination; }
 
+  /** @brief True when this handler bridges stdio (-W) rather than a listener. */
+  bool isStdioForward() const { return stdioMode; }
+
  protected:
+  int acceptFixed(const set<int>* readyFds);
+  int takeCompletedSocks(SocketEndpoint* destinationOut,
+                         const set<int>* readyFds);
+  void advanceSocksHandshakes(const set<int>* readyFds);
+
   /** @brief Socket helper used to accept connections on the source endpoint. */
   shared_ptr<SocketHandler> socketHandler;
   /** @brief Local endpoint clients connect to for port forwarding. */
   SocketEndpoint source;
   /** @brief Remote destination endpoint that receives forwarded data. */
   SocketEndpoint destination;
+  /** @brief When true, parse SOCKS to choose destination after accept. */
+  bool socksDynamic = false;
+  /** @brief When true, bridge a provided read/write fd pair (no listen). */
+  bool stdioMode = false;
+  /** @brief When false, do not close read/write fds in the destructor. */
+  bool closeOwnedFds = true;
+  /** @brief True until the stdio bridge has emitted its destination request. */
+  bool stdioRequestPending = false;
+  int stdioReadFd = -1;
+  int stdioWriteFd = -1;
   /** @brief Sockets that are awaiting assignment from the control stream. */
   unordered_set<int> unassignedFds;
   /** @brief Maps logical socket IDs to their accepted file descriptors. */
   unordered_map<int, int> socketFdMap;
+  /** @brief Optional separate write fd when different from the read fd (-W). */
+  unordered_map<int, int> socketWriteFdMap;
+  /** @brief In-progress SOCKS handshakes keyed by accepted client fd. */
+  unordered_map<int, SocksHandshake> socksPending;
 };
 }  // namespace et
 

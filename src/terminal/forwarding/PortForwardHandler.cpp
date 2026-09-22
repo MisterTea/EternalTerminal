@@ -32,10 +32,11 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     if (it->update(dataToSend, readyFds)) {
       ++forwardFdsGeneration;
     }
-    int fd = it->listen(readyFds);
+    SocketEndpoint destination;
+    int fd = it->listen(&destination, readyFds);
     if (fd >= 0) {
       PortForwardDestinationRequest pfr;
-      *(pfr.mutable_destination()) = it->getDestination();
+      *(pfr.mutable_destination()) = destination;
       pfr.set_fd(fd);
       requests->push_back(pfr);
     }
@@ -125,6 +126,37 @@ PortForwardSourceResponse PortForwardHandler::createSource(
     PortForwardSourceResponse pfsr;
     pfsr.set_error(ex.what());
     return pfsr;
+  }
+}
+
+PortForwardSourceResponse PortForwardHandler::createSocksSource(
+    const SocketEndpoint& source) {
+  try {
+    SocketEndpoint unusedDestination;
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, source, unusedDestination, false, true));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
+  }
+}
+
+PortForwardSourceResponse PortForwardHandler::createStdioForward(
+    const SocketEndpoint& destination, int readFd, int writeFd, bool closeFds) {
+  try {
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, destination, readFd, writeFd, closeFds));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
   }
 }
 
@@ -303,6 +335,18 @@ void PortForwardHandler::getForwardFds(set<int>* fds) {
       fds->insert(fd);
     }
   }
+}
+
+bool PortForwardHandler::hasActiveStdioForward() const {
+  for (const auto& handler : sourceHandlers) {
+    if (!handler->isStdioForward()) {
+      continue;
+    }
+    set<int> fds;
+    handler->getActiveFds(&fds);
+    return !fds.empty();
+  }
+  return false;
 }
 
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,

@@ -2,6 +2,11 @@
 #include "PortForwardHandler.hpp"
 #include "TestHeaders.hpp"
 
+#ifndef WIN32
+#include <fcntl.h>
+#include <unistd.h>
+#endif
+
 using namespace et;
 
 namespace {
@@ -899,3 +904,215 @@ TEST_CASE("PortForwardHandler sendDataToSourceOnSocket",
   REQUIRE(networkHandler->writes.count(clientFd) == 1);
   CHECK(networkHandler->writes[clientFd][0] == "hello world");
 }
+
+namespace {
+string socks5AuthNoAuth() { return string("\x05\x01\x00", 3); }
+
+string socks5ConnectIpv4(uint8_t a, uint8_t b, uint8_t c, uint8_t d,
+                         uint16_t port) {
+  string req("\x05\x01\x00\x01", 4);
+  req.push_back(static_cast<char>(a));
+  req.push_back(static_cast<char>(b));
+  req.push_back(static_cast<char>(c));
+  req.push_back(static_cast<char>(d));
+  req.push_back(static_cast<char>((port >> 8) & 0xff));
+  req.push_back(static_cast<char>(port & 0xff));
+  return req;
+}
+
+string socks5ConnectDomain(const string& host, uint16_t port) {
+  string req("\x05\x01\x00\x03", 4);
+  req.push_back(static_cast<char>(host.size()));
+  req += host;
+  req.push_back(static_cast<char>((port >> 8) & 0xff));
+  req.push_back(static_cast<char>(port & 0xff));
+  return req;
+}
+}  // namespace
+
+TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
+          "[PortForwardHandler][runtime-forward]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  SocketEndpoint source;
+  source.set_name("127.0.0.1");
+  source.set_port(1080);
+  REQUIRE_FALSE(handler.createSocksSource(source).has_error());
+
+  auto listenFds = networkHandler->getEndpointFds(source);
+  REQUIRE_FALSE(listenFds.empty());
+  int listenFd = *listenFds.begin();
+  networkHandler->queueAccept(listenFd, 200);
+  networkHandler->queueRead(
+      200, static_cast<int>(socks5AuthNoAuth().size()), socks5AuthNoAuth());
+  networkHandler->queueRead(
+      200, static_cast<int>(socks5ConnectIpv4(10, 0, 0, 2, 443).size()),
+      socks5ConnectIpv4(10, 0, 0, 2, 443));
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend);
+
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].fd() == 200);
+  CHECK(requests[0].destination().name() == "10.0.0.2");
+  CHECK(requests[0].destination().port() == 443);
+  REQUIRE(networkHandler->writes.count(200) == 1);
+  // Auth reply + connect success reply were written to the SOCKS client.
+  CHECK(networkHandler->writes[200][0].size() >= 2);
+}
+
+TEST_CASE("PortForwardHandler SOCKS concurrent channels",
+          "[PortForwardHandler][runtime-forward]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  SocketEndpoint source;
+  source.set_port(1080);
+  REQUIRE_FALSE(handler.createSocksSource(source).has_error());
+
+  auto listenFds = networkHandler->getEndpointFds(source);
+  REQUIRE_FALSE(listenFds.empty());
+  int listenFd = *listenFds.begin();
+
+  networkHandler->queueAccept(listenFd, 201);
+  networkHandler->queueAccept(listenFd, 202);
+  auto req1 = socks5AuthNoAuth() + socks5ConnectIpv4(1, 2, 3, 4, 80);
+  auto req2 = socks5AuthNoAuth() + socks5ConnectDomain("db.internal", 5432);
+  networkHandler->queueRead(201, static_cast<int>(req1.size()), req1);
+  networkHandler->queueRead(202, static_cast<int>(req2.size()), req2);
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend);
+  // First accept completes one SOCKS handshake; second accept needs another
+  // update because listen() returns one ready fd at a time.
+  handler.update(&requests, &dataToSend);
+
+  REQUIRE(requests.size() == 2);
+  CHECK(requests[0].destination().name() == "1.2.3.4");
+  CHECK(requests[0].destination().port() == 80);
+  CHECK(requests[1].destination().name() == "db.internal");
+  CHECK(requests[1].destination().port() == 5432);
+
+  handler.addSourceSocketId(11, requests[0].fd());
+  handler.addSourceSocketId(22, requests[1].fd());
+  networkHandler->queueRead(requests[0].fd(), 4, "one!");
+  networkHandler->queueRead(requests[1].fd(), 4, "two!");
+
+  dataToSend.clear();
+  handler.update(&requests, &dataToSend);
+  REQUIRE(dataToSend.size() >= 2);
+  bool sawOne = false;
+  bool sawTwo = false;
+  for (const auto& pwd : dataToSend) {
+    if (pwd.socketid() == 11 && pwd.buffer() == "one!") {
+      sawOne = true;
+    }
+    if (pwd.socketid() == 22 && pwd.buffer() == "two!") {
+      sawTwo = true;
+    }
+  }
+  CHECK(sawOne);
+  CHECK(sawTwo);
+
+  handler.sendDataToSourceOnSocket(11, "A");
+  handler.sendDataToSourceOnSocket(22, "B");
+  CHECK(networkHandler->writes[requests[0].fd()].back() == "A");
+  CHECK(networkHandler->writes[requests[1].fd()].back() == "B");
+}
+
+TEST_CASE("PortForwardHandler SOCKS unix destination via domain",
+          "[PortForwardHandler][runtime-forward]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  SocketEndpoint source;
+  source.set_port(1080);
+  REQUIRE_FALSE(handler.createSocksSource(source).has_error());
+
+  auto listenFds = networkHandler->getEndpointFds(source);
+  int listenFd = *listenFds.begin();
+  networkHandler->queueAccept(listenFd, 301);
+  auto req =
+      socks5AuthNoAuth() + socks5ConnectDomain("/var/run/docker.sock", 0);
+  networkHandler->queueRead(301, static_cast<int>(req.size()), req);
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend);
+
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].destination().name() == "/var/run/docker.sock");
+  CHECK_FALSE(requests[0].destination().has_port());
+}
+
+#ifndef WIN32
+TEST_CASE("PortForwardHandler -W stdio byte forward without shell",
+          "[PortForwardHandler][runtime-forward]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  int inPipe[2];
+  int outPipe[2];
+  REQUIRE(pipe(inPipe) == 0);
+  REQUIRE(pipe(outPipe) == 0);
+  REQUIRE(fcntl(inPipe[0], F_SETFL, O_NONBLOCK) == 0);
+  REQUIRE(fcntl(outPipe[1], F_SETFL, O_NONBLOCK) == 0);
+
+  SocketEndpoint destination;
+  destination.set_name("127.0.0.1");
+  destination.set_port(9);
+  REQUIRE_FALSE(
+      handler.createStdioForward(destination, inPipe[0], outPipe[1], false)
+          .has_error());
+  CHECK(handler.hasActiveStdioForward());
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend);
+
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].fd() == inPipe[0]);
+  CHECK(requests[0].destination().name() == "127.0.0.1");
+  CHECK(requests[0].destination().port() == 9);
+
+  handler.addSourceSocketId(77, inPipe[0]);
+  const char payload[] = "stdio-bytes";
+  REQUIRE(write(inPipe[1], payload, sizeof(payload) - 1) ==
+          static_cast<ssize_t>(sizeof(payload) - 1));
+
+  requests.clear();
+  dataToSend.clear();
+  handler.update(&requests, &dataToSend);
+  REQUIRE(dataToSend.size() == 1);
+  CHECK(dataToSend[0].socketid() == 77);
+  CHECK(dataToSend[0].buffer() == "stdio-bytes");
+  CHECK(dataToSend[0].sourcetodestination());
+
+  handler.sendDataToSourceOnSocket(77, "from-remote");
+  char buf[64];
+  ssize_t n = read(outPipe[0], buf, sizeof(buf));
+  REQUIRE(n == static_cast<ssize_t>(strlen("from-remote")));
+  CHECK(string(buf, n) == "from-remote");
+
+  // Closing the read side ends the stdio bridge (no shell involved).
+  close(inPipe[1]);
+  requests.clear();
+  dataToSend.clear();
+  handler.update(&requests, &dataToSend);
+  REQUIRE_FALSE(dataToSend.empty());
+  CHECK(dataToSend.back().closed());
+  CHECK_FALSE(handler.hasActiveStdioForward());
+
+  close(inPipe[0]);
+  close(outPipe[0]);
+  close(outPipe[1]);
+}
+#endif
+

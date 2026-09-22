@@ -478,6 +478,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/SocksUtils.hpp
+  src/base/SocksUtils.cpp
   src/base/WriteBuffer.hpp
   src/base/TmuxCcFilter.hpp
 

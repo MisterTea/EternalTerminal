@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "PseudoTerminalConsole.hpp"
+#include "SocksUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TmuxCcFilter.hpp"
 #include "TunnelUtils.hpp"
@@ -20,10 +21,12 @@ TerminalClient::TerminalClient(
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
-    const vector<pair<string, string>>& envVars)
+    const vector<pair<string, string>>& envVars,
+    const vector<string>& dynamicForwards, const string& stdioForward)
     : console(_console),
       shuttingDown(false),
-      keepaliveDuration(_keepaliveDuration) {
+      keepaliveDuration(_keepaliveDuration),
+      stdioForwardActive(!stdioForward.empty()) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
@@ -45,6 +48,30 @@ TerminalClient::TerminalClient(
                        << pfsresponse.error();
           continue;
         }
+      }
+    }
+    for (const auto& dynamicArg : dynamicForwards) {
+      SocketEndpoint socksSource = parseDynamicForwardArg(dynamicArg);
+      auto response = portForwardHandler->createSocksSource(socksSource);
+      if (response.has_error()) {
+        LOG(WARNING) << "Failed to establish dynamic forward " << dynamicArg
+                     << " - " << response.error();
+        continue;
+      }
+    }
+    if (stdioForwardActive) {
+      SocketEndpoint destination = parseStdioForwardArg(stdioForward);
+#ifndef WIN32
+      auto response = portForwardHandler->createStdioForward(
+          destination, STDIN_FILENO, STDOUT_FILENO, false);
+#else
+      auto response = portForwardHandler->createStdioForward(
+          destination, 0, 1, false);
+#endif
+      if (response.has_error()) {
+        CLOG(INFO, "stdout")
+            << "Error establishing stdio forward: " << response.error() << endl;
+        exit(1);
       }
     }
     if (reverseTunnels.length()) {
@@ -173,7 +200,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   TerminalInfo lastTerminalInfo;
 
-  if (!console.get()) {
+  if (!console.get() && !stdioForwardActive) {
     // NOTE: ../../scripts/ssh-et relies on the wording of this message, so if
     // you change it please update it as well.
     CLOG(INFO, "stdout") << "ET running, feel free to background..." << endl;
@@ -574,6 +601,10 @@ void TerminalClient::run(const string& command, const bool noexit) {
         VLOG(4) << "send PF data";
         keepaliveTime = time(NULL) + keepaliveDuration;
       }
+      if (stdioForwardActive && !portForwardHandler->hasActiveStdioForward()) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+      }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();
       CLOG(INFO, "stdout") << "Connection closing because of error: "
@@ -585,7 +616,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->teardown();
   }
-  CLOG(INFO, "stdout") << "Session terminated" << endl;
+  if (!stdioForwardActive) {
+    CLOG(INFO, "stdout") << "Session terminated" << endl;
+  }
 }
 
 #ifdef WIN32

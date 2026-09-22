@@ -35,13 +35,17 @@ class TerminalClient {
                  bool jumphost, const string& tunnels,
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration,
-                 const vector<pair<string, string>>& envVars);
+                 const vector<pair<string, string>>& envVars,
+                 const vector<string>& dynamicForwards = {},
+                 const string& stdioForward = "");
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  /** @brief True when `-W` is bridging stdio (no local shell UI). */
+  bool isStdioForward() const { return stdioForwardActive; }
   static void configureCloseOnHangup(bool enabled) { closeOnHangup = enabled; }
   static void requestHangupClose(int = 0) { hangupCloseRequested = true; }
   static bool waitForHangupClose(int timeoutMs) {
@@ -82,6 +86,8 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
+  /** @brief Set when `-W` is active so stdout stays a pure byte pipe. */
+  bool stdioForwardActive = false;
   static std::atomic<bool> closeOnHangup;
   static std::atomic<bool> hangupCloseRequested;
   static std::atomic<bool> hangupCloseCompleted;
