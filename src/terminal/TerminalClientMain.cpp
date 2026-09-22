@@ -4,6 +4,9 @@
 
 #include "Headers.hpp"
 #include "HostParsing.hpp"
+#include "MuxClient.hpp"
+#include "MuxMaster.hpp"
+#include "MuxProtocol.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
@@ -135,6 +138,26 @@ int main(int argc, char** argv) {
       {}     // local_forwards (empty vector)
   };
 
+  // Parse OpenSSH mux Control* options before cxxopts. --ssh-option remains
+  // the bootstrap-ssh escape hatch and is not reused for session mux.
+  MuxParseResult muxParse;
+  try {
+    muxParse = parseMuxCliOptions(argc, argv);
+  } catch (const std::exception& ex) {
+    CLOG(INFO, "stdout") << "Exception: " << ex.what() << endl;
+    exit(1);
+  }
+  MuxOptions muxOptions = muxParse.options;
+  vector<string> argvStorage = muxParse.remainingArgs;
+  vector<char*> argvPointers;
+  argvPointers.reserve(argvStorage.size() + 1);
+  for (auto& s : argvStorage) {
+    argvPointers.push_back(&s[0]);
+  }
+  argvPointers.push_back(nullptr);
+  argc = static_cast<int>(argvStorage.size());
+  argv = argvPointers.data();
+
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
   try {
@@ -144,7 +167,10 @@ int main(int argc, char** argv) {
         "[OPTION...] [user@]host[:port]\n\n"
         "  Note that 'host' can be a hostname or ipv4 address with or without "
         "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
-        ":: then it must\n  be specified without a port (use -p,--port).");
+        ":: then it must\n  be specified without a port (use -p,--port).\n\n"
+        "  OpenSSH mux: -M / -o ControlMaster=yes|auto|no, "
+        "-S / -o ControlPath=PATH, -o ControlPersist=yes|<seconds>|no, "
+        "-O check|exit|stop|forward|cancel.");
 
     options.add_options()             //
         ("h,help", "Print help")      //
@@ -235,6 +261,122 @@ int main(int argc, char** argv) {
 
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
+      exit(0);
+    }
+
+    // -O control commands talk only to an existing master socket.
+    if (!muxOptions.ctlCommand.empty()) {
+      if (muxOptions.controlPath.empty()) {
+        CLOG(INFO, "stdout")
+            << "-O requires ControlPath (-S or -o ControlPath=...)" << endl;
+        exit(1);
+      }
+      MuxClient ctl(muxOptions.controlPath);
+      if (muxOptions.ctlCommand == "forward" ||
+          muxOptions.ctlCommand == "cancel") {
+        if (!ctl.connect()) {
+          CLOG(INFO, "stdout")
+              << "Control socket connect failed: " << muxOptions.controlPath
+              << endl;
+          exit(1);
+        }
+        string tunnel_arg = extractSingleOptionWithDefault<string>(
+            result, options, "tunnel", "");
+        if (tunnel_arg.empty()) {
+          CLOG(INFO, "stdout") << "-O " << muxOptions.ctlCommand
+                               << " requires -t/--tunnel" << endl;
+          exit(1);
+        }
+        auto requests = parseRangesToRequests(tunnel_arg);
+        int rc = 0;
+        for (const auto& pfsr : requests) {
+          MuxOpenForwardRequest fwd;
+          fwd.type = MUX_FWD_LOCAL;
+          if (pfsr.has_source()) {
+            if (pfsr.source().has_name()) {
+              fwd.listenHost = pfsr.source().name();
+              fwd.listenPort = static_cast<uint32_t>(-2);
+            } else {
+              fwd.listenHost = "localhost";
+              fwd.listenPort = static_cast<uint32_t>(pfsr.source().port());
+            }
+          }
+          if (pfsr.has_destination()) {
+            if (pfsr.destination().has_name()) {
+              fwd.connectHost = pfsr.destination().name();
+              fwd.connectPort = static_cast<uint32_t>(-2);
+            } else {
+              fwd.connectHost = "localhost";
+              fwd.connectPort =
+                  static_cast<uint32_t>(pfsr.destination().port());
+            }
+          }
+          string error;
+          bool ok = muxOptions.ctlCommand == "forward"
+                        ? ctl.openForward(fwd, &error)
+                        : ctl.closeForward(fwd, &error);
+          if (!ok) {
+            CLOG(INFO, "stdout") << error << endl;
+            rc = 1;
+          }
+        }
+        exit(rc);
+      }
+      exit(ctl.runCtlCommand(muxOptions.ctlCommand));
+    }
+
+    // Attach to an existing ControlMaster instead of opening a new session.
+    if (shouldAttachToMuxMaster(muxOptions)) {
+      MuxClient passenger(muxOptions.controlPath);
+      if (!passenger.connect()) {
+        CLOG(INFO, "stdout") << "Failed to attach to ControlPath "
+                             << muxOptions.controlPath << endl;
+        exit(1);
+      }
+      string tunnel_arg =
+          extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
+      if (!tunnel_arg.empty()) {
+        auto requests = parseRangesToRequests(tunnel_arg);
+        for (const auto& pfsr : requests) {
+          MuxOpenForwardRequest fwd;
+          fwd.type = MUX_FWD_LOCAL;
+          fwd.listenHost = "localhost";
+          fwd.listenPort = pfsr.has_source() && pfsr.source().has_port()
+                               ? static_cast<uint32_t>(pfsr.source().port())
+                               : 0;
+          fwd.connectHost = "localhost";
+          fwd.connectPort =
+              pfsr.has_destination() && pfsr.destination().has_port()
+                  ? static_cast<uint32_t>(pfsr.destination().port())
+                  : 0;
+          string error;
+          if (!passenger.openForward(fwd, &error)) {
+            CLOG(INFO, "stdout")
+                << "Mux open forward failed: " << error << endl;
+            exit(1);
+          }
+        }
+      }
+      string command =
+          result.count("command") ? result["command"].as<string>() : "";
+#ifndef WIN32
+      uint32_t sessionId = 0;
+      string error;
+      if (!passenger.newSession(command, !result.count("N"), STDIN_FILENO,
+                                STDOUT_FILENO, STDERR_FILENO, &sessionId,
+                                &error)) {
+        CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
+        exit(1);
+      }
+#else
+      uint32_t sessionId = 0;
+      string error;
+      if (!passenger.newSession(command, !result.count("N"), -1, -1, -1,
+                                &sessionId, &error)) {
+        CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
+        exit(1);
+      }
+#endif
       exit(0);
     }
 
@@ -532,9 +674,45 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
+
+    unique_ptr<MuxMaster> muxMaster;
+    if (shouldBecomeMuxMaster(muxOptions)) {
+      muxMaster = make_unique<MuxMaster>(muxOptions.controlPath,
+                                         muxOptions.controlPersist);
+      muxMaster->setPortForwardHandler(terminalClient.getPortForwardHandler());
+      try {
+        muxMaster->start();
+        LOG(INFO) << "ControlMaster listening on " << muxOptions.controlPath;
+      } catch (const std::exception& ex) {
+        CLOG(INFO, "stdout")
+            << "Failed to start ControlMaster: " << ex.what() << endl;
+        exit(1);
+      }
+    }
+
     terminalClient.run(
         result.count("command") ? result["command"].as<string>() : "",
         result.count("noexit"));
+
+    if (muxMaster) {
+      muxMaster->notifyPrimaryClientExited();
+      if (muxOptions.controlPersist.enabled) {
+        // Keep the process (and et session teardown delayed via mux) until
+        // ControlPersist elapses or a mux client sends TERMINATE.
+        while (muxMaster->isRunning()) {
+          if (muxMaster->persistExpired()) {
+            break;
+          }
+          if (muxOptions.controlPersist.seconds == 0) {
+            // Forever: wait until terminate or stop.
+            this_thread::sleep_for(chrono::milliseconds(200));
+            continue;
+          }
+          this_thread::sleep_for(chrono::milliseconds(50));
+        }
+      }
+      muxMaster->stop();
+    }
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {

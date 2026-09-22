@@ -42,6 +42,10 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  /** @brief Port-forward handler owned by this client (for mux OPEN_FWD). */
+  shared_ptr<PortForwardHandler> getPortForwardHandler() const {
+    return portForwardHandler;
+  }
   static void configureCloseOnHangup(bool enabled) { closeOnHangup = enabled; }
   static void requestHangupClose(int = 0) { hangupCloseRequested = true; }
   static bool waitForHangupClose(int timeoutMs) {

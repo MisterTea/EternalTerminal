@@ -512,6 +512,12 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/MuxProtocol.hpp
+  src/terminal/MuxProtocol.cpp
+  src/terminal/MuxMaster.hpp
+  src/terminal/MuxMaster.cpp
+  src/terminal/MuxClient.hpp
+  src/terminal/MuxClient.cpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
