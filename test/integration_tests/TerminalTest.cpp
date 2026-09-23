@@ -990,12 +990,56 @@ TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
 }
 
 #ifndef WIN32
+// Console that refuses all writeSome calls until openGate(). If the client
+// stops on EXIT_STATUS before consoleOut drains, run() finishes while the
+// gate is still closed and output is lost (BinaryStdioConsole / O_NONBLOCK).
+class GateWriteConsole : public FakeConsole {
+ public:
+  explicit GateWriteConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (!gateOpen.load()) {
+      return 0;
+    }
+    const size_t n = std::min(s.size(), size_t(64));
+    ssize_t rc = ::write(getFd(), s.data(), n);
+    if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        return 0;
+      }
+      throw std::runtime_error(string("console write failed: ") +
+                               strerror(errno));
+    }
+    {
+      lock_guard<mutex> lock(writtenMutex);
+      written.append(s.data(), static_cast<size_t>(rc));
+    }
+    return static_cast<size_t>(rc);
+  }
+
+  void openGate() { gateOpen.store(true); }
+
+  string writtenSnapshot() {
+    lock_guard<mutex> lock(writtenMutex);
+    return written;
+  }
+
+ private:
+  std::atomic<bool> gateOpen{false};
+  mutex writtenMutex;
+  string written;
+};
+
 // Shell child that exits immediately with a fixed status so the client can
 // observe TERMINAL_EXIT_STATUS over a real pty session.
 class RealPtyFixedExitTerminal : public UserTerminal {
  public:
-  explicit RealPtyFixedExitTerminal(int code)
-      : masterFd(-1), childPid(-1), exitCode(code) {}
+  explicit RealPtyFixedExitTerminal(int code, const string& fullScript = "")
+      : masterFd(-1), childPid(-1), exitCode(code), fullScript(fullScript) {}
   virtual ~RealPtyFixedExitTerminal() { cleanup(); }
 
   virtual int setup(int /*routerFd*/) {
@@ -1004,8 +1048,11 @@ class RealPtyFixedExitTerminal : public UserTerminal {
       FATAL_FAIL(childPid);
     }
     if (childPid == 0) {
-      // Give the client time to connect and enter run() before exiting.
-      string script = "sleep 2; exit " + to_string(exitCode);
+      // Give the client time to connect and enter run() before exiting by
+      // default; callers can supply a full script (e.g. print then exit).
+      string script = fullScript.empty()
+                          ? ("sleep 2; exit " + to_string(exitCode))
+                          : fullScript;
       execl("/bin/sh", "sh", "-c", script.c_str(), (char*)NULL);
       _exit(127);
     }
@@ -1049,6 +1096,7 @@ class RealPtyFixedExitTerminal : public UserTerminal {
   int masterFd;
   pid_t childPid;
   int exitCode;
+  string fullScript;
 };
 
 void remoteExitStatusTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
@@ -1057,13 +1105,14 @@ void remoteExitStatusTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                           shared_ptr<SocketHandler> clientPipeSocketHandler,
                           shared_ptr<FakeConsole> fakeConsole,
                           const SocketEndpoint& routerEndpoint,
-                          const string& command, int expectedStatus) {
+                          const string& command, int expectedStatus,
+                          const string& fullScript = "") {
   auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
   auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
   auto [id, passkey] = sshSetupHandler->SetupSsh(
       "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
 
-  auto realPty = make_shared<RealPtyFixedExitTerminal>(42);
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, fullScript);
   auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
       routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
   thread uthThread([uth]() { uth->run(); });
@@ -1098,6 +1147,53 @@ TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_InteractivePath",
   remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
                        clientPipeSocketHandler, fakeConsole, routerEndpoint, "",
                        0);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_DrainsConsoleOutBeforeStop",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // writeSome may return 0 (BinaryStdioConsole / O_NONBLOCK). EXIT_STATUS must
+  // not stop the loop until consoleOut is empty.
+  const string marker(2048, 'M');
+  auto gatedConsole = make_shared<GateWriteConsole>(consoleSocketHandler);
+  fakeConsole = gatedConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, gatedConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runFinished{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runFinished]() {
+    runStatus = terminalClient->run("true", false);
+    runFinished.store(true);
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes are still gated.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Bug: shuttingDown on EXIT_STATUS finishes run() before the gate opens.
+  const bool finishedEarly = runFinished.load();
+
+  gatedConsole->openGate();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(finishedEarly);
+  REQUIRE(runStatus == 42);
+  REQUIRE(gatedConsole->writtenSnapshot().find(marker) != string::npos);
 }
 #endif
 

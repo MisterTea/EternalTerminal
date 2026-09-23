@@ -508,6 +508,7 @@ add_library(
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
   src/terminal/JumphostPending.hpp
+  src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp

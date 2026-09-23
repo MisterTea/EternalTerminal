@@ -548,10 +548,9 @@ int TerminalClient::run(const string& command, const bool noexit) {
                 haveRemoteExitStatus = true;
                 LOG(INFO) << "Got remote exit status " << remoteExitStatus;
               }
-              if (wantRemoteExitStatus) {
-                lock_guard<recursive_mutex> guard(shutdownMutex);
-                shuttingDown = true;
-              }
+              // Do not set shuttingDown yet: writeSome may return partial/zero
+              // bytes (BinaryStdioConsole / O_NONBLOCK). Stop only after
+              // consoleOut has drained.
               break;
             }
             default:
@@ -569,6 +568,14 @@ int TerminalClient::run(const string& command, const bool noexit) {
             consoleOut.consume(written);
           }
         }
+      }
+
+      // Command sessions: stop only once remote status is known and any
+      // buffered console output has been written (or there is no console).
+      if (wantRemoteExitStatus && haveRemoteExitStatus &&
+          (!console || !consoleOut.hasPendingData())) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
@@ -631,7 +638,31 @@ int TerminalClient::run(const string& command, const bool noexit) {
       shuttingDown = true;
     }
   }
+  // Finish writing buffered remote output before tearing down the console.
+  // EXIT_STATUS or a dying connection must not discard consoleOut: writeSome
+  // may return 0 under O_NONBLOCK (BinaryStdioConsole) until the fd is
+  // writable.
   if (console) {
+    while (consoleOut.hasPendingData()) {
+      size_t count = 0;
+      const char* data = consoleOut.peekData(&count);
+      if (data == nullptr || count == 0) {
+        break;
+      }
+      size_t written = console->writeSome(string(data, count));
+      if (written > 0) {
+        consoleOut.consume(written);
+        continue;
+      }
+#ifndef WIN32
+      pollfd pfd = {console->getFd(), POLLOUT, 0};
+      if (poll(&pfd, 1, 10) < 0 && errno != EINTR) {
+        break;
+      }
+#else
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+    }
     console->teardown();
   }
   CLOG(INFO, "stdout") << "Session terminated" << endl;
