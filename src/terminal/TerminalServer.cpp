@@ -354,6 +354,13 @@ void TerminalServer::runTerminal(
       pipePaths.push_back(sourceName);
     }
   }
+  const bool pipeMode = payload.no_pty();
+  if (pipeMode && (!payload.has_command() || payload.command().empty())) {
+    response.set_error("no_pty requires a non-empty command");
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+    return;
+  }
   serverClientState->writePacket(
       Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
 
@@ -375,6 +382,10 @@ void TerminalServer::runTerminal(
   for (auto& it : environmentVariables) {
     *(termInit.add_environmentnames()) = it.first;
     *(termInit.add_environmentvalues()) = it.second;
+  }
+  if (pipeMode) {
+    termInit.set_no_pty(true);
+    termInit.set_command(payload.command());
   }
   terminalSocketHandler->writePacket(
       terminalFd,
@@ -398,12 +409,19 @@ void TerminalServer::runTerminal(
     set<int> refreshFds;
     int serverClientFd = serverClientState->getSocketFd();
     const bool connected = serverClientFd > 0;
-    // Connected: stage in WriteBuffer (16MB cap). Disconnected: today's
-    // 64MB BackedWriter path, so a job keeps running after the laptop
-    // closes.
-    bool readTerminal = connected
-                            ? terminalOutputBuffer.canAcceptMore()
-                            : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    bool readTerminal;
+    if (pipeMode) {
+      // Packet-framed pipe output skips WriteBuffer; bound via BackedWriter.
+      readTerminal =
+          connected ? true : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    } else {
+      // Connected: stage in WriteBuffer (16MB cap). Disconnected: today's
+      // 64MB BackedWriter path, so a job keeps running after the laptop
+      // closes.
+      readTerminal = connected
+                         ? terminalOutputBuffer.canAcceptMore()
+                         : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    }
     if (readTerminal && !holdDroppableForClient) {
       readFds.insert(terminalFd);
     }
@@ -413,7 +431,8 @@ void TerminalServer::runTerminal(
       serverSocketHandler->minimizeKernelBuffering(serverClientFd);
       readFds.insert(serverClientFd);
       refreshFds.insert(serverClientFd);
-      if (terminalOutputBuffer.hasPendingData() && !holdDroppableForClient) {
+      if (!pipeMode && terminalOutputBuffer.hasPendingData() &&
+          !holdDroppableForClient) {
         writeFds.insert(serverClientFd);
       }
     }
@@ -463,9 +482,10 @@ void TerminalServer::runTerminal(
               VLOG(2) << "Got bytes from client: " << tb.buffer().length()
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
-              if (WriteBuffer::containsInterruptByte(tb.buffer()) ||
-                  tmuxCcInputRequestsInterrupt(clientInterruptCarry,
-                                               tb.buffer())) {
+              if (!pipeMode &&
+                  (WriteBuffer::containsInterruptByte(tb.buffer()) ||
+                   tmuxCcInputRequestsInterrupt(clientInterruptCarry,
+                                                tb.buffer()))) {
                 LOG(INFO) << "Interrupt from client (" << tb.buffer().size()
                           << " bytes), WriteBuffer="
                           << terminalOutputBuffer.size();
@@ -477,7 +497,9 @@ void TerminalServer::runTerminal(
                                             &terminalOutputBuffer);
                 }
               }
-              tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
+              if (!pipeMode) {
+                tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
+              }
               char c = TERMINAL_BUFFER;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
@@ -541,52 +563,67 @@ void TerminalServer::runTerminal(
         run = false;
         break;
       }
-      if (holdDroppableForClient) {
-        // Already waited one select for send-keys. Resume droppable
-        // drain only after that wait; do not write flood in this gap.
-        holdDroppableForClient = false;
-      } else {
-        holdDroppableForClient =
-            drainWriteBufferToClient(&terminalOutputBuffer, serverClientState,
-                                     stillConnected ? serverClientFd : -1);
+      if (!pipeMode) {
+        if (holdDroppableForClient) {
+          // Already waited one select for send-keys. Resume droppable
+          // drain only after that wait; do not write flood in this gap.
+          holdDroppableForClient = false;
+        } else {
+          holdDroppableForClient =
+              drainWriteBufferToClient(&terminalOutputBuffer, serverClientState,
+                                       stillConnected ? serverClientFd : -1);
+        }
       }
 
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).
       if (readyFds.count(terminalFd) != 0) {
-        // Read from terminal and write to client
-        memset(b, 0, BUF_SIZE);
-        ssize_t rc = terminalSocketHandler->read(terminalFd, b, BUF_SIZE);
-        if (rc > 0) {
-          VLOG(2) << "Sending bytes from terminal: " << rc << " "
-                  << serverClientState->getWriter()->getSequenceNumber();
-          string s(b, rc);
-          if (stillConnected) {
-            terminalOutputBuffer.enqueue(s);
-            if (!holdDroppableForClient) {
-              holdDroppableForClient = drainWriteBufferToClient(
-                  &terminalOutputBuffer, serverClientState, serverClientFd);
+        if (pipeMode) {
+          try {
+            Packet packet;
+            if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
+              serverClientState->writePacket(packet);
             }
-          } else {
-            et::TerminalBuffer tb;
-            tb.set_buffer(s);
-            serverClientState->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          } catch (const std::runtime_error& ex) {
+            LOG(INFO) << "Pipe command session ended: " << ex.what();
+            run = false;
+            break;
           }
-        } else if (rc == 0) {
-          LOG(INFO) << "Terminal session ended";
-          run = false;
-          break;
-        } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
-          // Common after a Ctrl+C drain-discard of already-readable bytes.
-          continue;
         } else {
-          int readErr = GetErrno();
-          LOG(ERROR) << "Error reading from socket: " << readErr << " "
-                     << strerror(readErr);
-          run = false;
-          break;
+          // Read from terminal and write to client
+          memset(b, 0, BUF_SIZE);
+          ssize_t rc = terminalSocketHandler->read(terminalFd, b, BUF_SIZE);
+          if (rc > 0) {
+            VLOG(2) << "Sending bytes from terminal: " << rc << " "
+                    << serverClientState->getWriter()->getSequenceNumber();
+            string s(b, rc);
+            if (stillConnected) {
+              terminalOutputBuffer.enqueue(s);
+              if (!holdDroppableForClient) {
+                holdDroppableForClient = drainWriteBufferToClient(
+                    &terminalOutputBuffer, serverClientState, serverClientFd);
+              }
+            } else {
+              et::TerminalBuffer tb;
+              tb.set_buffer(s);
+              serverClientState->writePacket(Packet(
+                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+            }
+          } else if (rc == 0) {
+            LOG(INFO) << "Terminal session ended";
+            run = false;
+            break;
+          } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
+            // Common after a Ctrl+C drain-discard of already-readable bytes.
+            continue;
+          } else {
+            int readErr = GetErrno();
+            LOG(ERROR) << "Error reading from socket: " << readErr << " "
+                       << strerror(readErr);
+            run = false;
+            break;
+          }
         }
       }
 
