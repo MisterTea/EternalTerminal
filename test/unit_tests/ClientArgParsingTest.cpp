@@ -7,28 +7,43 @@ using namespace et;
 
 namespace {
 
-cxxopts::ParseResult parseEtConnectArgv(int argc, const char** argv) {
+struct ParsedConnect {
+  cxxopts::ParseResult result;
+  vector<string> commandOperands;
+};
+
+ParsedConnect parseEtConnectArgv(int argc, const char** argv) {
+  vector<string> rawArgs;
+  rawArgs.reserve(static_cast<size_t>(argc));
+  for (int i = 0; i < argc; ++i) {
+    rawArgs.emplace_back(argv[i]);
+  }
+  EtArgvSplit split = splitEtArgvAtHost(rawArgs);
+  vector<char*> clientArgv;
+  clientArgv.reserve(split.clientArgs.size());
+  for (auto& arg : split.clientArgs) {
+    clientArgv.push_back(&arg[0]);
+  }
+
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
   options.allow_unrecognised_options();
   options.add_options()("p,port", "Remote machine etserver port",
                         cxxopts::value<int>()->default_value("2022"))(
       "c,command", "Run command on connect and exit after command is run",
       cxxopts::value<std::string>())("host", "Remote host name",
-                                     cxxopts::value<std::string>())(
-      "command_args", "Positional remote command words",
-      cxxopts::value<std::vector<std::string>>());
-  options.parse_positional({"host", "command_args"});
-  return options.parse(argc, const_cast<char**>(argv));
+                                     cxxopts::value<std::string>());
+  options.parse_positional({"host"});
+  ParsedConnect parsed{
+      options.parse(static_cast<int>(clientArgv.size()), clientArgv.data()),
+      split.commandOperands};
+  return parsed;
 }
 
-string commandFromParse(const cxxopts::ParseResult& result) {
-  vector<string> positional;
-  if (result.count("command_args")) {
-    positional = result["command_args"].as<vector<string>>();
-  }
+string commandFromParse(const ParsedConnect& parsed) {
   return resolveRemoteCommand(
-      positional, result.count("command") > 0,
-      result.count("command") ? result["command"].as<string>() : "");
+      parsed.commandOperands, parsed.result.count("command") > 0,
+      parsed.result.count("command") ? parsed.result["command"].as<string>()
+                                     : "");
 }
 
 }  // namespace
@@ -38,7 +53,8 @@ TEST_CASE("et accepts ssh-style positional remote command",
   SECTION("positional command after user@host") {
     const char* argv[] = {"et",   "-p",    "2022", "user@host",
                           "echo", "hello", "world"};
-    auto result = parseEtConnectArgv(7, argv);
+    auto parsed = parseEtConnectArgv(7, argv);
+    auto& result = parsed.result;
     REQUIRE(result.count("host") == 1);
     REQUIRE(result["port"].as<int>() == 2022);
 
@@ -48,12 +64,13 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(dest.host == "host");
     REQUIRE_FALSE(dest.hasExplicitPort);
 
-    REQUIRE(commandFromParse(result) == "echo hello world");
+    REQUIRE(commandFromParse(parsed) == "echo hello world");
   }
 
   SECTION("-c works when no positional command is present") {
     const char* argv[] = {"et", "-c", "ls -la", "user@host"};
-    auto result = parseEtConnectArgv(4, argv);
+    auto parsed = parseEtConnectArgv(4, argv);
+    auto& result = parsed.result;
     REQUIRE(result.count("host") == 1);
 
     ParsedEtDestination dest =
@@ -61,13 +78,32 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(dest.username == "user");
     REQUIRE(dest.host == "host");
 
-    REQUIRE(commandFromParse(result) == "ls -la");
+    REQUIRE(commandFromParse(parsed) == "ls -la");
   }
 
   SECTION("positional command wins over -c") {
     const char* argv[] = {"et", "-c", "ignored", "host", "echo", "ok"};
-    auto result = parseEtConnectArgv(6, argv);
-    REQUIRE(commandFromParse(result) == "echo ok");
+    auto parsed = parseEtConnectArgv(6, argv);
+    REQUIRE(commandFromParse(parsed) == "echo ok");
+  }
+
+  SECTION("unknown dash operands after the host stay in the command") {
+    const char* argv[] = {"et", "host", "echo", "-n", "hi"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "echo -n hi");
+  }
+
+  SECTION("et options after the host are remote operands") {
+    const char* argv[] = {"et", "host", "sh", "-c", "echo hi"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(result.count("command") == 0);
+    REQUIRE(commandFromParse(parsed) == "sh -c echo hi");
   }
 }
 

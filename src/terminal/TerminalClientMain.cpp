@@ -160,8 +160,6 @@ int main(int argc, char** argv) {
          cxxopts::value<int>()->default_value("2022"))  //
         ("c,command", "Run command on connect and exit after command is run",
          cxxopts::value<std::string>())  //
-        ("command_args", "Positional remote command words",
-         cxxopts::value<std::vector<std::string>>())  //
         ("e,noexit",
          "Used together with -c to not exit after command is run")  //
         ("terminal-path",
@@ -222,8 +220,20 @@ int main(int argc, char** argv) {
         ("ssh-option", "Options to pass down to `ssh -o`",
          cxxopts::value<std::vector<std::string>>());
 
-    options.parse_positional({"host", "command_args"});
-    auto result = options.parse(argc, argv);
+    options.parse_positional({"host"});
+    vector<string> rawArgs;
+    rawArgs.reserve(static_cast<size_t>(argc));
+    for (int i = 0; i < argc; ++i) {
+      rawArgs.emplace_back(argv[i]);
+    }
+    EtArgvSplit argvSplit = splitEtArgvAtHost(rawArgs);
+    vector<char*> clientArgv;
+    clientArgv.reserve(argvSplit.clientArgs.size());
+    for (auto& arg : argvSplit.clientArgs) {
+      clientArgv.push_back(&arg[0]);
+    }
+    auto result =
+        options.parse(static_cast<int>(clientArgv.size()), clientArgv.data());
     TerminalClient::configureCloseOnHangup(result.count("close-on-hangup"));
     if (result.count("close-on-hangup")) {
 #ifdef WIN32
@@ -517,12 +527,8 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
-    vector<string> positionalCommandArgs;
-    if (result.count("command_args")) {
-      positionalCommandArgs = result["command_args"].as<vector<string>>();
-    }
     string remoteCommand = resolveRemoteCommand(
-        positionalCommandArgs, result.count("command") > 0,
+        argvSplit.commandOperands, result.count("command") > 0,
         result.count("command") ? result["command"].as<string>() : "");
     terminalClient.run(remoteCommand, result.count("noexit"));
   } catch (TunnelParseException& tpe) {

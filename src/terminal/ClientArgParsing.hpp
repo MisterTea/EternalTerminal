@@ -71,6 +71,54 @@ inline string joinRemoteCommandOperands(const vector<string>& operands) {
   return command;
 }
 
+// Options that consume the following argv token. Everything after the host
+// positional is a remote command word, including tokens that look like flags.
+inline bool etOptionConsumesValue(const string& arg) {
+  return arg == "-u" || arg == "--username" || arg == "-p" || arg == "--port" ||
+         arg == "-c" || arg == "--command" || arg == "--terminal-path" ||
+         arg == "-t" || arg == "--tunnel" || arg == "-r" ||
+         arg == "--reversetunnel" || arg == "--jumphost" || arg == "--jport" ||
+         arg == "--jserverfifo" || arg == "-v" || arg == "--verbose" ||
+         arg == "-k" || arg == "--keepalive" || arg == "-l" ||
+         arg == "--logdir" || arg == "--ssh-socket" || arg == "--ssh-config" ||
+         arg == "--telemetry" || arg == "--serverfifo" || arg == "--ssh-option";
+}
+
+struct EtArgvSplit {
+  vector<string> clientArgs;
+  vector<string> commandOperands;
+};
+
+inline EtArgvSplit splitEtArgvAtHost(const vector<string>& args) {
+  EtArgvSplit split;
+  if (args.empty()) {
+    return split;
+  }
+  split.clientArgs.push_back(args[0]);
+  size_t i = 1;
+  for (; i < args.size(); ++i) {
+    const string& arg = args[i];
+    if (arg == "--") {
+      ++i;
+      break;
+    }
+    if (arg.size() >= 2 && arg[0] == '-' && arg.find('=') == string::npos) {
+      split.clientArgs.push_back(arg);
+      if (etOptionConsumesValue(arg) && i + 1 < args.size()) {
+        split.clientArgs.push_back(args[++i]);
+      }
+      continue;
+    }
+    split.clientArgs.push_back(arg);
+    ++i;
+    break;
+  }
+  for (; i < args.size(); ++i) {
+    split.commandOperands.push_back(args[i]);
+  }
+  return split;
+}
+
 // Prefer a positional command over -c/--command when both are present.
 inline string resolveRemoteCommand(const vector<string>& positionalOperands,
                                    bool hasCommandFlag,
