@@ -93,6 +93,14 @@ class Connection {
    */
   void shutdown();
 
+  /**
+   * @brief Marks a still-disconnected session shutting down.
+   * Returns false when a reconnect has already installed a live socket, or
+   * when shutdown has already started. Holds `connectionMutex` across the
+   * check and the flag update.
+   */
+  bool claimDisconnectedExpiry();
+
   inline bool isShuttingDown() {
     lock_guard<std::recursive_mutex> guard(connectionMutex);
     return shuttingDown;

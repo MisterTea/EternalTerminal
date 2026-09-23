@@ -157,6 +157,15 @@ bool Connection::recover(int newSocketFd) {
   }
 }
 
+bool Connection::claimDisconnectedExpiry() {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
+  if (socketFd > 0 || shuttingDown) {
+    return false;
+  }
+  shuttingDown = true;
+  return true;
+}
+
 void Connection::shutdown() {
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   LOG(INFO) << "Shutting down connection";

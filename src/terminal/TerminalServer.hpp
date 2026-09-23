@@ -1,6 +1,8 @@
 #ifndef __ET_TERMINAL_SERVER__
 #define __ET_TERMINAL_SERVER__
 
+#include <chrono>
+
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "DaemonCreator.hpp"
@@ -53,6 +55,18 @@ class TerminalServer : public ServerConnection {
     halt = true;
   }
 
+  /**
+   * @brief How long a terminal may stay disconnected before it is closed.
+   *
+   * `0` disables the timeout. The `etserver` flag is in minutes; this setter
+   * takes seconds so tests can use a short deadline.
+   */
+  void setDisconnectTimeoutSeconds(int seconds) {
+    disconnectTimeoutSec = seconds;
+  }
+
+  int getDisconnectTimeoutSeconds() const { return disconnectTimeoutSec; }
+
   /** @brief Router that hands reconnecting clients to their terminals. */
   shared_ptr<UserTerminalRouter> terminalRouter;
   /** @brief Threads that manage active terminal/jumphost sessions. */
@@ -66,11 +80,61 @@ class TerminalServer : public ServerConnection {
    * Overridable so tests do not have to wait out the real deadline.
    */
   int initialPayloadTimeoutSec = INITIAL_PAYLOAD_TIMEOUT_DURATION;
+  /**
+   * @brief Seconds a disconnected etterminal may live. `0` means no timeout.
+   */
+  int disconnectTimeoutSec = 0;
   /** @brief Guards access to `terminalThreads` and the halt flag. */
   mutex terminalThreadMutex;
   /** @brief Local pipe endpoint used to signal terminal/jumphost handoffs. */
   SocketEndpoint routerEndpoint;
 };
+/**
+ * @brief Monotonic stamp for how long a terminal has been without a client.
+ *
+ * A non-positive timeout never fires. A connected client clears the stamp.
+ * The first disconnected observation records `now` and does not fire; a later
+ * observation fires once steady time reaches the timeout. Wall-clock jumps
+ * do not move `std::chrono::steady_clock`.
+ */
+struct DisconnectDeadline {
+  std::chrono::steady_clock::time_point since{};
+  bool started = false;
+};
+
+inline bool disconnectDeadlineReached(DisconnectDeadline* deadline,
+                                      std::chrono::steady_clock::time_point now,
+                                      bool connected, int timeoutSec) {
+  if (deadline == nullptr) {
+    return false;
+  }
+  if (timeoutSec <= 0 || connected) {
+    deadline->started = false;
+    return false;
+  }
+  if (!deadline->started) {
+    deadline->since = now;
+    deadline->started = true;
+    return false;
+  }
+  return now - deadline->since >= std::chrono::seconds(timeoutSec);
+}
+
+/**
+ * @brief True when a stale disconnect snapshot should close the session.
+ * `currentSocketFd > 0` means a reconnect already landed and must win.
+ */
+inline bool disconnectExpiryClosesSession(
+    int observedSocketFd, int currentSocketFd, bool alreadyShuttingDown,
+    DisconnectDeadline* deadline, std::chrono::steady_clock::time_point now,
+    int timeoutSec) {
+  if (alreadyShuttingDown || currentSocketFd > 0) {
+    return false;
+  }
+  const bool stillConnected = observedSocketFd > 0;
+  return disconnectDeadlineReached(deadline, now, stillConnected, timeoutSec);
+}
+
 }  // namespace et
 
 #endif  // __ET_TERMINAL_SERVER__

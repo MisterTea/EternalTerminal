@@ -1,4 +1,5 @@
 #include <cxxopts.hpp>
+#include <limits>
 
 #include "ServerFifoPath.hpp"
 #include "SimpleIni.h"
@@ -62,6 +63,10 @@ int main(int argc, char** argv) {
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>())  //
+        ("disconnect-timeout",
+         "Minutes a disconnected etterminal may stay alive before etserver "
+         "closes it. 0 means no timeout.",
+         cxxopts::value<int>()->default_value("0"))  //
         ;
 
     auto result = options.parse(argc, argv);
@@ -90,6 +95,7 @@ int main(int argc, char** argv) {
 
     int port = 0;
     int listenBacklog = TcpSocketHandler::DEFAULT_LISTEN_BACKLOG;
+    int disconnectTimeoutMinutes = 0;
     string bindIp = "";
     bool enableTelemetry = false;
     string logDirectory = GetTempDirectory();
@@ -116,6 +122,14 @@ int main(int argc, char** argv) {
         const char* backlogString = ini.GetValue("Networking", "backlog", NULL);
         if (backlogString) {
           listenBacklog = stoi(backlogString);
+        }
+
+        if (!result.count("disconnect-timeout")) {
+          const char* timeoutString =
+              ini.GetValue("Networking", "disconnect_timeout", NULL);
+          if (timeoutString) {
+            disconnectTimeoutMinutes = stoi(timeoutString);
+          }
         }
 
         enableTelemetry = ini.GetBoolValue("Debug", "telemetry", false);
@@ -161,6 +175,18 @@ int main(int argc, char** argv) {
     if (result.count("serverfifo") &&
         !result["serverfifo"].as<string>().empty()) {
       serverFifo.setPathOverride(result["serverfifo"].as<string>());
+    }
+
+    if (result.count("disconnect-timeout")) {
+      disconnectTimeoutMinutes = result["disconnect-timeout"].as<int>();
+    }
+
+    if (disconnectTimeoutMinutes < 0) {
+      STFATAL << "--disconnect-timeout must be a non-negative number of "
+                 "minutes";
+    }
+    if (disconnectTimeoutMinutes > std::numeric_limits<int>::max() / 60) {
+      STFATAL << "--disconnect-timeout is too large";
     }
 
     if (result.count("port")) {
@@ -218,6 +244,7 @@ int main(int argc, char** argv) {
     routerFifo.set_name(serverFifo.getPathForCreation());
     TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
                                   pipeSocketHandler, routerFifo);
+    terminalServer.setDisconnectTimeoutSeconds(disconnectTimeoutMinutes * 60);
     terminalServer.run();
 
   } catch (cxxopts::exceptions::exception& oe) {

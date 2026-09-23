@@ -394,6 +394,7 @@ void TerminalServer::runTerminal(
   WriteBuffer terminalOutputBuffer;
   string clientInterruptCarry;
   bool holdDroppableForClient = false;
+  DisconnectDeadline disconnectedSince;
 
   while (run) {
     {
@@ -544,6 +545,24 @@ void TerminalServer::runTerminal(
       // of staying gated on the connected 16MB cap.
       serverClientFd = serverClientState->getSocketFd();
       const bool stillConnected = serverClientFd > 0;
+      if (disconnectDeadlineReached(&disconnectedSince,
+                                    std::chrono::steady_clock::now(),
+                                    stillConnected, disconnectTimeoutSec) &&
+          serverClientState->claimDisconnectedExpiry()) {
+        LOG(INFO) << "Disconnect timeout (" << disconnectTimeoutSec
+                  << "s) elapsed; closing terminal session "
+                  << serverClientState->getId();
+        try {
+          char c = TERMINAL_CLOSE;
+          terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char),
+                                                 false);
+        } catch (const std::runtime_error& ex) {
+          LOG(INFO) << "Failed to notify terminal of disconnect timeout: "
+                    << ex.what();
+        }
+        run = false;
+        break;
+      }
       if (!pipeMode) {
         if (holdDroppableForClient) {
           // Already waited one select for send-keys. Resume droppable
