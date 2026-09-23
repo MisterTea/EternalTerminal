@@ -148,24 +148,29 @@ void MuxMaster::stop() {
   terminateRequested = true;
   running = false;
   acceptNew = false;
-  closeListenFd();
-  vector<int> clientFds;
+
+  // Wake the accept and client threads with shutdown only. Closing fds while
+  // those threads may still poll/read them races under TSan and on FreeBSD.
   {
     lock_guard<recursive_mutex> guard(mutex);
-    clientFds.reserve(clientSlots.size());
-    for (const auto& slot : clientSlots) {
-      clientFds.push_back(slot.fd);
-    }
-  }
-  for (int fd : clientFds) {
-    if (fd >= 0) {
+    if (listenFd >= 0) {
 #ifdef WIN32
-      ::shutdown(fd, SD_BOTH);
+      ::shutdown(listenFd, SD_BOTH);
 #else
-      ::shutdown(fd, SHUT_RDWR);
+      ::shutdown(listenFd, SHUT_RDWR);
 #endif
     }
+    for (const auto& slot : clientSlots) {
+      if (slot.fd >= 0) {
+#ifdef WIN32
+        ::shutdown(slot.fd, SD_BOTH);
+#else
+        ::shutdown(slot.fd, SHUT_RDWR);
+#endif
+      }
+    }
   }
+
   if (worker.joinable()) {
     if (worker.get_id() != this_thread::get_id()) {
       worker.join();
@@ -173,6 +178,10 @@ void MuxMaster::stop() {
       worker.detach();
     }
   }
+
+  // Worker has exited; safe to close the listen socket.
+  closeListenFd();
+
   vector<thread> joining;
   {
     lock_guard<recursive_mutex> guard(mutex);
@@ -259,20 +268,27 @@ void MuxMaster::acceptLoop() {
         } catch (const std::exception& ex) {
           LOG(WARNING) << "Mux client handler failed: " << ex.what();
         }
-        ::close(clientFd);
         {
           lock_guard<recursive_mutex> guard(mutex);
+          for (auto& slot : clientSlots) {
+            if (slot.fd == clientFd) {
+              slot.fd = -1;
+              break;
+            }
+          }
           if (clients > 0) {
             --clients;
           }
         }
+        // This thread owns the accepted fd for its lifetime; always close it.
+        ::close(clientFd);
       });
     }
   }
 
   running = false;
-  closeListenFd();
-  ::unlink(path.c_str());
+  // Fd and path cleanup belong to stop()/destructor so we never close or
+  // unlink concurrently with the controlling thread.
 }
 
 void MuxMaster::serveClient(int clientFd) {

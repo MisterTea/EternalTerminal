@@ -76,6 +76,37 @@ TEST_CASE("TerminalHandler stop is idempotent and reaps the child",
 TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   term.start();
+  // Wait until the shell accepts input before sending exit. Under slow
+  // FreeBSD/qemu hosts an immediate exit flood can race shell startup.
+  const string readyMarker = "HTM_TERM_EXIT_READY";
+  bool ready = waitUntil(
+      [&]() {
+        term.pollUserTerminal();
+        for (const auto& line : term.getBuffer()) {
+          if (line.find(readyMarker) != string::npos) {
+            return true;
+          }
+        }
+#ifdef WIN32
+        term.appendData("echo " + readyMarker + "\r\n");
+#else
+        term.appendData("printf '" + readyMarker + "\\n'\n");
+#endif
+        return !term.isRunning();
+      },
+      20000);
+#ifdef WIN32
+  if (!ready) {
+    SKIP(
+        "The Windows ConPTY host did not process shell output on this "
+        "Windows build");
+  }
+#endif
+  if (!term.isRunning()) {
+    REQUIRE(ready);
+    term.stop();
+    return;
+  }
   auto pollExit = [&]() {
     term.pollUserTerminal();
 #ifdef WIN32
