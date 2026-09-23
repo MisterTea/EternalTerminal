@@ -102,9 +102,12 @@ inline EtArgvSplit splitEtArgvAtHost(const vector<string>& args) {
       ++i;
       break;
     }
-    if (arg.size() >= 2 && arg[0] == '-' && arg.find('=') == string::npos) {
+    if (arg.size() >= 2 && arg[0] == '-') {
       split.clientArgs.push_back(arg);
-      if (etOptionConsumesValue(arg) && i + 1 < args.size()) {
+      // `--serverfifo=/tmp/x` already carries its value. A separate value
+      // token is only consumed for a bare option name.
+      if (arg.find('=') == string::npos && etOptionConsumesValue(arg) &&
+          i + 1 < args.size()) {
         split.clientArgs.push_back(args[++i]);
       }
       continue;

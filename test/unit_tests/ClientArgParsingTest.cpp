@@ -30,8 +30,11 @@ ParsedConnect parseEtConnectArgv(int argc, const char** argv) {
   options.add_options()("p,port", "Remote machine etserver port",
                         cxxopts::value<int>()->default_value("2022"))(
       "c,command", "Run command on connect and exit after command is run",
-      cxxopts::value<std::string>())("host", "Remote host name",
-                                     cxxopts::value<std::string>());
+      cxxopts::value<std::string>())("terminal-path", "Path to etterminal",
+                                     cxxopts::value<std::string>())(
+      "serverfifo", "Server fifo", cxxopts::value<std::string>())(
+      "logtostdout", "Write log to stdout")("host", "Remote host name",
+                                            cxxopts::value<std::string>());
   options.parse_positional({"host"});
   ParsedConnect parsed{
       options.parse(static_cast<int>(clientArgv.size()), clientArgv.data()),
@@ -94,6 +97,26 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(result.count("host") == 1);
     REQUIRE(result["host"].as<string>() == "host");
     REQUIRE(commandFromParse(parsed) == "echo -n hi");
+  }
+
+  SECTION("equals-style options are not the host") {
+    const char* argv[] = {"et",
+                          "-c",
+                          "echo 'compat new to old'",
+                          "--serverfifo=/tmp/etserver.compat.fifo",
+                          "--terminal-path",
+                          "/build/etterminal",
+                          "--logtostdout",
+                          "localhost:9920"};
+    auto parsed = parseEtConnectArgv(8, argv);
+    REQUIRE(parsed.result.count("host") == 1);
+    REQUIRE(parsed.result["host"].as<string>() == "localhost:9920");
+    REQUIRE(commandFromParse(parsed) == "echo 'compat new to old'");
+    ParsedEtDestination dest =
+        parseEtDestinationHost(parsed.result["host"].as<string>());
+    REQUIRE(dest.host == "localhost");
+    REQUIRE(dest.hasExplicitPort);
+    REQUIRE(dest.port == 9920);
   }
 
   SECTION("et options after the host are remote operands") {
