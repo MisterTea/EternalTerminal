@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "BinaryStdioConsole.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "ParseConfigFile.hpp"
@@ -209,7 +210,10 @@ int main(int argc, char** argv) {
          "Forward client stdio to host:port (or a Unix socket path) over the "
          "secure channel without a remote shell (ssh -W). Implies no local "
          "terminal.",
-         cxxopts::value<std::string>())                      //
+         cxxopts::value<std::string>())  //
+        ("T,no-pty",
+         "Run -c command on pipes instead of a pty (binary stdio, "
+         "separate stderr, no shell injection)")             //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
@@ -499,8 +503,24 @@ int main(int argc, char** argv) {
     shared_ptr<Console> console;
     string stdioForward = extractSingleOptionWithDefault<string>(
         result, options, "stdio-forward", "");
+    const bool noPty = result.count("T") > 0;
+    string command =
+        result.count("command") ? result["command"].as<string>() : "";
+    if (noPty && command.empty()) {
+      CLOG(INFO, "stdout") << "-T/--no-pty requires -c/--command" << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
+      exit(1);
+    }
+    if (noPty && !stdioForward.empty()) {
+      CLOG(INFO, "stdout") << "-W/--stdio-forward cannot be combined with "
+                              "-T/--no-pty"
+                           << endl;
+      exit(1);
+    }
     if (!stdioForward.empty() || result.count("N")) {
       // -W ties stdio to a remote destination; do not attach a local shell.
+    } else if (noPty) {
+      console.reset(new BinaryStdioConsole());
     } else {
       console.reset(new PseudoTerminalConsole());
     }
@@ -551,10 +571,8 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
-        dynamicForwards, stdioForward);
-    terminalClient.run(
-        result.count("command") ? result["command"].as<string>() : "",
-        result.count("noexit"));
+        noPty, command, dynamicForwards, stdioForward);
+    terminalClient.run(command, result.count("noexit"));
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {

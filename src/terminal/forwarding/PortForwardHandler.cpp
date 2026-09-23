@@ -236,6 +236,9 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         if (it == destinationHandlers.end()) {
           LOG(WARNING) << "Got data for a socket id that has already closed: "
                        << pwd.socketid();
+        } else if (pwd.half_close()) {
+          LOG(INFO) << "Port forward socket write-shutdown: " << pwd.socketid();
+          it->second->shutdownWrite();
         } else if (pwd.has_closed() || pwd.has_error()) {
           LOG(INFO) << "Port forward socket "
                     << (pwd.has_closed() ? "closed: " : "errored: ")
@@ -274,11 +277,17 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(pfdr.clientfd(), false);
+        }
         closeSourceFd(pfdr.clientfd());
       } else {
         LOG(INFO) << "Received socket/fd map from server: " << pfdr.socketid()
                   << " " << pfdr.clientfd();
         addSourceSocketId(pfdr.socketid(), pfdr.clientfd());
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(pfdr.clientfd(), true);
+        }
       }
       break;
     }
@@ -339,12 +348,9 @@ void PortForwardHandler::getForwardFds(set<int>* fds) {
 
 bool PortForwardHandler::hasActiveStdioForward() const {
   for (const auto& handler : sourceHandlers) {
-    if (!handler->isStdioForward()) {
-      continue;
+    if (handler->stdioBridgeOpen()) {
+      return true;
     }
-    set<int> fds;
-    handler->getActiveFds(&fds);
-    return !fds.empty();
   }
   return false;
 }

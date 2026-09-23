@@ -36,6 +36,7 @@ class TerminalClient {
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration,
                  const vector<pair<string, string>>& envVars,
+                 bool noPty = false, const string& command = "",
                  const vector<string>& dynamicForwards = {},
                  const string& stdioForward = "");
   /** @brief Tears down the client, closing sockets and stopping background
@@ -86,6 +87,8 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
+  /** @brief True when this session uses the raw pipe command channel. */
+  bool noPty;
   /** @brief Set when `-W` is active so stdout stays a pure byte pipe. */
   bool stdioForwardActive = false;
   static std::atomic<bool> closeOnHangup;

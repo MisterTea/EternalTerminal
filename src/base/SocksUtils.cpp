@@ -15,8 +15,29 @@ constexpr uint8_t SOCKS5_IPV4 = 0x01;
 constexpr uint8_t SOCKS5_DOMAIN = 0x03;
 constexpr uint8_t SOCKS5_IPV6 = 0x04;
 constexpr uint8_t SOCKS5_SUCCESS = 0x00;
+constexpr uint8_t SOCKS4_REJECTED = 0x5b;
+constexpr uint8_t SOCKS5_CONN_REFUSED = 0x05;
+constexpr size_t kMaxSocksHandshake = 4096;
+constexpr size_t kMaxSocksIdent = 255;
 
 bool isSocketPath(const string& s) { return !s.empty() && s[0] == '/'; }
+
+int parseTcpPort(const string& token, const string& context) {
+  if (token.empty()) {
+    throw TunnelParseException("Invalid port in " + context);
+  }
+  size_t consumed = 0;
+  long value = 0;
+  try {
+    value = std::stol(token, &consumed, 10);
+  } catch (const std::logic_error&) {
+    throw TunnelParseException("Invalid port in " + context);
+  }
+  if (consumed != token.size() || value < 1 || value > 65535) {
+    throw TunnelParseException("Invalid port in " + context);
+  }
+  return static_cast<int>(value);
+}
 
 SocksParseStatus parseSocks4(SocksHandshake* state) {
   const string& in = state->input;
@@ -35,23 +56,41 @@ SocksParseStatus parseSocks4(SocksHandshake* state) {
 
   size_t useridEnd = 8;
   while (useridEnd < in.size() && in[useridEnd] != '\0') {
+    if (useridEnd - 8 >= kMaxSocksIdent) {
+      state->error = "SOCKS4 userid too long";
+      return SocksParseStatus::Error;
+    }
     ++useridEnd;
   }
   if (useridEnd >= in.size()) {
+    if (in.size() > kMaxSocksIdent + 8) {
+      state->error = "SOCKS4 userid too long";
+      return SocksParseStatus::Error;
+    }
     return SocksParseStatus::NeedMore;
   }
   ++useridEnd;  // skip NUL
 
   string host;
+  size_t consumed = useridEnd;
   if (socks4a) {
     size_t domainEnd = useridEnd;
     while (domainEnd < in.size() && in[domainEnd] != '\0') {
+      if (domainEnd - useridEnd >= kMaxSocksIdent) {
+        state->error = "SOCKS4a domain too long";
+        return SocksParseStatus::Error;
+      }
       ++domainEnd;
     }
     if (domainEnd >= in.size()) {
+      if (in.size() - useridEnd > kMaxSocksIdent) {
+        state->error = "SOCKS4a domain too long";
+        return SocksParseStatus::Error;
+      }
       return SocksParseStatus::NeedMore;
     }
     host = in.substr(useridEnd, domainEnd - useridEnd);
+    consumed = domainEnd + 1;
   } else {
     char buf[INET_ADDRSTRLEN];
     snprintf(buf, sizeof(buf), "%u.%u.%u.%u", ip[0], ip[1], ip[2], ip[3]);
@@ -65,9 +104,9 @@ SocksParseStatus parseSocks4(SocksHandshake* state) {
     state->destination.set_port(port);
   }
 
-  // VN=0, CD=granted, port+ip echo (zeros fine)
-  state->reply.assign(8, '\0');
-  state->reply[1] = static_cast<char>(SOCKS4_GRANTED);
+  // CONNECT success is written only after the destination accepts.
+  state->version = SOCKS4_VERSION;
+  state->earlyData = in.substr(consumed);
   state->input.clear();
   state->complete = true;
   return SocksParseStatus::Complete;
@@ -164,14 +203,9 @@ SocksParseStatus parseSocks5Request(SocksHandshake* state) {
     state->destination.set_port(port);
   }
 
-  // VER REP RSV ATYP BND.ADDR(0.0.0.0) BND.PORT(0)
-  state->reply.clear();
-  state->reply.push_back(static_cast<char>(SOCKS5_VERSION));
-  state->reply.push_back(static_cast<char>(SOCKS5_SUCCESS));
-  state->reply.push_back(0);
-  state->reply.push_back(static_cast<char>(SOCKS5_IPV4));
-  state->reply.append(4, '\0');
-  state->reply.append(2, '\0');
+  size_t consumed = portOffset + 2;
+  state->version = SOCKS5_VERSION;
+  state->earlyData = in.substr(consumed);
   state->input.clear();
   state->complete = true;
   return SocksParseStatus::Complete;
@@ -179,9 +213,29 @@ SocksParseStatus parseSocks5Request(SocksHandshake* state) {
 
 }  // namespace
 
+string socksConnectReply(int version, bool success) {
+  if (version == SOCKS4_VERSION) {
+    string reply(8, '\0');
+    reply[1] = static_cast<char>(success ? SOCKS4_GRANTED : SOCKS4_REJECTED);
+    return reply;
+  }
+  string reply;
+  reply.push_back(static_cast<char>(SOCKS5_VERSION));
+  reply.push_back(
+      static_cast<char>(success ? SOCKS5_SUCCESS : SOCKS5_CONN_REFUSED));
+  reply.push_back(0);
+  reply.push_back(static_cast<char>(SOCKS5_IPV4));
+  reply.append(6, '\0');
+  return reply;
+}
+
 SocksParseStatus feedSocksHandshake(SocksHandshake* state) {
   if (state->complete) {
     return SocksParseStatus::Complete;
+  }
+  if (state->input.size() > kMaxSocksHandshake) {
+    state->error = "SOCKS handshake too large";
+    return SocksParseStatus::Error;
   }
   if (state->input.empty()) {
     return SocksParseStatus::NeedMore;
@@ -229,22 +283,14 @@ SocketEndpoint parseDynamicForwardArg(const string& input) {
           "Dynamic forward IPv6 bind must look like [::1]:1080");
     }
     endpoint.set_name(input.substr(1, close - 1));
-    try {
-      endpoint.set_port(stoi(input.substr(close + 2)));
-    } catch (const std::logic_error&) {
-      throw TunnelParseException("Invalid dynamic forward port: " + input);
-    }
+    endpoint.set_port(parseTcpPort(input.substr(close + 2), input));
     return endpoint;
   }
 
   auto colon = input.rfind(':');
   if (colon == string::npos) {
     endpoint.set_name("127.0.0.1");
-    try {
-      endpoint.set_port(stoi(input));
-    } catch (const std::logic_error&) {
-      throw TunnelParseException("Invalid dynamic forward port: " + input);
-    }
+    endpoint.set_port(parseTcpPort(input, input));
     return endpoint;
   }
 
@@ -254,11 +300,7 @@ SocketEndpoint parseDynamicForwardArg(const string& input) {
     host = "0.0.0.0";
   }
   endpoint.set_name(host);
-  try {
-    endpoint.set_port(stoi(portStr));
-  } catch (const std::logic_error&) {
-    throw TunnelParseException("Invalid dynamic forward port: " + input);
-  }
+  endpoint.set_port(parseTcpPort(portStr, input));
   return endpoint;
 }
 
@@ -281,11 +323,7 @@ SocketEndpoint parseStdioForwardArg(const string& input) {
     }
     SocketEndpoint endpoint;
     endpoint.set_name(input.substr(1, close - 1));
-    try {
-      endpoint.set_port(stoi(input.substr(close + 2)));
-    } catch (const std::logic_error&) {
-      throw TunnelParseException("Invalid stdio forward port: " + input);
-    }
+    endpoint.set_port(parseTcpPort(input.substr(close + 2), input));
     return endpoint;
   }
 
@@ -296,11 +334,7 @@ SocketEndpoint parseStdioForwardArg(const string& input) {
   }
   SocketEndpoint endpoint;
   endpoint.set_name(input.substr(0, colon));
-  try {
-    endpoint.set_port(stoi(input.substr(colon + 1)));
-  } catch (const std::logic_error&) {
-    throw TunnelParseException("Invalid stdio forward port: " + input);
-  }
+  endpoint.set_port(parseTcpPort(input.substr(colon + 1), input));
   if (endpoint.name().empty()) {
     throw TunnelParseException("Stdio forward host must not be empty");
   }

@@ -947,9 +947,8 @@ TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
   networkHandler->queueAccept(listenFd, 200);
   networkHandler->queueRead(200, static_cast<int>(socks5AuthNoAuth().size()),
                             socks5AuthNoAuth());
-  networkHandler->queueRead(
-      200, static_cast<int>(socks5ConnectIpv4(10, 0, 0, 2, 443).size()),
-      socks5ConnectIpv4(10, 0, 0, 2, 443));
+  string connect = socks5ConnectIpv4(10, 0, 0, 2, 443) + "PING";
+  networkHandler->queueRead(200, static_cast<int>(connect.size()), connect);
 
   vector<PortForwardDestinationRequest> requests;
   vector<PortForwardData> dataToSend;
@@ -960,8 +959,24 @@ TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
   CHECK(requests[0].destination().name() == "10.0.0.2");
   CHECK(requests[0].destination().port() == 443);
   REQUIRE(networkHandler->writes.count(200) == 1);
-  // Auth reply + connect success reply were written to the SOCKS client.
-  CHECK(networkHandler->writes[200][0].size() >= 2);
+  CHECK(networkHandler->writes[200][0] == string("\x05\x00", 2));
+
+  PortForwardDestinationResponse ok;
+  ok.set_clientfd(200);
+  ok.set_socketid(7);
+  handler.handlePacket(
+      Packet(uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
+             protoToString(ok)),
+      nullptr);
+  REQUIRE(networkHandler->writes[200].size() == 2);
+  CHECK(networkHandler->writes[200][1].size() == 10);
+  CHECK(static_cast<uint8_t>(networkHandler->writes[200][1][1]) == 0x00);
+
+  dataToSend.clear();
+  handler.update(&requests, &dataToSend);
+  REQUIRE_FALSE(dataToSend.empty());
+  CHECK(dataToSend.back().buffer() == "PING");
+  CHECK(dataToSend.back().socketid() == 7);
 }
 
 TEST_CASE("PortForwardHandler SOCKS concurrent channels",
@@ -1101,13 +1116,22 @@ TEST_CASE("PortForwardHandler -W stdio byte forward without shell",
   REQUIRE(n == static_cast<ssize_t>(strlen("from-remote")));
   CHECK(string(buf, n) == "from-remote");
 
-  // Closing the read side ends the stdio bridge (no shell involved).
+  // Stdin EOF half-closes the request direction and keeps stdout open.
   close(inPipe[1]);
   requests.clear();
   dataToSend.clear();
   handler.update(&requests, &dataToSend);
   REQUIRE_FALSE(dataToSend.empty());
   CHECK(dataToSend.back().closed());
+  CHECK(dataToSend.back().half_close());
+  CHECK(handler.hasActiveStdioForward());
+
+  handler.sendDataToSourceOnSocket(77, "after-eof");
+  n = read(outPipe[0], buf, sizeof(buf));
+  REQUIRE(n == static_cast<ssize_t>(strlen("after-eof")));
+  CHECK(string(buf, n) == "after-eof");
+
+  handler.closeSourceSocketId(77);
   CHECK_FALSE(handler.hasActiveStdioForward());
 
   close(inPipe[0]);

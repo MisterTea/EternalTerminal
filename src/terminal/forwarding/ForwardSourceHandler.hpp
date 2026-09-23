@@ -63,6 +63,15 @@ class ForwardSourceHandler {
   /** @brief Maps a socketId (from the control channel) to a pending fd. */
   void addSocket(int socketId, int sourceFd);
 
+  /**
+   * @brief Writes the SOCKS CONNECT reply for `fd` after the remote
+   * destination accepts or fails. No-op when `fd` is not a SOCKS client.
+   */
+  void finishSocksConnect(int fd, bool success);
+
+  /** @brief True while a `-W` bridge can still receive destination bytes. */
+  bool stdioBridgeOpen() const;
+
   /** @brief Closes the socket mapped to `socketId`. */
   void closeSocket(int socketId);
 
@@ -97,6 +106,9 @@ class ForwardSourceHandler {
   bool closeOwnedFds = true;
   /** @brief True until the stdio bridge has emitted its destination request. */
   bool stdioRequestPending = false;
+  /** @brief Stdin hit EOF; stop reading but keep stdout until the remote
+   * closes. */
+  bool stdioReadClosed = false;
   int stdioReadFd = -1;
   int stdioWriteFd = -1;
   /** @brief Sockets that are awaiting assignment from the control stream. */
@@ -107,6 +119,14 @@ class ForwardSourceHandler {
   unordered_map<int, int> socketWriteFdMap;
   /** @brief In-progress SOCKS handshakes keyed by accepted client fd. */
   unordered_map<int, SocksHandshake> socksPending;
+  struct SocksAwaitingReply {
+    int version = 0;
+    string earlyData;
+  };
+  /** @brief Completed handshakes waiting for the destination response. */
+  unordered_map<int, SocksAwaitingReply> socksAwaitingReply;
+  /** @brief Application bytes that arrived with the CONNECT request. */
+  unordered_map<int, string> socksEarlyPayload;
 };
 }  // namespace et
 

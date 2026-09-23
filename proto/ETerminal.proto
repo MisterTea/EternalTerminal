@@ -19,6 +19,9 @@ enum TerminalPacketType {
 
 message TerminalBuffer {
   optional bytes buffer = 1;
+  // When true, buffer is remote stderr (raw pipe / -T sessions only).
+  // Named is_stderr (not stderr): musl #defines stderr as a macro.
+  optional bool is_stderr = 2 [default = false];
 }
 
 message TerminalInfo {
@@ -56,12 +59,19 @@ message PortForwardData {
   optional bytes buffer = 3;
   optional string error = 4;
   optional bool closed = 5;
+  // Source finished writing. Keep the destination open for the reply direction.
+  optional bool half_close = 6;
 }
 
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
   map<string, string> environmentvariables = 3;
+  // When true, etterminal runs `command` on pipes instead of a login pty.
+  optional bool no_pty = 4 [default = false];
+  optional string command = 5;
+  // ssh -W: keep the session without a pty or a shell.
+  optional bool no_shell = 6 [default = false];
 }
 
 message InitialResponse {
@@ -76,6 +86,9 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  optional bool no_pty = 3 [default = false];
+  optional string command = 4;
+  optional bool no_shell = 5 [default = false];
 }
 
 message TerminalUserInfo {

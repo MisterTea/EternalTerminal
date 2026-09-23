@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "PseudoTerminalConsole.hpp"
+#include "RawSocketUtils.hpp"
 #include "SocksUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TmuxCcFilter.hpp"
@@ -21,16 +22,24 @@ TerminalClient::TerminalClient(
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
-    const vector<pair<string, string>>& envVars,
-    const vector<string>& dynamicForwards, const string& stdioForward)
+    const vector<pair<string, string>>& envVars, bool _noPty,
+    const string& command, const vector<string>& dynamicForwards,
+    const string& stdioForward)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
+      noPty(_noPty),
       stdioForwardActive(!stdioForward.empty()) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+  if (stdioForwardActive) {
+    payload.set_no_shell(true);
+  } else if (noPty) {
+    payload.set_no_pty(true);
+    payload.set_command(command);
+  }
 
   for (const auto& envVar : envVars) {
     (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;
@@ -60,19 +69,22 @@ TerminalClient::TerminalClient(
       }
     }
     if (stdioForwardActive) {
+#ifdef WIN32
+      // CRT fds 0/1 are not sockets. The Windows poller ignores fd 0 and
+      // SocketHandler uses recv/send, so -W cannot bridge stdio yet.
+      CLOG(INFO, "stdout") << "-W/--stdio-forward is not supported on Windows"
+                           << endl;
+      exit(1);
+#else
       SocketEndpoint destination = parseStdioForwardArg(stdioForward);
-#ifndef WIN32
       auto response = portForwardHandler->createStdioForward(
           destination, STDIN_FILENO, STDOUT_FILENO, false);
-#else
-      auto response =
-          portForwardHandler->createStdioForward(destination, 0, 1, false);
-#endif
       if (response.has_error()) {
         CLOG(INFO, "stdout")
             << "Error establishing stdio forward: " << response.error() << endl;
         exit(1);
       }
+#endif
     }
     if (reverseTunnels.length()) {
       auto pfsrs = parseRangesToRequests(reverseTunnels);
@@ -186,7 +198,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
 
-  if (command.length()) {
+  if (command.length() && !noPty) {
     LOG(INFO) << "Got command: " << command;
     et::TerminalBuffer tb;
     if (noexit)
@@ -196,6 +208,8 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
     connection->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+  } else if (command.length() && noPty) {
+    LOG(INFO) << "Raw pipe command (no shell injection): " << command;
   }
 
   TerminalInfo lastTerminalInfo;
@@ -517,12 +531,34 @@ void TerminalClient::run(const string& command, const bool noexit) {
           }
           switch (packetType) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
-              if (console) {
-                VLOG(3) << "Got terminal buffer";
-                et::TerminalBuffer tb =
-                    stringToProto<et::TerminalBuffer>(packet.getPayload());
+              VLOG(3) << "Got terminal buffer";
+              et::TerminalBuffer tb =
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
+              keepaliveTime = time(NULL) + keepaliveDuration;
+              if (tb.is_stderr()) {
+#ifdef WIN32
+                auto hstderr = GetStdHandle(STD_ERROR_HANDLE);
+                DWORD written = 0;
+                WriteFile(hstderr, tb.buffer().data(),
+                          static_cast<DWORD>(tb.buffer().size()), &written,
+                          NULL);
+#else
+                RawSocketUtils::writeAll(STDERR_FILENO, tb.buffer().data(),
+                                         tb.buffer().size());
+#endif
+              } else if (console) {
                 consoleOut.enqueue(tb.buffer());
-                keepaliveTime = time(NULL) + keepaliveDuration;
+              } else {
+#ifdef WIN32
+                auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+                DWORD written = 0;
+                WriteFile(hstdout, tb.buffer().data(),
+                          static_cast<DWORD>(tb.buffer().size()), &written,
+                          NULL);
+#else
+                RawSocketUtils::writeAll(STDOUT_FILENO, tb.buffer().data(),
+                                         tb.buffer().size());
+#endif
               }
               break;
             }
@@ -602,6 +638,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
         keepaliveTime = time(NULL) + keepaliveDuration;
       }
       if (stdioForwardActive && !portForwardHandler->hasActiveStdioForward()) {
+        connection->writePacket(Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
         lock_guard<recursive_mutex> guard(shutdownMutex);
         shuttingDown = true;
       }

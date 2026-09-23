@@ -25,7 +25,17 @@ struct SocksHandshake {
   string error;
   bool socks5AuthDone = false;
   bool complete = false;
+  /** @brief 4 or 5 once CONNECT parsing finishes. */
+  int version = 0;
+  /** @brief Bytes that arrived after the CONNECT request in the same buffer. */
+  string earlyData;
 };
+
+/**
+ * @brief CONNECT reply. Success is deferred until the remote destination
+ * accepts; failure is sent when that request errors.
+ */
+string socksConnectReply(int version, bool success);
 
 /** @brief Consumes available bytes; may append a reply for the client. */
 SocksParseStatus feedSocksHandshake(SocksHandshake* state);

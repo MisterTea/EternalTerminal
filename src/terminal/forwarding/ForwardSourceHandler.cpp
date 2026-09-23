@@ -144,6 +144,7 @@ int ForwardSourceHandler::takeCompletedSocks(SocketEndpoint* destinationOut,
       }
       LOG(INFO) << "SOCKS tunnel " << source << " -> " << it->second.destination
                 << " ready on fd " << fd;
+      socksAwaitingReply[fd] = {it->second.version, it->second.earlyData};
       unassignedFds.insert(fd);
       socksPending.erase(it);
       return fd;
@@ -196,6 +197,20 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
   for (auto& it : socketFdMap) {
     int socketId = it.first;
     int fd = it.second;
+
+    auto early = socksEarlyPayload.find(socketId);
+    if (early != socksEarlyPayload.end() && !early->second.empty()) {
+      PortForwardData pwd;
+      pwd.set_socketid(socketId);
+      pwd.set_sourcetodestination(true);
+      pwd.set_buffer(early->second);
+      data->push_back(pwd);
+      socksEarlyPayload.erase(early);
+    }
+
+    if (stdioMode && stdioReadClosed) {
+      continue;
+    }
     if (readyFds != nullptr && readyFds->count(fd) == 0) {
       continue;
     }
@@ -234,13 +249,23 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
         pwd.set_error(strerror(readErrno));
       } else if (bytesRead == 0) {
         VLOG(1) << "Got close reading socket " << socketId;
-        pwd.set_closed(true);
+        if (stdioMode) {
+          // Half-close stdin. Keep stdout until the remote side closes.
+          pwd.set_closed(true);
+          pwd.set_half_close(true);
+          stdioReadClosed = true;
+        } else {
+          pwd.set_closed(true);
+        }
       } else {
         VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
         pwd.set_buffer(string(buf, bytesRead));
       }
       data->push_back(pwd);
       if (bytesRead < 1) {
+        if (stdioMode && bytesRead == 0) {
+          break;
+        }
         if (closeOwnedFds) {
           socketHandler->close(fd);
           auto writeIt = socketWriteFdMap.find(socketId);
@@ -277,6 +302,7 @@ void ForwardSourceHandler::closeUnassignedFd(int fd) {
     socketHandler->close(fd);
   }
   unassignedFds.erase(fd);
+  socksAwaitingReply.erase(fd);
 }
 
 void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
@@ -291,12 +317,35 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
   if (stdioMode) {
     socketWriteFdMap[socketId] = stdioWriteFd;
   }
+  auto awaiting = socksAwaitingReply.find(sourceFd);
+  if (awaiting != socksAwaitingReply.end() &&
+      !awaiting->second.earlyData.empty()) {
+    socksEarlyPayload[socketId] = std::move(awaiting->second.earlyData);
+  }
+}
+
+void ForwardSourceHandler::finishSocksConnect(int fd, bool success) {
+  auto it = socksAwaitingReply.find(fd);
+  if (it == socksAwaitingReply.end()) {
+    return;
+  }
+  string reply = socksConnectReply(it->second.version, success);
+  socketHandler->writeAllOrReturn(fd, reply.data(), reply.size());
+  socksAwaitingReply.erase(it);
+}
+
+bool ForwardSourceHandler::stdioBridgeOpen() const {
+  if (!stdioMode) {
+    return false;
+  }
+  return stdioRequestPending || !unassignedFds.empty() || !socketFdMap.empty();
 }
 
 void ForwardSourceHandler::getActiveFds(set<int>* fds) {
   if (stdioMode) {
-    if (stdioRequestPending || unassignedFds.count(stdioReadFd) ||
-        !socketFdMap.empty()) {
+    if (!stdioReadClosed &&
+        (stdioRequestPending || unassignedFds.count(stdioReadFd) ||
+         !socketFdMap.empty())) {
       fds->insert(stdioReadFd);
     }
     return;

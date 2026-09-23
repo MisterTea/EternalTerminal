@@ -72,9 +72,10 @@ TEST_CASE("feedSocksHandshake SOCKS5 ipv4", "[SocksUtils]") {
   REQUIRE(feedSocksHandshake(&state) == SocksParseStatus::Complete);
   CHECK(state.destination.name() == "127.0.0.1");
   CHECK(state.destination.port() == 8080);
-  REQUIRE(state.reply.size() >= 2);
-  CHECK(static_cast<uint8_t>(state.reply[0]) == 0x05);
-  CHECK(static_cast<uint8_t>(state.reply[1]) == 0x00);
+  CHECK(state.version == 5);
+  CHECK(state.earlyData.empty());
+  // Auth reply only. CONNECT success waits for the destination.
+  REQUIRE(state.reply == string("\x05\x00", 2));
 }
 
 TEST_CASE("feedSocksHandshake SOCKS5 domain then unix path", "[SocksUtils]") {
@@ -97,4 +98,44 @@ TEST_CASE("feedSocksHandshake SOCKS4", "[SocksUtils]") {
   REQUIRE(feedSocksHandshake(&state) == SocksParseStatus::Complete);
   CHECK(state.destination.name() == "1.2.3.4");
   CHECK(state.destination.port() == 80);
+  CHECK(state.version == 4);
+  CHECK(state.reply.empty());
+}
+
+TEST_CASE("feedSocksHandshake keeps bytes after the CONNECT request",
+          "[SocksUtils]") {
+  SocksHandshake state;
+  state.input = string("\x04\x01\x00\x50\x01\x02\x03\x04user\x00", 13) + "PING";
+  REQUIRE(feedSocksHandshake(&state) == SocksParseStatus::Complete);
+  CHECK(state.earlyData == "PING");
+
+  SocksHandshake socks5;
+  socks5.input =
+      socks5AuthNoAuth() + socks5ConnectIpv4(1, 2, 3, 4, 80) + "EARLY";
+  REQUIRE(feedSocksHandshake(&socks5) == SocksParseStatus::Complete);
+  CHECK(socks5.earlyData == "EARLY");
+  CHECK(socks5.destination.port() == 80);
+}
+
+TEST_CASE("feedSocksHandshake rejects an unbounded SOCKS4 userid",
+          "[SocksUtils]") {
+  SocksHandshake state;
+  state.input =
+      string("\x04\x01\x00\x50\x01\x02\x03\x04", 8) + string(300, 'u');
+  CHECK(feedSocksHandshake(&state) == SocksParseStatus::Error);
+  CHECK_THAT(state.error, ContainsSubstring("userid"));
+}
+
+TEST_CASE("forward port parsers reject trailing junk and out of range",
+          "[SocksUtils]") {
+  CHECK_THROWS_WITH(parseDynamicForwardArg("1080junk"),
+                    ContainsSubstring("Invalid port"));
+  CHECK_THROWS_WITH(parseDynamicForwardArg("0"),
+                    ContainsSubstring("Invalid port"));
+  CHECK_THROWS_WITH(parseDynamicForwardArg("65536"),
+                    ContainsSubstring("Invalid port"));
+  CHECK_THROWS_WITH(parseStdioForwardArg("example.com:443junk"),
+                    ContainsSubstring("Invalid port"));
+  CHECK_THROWS_WITH(parseStdioForwardArg("example.com:0"),
+                    ContainsSubstring("Invalid port"));
 }
