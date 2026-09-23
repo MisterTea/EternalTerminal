@@ -185,6 +185,12 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
                   << std::count(s.begin(), s.end(), '\n');
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          if (pipeMode) {
+            // sh may exec the last command after redirecting stdout away from
+            // the pipe (e.g. `...; cat >file`), which EOFs this reader while
+            // the child still blocks on stdin. Close stdin so waitid returns.
+            term->closeInput();
+          }
           term->handleSessionEnd();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;

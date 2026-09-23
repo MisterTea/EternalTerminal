@@ -221,6 +221,9 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
           forwardOutputToRouter(b, rc, false);
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          if (pipeMode) {
+            term->closeInput();
+          }
           term->handleSessionEnd();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;

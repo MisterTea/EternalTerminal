@@ -45,6 +45,14 @@ class UserTerminal {
    */
   virtual int getStderrFd() { return -1; }
   /**
+   * @brief Closes the child's stdin write end if separate from getFd().
+   *
+   * Used in raw-pipe mode when stdout EOFs while the child may still be
+   * blocked on stdin (e.g. `sh -c '...; cat >file'` after stdout was
+   * redirected away from the pipe).
+   */
+  virtual void closeInput() {}
+  /**
    * @brief Applies the current window geometry to the running terminal.
    * @param tmpwin Window size structure provided by the client.
    */

@@ -168,6 +168,12 @@ class PipeUserTerminal : public UserTerminal {
   virtual int getFd() override { return stdoutSocket; }
   virtual int getInputFd() override { return stdinSocket; }
   virtual int getStderrFd() override { return stderrSocket; }
+  virtual void closeInput() override {
+    if (stdinSocket >= 0) {
+      closesocket(stdinSocket);
+      stdinSocket = -1;
+    }
+  }
 
  protected:
   // Local helper so this header does not depend on test utilities.

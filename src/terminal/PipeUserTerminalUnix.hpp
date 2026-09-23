@@ -157,6 +157,12 @@ class PipeUserTerminal : public UserTerminal {
   virtual int getFd() { return stdoutReadFd; }
   virtual int getInputFd() { return stdinWriteFd; }
   virtual int getStderrFd() { return stderrReadFd; }
+  virtual void closeInput() {
+    if (stdinWriteFd >= 0) {
+      close(stdinWriteFd);
+      stdinWriteFd = -1;
+    }
+  }
 
   pid_t getPid() { return pid; }
 

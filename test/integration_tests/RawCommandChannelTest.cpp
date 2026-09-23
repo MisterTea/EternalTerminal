@@ -90,9 +90,12 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
 
   string sideFile = pipeDirectory + "/stdin_seen";
 #ifndef WIN32
+  // Trailing `true` keeps /bin/sh from exec'ing `cat >file` as the last
+  // command (FreeBSD sh), which would close the pipe write end while cat
+  // still runs. Handler also closes stdin on stdout EOF as a backstop.
   string command =
       "printf '\\000\\001OUT'; printf '\\376\\377ERR' 1>&2; cat >'" + sideFile +
-      "'";
+      "'; true";
 #else
   // Windows: still exercise no_pty path; binary separation covered on Unix.
   string command = "echo OUT";
