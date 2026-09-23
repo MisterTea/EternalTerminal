@@ -118,8 +118,10 @@ TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
         "Windows build");
   }
 #endif
+  // Do not send exit until the ready marker was observed. A timed-out wait
+  // with a still-live shell must fail the test rather than race startup.
+  REQUIRE(ready);
   if (!term.isRunning()) {
-    REQUIRE(ready);
     term.stop();
     return;
   }
