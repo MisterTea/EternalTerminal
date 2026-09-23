@@ -27,7 +27,11 @@ struct SocksHandshake {
   bool complete = false;
   /** @brief 4 or 5 once CONNECT parsing finishes. */
   int version = 0;
-  /** @brief Bytes that arrived after the CONNECT request in the same buffer. */
+  /**
+   * @brief Application bytes that arrived after the CONNECT request, either
+   * pipelined in the same buffer or read while still awaiting
+   * takeCompletedSocks.
+   */
   string earlyData;
 };
 

@@ -979,6 +979,60 @@ TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
   CHECK(dataToSend.back().socketid() == 7);
 }
 
+TEST_CASE(
+    "PortForwardHandler SOCKS preserves follow-on payload across separate "
+    "reads",
+    "[PortForwardHandler][runtime-forward]") {
+  // Accept+auth first so the fd sits in socksPending. The next update()
+  // advances handshakes (CONNECT completes) and then
+  // listen()/takeCompletedSocks advances again; a follow-on read queued after
+  // CONNECT must still be forwarded after PORT_FORWARD_DESTINATION_RESPONSE.
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  SocketEndpoint source;
+  source.set_name("127.0.0.1");
+  source.set_port(1080);
+  REQUIRE_FALSE(handler.createSocksSource(source).has_error());
+
+  auto listenFds = networkHandler->getEndpointFds(source);
+  REQUIRE_FALSE(listenFds.empty());
+  int listenFd = *listenFds.begin();
+  networkHandler->queueAccept(listenFd, 210);
+  networkHandler->queueRead(210, static_cast<int>(socks5AuthNoAuth().size()),
+                            socks5AuthNoAuth());
+
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> dataToSend;
+  handler.update(&requests, &dataToSend);
+  REQUIRE(requests.empty());
+
+  string connect = socks5ConnectIpv4(10, 0, 0, 3, 8443);
+  networkHandler->queueRead(210, static_cast<int>(connect.size()), connect);
+  networkHandler->queueRead(210, 5, "LATER");
+  handler.update(&requests, &dataToSend);
+
+  REQUIRE(requests.size() == 1);
+  CHECK(requests[0].fd() == 210);
+  CHECK(requests[0].destination().name() == "10.0.0.3");
+  CHECK(requests[0].destination().port() == 8443);
+
+  PortForwardDestinationResponse ok;
+  ok.set_clientfd(210);
+  ok.set_socketid(9);
+  handler.handlePacket(
+      Packet(uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
+             protoToString(ok)),
+      nullptr);
+
+  dataToSend.clear();
+  handler.update(&requests, &dataToSend);
+  REQUIRE_FALSE(dataToSend.empty());
+  CHECK(dataToSend.back().buffer() == "LATER");
+  CHECK(dataToSend.back().socketid() == 9);
+}
+
 TEST_CASE("PortForwardHandler SOCKS concurrent channels",
           "[PortForwardHandler][runtime-forward]") {
   auto networkHandler = make_shared<FakePortForwardSocketHandler>();

@@ -117,6 +117,19 @@ TEST_CASE("feedSocksHandshake keeps bytes after the CONNECT request",
   CHECK(socks5.destination.port() == 80);
 }
 
+TEST_CASE("feedSocksHandshake appends post-complete input to earlyData",
+          "[SocksUtils]") {
+  SocksHandshake state;
+  state.input = socks5AuthNoAuth() + socks5ConnectIpv4(1, 2, 3, 4, 80);
+  REQUIRE(feedSocksHandshake(&state) == SocksParseStatus::Complete);
+  CHECK(state.earlyData.empty());
+
+  state.input = "LATER";
+  REQUIRE(feedSocksHandshake(&state) == SocksParseStatus::Complete);
+  CHECK(state.earlyData == "LATER");
+  CHECK(state.input.empty());
+}
+
 TEST_CASE("feedSocksHandshake rejects an unbounded SOCKS4 userid",
           "[SocksUtils]") {
   SocksHandshake state;

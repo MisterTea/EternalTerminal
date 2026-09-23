@@ -231,6 +231,13 @@ string socksConnectReply(int version, bool success) {
 
 SocksParseStatus feedSocksHandshake(SocksHandshake* state) {
   if (state->complete) {
+    // Bytes may arrive after CONNECT while the fd is still in socksPending
+    // (e.g. update() advances, then takeCompletedSocks advances again).
+    // Preserve them for forwarding once the destination accepts.
+    if (!state->input.empty()) {
+      state->earlyData.append(state->input);
+      state->input.clear();
+    }
     return SocksParseStatus::Complete;
   }
   if (state->input.size() > kMaxSocksHandshake) {
