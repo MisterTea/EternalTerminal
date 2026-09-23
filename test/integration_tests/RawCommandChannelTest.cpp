@@ -97,8 +97,9 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
       "printf '\\000\\001OUT'; printf '\\376\\377ERR' 1>&2; cat >'" + sideFile +
       "'; true";
 #else
-  // Windows: still exercise no_pty path; binary separation covered on Unix.
-  string command = "echo OUT";
+  // Keep stdin open so the session outlives FakeConsole setup (same role as
+  // Unix `cat`). findstr "^" copies stdin to stdout until EOF.
+  string command = "echo OUT& findstr \"^\"";
 #endif
 
   auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
