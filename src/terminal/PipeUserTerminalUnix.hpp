@@ -33,9 +33,11 @@ class PipeUserTerminal : public UserTerminal {
     int stdinPipe[2];
     int stdoutPipe[2];
     int stderrPipe[2];
+    int readyPipe[2];
     FATAL_FAIL(pipe(stdinPipe));
     FATAL_FAIL(pipe(stdoutPipe));
     FATAL_FAIL(pipe(stderrPipe));
+    FATAL_FAIL(pipe(readyPipe));
 
     pid = fork();
     switch (pid) {
@@ -43,16 +45,29 @@ class PipeUserTerminal : public UserTerminal {
         FATAL_FAIL(pid);
         break;
       case 0: {
-        close(routerFd);
+        // Child: close parent-only ends before dup2.
+        if (routerFd >= 0) {
+          close(routerFd);
+        }
         close(stdinPipe[1]);
         close(stdoutPipe[0]);
         close(stderrPipe[0]);
+        close(readyPipe[0]);
         FATAL_FAIL(dup2(stdinPipe[0], STDIN_FILENO));
         FATAL_FAIL(dup2(stdoutPipe[1], STDOUT_FILENO));
         FATAL_FAIL(dup2(stderrPipe[1], STDERR_FILENO));
         close(stdinPipe[0]);
         close(stdoutPipe[1]);
         close(stderrPipe[1]);
+
+        // Signal parent that stdout/stderr write ends are held via dup2 so it
+        // may close its copies without racing a premature EOF on the readers.
+        // Do this before getpwuid: a multithreaded fork can deadlock there.
+        {
+          char ready = 1;
+          FATAL_FAIL(::write(readyPipe[1], &ready, 1));
+          close(readyPipe[1]);
+        }
 
         passwd* pwd = getpwuid(getuid());
         if (pwd && pwd->pw_dir) {
@@ -61,19 +76,30 @@ class PipeUserTerminal : public UserTerminal {
         setenv("ET_VERSION", ET_VERSION, 1);
         signal(SIGCHLD, SIG_DFL);
 
-        string shell = "/bin/sh";
-        const char* shellEnv = ::getenv("SHELL");
-        if (shellEnv && shellEnv[0]) {
-          shell = shellEnv;
-        }
+        // Pin /bin/sh: predictable across CI (dash/FreeBSD sh/bash), no login
+        // motd from $SHELL. POSIX octal printf escapes work in all of these.
+        const char* shell = "/bin/sh";
         VLOG(1) << "Child process launching pipe command via " << shell
                 << " -c " << command;
-        execl(shell.c_str(), shell.c_str(), "-c", command.c_str(), (char*)NULL);
+        execl(shell, shell, "-c", command.c_str(), (char*)NULL);
         // execl failed
         _exit(127);
       }
       default: {
         close(stdinPipe[0]);
+        // Close ready write end so read returns if the child dies early.
+        close(readyPipe[1]);
+        // Wait until the child has dup2'd the write ends onto stdout/stderr
+        // before closing our copies; otherwise readers can see EOF while the
+        // child still holds only the pre-dup2 fds (or none).
+        {
+          char ready = 0;
+          ssize_t n = ::read(readyPipe[0], &ready, 1);
+          if (n != 1) {
+            LOG(ERROR) << "PipeUserTerminal ready handshake failed";
+          }
+          close(readyPipe[0]);
+        }
         close(stdoutPipe[1]);
         close(stderrPipe[1]);
         stdinWriteFd = stdinPipe[1];

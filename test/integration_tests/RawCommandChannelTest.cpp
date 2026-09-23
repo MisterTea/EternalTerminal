@@ -26,8 +26,10 @@ using namespace et;
 #ifndef WIN32
 TEST_CASE("PipeUserTerminal keeps binary stdout and stderr separate",
           "[RawCommandChannel]") {
+  // POSIX octal escapes: dash (Ubuntu /bin/sh), FreeBSD sh, bash, and zsh.
+  // Hex \\xHH is not portable (dash prints it literally; FreeBSD sh drops it).
   const string cmd =
-      "printf '\\x00\\x01\\x02STDOUT'; printf '\\xff\\xfe\\xfdSTDERR' 1>&2";
+      "printf '\\000\\001\\002STDOUT'; printf '\\377\\376\\375STDERR' 1>&2";
   PipeUserTerminal term(cmd);
   int stdoutFd = term.setup(-1);
   REQUIRE(stdoutFd >= 0);
@@ -89,7 +91,7 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
   string sideFile = pipeDirectory + "/stdin_seen";
 #ifndef WIN32
   string command =
-      "printf '\\x00\\x01OUT'; printf '\\xfe\\xffERR' 1>&2; cat >'" + sideFile +
+      "printf '\\000\\001OUT'; printf '\\376\\377ERR' 1>&2; cat >'" + sideFile +
       "'";
 #else
   // Windows: still exercise no_pty path; binary separation covered on Unix.
