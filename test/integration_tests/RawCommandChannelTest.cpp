@@ -97,9 +97,9 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
       "printf '\\000\\001OUT'; printf '\\376\\377ERR' 1>&2; cat >'" + sideFile +
       "'; true";
 #else
-  // Keep stdin open so the session outlives FakeConsole setup (same role as
-  // Unix `cat`). `more` blocks on the pipe until EOF; avoid findstr "^"
-  // because cmd treats ^ as its escape character inside /c.
+  // Smoke command only; binary stream checks are Unix-only below. `more` is
+  // used so the session stays up until the client closes stdin (same role as
+  // Unix `cat`).
   string command = "echo OUT& more";
 #endif
 

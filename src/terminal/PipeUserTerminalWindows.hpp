@@ -135,6 +135,18 @@ class PipeUserTerminal : public UserTerminal {
   }
   virtual void cleanup() override {
     running = false;
+    // Close bridge sockets before joining threads; otherwise stdinBridge can
+    // block forever in recv() and hang Wait/join (seen when shutdown races
+    // a still-running `more`/`findstr` keep-alive).
+    auto closeSock = [](int& fd) {
+      if (fd >= 0) {
+        closesocket(fd);
+        fd = -1;
+      }
+    };
+    closeSock(stdinSocket);
+    closeSock(stdoutSocket);
+    closeSock(stderrSocket);
     if (stdoutBridge.joinable()) {
       stdoutBridge.join();
     }
@@ -153,16 +165,15 @@ class PipeUserTerminal : public UserTerminal {
     closeHandle(stdinWrite);
     closeHandle(stdoutRead);
     closeHandle(stderrRead);
-    closeHandle(processHandle);
-    auto closeSock = [](int& fd) {
-      if (fd >= 0) {
-        closesocket(fd);
-        fd = -1;
+    if (processHandle != INVALID_HANDLE_VALUE) {
+      // Don't wait forever if the child ignored stdin EOF.
+      if (WaitForSingleObject(processHandle, 5000) == WAIT_TIMEOUT) {
+        TerminateProcess(processHandle, 1);
+        WaitForSingleObject(processHandle, 2000);
       }
-    };
-    closeSock(stdoutSocket);
-    closeSock(stderrSocket);
-    closeSock(stdinSocket);
+      CloseHandle(processHandle);
+      processHandle = INVALID_HANDLE_VALUE;
+    }
   }
   virtual void setInfo(const winsize& /*tmpwin*/) override {}
   virtual int getFd() override { return stdoutSocket; }
