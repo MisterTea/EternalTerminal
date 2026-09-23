@@ -1,8 +1,13 @@
 #ifndef __BINARY_STDIO_CONSOLE_HPP__
 #define __BINARY_STDIO_CONSOLE_HPP__
 
+#ifndef WIN32
 #include <fcntl.h>
 #include <unistd.h>
+#else
+#include <io.h>
+#include <stdio.h>
+#endif
 
 #include "Console.hpp"
 #include "ETerminal.pb.h"
@@ -14,7 +19,7 @@ namespace et {
  *
  * Does not put the tty in raw mode (binary-safe) and does not advertise window
  * size. Reads from stdin and writes stdout; stderr is handled separately by
- * TerminalClient when TerminalBuffer.stderr is set.
+ * TerminalClient when TerminalBuffer.is_stderr is set.
  */
 class BinaryStdioConsole : public Console {
  public:
