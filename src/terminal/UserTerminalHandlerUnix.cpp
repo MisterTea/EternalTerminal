@@ -1,6 +1,7 @@
 #include <cstdint>
 
 #include "ETerminal.pb.h"
+#include "PipeUserTerminal.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
@@ -17,7 +18,8 @@ UserTerminalHandler::UserTerminalHandler(
     : socketHandler(_socketHandler),
       term(_term),
       noratelimit(_noratelimit),
-      shuttingDown(false) {
+      shuttingDown(false),
+      pipeMode(false) {
   auto idpasskey_splited = split(idPasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
@@ -39,12 +41,16 @@ UserTerminalHandler::UserTerminalHandler(
   }
 }
 
-void UserTerminalHandler::writeTerminalOutput(const char* data, size_t length) {
+void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
+                                                bool isStderr) {
   if (length == 0) {
     return;
   }
   TerminalBuffer tb;
   tb.set_buffer(string(data, length));
+  if (isStderr) {
+    tb.set_is_stderr(true);
+  }
   socketHandler->writePacket(
       routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
 }
@@ -77,6 +83,14 @@ void UserTerminalHandler::run() {
       setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
              true);
     }
+    pipeMode = ti.no_pty();
+    if (pipeMode) {
+      if (!ti.has_command() || ti.command().empty()) {
+        STFATAL << "no_pty TermInit requires a non-empty command";
+      }
+      term = make_shared<PipeUserTerminal>(ti.command());
+      LOG(INFO) << "Starting raw pipe command session";
+    }
     // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
     // flush of the server WriteBuffer is not followed by ~200KB of local
     // backlog.
@@ -85,7 +99,8 @@ void UserTerminalHandler::run() {
   }
 
   int masterfd = term->setup(routerFd);
-  VLOG(1) << "pty opened " << masterfd;
+  VLOG(1) << "terminal opened " << masterfd
+          << (pipeMode ? " (pipe)" : " (pty)");
   runUserTerminal(masterfd);
   close(routerFd);
 }
@@ -97,12 +112,11 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
   time_t lastSecond = time(NULL);
   int64_t outputPerSecond = 0;
 
-  // The pty master is non-blocking (set by UserTerminal::setup, where the fd is
-  // created).  This loop is single-threaded, so we must never block inside the
-  // input write: the old blocking `RawSocketUtils::writeAll(masterFd, ...)`
-  // did, and a large burst of input (e.g. a pasted heredoc) echoes back, fills
-  // the pty output buffer, stalls the shell, and the shell then stops reading
-  // input
+  // The pty master / pipe fds are non-blocking (set by UserTerminal::setup).
+  // This loop is single-threaded, so we must never block inside the input
+  // write: the old blocking `RawSocketUtils::writeAll(masterFd, ...)` did, and
+  // a large burst of input (e.g. a pasted heredoc) echoes back, fills the pty
+  // output buffer, stalls the shell, and the shell then stops reading input
   // -- so the write never completes and we also stop draining output: a
   // deadlock that wedges the session past ~one pty buffer of input.  Instead we
   // buffer pending input, drain it to the pty whenever it is writable, and keep
@@ -110,6 +124,8 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
   // input from the router, so backpressure reaches the client.
   string pendingInput;
   const size_t maxPendingInput = 256 * 1024;
+  const int inputFd = term->getInputFd();
+  int activeStderrFd = term->getStderrFd();
 
   while (true) {
     {
@@ -132,6 +148,9 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     FD_ZERO(&wfd);
     if (routerWritable) {
       FD_SET(masterFd, &rfd);
+      if (activeStderrFd >= 0) {
+        FD_SET(activeStderrFd, &rfd);
+      }
     }
     // Stop pulling more input from the router once the pty-input buffer is
     // full, so backpressure reaches the client instead of buffering without
@@ -139,11 +158,15 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     if (pendingInput.length() < maxPendingInput) {
       FD_SET(routerFd, &rfd);
     }
-    // Wake as soon as the pty can accept more of the buffered input.
+    // Wake as soon as the pty/pipe can accept more of the buffered input.
     if (!pendingInput.empty()) {
-      FD_SET(masterFd, &wfd);
+      FD_SET(inputFd, &wfd);
     }
     int maxfd = max(masterFd, routerFd);
+    maxfd = max(maxfd, inputFd);
+    if (activeStderrFd >= 0) {
+      maxfd = max(maxfd, activeStderrFd);
+    }
     tv.tv_sec = 0;
     tv.tv_usec = 10000;
     select(maxfd + 1, &rfd, &wfd, NULL, &tv);
@@ -165,14 +188,20 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         int rc = read(masterFd, b, BUF_SIZE);
         int readErrno = errno;  // Save errno before any logging
         if (rc > 0) {
-          VLOG(4) << "Read from terminal";
+          VLOG(4) << "Read from terminal stdout";
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
-          writeTerminalOutput(b, static_cast<size_t>(rc));
+          forwardOutputToRouter(b, static_cast<size_t>(rc), false);
           VLOG(4) << "Write to client: "
                   << std::count(s.begin(), s.end(), '\n');
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          if (pipeMode) {
+            // sh may exec the last command after redirecting stdout away from
+            // the pipe (e.g. `...; cat >file`), which EOFs this reader while
+            // the child still blocks on stdin. Close stdin so waitid returns.
+            term->closeInput();
+          }
           finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
@@ -189,6 +218,25 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
+        }
+      }
+
+      if (activeStderrFd >= 0 && FD_ISSET(activeStderrFd, &rfd) &&
+          (noratelimit || outputPerSecond < 1024)) {
+        memset(b, 0, BUF_SIZE);
+        int rc = read(activeStderrFd, b, BUF_SIZE);
+        int readErrno = errno;
+        if (rc > 0) {
+          VLOG(4) << "Read from terminal stderr";
+          string s(b, rc);
+          outputPerSecond += std::count(s.begin(), s.end(), '\n');
+          forwardOutputToRouter(b, rc, true);
+        } else if (rc == 0) {
+          // stderr closed; keep pumping stdout until it ends.
+          activeStderrFd = -1;
+        } else if (readErrno != EAGAIN && readErrno != EWOULDBLOCK) {
+          LOG(ERROR) << "Terminal stderr read error: " << readErrno << " "
+                     << strerror(readErrno);
         }
       }
 
@@ -236,11 +284,11 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         }
       }
 
-      // Drain buffered input to the pty without blocking.  A short write (the
-      // pty input buffer is full) just leaves the rest pending for the next
-      // iteration, so output keeps draining in the meantime.
+      // Drain buffered input to the pty/pipe without blocking.  A short write
+      // (the pty input buffer is full) just leaves the rest pending for the
+      // next iteration, so output keeps draining in the meantime.
       if (!pendingInput.empty()) {
-        int rc = write(masterFd, pendingInput.data(), pendingInput.length());
+        int rc = write(inputFd, pendingInput.data(), pendingInput.length());
         int writeErrno = errno;  // Save errno before any logging
         if (rc > 0) {
           pendingInput.erase(0, rc);

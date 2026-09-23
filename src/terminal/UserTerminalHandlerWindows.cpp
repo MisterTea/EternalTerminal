@@ -1,6 +1,7 @@
 #include <cstdint>
 
 #include "ETerminal.pb.h"
+#include "PipeUserTerminal.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
@@ -17,7 +18,8 @@ UserTerminalHandler::UserTerminalHandler(
     : socketHandler(_socketHandler),
       term(_term),
       noratelimit(_noratelimit),
-      shuttingDown(false) {
+      shuttingDown(false),
+      pipeMode(false) {
   auto idpasskey_splited = split(idPasskey, '/');
   string id = idpasskey_splited[0];
   string passkey = idpasskey_splited[1];
@@ -39,12 +41,16 @@ UserTerminalHandler::UserTerminalHandler(
   }
 }
 
-void UserTerminalHandler::writeTerminalOutput(const char* data, size_t length) {
+void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
+                                                bool isStderr) {
   if (length == 0) {
     return;
   }
   TerminalBuffer tb;
   tb.set_buffer(string(data, length));
+  if (isStderr) {
+    tb.set_is_stderr(true);
+  }
   socketHandler->writePacket(
       routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
 }
@@ -79,19 +85,26 @@ void UserTerminalHandler::run() {
       string entry = ti.environmentnames(a) + "=" + ti.environmentvalues(a);
       _putenv(entry.c_str());
     }
+    pipeMode = ti.no_pty();
+    if (pipeMode) {
+      if (!ti.has_command() || ti.command().empty()) {
+        STFATAL << "no_pty TermInit requires a non-empty command";
+      }
+      term = make_shared<PipeUserTerminal>(ti.command());
+      LOG(INFO) << "Starting raw pipe command session";
+    }
     socketHandler->minimizeKernelBuffering(routerFd);
     break;
   }
 
   int masterfd = term->setup(routerFd);
-  // Apply the initial size if the client sent one before first output.
   runUserTerminal(masterfd);
   socketHandler->close(routerFd);
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {
   auto* conpty = dynamic_cast<PseudoUserTerminal*>(term.get());
-  if (conpty) {
+  if (conpty && !pipeMode) {
     runConPtyTerminal(*conpty);
     return;
   }
@@ -110,7 +123,6 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
       }
     }
     try {
-      // Router -> ConPTY input (packet-framed, same wire protocol as Unix).
       if (socketHandler->hasData(routerFd)) {
         char packetType = 0;
         ssize_t rc =
@@ -158,14 +170,13 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
       // ConPTY -> router output as TERMINAL_BUFFER packets (matches Unix).
       string output = conpty.drainOutput();
       if (!output.empty()) {
-        writeTerminalOutput(output.data(), output.size());
+        forwardOutputToRouter(output.data(), output.size(), false);
       }
 
       if (!conpty.isRunning()) {
-        // Drain any final output before exiting.
         string tail = conpty.drainOutput();
         if (!tail.empty()) {
-          writeTerminalOutput(tail.data(), tail.size());
+          forwardOutputToRouter(tail.data(), tail.size(), false);
         }
         LOG(INFO) << "Terminal session ended";
         finishSession();
@@ -191,6 +202,8 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
 
   string pendingInput;
   const size_t maxPendingInput = 256 * 1024;
+  const int inputFd = term->getInputFd();
+  int activeStderrFd = term->getStderrFd();
 
   while (true) {
     {
@@ -199,15 +212,15 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         break;
       }
     }
-    // Only read terminal output when the router can accept it, so
-    // backpressure reaches the shell instead of killing the session.
-    // (WSAPoll-based checks: no FD_SETSIZE ceiling to worry about.)
     const bool routerWritable = isSocketWritable(routerFd);
     const bool termReadable =
         routerWritable && waitOnSocketData(masterFd, 0, 0);
+    const bool stderrReadable = routerWritable && activeStderrFd >= 0 &&
+                                waitOnSocketData(activeStderrFd, 0, 0);
     const bool routerReadable = pendingInput.length() < maxPendingInput &&
                                 socketHandler->hasData(routerFd);
-    if (!termReadable && !routerReadable && pendingInput.empty()) {
+    if (!termReadable && !stderrReadable && !routerReadable &&
+        pendingInput.empty()) {
       std::this_thread::sleep_for(std::chrono::milliseconds(10));
       continue;
     }
@@ -219,11 +232,13 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         ssize_t rc = ::recv(masterFd, b, BUF_SIZE, 0);
         int readErrno = GetErrno();
         if (rc > 0) {
-          VLOG(4) << "Read from terminal";
-          writeTerminalOutput(b, static_cast<size_t>(rc));
-          VLOG(4) << "Write to client";
+          VLOG(4) << "Read from terminal stdout";
+          forwardOutputToRouter(b, static_cast<size_t>(rc), false);
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
+          if (pipeMode) {
+            term->closeInput();
+          }
           finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
@@ -238,6 +253,21 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
+        }
+      }
+
+      if (stderrReadable) {
+        memset(b, 0, BUF_SIZE);
+        ssize_t rc = ::recv(activeStderrFd, b, BUF_SIZE, 0);
+        int readErrno = GetErrno();
+        if (rc > 0) {
+          VLOG(4) << "Read from terminal stderr";
+          forwardOutputToRouter(b, rc, true);
+        } else if (rc == 0) {
+          activeStderrFd = -1;
+        } else if (readErrno != EAGAIN && readErrno != EWOULDBLOCK) {
+          LOG(ERROR) << "Terminal stderr read error: " << readErrno << " "
+                     << strerror(readErrno);
         }
       }
 
@@ -287,7 +317,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
       }
 
       if (!pendingInput.empty()) {
-        ssize_t rc = ::send(masterFd, pendingInput.data(),
+        ssize_t rc = ::send(inputFd, pendingInput.data(),
                             static_cast<int>(pendingInput.length()), 0);
         int writeErrno = GetErrno();
         if (rc > 0) {

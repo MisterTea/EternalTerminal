@@ -21,6 +21,9 @@ enum TerminalPacketType {
 
 message TerminalBuffer {
   optional bytes buffer = 1;
+  // When true, buffer is remote stderr (raw pipe / -T sessions only).
+  // Named is_stderr (not stderr): musl #defines stderr as a macro.
+  optional bool is_stderr = 2 [default = false];
 }
 
 // Process status for the remote terminal child (OpenSSH-style exit code).
@@ -70,9 +73,12 @@ message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
   map<string, string> environmentvariables = 3;
+  // When true, etterminal runs `command` on pipes instead of a login pty.
+  optional bool no_pty = 4 [default = false];
+  optional string command = 5;
   // Set by clients that understand TERMINAL_EXIT_STATUS. Older clients leave
   // this unset, and etserver must not forward that packet to them.
-  optional bool supports_exit_status = 4 [default = false];
+  optional bool supports_exit_status = 6 [default = false];
 }
 
 message InitialResponse {
@@ -87,6 +93,8 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  optional bool no_pty = 3 [default = false];
+  optional string command = 4;
 }
 
 message TerminalUserInfo {

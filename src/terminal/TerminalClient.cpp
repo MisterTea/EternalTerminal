@@ -3,6 +3,7 @@
 #include <cstdint>
 
 #include "PseudoTerminalConsole.hpp"
+#include "RawSocketUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TmuxCcFilter.hpp"
 #include "TunnelUtils.hpp"
@@ -20,15 +21,21 @@ TerminalClient::TerminalClient(
     const string& passkey, shared_ptr<Console> _console, bool jumphost,
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
-    const vector<pair<string, string>>& envVars)
+    const vector<pair<string, string>>& envVars, bool _noPty,
+    const string& command)
     : console(_console),
       shuttingDown(false),
-      keepaliveDuration(_keepaliveDuration) {
+      keepaliveDuration(_keepaliveDuration),
+      noPty(_noPty) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
   payload.set_supports_exit_status(true);
+  if (noPty) {
+    payload.set_no_pty(true);
+    payload.set_command(command);
+  }
 
   for (const auto& envVar : envVars) {
     (*payload.mutable_environmentvariables())[envVar.first] = envVar.second;
@@ -163,7 +170,7 @@ int TerminalClient::run(const string& command, const bool noexit) {
   int remoteExitStatus = 0;
   bool haveRemoteExitStatus = false;
 
-  if (command.length()) {
+  if (command.length() && !noPty) {
     LOG(INFO) << "Got command: " << command;
     et::TerminalBuffer tb;
     if (noexit)
@@ -173,6 +180,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
 
     connection->writePacket(
         Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+  } else if (command.length() && noPty) {
+    LOG(INFO) << "Raw pipe command (no shell injection): " << command;
   }
 
   TerminalInfo lastTerminalInfo;
@@ -494,12 +503,34 @@ int TerminalClient::run(const string& command, const bool noexit) {
           }
           switch (packetType) {
             case et::TerminalPacketType::TERMINAL_BUFFER: {
-              if (console) {
-                VLOG(3) << "Got terminal buffer";
-                et::TerminalBuffer tb =
-                    stringToProto<et::TerminalBuffer>(packet.getPayload());
+              VLOG(3) << "Got terminal buffer";
+              et::TerminalBuffer tb =
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
+              keepaliveTime = time(NULL) + keepaliveDuration;
+              if (tb.is_stderr()) {
+#ifdef WIN32
+                auto hstderr = GetStdHandle(STD_ERROR_HANDLE);
+                DWORD written = 0;
+                WriteFile(hstderr, tb.buffer().data(),
+                          static_cast<DWORD>(tb.buffer().size()), &written,
+                          NULL);
+#else
+                RawSocketUtils::writeAll(STDERR_FILENO, tb.buffer().data(),
+                                         tb.buffer().size());
+#endif
+              } else if (console) {
                 consoleOut.enqueue(tb.buffer());
-                keepaliveTime = time(NULL) + keepaliveDuration;
+              } else {
+#ifdef WIN32
+                auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
+                DWORD written = 0;
+                WriteFile(hstdout, tb.buffer().data(),
+                          static_cast<DWORD>(tb.buffer().size()), &written,
+                          NULL);
+#else
+                RawSocketUtils::writeAll(STDOUT_FILENO, tb.buffer().data(),
+                                         tb.buffer().size());
+#endif
               }
               break;
             }

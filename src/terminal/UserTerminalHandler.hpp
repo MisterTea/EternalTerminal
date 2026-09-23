@@ -41,11 +41,13 @@ class UserTerminalHandler {
   bool shuttingDown;
   /** @brief Guards `shuttingDown` across threads. */
   recursive_mutex shutdownMutex;
+  /** @brief True when TermInit requested a raw pipe command session. */
+  bool pipeMode;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
-  /** @brief Forwards pty bytes to the router as a TERMINAL_BUFFER packet. */
-  void writeTerminalOutput(const char* data, size_t length);
+  /** @brief Forwards terminal output to the router as TERMINAL_BUFFER. */
+  void forwardOutputToRouter(const char* data, size_t length, bool isStderr);
   /** @brief Reaps the child and sends TERMINAL_EXIT_STATUS to the router. */
   void finishSession();
 #ifdef WIN32

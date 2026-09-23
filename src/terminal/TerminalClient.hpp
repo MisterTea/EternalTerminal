@@ -35,7 +35,8 @@ class TerminalClient {
                  bool jumphost, const string& tunnels,
                  const string& reverseTunnels, bool forwardSshAgent,
                  const string& identityAgent, int _keepaliveDuration,
-                 const vector<pair<string, string>>& envVars);
+                 const vector<pair<string, string>>& envVars,
+                 bool noPty = false, const string& command = "");
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();
@@ -85,6 +86,8 @@ class TerminalClient {
   recursive_mutex shutdownMutex;
   /** @brief Keepalive interval (seconds) sent to the server. */
   int keepaliveDuration;
+  /** @brief True when this session uses the raw pipe command channel. */
+  bool noPty;
   static std::atomic<bool> closeOnHangup;
   static std::atomic<bool> hangupCloseRequested;
   static std::atomic<bool> hangupCloseCompleted;
