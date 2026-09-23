@@ -128,6 +128,51 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(result.count("command") == 0);
     REQUIRE(commandFromParse(parsed) == "sh -c echo hi");
   }
+
+  SECTION("-- before host with positional command") {
+    const char* argv[] = {"et", "--", "host", "cmd"};
+    auto parsed = parseEtConnectArgv(4, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "cmd");
+  }
+
+  SECTION("-- before host without positional command") {
+    const char* argv[] = {"et", "--", "host"};
+    auto parsed = parseEtConnectArgv(3, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "");
+  }
+
+  SECTION("-c before -- still leaves host for cxxopts") {
+    const char* argv[] = {"et", "-c", "ls", "--", "host"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "ls");
+  }
+
+  SECTION("token after -- is host even if it starts with -") {
+    const char* argv[] = {"et", "--", "-weirdhost", "echo", "ok"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "-weirdhost");
+    REQUIRE(commandFromParse(parsed) == "echo ok");
+  }
+
+  SECTION("-- after the host stays a remote command operand") {
+    const char* argv[] = {"et", "host", "--", "cmd"};
+    auto parsed = parseEtConnectArgv(4, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "-- cmd");
+  }
 }
 
 TEST_CASE("joinRemoteCommandOperands preserves argv words",

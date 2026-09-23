@@ -96,13 +96,19 @@ inline EtArgvSplit splitEtArgvAtHost(const vector<string>& args) {
   }
   split.clientArgs.push_back(args[0]);
   size_t i = 1;
+  // A bare `--` before the host ends client option parsing (ssh-style). Do
+  // not treat following tokens as remote operands yet — the next token is
+  // the host. Re-emit `--` into clientArgs so cxxopts will accept a host
+  // that looks like a flag; without a following host token, `--` alone must
+  // not be forwarded (that would leave cxxopts with no host).
+  bool optionsEnded = false;
   for (; i < args.size(); ++i) {
     const string& arg = args[i];
-    if (arg == "--") {
-      ++i;
-      break;
+    if (!optionsEnded && arg == "--") {
+      optionsEnded = true;
+      continue;
     }
-    if (arg.size() >= 2 && arg[0] == '-') {
+    if (!optionsEnded && arg.size() >= 2 && arg[0] == '-') {
       split.clientArgs.push_back(arg);
       // `--serverfifo=/tmp/x` already carries its value. A separate value
       // token is only consumed for a bare option name.
@@ -111,6 +117,9 @@ inline EtArgvSplit splitEtArgvAtHost(const vector<string>& args) {
         split.clientArgs.push_back(args[++i]);
       }
       continue;
+    }
+    if (optionsEnded) {
+      split.clientArgs.push_back("--");
     }
     split.clientArgs.push_back(arg);
     ++i;
