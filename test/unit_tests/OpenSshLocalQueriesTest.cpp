@@ -116,4 +116,43 @@ TEST_CASE("et -G -F -o prints resolved keywords without connecting",
 
   fs::remove_all(tempDir);
 }
+
+TEST_CASE("et -G applies -o Hostname/User with spaces around =",
+          "[OpenSshLocalQueries][cli]") {
+  const string et = findEtBinary();
+  if (et.empty()) {
+    SKIP("et binary is not built");
+  }
+
+  const fs::path tempDir = fs::temp_directory_path() /
+                           ("et_test_openssh_spaced_eq_" + sole::uuid4().str());
+  fs::remove_all(tempDir);
+  fs::create_directories(tempDir);
+  const fs::path configPath = tempDir / "config";
+  std::ofstream(configPath) << "Host nowhere.invalid\n"
+                               "  HostName 203.0.113.9\n"
+                               "  User cursor\n"
+                               "  Port 22\n";
+
+  // OpenSSH accepts spaces around '='; et must sync destination host/user.
+  string cmd = et + " -G -F " + configPath.string() +
+               " -o \"Hostname = 198.51.100.7\" -o \"User = spaced\""
+               " nowhere.invalid";
+  FILE* pipe = popen(cmd.c_str(), "r");
+  REQUIRE(pipe != nullptr);
+  char buffer[512];
+  string output;
+  while (fgets(buffer, sizeof(buffer), pipe) != nullptr) {
+    output += buffer;
+  }
+  int status = pclose(pipe);
+  REQUIRE(WIFEXITED(status));
+  REQUIRE(WEXITSTATUS(status) == 0);
+  REQUIRE(output.find("hostname 198.51.100.7\n") != string::npos);
+  REQUIRE(output.find("user spaced\n") != string::npos);
+  REQUIRE(output.find("hostname 203.0.113.9\n") == string::npos);
+  REQUIRE(output.find("user cursor\n") == string::npos);
+
+  fs::remove_all(tempDir);
+}
 #endif

@@ -72,6 +72,16 @@ TEST_CASE("OpenSSH -o session options update resolved config",
   freeOptionsFields(&opts);
 }
 
+TEST_CASE("applySessionOption trims spaces around = for Hostname and User",
+          "[OpenSshLocalQueries]") {
+  Options opts = {};
+  REQUIRE(applySessionOption(&opts, "Hostname = 198.51.100.7"));
+  REQUIRE(string(opts.host) == "198.51.100.7");
+  REQUIRE(applySessionOption(&opts, "User = spaced"));
+  REQUIRE(string(opts.username) == "spaced");
+  freeOptionsFields(&opts);
+}
+
 TEST_CASE("OpenSSH -G dump prints required keywords", "[OpenSshLocalQueries]") {
   Options opts = {};
   REQUIRE(applySessionOption(&opts, "ConnectTimeout=10"));

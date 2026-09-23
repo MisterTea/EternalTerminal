@@ -437,7 +437,7 @@ int main(int argc, char** argv) {
         if (sep != string::npos) {
           key = key.substr(0, sep);
         }
-        key = lowercaseAscii(key);
+        key = lowercaseAscii(trimAsciiBlanks(std::move(key)));
         if (key == "hostname" && sshConfigOptions.host) {
           destinationHost = string(sshConfigOptions.host);
         } else if (key == "user" && sshConfigOptions.username) {

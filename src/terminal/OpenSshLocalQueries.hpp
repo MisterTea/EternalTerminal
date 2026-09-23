@@ -21,6 +21,18 @@ inline string lowercaseAscii(string value) {
   return value;
 }
 
+/** @brief Trim leading/trailing ASCII blanks (space/tab), matching OpenSSH
+ *  `-o "Key = Value"` acceptance. */
+inline string trimAsciiBlanks(string value) {
+  while (!value.empty() && isblank(static_cast<unsigned char>(value.front()))) {
+    value.erase(value.begin());
+  }
+  while (!value.empty() && isblank(static_cast<unsigned char>(value.back()))) {
+    value.pop_back();
+  }
+  return value;
+}
+
 inline string normalizeControlMasterDump(const char* value) {
   if (value == nullptr || value[0] == '\0') {
     return "false";
@@ -102,12 +114,8 @@ inline bool applySessionOption(Options* options, const string& option) {
     value = option.substr(valueStart);
   }
 
-  while (!key.empty() && isblank(static_cast<unsigned char>(key.front()))) {
-    key.erase(key.begin());
-  }
-  while (!key.empty() && isblank(static_cast<unsigned char>(key.back()))) {
-    key.pop_back();
-  }
+  key = trimAsciiBlanks(std::move(key));
+  value = trimAsciiBlanks(std::move(value));
   if (key.empty()) {
     return false;
   }
