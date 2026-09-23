@@ -214,6 +214,41 @@ TEST_CASE_METHOD(TerminalSessionFixture,
   checkSessionClosed();
 }
 
+TEST_CASE("disconnect deadline stays idle until the timeout elapses",
+          "[TerminalServerLifecycle]") {
+  time_t since = 0;
+  CHECK_FALSE(disconnectDeadlineReached(&since, 1000, false, 0));
+  CHECK(since == 0);
+
+  CHECK_FALSE(disconnectDeadlineReached(&since, 1000, false, 60));
+  CHECK(since == 1000);
+  CHECK_FALSE(disconnectDeadlineReached(&since, 1059, false, 60));
+  CHECK(disconnectDeadlineReached(&since, 1060, false, 60));
+
+  CHECK_FALSE(disconnectDeadlineReached(&since, 2000, true, 60));
+  CHECK(since == 0);
+  CHECK_FALSE(disconnectDeadlineReached(&since, 2000, false, 60));
+  CHECK(since == 2000);
+  CHECK_FALSE(disconnectDeadlineReached(nullptr, 3000, false, 60));
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
+                 "Disconnect timeout closes the terminal session",
+                 "[TerminalServerLifecycle]") {
+  server->setDisconnectTimeoutSeconds(1);
+  startSession();
+  waitForInit();
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+
+  REQUIRE(peerHandler->waitForData(terminalPeer, 4, 0));
+  char packetType = 0;
+  REQUIRE(peerHandler->read(terminalPeer, &packetType, 1) == 1);
+  CHECK(packetType == TERMINAL_CLOSE);
+
+  waitForSessionEnd();
+  checkSessionClosed();
+}
+
 TEST_CASE_METHOD(TerminalSessionFixture,
                  "Disconnected sessions retain their router until terminal EOF",
                  "[TerminalServerLifecycle]") {

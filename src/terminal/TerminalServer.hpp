@@ -53,6 +53,18 @@ class TerminalServer : public ServerConnection {
     halt = true;
   }
 
+  /**
+   * @brief How long a terminal may stay disconnected before it is closed.
+   *
+   * `0` disables the timeout. The `etserver` flag is in minutes; this setter
+   * takes seconds so tests can use a short deadline.
+   */
+  void setDisconnectTimeoutSeconds(int seconds) {
+    disconnectTimeoutSec = seconds;
+  }
+
+  int getDisconnectTimeoutSeconds() const { return disconnectTimeoutSec; }
+
   /** @brief Router that hands reconnecting clients to their terminals. */
   shared_ptr<UserTerminalRouter> terminalRouter;
   /** @brief Threads that manage active terminal/jumphost sessions. */
@@ -66,11 +78,38 @@ class TerminalServer : public ServerConnection {
    * Overridable so tests do not have to wait out the real deadline.
    */
   int initialPayloadTimeoutSec = INITIAL_PAYLOAD_TIMEOUT_DURATION;
+  /**
+   * @brief Seconds a disconnected etterminal may live. `0` means no timeout.
+   */
+  int disconnectTimeoutSec = 0;
   /** @brief Guards access to `terminalThreads` and the halt flag. */
   mutex terminalThreadMutex;
   /** @brief Local pipe endpoint used to signal terminal/jumphost handoffs. */
   SocketEndpoint routerEndpoint;
 };
+/**
+ * @brief Tracks how long a terminal has been without a client.
+ *
+ * A non-positive timeout never fires. A connected client clears the stamp.
+ * The first disconnected observation records `now` and does not fire; a later
+ * observation fires once `now - stamp` reaches the timeout.
+ */
+inline bool disconnectDeadlineReached(time_t* disconnectedSince, time_t now,
+                                      bool connected, int timeoutSec) {
+  if (disconnectedSince == nullptr) {
+    return false;
+  }
+  if (timeoutSec <= 0 || connected) {
+    *disconnectedSince = 0;
+    return false;
+  }
+  if (*disconnectedSince == 0) {
+    *disconnectedSince = now;
+    return false;
+  }
+  return now - *disconnectedSince >= timeoutSec;
+}
+
 }  // namespace et
 
 #endif  // __ET_TERMINAL_SERVER__
