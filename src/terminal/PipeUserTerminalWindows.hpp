@@ -172,7 +172,8 @@ class PipeUserTerminal : public UserTerminal {
  protected:
   // Local helper so this header does not depend on test utilities.
   static int testCreateSocketPair(int fds[2]) {
-    SOCKET listener = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    // Qualify Winsock APIs with :: so MSVC does not pick std::bind / ADL.
+    SOCKET listener = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (listener == INVALID_SOCKET) {
       return -1;
     }
@@ -181,24 +182,24 @@ class PipeUserTerminal : public UserTerminal {
     addr.sin_family = AF_INET;
     addr.sin_addr.s_addr = htonl(INADDR_LOOPBACK);
     addr.sin_port = 0;
-    if (bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 ||
-        listen(listener, 1) != 0) {
+    if (::bind(listener, (sockaddr*)&addr, sizeof(addr)) != 0 ||
+        ::listen(listener, 1) != 0) {
       closesocket(listener);
       return -1;
     }
     int addrLen = sizeof(addr);
-    getsockname(listener, (sockaddr*)&addr, &addrLen);
-    SOCKET client = socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
+    ::getsockname(listener, (sockaddr*)&addr, &addrLen);
+    SOCKET client = ::socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
     if (client == INVALID_SOCKET) {
       closesocket(listener);
       return -1;
     }
-    if (connect(client, (sockaddr*)&addr, sizeof(addr)) != 0) {
+    if (::connect(client, (sockaddr*)&addr, sizeof(addr)) != 0) {
       closesocket(client);
       closesocket(listener);
       return -1;
     }
-    SOCKET server = accept(listener, NULL, NULL);
+    SOCKET server = ::accept(listener, NULL, NULL);
     closesocket(listener);
     if (server == INVALID_SOCKET) {
       closesocket(client);
