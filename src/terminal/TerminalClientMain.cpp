@@ -73,13 +73,16 @@ void parseSelectedSshConfig(const string& host, Options* options,
     return;
   }
 
+  // Share seen[] across user then system so first-wins (user over system),
+  // including explicit zero/"no" values that look unset on Options alone.
+  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
   char* homeDir = ssh_get_user_home_dir();
   if (homeDir != NULL) {
     parse_ssh_config_file(host.c_str(), options,
-                          string(homeDir) + USER_SSH_CONFIG_PATH);
+                          string(homeDir) + USER_SSH_CONFIG_PATH, seen);
     free(homeDir);
   }
-  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH);
+  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH, seen);
 }
 
 // Resolve a host alias via SSH config lookup

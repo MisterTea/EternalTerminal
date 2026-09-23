@@ -891,12 +891,12 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
         return -1;
       } else {
         int* x = (int*)value;
-        if (*x <= 0) {
+        if (*x < 1 || *x > 65535) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
-        options->port = *x & 0xffff;
+        options->port = *x;
       }
       break;
     case SSH_OPTIONS_PORT_STR:
@@ -910,17 +910,17 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
           CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
+        errno = 0;
         i = strtol(q, &p, 10);
-        if (q == p) {
+        if (q == p || p == NULL || *p != '\0' || errno == ERANGE || i < 1 ||
+            i > 65535) {
           SAFE_FREE(q);
-        }
-        SAFE_FREE(q);
-        if (i <= 0) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
+        SAFE_FREE(q);
 
-        options->port = i & 0xffff;
+        options->port = static_cast<unsigned int>(i);
       }
       break;
     case SSH_OPTIONS_USER:
@@ -1735,13 +1735,15 @@ static int ssh_config_parse_line(const char* targethost,
 }
 
 inline int parse_ssh_config_file(const char* targethost,
-                                 struct Options* options, string filename) {
+                                 struct Options* options, string filename,
+                                 int* seen_inout = nullptr) {
   string line;
   int len = 0;
   int read = 0;
   unsigned int count = 0;
   int parsing;
-  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int local_seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int* seen = seen_inout != nullptr ? seen_inout : local_seen;
 
   char* expandedFilename = ssh_path_expand_tilde(filename.c_str());
   if (!expandedFilename) {

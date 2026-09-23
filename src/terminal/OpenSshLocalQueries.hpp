@@ -2,6 +2,8 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cerrno>
+#include <cstdlib>
 #include <sstream>
 #include <string>
 
@@ -44,6 +46,23 @@ inline bool parseYesNoOption(const string& value, int* out) {
     return true;
   }
   return false;
+}
+
+/** @brief Parse value as a full-string nonnegative long (rejects trailing
+ *  garbage and empty/partial parses that strtol alone would accept). */
+inline bool parseEntireNonNegativeLong(const string& value, long* out) {
+  if (out == nullptr || value.empty()) {
+    return false;
+  }
+  errno = 0;
+  char* end = nullptr;
+  const long parsed = strtol(value.c_str(), &end, 10);
+  if (end == value.c_str() || end == nullptr || *end != '\0' ||
+      errno == ERANGE || parsed < 0) {
+    return false;
+  }
+  *out = parsed;
+  return true;
 }
 
 /** @brief Apply one OpenSSH-style `-o Key=Value` (or `Key Value`) session
@@ -103,22 +122,27 @@ inline bool applySessionOption(Options* options, const string& option) {
     return ssh_options_set(options, SSH_OPTIONS_USER, value.c_str()) == 0;
   }
   if (keyLower == "port") {
-    return ssh_options_set(options, SSH_OPTIONS_PORT_STR, value.c_str()) == 0;
+    long port = 0;
+    if (!parseEntireNonNegativeLong(value, &port) || port < 1 || port > 65535) {
+      return false;
+    }
+    int portInt = static_cast<int>(port);
+    return ssh_options_set(options, SSH_OPTIONS_PORT, &portInt) == 0;
   }
   if (keyLower == "connecttimeout") {
     if (strcasecmp(value.c_str(), "none") == 0) {
       options->timeout = 0;
       return true;
     }
-    long timeout = strtol(value.c_str(), nullptr, 10);
-    if (timeout < 0) {
+    long timeout = 0;
+    if (!parseEntireNonNegativeLong(value, &timeout)) {
       return false;
     }
     return ssh_options_set(options, SSH_OPTIONS_TIMEOUT, &timeout) == 0;
   }
   if (keyLower == "serveraliveinterval") {
-    long interval = strtol(value.c_str(), nullptr, 10);
-    if (interval < 0) {
+    long interval = 0;
+    if (!parseEntireNonNegativeLong(value, &interval)) {
       return false;
     }
     return ssh_options_set(options, SSH_OPTIONS_SERVERALIVEINTERVAL,
