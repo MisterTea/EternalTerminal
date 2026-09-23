@@ -98,8 +98,9 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
       "'; true";
 #else
   // Keep stdin open so the session outlives FakeConsole setup (same role as
-  // Unix `cat`). findstr "^" copies stdin to stdout until EOF.
-  string command = "echo OUT& findstr \"^\"";
+  // Unix `cat`). `more` blocks on the pipe until EOF; avoid findstr "^"
+  // because cmd treats ^ as its escape character inside /c.
+  string command = "echo OUT& more";
 #endif
 
   auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
