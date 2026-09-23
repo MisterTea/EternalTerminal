@@ -2,6 +2,7 @@
 #include <filesystem>
 #include <fstream>
 
+#include "BinaryStdioConsole.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "ParseConfigFile.hpp"
@@ -199,7 +200,10 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
         ("N,no-terminal", "Do not create a terminal")           //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")     //
+        ("T,no-pty",
+         "Run -c command on pipes instead of a pty (binary stdio, "
+         "separate stderr, no shell injection)")             //
+        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("ssh-config",
@@ -486,8 +490,20 @@ int main(int argc, char** argv) {
     }
 
     shared_ptr<Console> console;
+    const bool noPty = result.count("T") > 0;
+    string command =
+        result.count("command") ? result["command"].as<string>() : "";
+    if (noPty && command.empty()) {
+      CLOG(INFO, "stdout") << "-T/--no-pty requires -c/--command" << endl;
+      CLOG(INFO, "stdout") << options.help({}) << endl;
+      exit(1);
+    }
     if (!result.count("N")) {
-      console.reset(new PseudoTerminalConsole());
+      if (noPty) {
+        console.reset(new BinaryStdioConsole());
+      } else {
+        console.reset(new PseudoTerminalConsole());
+      }
     }
 
     bool forwardAgent = result.count("f") > 0;
@@ -531,10 +547,9 @@ int main(int argc, char** argv) {
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
-        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars);
-    terminalClient.run(
-        result.count("command") ? result["command"].as<string>() : "",
-        result.count("noexit"));
+        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
+        noPty, command);
+    terminalClient.run(command, result.count("noexit"));
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {
