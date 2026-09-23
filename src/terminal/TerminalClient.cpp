@@ -641,7 +641,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
   // Finish writing buffered remote output before tearing down the console.
   // EXIT_STATUS or a dying connection must not discard consoleOut: writeSome
   // may return 0 under O_NONBLOCK (BinaryStdioConsole) until the fd is
-  // writable.
+  // writable. Hard errors (EPIPE/EBADF) stop the drain but must not throw past
+  // run() when remoteExitStatus is already known.
   if (console) {
     while (consoleOut.hasPendingData()) {
       size_t count = 0;
@@ -649,10 +650,15 @@ int TerminalClient::run(const string& command, const bool noexit) {
       if (data == nullptr || count == 0) {
         break;
       }
-      size_t written = console->writeSome(string(data, count));
-      if (written > 0) {
-        consoleOut.consume(written);
-        continue;
+      try {
+        size_t written = console->writeSome(string(data, count));
+        if (written > 0) {
+          consoleOut.consume(written);
+          continue;
+        }
+      } catch (const runtime_error& re) {
+        STERROR << "Error draining consoleOut: " << re.what();
+        break;
       }
 #ifndef WIN32
       pollfd pfd = {console->getFd(), POLLOUT, 0};

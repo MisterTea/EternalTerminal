@@ -1034,6 +1034,30 @@ class GateWriteConsole : public FakeConsole {
   string written;
 };
 
+// Console that returns 0 (would-block) until armHardFail(), then throws on
+// writeSome like a closed pipe (EPIPE). Used to cover the post-loop consoleOut
+// drain path that sits outside the main-loop try/catch.
+class HardWriteFailConsole : public FakeConsole {
+ public:
+  explicit HardWriteFailConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (failHard.load()) {
+      throw std::runtime_error("console write failed: Broken pipe");
+    }
+    return 0;
+  }
+
+  void armHardFail() { failHard.store(true); }
+
+ private:
+  std::atomic<bool> failHard{false};
+};
+
 // Shell child that exits immediately with a fixed status so the client can
 // observe TERMINAL_EXIT_STATUS over a real pty session.
 class RealPtyFixedExitTerminal : public UserTerminal {
@@ -1194,6 +1218,54 @@ TEST_CASE_METHOD(EndToEndTestFixture,
   REQUIRE_FALSE(finishedEarly);
   REQUIRE(runStatus == 42);
   REQUIRE(gatedConsole->writtenSnapshot().find(marker) != string::npos);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_HardWriteErrorDuringFinalDrain",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // Hard write errors (EPIPE/EBADF) during the post-loop consoleOut drain must
+  // not throw out of run() after EXIT_STATUS has already been received.
+  const string marker(2048, 'M');
+  auto failConsole = make_shared<HardWriteFailConsole>(consoleSocketHandler);
+  fakeConsole = failConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, failConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runThrew{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runThrew]() {
+    try {
+      runStatus = terminalClient->run("true", false);
+    } catch (const std::runtime_error&) {
+      runThrew.store(true);
+    }
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes still return 0.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Arm EPIPE: in-loop writeSome throws (caught), then post-loop drain throws
+  // outside the try/catch unless that path stops draining and returns status.
+  failConsole->armHardFail();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(runThrew.load());
+  REQUIRE(runStatus == 42);
 }
 #endif
 
