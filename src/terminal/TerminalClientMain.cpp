@@ -290,27 +290,7 @@ int main(int argc, char** argv) {
         auto requests = parseRangesToRequests(tunnel_arg);
         int rc = 0;
         for (const auto& pfsr : requests) {
-          MuxOpenForwardRequest fwd;
-          fwd.type = MUX_FWD_LOCAL;
-          if (pfsr.has_source()) {
-            if (pfsr.source().has_name()) {
-              fwd.listenHost = pfsr.source().name();
-              fwd.listenPort = static_cast<uint32_t>(-2);
-            } else {
-              fwd.listenHost = "localhost";
-              fwd.listenPort = static_cast<uint32_t>(pfsr.source().port());
-            }
-          }
-          if (pfsr.has_destination()) {
-            if (pfsr.destination().has_name()) {
-              fwd.connectHost = pfsr.destination().name();
-              fwd.connectPort = static_cast<uint32_t>(-2);
-            } else {
-              fwd.connectHost = "localhost";
-              fwd.connectPort =
-                  static_cast<uint32_t>(pfsr.destination().port());
-            }
-          }
+          MuxOpenForwardRequest fwd = muxForwardFromTunnel(pfsr);
           string error;
           bool ok = muxOptions.ctlCommand == "forward"
                         ? ctl.openForward(fwd, &error)
@@ -338,17 +318,7 @@ int main(int argc, char** argv) {
       if (!tunnel_arg.empty()) {
         auto requests = parseRangesToRequests(tunnel_arg);
         for (const auto& pfsr : requests) {
-          MuxOpenForwardRequest fwd;
-          fwd.type = MUX_FWD_LOCAL;
-          fwd.listenHost = "localhost";
-          fwd.listenPort = pfsr.has_source() && pfsr.source().has_port()
-                               ? static_cast<uint32_t>(pfsr.source().port())
-                               : 0;
-          fwd.connectHost = "localhost";
-          fwd.connectPort =
-              pfsr.has_destination() && pfsr.destination().has_port()
-                  ? static_cast<uint32_t>(pfsr.destination().port())
-                  : 0;
+          MuxOpenForwardRequest fwd = muxForwardFromTunnel(pfsr);
           string error;
           if (!passenger.openForward(fwd, &error)) {
             CLOG(INFO, "stdout")

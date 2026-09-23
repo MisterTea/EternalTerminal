@@ -56,6 +56,20 @@ vector<MuxTrackedForward> MuxMaster::trackedForwards() const {
 
 bool MuxMaster::persistExpired() const { return persistDone.load(); }
 
+void MuxMaster::refreshPersistLocked() {
+  if (!persistConfig.enabled || persistConfig.seconds <= 0 ||
+      !primaryExited.load()) {
+    return;
+  }
+  if (clients > 0) {
+    persistArmed = false;
+    return;
+  }
+  persistArmed = true;
+  persistDeadline =
+      chrono::steady_clock::now() + chrono::seconds(persistConfig.seconds);
+}
+
 void MuxMaster::notifyPrimaryClientExited() {
   lock_guard<recursive_mutex> guard(mutex);
   primaryExited = true;
@@ -65,12 +79,7 @@ void MuxMaster::notifyPrimaryClientExited() {
     }
     return;
   }
-  if (persistConfig.seconds == 0) {
-    return;
-  }
-  persistArmed = true;
-  persistDeadline =
-      chrono::steady_clock::now() + chrono::seconds(persistConfig.seconds);
+  refreshPersistLocked();
 }
 
 void MuxMaster::start() {
@@ -259,6 +268,7 @@ void MuxMaster::acceptLoop() {
     {
       lock_guard<recursive_mutex> guard(mutex);
       ++clients;
+      refreshPersistLocked();
       clientSlots.push_back(ClientSlot{});
       ClientSlot& slot = clientSlots.back();
       slot.fd = clientFd;
@@ -279,6 +289,7 @@ void MuxMaster::acceptLoop() {
           if (clients > 0) {
             --clients;
           }
+          refreshPersistLocked();
         }
         // This thread owns the accepted fd for its lifetime; always close it.
         ::close(clientFd);

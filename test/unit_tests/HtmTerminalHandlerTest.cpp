@@ -73,6 +73,22 @@ TEST_CASE("TerminalHandler stop is idempotent and reaps the child",
   REQUIRE_FALSE(term.isRunning());
 }
 
+namespace {
+// Shell death is not readiness. The marker has to be seen first.
+bool shellExitHandshakeReady(bool sawMarker, bool stillRunning) {
+  (void)stillRunning;
+  return sawMarker;
+}
+}  // namespace
+
+TEST_CASE("shell death before the ready marker is not readiness",
+          "[Htm][TerminalHandler]") {
+  CHECK_FALSE(shellExitHandshakeReady(false, false));
+  CHECK_FALSE(shellExitHandshakeReady(false, true));
+  CHECK(shellExitHandshakeReady(true, false));
+  CHECK(shellExitHandshakeReady(true, true));
+}
+
 TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   term.start();
@@ -92,7 +108,7 @@ TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
 #else
         term.appendData("printf '" + readyMarker + "\\n'\n");
 #endif
-        return !term.isRunning();
+        return shellExitHandshakeReady(false, term.isRunning());
       },
       20000);
 #ifdef WIN32

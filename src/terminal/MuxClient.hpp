@@ -14,6 +14,46 @@ struct MuxOpenForwardRequest {
 };
 
 /**
+ * @brief Map a tunnel endpoint onto a PROTOCOL.mux host/port.
+ * Name-only endpoints use the stream-local sentinel. A TCP port wins when
+ * both name and port are set (the usual `localhost` + port parse).
+ */
+inline void fillMuxForwardAddress(const SocketEndpoint& endpoint, string* host,
+                                  uint32_t* port) {
+  if (endpoint.has_port()) {
+    *port = static_cast<uint32_t>(endpoint.port());
+    *host = endpoint.has_name() && !endpoint.name().empty() ? endpoint.name()
+                                                            : "localhost";
+    return;
+  }
+  if (endpoint.has_name()) {
+    *host = endpoint.name();
+    *port = static_cast<uint32_t>(-2);
+    return;
+  }
+  *host = "localhost";
+  *port = 0;
+}
+
+inline MuxOpenForwardRequest muxForwardFromTunnel(
+    const PortForwardSourceRequest& request) {
+  MuxOpenForwardRequest fwd;
+  fwd.type = MUX_FWD_LOCAL;
+  if (request.has_source()) {
+    fillMuxForwardAddress(request.source(), &fwd.listenHost, &fwd.listenPort);
+  } else {
+    fwd.listenHost = "localhost";
+  }
+  if (request.has_destination()) {
+    fillMuxForwardAddress(request.destination(), &fwd.connectHost,
+                          &fwd.connectPort);
+  } else {
+    fwd.connectHost = "localhost";
+  }
+  return fwd;
+}
+
+/**
  * @brief OpenSSH mux client that attaches to a ControlMaster ControlPath.
  */
 class MuxClient {

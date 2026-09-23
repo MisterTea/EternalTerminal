@@ -71,6 +71,8 @@ class MuxMaster {
   };
 
   void closeListenFd();
+  /** @brief Arm persist when idle, and disarm it while any client remains. */
+  void refreshPersistLocked();
 
   string path;
   ControlPersistConfig persistConfig;

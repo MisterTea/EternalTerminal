@@ -2,6 +2,7 @@
 #include "MuxMaster.hpp"
 #include "MuxProtocol.hpp"
 #include "TestHeaders.hpp"
+#include "TunnelUtils.hpp"
 
 using namespace et;
 
@@ -109,6 +110,59 @@ TEST_CASE("Second mux client opens session and forward on the master",
   REQUIRE(sessionId >= 1);
   REQUIRE(master.sessionCount() >= 1);
 
+  master.stop();
+}
+
+TEST_CASE("mux forward keeps a TCP port when the endpoint also has a name",
+          "[Mux]") {
+  auto requests = parseRangesToRequests("8080:80");
+  REQUIRE(requests.size() == 1);
+  auto fwd = muxForwardFromTunnel(requests[0]);
+  CHECK(fwd.listenHost == "localhost");
+  CHECK(fwd.listenPort == 8080);
+  CHECK(fwd.connectPort == 80);
+
+  auto sockets = parseRangesToRequests("/tmp/a.sock:/tmp/b.sock");
+  REQUIRE(sockets.size() == 1);
+  auto unixFwd = muxForwardFromTunnel(sockets[0]);
+  CHECK(unixFwd.listenHost == "/tmp/a.sock");
+  CHECK(unixFwd.listenPort == static_cast<uint32_t>(-2));
+  CHECK(unixFwd.connectHost == "/tmp/b.sock");
+  CHECK(unixFwd.connectPort == static_cast<uint32_t>(-2));
+}
+
+TEST_CASE("ControlPersist restarts when the last passenger leaves", "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  persist.enabled = true;
+  persist.seconds = 1;
+
+  MuxMaster master(path, persist);
+  master.start();
+
+  MuxClient passenger(path);
+  REQUIRE(passenger.connect());
+  REQUIRE(passenger.aliveCheck());
+
+  master.notifyPrimaryClientExited();
+  // Stay connected past the persist interval. The master is not idle yet.
+  testSleepMicros(1200000);
+  REQUIRE(master.isRunning());
+  REQUIRE_FALSE(master.persistExpired());
+
+  passenger.disconnect();
+  // Idle time starts at this disconnect, so the master must still be up.
+  testSleepMicros(300000);
+  REQUIRE(master.isRunning());
+  REQUIRE_FALSE(master.persistExpired());
+
+  auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+  while (std::chrono::steady_clock::now() < deadline && master.isRunning() &&
+         !master.persistExpired()) {
+    testSleepMicros(50000);
+  }
+  REQUIRE((master.persistExpired() || !master.isRunning()));
   master.stop();
 }
 
