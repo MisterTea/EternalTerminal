@@ -55,6 +55,7 @@ class ForwardSourceHandler {
   void getActiveFds(set<int>* fds);
 
   inline SocketEndpoint getDestination() { return destination; }
+  inline SocketEndpoint getSource() { return source; }
 
  protected:
   /** @brief Socket helper used to accept connections on the source endpoint. */

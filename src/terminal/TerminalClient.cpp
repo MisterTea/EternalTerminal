@@ -619,6 +619,254 @@ void TerminalClient::run(const string& command, const bool noexit) {
   CLOG(INFO, "stdout") << "Session terminated" << endl;
 }
 
+uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,
+                                             const string& command) {
+  if (!idleServicing.load()) {
+    throw runtime_error(
+        "mux session attach is only available while ControlPersist is "
+        "servicing the transport");
+  }
+  {
+    lock_guard<mutex> guard(passengerMutex);
+    if (passenger.active) {
+      throw runtime_error("another mux passenger session is already attached");
+    }
+    passenger.inFd = inFd;
+    passenger.outFd = outFd;
+    passenger.errFd = errFd;
+    passenger.command = command;
+    passenger.active = true;
+    passenger.exitStatus.reset();
+  }
+  unique_lock<mutex> lock(passengerMutex);
+  passengerCv.wait(lock, [this]() { return passenger.exitStatus.has_value(); });
+  uint32_t status = *passenger.exitStatus;
+  passenger.active = false;
+  passenger.inFd = passenger.outFd = passenger.errFd = -1;
+  return status;
+}
+
+void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
+  idleServicing = true;
+  time_t keepaliveTime = time(NULL) + keepaliveDuration;
+  bool waitingOnKeepalive = false;
+  WriteBuffer passengerOut;
+  bool injectedPassengerCommand = false;
+
+  while (keepGoing() && !connection->isShuttingDown()) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
+
+    int passengerInFd = -1;
+    int passengerOutFd = -1;
+    {
+      lock_guard<mutex> guard(passengerMutex);
+      if (passenger.active && !passenger.exitStatus.has_value()) {
+        passengerInFd = passenger.inFd;
+        passengerOutFd = passenger.outFd;
+        if (!injectedPassengerCommand && !passenger.command.empty()) {
+          et::TerminalBuffer tb;
+          if (noPty) {
+            tb.set_buffer(passenger.command);
+          } else {
+            tb.set_buffer(passenger.command + "; exit\n");
+          }
+          passenger.command.clear();
+          injectedPassengerCommand = true;
+          try {
+            connection->writePacket(
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          } catch (...) {
+          }
+        }
+      } else if (!passenger.active) {
+        injectedPassengerCommand = false;
+      }
+    }
+
+    const int clientFd = connection->getSocketFd();
+    set<int> pfFds;
+    portForwardHandler->getForwardFds(&pfFds);
+    set<int> readyFds;
+
+#ifndef WIN32
+    vector<struct pollfd> pollFds;
+    auto watch = [&pollFds](int fd, short events) {
+      if (fd < 0) {
+        return;
+      }
+      for (auto& pollFd : pollFds) {
+        if (pollFd.fd == fd) {
+          pollFd.events |= events;
+          return;
+        }
+      }
+      pollFds.push_back({fd, events, 0});
+    };
+    if (passengerInFd >= 0) {
+      watch(passengerInFd, POLLIN);
+    }
+    if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
+      watch(passengerOutFd, POLLOUT);
+    }
+    if (clientFd > 0) {
+      watch(clientFd, POLLIN);
+    }
+    for (int fd : pfFds) {
+      watch(fd, POLLIN);
+    }
+    if (!pollFds.empty()) {
+      int rc = ::poll(pollFds.data(), static_cast<nfds_t>(pollFds.size()), 50);
+      if (rc > 0) {
+        for (const auto& pollFd : pollFds) {
+          if (pollFd.revents != 0) {
+            readyFds.insert(pollFd.fd);
+          }
+        }
+      }
+    } else {
+      this_thread::sleep_for(chrono::milliseconds(50));
+    }
+#else
+    this_thread::sleep_for(chrono::milliseconds(50));
+    (void)passengerInFd;
+    (void)passengerOutFd;
+#endif
+
+    try {
+#ifndef WIN32
+      if (passengerInFd >= 0 && readyFds.count(passengerInFd)) {
+        char b[4096];
+        ssize_t rc = ::read(passengerInFd, b, sizeof(b));
+        if (rc > 0) {
+          et::TerminalBuffer tb;
+          tb.set_buffer(string(b, rc));
+          connection->writePacket(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          keepaliveTime = time(NULL) + keepaliveDuration;
+        } else if (rc == 0 || (rc < 0 && errno != EAGAIN &&
+                               errno != EWOULDBLOCK && errno != EINTR)) {
+          lock_guard<mutex> guard(passengerMutex);
+          if (passenger.active && !passenger.exitStatus.has_value()) {
+            passenger.exitStatus = 0;
+            passengerCv.notify_all();
+          }
+        }
+      }
+#endif
+
+      if (clientFd > 0) {
+        bool haveData = true;
+#ifndef WIN32
+        haveData = readyFds.count(clientFd) != 0 || connection->hasData();
+#endif
+        while (haveData && connection->hasData()) {
+          Packet packet;
+          if (!connection->readPacket(&packet)) {
+            break;
+          }
+          auto packetType = packet.getHeader();
+          switch (TerminalPacketType(packetType)) {
+            case TerminalPacketType::TERMINAL_BUFFER: {
+              et::TerminalBuffer tb =
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
+#ifndef WIN32
+              if (passengerOutFd >= 0) {
+                passengerOut.enqueue(tb.buffer());
+              }
+#else
+              (void)tb;
+#endif
+              break;
+            }
+            case TerminalPacketType::PORT_FORWARD_DATA:
+            case TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST:
+            case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE:
+              portForwardHandler->handlePacket(packet, connection);
+              break;
+            case TerminalPacketType::KEEP_ALIVE:
+              waitingOnKeepalive = false;
+              break;
+            case TerminalPacketType::TERMINAL_CLOSE: {
+              lock_guard<mutex> guard(passengerMutex);
+              if (passenger.active && !passenger.exitStatus.has_value()) {
+                passenger.exitStatus = 0;
+                passengerCv.notify_all();
+              }
+              break;
+            }
+            default:
+              break;
+          }
+          haveData = connection->hasData();
+        }
+      }
+
+#ifndef WIN32
+      if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
+        size_t count = 0;
+        const char* data = passengerOut.peekData(&count);
+        if (data != nullptr && count > 0) {
+          ssize_t written = ::write(passengerOutFd, data, count);
+          if (written > 0) {
+            passengerOut.consume(static_cast<size_t>(written));
+          }
+        }
+      }
+#endif
+
+      if (clientFd > 0 && keepaliveTime < time(NULL)) {
+        keepaliveTime = time(NULL) + keepaliveDuration;
+        if (waitingOnKeepalive) {
+          connection->closeSocketAndMaybeReconnect();
+          waitingOnKeepalive = false;
+        } else {
+          connection->writePacket(Packet(TerminalPacketType::KEEP_ALIVE, ""));
+          waitingOnKeepalive = true;
+        }
+      }
+
+      vector<PortForwardDestinationRequest> requests;
+      vector<PortForwardData> dataToSend;
+#ifndef WIN32
+      portForwardHandler->update(&requests, &dataToSend, &readyFds);
+#else
+      portForwardHandler->update(&requests, &dataToSend);
+#endif
+      for (auto& pfr : requests) {
+        connection->writePacket(
+            Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
+                   protoToString(pfr)));
+        keepaliveTime = time(NULL) + keepaliveDuration;
+      }
+      for (auto& pwd : dataToSend) {
+        connection->writePacket(
+            Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
+        keepaliveTime = time(NULL) + keepaliveDuration;
+      }
+    } catch (const runtime_error& re) {
+      LOG(WARNING) << "ControlPersist service error: " << re.what();
+      lock_guard<mutex> guard(passengerMutex);
+      if (passenger.active && !passenger.exitStatus.has_value()) {
+        passenger.exitStatus = 1;
+        passengerCv.notify_all();
+      }
+      break;
+    }
+  }
+
+  lock_guard<mutex> guard(passengerMutex);
+  if (passenger.active && !passenger.exitStatus.has_value()) {
+    passenger.exitStatus = 1;
+    passengerCv.notify_all();
+  }
+  idleServicing = false;
+}
+
 #ifdef WIN32
 BOOL WINAPI TerminalClient::consoleCtrlHandler(DWORD ctrlType) {
   switch (ctrlType) {

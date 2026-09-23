@@ -53,6 +53,35 @@ inline MuxOpenForwardRequest muxForwardFromTunnel(
   return fwd;
 }
 
+/** @brief Stream-local (unix socket) sentinel used by PROTOCOL.mux. */
+constexpr uint32_t MUX_STREAM_LOCAL_PORT = static_cast<uint32_t>(-2);
+
+/**
+ * @brief Build a PortForwardSourceRequest from mux OPEN_FWD fields.
+ * Preserves remote connect hosts and stream-local socket paths; never
+ * collapses to listenPort:connectPort alone.
+ */
+inline PortForwardSourceRequest portForwardRequestFromMux(
+    const MuxOpenForwardRequest& fwd) {
+  PortForwardSourceRequest pfsr;
+  if (fwd.listenPort == MUX_STREAM_LOCAL_PORT) {
+    pfsr.mutable_source()->set_name(fwd.listenHost);
+  } else {
+    pfsr.mutable_source()->set_name(fwd.listenHost.empty() ? "localhost"
+                                                           : fwd.listenHost);
+    pfsr.mutable_source()->set_port(static_cast<int32_t>(fwd.listenPort));
+  }
+  if (fwd.connectPort == MUX_STREAM_LOCAL_PORT) {
+    pfsr.mutable_destination()->set_name(fwd.connectHost);
+  } else {
+    if (!fwd.connectHost.empty()) {
+      pfsr.mutable_destination()->set_name(fwd.connectHost);
+    }
+    pfsr.mutable_destination()->set_port(static_cast<int32_t>(fwd.connectPort));
+  }
+  return pfsr;
+}
+
 /**
  * @brief OpenSSH mux client that attaches to a ControlMaster ControlPath.
  */

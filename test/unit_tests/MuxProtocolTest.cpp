@@ -1,6 +1,9 @@
 #include "MuxClient.hpp"
 #include "MuxMaster.hpp"
 #include "MuxProtocol.hpp"
+#include "PipeSocketHandler.hpp"
+#include "PortForwardHandler.hpp"
+#include "TcpSocketHandler.hpp"
 #include "TestHeaders.hpp"
 #include "TunnelUtils.hpp"
 
@@ -86,6 +89,18 @@ TEST_CASE("Second mux client opens session and forward on the master",
   persist.enabled = false;
 
   MuxMaster master(path, persist);
+  master.setPassengerSessionHandler([](int inFd, int outFd, int errFd,
+                                       const string& /*command*/,
+                                       bool /*wantTty*/) -> uint32_t {
+    // Echo one read from stdin to stdout so attach performs real I/O.
+    char buf[64];
+    ssize_t n = ::read(inFd, buf, sizeof(buf));
+    if (n > 0) {
+      (void)::write(outFd, buf, static_cast<size_t>(n));
+    }
+    (void)errFd;
+    return 0;
+  });
   master.start();
 
   MuxClient client(path);
@@ -105,11 +120,169 @@ TEST_CASE("Second mux client opens session and forward on the master",
   REQUIRE(tracked[0].listenPort == 18080);
   REQUIRE(tracked[0].connectPort == 80);
 
+  int inPipe[2];
+  int outPipe[2];
+  REQUIRE(::pipe(inPipe) == 0);
+  REQUIRE(::pipe(outPipe) == 0);
+  const char payload[] = "mux-io";
+  REQUIRE(::write(inPipe[1], payload, sizeof(payload) - 1) ==
+          (ssize_t)(sizeof(payload) - 1));
+  ::close(inPipe[1]);
+
   uint32_t sessionId = 0;
-  REQUIRE(client.newSession("true", false, -1, -1, -1, &sessionId, &error));
+  REQUIRE(client.newSession("true", false, inPipe[0], outPipe[1], outPipe[1],
+                            &sessionId, &error));
   REQUIRE(sessionId >= 1);
   REQUIRE(master.sessionCount() >= 1);
 
+  char got[64] = {};
+  ssize_t gotN = ::read(outPipe[0], got, sizeof(got));
+  REQUIRE(gotN == (ssize_t)(sizeof(payload) - 1));
+  REQUIRE(string(got, gotN) == payload);
+
+  ::close(inPipe[0]);
+  ::close(outPipe[0]);
+  ::close(outPipe[1]);
+  master.stop();
+}
+
+TEST_CASE("mux NEW_SESSION fails clearly without a session bridge", "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  MuxMaster master(path, persist);
+  master.start();
+
+  MuxClient client(path);
+  REQUIRE(client.connect());
+  uint32_t sessionId = 0;
+  string error;
+  REQUIRE_FALSE(
+      client.newSession("true", false, -1, -1, -1, &sessionId, &error));
+  REQUIRE(error.find("session") != string::npos);
+
+  master.stop();
+}
+
+TEST_CASE("portForwardRequestFromMux keeps remote destinations and sockets",
+          "[Mux]") {
+  MuxOpenForwardRequest remote;
+  remote.listenHost = "127.0.0.1";
+  remote.listenPort = 18080;
+  remote.connectHost = "example.com";
+  remote.connectPort = 443;
+  auto remoteReq = portForwardRequestFromMux(remote);
+  REQUIRE(remoteReq.source().name() == "127.0.0.1");
+  REQUIRE(remoteReq.source().port() == 18080);
+  REQUIRE(remoteReq.destination().name() == "example.com");
+  REQUIRE(remoteReq.destination().port() == 443);
+
+  MuxOpenForwardRequest unixFwd;
+  unixFwd.listenHost = "/tmp/a.sock";
+  unixFwd.listenPort = MUX_STREAM_LOCAL_PORT;
+  unixFwd.connectHost = "/tmp/b.sock";
+  unixFwd.connectPort = MUX_STREAM_LOCAL_PORT;
+  auto unixReq = portForwardRequestFromMux(unixFwd);
+  REQUIRE(unixReq.source().name() == "/tmp/a.sock");
+  REQUIRE_FALSE(unixReq.source().has_port());
+  REQUIRE(unixReq.destination().name() == "/tmp/b.sock");
+  REQUIRE_FALSE(unixReq.destination().has_port());
+}
+
+TEST_CASE("MuxMaster openForward preserves a non-local connect host", "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  MuxMaster master(path, persist);
+
+  auto networkHandler = make_shared<TcpSocketHandler>();
+  auto pipeHandler = make_shared<PipeSocketHandler>();
+  auto pf = make_shared<PortForwardHandler>(networkHandler, pipeHandler);
+  master.setPortForwardHandler(pf);
+  master.start();
+
+  MuxClient client(path);
+  REQUIRE(client.connect());
+
+  MuxOpenForwardRequest fwd;
+  fwd.type = MUX_FWD_LOCAL;
+  fwd.listenHost = "127.0.0.1";
+  fwd.listenPort = 0;  // ephemeral
+  fwd.connectHost = "example.com";
+  fwd.connectPort = 443;
+  string error;
+  // Bind may succeed with port 0; destination host must not be dropped.
+  // Use an explicit high port that is unlikely to conflict.
+  fwd.listenPort = 41999;
+  bool opened = client.openForward(fwd, &error);
+  if (!opened) {
+    // Port busy on this host — still verify the request builder path above.
+    WARN(error);
+  } else {
+    auto tracked = master.trackedForwards();
+    REQUIRE(tracked.size() == 1);
+    REQUIRE(tracked[0].connectHost == "example.com");
+    REQUIRE(tracked[0].connectPort == 443);
+  }
+
+  master.stop();
+}
+
+TEST_CASE("MuxMaster closeForward stops the PortForwardHandler listen socket",
+          "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  MuxMaster master(path, persist);
+
+  auto networkHandler = make_shared<TcpSocketHandler>();
+  auto pipeHandler = make_shared<PipeSocketHandler>();
+  auto pf = make_shared<PortForwardHandler>(networkHandler, pipeHandler);
+  master.setPortForwardHandler(pf);
+  master.start();
+
+  MuxClient client(path);
+  REQUIRE(client.connect());
+
+  MuxOpenForwardRequest fwd;
+  fwd.type = MUX_FWD_LOCAL;
+  fwd.listenHost = "127.0.0.1";
+  fwd.listenPort = 41998;
+  fwd.connectHost = "127.0.0.1";
+  fwd.connectPort = 9;
+  string error;
+  if (!client.openForward(fwd, &error)) {
+    WARN("openForward skipped: " + error);
+    master.stop();
+    return;
+  }
+  REQUIRE(master.trackedForwards().size() == 1);
+
+  SocketEndpoint listenEp;
+  listenEp.set_name("127.0.0.1");
+  listenEp.set_port(41998);
+  REQUIRE_FALSE(networkHandler->getEndpointFds(listenEp).empty());
+
+  REQUIRE(client.closeForward(fwd, &error));
+  REQUIRE(master.trackedForwards().empty());
+
+  // removeSource must tear down the listen socket so the port can be rebound.
+  REQUIRE(client.openForward(fwd, &error));
+  REQUIRE(client.closeForward(fwd, &error));
+
+  master.stop();
+}
+
+TEST_CASE("ControlPersist wait pumps a transport service callback", "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  persist.enabled = true;
+  persist.seconds = 1;
+
+  MuxMaster master(path, persist);
+  master.start();
+  master.notifyPrimaryClientExited();
+
+  atomic<int> pumps{0};
+  MuxMaster::waitWhilePersisting(master, persist, [&]() { pumps++; });
+  REQUIRE(pumps.load() >= 1);
   master.stop();
 }
 

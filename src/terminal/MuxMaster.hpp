@@ -29,6 +29,14 @@ class MuxMaster {
   MuxMaster& operator=(const MuxMaster&) = delete;
 
   void setPortForwardHandler(shared_ptr<PortForwardHandler> handler);
+  /**
+   * @brief Wire passenger NEW_SESSION stdio into the live ET session.
+   * Called on a mux client thread; should block until the passenger exits and
+   * return its status. When unset, NEW_SESSION fails clearly.
+   */
+  using PassengerSessionHandler = function<uint32_t(
+      int inFd, int outFd, int errFd, const string& command, bool wantTty)>;
+  void setPassengerSessionHandler(PassengerSessionHandler handler);
   /** @brief Bind ControlPath and start the accept/serve thread. */
   void start();
   void stop();
@@ -48,6 +56,15 @@ class MuxMaster {
 
   /** @brief True once the persist window elapsed and the master is stopping. */
   bool persistExpired() const;
+
+  /**
+   * @brief Keep pumping `serviceTransport` until ControlPersist ends.
+   * Callers must service keepalives and port forwards here; sleeping alone
+   * lets the ET transport die while the ControlPath process stays up.
+   */
+  static void waitWhilePersisting(MuxMaster& master,
+                                  const ControlPersistConfig& persist,
+                                  const function<void()>& serviceTransport);
 
  private:
   void acceptLoop();
@@ -77,6 +94,7 @@ class MuxMaster {
   string path;
   ControlPersistConfig persistConfig;
   shared_ptr<PortForwardHandler> portForwardHandler;
+  PassengerSessionHandler passengerSessionHandler;
 
   int listenFd = -1;
   vector<ClientSlot> clientSlots;

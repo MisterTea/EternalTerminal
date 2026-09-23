@@ -679,19 +679,24 @@ int main(int argc, char** argv) {
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
       if (muxOptions.controlPersist.enabled) {
-        // Keep the process (and et session teardown delayed via mux) until
-        // ControlPersist elapses or a mux client sends TERMINATE.
-        while (muxMaster->isRunning()) {
-          if (muxMaster->persistExpired()) {
-            break;
+        // Passenger attach is only available while ControlPersist keeps the
+        // transport serviced; interactive primary sessions keep the console.
+        bool handlerReady = false;
+        terminalClient.serviceIdleUntil([&]() {
+          // Register the handler on the first service tick so idleServicing
+          // is already true before any passenger can attach.
+          if (!handlerReady) {
+            muxMaster->setPassengerSessionHandler(
+                [&terminalClient](int inFd, int outFd, int errFd,
+                                  const string& passengerCommand,
+                                  bool /*wantTty*/) -> uint32_t {
+                  return terminalClient.runPassengerSession(inFd, outFd, errFd,
+                                                            passengerCommand);
+                });
+            handlerReady = true;
           }
-          if (muxOptions.controlPersist.seconds == 0) {
-            // Forever: wait until terminate or stop.
-            this_thread::sleep_for(chrono::milliseconds(200));
-            continue;
-          }
-          this_thread::sleep_for(chrono::milliseconds(50));
-        }
+          return muxMaster->isRunning() && !muxMaster->persistExpired();
+        });
       }
       muxMaster->stop();
     }

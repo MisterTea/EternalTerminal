@@ -1,7 +1,7 @@
 #include "MuxMaster.hpp"
 
+#include "MuxClient.hpp"
 #include "PipeSocketHandler.hpp"
-#include "TunnelUtils.hpp"
 
 #ifdef WIN32
 // clang-format off
@@ -29,6 +29,32 @@ MuxMaster::~MuxMaster() { stop(); }
 void MuxMaster::setPortForwardHandler(shared_ptr<PortForwardHandler> handler) {
   lock_guard<recursive_mutex> guard(mutex);
   portForwardHandler = std::move(handler);
+}
+
+void MuxMaster::setPassengerSessionHandler(PassengerSessionHandler handler) {
+  lock_guard<recursive_mutex> guard(mutex);
+  passengerSessionHandler = std::move(handler);
+}
+
+void MuxMaster::waitWhilePersisting(MuxMaster& master,
+                                    const ControlPersistConfig& persist,
+                                    const function<void()>& serviceTransport) {
+  if (!persist.enabled) {
+    return;
+  }
+  while (master.isRunning()) {
+    if (master.persistExpired()) {
+      break;
+    }
+    if (serviceTransport) {
+      serviceTransport();
+    }
+    if (persist.seconds == 0) {
+      this_thread::sleep_for(chrono::milliseconds(200));
+    } else {
+      this_thread::sleep_for(chrono::milliseconds(50));
+    }
+  }
 }
 
 string MuxMaster::controlPath() const { return path; }
@@ -415,21 +441,17 @@ bool MuxMaster::openForward(const MuxTrackedForward& fwd, string* error) {
 
   if (portForwardHandler && fwd.type == MUX_FWD_LOCAL) {
     try {
-      string tunnel =
-          to_string(fwd.listenPort) + ":" + to_string(fwd.connectPort);
-      if (!fwd.listenHost.empty() && fwd.listenHost != "localhost" &&
-          fwd.listenHost != "127.0.0.1") {
-        tunnel = fwd.listenHost + ":" + to_string(fwd.listenPort) + ":" +
-                 (fwd.connectHost.empty() ? "localhost" : fwd.connectHost) +
-                 ":" + to_string(fwd.connectPort);
-      }
-      auto requests = parseRangesToRequests(tunnel);
-      for (auto& pfsr : requests) {
-        auto resp = portForwardHandler->createSource(pfsr, nullptr, -1, -1);
-        if (resp.has_error()) {
-          *error = resp.error();
-          return false;
-        }
+      MuxOpenForwardRequest request;
+      request.type = fwd.type;
+      request.listenHost = fwd.listenHost;
+      request.listenPort = fwd.listenPort;
+      request.connectHost = fwd.connectHost;
+      request.connectPort = fwd.connectPort;
+      PortForwardSourceRequest pfsr = portForwardRequestFromMux(request);
+      auto resp = portForwardHandler->createSource(pfsr, nullptr, -1, -1);
+      if (resp.has_error()) {
+        *error = resp.error();
+        return false;
       }
     } catch (const std::exception& ex) {
       *error = ex.what();
@@ -448,6 +470,16 @@ bool MuxMaster::closeForward(const MuxTrackedForward& fwd) {
       [&](const MuxTrackedForward& f) { return forwardsEqual(f, fwd); });
   if (it == forwards.end()) {
     return false;
+  }
+  if (portForwardHandler && fwd.type == MUX_FWD_LOCAL) {
+    MuxOpenForwardRequest request;
+    request.type = fwd.type;
+    request.listenHost = fwd.listenHost;
+    request.listenPort = fwd.listenPort;
+    request.connectHost = fwd.connectHost;
+    request.connectPort = fwd.connectPort;
+    PortForwardSourceRequest pfsr = portForwardRequestFromMux(request);
+    portForwardHandler->removeSource(pfsr);
   }
   forwards.erase(it, forwards.end());
   return true;
@@ -547,6 +579,20 @@ bool MuxMaster::handleRequest(MuxConnection* conn, uint32_t type,
                             "did not receive file descriptors");
       }
 
+      PassengerSessionHandler handler;
+      {
+        lock_guard<recursive_mutex> guard(mutex);
+        handler = passengerSessionHandler;
+      }
+      if (!handler) {
+        ::close(inFd);
+        ::close(outFd);
+        ::close(errFd);
+        return replyFailure(conn, MUX_S_FAILURE, requestId,
+                            "mux session attach requires an active session "
+                            "bridge");
+      }
+
       uint32_t sessionId = 0;
       {
         lock_guard<recursive_mutex> guard(mutex);
@@ -561,8 +607,13 @@ bool MuxMaster::handleRequest(MuxConnection* conn, uint32_t type,
         return false;
       }
 
-      // Shared command channel is acknowledged on the master; close passenger
-      // fds and report a clean exit so attaching clients can finish.
+      uint32_t exitStatus = 255;
+      try {
+        exitStatus = handler(inFd, outFd, errFd, command, wantTty);
+      } catch (const std::exception& ex) {
+        LOG(WARNING) << "Mux passenger session failed: " << ex.what();
+        exitStatus = 255;
+      }
       ::close(inFd);
       ::close(outFd);
       ::close(errFd);
@@ -570,7 +621,7 @@ bool MuxMaster::handleRequest(MuxConnection* conn, uint32_t type,
       MuxBuffer exitMsg;
       exitMsg.putU32(MUX_S_EXIT_MESSAGE);
       exitMsg.putU32(sessionId);
-      exitMsg.putU32(0);
+      exitMsg.putU32(exitStatus);
       conn->writePacket(exitMsg);
       return true;
     }

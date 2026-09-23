@@ -45,6 +45,12 @@ class PortForwardHandler {
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
 
+  /**
+   * @brief Stops listening for a previously created source forward.
+   * @return true when a matching source handler was removed.
+   */
+  bool removeSource(const PortForwardSourceRequest& pfsr);
+
   /** @brief Tears down the source socket associated with `fd`. */
   void closeSourceFd(int fd);
   /** @brief Tracks a new source socket using the provided logical identifier.
@@ -80,6 +86,11 @@ class PortForwardHandler {
    * a poller's only signal that it must re-register. */
   uint64_t forwardFdsGeneration = 0;
   vector<string> temporaryDirectories;
+  /**
+   * @brief Serializes createSource/update/handlePacket/removeSource against
+   * concurrent mux client threads and the TerminalClient event loop.
+   */
+  mutable recursive_mutex handlerMutex;
 };
 }  // namespace et
 

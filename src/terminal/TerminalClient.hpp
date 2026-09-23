@@ -3,6 +3,9 @@
 
 #include <atomic>
 #include <chrono>
+#include <condition_variable>
+#include <functional>
+#include <optional>
 
 #include "ClientConnection.hpp"
 #include "Console.hpp"
@@ -43,6 +46,18 @@ class TerminalClient {
   /** @brief Runs the interactive session for `command`, optionally staying
    * alive. */
   void run(const string& command, const bool noexit);
+  /**
+   * @brief After `run()` returns, keep keepalives and port forwards alive
+   * until `keepGoing` is false (ControlPersist). Also services any passenger
+   * session attached via `runPassengerSession`.
+   */
+  void serviceIdleUntil(const function<bool()>& keepGoing);
+  /**
+   * @brief Block until a mux passenger's stdio has been bridged through the
+   * live ET connection by `serviceIdleUntil` / `run`, then return its status.
+   */
+  uint32_t runPassengerSession(int inFd, int outFd, int errFd,
+                               const string& command);
   /** @brief Port-forward handler owned by this client (for mux OPEN_FWD). */
   shared_ptr<PortForwardHandler> getPortForwardHandler() const {
     return portForwardHandler;
@@ -89,6 +104,21 @@ class TerminalClient {
   int keepaliveDuration;
   /** @brief True when this session uses the raw pipe command channel. */
   bool noPty;
+
+  struct PassengerAttach {
+    int inFd = -1;
+    int outFd = -1;
+    int errFd = -1;
+    string command;
+    bool active = false;
+    optional<uint32_t> exitStatus;
+  };
+  PassengerAttach passenger;
+  mutex passengerMutex;
+  condition_variable passengerCv;
+  /** @brief True while `serviceIdleUntil` may accept mux passengers. */
+  atomic<bool> idleServicing{false};
+
   static std::atomic<bool> closeOnHangup;
   static std::atomic<bool> hangupCloseRequested;
   static std::atomic<bool> hangupCloseCompleted;
