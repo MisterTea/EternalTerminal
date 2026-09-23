@@ -214,22 +214,59 @@ TEST_CASE_METHOD(TerminalSessionFixture,
   checkSessionClosed();
 }
 
+TEST_CASE("a forward wall-clock jump does not expire a fresh disconnect",
+          "[TerminalServerLifecycle]") {
+  DisconnectDeadline deadline;
+  const auto start =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000000));
+  CHECK_FALSE(disconnectDeadlineReached(&deadline, start, false, 3600));
+  CHECK(deadline.started);
+  // Ten steady seconds must not count as the old wall-clock hour jump.
+  CHECK_FALSE(disconnectDeadlineReached(
+      &deadline, start + std::chrono::seconds(10), false, 3600));
+  CHECK(disconnectDeadlineReached(&deadline, start + std::chrono::seconds(3600),
+                                  false, 3600));
+}
+
+TEST_CASE("disconnect expiry rechecks a socket that reconnected",
+          "[TerminalServerLifecycle]") {
+  DisconnectDeadline deadline;
+  const auto start =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000));
+  CHECK_FALSE(disconnectDeadlineReached(&deadline, start, false, 1));
+  // Stale snapshot says disconnected and the timeout has elapsed, but the
+  // live fd is connected again.
+  CHECK_FALSE(disconnectExpiryClosesSession(
+      -1, 8, false, &deadline, start + std::chrono::seconds(2), 1));
+  CHECK_FALSE(disconnectExpiryClosesSession(
+      -1, -1, true, &deadline, start + std::chrono::seconds(2), 1));
+  CHECK(disconnectExpiryClosesSession(-1, -1, false, &deadline,
+                                      start + std::chrono::seconds(2), 1));
+}
+
 TEST_CASE("disconnect deadline stays idle until the timeout elapses",
           "[TerminalServerLifecycle]") {
-  time_t since = 0;
-  CHECK_FALSE(disconnectDeadlineReached(&since, 1000, false, 0));
-  CHECK(since == 0);
+  DisconnectDeadline deadline;
+  const auto t0 =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000));
+  CHECK_FALSE(disconnectDeadlineReached(&deadline, t0, false, 0));
+  CHECK_FALSE(deadline.started);
 
-  CHECK_FALSE(disconnectDeadlineReached(&since, 1000, false, 60));
-  CHECK(since == 1000);
-  CHECK_FALSE(disconnectDeadlineReached(&since, 1059, false, 60));
-  CHECK(disconnectDeadlineReached(&since, 1060, false, 60));
+  CHECK_FALSE(disconnectDeadlineReached(&deadline, t0, false, 60));
+  CHECK(deadline.started);
+  CHECK(deadline.since == t0);
+  CHECK_FALSE(disconnectDeadlineReached(
+      &deadline, t0 + std::chrono::seconds(59), false, 60));
+  CHECK(disconnectDeadlineReached(&deadline, t0 + std::chrono::seconds(60),
+                                  false, 60));
 
-  CHECK_FALSE(disconnectDeadlineReached(&since, 2000, true, 60));
-  CHECK(since == 0);
-  CHECK_FALSE(disconnectDeadlineReached(&since, 2000, false, 60));
-  CHECK(since == 2000);
-  CHECK_FALSE(disconnectDeadlineReached(nullptr, 3000, false, 60));
+  CHECK_FALSE(disconnectDeadlineReached(
+      &deadline, t0 + std::chrono::seconds(1000), true, 60));
+  CHECK_FALSE(deadline.started);
+  CHECK_FALSE(disconnectDeadlineReached(
+      &deadline, t0 + std::chrono::seconds(1000), false, 60));
+  CHECK(deadline.started);
+  CHECK_FALSE(disconnectDeadlineReached(nullptr, t0, false, 60));
 }
 
 TEST_CASE_METHOD(TerminalSessionFixture,

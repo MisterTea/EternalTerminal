@@ -1,6 +1,8 @@
 #ifndef __ET_TERMINAL_SERVER__
 #define __ET_TERMINAL_SERVER__
 
+#include <chrono>
+
 #include "ClientConnection.hpp"
 #include "CryptoHandler.hpp"
 #include "DaemonCreator.hpp"
@@ -88,26 +90,49 @@ class TerminalServer : public ServerConnection {
   SocketEndpoint routerEndpoint;
 };
 /**
- * @brief Tracks how long a terminal has been without a client.
+ * @brief Monotonic stamp for how long a terminal has been without a client.
  *
  * A non-positive timeout never fires. A connected client clears the stamp.
  * The first disconnected observation records `now` and does not fire; a later
- * observation fires once `now - stamp` reaches the timeout.
+ * observation fires once steady time reaches the timeout. Wall-clock jumps
+ * do not move `std::chrono::steady_clock`.
  */
-inline bool disconnectDeadlineReached(time_t* disconnectedSince, time_t now,
+struct DisconnectDeadline {
+  std::chrono::steady_clock::time_point since{};
+  bool started = false;
+};
+
+inline bool disconnectDeadlineReached(DisconnectDeadline* deadline,
+                                      std::chrono::steady_clock::time_point now,
                                       bool connected, int timeoutSec) {
-  if (disconnectedSince == nullptr) {
+  if (deadline == nullptr) {
     return false;
   }
   if (timeoutSec <= 0 || connected) {
-    *disconnectedSince = 0;
+    deadline->started = false;
     return false;
   }
-  if (*disconnectedSince == 0) {
-    *disconnectedSince = now;
+  if (!deadline->started) {
+    deadline->since = now;
+    deadline->started = true;
     return false;
   }
-  return now - *disconnectedSince >= timeoutSec;
+  return now - deadline->since >= std::chrono::seconds(timeoutSec);
+}
+
+/**
+ * @brief True when a stale disconnect snapshot should close the session.
+ * `currentSocketFd > 0` means a reconnect already landed and must win.
+ */
+inline bool disconnectExpiryClosesSession(
+    int observedSocketFd, int currentSocketFd, bool alreadyShuttingDown,
+    DisconnectDeadline* deadline, std::chrono::steady_clock::time_point now,
+    int timeoutSec) {
+  if (alreadyShuttingDown || currentSocketFd > 0) {
+    return false;
+  }
+  const bool stillConnected = observedSocketFd > 0;
+  return disconnectDeadlineReached(deadline, now, stillConnected, timeoutSec);
 }
 
 }  // namespace et
