@@ -20,7 +20,8 @@ enum TerminalPacketType {
 message TerminalBuffer {
   optional bytes buffer = 1;
   // When true, buffer is remote stderr (raw pipe / -T sessions only).
-  optional bool stderr = 2 [default = false];
+  // Named is_stderr (not stderr): musl #defines stderr as a macro.
+  optional bool is_stderr = 2 [default = false];
 }
 
 message TerminalInfo {

@@ -503,7 +503,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
               et::TerminalBuffer tb =
                   stringToProto<et::TerminalBuffer>(packet.getPayload());
               keepaliveTime = time(NULL) + keepaliveDuration;
-              if (tb.stderr()) {
+              if (tb.is_stderr()) {
 #ifdef WIN32
                 auto hstderr = GetStdHandle(STD_ERROR_HANDLE);
                 DWORD written = 0;

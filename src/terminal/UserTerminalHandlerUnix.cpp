@@ -47,7 +47,7 @@ void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
     TerminalBuffer tb;
     tb.set_buffer(string(data, length));
     if (isStderr) {
-      tb.set_stderr(true);
+      tb.set_is_stderr(true);
     }
     socketHandler->writePacket(
         routerFd,
