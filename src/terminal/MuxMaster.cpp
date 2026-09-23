@@ -4,7 +4,10 @@
 #include "TunnelUtils.hpp"
 
 #ifdef WIN32
+// clang-format off
+#include <winsock2.h>
 #include <afunix.h>
+// clang-format on
 #endif
 
 namespace et {
@@ -131,7 +134,11 @@ void MuxMaster::start() {
 void MuxMaster::closeListenFd() {
   lock_guard<recursive_mutex> guard(mutex);
   if (listenFd >= 0) {
+#ifdef WIN32
+    ::shutdown(listenFd, SD_BOTH);
+#else
     ::shutdown(listenFd, SHUT_RDWR);
+#endif
     ::close(listenFd);
     listenFd = -1;
   }
@@ -152,7 +159,11 @@ void MuxMaster::stop() {
   }
   for (int fd : clientFds) {
     if (fd >= 0) {
+#ifdef WIN32
+      ::shutdown(fd, SD_BOTH);
+#else
       ::shutdown(fd, SHUT_RDWR);
+#endif
     }
   }
   if (worker.joinable()) {

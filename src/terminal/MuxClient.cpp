@@ -4,7 +4,10 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #else
+// clang-format off
+#include <winsock2.h>
 #include <afunix.h>
+// clang-format on
 #endif
 
 namespace et {
