@@ -149,6 +149,10 @@ TEST_CASE("Raw command channel: separate streams and no shell ; exit inject",
   auto collectStdout = async(std::launch::async, [&]() {
     while (std::chrono::steady_clock::now() < deadline) {
       try {
+        if (!fakeConsole->isSetup()) {
+          std::this_thread::sleep_for(std::chrono::milliseconds(20));
+          continue;
+        }
         stdoutCollected += fakeConsole->getTerminalData(1);
         if (stdoutCollected.find("OUT") != string::npos) {
           return;
