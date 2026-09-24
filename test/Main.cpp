@@ -1,7 +1,6 @@
 #define CATCH_CONFIG_RUNNER
 
 #include <cctype>
-#include <cstdlib>
 #include <cstring>
 #include <iostream>
 
@@ -140,6 +139,11 @@ int main(int argc, char** argv) {
   el::Loggers::flushAll();
   el::Loggers::unregisterLogger("default");
   el::Loggers::unregisterLogger("stdout");
+  // Destroy easylogging's process-global Storage on this thread. Leaving it
+  // for static destruction races other globals under TSan, which then exits
+  // non-zero after Catch has already printed success and skips gcov's atexit
+  // flush.
+  el::Helpers::setStorage(nullptr);
 
   try {
     fs::remove_all(logDirectory);
@@ -147,8 +151,5 @@ int main(int argc, char** argv) {
     std::cerr << "Failed to remove test log directory " << logDirectory << ": "
               << e.what() << '\n';
   }
-  // Linux TSan aborts in static destructors after Catch has already printed
-  // success, and ctest then records a failure with no sanitizer report.
-  // Logging and telemetry are already shut down; skip the rest of process exit.
-  std::_Exit(result);
+  return result;
 }
