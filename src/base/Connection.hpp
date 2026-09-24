@@ -112,7 +112,8 @@ class Connection {
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd);
+  bool recover(int newSocketFd, bool forceReset = false,
+               const string& resetSalt = string());
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;

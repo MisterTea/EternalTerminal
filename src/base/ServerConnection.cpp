@@ -67,6 +67,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     clientId = request.clientid();
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
+    string clientKey;
 
     {
       lock_guard<std::recursive_mutex> guard(classMutex);
@@ -76,12 +77,38 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       LOG(INFO) << "Got client with id: " << clientId;
 
       clientKeyExistsNow = clientKeyExists(clientId);
-      if (clientConnectionExists(clientId)) {
+      if (clientKeyExistsNow) {
+        clientKey = clientKeys.at(clientId);
+      }
+    }
+
+    // Legacy handshake for peers without the challenge capability. Remove at
+    // the next PROTOCOL_VERSION bump.
+    const bool legacyPeer = !request.supportschallenge();
+    bool authenticated = false;
+    string authChallenge;
+    const bool resetIntent = !legacyPeer && request.resetintent();
+    if (clientKeyExistsNow) {
+      authenticated =
+          legacyPeer ||
+          authenticateClient(clientSocketFd, clientId, clientKey,
+                             request.version(), resetIntent, &authChallenge);
+    }
+
+    {
+      lock_guard<std::recursive_mutex> guard(classMutex);
+      // The key may have been removed or replaced during the challenge.
+      auto keyIt = clientKeys.find(clientId);
+      if (keyIt == clientKeys.end() || keyIt->second != clientKey) {
+        authenticated = false;
+        clientKeyExistsNow = false;
+      }
+      if (authenticated && clientConnectionExists(clientId)) {
         serverClientState = getClientConnection(clientId);
-      } else if (clientKeyExistsNow) {
+      } else if (authenticated) {
         createdClientConnection = true;
         serverClientState.reset(new ServerClientConnection(
-            socketHandler, clientId, clientSocketFd, clientKeys.at(clientId)));
+            socketHandler, clientId, clientSocketFd, clientKey));
         clientConnections.insert(std::make_pair(clientId, serverClientState));
       }
     }
@@ -96,9 +123,23 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->writeProto(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
+    } else if (!authenticated) {
+      LOG(WARNING) << "Rejecting client with invalid authentication proof";
+      et::ConnectResponse response;
+      response.set_status(INVALID_KEY);
+      response.set_error("Client authentication failed");
+      socketHandler->writeProto(clientSocketFd, response, true);
+      socketHandler->close(clientSocketFd);
     } else if (createdClientConnection) {
       et::ConnectResponse response;
       response.set_status(NEW_CLIENT);
+      if (!legacyPeer) {
+        response.set_resetrequired(false);
+        response.set_resetsalt(string());
+        response.set_resetproof(CryptoHandler::resetDecisionProof(
+            clientKey, clientId, PROTOCOL_VERSION, authChallenge, NEW_CLIENT,
+            false, string()));
+      }
       socketHandler->writeProto(clientSocketFd, response, true);
 
       LOG(INFO) << "New client.  Setting up connection";
@@ -115,8 +156,19 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         }
       }
     } else {
+      const string resetSalt =
+          resetIntent
+              ? CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES)
+              : string();
       et::ConnectResponse response;
       response.set_status(RETURNING_CLIENT);
+      if (!legacyPeer) {
+        response.set_resetrequired(resetIntent);
+        response.set_resetsalt(resetSalt);
+        response.set_resetproof(CryptoHandler::resetDecisionProof(
+            clientKey, clientId, PROTOCOL_VERSION, authChallenge,
+            RETURNING_CLIENT, resetIntent, resetSalt));
+      }
       socketHandler->writeProto(clientSocketFd, response, true);
 
       // Deliberately not under classMutex: recover() blocks on socket I/O for
@@ -124,7 +176,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       // across that stalls the accept loop until the reconnect gives up.
       // serverClientState keeps the connection alive, and recoverClient()
       // serializes concurrent reconnects on the connection's own mutex.
-      serverClientState->recoverClient(clientSocketFd);
+      serverClientState->recoverClient(clientSocketFd, resetIntent, resetSalt);
     }
   } catch (const runtime_error& err) {
     // Comm failed, close the connection
@@ -142,6 +194,28 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->close(clientSocketFd);
     }
   }
+}
+
+bool ServerConnection::authenticateClient(int clientSocketFd,
+                                          const string& clientId,
+                                          const string& clientKey,
+                                          int protocolVersion, bool resetIntent,
+                                          string* challengeOut) {
+  const string challenge =
+      CryptoHandler::randomBytes(CryptoHandler::AUTH_CHALLENGE_BYTES);
+  et::ConnectResponse challengeResponse;
+  challengeResponse.set_authchallenge(challenge);
+  socketHandler->writeProto(clientSocketFd, challengeResponse, true);
+
+  const et::ConnectAuth auth = socketHandler->readProto<et::ConnectAuth>(
+      clientSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+  const bool verified = CryptoHandler::verifyConnectionProof(
+      auth.proof(), clientKey, clientId, protocolVersion, challenge,
+      resetIntent);
+  if (verified) {
+    *challengeOut = challenge;
+  }
+  return verified;
 }
 
 bool ServerConnection::removeClient(const string& id) {

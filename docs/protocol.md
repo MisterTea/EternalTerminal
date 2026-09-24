@@ -54,9 +54,9 @@ Once etterminal launches:
 - It [locates the server fifo](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/ServerFifoPath.cpp) to connect to the etserver process:
   - If `/var/run/etserver.idpasskey.fifo` exists, when etserver is running as root, this path is used.
   - Otherwise, `$XDG_RUNTIME_DIR/etserver/etserver.ifpasskey.fifo` is used, resolving `$XDG_RUNTIME_DIR` to `$HOME/.local/share` if the environment variable is not set.
-- Once it connects to the server, it sends a `TERMINAL_USER_INFO` packet with [TerminalUserInfo](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L79-L85) containing the **client-id** and **passkey** to register the terminal with the server.  These are registered into the ServerConnection [`clientKeys` map](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/base/ServerConnection.hpp#L37-L40) awaiting a user connection.
+- Once it connects to the server, it sends a `TERMINAL_USER_INFO` packet with [TerminalUserInfo](../proto/ETerminal.proto#L89-L95) containing the **client-id** and **passkey** to register the terminal with the server.  These are registered into the ServerConnection [`clientKeys` map](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/base/ServerConnection.hpp#L37-L40) awaiting a user connection.
 - After etterminal connects to etserver, it outputs the **client-id** and **passkey**, to inform the client in cases where it regenerated them.
-- etterminal then waits for a client connect, waiting for a `TERMINAL_INIT` ([TermInit](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L74-L77)) packet.
+- etterminal then waits for a client connect, waiting for a `TERMINAL_INIT` ([TermInit](../proto/ETerminal.proto#L82-L87)) packet.
 - After receiving this packet UserTerminalHandler enters the `runUserTerminal` run loop, and proxies input/output until the terminal exits. See the [Terminal Run Loop](#terminal-run-loop).
 
 ## Client Connection
@@ -67,9 +67,18 @@ sequenceDiagram
     participant etserver
     participant etterminal
     
-    et->>etserver: ConnectRequest (client id, version)
-    Note right of etserver: Match client id with terminal
-    etserver->>et: ConnectResponse
+    et->>etserver: ConnectRequest (client id, version, supportsChallenge)
+    alt protocol version mismatch
+        etserver->>et: ConnectResponse (MISMATCHED_PROTOCOL)
+        etserver-->>et: Close connection
+    else known legacy client (no supportsChallenge)
+        etserver->>et: ConnectResponse (NEW_CLIENT or RETURNING_CLIENT)
+    else known client
+        Note right of etserver: Match client id with terminal
+        etserver->>et: ConnectResponse (fresh authChallenge)
+        et->>etserver: ConnectAuth (keyed proof)
+        etserver->>et: ConnectResponse (NEW_CLIENT or RETURNING_CLIENT)
+    end
 
     et->>etserver: InitialPayload
     etserver->>et: InitialResponse
@@ -81,13 +90,17 @@ sequenceDiagram
     etserver->>et: TerminalBuffer output (encrypted)
 ```
 
-After the terminal launches, **et** connects to the **etserver** over the EternalTerminal port (defaults to 2022), and sends a [ConnectRequest](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ET.proto#L12-L15) message containing the **client-id** and protocol version.  Note that this since encryption is client-specific, this client-id is sent unencrypted.
+After the terminal launches, **et** connects to the **etserver** over the EternalTerminal port (defaults to 2022), and sends a [ConnectRequest](../proto/ET.proto#L12-L19) message containing the **client-id** and protocol version.  Since encryption is client-specific, this client-id is sent unencrypted.
 
-The **client-id** is looked up in the ServerConnection `clientKeys` map, and if it is found a ServerClientConnection is created, which contains the BackedReader and BackedWriter used for EternalTCP buffering.
+The server answers a version mismatch with `MISMATCHED_PROTOCOL` and closes the socket, and an unknown **client-id** with `INVALID_KEY`. For a registered client that sets `supportsChallenge`, the server first sends a [ConnectResponse](../proto/ET.proto#L28-L40) carrying a fresh `authChallenge`. The client answers with [ConnectAuth](../proto/ET.proto#L42-L45), a keyed proof over the client id, protocol version, and challenge. If the proof checks out, the server sends the final `NEW_CLIENT` or `RETURNING_CLIENT` response and creates or resumes the ServerClientConnection, which holds the BackedReader and BackedWriter used for EternalTCP buffering. A bad proof gets `INVALID_KEY`.
 
-A ConnectResponse is returned with a status of either `INVALID_KEY`, `NEW_CLIENT`, or `RETURNING_CLIENT` based on the results of the `clientKeys` lookup.  If there's an error the socket is then closed.
+The final response carries `resetProof`, a keyed proof over the challenge, `status`, `resetRequired`, and `resetSalt`, so it cannot be replayed into another handshake.
 
-The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L60-L63)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ETerminal.proto#L65-L67)).  If there's an error during connect, the InitialResponse will contain an error string.
+### Legacy handshake
+
+The challenge is a capability within protocol 6, not a version bump. A request without `supportsChallenge` gets the original single `ConnectResponse`, with no challenge or reset fields. A client that gets no `authChallenge` treats the first response as final; if it asked to reattach (`resetIntent`) and gets `RETURNING_CLIENT`, it fails with "Server does not support session reattach; upgrade etserver". The legacy path goes away at the next `PROTOCOL_VERSION` bump.
+
+The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](../proto/ETerminal.proto#L64-L71)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](../proto/ETerminal.proto#L73-L75)).  If there's an error during connect, the InitialResponse will contain an error string.
 
 ## Reconnection
 
@@ -98,7 +111,8 @@ sequenceDiagram
     participant etterminal
     
     et->>etserver: ConnectRequest (client id, version)
-    Note right of etserver: Match client id with terminal
+    etserver->>et: ConnectResponse (fresh authChallenge)
+    et->>etserver: ConnectAuth (keyed proof)
     etserver->>et: ConnectResponse (RETURNING_CLIENT)
 
     et->>etserver: SequenceHeader
@@ -112,11 +126,15 @@ One of the core features of EternalTerminal is handling reconnections, in a way 
 
 When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up.
 
-To enable reconnects, **et** opens a new connection to the EternalTerminal port, and sends a new [ConnectRequest](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ET.proto#L12-L15) message containing the same **client-id** and protocol version as the initial request.
+To enable reconnects, **et** opens a new connection to the EternalTerminal port, and sends a new [ConnectRequest](../proto/ET.proto#L12-L19) message containing the same **client-id** and protocol version as the initial request, and repeats the challenge exchange.
 
-Upon reconnect, if the server identifies the ServerClientConnection already exists, it sends a ConnectResponse with status `RETURNING_CLIENT` as a response, and then bidirectional SequenceHeader protobufs are exchanged which contain the last received **sequence number** for each side.
+Upon reconnect, if the server identifies the authenticated client and the ServerClientConnection already exists, it sends a ConnectResponse with status `RETURNING_CLIENT`, and then bidirectional SequenceHeader protobufs are exchanged which contain the last received **sequence number** for each side.
 
 Based on this, a CatchupBuffer protobufs are swapped, containing the missing encrypted packets based on the **sequence number**.
+
+### Reset recovery
+
+A fresh client process sets `ConnectRequest.resetIntent`, since it has no sequence history. When one side has lost its history, the final `ConnectResponse` sets `resetRequired` with a fresh `resetSalt`. Both peers echo the salt in their [SequenceHeader](../proto/ET.proto#L47-L55), exchange empty catchup buffers, and start over at sequence zero under a key derived from the salt. A `reset` bit that the authenticated handshake did not select is rejected.
 
 ## Port Forwarding
 

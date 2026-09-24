@@ -182,7 +182,9 @@ typedef int ssize_t;
 
 using namespace std;
 
-// The ET protocol version supported by this binary
+// The ET protocol version supported by this binary. The legacy handshake path
+// in ServerConnection and ClientConnection exists only for protocol-6 peers;
+// remove it when this is next bumped.
 static const int PROTOCOL_VERSION = 6;
 
 // Nonces for CryptoHandler

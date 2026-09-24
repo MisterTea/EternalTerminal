@@ -82,6 +82,10 @@ class ServerConnection {
       shared_ptr<ServerClientConnection> serverClientState) = 0;
 
  protected:
+  bool authenticateClient(int clientSocketFd, const string& clientId,
+                          const string& clientKey, int protocolVersion,
+                          bool resetIntent, string* challengeOut);
+
   /**
    * @brief Discards a partially initialized connection if its thread fails.
    */

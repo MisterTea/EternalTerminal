@@ -12,6 +12,10 @@ enum EtPacketType {
 message ConnectRequest {
   optional string clientId = 1;
   optional int32 version = 2;
+  optional bool resetIntent = 3 [default = false];
+  // Set by clients that implement the authChallenge/ConnectAuth exchange.
+  // Servers answer requests without it using the protocol-6 handshake.
+  optional bool supportsChallenge = 4 [default = false];
 }
 
 enum ConnectStatus {
@@ -24,10 +28,30 @@ enum ConnectStatus {
 message ConnectResponse {
   optional ConnectStatus status = 1;
   optional string error = 2;
+  // Set only for the first response to a known client. The client must answer
+  // with ConnectAuth before the server sends the final connection status.
+  optional bytes authChallenge = 3;
+  // Authenticated setup result: the following recovery must reset history.
+  optional bool resetRequired = 4 [default = false];
+  optional bytes resetProof = 5;
+  // Exact salt used by the following reset recovery. It is authenticated by
+  // resetProof and must be echoed by both SequenceHeaders.
+  optional bytes resetSalt = 6;
+}
+
+message ConnectAuth {
+  // Keyed proof over the client id, protocol version, and fresh challenge.
+  optional bytes proof = 1;
 }
 
 message SequenceHeader {
   optional int32 sequenceNumber = 1;
+  // Set when both sides' authenticated connection setup selected reset
+  // recovery. Both peers then zero their BackedReader/BackedWriter state and
+  // exchange empty catchup buffers instead of replaying history.
+  optional bool reset = 2;
+  // Must exactly match the resetSalt authenticated in ConnectResponse.
+  optional bytes resetSalt = 3;
 }
 
 message CatchupBuffer {

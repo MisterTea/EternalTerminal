@@ -102,7 +102,8 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool forceReset,
+                         const string& resetSalt) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -114,12 +115,25 @@ bool Connection::recover(int newSocketFd) {
   }
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
-  LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
+  LOG(INFO) << "Recovering with socket fd " << newSocketFd
+            << (forceReset ? " (reset)" : "") << "...";
   try {
+    if (forceReset && resetSalt.length() != CryptoHandler::EPOCH_SALT_BYTES) {
+      throw std::runtime_error("Reset recovery has no negotiated salt");
+    }
+    if (!forceReset && !resetSalt.empty()) {
+      throw std::runtime_error("Reset salt supplied without reset recovery");
+    }
     {
       // Write the current sequence number
       et::SequenceHeader sh;
-      sh.set_sequencenumber(reader->getSequenceNumber());
+      if (forceReset) {
+        sh.set_sequencenumber(0);
+        sh.set_reset(true);
+        sh.set_resetsalt(resetSalt);
+      } else {
+        sh.set_sequencenumber(reader->getSequenceNumber());
+      }
       socketHandler->writeProto(newSocketFd, sh, true);
     }
 
@@ -127,6 +141,30 @@ bool Connection::recover(int newSocketFd) {
     et::SequenceHeader remoteHeader =
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+
+    if (forceReset) {
+      if (!remoteHeader.reset() || remoteHeader.resetsalt() != resetSalt) {
+        throw std::runtime_error(
+            "Reset request does not match the negotiated salt");
+      }
+      LOG(INFO) << "Performing reset recovery";
+
+      et::CatchupBuffer emptyCatchup;
+      socketHandler->writeProto(newSocketFd, emptyCatchup, true);
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+
+      writer->reset(resetSalt);
+      reader->reset(resetSalt);
+      socketFd = newSocketFd;
+      reader->revive(socketFd, {});
+      writer->revive(socketFd);
+      LOG(INFO) << "Finished reset recovery with socket fd: " << socketFd;
+      return true;
+    }
+
+    if (remoteHeader.reset() || !remoteHeader.resetsalt().empty()) {
+      throw std::runtime_error("Unexpected reset request");
+    }
 
     {
       // Fetch the catchup bytes and send
