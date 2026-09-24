@@ -43,8 +43,11 @@ class TerminalClient {
    * threads. */
   virtual ~TerminalClient();
   /** @brief Runs the interactive session for `command`, optionally staying
-   * alive. */
-  void run(const string& command, const bool noexit);
+   * alive.
+   * @return Remote command exit status when `command` is set and `noexit` is
+   * false; otherwise 0.
+   */
+  int run(const string& command, const bool noexit);
   /** @brief True when `-W` is bridging stdio (no local shell UI). */
   bool isStdioForward() const { return stdioForwardActive; }
   static void configureCloseOnHangup(bool enabled) { closeOnHangup = enabled; }

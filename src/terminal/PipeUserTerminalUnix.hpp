@@ -134,19 +134,35 @@ class PipeUserTerminal : public UserTerminal {
     closeFd(stderrReadFd);
   }
 
-  virtual void handleSessionEnd() {
+  virtual int handleSessionEnd() {
 #if __NetBSD__
-    int throwaway;
+    int status = 0;
     if (pid > 0) {
-      FATAL_FAIL(waitpid(pid, &throwaway, WUNTRACED));
+      FATAL_FAIL(waitpid(pid, &status, WUNTRACED));
+      if (WIFEXITED(status)) {
+        return WEXITSTATUS(status);
+      }
+      if (WIFSIGNALED(status)) {
+        return 128 + WTERMSIG(status);
+      }
     }
+    return 0;
 #else
     siginfo_t childInfo;
+    memset(&childInfo, 0, sizeof(childInfo));
     if (pid > 0) {
       if (waitid(P_PID, pid, &childInfo, WEXITED) == -1) {
         LOG(ERROR) << "waitid failed, child already reaped.";
+        return 0;
+      }
+      if (childInfo.si_code == CLD_EXITED) {
+        return childInfo.si_status;
+      }
+      if (childInfo.si_code == CLD_KILLED || childInfo.si_code == CLD_DUMPED) {
+        return 128 + childInfo.si_status;
       }
     }
+    return 0;
 #endif
   }
 

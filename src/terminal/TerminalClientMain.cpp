@@ -3,8 +3,10 @@
 #include <fstream>
 
 #include "BinaryStdioConsole.hpp"
+#include "ClientArgParsing.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
+#include "OpenSshLocalQueries.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
@@ -71,13 +73,16 @@ void parseSelectedSshConfig(const string& host, Options* options,
     return;
   }
 
+  // Share seen[] across user then system so first-wins (user over system),
+  // including explicit zero/"no" values that look unset on Options alone.
+  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
   char* homeDir = ssh_get_user_home_dir();
   if (homeDir != NULL) {
     parse_ssh_config_file(host.c_str(), options,
-                          string(homeDir) + USER_SSH_CONFIG_PATH);
+                          string(homeDir) + USER_SSH_CONFIG_PATH, seen);
     free(homeDir);
   }
-  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH);
+  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH, seen);
 }
 
 // Resolve a host alias via SSH config lookup
@@ -142,14 +147,21 @@ int main(int argc, char** argv) {
     options.allow_unrecognised_options();
     options.positional_help("");
     options.custom_help(
-        "[OPTION...] [user@]host[:port]\n\n"
+        "[OPTION...] [user@]host[:port] [command...]\n\n"
         "  Note that 'host' can be a hostname or ipv4 address with or without "
         "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
-        ":: then it must\n  be specified without a port (use -p,--port).");
+        ":: then it must\n  be specified without a port (use -p,--port).\n"
+        "  A positional command after the host is equivalent to -c/--command "
+        "(ssh-style).");
 
     options.add_options()             //
         ("h,help", "Print help")      //
         ("version", "Print version")  //
+        ("V",
+         "Print an OpenSSH-compatible version line and exit")  //
+        ("G",
+         "Print resolved OpenSSH-style configuration for the destination and "
+         "exit without connecting")  //
         ("u,username", "Username",
          cxxopts::value<std::string>())  //
         ("host", "Remote host name",
@@ -217,7 +229,7 @@ int main(int argc, char** argv) {
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
-        ("ssh-config",
+        ("F,ssh-config",
          "Read only this absolute SSH configuration file (or 'none')",
          cxxopts::value<std::string>())  //
         ("no-ssh-config",
@@ -230,10 +242,26 @@ int main(int argc, char** argv) {
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("o",
+         "OpenSSH-style session option applied to the resolved config "
+         "(e.g. -o ConnectTimeout=10). Distinct from --ssh-option.",
          cxxopts::value<std::vector<std::string>>());
 
     options.parse_positional({"host"});
-    auto result = options.parse(argc, argv);
+    vector<string> rawArgs;
+    rawArgs.reserve(static_cast<size_t>(argc));
+    for (int i = 0; i < argc; ++i) {
+      rawArgs.emplace_back(argv[i]);
+    }
+    EtArgvSplit argvSplit = splitEtArgvAtHost(rawArgs);
+    vector<char*> clientArgv;
+    clientArgv.reserve(argvSplit.clientArgs.size());
+    for (auto& arg : argvSplit.clientArgs) {
+      clientArgv.push_back(&arg[0]);
+    }
+    auto result =
+        options.parse(static_cast<int>(clientArgv.size()), clientArgv.data());
     TerminalClient::configureCloseOnHangup(result.count("close-on-hangup"));
     if (result.count("close-on-hangup")) {
 #ifdef WIN32
@@ -250,6 +278,11 @@ int main(int argc, char** argv) {
 
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
+      exit(0);
+    }
+
+    if (result.count("V")) {
+      CLOG(INFO, "stdout") << openSshCompatibilityVersionLine() << endl;
       exit(0);
     }
 
@@ -291,41 +324,21 @@ int main(int argc, char** argv) {
       exit(0);
     }
     string host_arg = result["host"].as<std::string>();
-    if (host_arg.find('@') != string::npos) {
-      int i = host_arg.find('@');
-      username = host_arg.substr(0, i);
-      host_arg = host_arg.substr(i + 1);
+    ParsedEtDestination parsedDestination;
+    try {
+      parsedDestination = parseEtDestinationHost(host_arg);
+    } catch (const std::invalid_argument&) {
+      CLOG(INFO, "stdout") << "Invalid host positional arg: " << host_arg
+                           << endl;
+      exit(1);
     }
-
-    if (host_arg.find(':') != string::npos) {
-      int colon_count = std::count(host_arg.begin(), host_arg.end(), ':');
-      if (colon_count == 1) {
-        // ipv4 or hostname with port specified
-        int port_colon_pos = host_arg.rfind(':');
-        destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
-        host_arg = host_arg.substr(0, port_colon_pos);
-      } else {
-        // maybe ipv6 (colon_count >= 2)
-        if (host_arg.find("::") != string::npos) {
-          // ipv6 with double colon zero abbreviation and no port
-          // leave host_arg as is
-        } else {
-          if (colon_count == 7) {
-            // ipv6, fully expanded, without port
-          } else if (colon_count == 8) {
-            // ipv6, fully expanded, with port
-            int port_colon_pos = host_arg.rfind(':');
-            destinationPort = stoi(host_arg.substr(port_colon_pos + 1));
-            host_arg = host_arg.substr(0, port_colon_pos);
-          } else {
-            CLOG(INFO, "stdout") << "Invalid host positional arg: "
-                                 << result["host"].as<std::string>() << endl;
-            exit(1);
-          }
-        }
-      }
+    if (!parsedDestination.username.empty()) {
+      username = parsedDestination.username;
     }
-    destinationHost = host_arg;
+    if (parsedDestination.hasExplicitPort) {
+      destinationPort = parsedDestination.port;
+    }
+    destinationHost = parsedDestination.host;
     // host_alias is used for the initiating ssh call, if sshd runs on a port
     // other than 22, either configure your .ssh/config with an alias with an
     // overridden port or pass --ssh-option Port=<sshd_port>
@@ -418,6 +431,38 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Apply OpenSSH-style -o session options after config resolution so they
+    // override file values. --ssh-option remains a separate bootstrap-ssh path.
+    if (result.count("o")) {
+      for (const auto& sessionOption : result["o"].as<std::vector<string>>()) {
+        if (!applySessionOption(&sshConfigOptions, sessionOption)) {
+          CLOG(INFO, "stdout")
+              << "Invalid -o option: " << sessionOption << endl;
+          exit(1);
+        }
+        string key = sessionOption;
+        size_t sep = key.find('=');
+        if (sep == string::npos) {
+          sep = key.find(' ');
+        }
+        if (sep != string::npos) {
+          key = key.substr(0, sep);
+        }
+        key = lowercaseAscii(trimAsciiBlanks(std::move(key)));
+        if (key == "hostname" && sshConfigOptions.host) {
+          destinationHost = string(sshConfigOptions.host);
+        } else if (key == "user" && sshConfigOptions.username) {
+          username = string(sshConfigOptions.username);
+        }
+      }
+    }
+
+    if (result.count("G")) {
+      CLOG(INFO, "stdout") << formatOpenSshResolvedConfig(
+          host_alias, destinationHost, username, sshConfigOptions);
+      exit(0);
+    }
+
     // Parse jumphost: cmd > sshconfig
     if (!jumphostSpecified && sshConfigOptions.ProxyJump &&
         strcasecmp(sshConfigOptions.ProxyJump, "none") != 0 &&
@@ -504,8 +549,9 @@ int main(int argc, char** argv) {
     string stdioForward = extractSingleOptionWithDefault<string>(
         result, options, "stdio-forward", "");
     const bool noPty = result.count("T") > 0;
-    string command =
-        result.count("command") ? result["command"].as<string>() : "";
+    string command = resolveRemoteCommand(
+        argvSplit.commandOperands, result.count("command") > 0,
+        result.count("command") ? result["command"].as<string>() : "");
     if (noPty && command.empty()) {
       CLOG(INFO, "stdout") << "-T/--no-pty requires -c/--command" << endl;
       CLOG(INFO, "stdout") << options.help({}) << endl;
@@ -572,7 +618,23 @@ int main(int argc, char** argv) {
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
         noPty, command, dynamicForwards, stdioForward);
-    terminalClient.run(command, result.count("noexit"));
+    const int remoteExitStatus =
+        terminalClient.run(command, result.count("noexit"));
+
+    // Clean up ssh config options
+    freeOptionsFields(&sshConfigOptions);
+
+#ifdef WIN32
+    WSACleanup();
+#endif
+
+    TelemetryService::get()->shutdown();
+    TelemetryService::destroy();
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
+
+    return remoteExitStatus;
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {
