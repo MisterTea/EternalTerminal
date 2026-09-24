@@ -842,7 +842,8 @@ else(WIN32)
         TEST_PREFIX "et-test."
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         ADD_TAGS_AS_LABELS
-        PROPERTIES TIMEOUT 600
+        # RouterRestartTest runs full client/server/terminal stacks.
+        PROPERTIES TIMEOUT 900
       )
     else()
       add_test(NAME et-test COMMAND et-test "~[.ghostty]")

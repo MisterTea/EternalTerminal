@@ -70,7 +70,8 @@ bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset,
 
   bool success = recover(newSocketFd, forceReset, resetSalt);
   if (success) {
-    if (oldSocketFd != -1) {
+    // A resumed connection was constructed with newSocketFd.
+    if (oldSocketFd != -1 && oldSocketFd != newSocketFd) {
       socketHandler->close(oldSocketFd);
     }
     return true;

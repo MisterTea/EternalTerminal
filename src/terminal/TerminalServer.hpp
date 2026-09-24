@@ -39,12 +39,21 @@ class TerminalServer : public ServerConnection {
   /** @brief Launches the interactive terminal session for a client. */
   void runTerminal(shared_ptr<ServerClientConnection> serverClientState,
                    const InitialPayload& payload,
-                   const TerminalUserInfo& userInfo);
+                   const TerminalUserInfo& userInfo, bool resume,
+                   bool* terminalEofOut);
   /** @brief Sets up the client state and pushes it into the terminal router. */
   void handleConnection(shared_ptr<ServerClientConnection> serverClientState);
+  void finishSession(
+      const shared_ptr<ServerClientConnection>& serverClientState,
+      const std::optional<TerminalUserInfo>& userInfo, bool terminalEof);
+  // Skips the INITIAL_PAYLOAD bootstrap for a terminal that re-registered.
+  void handleConnectionResume(
+      shared_ptr<ServerClientConnection> serverClientState);
   /** @brief Callback from ServerConnection when a new client is authenticated.
    */
   virtual bool newClient(shared_ptr<ServerClientConnection> serverClientState);
+  virtual bool shouldResumeAsReturning(const string& clientId);
+  virtual void resumeClient(shared_ptr<ServerClientConnection> state);
 
   /** @brief Main loop that accepts client connections and relays to handlers.
    */
@@ -67,6 +76,18 @@ class TerminalServer : public ServerConnection {
 
   int getDisconnectTimeoutSeconds() const { return disconnectTimeoutSec; }
 
+  // A re-registered terminal has no pump until its client returns, so run()
+  // keeps its disconnect clock instead.
+  void trackUnclaimedResume(const string& id,
+                            std::chrono::steady_clock::time_point now);
+  void expireUnclaimedResumes(std::chrono::steady_clock::time_point now);
+
+  // Call only after run() has exited; it still selects on these fds.
+  void shutdownConnections() {
+    ServerConnection::shutdown();
+    terminalRouter->shutdown();
+  }
+
   /** @brief Router that hands reconnecting clients to their terminals. */
   shared_ptr<UserTerminalRouter> terminalRouter;
   /** @brief Threads that manage active terminal/jumphost sessions. */
@@ -84,6 +105,8 @@ class TerminalServer : public ServerConnection {
    * @brief Seconds a disconnected etterminal may live. `0` means no timeout.
    */
   int disconnectTimeoutSec = 0;
+  // Touched only by the run() thread.
+  map<string, std::chrono::steady_clock::time_point> unclaimedResumes;
   /** @brief Guards access to `terminalThreads` and the halt flag. */
   mutex terminalThreadMutex;
   /** @brief Local pipe endpoint used to signal terminal/jumphost handoffs. */

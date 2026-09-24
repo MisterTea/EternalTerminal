@@ -107,6 +107,7 @@ message TermInit {
   optional bool no_pty = 3 [default = false];
   optional string command = 4;
   optional bool no_shell = 5 [default = false];
+  optional bool hadreversetunnels = 6 [default = false];
 }
 
 message TerminalUserInfo {
@@ -115,4 +116,11 @@ message TerminalUserInfo {
   optional int64 uid = 3;
   optional int64 gid = 4;
   optional int64 fd = 5;
+  // Set when a terminal re-registers after its router went away: the pty and
+  // its shell are already running, so the server must resume the session
+  // instead of bootstrapping a fresh one.
+  optional bool ptyactive = 6;
+  // Preserved by etterminal so a replacement server can warn that the
+  // server-side listeners from the original bootstrap no longer exist.
+  optional bool hadreversetunnels = 7 [default = false];
 }

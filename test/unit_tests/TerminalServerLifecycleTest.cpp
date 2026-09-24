@@ -43,6 +43,10 @@ class LifecycleServer : public TerminalServer {
     addClientKey(client->getId(), key);
     clientConnections[client->getId()] = client;
   }
+
+  void dropConnection(const string& id) { clientConnections.erase(id); }
+
+  void setRecoveryGraceSeconds(int seconds) { recoveryGraceSeconds = seconds; }
 };
 
 class TerminalSessionFixture {
@@ -76,7 +80,7 @@ class TerminalSessionFixture {
     ::remove(pipeDirectory.c_str());
   }
 
-  void registerTerminal() {
+  void registerTerminal(bool ptyActive = false) {
     terminalPeer = peerHandler->connect(routerEndpoint);
     REQUIRE(terminalPeer >= 0);
     TerminalUserInfo userInfo;
@@ -84,6 +88,7 @@ class TerminalSessionFixture {
     userInfo.set_passkey(key);
     userInfo.set_uid(getuid());
     userInfo.set_gid(getgid());
+    userInfo.set_ptyactive(ptyActive);
     peerHandler->writePacket(terminalPeer,
                              Packet(TerminalPacketType::TERMINAL_USER_INFO,
                                     protoToString(userInfo)));
@@ -127,6 +132,21 @@ class TerminalSessionFixture {
     }
     REQUIRE_FALSE(server->clientConnectionExists(id));
     joinSession();
+  }
+
+  void reregisterWithoutClient() {
+    server->dropConnection(id);
+    closeTerminal();
+    registerTerminal(/*ptyActive=*/true);
+  }
+
+  bool terminalReceivedClose() {
+    if (!peerHandler->waitForData(terminalPeer, 2, 0)) {
+      return false;
+    }
+    char packetType = 0;
+    return peerHandler->read(terminalPeer, &packetType, 1) == 1 &&
+           packetType == TERMINAL_CLOSE;
   }
 
   void checkSessionClosed() {
@@ -284,6 +304,62 @@ TEST_CASE_METHOD(TerminalSessionFixture,
 
   waitForSessionEnd();
   checkSessionClosed();
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
+                 "Disconnect timeout closes a resumed terminal whose client "
+                 "never returns",
+                 "[TerminalServerLifecycle]") {
+  reregisterWithoutClient();
+  server->setRecoveryGraceSeconds(0);
+  server->setDisconnectTimeoutSeconds(1);
+  const auto t0 =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000));
+  server->trackUnclaimedResume(id, t0);
+  server->expireUnclaimedResumes(t0 + std::chrono::milliseconds(999));
+  CHECK(server->clientKeyExists(id));
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+
+  server->expireUnclaimedResumes(t0 + std::chrono::seconds(1));
+  CHECK(terminalReceivedClose());
+  checkSessionClosed();
+  CHECK_FALSE(server->terminalRouter->isPtyActive(id));
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
+                 "Recovery grace outlasts a shorter disconnect timeout",
+                 "[TerminalServerLifecycle]") {
+  reregisterWithoutClient();
+  server->setRecoveryGraceSeconds(60);
+  server->setDisconnectTimeoutSeconds(1);
+  const auto t0 =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000));
+  server->trackUnclaimedResume(id, t0);
+  server->expireUnclaimedResumes(t0 + std::chrono::seconds(59));
+  CHECK(server->clientKeyExists(id));
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+
+  server->expireUnclaimedResumes(t0 + std::chrono::seconds(60));
+  CHECK(terminalReceivedClose());
+  checkSessionClosed();
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
+                 "A returning client takes over the resumed terminal deadline",
+                 "[TerminalServerLifecycle]") {
+  reregisterWithoutClient();
+  server->setRecoveryGraceSeconds(0);
+  server->setDisconnectTimeoutSeconds(1);
+  const auto t0 =
+      std::chrono::steady_clock::time_point(std::chrono::seconds(1000));
+  server->trackUnclaimedResume(id, t0);
+  server->registerClient(client, key);
+  server->expireUnclaimedResumes(t0 + std::chrono::hours(1));
+  CHECK(server->clientKeyExists(id));
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+  server->dropConnection(id);
+  server->expireUnclaimedResumes(t0 + std::chrono::hours(2));
+  CHECK(server->clientKeyExists(id));
 }
 
 TEST_CASE_METHOD(TerminalSessionFixture,

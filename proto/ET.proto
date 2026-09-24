@@ -23,6 +23,7 @@ enum ConnectStatus {
   RETURNING_CLIENT = 2;
   INVALID_KEY = 3;
   MISMATCHED_PROTOCOL = 4;
+  RETRY_LATER = 5;
 }
 
 message ConnectResponse {

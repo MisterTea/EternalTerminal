@@ -698,6 +698,62 @@ class LogInterceptHandler : public el::LogDispatchCallback {
   std::function<void()> interceptCallback;
 };
 
+#ifdef WIN32
+class PartialFailurePipeSocketHandler : public PipeSocketHandler {
+ public:
+  void failNextWriteContaining(const string& output) {
+    lock_guard<mutex> guard(failureMutex);
+    outputToFail = output;
+    partialFd = -1;
+    partialWriteDone = false;
+    targetWriteFailed = false;
+  }
+
+  bool didFailTargetWrite() {
+    lock_guard<mutex> guard(failureMutex);
+    return targetWriteFailed;
+  }
+
+  ssize_t write(int fd, const void* buf, size_t count) override {
+    bool sendPartial = false;
+    bool failWrite = false;
+    {
+      lock_guard<mutex> guard(failureMutex);
+      if (!outputToFail.empty() && !partialWriteDone &&
+          count >= outputToFail.size() &&
+          std::search(static_cast<const char*>(buf),
+                      static_cast<const char*>(buf) + count,
+                      outputToFail.begin(), outputToFail.end()) !=
+              static_cast<const char*>(buf) + count) {
+        partialWriteDone = true;
+        partialFd = fd;
+        sendPartial = true;
+      } else if (partialWriteDone && fd == partialFd) {
+        outputToFail.clear();
+        partialFd = -1;
+        targetWriteFailed = true;
+        failWrite = true;
+      }
+    }
+    if (sendPartial) {
+      return PipeSocketHandler::write(fd, buf, 1);
+    }
+    if (failWrite) {
+      SetErrno(EPIPE);
+      return -1;
+    }
+    return PipeSocketHandler::write(fd, buf, count);
+  }
+
+ private:
+  mutex failureMutex;
+  string outputToFail;
+  int partialFd = -1;
+  bool partialWriteDone = false;
+  bool targetWriteFailed = false;
+};
+#endif
+
 class EndToEndTestFixture {
  public:
   EndToEndTestFixture() {
@@ -708,7 +764,11 @@ class EndToEndTestFixture {
     clientSocketHandler.reset(new PipeSocketHandler());
     clientPipeSocketHandler.reset(new PipeSocketHandler());
     serverSocketHandler.reset(new PipeSocketHandler());
+#ifdef WIN32
+    routerSocketHandler.reset(new PartialFailurePipeSocketHandler());
+#else
     routerSocketHandler.reset(new PipeSocketHandler());
+#endif
     el::Helpers::setThreadName("Main");
     consoleSocketHandler.reset(new PipeSocketHandler());
     fakeConsole.reset(new FakeConsole(consoleSocketHandler));
@@ -754,7 +814,11 @@ class EndToEndTestFixture {
 
   shared_ptr<PipeSocketHandler> consoleSocketHandler;
   shared_ptr<PipeSocketHandler> userTerminalSocketHandler;
+#ifdef WIN32
+  shared_ptr<PartialFailurePipeSocketHandler> routerSocketHandler;
+#else
   shared_ptr<PipeSocketHandler> routerSocketHandler;
+#endif
 
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
@@ -820,6 +884,76 @@ TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
                 clientSocketHandler, clientPipeSocketHandler, fakeConsole,
                 routerEndpoint);
 }
+
+#ifdef WIN32
+TEST_CASE_METHOD(EndToEndTestFixture, "WindowsOutputSurvivesFailedWrite",
+                 "[EndToEndTest][integration][windows]") {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto handler = make_shared<UserTerminalHandler>(
+      routerSocketHandler, fakeUserTerminal, true, routerEndpoint,
+      id + "/" + passkey);
+  thread handlerThread([handler]() { handler->run(); });
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
+
+  const auto terminalDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (!fakeUserTerminal->isSetup() &&
+         std::chrono::steady_clock::now() < terminalDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  const bool terminalWasSetup = fakeUserTerminal->isSetup();
+
+  const string marker = "ET_WINDOWS_PENDING_OUTPUT";
+  if (terminalWasSetup) {
+    routerSocketHandler->failNextWriteContaining(marker);
+    fakeUserTerminal->simulateTerminalResponse(marker);
+  }
+
+  string received;
+  bool terminalSurvivedReconnect = false;
+  const auto outputDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (fakeUserTerminal->isSetup() &&
+         std::chrono::steady_clock::now() < outputDeadline) {
+    while (fakeConsole->hasTerminalData()) {
+      received += fakeConsole->getTerminalData(1);
+    }
+    if (received == marker) {
+      terminalSurvivedReconnect =
+          fakeUserTerminal->isSetup() && !fakeUserTerminal->wasCleanedUp();
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  handler->shutdown();
+  handlerThread.join();
+  handler.reset();
+
+  REQUIRE(terminalWasSetup);
+  REQUIRE(routerSocketHandler->didFailTargetWrite());
+  REQUIRE(received == marker);
+  REQUIRE(terminalSurvivedReconnect);
+  REQUIRE(fakeUserTerminal->wasCleanedUp());
+  REQUIRE_FALSE(fakeUserTerminal->isSetup());
+}
+#endif
 
 TEST_CASE_METHOD(EndToEndTestFixture, "TerminalKillAcknowledged",
                  "[TerminalKill][integration]") {

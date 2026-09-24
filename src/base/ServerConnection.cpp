@@ -5,6 +5,7 @@ ServerConnection::ServerConnection(
     const SocketEndpoint& _serverEndpoint)
     : socketHandler(_socketHandler),
       serverEndpoint(_serverEndpoint),
+      startTime_(time(NULL)),
       clientHandlerThreadPool(new ThreadPool(8)) {
   socketHandler->listen(serverEndpoint);
 }
@@ -26,9 +27,13 @@ bool ServerConnection::acceptNewConnection(int fd) {
 }
 
 void ServerConnection::shutdown() {
-  lock_guard<std::recursive_mutex> guard(classMutex);
-  socketHandler->stopListening(serverEndpoint);
+  {
+    lock_guard<std::recursive_mutex> guard(classMutex);
+    socketHandler->stopListening(serverEndpoint);
+  }
+  // In-flight clientHandlers take classMutex, so join the pool without it.
   clientHandlerThreadPool.reset();
+  lock_guard<std::recursive_mutex> guard(classMutex);
   for (const auto& it : clientConnections) {
     it.second->shutdown();
   }
@@ -67,6 +72,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
     clientId = request.clientid();
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
+    bool clientWasRemoved;
     string clientKey;
 
     {
@@ -80,6 +86,9 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       if (clientKeyExistsNow) {
         clientKey = clientKeys.at(clientId);
       }
+      pruneRemovedClientIds(time(NULL));
+      clientWasRemoved =
+          removedClientIds.find(clientId) != removedClientIds.end();
     }
 
     // Legacy handshake for peers without the challenge capability. Remove at
@@ -119,7 +128,15 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       std::ostringstream errorStream;
       errorStream << "Client is not registered";
       response.set_error(errorStream.str());
-      response.set_status(INVALID_KEY);
+      // Right after a restart, terminals may not have re-registered yet.
+      if (!legacyPeer && !clientWasRemoved &&
+          time(NULL) - startTime_ < recoveryGraceSeconds) {
+        LOG(INFO) << "Within the recovery grace window; asking client "
+                  << clientId << " to retry.";
+        response.set_status(RETRY_LATER);
+      } else {
+        response.set_status(INVALID_KEY);
+      }
       socketHandler->writeProto(clientSocketFd, response, true);
 
       socketHandler->close(clientSocketFd);
@@ -131,28 +148,59 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       socketHandler->writeProto(clientSocketFd, response, true);
       socketHandler->close(clientSocketFd);
     } else if (createdClientConnection) {
+      // A known key with no connection is either a new session or a terminal
+      // that re-registered after an etserver restart.
+      const bool resume = shouldResumeAsReturning(clientId);
+      if (legacyPeer && resume) {
+        // Legacy peers can't reset; answer as a pre-restart-recovery server.
+        LOG(INFO) << "Legacy client " << clientId
+                  << " cannot resume after restart";
+        et::ConnectResponse response;
+        response.set_status(INVALID_KEY);
+        response.set_error("Client is not registered");
+        socketHandler->writeProto(clientSocketFd, response, true);
+        // The partial connection owns clientSocketFd and closes it.
+        destroyPartialConnection(clientId);
+        return;
+      }
+      const string resetSalt =
+          resume ? CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES)
+                 : string();
+      const ConnectStatus status = resume ? RETURNING_CLIENT : NEW_CLIENT;
       et::ConnectResponse response;
-      response.set_status(NEW_CLIENT);
+      response.set_status(status);
       if (!legacyPeer) {
-        response.set_resetrequired(false);
-        response.set_resetsalt(string());
+        response.set_resetrequired(resume);
+        response.set_resetsalt(resetSalt);
         response.set_resetproof(CryptoHandler::resetDecisionProof(
-            clientKey, clientId, PROTOCOL_VERSION, authChallenge, NEW_CLIENT,
-            false, string()));
+            clientKey, clientId, PROTOCOL_VERSION, authChallenge, status,
+            resume, resetSalt));
       }
       socketHandler->writeProto(clientSocketFd, response, true);
 
-      LOG(INFO) << "New client.  Setting up connection";
-      VLOG(1) << "Created client with id " << clientId;
+      if (resume) {
+        LOG(INFO) << "Resuming existing session for " << clientId;
+        if (!serverClientState->recoverClient(clientSocketFd,
+                                              /*forceReset=*/true, resetSalt)) {
+          LOG(WARNING) << "Resume handshake failed for " << clientId;
+          // Keep the key: the terminal is still live.
+          destroyPartialConnection(clientId);
+        } else {
+          resumeClient(serverClientState);
+        }
+      } else {
+        LOG(INFO) << "New client.  Setting up connection";
+        VLOG(1) << "Created client with id " << clientId;
 
-      {
-        lock_guard<std::recursive_mutex> guard(classMutex);
+        {
+          lock_guard<std::recursive_mutex> guard(classMutex);
 
-        if (!newClient(serverClientState)) {
-          VLOG(1) << "newClient failed";
-          // Client creation failed, Destroy the new client
-          removeClient(clientId);
-          socketHandler->close(clientSocketFd);
+          if (!newClient(serverClientState)) {
+            VLOG(1) << "newClient failed";
+            // Client creation failed, Destroy the new client
+            removeClient(clientId);
+            socketHandler->close(clientSocketFd);
+          }
         }
       }
     } else {
@@ -225,6 +273,9 @@ bool ServerConnection::removeClient(const string& id) {
     if (clientKeys.find(id) == clientKeys.end()) {
       return false;
     }
+    const time_t now = time(NULL);
+    pruneRemovedClientIds(now);
+    removedClientIds[id] = now;
     clientKeys.erase(id);
     const auto it = clientConnections.find(id);
     if (it == clientConnections.end()) {
@@ -237,6 +288,17 @@ bool ServerConnection::removeClient(const string& id) {
   // reconnect can hold across blocking socket I/O.
   connection->shutdown();
   return true;
+}
+
+void ServerConnection::pruneRemovedClientIds(time_t now) {
+  for (auto it = removedClientIds.begin(); it != removedClientIds.end();) {
+    if (now >= it->second &&
+        now - it->second > static_cast<time_t>(recoveryGraceSeconds)) {
+      it = removedClientIds.erase(it);
+    } else {
+      ++it;
+    }
+  }
 }
 
 void ServerConnection::destroyPartialConnection(const string& clientId) {

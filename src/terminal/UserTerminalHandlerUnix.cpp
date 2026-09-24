@@ -19,23 +19,16 @@ UserTerminalHandler::UserTerminalHandler(
       term(_term),
       noratelimit(_noratelimit),
       shuttingDown(false),
-      pipeMode(false) {
+      pipeMode(false),
+      routerEndpoint(routerEndpoint),
+      ptyActive(false),
+      hadReverseTunnels(false) {
   auto idpasskey_splited = split(idPasskey, '/');
-  string id = idpasskey_splited[0];
-  string passkey = idpasskey_splited[1];
-  TerminalUserInfo tui;
-  tui.set_id(id);
-  tui.set_passkey(passkey);
-  tui.set_uid(getuid());
-  tui.set_gid(getgid());
-
-  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
+  id = idpasskey_splited[0];
+  passkey = idpasskey_splited[1];
 
   try {
-    socketHandler->writePacket(
-        routerFd,
-        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
-
+    registerWithRouter();
   } catch (const std::runtime_error& re) {
     STFATAL << "Error connecting to router: " << re.what();
   }
@@ -80,47 +73,145 @@ void UserTerminalHandler::finishSession() {
   }
 }
 
-void UserTerminalHandler::run() {
-  while (true) {
-    Packet termInitPacket;
-    if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
-      continue;
-    }
-    if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
-      STFATAL << "Invalid terminal init packet header: "
-              << termInitPacket.getHeader();
-    }
-    TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
-    for (int a = 0; a < ti.environmentnames_size(); a++) {
-      setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
-             true);
-    }
-    pipeMode = ti.no_pty();
-    if (pipeMode) {
-      if (!ti.has_command() || ti.command().empty()) {
-        STFATAL << "no_pty TermInit requires a non-empty command";
-      }
-      term = make_shared<PipeUserTerminal>(ti.command());
-      LOG(INFO) << "Starting raw pipe command session";
-    }
-    // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
-    // flush of the server WriteBuffer is not followed by ~200KB of local
-    // backlog.
-    socketHandler->minimizeKernelBuffering(routerFd);
-    if (ti.no_shell()) {
-      LOG(INFO) << "Starting idle session without a shell";
-      runIdleSession();
-      close(routerFd);
-      return;
-    }
-    break;
+void UserTerminalHandler::registerWithRouter() {
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
+  tui.set_ptyactive(ptyActive);
+  tui.set_hadreversetunnels(hadReverseTunnels);
+
+  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
+  try {
+    socketHandler->writePacket(
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+  } catch (...) {
+    socketHandler->close(routerFd);
+    routerFd = -1;
+    throw;
   }
+}
+
+int UserTerminalHandler::reconnectRouter() {
+  if (routerFd >= 0) {
+    socketHandler->close(routerFd);
+    routerFd = -1;
+  }
+  if (pipeMode) {
+    // A restarted server can't tell that the stream is packet-framed.
+    LOG(INFO) << "Router connection lost; ending pipe command session.";
+    term->terminate();
+    term->handleSessionEnd();
+    lock_guard<recursive_mutex> guard(shutdownMutex);
+    shuttingDown = true;
+    return -1;
+  }
+  LOG(INFO) << "Router connection lost; the session stays alive and waits for "
+               "the router to come back.";
+  int backoffSec = 1;
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
+      }
+    }
+    try {
+      registerWithRouter();
+      socketHandler->minimizeKernelBuffering(routerFd);
+      LOG(INFO) << "Reconnected to the router; resuming the session.";
+      return routerFd;
+    } catch (const std::exception& re) {
+      VLOG(1) << "Router not available yet: " << re.what();
+    }
+    for (int a = 0; a < backoffSec; a++) {
+      sleep(1);
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
+      }
+    }
+    backoffSec = std::min(backoffSec * 2, 30);
+  }
+}
+
+void UserTerminalHandler::run() {
+  if (!ptyActive) {
+    while (true) {
+      {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        if (shuttingDown) {
+          return;
+        }
+      }
+      // readPacket blocks until a full packet arrives; poll so shutdown works.
+      if (!socketHandler->hasData(routerFd)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      Packet termInitPacket;
+      try {
+        if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+          LOG(INFO) << "Router closed before pty setup; reconnecting.";
+          routerFd = reconnectRouter();
+          if (routerFd < 0) {
+            return;
+          }
+          continue;
+        }
+      } catch (const std::exception& ex) {
+        LOG(INFO) << "Router connection lost before pty setup: " << ex.what();
+        routerFd = reconnectRouter();
+        if (routerFd < 0) {
+          return;
+        }
+        continue;
+      }
+      if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
+        STFATAL << "Invalid terminal init packet header: "
+                << termInitPacket.getHeader();
+      }
+      TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
+      hadReverseTunnels = ti.hadreversetunnels();
+      for (int a = 0; a < ti.environmentnames_size(); a++) {
+        setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+               true);
+      }
+      pipeMode = ti.no_pty();
+      if (pipeMode) {
+        if (!ti.has_command() || ti.command().empty()) {
+          STFATAL << "no_pty TermInit requires a non-empty command";
+        }
+        term = make_shared<PipeUserTerminal>(ti.command());
+        LOG(INFO) << "Starting raw pipe command session";
+      }
+      if (ti.no_shell()) {
+        // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
+        // flush of the server WriteBuffer is not followed by ~200KB of local
+        // backlog.
+        socketHandler->minimizeKernelBuffering(routerFd);
+        LOG(INFO) << "Starting idle session without a shell";
+        runIdleSession();
+        close(routerFd);
+        return;
+      }
+      break;
+    }
+  }
+
+  // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
+  // flush of the server WriteBuffer is not followed by ~200KB of local
+  // backlog.
+  socketHandler->minimizeKernelBuffering(routerFd);
 
   int masterfd = term->setup(routerFd);
   VLOG(1) << "terminal opened " << masterfd
           << (pipeMode ? " (pipe)" : " (pty)");
+  ptyActive = true;
   runUserTerminal(masterfd);
-  close(routerFd);
+  socketHandler->close(routerFd);
 }
 
 void UserTerminalHandler::runIdleSession() {
@@ -319,8 +410,11 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
                                    strerror(readErrno));
         }
         if (rc == 0) {
-          throw std::runtime_error(
-              "Router has ended abruptly.  Killing terminal session.");
+          routerFd = reconnectRouter();
+          if (routerFd < 0) {
+            break;
+          }
+          continue;
         }
         switch (packetType) {
           case TERMINAL_BUFFER: {
@@ -383,10 +477,12 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
         }
       }
     } catch (const std::exception& ex) {
+      // The pty is fine; wait for the router to come back.
       LOG(INFO) << ex.what();
-      lock_guard<recursive_mutex> guard(shutdownMutex);
-      shuttingDown = true;
-      break;
+      routerFd = reconnectRouter();
+      if (routerFd < 0) {
+        break;
+      }
     }
   }
 

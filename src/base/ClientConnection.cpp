@@ -33,6 +33,9 @@ bool ClientConnection::connect() {
     et::ConnectResponse response;
     connectHandshake(socketFd, &response, resetOnConnect);
     lastStatus_.store(response.status());
+    if (response.status() == RETRY_LATER) {
+      throw std::runtime_error("Server is recovering; retry later");
+    }
     if (response.status() != NEW_CLIENT &&
         response.status() != RETURNING_CLIENT) {
       // Note: the response can be returning client if the client died while
@@ -205,7 +208,11 @@ void ClientConnection::pollReconnect() {
             socketHandler->close(newSocketFd);
             return;
           }
-          if (response.status() != RETURNING_CLIENT) {
+          if (response.status() == RETRY_LATER) {
+            LOG(INFO) << "Server is still recovering; retrying reconnect "
+                         "shortly.";
+            socketHandler->close(newSocketFd);
+          } else if (response.status() != RETURNING_CLIENT) {
             STERROR << "Error reconnecting to server: " << response.status()
                     << ": " << response.error();
             CLOG(INFO, "stdout")

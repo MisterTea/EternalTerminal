@@ -1,4 +1,5 @@
 #include <queue>
+#include <set>
 
 #include "ClientConnection.hpp"
 #include "ServerClientConnection.hpp"
@@ -86,9 +87,28 @@ class RecordingServerConnection : public ServerConnection {
     return allowNewClients;
   }
 
+  void expireGrace() { startTime_ = time(NULL) - recoveryGraceSeconds - 1; }
+
+  void expireRemovedClient(const string& id) {
+    removedClientIds.at(id) = time(NULL) - recoveryGraceSeconds - 1;
+  }
+
+  size_t removedClientCount() const { return removedClientIds.size(); }
+
+  bool shouldResumeAsReturning(const string& clientId) override {
+    return resumeIds.count(clientId) > 0;
+  }
+
+  void resumeClient(shared_ptr<ServerClientConnection> state) override {
+    resumeClientCalled = true;
+    lastConnection = std::move(state);
+  }
+
   bool newClientCalled = false;
   bool allowNewClients = true;
   shared_ptr<ServerClientConnection> lastConnection;
+  std::set<string> resumeIds;
+  bool resumeClientCalled = false;
 };
 
 ConnectResponse authenticateKnownClient(
@@ -512,6 +532,7 @@ TEST_CASE("ClientConnection reports an unavailable endpoint",
 TEST_CASE("ServerConnection accepts queued clients", "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
   RecordingServerConnection server(handler, SocketEndpoint());
+  server.expireGrace();
   REQUIRE_FALSE(server.acceptNewConnection(123));
 
   int pair[2];
@@ -547,9 +568,20 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   server.clientHandler(firstPair[1]);
   auto missingKeyResponse =
       handler->readProto<ConnectResponse>(firstPair[0], true);
-  REQUIRE(missingKeyResponse.status() == INVALID_KEY);
+  REQUIRE(missingKeyResponse.status() == RETRY_LATER);
   handler->close(firstPair[0]);
   handler->close(firstPair[1]);
+
+  server.expireGrace();
+  int gracePair[2];
+  REQUIRE(createTestSocketPair(gracePair) == 0);
+  handler->writeProto(gracePair[0], missingKeyRequest, true);
+  server.clientHandler(gracePair[1]);
+  auto expiredGraceResponse =
+      handler->readProto<ConnectResponse>(gracePair[0], true);
+  REQUIRE(expiredGraceResponse.status() == INVALID_KEY);
+  handler->close(gracePair[0]);
+  handler->close(gracePair[1]);
 
   int versionPair[2];
   REQUIRE(createTestSocketPair(versionPair) == 0);
@@ -581,6 +613,8 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   serverThread.join();
   REQUIRE(server.newClientCalled);
   REQUIRE(server.clientConnectionExists("client-one"));
+  REQUIRE(server.tryGetClientConnection("client-one") == server.lastConnection);
+  REQUIRE_FALSE(server.tryGetClientConnection("missing"));
   REQUIRE_FALSE(server.removeClient("missing-client"));
   REQUIRE(server.removeClient("client-one"));
   REQUIRE_FALSE(server.clientConnectionExists("client-one"));
@@ -659,6 +693,146 @@ TEST_CASE("ServerConnection answers legacy clients with the protocol-6 flow",
   handler->close(returnPair[0]);
 }
 
+TEST_CASE("ServerConnection refuses to resume a legacy client",
+          "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  endpoint.set_port(0);
+  RecordingServerConnection server(handler, endpoint);
+
+  server.addClientKey("live-term", "0123456789abcdef0123456789abcdef");
+  server.resumeIds.insert("live-term");
+
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+  ConnectRequest request;
+  request.set_clientid("live-term");
+  request.set_version(PROTOCOL_VERSION);
+  handler->writeProto(fds[0], request, true);
+  server.clientHandler(fds[1]);
+
+  auto response = handler->readProto<ConnectResponse>(fds[0], true);
+  REQUIRE(response.status() == INVALID_KEY);
+  REQUIRE_FALSE(response.has_authchallenge());
+  REQUIRE_FALSE(response.has_resetrequired());
+  REQUIRE_FALSE(server.resumeClientCalled);
+  REQUIRE_FALSE(server.newClientCalled);
+  REQUIRE_FALSE(server.clientConnectionExists("live-term"));
+  REQUIRE(server.clientKeyExists("live-term"));
+
+  server.shutdown();
+  handler->close(fds[0]);
+}
+
+TEST_CASE("ServerConnection rejects removed clients during recovery grace",
+          "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  endpoint.set_port(0);
+  RecordingServerConnection server(handler, endpoint);
+
+  server.addClientKey("ended", "0123456789abcdef0123456789abcdef");
+  REQUIRE(server.removeClient("ended"));
+
+  int endedPair[2];
+  REQUIRE(createTestSocketPair(endedPair) == 0);
+  ConnectRequest endedRequest;
+  endedRequest.set_clientid("ended");
+  endedRequest.set_version(PROTOCOL_VERSION);
+  endedRequest.set_supportschallenge(true);
+  handler->writeProto(endedPair[0], endedRequest, true);
+  server.clientHandler(endedPair[1]);
+  auto endedResponse = handler->readProto<ConnectResponse>(endedPair[0], true);
+  REQUIRE(endedResponse.status() == INVALID_KEY);
+  handler->close(endedPair[0]);
+  handler->close(endedPair[1]);
+
+  int unknownPair[2];
+  REQUIRE(createTestSocketPair(unknownPair) == 0);
+  ConnectRequest unknownRequest;
+  unknownRequest.set_clientid("unknown");
+  unknownRequest.set_version(PROTOCOL_VERSION);
+  unknownRequest.set_supportschallenge(true);
+  handler->writeProto(unknownPair[0], unknownRequest, true);
+  server.clientHandler(unknownPair[1]);
+  auto unknownResponse =
+      handler->readProto<ConnectResponse>(unknownPair[0], true);
+  REQUIRE(unknownResponse.status() == RETRY_LATER);
+  handler->close(unknownPair[0]);
+  handler->close(unknownPair[1]);
+
+  server.expireRemovedClient("ended");
+  int expiredPair[2];
+  REQUIRE(createTestSocketPair(expiredPair) == 0);
+  handler->writeProto(expiredPair[0], endedRequest, true);
+  server.clientHandler(expiredPair[1]);
+  auto expiredResponse =
+      handler->readProto<ConnectResponse>(expiredPair[0], true);
+  REQUIRE(expiredResponse.status() == RETRY_LATER);
+  REQUIRE(server.removedClientCount() == 0);
+  handler->close(expiredPair[0]);
+  handler->close(expiredPair[1]);
+
+  server.shutdown();
+}
+
+TEST_CASE("ServerConnection resumes sessions with an active pty",
+          "[ServerConnection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  endpoint.set_port(0);
+  RecordingServerConnection server(handler, endpoint);
+
+  const string clientKey = "0123456789abcdef0123456789abcdef";
+  server.addClientKey("live-term", clientKey);
+  server.resumeIds.insert("live-term");
+
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+
+  std::thread client([&]() {
+    string authChallenge;
+    auto response = authenticateKnownClient(handler, fds[0], "live-term",
+                                            clientKey, nullptr, &authChallenge);
+    REQUIRE(response.status() == RETURNING_CLIENT);
+    REQUIRE(response.resetrequired());
+    REQUIRE(response.resetsalt().size() == CryptoHandler::EPOCH_SALT_BYTES);
+    REQUIRE(response.has_resetproof());
+    REQUIRE(CryptoHandler::verifyResetDecisionProof(
+        response.resetproof(), clientKey, "live-term", PROTOCOL_VERSION,
+        authChallenge, RETURNING_CLIENT, true, response.resetsalt()));
+
+    auto seqHeader = handler->readProto<SequenceHeader>(
+        fds[0], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(seqHeader.sequencenumber() == 0);
+    REQUIRE(seqHeader.reset());
+    REQUIRE(seqHeader.resetsalt() == response.resetsalt());
+    SequenceHeader seqResponse;
+    seqResponse.set_sequencenumber(0);
+    seqResponse.set_reset(true);
+    seqResponse.set_resetsalt(response.resetsalt());
+    handler->writeProto(fds[0], seqResponse, true);
+    auto catchup = handler->readProto<CatchupBuffer>(fds[0], true);
+    REQUIRE(catchup.buffer_size() == 0);
+    CatchupBuffer back;
+    handler->writeProto(fds[0], back, true);
+  });
+
+  server.clientHandler(fds[1]);
+  client.join();
+
+  REQUIRE(server.resumeClientCalled);
+  REQUIRE_FALSE(server.newClientCalled);
+  REQUIRE(server.clientConnectionExists("live-term"));
+
+  server.shutdown();
+  handler->close(fds[0]);
+  handler->close(fds[1]);
+}
+
 TEST_CASE("ServerConnection rejects known ids without proof before reset",
           "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
@@ -669,6 +843,7 @@ TEST_CASE("ServerConnection rejects known ids without proof before reset",
 
   const string clientKey = "0123456789abcdef0123456789abcdef";
   server.addClientKey("live-term", clientKey);
+  server.resumeIds.insert("live-term");
 
   int fds[2];
   REQUIRE(createTestSocketPair(fds) == 0);
@@ -687,6 +862,7 @@ TEST_CASE("ServerConnection rejects known ids without proof before reset",
 
   auto response = handler->readProto<ConnectResponse>(fds[0], true);
   REQUIRE(response.status() == INVALID_KEY);
+  REQUIRE_FALSE(server.resumeClientCalled);
   REQUIRE_FALSE(server.clientConnectionExists("live-term"));
 
   serverThread.join();

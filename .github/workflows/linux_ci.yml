@@ -195,6 +195,9 @@ jobs:
       - name: Named sessions survive client death
         run: ./test/system_tests/named_sessions.sh
 
+      - name: Sessions survive etserver restart
+        run: ./test/system_tests/router_restart.sh
+
       - name: Stop sshd for act
         if: ${{ always() }}
         run: |
