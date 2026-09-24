@@ -45,8 +45,16 @@ TEST_CASE("parseMuxCliOptions ControlMaster Path Persist and -M -S -O",
   REQUIRE(parsed.options.controlPersist.seconds == 3);
   REQUIRE(parsed.options.passthroughOptions.size() == 1);
   REQUIRE(parsed.options.passthroughOptions[0] == "SomethingElse=1");
-  REQUIRE(parsed.remainingArgs.size() == 2);
-  REQUIRE(parsed.remainingArgs[1] == "user@host");
+  REQUIRE(parsed.remainingArgs.size() == 10);
+  REQUIRE(parsed.remainingArgs[1] == "-o");
+  REQUIRE(parsed.remainingArgs[2] == "ControlMaster=auto");
+  REQUIRE(parsed.remainingArgs[3] == "-o");
+  REQUIRE(parsed.remainingArgs[4] == "ControlPath=/tmp/et-mux.sock");
+  REQUIRE(parsed.remainingArgs[5] == "-o");
+  REQUIRE(parsed.remainingArgs[6] == "ControlPersist=3");
+  REQUIRE(parsed.remainingArgs[7] == "-o");
+  REQUIRE(parsed.remainingArgs[8] == "SomethingElse=1");
+  REQUIRE(parsed.remainingArgs[9] == "user@host");
 
   storage = {"et", "-M", "-S", "/tmp/cm.sock", "-O", "check", "host"};
   argv.clear();

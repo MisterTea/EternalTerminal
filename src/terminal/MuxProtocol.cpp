@@ -424,6 +424,10 @@ MuxParseResult parseMuxCliOptions(int argc, char** argv) {
       } else {
         result.options.passthroughOptions.push_back(option);
       }
+      // cxxopts still has to see -o. -G and session options read it from the
+      // remaining argv; mux only records the Control* subset above.
+      result.remainingArgs.push_back("-o");
+      result.remainingArgs.push_back(option);
       continue;
     }
     result.remainingArgs.push_back(arg);
