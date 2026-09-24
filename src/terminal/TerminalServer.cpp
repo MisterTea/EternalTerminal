@@ -486,10 +486,18 @@ void TerminalServer::runTerminal(
               if (!pipeMode) {
                 tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
               }
-              char c = TERMINAL_BUFFER;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
-                                                     sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, tb, false);
+              // PTY may already be gone (EOF/`finishSession`); do not close the
+              // client here — fall through so TERMINAL_EXIT_STATUS can still be
+              // forwarded for `et -c`.
+              try {
+                char c = TERMINAL_BUFFER;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, tb, false);
+              } catch (const std::runtime_error& ex) {
+                LOG(INFO) << "Terminal gone while writing client buffer: "
+                          << ex.what();
+              }
               break;
             }
             case et::TerminalPacketType::KEEP_ALIVE: {
@@ -503,10 +511,17 @@ void TerminalServer::runTerminal(
               LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   stringToProto<et::TerminalInfo>(packet.getPayload());
-              char c = TERMINAL_INFO;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
-                                                     sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, ti, false);
+              // Same as TERMINAL_BUFFER: a late resize must not tear down the
+              // client before EXIT_STATUS is forwarded.
+              try {
+                char c = TERMINAL_INFO;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, ti, false);
+              } catch (const std::runtime_error& ex) {
+                LOG(INFO) << "Terminal gone while applying TERMINAL_INFO: "
+                          << ex.what();
+              }
               break;
             }
             case et::TerminalPacketType::TERMINAL_CLOSE: {

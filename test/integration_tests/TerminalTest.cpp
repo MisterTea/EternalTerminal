@@ -1180,6 +1180,13 @@ TEST_CASE_METHOD(EndToEndTestFixture,
   // not stop the loop until consoleOut is empty.
   const string marker(2048, 'M');
   auto gatedConsole = make_shared<GateWriteConsole>(consoleSocketHandler);
+  // Stable size avoids unrelated TERMINAL_INFO noise while the gate is closed.
+  TerminalInfo stableInfo;
+  stableInfo.set_row(24);
+  stableInfo.set_column(80);
+  stableInfo.set_width(8);
+  stableInfo.set_height(16);
+  gatedConsole->setTerminalInfoResult(stableInfo);
   fakeConsole = gatedConsole;
 
   auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
@@ -1225,6 +1232,9 @@ TEST_CASE_METHOD(EndToEndTestFixture,
                  "[EndToEndTest][integration][RemoteExitStatus]") {
   // Hard write errors (EPIPE/EBADF) during the post-loop consoleOut drain must
   // not throw out of run() after EXIT_STATUS has already been received.
+  // Leave FakeConsole auto-resizes on: blocked consoleOut makes the client
+  // loop spin and send late TERMINAL_INFO after pty EOF — server must still
+  // forward EXIT_STATUS (macOS CI previously saw runStatus 0).
   const string marker(2048, 'M');
   auto failConsole = make_shared<HardWriteFailConsole>(consoleSocketHandler);
   fakeConsole = failConsole;
