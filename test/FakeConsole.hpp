@@ -188,7 +188,8 @@ class FakeUserTerminal : public UserTerminal {
         clientServerFd(-1),
         setInfoCount(0),
         didCleanUp(false),
-        didHandleSessionEnd(false) {
+        didHandleSessionEnd(false),
+        exitCode(0) {
     memset(&lastWinInfo, 0, sizeof(winsize));
   }
 
@@ -389,7 +390,12 @@ class FakeUserTerminal : public UserTerminal {
     }
 #endif
   }
-  virtual void handleSessionEnd() { didHandleSessionEnd = true; }
+  virtual int handleSessionEnd() {
+    didHandleSessionEnd = true;
+    return exitCode;
+  }
+
+  void setExitCode(int code) { exitCode = code; }
   virtual void cleanup() {
     lock_guard<recursive_mutex> lock(_mutex);
     if (didCleanUp) {
@@ -450,6 +456,7 @@ class FakeUserTerminal : public UserTerminal {
   int setInfoCount;
   bool didCleanUp;
   bool didHandleSessionEnd;
+  int exitCode;
   winsize lastWinInfo;
   std::atomic<bool> setupComplete{false};
 };

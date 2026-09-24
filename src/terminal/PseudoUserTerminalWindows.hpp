@@ -203,11 +203,17 @@ class PseudoUserTerminal : public UserTerminal {
     }
   }
 
-  virtual void handleSessionEnd() override {
+  virtual int handleSessionEnd() override {
+    int exitCode = 0;
     if (processHandle != INVALID_HANDLE_VALUE) {
       WaitForSingleObject(static_cast<HANDLE>(processHandle), INFINITE);
+      DWORD code = 0;
+      if (GetExitCodeProcess(static_cast<HANDLE>(processHandle), &code)) {
+        exitCode = static_cast<int>(code);
+      }
     }
     running = false;
+    return exitCode;
   }
 
   virtual void setInfo(const winsize& tmpwin) override {

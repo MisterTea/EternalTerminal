@@ -36,7 +36,7 @@ class PseudoUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
-    pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+    pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
@@ -115,19 +115,38 @@ class PseudoUserTerminal : public UserTerminal {
 #endif
   }
 
-  /** @brief Waits for the child shell to exit before returning. */
-  virtual void handleSessionEnd() {
+  /**
+   * @brief Waits for the child shell to exit and returns its OpenSSH-style
+   * status.
+   */
+  virtual int handleSessionEnd() {
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
                 // least -CURRENT) sadness for now :/
-    int throwaway;
-    FATAL_FAIL(waitpid(getPid(), &throwaway, WUNTRACED));
+    int status = 0;
+    FATAL_FAIL(waitpid(getPid(), &status, WUNTRACED));
+    if (WIFEXITED(status)) {
+      return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+      return 128 + WTERMSIG(status);
+    }
+    return 0;
 #else
     siginfo_t childInfo;
+    memset(&childInfo, 0, sizeof(childInfo));
     if (getPid() > 0) {
       if (waitid(P_PID, getPid(), &childInfo, WEXITED) == -1) {
         LOG(ERROR) << "waitid failed, child already reaped.";
+        return 0;
+      }
+      if (childInfo.si_code == CLD_EXITED) {
+        return childInfo.si_status;
+      }
+      if (childInfo.si_code == CLD_KILLED || childInfo.si_code == CLD_DUMPED) {
+        return 128 + childInfo.si_status;
       }
     }
+    return 0;
 #endif
   }
 
@@ -144,9 +163,9 @@ class PseudoUserTerminal : public UserTerminal {
 
  protected:
   /** @brief PID of the child shell spawned by `forkpty`. */
-  pid_t pid;
+  pid_t pid = -1;
   /** @brief Master PTY file descriptor shared with the router. */
-  int masterFd;
+  int masterFd = -1;
 };
 }  // namespace et
 

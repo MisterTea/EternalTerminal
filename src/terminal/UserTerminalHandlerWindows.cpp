@@ -43,17 +43,28 @@ UserTerminalHandler::UserTerminalHandler(
 
 void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
                                                 bool isStderr) {
-  if (pipeMode) {
-    TerminalBuffer tb;
-    tb.set_buffer(string(data, length));
-    if (isStderr) {
-      tb.set_is_stderr(true);
-    }
+  if (length == 0) {
+    return;
+  }
+  TerminalBuffer tb;
+  tb.set_buffer(string(data, length));
+  if (isStderr) {
+    tb.set_is_stderr(true);
+  }
+  socketHandler->writePacket(
+      routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+}
+
+void UserTerminalHandler::finishSession() {
+  const int exitCode = term->handleSessionEnd();
+  TerminalExitStatus tes;
+  tes.set_exitcode(exitCode);
+  try {
     socketHandler->writePacket(
         routerFd,
-        Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-  } else {
-    socketHandler->writeAllOrThrow(routerFd, data, length, false);
+        Packet(TerminalPacketType::TERMINAL_EXIT_STATUS, protoToString(tes)));
+  } catch (const std::exception& ex) {
+    LOG(INFO) << "Failed to send terminal exit status: " << ex.what();
   }
 }
 
@@ -83,6 +94,12 @@ void UserTerminalHandler::run() {
       LOG(INFO) << "Starting raw pipe command session";
     }
     socketHandler->minimizeKernelBuffering(routerFd);
+    if (ti.no_shell()) {
+      LOG(INFO) << "Starting idle session without a shell";
+      runIdleSession();
+      socketHandler->close(routerFd);
+      return;
+    }
     break;
   }
 
@@ -91,12 +108,58 @@ void UserTerminalHandler::run() {
   socketHandler->close(routerFd);
 }
 
+void UserTerminalHandler::runIdleSession() {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return;
+      }
+    }
+    if (!socketHandler->hasData(routerFd)) {
+      Sleep(10);
+      continue;
+    }
+    char packetType = 0;
+    ssize_t rc = socketHandler->read(routerFd, &packetType, 1);
+    if (rc == 0) {
+      LOG(INFO) << "Idle session router closed";
+      return;
+    }
+    if (rc < 0) {
+      int err = GetErrno();
+      if (err == EAGAIN || err == EWOULDBLOCK) {
+        continue;
+      }
+      LOG(INFO) << "Idle session router read error: " << strerror(err);
+      return;
+    }
+    switch (packetType) {
+      case TERMINAL_BUFFER:
+        socketHandler->readProto<TerminalBuffer>(routerFd, false);
+        break;
+      case TERMINAL_INFO:
+        socketHandler->readProto<TerminalInfo>(routerFd, false);
+        break;
+      case TERMINAL_CLOSE:
+        LOG(INFO) << "Idle session closed";
+        return;
+      default:
+        LOG(INFO) << "Idle session stopping on packet " << int(packetType);
+        return;
+    }
+  }
+}
+
 void UserTerminalHandler::runUserTerminal(int masterFd) {
   auto* conpty = dynamic_cast<PseudoUserTerminal*>(term.get());
   if (conpty && !pipeMode) {
     runConPtyTerminal(*conpty);
     return;
   }
+  // Test doubles (e.g. FakeUserTerminal) expose a socket fd instead of a
+  // ConPTY. Pump it with the same wire protocol as Unix: packet-framed
+  // terminal output to the router, packet-framed input from the router.
   runSocketTerminal(masterFd);
 }
 
@@ -153,6 +216,7 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
         }
       }
 
+      // ConPTY -> router output as TERMINAL_BUFFER packets (matches Unix).
       string output = conpty.drainOutput();
       if (!output.empty()) {
         forwardOutputToRouter(output.data(), output.size(), false);
@@ -164,7 +228,7 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
           forwardOutputToRouter(tail.data(), tail.size(), false);
         }
         LOG(INFO) << "Terminal session ended";
-        term->handleSessionEnd();
+        finishSession();
         lock_guard<recursive_mutex> guard(shutdownMutex);
         shuttingDown = true;
         break;
@@ -218,13 +282,13 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         int readErrno = GetErrno();
         if (rc > 0) {
           VLOG(4) << "Read from terminal stdout";
-          forwardOutputToRouter(b, rc, false);
+          forwardOutputToRouter(b, static_cast<size_t>(rc), false);
         } else if (rc == 0) {
           LOG(INFO) << "Terminal session ended";
           if (pipeMode) {
             term->closeInput();
           }
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -234,7 +298,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
         } else {
           LOG(ERROR) << "Terminal read error: " << readErrno << " "
                      << strerror(readErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -311,7 +375,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
                    writeErrno != EWOULDBLOCK) {
           LOG(ERROR) << "Terminal write error: " << writeErrno << " "
                      << strerror(writeErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;

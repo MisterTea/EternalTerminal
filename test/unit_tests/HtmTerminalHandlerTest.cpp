@@ -125,16 +125,17 @@ TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
     term.stop();
     return;
   }
-  auto pollExit = [&]() {
-    term.pollUserTerminal();
 #ifdef WIN32
-    term.appendData("exit\r\n");
+  term.appendData("exit\r\n");
 #else
-    term.appendData("exit\n");
+  term.appendData("exit\n");
 #endif
-    return !term.isRunning();
-  };
-  bool exited = waitUntil(pollExit, 20000);
+  bool exited = waitUntil(
+      [&]() {
+        term.pollUserTerminal();
+        return !term.isRunning();
+      },
+      20000);
 #ifdef WIN32
   if (!exited) {
     SKIP(

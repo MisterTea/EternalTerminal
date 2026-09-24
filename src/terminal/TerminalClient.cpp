@@ -6,6 +6,7 @@
 
 #include "PseudoTerminalConsole.hpp"
 #include "RawSocketUtils.hpp"
+#include "SocksUtils.hpp"
 #include "TelemetryService.hpp"
 #include "TmuxCcFilter.hpp"
 #include "TunnelUtils.hpp"
@@ -77,16 +78,21 @@ TerminalClient::TerminalClient(
     const string& tunnels, const string& reverseTunnels, bool forwardSshAgent,
     const string& identityAgent, int _keepaliveDuration,
     const vector<pair<string, string>>& envVars, bool _noPty,
-    const string& command)
+    const string& command, const vector<string>& dynamicForwards,
+    const string& stdioForward)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
-      noPty(_noPty) {
+      noPty(_noPty),
+      stdioForwardActive(!stdioForward.empty()) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
-  if (noPty) {
+  payload.set_supports_exit_status(true);
+  if (stdioForwardActive) {
+    payload.set_no_shell(true);
+  } else if (noPty) {
     payload.set_no_pty(true);
     payload.set_command(command);
   }
@@ -108,6 +114,33 @@ TerminalClient::TerminalClient(
           continue;
         }
       }
+    }
+    for (const auto& dynamicArg : dynamicForwards) {
+      SocketEndpoint socksSource = parseDynamicForwardArg(dynamicArg);
+      auto response = portForwardHandler->createSocksSource(socksSource);
+      if (response.has_error()) {
+        LOG(WARNING) << "Failed to establish dynamic forward " << dynamicArg
+                     << " - " << response.error();
+        continue;
+      }
+    }
+    if (stdioForwardActive) {
+#ifdef WIN32
+      // CRT fds 0/1 are not sockets. The Windows poller ignores fd 0 and
+      // SocketHandler uses recv/send, so -W cannot bridge stdio yet.
+      CLOG(INFO, "stdout") << "-W/--stdio-forward is not supported on Windows"
+                           << endl;
+      exit(1);
+#else
+      SocketEndpoint destination = parseStdioForwardArg(stdioForward);
+      auto response = portForwardHandler->createStdioForward(
+          destination, STDIN_FILENO, STDOUT_FILENO, false);
+      if (response.has_error()) {
+        CLOG(INFO, "stdout")
+            << "Error establishing stdio forward: " << response.error() << endl;
+        exit(1);
+      }
+#endif
     }
     if (reverseTunnels.length()) {
       auto pfsrs = parseRangesToRequests(reverseTunnels);
@@ -209,7 +242,7 @@ TerminalClient::~TerminalClient() {
   connection.reset();
 }
 
-void TerminalClient::run(const string& command, const bool noexit) {
+int TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->setup();
   }
@@ -220,6 +253,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
+  const bool wantRemoteExitStatus = !command.empty() && !noexit;
+  int remoteExitStatus = 0;
+  bool haveRemoteExitStatus = false;
 
   if (command.length() && !noPty) {
     LOG(INFO) << "Got command: " << command;
@@ -237,7 +273,7 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   TerminalInfo lastTerminalInfo;
 
-  if (!console.get()) {
+  if (!console.get() && !stdioForwardActive) {
     // NOTE: ../../scripts/ssh-et relies on the wording of this message, so if
     // you change it please update it as well.
     CLOG(INFO, "stdout") << "ET running, feel free to background..." << endl;
@@ -591,6 +627,19 @@ void TerminalClient::run(const string& command, const bool noexit) {
               // latency issues.
               LOG(INFO) << "Got a keepalive";
               break;
+            case et::TerminalPacketType::TERMINAL_EXIT_STATUS: {
+              et::TerminalExitStatus tes =
+                  stringToProto<et::TerminalExitStatus>(packet.getPayload());
+              if (tes.has_exitcode()) {
+                remoteExitStatus = tes.exitcode();
+                haveRemoteExitStatus = true;
+                LOG(INFO) << "Got remote exit status " << remoteExitStatus;
+              }
+              // Do not set shuttingDown yet: writeSome may return partial/zero
+              // bytes (BinaryStdioConsole / O_NONBLOCK). Stop only after
+              // consoleOut has drained.
+              break;
+            }
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
@@ -606,6 +655,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
             consoleOut.consume(written);
           }
         }
+      }
+
+      // Command sessions: stop only once remote status is known and any
+      // buffered console output has been written (or there is no console).
+      if (wantRemoteExitStatus && haveRemoteExitStatus &&
+          (!console || !consoleOut.hasPendingData())) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
@@ -660,6 +717,11 @@ void TerminalClient::run(const string& command, const bool noexit) {
         VLOG(4) << "send PF data";
         keepaliveTime = time(NULL) + keepaliveDuration;
       }
+      if (stdioForwardActive && !portForwardHandler->hasActiveStdioForward()) {
+        connection->writePacket(Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+      }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();
       CLOG(INFO, "stdout") << "Connection closing because of error: "
@@ -668,10 +730,46 @@ void TerminalClient::run(const string& command, const bool noexit) {
       shuttingDown = true;
     }
   }
+  // Finish writing buffered remote output before tearing down the console.
+  // EXIT_STATUS or a dying connection must not discard consoleOut: writeSome
+  // may return 0 under O_NONBLOCK (BinaryStdioConsole) until the fd is
+  // writable. Hard errors (EPIPE/EBADF) stop the drain but must not throw past
+  // run() when remoteExitStatus is already known.
   if (console) {
+    while (consoleOut.hasPendingData()) {
+      size_t count = 0;
+      const char* data = consoleOut.peekData(&count);
+      if (data == nullptr || count == 0) {
+        break;
+      }
+      try {
+        size_t written = console->writeSome(string(data, count));
+        if (written > 0) {
+          consoleOut.consume(written);
+          continue;
+        }
+      } catch (const runtime_error& re) {
+        STERROR << "Error draining consoleOut: " << re.what();
+        break;
+      }
+#ifndef WIN32
+      pollfd pfd = {console->getFd(), POLLOUT, 0};
+      if (poll(&pfd, 1, 10) < 0 && errno != EINTR) {
+        break;
+      }
+#else
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+    }
     console->teardown();
   }
-  CLOG(INFO, "stdout") << "Session terminated" << endl;
+  if (!stdioForwardActive) {
+    CLOG(INFO, "stdout") << "Session terminated" << endl;
+  }
+  if (wantRemoteExitStatus && haveRemoteExitStatus) {
+    return remoteExitStatus;
+  }
+  return 0;
 }
 
 uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,

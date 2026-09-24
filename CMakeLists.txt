@@ -478,6 +478,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/SocksUtils.hpp
+  src/base/SocksUtils.cpp
   src/base/WriteBuffer.hpp
   src/base/TmuxCcFilter.hpp
 
@@ -508,6 +510,7 @@ add_library(
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
   src/terminal/JumphostPending.hpp
+  src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp

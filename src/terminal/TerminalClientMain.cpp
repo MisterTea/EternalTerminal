@@ -9,6 +9,7 @@
 #include "MuxClient.hpp"
 #include "MuxMaster.hpp"
 #include "MuxProtocol.hpp"
+#include "OpenSshLocalQueries.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
@@ -75,13 +76,16 @@ void parseSelectedSshConfig(const string& host, Options* options,
     return;
   }
 
+  // Share seen[] across user then system so first-wins (user over system),
+  // including explicit zero/"no" values that look unset on Options alone.
+  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
   char* homeDir = ssh_get_user_home_dir();
   if (homeDir != NULL) {
     parse_ssh_config_file(host.c_str(), options,
-                          string(homeDir) + USER_SSH_CONFIG_PATH);
+                          string(homeDir) + USER_SSH_CONFIG_PATH, seen);
     free(homeDir);
   }
-  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH);
+  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH, seen);
 }
 
 // Resolve a host alias via SSH config lookup
@@ -179,6 +183,11 @@ int main(int argc, char** argv) {
     options.add_options()             //
         ("h,help", "Print help")      //
         ("version", "Print version")  //
+        ("V",
+         "Print an OpenSSH-compatible version line and exit")  //
+        ("G",
+         "Print resolved OpenSSH-style configuration for the destination and "
+         "exit without connecting")  //
         ("u,username", "Username",
          cxxopts::value<std::string>())  //
         ("host", "Remote host name",
@@ -229,13 +238,24 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
         ("N,no-terminal", "Do not create a terminal")           //
+        ("D,dynamic",
+         "Dynamic application-level port forwarding: listen on "
+         "[bind_address:]port and accept SOCKS4/SOCKS5 connections that "
+         "choose a remote TCP or Unix destination after connect (ssh -D). "
+         "May be specified multiple times.",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("W,stdio-forward",
+         "Forward client stdio to host:port (or a Unix socket path) over the "
+         "secure channel without a remote shell (ssh -W). Implies no local "
+         "terminal.",
+         cxxopts::value<std::string>())  //
         ("T,no-pty",
          "Run -c command on pipes instead of a pty (binary stdio, "
          "separate stderr, no shell injection)")             //
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
-        ("ssh-config",
+        ("F,ssh-config",
          "Read only this absolute SSH configuration file (or 'none')",
          cxxopts::value<std::string>())  //
         ("no-ssh-config",
@@ -248,6 +268,10 @@ int main(int argc, char** argv) {
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("o",
+         "OpenSSH-style session option applied to the resolved config "
+         "(e.g. -o ConnectTimeout=10). Distinct from --ssh-option.",
          cxxopts::value<std::vector<std::string>>());
 
     options.parse_positional({"host"});
@@ -370,6 +394,11 @@ int main(int argc, char** argv) {
       }
 #endif
       exit(static_cast<int>(exitStatus));
+    }
+
+    if (result.count("V")) {
+      CLOG(INFO, "stdout") << openSshCompatibilityVersionLine() << endl;
+      exit(0);
     }
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
@@ -517,6 +546,38 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Apply OpenSSH-style -o session options after config resolution so they
+    // override file values. --ssh-option remains a separate bootstrap-ssh path.
+    if (result.count("o")) {
+      for (const auto& sessionOption : result["o"].as<std::vector<string>>()) {
+        if (!applySessionOption(&sshConfigOptions, sessionOption)) {
+          CLOG(INFO, "stdout")
+              << "Invalid -o option: " << sessionOption << endl;
+          exit(1);
+        }
+        string key = sessionOption;
+        size_t sep = key.find('=');
+        if (sep == string::npos) {
+          sep = key.find(' ');
+        }
+        if (sep != string::npos) {
+          key = key.substr(0, sep);
+        }
+        key = lowercaseAscii(trimAsciiBlanks(std::move(key)));
+        if (key == "hostname" && sshConfigOptions.host) {
+          destinationHost = string(sshConfigOptions.host);
+        } else if (key == "user" && sshConfigOptions.username) {
+          username = string(sshConfigOptions.username);
+        }
+      }
+    }
+
+    if (result.count("G")) {
+      CLOG(INFO, "stdout") << formatOpenSshResolvedConfig(
+          host_alias, destinationHost, username, sshConfigOptions);
+      exit(0);
+    }
+
     // Parse jumphost: cmd > sshconfig
     if (!jumphostSpecified && sshConfigOptions.ProxyJump &&
         strcasecmp(sshConfigOptions.ProxyJump, "none") != 0 &&
@@ -600,6 +661,8 @@ int main(int argc, char** argv) {
     }
 
     shared_ptr<Console> console;
+    string stdioForward = extractSingleOptionWithDefault<string>(
+        result, options, "stdio-forward", "");
     const bool noPty = result.count("T") > 0;
     string command = resolveRemoteCommand(
         argvSplit.commandOperands, result.count("command") > 0,
@@ -609,12 +672,18 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(1);
     }
-    if (!result.count("N")) {
-      if (noPty) {
-        console.reset(new BinaryStdioConsole());
-      } else {
-        console.reset(new PseudoTerminalConsole());
-      }
+    if (noPty && !stdioForward.empty()) {
+      CLOG(INFO, "stdout") << "-W/--stdio-forward cannot be combined with "
+                              "-T/--no-pty"
+                           << endl;
+      exit(1);
+    }
+    if (!stdioForward.empty() || result.count("N")) {
+      // -W ties stdio to a remote destination; do not attach a local shell.
+    } else if (noPty) {
+      console.reset(new BinaryStdioConsole());
+    } else {
+      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("f") > 0;
@@ -634,6 +703,10 @@ int main(int argc, char** argv) {
         extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
     string r_tunnel_arg = extractSingleOptionWithDefault<string>(
         result, options, "reversetunnel", "");
+    vector<string> dynamicForwards;
+    if (result.count("dynamic")) {
+      dynamicForwards = result["dynamic"].as<vector<string>>();
+    }
 
     for (const auto& localForward : sshConfigOptions.local_forwards) {
       string tunnelEntry =
@@ -659,7 +732,7 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
-        noPty, command);
+        noPty, command, dynamicForwards, stdioForward);
 
     unique_ptr<MuxMaster> muxMaster;
     if (shouldBecomeMuxMaster(muxOptions)) {
@@ -676,7 +749,8 @@ int main(int argc, char** argv) {
       }
     }
 
-    terminalClient.run(command, result.count("noexit"));
+    const int remoteExitStatus =
+        terminalClient.run(command, result.count("noexit"));
 
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
@@ -706,6 +780,21 @@ int main(int argc, char** argv) {
       }
       muxMaster->stop();
     }
+
+    // Clean up ssh config options
+    freeOptionsFields(&sshConfigOptions);
+
+#ifdef WIN32
+    WSACleanup();
+#endif
+
+    TelemetryService::get()->shutdown();
+    TelemetryService::destroy();
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
+
+    return remoteExitStatus;
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {
