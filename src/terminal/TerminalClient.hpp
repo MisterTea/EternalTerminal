@@ -143,6 +143,12 @@ class TerminalClient {
     /** Bumped on each attach so idle can reset per-session locals. */
     uint64_t generation = 0;
     /**
+     * Idle-loop poll/read/write sections still using the passenger fds.
+     * `runPassengerSession` waits for this to hit 0 before the caller closes
+     * them, so close cannot race those calls.
+     */
+    int ioDepth = 0;
+    /**
      * Set by `cancelPassengerSession` when not yet active so a hangup that
      * races ahead of attach still completes the session. Cleared when applied
      * or when the attach ends; not set while already active.

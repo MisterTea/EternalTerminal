@@ -807,6 +807,9 @@ uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,
   // races the return path cannot re-arm cancelRequested for the next attach.
   passenger.suppressStickyCancel = true;
   passenger.inFd = passenger.outFd = passenger.errFd = -1;
+  // The idle loop may already have copied these fds and be inside poll/read/
+  // write. Wait until that section finishes before the caller closes them.
+  passengerCv.wait(lock, [this]() { return passenger.ioDepth == 0; });
   return status;
 }
 
@@ -863,6 +866,19 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
 
     int passengerInFd = -1;
     int passengerOutFd = -1;
+    struct IoHold {
+      TerminalClient* self = nullptr;
+      ~IoHold() {
+        if (self == nullptr) {
+          return;
+        }
+        lock_guard<mutex> guard(self->passengerMutex);
+        if (self->passenger.ioDepth > 0) {
+          self->passenger.ioDepth--;
+        }
+        self->passengerCv.notify_all();
+      }
+    } ioHold;
     {
       lock_guard<mutex> guard(passengerMutex);
       if (passenger.active && !passenger.exitStatus.has_value()) {
@@ -876,6 +892,10 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
           passengerInFd = passenger.inFd;
         }
         passengerOutFd = passenger.outFd;
+        if (passengerInFd >= 0 || passengerOutFd >= 0) {
+          passenger.ioDepth++;
+          ioHold.self = this;
+        }
         // Key inject off non-empty command (cleared after write); do not keep
         // a sticky injectedPassengerCommand across missed inactive gaps.
         if (!passenger.command.empty()) {
