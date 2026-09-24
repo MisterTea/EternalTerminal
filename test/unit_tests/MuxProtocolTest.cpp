@@ -130,15 +130,70 @@ TEST_CASE("Second mux client opens session and forward on the master",
   ::close(inPipe[1]);
 
   uint32_t sessionId = 0;
+  uint32_t exitStatus = 255;
   REQUIRE(client.newSession("true", false, inPipe[0], outPipe[1], outPipe[1],
-                            &sessionId, &error));
+                            &sessionId, &error, &exitStatus));
   REQUIRE(sessionId >= 1);
   REQUIRE(master.sessionCount() >= 1);
+  REQUIRE(exitStatus == 0);
 
   char got[64] = {};
   ssize_t gotN = ::read(outPipe[0], got, sizeof(got));
   REQUIRE(gotN == (ssize_t)(sizeof(payload) - 1));
   REQUIRE(string(got, gotN) == payload);
+
+  ::close(inPipe[0]);
+  ::close(outPipe[0]);
+  ::close(outPipe[1]);
+  master.stop();
+}
+
+TEST_CASE("mux NEW_SESSION blocks until EXIT_MESSAGE past peek timeout",
+          "[Mux]") {
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  persist.enabled = false;
+
+  atomic<bool> handlerFinished{false};
+  MuxMaster master(path, persist);
+  master.setPassengerSessionHandler([&](int inFd, int outFd, int errFd,
+                                        const string& /*command*/,
+                                        bool /*wantTty*/) -> uint32_t {
+    (void)outFd;
+    (void)errFd;
+    // Outlive MuxClient's former ~2s optional peek so early return is
+    // observable.
+    testSleepMicros(3000000);
+    char buf[8];
+    (void)::read(inFd, buf, sizeof(buf));
+    handlerFinished.store(true);
+    return 42;
+  });
+  master.start();
+
+  MuxClient client(path);
+  REQUIRE(client.connect());
+
+  int inPipe[2];
+  int outPipe[2];
+  REQUIRE(::pipe(inPipe) == 0);
+  REQUIRE(::pipe(outPipe) == 0);
+  ::close(inPipe[1]);
+
+  uint32_t sessionId = 0;
+  uint32_t exitStatus = 0;
+  string error;
+  auto start = std::chrono::steady_clock::now();
+  REQUIRE(client.newSession("slow", false, inPipe[0], outPipe[1], outPipe[1],
+                            &sessionId, &error, &exitStatus));
+  auto elapsedMs = std::chrono::duration_cast<std::chrono::milliseconds>(
+                       std::chrono::steady_clock::now() - start)
+                       .count();
+
+  REQUIRE(handlerFinished.load());
+  REQUIRE(elapsedMs >= 2500);
+  REQUIRE(sessionId >= 1);
+  REQUIRE(exitStatus == 42);
 
   ::close(inPipe[0]);
   ::close(outPipe[0]);
@@ -336,6 +391,113 @@ TEST_CASE("ControlPersist restarts when the last passenger leaves", "[Mux]") {
     testSleepMicros(50000);
   }
   REQUIRE((master.persistExpired() || !master.isRunning()));
+  master.stop();
+}
+
+TEST_CASE(
+    "mux client hangup during interactive attach drops clients so persist "
+    "expires",
+    "[Mux]") {
+  // Regression: after SESSION_OPENED the master blocks in the passenger
+  // handler and does not read the control socket. Interactive cancel (client
+  // dies / Ctrl-C) must still complete the session so clients drops and
+  // ControlPersist can arm.
+  string path = tempControlPath();
+  ControlPersistConfig persist;
+  persist.enabled = true;
+  persist.seconds = 1;
+
+  atomic<bool> cancelRequested{false};
+  MuxMaster master(path, persist);
+  master.setPassengerSessionHandler([&](int inFd, int outFd, int errFd,
+                                        const string& command,
+                                        bool /*wantTty*/) -> uint32_t {
+    REQUIRE(command.empty());
+    (void)outFd;
+    (void)errFd;
+    // Poll stdin with a short timeout so cancel can be observed; a blocking
+    // read would ignore hangup-driven cancel while the pipe write end stays
+    // open (interactive attach).
+    while (!cancelRequested.load()) {
+      pollfd pfd{};
+      pfd.fd = inFd;
+      pfd.events = POLLIN;
+      int rc = ::poll(&pfd, 1, 20);
+      if (rc > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR | POLLNVAL))) {
+        char buf[8];
+        ssize_t n = ::read(inFd, buf, sizeof(buf));
+        if (n <= 0) {
+          break;
+        }
+      }
+    }
+    return 1;
+  });
+  master.setPassengerCancelHandler([&]() { cancelRequested.store(true); });
+  master.start();
+  master.notifyPrimaryClientExited();
+
+  MuxClient client(path);
+  REQUIRE(client.connect());
+
+  int inPipe[2];
+  int outPipe[2];
+  REQUIRE(::pipe(inPipe) == 0);
+  REQUIRE(::pipe(outPipe) == 0);
+  // Keep stdin open so an interactive attach does not see local EOF.
+
+  atomic<bool> sessionFinished{false};
+  thread sessionThread([&]() {
+    uint32_t sessionId = 0;
+    uint32_t exitStatus = 0;
+    string error;
+    (void)client.newSession("", true, inPipe[0], outPipe[1], outPipe[1],
+                            &sessionId, &error, &exitStatus);
+    sessionFinished.store(true);
+  });
+
+  auto attachDeadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+  while (std::chrono::steady_clock::now() < attachDeadline &&
+         master.sessionCount() == 0) {
+    testSleepMicros(20000);
+  }
+  REQUIRE(master.sessionCount() >= 1);
+  REQUIRE(master.activeClientCount() >= 1);
+
+  // Simulate Ctrl-C / process death: tear down the mux control peer mid-attach.
+  client.hangup();
+
+  auto clientsDeadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+  while (std::chrono::steady_clock::now() < clientsDeadline &&
+         master.activeClientCount() > 0) {
+    testSleepMicros(20000);
+  }
+  REQUIRE(master.activeClientCount() == 0);
+
+  auto persistDeadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2500);
+  while (std::chrono::steady_clock::now() < persistDeadline &&
+         master.isRunning() && !master.persistExpired()) {
+    testSleepMicros(50000);
+  }
+  REQUIRE((master.persistExpired() || !master.isRunning()));
+
+  auto joinDeadline =
+      std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+  while (std::chrono::steady_clock::now() < joinDeadline &&
+         !sessionFinished.load()) {
+    testSleepMicros(20000);
+  }
+  if (sessionThread.joinable()) {
+    sessionThread.join();
+  }
+
+  ::close(inPipe[0]);
+  ::close(inPipe[1]);
+  ::close(outPipe[0]);
+  ::close(outPipe[1]);
   master.stop();
 }
 

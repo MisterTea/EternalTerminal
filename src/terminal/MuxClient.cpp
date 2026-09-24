@@ -18,6 +18,21 @@ MuxClient::~MuxClient() { disconnect(); }
 
 void MuxClient::disconnect() { conn.reset(); }
 
+void MuxClient::hangup() {
+  if (!conn) {
+    return;
+  }
+  int fd = conn->fd();
+  if (fd < 0) {
+    return;
+  }
+#ifdef WIN32
+  ::shutdown(fd, SD_BOTH);
+#else
+  ::shutdown(fd, SHUT_RDWR);
+#endif
+}
+
 bool MuxClient::connect(int timeoutMs) {
   disconnect();
   if (path.empty()) {
@@ -264,7 +279,7 @@ bool MuxClient::closeForward(const MuxOpenForwardRequest& fwd, string* error) {
 
 bool MuxClient::newSession(const string& command, bool wantTty, int stdinFd,
                            int stdoutFd, int stderrFd, uint32_t* sessionId,
-                           string* error) {
+                           string* error, uint32_t* exitStatus) {
   if (!conn) {
     return false;
   }
@@ -337,13 +352,48 @@ bool MuxClient::newSession(const string& command, bool wantTty, int stdinFd,
     *sessionId = sid;
   }
 
-  // Master may follow with EXIT_MESSAGE for short shared attaches.
-  MuxBuffer exitBody;
-  if (conn->readPacket(&exitBody, 2000)) {
+  // Stay attached until the master sends EXIT_MESSAGE (or the control
+  // connection fails). Returning earlier tears down the passenger while the
+  // master is still bridging stdio.
+  while (true) {
+    MuxBuffer exitBody;
+    if (!conn->readPacket(&exitBody, -1)) {
+      if (error) {
+        *error = "control master terminated unexpectedly";
+      }
+      return false;
+    }
     uint32_t exitType = 0;
-    exitBody.getU32(&exitType);
+    if (!exitBody.getU32(&exitType)) {
+      return false;
+    }
+    if (exitType == MUX_S_TTY_ALLOC_FAIL) {
+      uint32_t esid = 0;
+      (void)exitBody.getU32(&esid);
+      continue;
+    }
+    if (exitType != MUX_S_EXIT_MESSAGE) {
+      string reason;
+      (void)exitBody.getString(&reason);
+      if (error) {
+        *error =
+            reason.empty() ? "unexpected mux message during session" : reason;
+      }
+      return false;
+    }
+    uint32_t esid = 0;
+    uint32_t status = 255;
+    if (!exitBody.getU32(&esid) || !exitBody.getU32(&status)) {
+      return false;
+    }
+    if (esid != sid) {
+      continue;
+    }
+    if (exitStatus) {
+      *exitStatus = status;
+    }
+    return true;
   }
-  return true;
 }
 
 int MuxClient::runCtlCommand(const string& command) {

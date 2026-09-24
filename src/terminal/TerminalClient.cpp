@@ -1,6 +1,8 @@
 #include "TerminalClient.hpp"
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 #include "PseudoTerminalConsole.hpp"
 #include "RawSocketUtils.hpp"
@@ -10,6 +12,59 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+namespace {
+// Printed by a commanded passenger after the isolated subshell returns so the
+// ControlPersist bridge can recover a real exit status without killing the
+// shared remote shell via `; exit`.
+constexpr char kPassengerExitMarker[] = "__ET_PASSENGER_EXIT__:";
+
+bool consumePassengerExitMarker(string* carry, const string& chunk,
+                                string* forward,
+                                optional<uint32_t>* parsedStatus) {
+  carry->append(chunk);
+  forward->clear();
+  const size_t markerLen = sizeof(kPassengerExitMarker) - 1;
+  while (true) {
+    size_t pos = carry->find(kPassengerExitMarker);
+    if (pos == string::npos) {
+      size_t suffix = 0;
+      for (size_t n = min(carry->size(), markerLen - 1); n > 0; --n) {
+        if (carry->compare(carry->size() - n, n, kPassengerExitMarker, n) ==
+            0) {
+          suffix = n;
+          break;
+        }
+      }
+      if (carry->size() > suffix) {
+        forward->append(carry->data(), carry->size() - suffix);
+      }
+      *carry = carry->substr(carry->size() - suffix);
+      return false;
+    }
+    forward->append(carry->data(), pos);
+    size_t statusStart = pos + markerLen;
+    size_t end = carry->find('\n', statusStart);
+    if (end == string::npos) {
+      *carry = carry->substr(pos);
+      return false;
+    }
+    string statusStr = carry->substr(statusStart, end - statusStart);
+    char* endp = nullptr;
+    unsigned long val = strtoul(statusStr.c_str(), &endp, 10);
+    if (endp != statusStr.c_str()) {
+      *parsedStatus = static_cast<uint32_t>(val);
+    } else {
+      *parsedStatus = 255;
+    }
+    *carry = carry->substr(end + 1);
+    if (!carry->empty()) {
+      forward->append(*carry);
+      carry->clear();
+    }
+    return true;
+  }
+}
+}  // namespace
 std::atomic<bool> TerminalClient::closeOnHangup(false);
 std::atomic<bool> TerminalClient::hangupCloseRequested(false);
 std::atomic<bool> TerminalClient::hangupCloseCompleted(false);
@@ -635,15 +690,38 @@ uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,
     passenger.outFd = outFd;
     passenger.errFd = errFd;
     passenger.command = command;
+    passenger.generation++;
     passenger.active = true;
-    passenger.exitStatus.reset();
+    // Honor a hangup/cancel that arrived before we became active.
+    if (passenger.cancelRequested) {
+      passenger.exitStatus = 1;
+      passenger.cancelRequested = false;
+    } else {
+      passenger.exitStatus.reset();
+    }
   }
   unique_lock<mutex> lock(passengerMutex);
   passengerCv.wait(lock, [this]() { return passenger.exitStatus.has_value(); });
   uint32_t status = *passenger.exitStatus;
   passenger.active = false;
+  passenger.cancelRequested = false;
   passenger.inFd = passenger.outFd = passenger.errFd = -1;
   return status;
+}
+
+void TerminalClient::cancelPassengerSession() {
+  lock_guard<mutex> guard(passengerMutex);
+  if (passenger.active) {
+    // Current attach is in flight or completing: finish it, but do not leave
+    // sticky cancel for a later session (MuxMaster may re-enter this handler).
+    if (!passenger.exitStatus.has_value()) {
+      passenger.exitStatus = 1;
+      passengerCv.notify_all();
+    }
+    return;
+  }
+  // Hangup before active: sticky until runPassengerSession attaches.
+  passenger.cancelRequested = true;
 }
 
 void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
@@ -651,7 +729,17 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
   WriteBuffer passengerOut;
-  bool injectedPassengerCommand = false;
+  // Like primary run()'s consoleInputDisabled: local stdin EOF must not be
+  // treated as a successful remote session end (e.g. `et -S … -- cmd
+  // </dev/null`).
+  bool passengerInputDisabled = false;
+  bool awaitingPassengerExitMarker = false;
+  string passengerExitCarry;
+  // Tracks which attach `serviceIdleUntil` has armed. Must not rely solely on
+  // observing `!passenger.active`: a second attach can flip `active` again
+  // before the idle loop sees the inactive gap, which would leave
+  // passengerInputDisabled stuck and skip injecting the new command.
+  uint64_t boundPassengerGeneration = 0;
 
   while (keepGoing() && !connection->isShuttingDown()) {
     {
@@ -666,17 +754,32 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
     {
       lock_guard<mutex> guard(passengerMutex);
       if (passenger.active && !passenger.exitStatus.has_value()) {
-        passengerInFd = passenger.inFd;
+        if (boundPassengerGeneration != passenger.generation) {
+          boundPassengerGeneration = passenger.generation;
+          passengerInputDisabled = false;
+          awaitingPassengerExitMarker = false;
+          passengerExitCarry.clear();
+        }
+        if (!passengerInputDisabled) {
+          passengerInFd = passenger.inFd;
+        }
         passengerOutFd = passenger.outFd;
-        if (!injectedPassengerCommand && !passenger.command.empty()) {
+        // Key inject off non-empty command (cleared after write); do not keep
+        // a sticky injectedPassengerCommand across missed inactive gaps.
+        if (!passenger.command.empty()) {
           et::TerminalBuffer tb;
           if (noPty) {
             tb.set_buffer(passenger.command);
           } else {
-            tb.set_buffer(passenger.command + "; exit\n");
+            // Isolate in a subshell so an `exit` inside the passenger command
+            // cannot kill the shared ControlPersist PTY, then print a marker
+            // with $? so the bridge can propagate a real status.
+            tb.set_buffer("(" + passenger.command + "); printf '\\n" +
+                          string(kPassengerExitMarker) + "%d\\n' $?\n");
+            awaitingPassengerExitMarker = true;
+            passengerExitCarry.clear();
           }
           passenger.command.clear();
-          injectedPassengerCommand = true;
           try {
             connection->writePacket(
                 Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
@@ -684,7 +787,9 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
           }
         }
       } else if (!passenger.active) {
-        injectedPassengerCommand = false;
+        passengerInputDisabled = false;
+        awaitingPassengerExitMarker = false;
+        passengerExitCarry.clear();
       }
     }
 
@@ -750,11 +855,10 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
           keepaliveTime = time(NULL) + keepaliveDuration;
         } else if (rc == 0 || (rc < 0 && errno != EAGAIN &&
                                errno != EWOULDBLOCK && errno != EINTR)) {
-          lock_guard<mutex> guard(passengerMutex);
-          if (passenger.active && !passenger.exitStatus.has_value()) {
-            passenger.exitStatus = 0;
-            passengerCv.notify_all();
-          }
+          // Mirror primary run(): disable further local input; keep bridging
+          // until a real session-end signal (exit marker / TERMINAL_CLOSE /
+          // idle teardown).
+          passengerInputDisabled = true;
         }
       }
 #endif
@@ -775,8 +879,28 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
               et::TerminalBuffer tb =
                   stringToProto<et::TerminalBuffer>(packet.getPayload());
 #ifndef WIN32
-              if (passengerOutFd >= 0) {
-                passengerOut.enqueue(tb.buffer());
+              if (passengerOutFd >= 0 || awaitingPassengerExitMarker) {
+                if (awaitingPassengerExitMarker) {
+                  string forward;
+                  optional<uint32_t> parsedStatus;
+                  bool complete = consumePassengerExitMarker(
+                      &passengerExitCarry, tb.buffer(), &forward,
+                      &parsedStatus);
+                  if (!forward.empty() && passengerOutFd >= 0) {
+                    passengerOut.enqueue(forward);
+                  }
+                  if (complete && parsedStatus.has_value()) {
+                    lock_guard<mutex> guard(passengerMutex);
+                    if (passenger.active && !passenger.exitStatus.has_value()) {
+                      passenger.exitStatus = *parsedStatus;
+                      passengerCv.notify_all();
+                    }
+                    awaitingPassengerExitMarker = false;
+                    passengerExitCarry.clear();
+                  }
+                } else if (passengerOutFd >= 0) {
+                  passengerOut.enqueue(tb.buffer());
+                }
               }
 #else
               (void)tb;
@@ -794,9 +918,13 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
             case TerminalPacketType::TERMINAL_CLOSE: {
               lock_guard<mutex> guard(passengerMutex);
               if (passenger.active && !passenger.exitStatus.has_value()) {
-                passenger.exitStatus = 0;
+                // Interactive attach: clean remote close. Commanded attach
+                // that never saw a marker: fail closed (status unknown).
+                passenger.exitStatus = awaitingPassengerExitMarker ? 255u : 0u;
                 passengerCv.notify_all();
               }
+              awaitingPassengerExitMarker = false;
+              passengerExitCarry.clear();
               break;
             }
             default:

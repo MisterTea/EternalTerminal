@@ -55,9 +55,22 @@ class TerminalClient {
   /**
    * @brief Block until a mux passenger's stdio has been bridged through the
    * live ET connection by `serviceIdleUntil` / `run`, then return its status.
+   *
+   * Commanded PTY passengers run in an isolated subshell and report status via
+   * an output marker (not by exiting the shared shell). Interactive attaches
+   * return 0 on TERMINAL_CLOSE. Idle/error teardown returns 1. Local stdin EOF
+   * does not complete the session.
    */
   uint32_t runPassengerSession(int inFd, int outFd, int errFd,
                                const string& command);
+  /**
+   * @brief Complete an in-flight passenger attach (e.g. mux control hangup).
+   * Sticky only while not yet active: a hangup before `passenger.active` is
+   * remembered and applied as soon as `runPassengerSession` attaches. Once
+   * active, cancel completes the current session without leaving sticky state
+   * for a later attach.
+   */
+  void cancelPassengerSession();
   /** @brief Port-forward handler owned by this client (for mux OPEN_FWD). */
   shared_ptr<PortForwardHandler> getPortForwardHandler() const {
     return portForwardHandler;
@@ -112,6 +125,14 @@ class TerminalClient {
     string command;
     bool active = false;
     optional<uint32_t> exitStatus;
+    /** Bumped on each attach so idle can reset per-session locals. */
+    uint64_t generation = 0;
+    /**
+     * Set by `cancelPassengerSession` when not yet active so a hangup that
+     * races ahead of attach still completes the session. Cleared when applied
+     * or when the attach ends; not set while already active.
+     */
+    bool cancelRequested = false;
   };
   PassengerAttach passenger;
   mutex passengerMutex;

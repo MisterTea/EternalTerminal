@@ -96,6 +96,11 @@ class MuxClient {
   /** @brief Connect and exchange hellos. */
   bool connect(int timeoutMs = 5000);
   void disconnect();
+  /**
+   * @brief Shut down the control socket in place to wake blocked I/O without
+   * destroying the connection object (safe from another thread).
+   */
+  void hangup();
 
   bool aliveCheck(uint32_t* masterPid = nullptr);
   bool terminateMaster();
@@ -106,10 +111,12 @@ class MuxClient {
   /**
    * @brief Request a shared command channel (MUX_C_NEW_SESSION).
    * Optionally passes stdin/stdout/stderr via SCM_RIGHTS when fds >= 0.
+   * Blocks until MUX_S_EXIT_MESSAGE (or a hard error) and surfaces the
+   * session exit status when exitStatus is non-null.
    */
   bool newSession(const string& command, bool wantTty, int stdinFd,
                   int stdoutFd, int stderrFd, uint32_t* sessionId = nullptr,
-                  string* error = nullptr);
+                  string* error = nullptr, uint32_t* exitStatus = nullptr);
 
   /** @brief Run -O check|exit|stop control commands. */
   int runCtlCommand(const string& command);

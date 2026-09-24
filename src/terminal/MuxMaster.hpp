@@ -37,6 +37,13 @@ class MuxMaster {
   using PassengerSessionHandler = function<uint32_t(
       int inFd, int outFd, int errFd, const string& command, bool wantTty)>;
   void setPassengerSessionHandler(PassengerSessionHandler handler);
+  /**
+   * @brief Invoked when the mux control peer hangs up during a passenger
+   * session so the handler can complete (otherwise the client slot stays
+   * occupied and ControlPersist never expires).
+   */
+  using PassengerCancelHandler = function<void()>;
+  void setPassengerCancelHandler(PassengerCancelHandler handler);
   /** @brief Bind ControlPath and start the accept/serve thread. */
   void start();
   void stop();
@@ -71,6 +78,16 @@ class MuxMaster {
   void serveClient(int clientFd);
   bool handleHello(MuxConnection* conn, MuxBuffer* body);
   bool handleRequest(MuxConnection* conn, uint32_t type, MuxBuffer* body);
+  /**
+   * @brief Run a passenger handler while watching the mux control peer.
+   * On hangup (or master stop), fires the cancel handler once. Sticky cancel
+   * on the TerminalClient covers hangup before passenger.active; re-firing
+   * after the session clears that flag would poison the next attach.
+   */
+  uint32_t runPassengerWithControlWatch(MuxConnection* conn, int inFd,
+                                        int outFd, int errFd,
+                                        const string& command, bool wantTty,
+                                        PassengerSessionHandler handler);
 
   bool replyOk(MuxConnection* conn, uint32_t requestId);
   bool replyAlive(MuxConnection* conn, uint32_t requestId);
@@ -95,6 +112,7 @@ class MuxMaster {
   ControlPersistConfig persistConfig;
   shared_ptr<PortForwardHandler> portForwardHandler;
   PassengerSessionHandler passengerSessionHandler;
+  PassengerCancelHandler passengerCancelHandler;
 
   int listenFd = -1;
   vector<ClientSlot> clientSlots;

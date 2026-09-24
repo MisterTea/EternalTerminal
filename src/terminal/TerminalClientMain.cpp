@@ -351,23 +351,25 @@ int main(int argc, char** argv) {
           result.count("command") ? result["command"].as<string>() : "");
 #ifndef WIN32
       uint32_t sessionId = 0;
+      uint32_t exitStatus = 255;
       string error;
       if (!passenger.newSession(command, !result.count("N"), STDIN_FILENO,
                                 STDOUT_FILENO, STDERR_FILENO, &sessionId,
-                                &error)) {
+                                &error, &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
         exit(1);
       }
 #else
       uint32_t sessionId = 0;
+      uint32_t exitStatus = 255;
       string error;
       if (!passenger.newSession(command, !result.count("N"), -1, -1, -1,
-                                &sessionId, &error)) {
+                                &sessionId, &error, &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
         exit(1);
       }
 #endif
-      exit(0);
+      exit(static_cast<int>(exitStatus));
     }
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
@@ -693,6 +695,9 @@ int main(int argc, char** argv) {
                   return terminalClient.runPassengerSession(inFd, outFd, errFd,
                                                             passengerCommand);
                 });
+            muxMaster->setPassengerCancelHandler([&terminalClient]() {
+              terminalClient.cancelPassengerSession();
+            });
             handlerReady = true;
           }
           return muxMaster->isRunning() && !muxMaster->persistExpired();

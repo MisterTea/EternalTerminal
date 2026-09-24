@@ -36,6 +36,11 @@ void MuxMaster::setPassengerSessionHandler(PassengerSessionHandler handler) {
   passengerSessionHandler = std::move(handler);
 }
 
+void MuxMaster::setPassengerCancelHandler(PassengerCancelHandler handler) {
+  lock_guard<recursive_mutex> guard(mutex);
+  passengerCancelHandler = std::move(handler);
+}
+
 void MuxMaster::waitWhilePersisting(MuxMaster& master,
                                     const ControlPersistConfig& persist,
                                     const function<void()>& serviceTransport) {
@@ -431,6 +436,106 @@ bool MuxMaster::replySessionOpened(MuxConnection* conn, uint32_t requestId,
   return conn->writePacket(reply);
 }
 
+uint32_t MuxMaster::runPassengerWithControlWatch(
+    MuxConnection* conn, int inFd, int outFd, int errFd, const string& command,
+    bool wantTty, PassengerSessionHandler handler) {
+  atomic<bool> finished{false};
+  atomic<uint32_t> exitStatus{255};
+  exception_ptr handlerError;
+
+  thread sessionThread([&]() {
+    try {
+      exitStatus.store(handler(inFd, outFd, errFd, command, wantTty));
+    } catch (...) {
+      handlerError = current_exception();
+      exitStatus.store(255);
+    }
+    finished.store(true);
+  });
+
+  PassengerCancelHandler cancel;
+  {
+    lock_guard<recursive_mutex> guard(mutex);
+    cancel = passengerCancelHandler;
+  }
+
+  // Sticky cancel on TerminalClient covers hangup before passenger.active.
+  // Fire cancel at most once: re-invoking after the session clears
+  // cancelRequested poisons the next attach (instant status 1).
+  bool cancelFired = false;
+  auto fireCancel = [&]() {
+    if (cancelFired) {
+      return;
+    }
+    cancelFired = true;
+    if (cancel) {
+      cancel();
+    }
+  };
+
+  while (!finished.load()) {
+    if (!running.load() || terminateRequested.load()) {
+      fireCancel();
+    }
+
+#ifndef WIN32
+    pollfd pfd{};
+    pfd.fd = conn->fd();
+    pfd.events = POLLIN;
+    int rc = ::poll(&pfd, 1, 50);
+    if (rc < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      fireCancel();
+      continue;
+    }
+    if (rc == 0) {
+      continue;
+    }
+
+    bool hungUp = (pfd.revents & (POLLHUP | POLLERR | POLLNVAL)) != 0;
+    if (!hungUp && (pfd.revents & POLLIN)) {
+      char peek = 0;
+      ssize_t n = ::recv(conn->fd(), &peek, 1, MSG_PEEK | MSG_DONTWAIT);
+      if (n == 0) {
+        hungUp = true;
+      } else if (n < 0 && errno != EAGAIN && errno != EWOULDBLOCK &&
+                 errno != EINTR) {
+        hungUp = true;
+      } else if (n > 0) {
+        // Unexpected mux traffic during an active passenger session; drain
+        // one packet or treat a failed read as hangup.
+        MuxBuffer discard;
+        if (!conn->readPacket(&discard, 50)) {
+          hungUp = true;
+        }
+      }
+    }
+    if (hungUp) {
+      fireCancel();
+    }
+#else
+    (void)conn;
+    this_thread::sleep_for(chrono::milliseconds(50));
+#endif
+  }
+
+  if (sessionThread.joinable()) {
+    sessionThread.join();
+  }
+  if (handlerError) {
+    try {
+      rethrow_exception(handlerError);
+    } catch (const std::exception& ex) {
+      LOG(WARNING) << "Mux passenger session failed: " << ex.what();
+    } catch (...) {
+      LOG(WARNING) << "Mux passenger session failed with unknown error";
+    }
+  }
+  return exitStatus.load();
+}
+
 bool MuxMaster::openForward(const MuxTrackedForward& fwd, string* error) {
   lock_guard<recursive_mutex> guard(mutex);
   for (const auto& existing : forwards) {
@@ -607,13 +712,8 @@ bool MuxMaster::handleRequest(MuxConnection* conn, uint32_t type,
         return false;
       }
 
-      uint32_t exitStatus = 255;
-      try {
-        exitStatus = handler(inFd, outFd, errFd, command, wantTty);
-      } catch (const std::exception& ex) {
-        LOG(WARNING) << "Mux passenger session failed: " << ex.what();
-        exitStatus = 255;
-      }
+      uint32_t exitStatus = runPassengerWithControlWatch(
+          conn, inFd, outFd, errFd, command, wantTty, handler);
       ::close(inFd);
       ::close(outFd);
       ::close(errFd);

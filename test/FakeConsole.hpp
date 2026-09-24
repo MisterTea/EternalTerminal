@@ -3,6 +3,10 @@
 
 #include <fcntl.h>
 
+#include <algorithm>
+#include <chrono>
+#include <thread>
+
 #include "Console.hpp"
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
@@ -255,6 +259,42 @@ class FakeUserTerminal : public UserTerminal {
     string s(count, '\0');
     socketHandler->readAll(serverClientFd, &s[0], count, false);
     return s;
+  }
+
+  /** @brief Non-blocking: returns true when keystrokes are readable. */
+  bool hasKeystrokes() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return serverClientFd >= 0 && socketHandler->hasData(serverClientFd);
+  }
+
+  /**
+   * @brief Read up to `maxCount` keystroke bytes, waiting at most `timeoutMs`.
+   * Returns whatever arrived (possibly empty) without hanging forever.
+   */
+  string drainKeystrokes(int maxCount, int timeoutMs) {
+    string got;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (static_cast<int>(got.size()) < maxCount &&
+           std::chrono::steady_clock::now() < deadline) {
+      if (!hasKeystrokes()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      lock_guard<recursive_mutex> lock(_mutex);
+      if (serverClientFd < 0) {
+        break;
+      }
+      char b[64];
+      int want = std::min(maxCount - static_cast<int>(got.size()), 64);
+      ssize_t rc = socketHandler->read(serverClientFd, b, want);
+      if (rc > 0) {
+        got.append(b, static_cast<size_t>(rc));
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+    return got;
   }
 
   void simulateTerminalResponse(const string& s) {
