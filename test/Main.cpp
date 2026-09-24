@@ -1,10 +1,12 @@
 #define CATCH_CONFIG_RUNNER
 
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 
 #ifndef WIN32
+#include <dlfcn.h>
 #include <signal.h>
 #include <unistd.h>
 #endif
@@ -139,11 +141,6 @@ int main(int argc, char** argv) {
   el::Loggers::flushAll();
   el::Loggers::unregisterLogger("default");
   el::Loggers::unregisterLogger("stdout");
-  // Destroy easylogging's process-global Storage on this thread. Leaving it
-  // for static destruction races other globals under TSan, which then exits
-  // non-zero after Catch has already printed success and skips gcov's atexit
-  // flush.
-  el::Helpers::setStorage(nullptr);
 
   try {
     fs::remove_all(logDirectory);
@@ -151,5 +148,17 @@ int main(int argc, char** argv) {
     std::cerr << "Failed to remove test log directory " << logDirectory << ": "
               << e.what() << '\n';
   }
-  return result;
+  // Passenger tests still exit non-zero under Linux TSan after Catch prints
+  // success, with no sanitizer report. That happens in static destruction.
+  // gcov writes .gcda from an atexit handler, so dump counters first.
+  // Look the symbol up so non-coverage builds do not need to link it.
+#ifndef WIN32
+  using GcovDump = void (*)();
+  auto dumpCoverage =
+      reinterpret_cast<GcovDump>(dlsym(RTLD_DEFAULT, "__gcov_dump"));
+  if (dumpCoverage != nullptr) {
+    dumpCoverage();
+  }
+#endif
+  std::_Exit(result);
 }
