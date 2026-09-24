@@ -275,16 +275,26 @@ class FakeUserTerminal : public UserTerminal {
   bool isSetupComplete() const { return setupComplete.load(); }
 
   string getKeystrokes(int count) {
-    lock_guard<recursive_mutex> lock(_mutex);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    // Do not hold _mutex across blocking I/O: writers call getFd() under the
+    // same mutex (FakeUserTerminalTest), which would otherwise deadlock.
     string s(count, '\0');
-    socketHandler->readAll(serverClientFd, &s[0], count, false);
+    socketHandler->readAll(fd, &s[0], count, false);
     return s;
   }
 
   /** @brief Non-blocking: returns true when keystrokes are readable. */
   bool hasKeystrokes() {
-    lock_guard<recursive_mutex> lock(_mutex);
-    return serverClientFd >= 0 && socketHandler->hasData(serverClientFd);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    return fd >= 0 && socketHandler->hasData(fd);
   }
 
   /**
@@ -301,13 +311,17 @@ class FakeUserTerminal : public UserTerminal {
         std::this_thread::sleep_for(std::chrono::milliseconds(10));
         continue;
       }
-      lock_guard<recursive_mutex> lock(_mutex);
-      if (serverClientFd < 0) {
+      int fd;
+      {
+        lock_guard<recursive_mutex> lock(_mutex);
+        fd = serverClientFd;
+      }
+      if (fd < 0) {
         break;
       }
       char b[64];
       int want = std::min(maxCount - static_cast<int>(got.size()), 64);
-      ssize_t rc = socketHandler->read(serverClientFd, b, want);
+      ssize_t rc = socketHandler->read(fd, b, want);
       if (rc > 0) {
         got.append(b, static_cast<size_t>(rc));
       } else {
@@ -318,9 +332,12 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   void simulateTerminalResponse(const string& s) {
-    lock_guard<recursive_mutex> lock(_mutex);
-    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
-                                   false);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    socketHandler->writeAllOrThrow(fd, s.c_str(), s.length(), false);
   }
   virtual void handleSessionEnd() { didHandleSessionEnd = true; }
   virtual void cleanup() {
