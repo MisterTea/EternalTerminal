@@ -148,3 +148,43 @@ TEST_CASE("tmuxCcInputRequestsInterrupt joins a split send-keys command",
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys -t %0 -H "));
   REQUIRE(tmuxCcInputRequestsInterrupt("send-keys -t %0 -H ", "03\n"));
 }
+
+TEST_CASE("TmuxCcInjectionFilter passes shell output before control mode",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string prompt = "user@host:~$ ";
+  REQUIRE(filter.apply(prompt) == prompt);
+  REQUIRE(filter.apply("ls\r\nfile\r\n") == "ls\r\nfile\r\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter drops a journald wall inside tmux -CC",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  const string head = dcs + "%session-changed $0 wall\n";
+  REQUIRE(filter.apply(head) == head);
+
+  const string wall =
+      "\r\n"
+      "Broadcast message from systemd-journald@host "
+      "(Wed 2026-09-23 23:04:10 UTC):\r\n"
+      "\r\n"
+      "journald-test[4556]: Test message at priority: emerg "
+      "WALL_INJECT_856\r\n"
+      "\r\n";
+  REQUIRE(filter.apply(wall).empty());
+
+  const string output = "%output %0 still-alive\n\x1b\\";
+  REQUIRE(filter.apply(output) == output);
+  REQUIRE(filter.apply("%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n") ==
+          "%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter reassembles a wall line split across reads",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  REQUIRE(filter.apply("%sessions-changed\n") == "%sessions-changed\n");
+  REQUIRE(filter.apply("Broad").empty());
+  REQUIRE(filter.apply("cast message from systemd-journald\r\n").empty());
+  REQUIRE(filter.apply("%window-add @0\n") == "%window-add @0\n");
+}

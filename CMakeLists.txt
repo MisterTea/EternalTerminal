@@ -858,6 +858,24 @@ else(WIN32)
           RUN_SERIAL TRUE
       )
       add_test(
+        NAME et_wall_tmux_cc_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_wall_tmux_cc_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_wall_tmux_cc_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;et;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
         NAME htm_features_e2e
         COMMAND
           ${Python3_EXECUTABLE}

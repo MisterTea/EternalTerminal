@@ -1,6 +1,8 @@
 #ifndef __ET_TMUX_CC_FILTER__
 #define __ET_TMUX_CC_FILTER__
 
+#include <cctype>
+
 #include "Headers.hpp"
 
 namespace et {
@@ -302,6 +304,105 @@ inline bool tmuxCcInputRequestsInterrupt(const string& previousIncomplete,
                                          const string& chunk) {
   return tmuxCcContainsInterruptCommand(previousIncomplete + chunk);
 }
+
+/**
+ * @brief Drops tty bytes injected into a tmux -CC stream.
+ *
+ * journald walls emerg log lines onto every utmp tty. etterminal registers
+ * its pty, so that broadcast is written onto the same slave tmux -CC uses
+ * for the control protocol. A line in that stream that does not start with
+ * '%' makes iTerm2 tear the session down. Response bodies inside
+ * `%begin`…`%end` / `%error` are kept. Bytes from before control mode starts
+ * pass through, so a normal shell is unchanged.
+ */
+class TmuxCcInjectionFilter {
+ public:
+  string apply(const string& chunk) {
+    pending_.append(chunk);
+    string out;
+    size_t lineStart = 0;
+    for (size_t i = 0; i < pending_.size(); ++i) {
+      if (pending_[i] != '\n') {
+        continue;
+      }
+      const string raw = pending_.substr(lineStart, i + 1 - lineStart);
+      if (shouldForward(raw)) {
+        out.append(raw);
+      }
+      lineStart = i + 1;
+    }
+    if (lineStart > 0) {
+      pending_.erase(0, lineStart);
+    }
+    // A shell prompt has no trailing newline. Hold bytes only once control
+    // mode has started (so a split wall line can be dropped) or when the
+    // tail might still grow into the tmux DCS introducer.
+    if (!inControlMode_ && !pending_.empty() && !isDcsPrefix(pending_)) {
+      out.append(pending_);
+      pending_.clear();
+    }
+    // tmux writes the DCS terminator as its own write, with no trailing
+    // newline. Holding it would leave the client inside the control block.
+    if (pending_ == kSt) {
+      out.append(pending_);
+      pending_.clear();
+    }
+    return out;
+  }
+
+ private:
+  static constexpr char kDcs[] = "\x1bP1000p";
+  static constexpr size_t kDcsLen = sizeof(kDcs) - 1;
+  static constexpr char kSt[] = "\x1b\\";
+
+  static bool isDcsPrefix(const string& text) {
+    return text.size() <= kDcsLen &&
+           string(kDcs, kDcsLen).compare(0, text.size(), text) == 0;
+  }
+
+  static bool isTmuxNotification(const string& token) {
+    return token.size() > 1 && token[0] == '%' &&
+           std::isalpha(static_cast<unsigned char>(token[1]));
+  }
+
+  bool shouldForward(const string& rawLine) {
+    string line = rawLine;
+    if (!line.empty() && line.back() == '\n') {
+      line.pop_back();
+    }
+    if (!line.empty() && line.back() == '\r') {
+      line.pop_back();
+    }
+
+    const bool sawDcs = line.find(kDcs) != string::npos;
+    string body = line;
+    if (body.compare(0, kDcsLen, kDcs) == 0) {
+      body.erase(0, kDcsLen);
+    }
+    const bool terminatorOnly = (body == kSt) || (line == kSt);
+    const string token = tmuxCcFirstToken(body);
+    const bool percentCommand = isTmuxNotification(token);
+
+    if (sawDcs || percentCommand) {
+      inControlMode_ = true;
+    }
+    if (percentCommand && token == "%begin") {
+      inBeginBlock_ = true;
+    }
+
+    const bool keep = !inControlMode_ || inBeginBlock_ || percentCommand ||
+                      sawDcs || terminatorOnly;
+
+    if (percentCommand && (token == "%end" || token == "%error")) {
+      inBeginBlock_ = false;
+    }
+    return keep;
+  }
+
+  bool inControlMode_ = false;
+  bool inBeginBlock_ = false;
+  string pending_;
+};
 
 /** @brief Keep the trailing incomplete line so the next chunk can finish it. */
 inline void tmuxCcRetainIncompleteLine(string* carry, const string& chunk,
