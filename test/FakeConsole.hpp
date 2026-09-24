@@ -192,7 +192,7 @@ class FakeUserTerminal : public UserTerminal {
     memset(&lastWinInfo, 0, sizeof(winsize));
   }
 
-  virtual ~FakeUserTerminal() { cleanup(); }
+  virtual ~FakeUserTerminal() {}
 
   void listenFn(shared_ptr<SocketHandler> socketHandler,
                 SocketEndpoint endpoint, int* serverClientFd) {
@@ -352,6 +352,10 @@ class FakeUserTerminal : public UserTerminal {
     if (fd < 0 || s.empty()) {
       return;
     }
+#ifdef WIN32
+    // Windows AF_UNIX needs SocketHandler (::write is not valid on sockets).
+    socketHandler->writeAllOrThrow(fd, s.c_str(), s.length(), false);
+#else
     const char* p = s.data();
     size_t left = s.size();
     while (left > 0) {
@@ -368,6 +372,7 @@ class FakeUserTerminal : public UserTerminal {
       }
       break;
     }
+#endif
   }
   virtual void handleSessionEnd() { didHandleSessionEnd = true; }
   virtual void cleanup() {
