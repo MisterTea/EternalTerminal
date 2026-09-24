@@ -1,6 +1,7 @@
 #define CATCH_CONFIG_RUNNER
 
 #include <cctype>
+#include <cstdlib>
 #include <cstring>
 #include <iostream>
 
@@ -146,5 +147,8 @@ int main(int argc, char** argv) {
     std::cerr << "Failed to remove test log directory " << logDirectory << ": "
               << e.what() << '\n';
   }
-  return result;
+  // Linux TSan aborts in static destructors after Catch has already printed
+  // success, and ctest then records a failure with no sanitizer report.
+  // Logging and telemetry are already shut down; skip the rest of process exit.
+  std::_Exit(result);
 }

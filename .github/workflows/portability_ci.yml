@@ -272,7 +272,13 @@ jobs:
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
-          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure
+          ctest_status=0
+          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure || ctest_status=$?
+          # vmactions copies the workspace back after this script. The
+          # RelWithDebInfo tree is several gigabytes and that rsync fails
+          # after a green test run.
+          rm -rf "$(pwd)/build"
+          exit "${ctest_status}"
 
   openwrt:
     name: build-openwrt
