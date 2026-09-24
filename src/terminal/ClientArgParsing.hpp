@@ -80,8 +80,9 @@ inline bool etOptionConsumesValue(const string& arg) {
          arg == "--reversetunnel" || arg == "--jumphost" || arg == "--jport" ||
          arg == "--jserverfifo" || arg == "-v" || arg == "--verbose" ||
          arg == "-k" || arg == "--keepalive" || arg == "-l" ||
-         arg == "--logdir" || arg == "--ssh-socket" || arg == "--ssh-config" ||
-         arg == "--telemetry" || arg == "--serverfifo" || arg == "--ssh-option";
+         arg == "--logdir" || arg == "--ssh-socket" || arg == "-F" ||
+         arg == "--ssh-config" || arg == "--telemetry" ||
+         arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o";
 }
 
 struct EtArgvSplit {
