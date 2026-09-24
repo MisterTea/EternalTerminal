@@ -95,6 +95,12 @@ void UserTerminalHandler::run() {
     // flush of the server WriteBuffer is not followed by ~200KB of local
     // backlog.
     socketHandler->minimizeKernelBuffering(routerFd);
+    if (ti.no_shell()) {
+      LOG(INFO) << "Starting idle session without a shell";
+      runIdleSession();
+      close(routerFd);
+      return;
+    }
     break;
   }
 
@@ -103,6 +109,55 @@ void UserTerminalHandler::run() {
           << (pipeMode ? " (pipe)" : " (pty)");
   runUserTerminal(masterfd);
   close(routerFd);
+}
+
+void UserTerminalHandler::runIdleSession() {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return;
+      }
+    }
+    fd_set rfd;
+    FD_ZERO(&rfd);
+    FD_SET(routerFd, &rfd);
+    timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(routerFd + 1, &rfd, NULL, NULL, &tv);
+    if (!FD_ISSET(routerFd, &rfd)) {
+      continue;
+    }
+    char packetType = 0;
+    int rc = read(routerFd, &packetType, 1);
+    int readErrno = errno;
+    if (rc == -1) {
+      if (readErrno == EAGAIN || readErrno == EINTR) {
+        continue;
+      }
+      LOG(INFO) << "Idle session router read error: " << strerror(readErrno);
+      return;
+    }
+    if (rc == 0) {
+      LOG(INFO) << "Idle session router closed";
+      return;
+    }
+    switch (packetType) {
+      case TERMINAL_BUFFER:
+        socketHandler->readProto<TerminalBuffer>(routerFd, false);
+        break;
+      case TERMINAL_INFO:
+        socketHandler->readProto<TerminalInfo>(routerFd, false);
+        break;
+      case TERMINAL_CLOSE:
+        LOG(INFO) << "Idle session closed";
+        return;
+      default:
+        LOG(INFO) << "Idle session stopping on packet " << int(packetType);
+        return;
+    }
+  }
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {

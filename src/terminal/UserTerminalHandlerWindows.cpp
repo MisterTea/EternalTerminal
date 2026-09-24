@@ -94,12 +94,61 @@ void UserTerminalHandler::run() {
       LOG(INFO) << "Starting raw pipe command session";
     }
     socketHandler->minimizeKernelBuffering(routerFd);
+    if (ti.no_shell()) {
+      LOG(INFO) << "Starting idle session without a shell";
+      runIdleSession();
+      socketHandler->close(routerFd);
+      return;
+    }
     break;
   }
 
   int masterfd = term->setup(routerFd);
   runUserTerminal(masterfd);
   socketHandler->close(routerFd);
+}
+
+void UserTerminalHandler::runIdleSession() {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return;
+      }
+    }
+    if (!socketHandler->hasData(routerFd)) {
+      Sleep(10);
+      continue;
+    }
+    char packetType = 0;
+    ssize_t rc = socketHandler->read(routerFd, &packetType, 1);
+    if (rc == 0) {
+      LOG(INFO) << "Idle session router closed";
+      return;
+    }
+    if (rc < 0) {
+      int err = GetErrno();
+      if (err == EAGAIN || err == EWOULDBLOCK) {
+        continue;
+      }
+      LOG(INFO) << "Idle session router read error: " << strerror(err);
+      return;
+    }
+    switch (packetType) {
+      case TERMINAL_BUFFER:
+        socketHandler->readProto<TerminalBuffer>(routerFd, false);
+        break;
+      case TERMINAL_INFO:
+        socketHandler->readProto<TerminalInfo>(routerFd, false);
+        break;
+      case TERMINAL_CLOSE:
+        LOG(INFO) << "Idle session closed";
+        return;
+      default:
+        LOG(INFO) << "Idle session stopping on packet " << int(packetType);
+        return;
+    }
+  }
 }
 
 void UserTerminalHandler::runUserTerminal(int masterFd) {

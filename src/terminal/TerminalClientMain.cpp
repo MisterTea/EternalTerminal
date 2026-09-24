@@ -212,6 +212,17 @@ int main(int argc, char** argv) {
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
         ("N,no-terminal", "Do not create a terminal")           //
+        ("D,dynamic",
+         "Dynamic application-level port forwarding: listen on "
+         "[bind_address:]port and accept SOCKS4/SOCKS5 connections that "
+         "choose a remote TCP or Unix destination after connect (ssh -D). "
+         "May be specified multiple times.",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("W,stdio-forward",
+         "Forward client stdio to host:port (or a Unix socket path) over the "
+         "secure channel without a remote shell (ssh -W). Implies no local "
+         "terminal.",
+         cxxopts::value<std::string>())  //
         ("T,no-pty",
          "Run -c command on pipes instead of a pty (binary stdio, "
          "separate stderr, no shell injection)")             //
@@ -535,6 +546,8 @@ int main(int argc, char** argv) {
     }
 
     shared_ptr<Console> console;
+    string stdioForward = extractSingleOptionWithDefault<string>(
+        result, options, "stdio-forward", "");
     const bool noPty = result.count("T") > 0;
     string command = resolveRemoteCommand(
         argvSplit.commandOperands, result.count("command") > 0,
@@ -544,12 +557,18 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
       exit(1);
     }
-    if (!result.count("N")) {
-      if (noPty) {
-        console.reset(new BinaryStdioConsole());
-      } else {
-        console.reset(new PseudoTerminalConsole());
-      }
+    if (noPty && !stdioForward.empty()) {
+      CLOG(INFO, "stdout") << "-W/--stdio-forward cannot be combined with "
+                              "-T/--no-pty"
+                           << endl;
+      exit(1);
+    }
+    if (!stdioForward.empty() || result.count("N")) {
+      // -W ties stdio to a remote destination; do not attach a local shell.
+    } else if (noPty) {
+      console.reset(new BinaryStdioConsole());
+    } else {
+      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("f") > 0;
@@ -569,6 +588,10 @@ int main(int argc, char** argv) {
         extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
     string r_tunnel_arg = extractSingleOptionWithDefault<string>(
         result, options, "reversetunnel", "");
+    vector<string> dynamicForwards;
+    if (result.count("dynamic")) {
+      dynamicForwards = result["dynamic"].as<vector<string>>();
+    }
 
     for (const auto& localForward : sshConfigOptions.local_forwards) {
       string tunnelEntry =
@@ -594,7 +617,7 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
-        noPty, command);
+        noPty, command, dynamicForwards, stdioForward);
     const int remoteExitStatus =
         terminalClient.run(command, result.count("noexit"));
 

@@ -342,6 +342,13 @@ void TerminalServer::runTerminal(
     }
   }
   const bool pipeMode = payload.no_pty();
+  const bool noShell = payload.no_shell();
+  if (pipeMode && noShell) {
+    response.set_error("no_pty and no_shell cannot both be set");
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+    return;
+  }
   if (pipeMode && (!payload.has_command() || payload.command().empty())) {
     response.set_error("no_pty requires a non-empty command");
     serverClientState->writePacket(Packet(
@@ -370,6 +377,9 @@ void TerminalServer::runTerminal(
   if (pipeMode) {
     termInit.set_no_pty(true);
     termInit.set_command(payload.command());
+  }
+  if (noShell) {
+    termInit.set_no_shell(true);
   }
   terminalSocketHandler->writePacket(
       terminalFd,

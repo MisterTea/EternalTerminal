@@ -46,6 +46,8 @@ class UserTerminalHandler {
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
+  /** @brief Holds the router open without a pty or a shell (ssh -W). */
+  void runIdleSession();
   /** @brief Forwards terminal output to the router as TERMINAL_BUFFER. */
   void forwardOutputToRouter(const char* data, size_t length, bool isStderr);
   /** @brief Reaps the child and sends TERMINAL_EXIT_STATUS to the router. */

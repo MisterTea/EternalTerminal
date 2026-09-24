@@ -67,6 +67,8 @@ message PortForwardData {
   optional bytes buffer = 3;
   optional string error = 4;
   optional bool closed = 5;
+  // Source finished writing. Keep the destination open for the reply direction.
+  optional bool half_close = 6;
 }
 
 message InitialPayload {
@@ -79,6 +81,8 @@ message InitialPayload {
   // Set by clients that understand TERMINAL_EXIT_STATUS. Older clients leave
   // this unset, and etserver must not forward that packet to them.
   optional bool supports_exit_status = 6 [default = false];
+  // ssh -W: keep the session without a pty or a shell.
+  optional bool no_shell = 7 [default = false];
 }
 
 message InitialResponse {
@@ -95,6 +99,7 @@ message TermInit {
   repeated string environmentvalues = 2;
   optional bool no_pty = 3 [default = false];
   optional string command = 4;
+  optional bool no_shell = 5 [default = false];
 }
 
 message TerminalUserInfo {

@@ -32,10 +32,11 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     if (it->update(dataToSend, readyFds)) {
       ++forwardFdsGeneration;
     }
-    int fd = it->listen(readyFds);
+    SocketEndpoint destination;
+    int fd = it->listen(&destination, readyFds);
     if (fd >= 0) {
       PortForwardDestinationRequest pfr;
-      *(pfr.mutable_destination()) = it->getDestination();
+      *(pfr.mutable_destination()) = destination;
       pfr.set_fd(fd);
       requests->push_back(pfr);
     }
@@ -128,6 +129,37 @@ PortForwardSourceResponse PortForwardHandler::createSource(
   }
 }
 
+PortForwardSourceResponse PortForwardHandler::createSocksSource(
+    const SocketEndpoint& source) {
+  try {
+    SocketEndpoint unusedDestination;
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, source, unusedDestination, false, true));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
+  }
+}
+
+PortForwardSourceResponse PortForwardHandler::createStdioForward(
+    const SocketEndpoint& destination, int readFd, int writeFd, bool closeFds) {
+  try {
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, destination, readFd, writeFd, closeFds));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
+  }
+}
+
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   int fd = -1;
@@ -204,6 +236,9 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         if (it == destinationHandlers.end()) {
           LOG(WARNING) << "Got data for a socket id that has already closed: "
                        << pwd.socketid();
+        } else if (pwd.half_close()) {
+          LOG(INFO) << "Port forward socket write-shutdown: " << pwd.socketid();
+          it->second->shutdownWrite();
         } else if (pwd.has_closed() || pwd.has_error()) {
           LOG(INFO) << "Port forward socket "
                     << (pwd.has_closed() ? "closed: " : "errored: ")
@@ -242,11 +277,17 @@ void PortForwardHandler::handlePacket(const Packet& packet,
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(pfdr.clientfd(), false);
+        }
         closeSourceFd(pfdr.clientfd());
       } else {
         LOG(INFO) << "Received socket/fd map from server: " << pfdr.socketid()
                   << " " << pfdr.clientfd();
         addSourceSocketId(pfdr.socketid(), pfdr.clientfd());
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(pfdr.clientfd(), true);
+        }
       }
       break;
     }
@@ -303,6 +344,15 @@ void PortForwardHandler::getForwardFds(set<int>* fds) {
       fds->insert(fd);
     }
   }
+}
+
+bool PortForwardHandler::hasActiveStdioForward() const {
+  for (const auto& handler : sourceHandlers) {
+    if (handler->stdioBridgeOpen()) {
+      return true;
+    }
+  }
+  return false;
 }
 
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
