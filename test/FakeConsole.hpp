@@ -217,24 +217,17 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
-#ifdef WIN32
-    pipePath = "et_test_userterminal_" + genRandomAlphaNum(12) + ".ipc";
-#else
-    string tmpPath =
-        GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
-    pipePath = string(pipeDirectory) + "/pipe";
-#endif
-    SocketEndpoint endpoint;
-    endpoint.set_name(pipePath);
+    (void)routerFd;
     setupComplete.store(false);
     {
-      // Mutate fds under _mutex: drainKeystrokes/hasKeystrokes may run on the
-      // test thread as soon as UserTerminalHandler starts (TSan race).
       lock_guard<recursive_mutex> lock(_mutex);
       serverClientFd = -1;
       clientServerFd = -1;
     }
+#ifdef WIN32
+    pipePath = "et_test_userterminal_" + genRandomAlphaNum(12) + ".ipc";
+    SocketEndpoint endpoint;
+    endpoint.set_name(pipePath);
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
@@ -246,24 +239,29 @@ class FakeUserTerminal : public UserTerminal {
       lock_guard<recursive_mutex> lock(_mutex);
       clientServerFd = connectedFd;
       FATAL_FAIL(serverClientFd);
-      // Honor the UserTerminal contract: the handler polls this fd
-      // non-blocking.
-#ifdef WIN32
       u_long nonBlocking = 1;
       FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
       FATAL_FAIL(ioctlsocket(serverClientFd, FIONBIO, &nonBlocking));
-#else
-      int flags = fcntl(clientServerFd, F_GETFL, 0);
-      if (flags != -1) {
-        fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
-      }
-      // drainKeystrokes/hasKeystrokes poll then ::read this end.
-      flags = fcntl(serverClientFd, F_GETFL, 0);
-      if (flags != -1) {
-        fcntl(serverClientFd, F_SETFL, flags | O_NONBLOCK);
-      }
-#endif
     }
+#else
+    // Use an anonymous socketpair so the fake PTY ends are never registered in
+    // PipeSocketHandler. Concurrent UTH ::read/::write and test-side drain then
+    // cannot race SocketHandler's fd-mutex map (Linux TSan abort after Catch
+    // success with no printed report).
+    int fds[2] = {-1, -1};
+    FATAL_FAIL(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = fds[0];
+      serverClientFd = fds[1];
+      for (int fd : {clientServerFd, serverClientFd}) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags != -1) {
+          fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+      }
+    }
+#endif
     setupComplete.store(true, std::memory_order_release);
     return getFd();
   };
@@ -291,7 +289,24 @@ class FakeUserTerminal : public UserTerminal {
     // Do not hold _mutex across blocking I/O: writers call getFd() under the
     // same mutex (FakeUserTerminalTest), which would otherwise deadlock.
     string s(count, '\0');
+#ifdef WIN32
     socketHandler->readAll(fd, &s[0], count, false);
+#else
+    size_t got = 0;
+    while (got < static_cast<size_t>(count)) {
+      ssize_t rc = ::read(fd, &s[got], count - got);
+      if (rc > 0) {
+        got += static_cast<size_t>(rc);
+        continue;
+      }
+      if (rc < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
+#endif
     return s;
   }
 
@@ -380,6 +395,7 @@ class FakeUserTerminal : public UserTerminal {
     if (didCleanUp) {
       return;
     }
+#ifdef WIN32
     if (clientServerFd >= 0) {
       socketHandler->close(clientServerFd);
       clientServerFd = -1;
@@ -393,9 +409,15 @@ class FakeUserTerminal : public UserTerminal {
       endpoint.set_name(pipePath);
       socketHandler->stopListening(endpoint);
     }
-#ifndef WIN32
-    if (!pipeDirectory.empty()) {
-      FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#else
+    // socketpair fds are not in SocketHandler's map.
+    if (clientServerFd >= 0) {
+      ::close(clientServerFd);
+      clientServerFd = -1;
+    }
+    if (serverClientFd >= 0) {
+      ::close(serverClientFd);
+      serverClientFd = -1;
     }
 #endif
     didCleanUp = true;
