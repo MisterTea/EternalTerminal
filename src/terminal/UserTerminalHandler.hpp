@@ -3,6 +3,7 @@
 
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
+#include "TmuxCcFilter.hpp"
 #include "UserTerminal.hpp"
 
 namespace et {
@@ -43,6 +44,11 @@ class UserTerminalHandler {
   recursive_mutex shutdownMutex;
   /** @brief True when TermInit requested a raw pipe command session. */
   bool pipeMode;
+  /**
+   * @brief Removes journald/wall lines from a tmux -CC byte stream.
+   * Shell output before control mode is left alone.
+   */
+  TmuxCcInjectionFilter controlOutputFilter_;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
