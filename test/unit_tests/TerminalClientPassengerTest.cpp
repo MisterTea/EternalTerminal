@@ -70,10 +70,16 @@ struct PassengerBridgeStack {
                                            fakeUserTerminal, true,
                                            routerEndpoint, id + "/" + passkey);
     uthThread = thread([this]() { uth->run(); });
-    // setup() sleeps ~1s inside FakeUserTerminal; give it a moment to bind
-    // before the client connects. Fd publication is mutex-protected so a
-    // concurrent drainKeystrokes will just spin until serverClientFd is set.
-    testSleepMicros(1200000);
+    // setup() sleeps ~1s; wait until fds are published so drainKeystrokes does
+    // not race setup. Do not tear down on timeout (shutdown can hang if setup
+    // is blocked); tests will fail their own asserts if the terminal never
+    // becomes ready.
+    auto terminalReadyDeadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(10000);
+    while (std::chrono::steady_clock::now() < terminalReadyDeadline &&
+           !fakeUserTerminal->isSetupComplete()) {
+      testSleepMicros(10000);
+    }
 
     terminalClient = make_shared<TerminalClient>(
         clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id,

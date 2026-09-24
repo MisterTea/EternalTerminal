@@ -192,7 +192,7 @@ class FakeUserTerminal : public UserTerminal {
     memset(&lastWinInfo, 0, sizeof(winsize));
   }
 
-  virtual ~FakeUserTerminal() {}
+  virtual ~FakeUserTerminal() { cleanup(); }
 
   void listenFn(shared_ptr<SocketHandler> socketHandler,
                 SocketEndpoint endpoint, int* serverClientFd) {
@@ -251,14 +251,20 @@ class FakeUserTerminal : public UserTerminal {
 #ifdef WIN32
       u_long nonBlocking = 1;
       FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+      FATAL_FAIL(ioctlsocket(serverClientFd, FIONBIO, &nonBlocking));
 #else
       int flags = fcntl(clientServerFd, F_GETFL, 0);
       if (flags != -1) {
         fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
       }
+      // drainKeystrokes/hasKeystrokes poll then ::read this end.
+      flags = fcntl(serverClientFd, F_GETFL, 0);
+      if (flags != -1) {
+        fcntl(serverClientFd, F_SETFL, flags | O_NONBLOCK);
+      }
 #endif
     }
-    setupComplete.store(true);
+    setupComplete.store(true, std::memory_order_release);
     return getFd();
   };
 
@@ -272,7 +278,9 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   /** @brief True once setup() has published both pipe ends. */
-  bool isSetupComplete() const { return setupComplete.load(); }
+  bool isSetupComplete() const {
+    return setupComplete.load(std::memory_order_acquire);
+  }
 
   string getKeystrokes(int count) {
     int fd;
@@ -294,7 +302,11 @@ class FakeUserTerminal : public UserTerminal {
       lock_guard<recursive_mutex> lock(_mutex);
       fd = serverClientFd;
     }
-    return fd >= 0 && socketHandler->hasData(fd);
+    if (fd < 0) {
+      return false;
+    }
+    // Poll the raw fd: avoid SocketHandler map TOCTOU with the UTH thread.
+    return et::waitOnSocketData(fd, 0, 0);
   }
 
   /**
@@ -321,7 +333,7 @@ class FakeUserTerminal : public UserTerminal {
       }
       char b[64];
       int want = std::min(maxCount - static_cast<int>(got.size()), 64);
-      ssize_t rc = socketHandler->read(fd, b, want);
+      ssize_t rc = ::read(fd, b, want);
       if (rc > 0) {
         got.append(b, static_cast<size_t>(rc));
       } else {
@@ -337,7 +349,25 @@ class FakeUserTerminal : public UserTerminal {
       lock_guard<recursive_mutex> lock(_mutex);
       fd = serverClientFd;
     }
-    socketHandler->writeAllOrThrow(fd, s.c_str(), s.length(), false);
+    if (fd < 0 || s.empty()) {
+      return;
+    }
+    const char* p = s.data();
+    size_t left = s.size();
+    while (left > 0) {
+      ssize_t w = ::write(fd, p, left);
+      if (w > 0) {
+        p += w;
+        left -= static_cast<size_t>(w);
+        continue;
+      }
+      if (w < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
   }
   virtual void handleSessionEnd() { didHandleSessionEnd = true; }
   virtual void cleanup() {
