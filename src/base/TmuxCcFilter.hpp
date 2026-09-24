@@ -318,6 +318,13 @@ inline bool tmuxCcInputRequestsInterrupt(const string& previousIncomplete,
 class TmuxCcInjectionFilter {
  public:
   string apply(const string& chunk) {
+    // A short read may leave a journald wall prefix in pending_ while the
+    // next read starts a real tmux notification or ST. Drop the wall hold
+    // so it is not glued onto "%exit" / "%window-add" / ST.
+    if (inControlMode_ && isHeldWallFragment(pending_) &&
+        chunkOpensControl(chunk)) {
+      pending_.clear();
+    }
     pending_.append(chunk);
     string out;
     size_t lineStart = 0;
@@ -326,24 +333,41 @@ class TmuxCcInjectionFilter {
         continue;
       }
       const string raw = pending_.substr(lineStart, i + 1 - lineStart);
-      if (shouldForward(raw)) {
-        out.append(raw);
-      }
+      out.append(filterCompletedLine(raw));
       lineStart = i + 1;
     }
     if (lineStart > 0) {
       pending_.erase(0, lineStart);
     }
+    // ST may follow a held wall fragment in the same pending_ buffer
+    // (or arrive as its own write after the wall prefix was cleared above).
+    if (inControlMode_ && !pending_.empty()) {
+      if (!(pending_.size() >= kStLen &&
+            pending_.compare(0, kStLen, kSt) == 0)) {
+        const size_t stPos = pending_.find(kSt);
+        // Drop a held wall fragment or incomplete '%' notification that
+        // precedes ST so the terminator can clear the control-mode latch.
+        if (stPos != string::npos && stPos > 0 &&
+            (isHeldWallFragment(pending_.substr(0, stPos)) ||
+             pending_[0] == '%')) {
+          pending_.erase(0, stPos);
+        }
+      }
+      if (pending_.size() >= kStLen && pending_.compare(0, kStLen, kSt) == 0) {
+        // tmux writes the DCS terminator as its own write, with no trailing
+        // newline. It may also be stuck to the following shell prompt in one
+        // read. Strip a leading ST, exit control mode, then fall through so
+        // any coalesced shell text is forwarded.
+        out.append(pending_, 0, kStLen);
+        pending_.erase(0, kStLen);
+        inControlMode_ = false;
+        inBeginBlock_ = false;
+      }
+    }
     // A shell prompt has no trailing newline. Hold bytes only once control
     // mode has started (so a split wall line can be dropped) or when the
-    // tail might still grow into the tmux DCS introducer.
+    // tail might still grow into / continue a tmux DCS introducer.
     if (!inControlMode_ && !pending_.empty() && !isDcsPrefix(pending_)) {
-      out.append(pending_);
-      pending_.clear();
-    }
-    // tmux writes the DCS terminator as its own write, with no trailing
-    // newline. Holding it would leave the client inside the control block.
-    if (pending_ == kSt) {
       out.append(pending_);
       pending_.clear();
     }
@@ -354,10 +378,46 @@ class TmuxCcInjectionFilter {
   static constexpr char kDcs[] = "\x1bP1000p";
   static constexpr size_t kDcsLen = sizeof(kDcs) - 1;
   static constexpr char kSt[] = "\x1b\\";
+  static constexpr size_t kStLen = sizeof(kSt) - 1;
 
+  // True while @p text is a proper prefix of the DCS introducer, or already
+  // begins with the full introducer (incomplete first notification line).
   static bool isDcsPrefix(const string& text) {
-    return text.size() <= kDcsLen &&
-           string(kDcs, kDcsLen).compare(0, text.size(), text) == 0;
+    if (text.size() <= kDcsLen) {
+      return string(kDcs, kDcsLen).compare(0, text.size(), text) == 0;
+    }
+    return text.compare(0, kDcsLen, kDcs, kDcsLen) == 0;
+  }
+
+  static bool isStPrefix(const string& text) {
+    if (text.empty() || text.size() > kStLen) {
+      return false;
+    }
+    return string(kSt, kStLen).compare(0, text.size(), text) == 0;
+  }
+
+  // Incomplete pending bytes that are neither a control notification nor a
+  // DCS/ST prefix — typically a journald wall line split across reads.
+  static bool isHeldWallFragment(const string& text) {
+    if (text.empty() || text[0] == '%' || isDcsPrefix(text) ||
+        isStPrefix(text)) {
+      return false;
+    }
+    return true;
+  }
+
+  static bool chunkOpensControl(const string& chunk) {
+    if (chunk.empty()) {
+      return false;
+    }
+    if (chunk[0] == '%') {
+      return true;
+    }
+    const size_t stCheck = chunk.size() < kStLen ? chunk.size() : kStLen;
+    if (isStPrefix(chunk.substr(0, stCheck))) {
+      return true;
+    }
+    return isDcsPrefix(chunk);
   }
 
   static bool isTmuxNotification(const string& token) {
@@ -365,7 +425,9 @@ class TmuxCcInjectionFilter {
            std::isalpha(static_cast<unsigned char>(token[1]));
   }
 
-  bool shouldForward(const string& rawLine) {
+  // Returns the bytes of @p rawLine to forward. A line that arms control mode
+  // via DCS but then continues with wall text forwards only the DCS bytes.
+  string filterCompletedLine(const string& rawLine) {
     string line = rawLine;
     if (!line.empty() && line.back() == '\n') {
       line.pop_back();
@@ -374,29 +436,68 @@ class TmuxCcInjectionFilter {
       line.pop_back();
     }
 
-    const bool sawDcs = line.find(kDcs) != string::npos;
+    const bool wasInControlMode = inControlMode_;
+    // Arm only on a leading DCS introducer. Embedded \x1bP1000p in shell
+    // output must not latch control mode or truncate the line.
+    const bool sawDcs = line.compare(0, kDcsLen, kDcs) == 0;
     string body = line;
     if (body.compare(0, kDcsLen, kDcs) == 0) {
       body.erase(0, kDcsLen);
     }
-    const bool terminatorOnly = (body == kSt) || (line == kSt);
+    // ST may arrive alone or stuck to following shell text in one write.
+    const bool sawTerminator = body.compare(0, kStLen, kSt) == 0;
+    if (sawTerminator) {
+      body.erase(0, kStLen);
+    }
     const string token = tmuxCcFirstToken(body);
     const bool percentCommand = isTmuxNotification(token);
 
-    if (sawDcs || percentCommand) {
+    if (sawDcs) {
       inControlMode_ = true;
     }
-    if (percentCommand && token == "%begin") {
+    // Only latch %begin once control mode is active (or this line itself
+    // opens it via DCS). A pre-DCS shell echo of "%begin ..." must not leave
+    // inBeginBlock_ set, or later wall text is forwarded as response body.
+    if (percentCommand && token == "%begin" && (wasInControlMode || sawDcs)) {
       inBeginBlock_ = true;
     }
 
-    const bool keep = !inControlMode_ || inBeginBlock_ || percentCommand ||
-                      sawDcs || terminatorOnly;
+    // Do not treat bare sawDcs as keep-all: DCS + wall must forward only DCS.
+    // Empty body after DCS (bare introducer line) is kept; a lone newline in
+    // control mode is still dropped like other non-% text.
+    const bool keepBody = percentCommand || sawTerminator || inBeginBlock_ ||
+                          (sawDcs && body.empty());
+    const bool keepAll = (!wasInControlMode && !sawDcs) || keepBody;
 
     if (percentCommand && (token == "%end" || token == "%error")) {
       inBeginBlock_ = false;
     }
-    return keep;
+    // Control mode ends on the DCS string terminator or an explicit %exit.
+    // Clear the latch so ordinary shell output after the session is forwarded.
+    if (sawTerminator || (percentCommand && token == "%exit")) {
+      inControlMode_ = false;
+      inBeginBlock_ = false;
+    }
+
+    if (keepAll) {
+      return rawLine;
+    }
+    if (sawDcs) {
+      return string(kDcs, kDcsLen);
+    }
+    // A completed wall line may carry a trailing ST (e.g. "Broadcast\x1b\\\n").
+    // Leading-ST detection above misses that; the pending_ ST scan never runs
+    // for a newline-terminated line already consumed here. Strip the wall,
+    // forward ST, and exit control mode so post-control shell is kept.
+    if (wasInControlMode && inControlMode_) {
+      const size_t stPos = body.find(kSt);
+      if (stPos != string::npos) {
+        inControlMode_ = false;
+        inBeginBlock_ = false;
+        return string(kSt, kStLen);
+      }
+    }
+    return "";
   }
 
   bool inControlMode_ = false;
