@@ -41,8 +41,11 @@ class TerminalClient {
    * threads. */
   virtual ~TerminalClient();
   /** @brief Runs the interactive session for `command`, optionally staying
-   * alive. */
-  void run(const string& command, const bool noexit);
+   * alive.
+   * @return Remote command exit status when `command` is set and `noexit` is
+   * false; otherwise 0.
+   */
+  int run(const string& command, const bool noexit);
   static void configureCloseOnHangup(bool enabled) { closeOnHangup = enabled; }
   static void requestHangupClose(int = 0) { hangupCloseRequested = true; }
   static bool waitForHangupClose(int timeoutMs) {

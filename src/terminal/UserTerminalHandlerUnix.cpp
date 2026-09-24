@@ -43,17 +43,28 @@ UserTerminalHandler::UserTerminalHandler(
 
 void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
                                                 bool isStderr) {
-  if (pipeMode) {
-    TerminalBuffer tb;
-    tb.set_buffer(string(data, length));
-    if (isStderr) {
-      tb.set_is_stderr(true);
-    }
+  if (length == 0) {
+    return;
+  }
+  TerminalBuffer tb;
+  tb.set_buffer(string(data, length));
+  if (isStderr) {
+    tb.set_is_stderr(true);
+  }
+  socketHandler->writePacket(
+      routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+}
+
+void UserTerminalHandler::finishSession() {
+  const int exitCode = term->handleSessionEnd();
+  TerminalExitStatus tes;
+  tes.set_exitcode(exitCode);
+  try {
     socketHandler->writePacket(
         routerFd,
-        Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-  } else {
-    socketHandler->writeAllOrThrow(routerFd, data, length, false);
+        Packet(TerminalPacketType::TERMINAL_EXIT_STATUS, protoToString(tes)));
+  } catch (const std::exception& ex) {
+    LOG(INFO) << "Failed to send terminal exit status: " << ex.what();
   }
 }
 
@@ -180,7 +191,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           VLOG(4) << "Read from terminal stdout";
           string s(b, rc);
           outputPerSecond += std::count(s.begin(), s.end(), '\n');
-          forwardOutputToRouter(b, rc, false);
+          forwardOutputToRouter(b, static_cast<size_t>(rc), false);
           VLOG(4) << "Write to client: "
                   << std::count(s.begin(), s.end(), '\n');
         } else if (rc == 0) {
@@ -191,7 +202,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
             // the child still blocks on stdin. Close stdin so waitid returns.
             term->closeInput();
           }
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -203,7 +214,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           // Fatal read error - log with correct errno and exit gracefully
           LOG(ERROR) << "Terminal read error: " << readErrno << " "
                      << strerror(readErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;
@@ -286,7 +297,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           // Fatal write error - log with correct errno and exit gracefully
           LOG(ERROR) << "Terminal write error: " << writeErrno << " "
                      << strerror(writeErrno);
-          term->handleSessionEnd();
+          finishSession();
           lock_guard<recursive_mutex> guard(shutdownMutex);
           shuttingDown = true;
           break;

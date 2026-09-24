@@ -15,6 +15,8 @@ enum TerminalPacketType {
   TERMINAL_INIT = 9;
   JUMPHOST_INIT = 10;
   TERMINAL_CLOSE = 11;
+  // Wait status of the remote shell/command, sent once when the session ends.
+  TERMINAL_EXIT_STATUS = 12;
 }
 
 message TerminalBuffer {
@@ -22,6 +24,12 @@ message TerminalBuffer {
   // When true, buffer is remote stderr (raw pipe / -T sessions only).
   // Named is_stderr (not stderr): musl #defines stderr as a macro.
   optional bool is_stderr = 2 [default = false];
+}
+
+// Process status for the remote terminal child (OpenSSH-style exit code).
+message TerminalExitStatus {
+  // Normalized status: WEXITSTATUS when exited, or 128+signal when signaled.
+  optional int32 exitcode = 1;
 }
 
 message TerminalInfo {
@@ -68,6 +76,9 @@ message InitialPayload {
   // When true, etterminal runs `command` on pipes instead of a login pty.
   optional bool no_pty = 4 [default = false];
   optional string command = 5;
+  // Set by clients that understand TERMINAL_EXIT_STATUS. Older clients leave
+  // this unset, and etserver must not forward that packet to them.
+  optional bool supports_exit_status = 6 [default = false];
 }
 
 message InitialResponse {

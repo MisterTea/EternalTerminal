@@ -46,8 +46,10 @@ class UserTerminalHandler {
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
-  /** @brief Writes terminal output to the router (raw or packet-framed). */
+  /** @brief Forwards terminal output to the router as TERMINAL_BUFFER. */
   void forwardOutputToRouter(const char* data, size_t length, bool isStderr);
+  /** @brief Reaps the child and sends TERMINAL_EXIT_STATUS to the router. */
+  void finishSession();
 #ifdef WIN32
   /** @brief Pumps a ConPTY terminal (see PseudoUserTerminal). */
   void runConPtyTerminal(class PseudoUserTerminal& conpty);

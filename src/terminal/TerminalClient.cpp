@@ -31,6 +31,7 @@ TerminalClient::TerminalClient(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
   payload.set_jumphost(jumphost);
+  payload.set_supports_exit_status(true);
   if (noPty) {
     payload.set_no_pty(true);
     payload.set_command(command);
@@ -154,7 +155,7 @@ TerminalClient::~TerminalClient() {
   connection.reset();
 }
 
-void TerminalClient::run(const string& command, const bool noexit) {
+int TerminalClient::run(const string& command, const bool noexit) {
   if (console) {
     console->setup();
   }
@@ -165,6 +166,9 @@ void TerminalClient::run(const string& command, const bool noexit) {
 
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
+  const bool wantRemoteExitStatus = !command.empty() && !noexit;
+  int remoteExitStatus = 0;
+  bool haveRemoteExitStatus = false;
 
   if (command.length() && !noPty) {
     LOG(INFO) << "Got command: " << command;
@@ -536,6 +540,19 @@ void TerminalClient::run(const string& command, const bool noexit) {
               // latency issues.
               LOG(INFO) << "Got a keepalive";
               break;
+            case et::TerminalPacketType::TERMINAL_EXIT_STATUS: {
+              et::TerminalExitStatus tes =
+                  stringToProto<et::TerminalExitStatus>(packet.getPayload());
+              if (tes.has_exitcode()) {
+                remoteExitStatus = tes.exitcode();
+                haveRemoteExitStatus = true;
+                LOG(INFO) << "Got remote exit status " << remoteExitStatus;
+              }
+              // Do not set shuttingDown yet: writeSome may return partial/zero
+              // bytes (BinaryStdioConsole / O_NONBLOCK). Stop only after
+              // consoleOut has drained.
+              break;
+            }
             default:
               STFATAL << "Unknown packet type: " << int(packetType);
           }
@@ -551,6 +568,14 @@ void TerminalClient::run(const string& command, const bool noexit) {
             consoleOut.consume(written);
           }
         }
+      }
+
+      // Command sessions: stop only once remote status is known and any
+      // buffered console output has been written (or there is no console).
+      if (wantRemoteExitStatus && haveRemoteExitStatus &&
+          (!console || !consoleOut.hasPendingData())) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
       }
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
@@ -613,10 +638,44 @@ void TerminalClient::run(const string& command, const bool noexit) {
       shuttingDown = true;
     }
   }
+  // Finish writing buffered remote output before tearing down the console.
+  // EXIT_STATUS or a dying connection must not discard consoleOut: writeSome
+  // may return 0 under O_NONBLOCK (BinaryStdioConsole) until the fd is
+  // writable. Hard errors (EPIPE/EBADF) stop the drain but must not throw past
+  // run() when remoteExitStatus is already known.
   if (console) {
+    while (consoleOut.hasPendingData()) {
+      size_t count = 0;
+      const char* data = consoleOut.peekData(&count);
+      if (data == nullptr || count == 0) {
+        break;
+      }
+      try {
+        size_t written = console->writeSome(string(data, count));
+        if (written > 0) {
+          consoleOut.consume(written);
+          continue;
+        }
+      } catch (const runtime_error& re) {
+        STERROR << "Error draining consoleOut: " << re.what();
+        break;
+      }
+#ifndef WIN32
+      pollfd pfd = {console->getFd(), POLLOUT, 0};
+      if (poll(&pfd, 1, 10) < 0 && errno != EINTR) {
+        break;
+      }
+#else
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+#endif
+    }
     console->teardown();
   }
   CLOG(INFO, "stdout") << "Session terminated" << endl;
+  if (wantRemoteExitStatus && haveRemoteExitStatus) {
+    return remoteExitStatus;
+  }
+  return 0;
 }
 
 #ifdef WIN32
