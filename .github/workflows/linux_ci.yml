@@ -27,7 +27,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -62,6 +62,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-${{ matrix.sanitize }}-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: linux-${{ matrix.sanitize }}
+
       - name: Build with ubsan
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -70,7 +75,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -84,7 +89,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_ADDRESS=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -98,7 +103,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_MEMORY=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -112,7 +117,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -139,7 +144,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -167,6 +172,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: linux-jumphost
+
       - name: Build for jumphost system test
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -175,7 +185,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
           cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
@@ -203,7 +213,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -231,6 +241,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: linux-backwards-compatibility
+
       - name: Build for backwards compatibility system test
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -239,7 +254,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
           cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 

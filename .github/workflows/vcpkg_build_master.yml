@@ -39,6 +39,8 @@ jobs:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
 
     steps:
       - name: Install Dependencies (Linux)
@@ -53,6 +55,7 @@ jobs:
                 libutempter-dev \
                 build-essential \
                 ninja-build \
+                ccache \
                 libcurl4-openssl-dev \
                 curl \
                 zip \
@@ -66,10 +69,10 @@ jobs:
                 automake
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install -y ninja
+        run: choco install -y ninja ccache
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake automake autoconf autoconf-archive libtool
+        run: brew update && brew install ninja cmake ccache automake autoconf autoconf-archive libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
@@ -83,20 +86,29 @@ jobs:
           platform: x64
         if: matrix.os == 'ubuntu-latest'
 
-      # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
+      # Cache the manifest install tree and vcpkg's binary package cache.
+      # Caching the vcpkg submodule tree does not skip port builds: those
+      # artifacts live in the CMake build directory and the binary cache.
+      - name: Restore vcpkg installed packages
         uses: actions/cache@v5
         with:
           path: |
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.os }}-${{ matrix.gcc }}-master-1
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
+            ${{ github.workspace }}/.vcpkg-binary-cache
+          key: et-vcpkg-installed-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-${{ matrix.os }}-${{ matrix.gcc }}
+
+      # VCPKG_DEFAULT_BINARY_CACHE must be an existing directory even on
+      # cache miss; vcpkg rejects a missing path before binary sources apply.
+      # Use bash so mkdir -p is idempotent on windows-latest too (pwsh mkdir
+      # is New-Item and fails when the path already exists after a cache hit).
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: vcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
 
       # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
       - uses: ilammy/msvc-dev-cmd@v1
@@ -107,17 +119,17 @@ jobs:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'ubuntu-latest'
 
       - name: Install dependencies and generate project files (mac)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'macos-latest'
 
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'windows-latest'
 
       # Build the whole project with Ninja (which is spawn by CMake).
@@ -130,6 +142,7 @@ jobs:
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+          ccache --show-stats || true
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
@@ -138,6 +151,7 @@ jobs:
           $parallelLevel = if ($env:CI_PARALLEL_LEVEL) { $env:CI_PARALLEL_LEVEL } else { "2" }
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --output-on-failure
+          ccache --show-stats
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}
