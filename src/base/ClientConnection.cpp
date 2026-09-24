@@ -38,8 +38,14 @@ bool ClientConnection::connect() {
       // Note: the response can be returning client if the client died while
       // performing the initial connection but the server thought the client
       // survived.
-      STERROR << "Error connecting to server: " << response.status() << ": "
-              << response.error();
+      if (response.status() == INVALID_KEY) {
+        // Expected when attaching to a session whose shell has exited.
+        LOG(INFO) << "Server rejected an ended client session: "
+                  << response.error();
+      } else {
+        STERROR << "Error connecting to server: " << response.status() << ": "
+                << response.error();
+      }
       CLOG(INFO, "stdout") << "Error connecting to server: "
                            << response.status() << ": " << response.error()
                            << endl;

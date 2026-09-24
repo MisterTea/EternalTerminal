@@ -82,7 +82,8 @@ inline bool etOptionConsumesValue(const string& arg) {
          arg == "-k" || arg == "--keepalive" || arg == "-l" ||
          arg == "--logdir" || arg == "--ssh-socket" || arg == "-F" ||
          arg == "--ssh-config" || arg == "--telemetry" ||
-         arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o";
+         arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o" ||
+         arg == "-j" || arg == "--name" || arg == "--attach" || arg == "--kill";
 }
 
 struct EtArgvSplit {

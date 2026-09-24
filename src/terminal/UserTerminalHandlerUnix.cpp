@@ -335,6 +335,18 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
           case TERMINAL_INFO: {
             TerminalInfo ti =
                 socketHandler->readProto<TerminalInfo>(routerFd, false);
+            if (ti.command() == TerminalInfo::KILL_SESSION) {
+              if (ti.commandversion() != SESSION_KILL_COMMAND_VERSION) {
+                LOG(WARNING) << "Ignoring unsupported terminal command version "
+                             << ti.commandversion();
+                break;
+              }
+              term->terminate();
+              term->handleSessionEnd();
+              lock_guard<recursive_mutex> guard(shutdownMutex);
+              shuttingDown = true;
+              break;
+            }
             winsize tmpwin;
             tmpwin.ws_row = ti.row();
             tmpwin.ws_col = ti.column();

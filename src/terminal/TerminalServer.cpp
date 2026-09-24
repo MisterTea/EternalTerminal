@@ -362,6 +362,7 @@ void TerminalServer::runTerminal(
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
   bool run = true;
+  bool killRequested = false;
 
   int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
@@ -522,6 +523,10 @@ void TerminalServer::runTerminal(
               LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   stringToProto<et::TerminalInfo>(packet.getPayload());
+              if (ti.command() == TerminalInfo::KILL_SESSION &&
+                  ti.commandversion() == SESSION_KILL_COMMAND_VERSION) {
+                killRequested = true;
+              }
               // Same as TERMINAL_BUFFER: a late resize must not tear down the
               // client before EXIT_STATUS is forwarded.
               try {
@@ -643,6 +648,10 @@ void TerminalServer::runTerminal(
         LOG(INFO) << (pipeMode ? "Pipe command session ended: "
                                : "Terminal session ended: ")
                   << ex.what();
+        if (killRequested) {
+          serverClientState->writePacket(
+              Packet(TerminalPacketType::KEEP_ALIVE, SESSION_KILL_ACK));
+        }
         run = false;
         break;
       }

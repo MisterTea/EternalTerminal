@@ -54,9 +54,9 @@ Once etterminal launches:
 - It [locates the server fifo](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/ServerFifoPath.cpp) to connect to the etserver process:
   - If `/var/run/etserver.idpasskey.fifo` exists, when etserver is running as root, this path is used.
   - Otherwise, `$XDG_RUNTIME_DIR/etserver/etserver.ifpasskey.fifo` is used, resolving `$XDG_RUNTIME_DIR` to `$HOME/.local/share` if the environment variable is not set.
-- Once it connects to the server, it sends a `TERMINAL_USER_INFO` packet with [TerminalUserInfo](../proto/ETerminal.proto#L89-L95) containing the **client-id** and **passkey** to register the terminal with the server.  These are registered into the ServerConnection [`clientKeys` map](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/base/ServerConnection.hpp#L37-L40) awaiting a user connection.
+- Once it connects to the server, it sends a `TERMINAL_USER_INFO` packet with [TerminalUserInfo](../proto/ETerminal.proto#L96-L102) containing the **client-id** and **passkey** to register the terminal with the server.  These are registered into the ServerConnection [`clientKeys` map](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/base/ServerConnection.hpp#L37-L40) awaiting a user connection.
 - After etterminal connects to etserver, it outputs the **client-id** and **passkey**, to inform the client in cases where it regenerated them.
-- etterminal then waits for a client connect, waiting for a `TERMINAL_INIT` ([TermInit](../proto/ETerminal.proto#L82-L87)) packet.
+- etterminal then waits for a client connect, waiting for a `TERMINAL_INIT` ([TermInit](../proto/ETerminal.proto#L89-L94)) packet.
 - After receiving this packet UserTerminalHandler enters the `runUserTerminal` run loop, and proxies input/output until the terminal exits. See the [Terminal Run Loop](#terminal-run-loop).
 
 ## Client Connection
@@ -100,7 +100,7 @@ The final response carries `resetProof`, a keyed proof over the challenge, `stat
 
 The challenge is a capability within protocol 6, not a version bump. A request without `supportsChallenge` gets the original single `ConnectResponse`, with no challenge or reset fields. A client that gets no `authChallenge` treats the first response as final; if it asked to reattach (`resetIntent`) and gets `RETURNING_CLIENT`, it fails with "Server does not support session reattach; upgrade etserver". The legacy path goes away at the next `PROTOCOL_VERSION` bump.
 
-The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](../proto/ETerminal.proto#L64-L71)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](../proto/ETerminal.proto#L73-L75)).  If there's an error during connect, the InitialResponse will contain an error string.
+The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](../proto/ETerminal.proto#L71-L78)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](../proto/ETerminal.proto#L80-L82)).  If there's an error during connect, the InitialResponse will contain an error string.
 
 ## Reconnection
 
@@ -134,7 +134,11 @@ Based on this, a CatchupBuffer protobufs are swapped, containing the missing enc
 
 ### Reset recovery
 
-A fresh client process sets `ConnectRequest.resetIntent`, since it has no sequence history. When one side has lost its history, the final `ConnectResponse` sets `resetRequired` with a fresh `resetSalt`. Both peers echo the salt in their [SequenceHeader](../proto/ET.proto#L47-L55), exchange empty catchup buffers, and start over at sequence zero under a key derived from the salt. A `reset` bit that the authenticated handshake did not select is rejected.
+A fresh client process (`--attach`, or any initial connect) sets `ConnectRequest.resetIntent`, since it has no sequence history. When one side has lost its history, the final `ConnectResponse` sets `resetRequired` with a fresh `resetSalt`. Both peers echo the salt in their [SequenceHeader](../proto/ET.proto#L47-L55), exchange empty catchup buffers, and start over at sequence zero under a key derived from the salt. A `reset` bit that the authenticated handshake did not select is rejected.
+
+### Ending a session
+
+`et --kill` sends `TerminalInfo.command = KILL_SESSION`; the server answers with a `KEEP_ALIVE` carrying `ET_SESSION_KILLED_V1` once the terminal exits.
 
 ## Port Forwarding
 

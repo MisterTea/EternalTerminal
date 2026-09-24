@@ -11,6 +11,29 @@
 #include "PseudoUserTerminalWindows.hpp"
 #endif
 namespace et {
+namespace {
+bool handleTerminalInfo(UserTerminal& term, const TerminalInfo& ti) {
+  if (ti.command() == TerminalInfo::KILL_SESSION) {
+    if (ti.commandversion() != SESSION_KILL_COMMAND_VERSION) {
+      LOG(WARNING) << "Ignoring unsupported terminal command version "
+                   << ti.commandversion();
+      return false;
+    }
+    term.terminate();
+    term.handleSessionEnd();
+    return true;
+  }
+
+  winsize tmpwin;
+  tmpwin.ws_row = static_cast<unsigned short>(ti.row());
+  tmpwin.ws_col = static_cast<unsigned short>(ti.column());
+  tmpwin.ws_xpixel = static_cast<unsigned short>(ti.width());
+  tmpwin.ws_ypixel = static_cast<unsigned short>(ti.height());
+  term.setInfo(tmpwin);
+  return false;
+}
+}  // namespace
+
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
     bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,
@@ -176,6 +199,7 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
 }
 
 void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
+  bool killRequested = false;
   while (true) {
     {
       lock_guard<recursive_mutex> guard(shutdownMutex);
@@ -209,12 +233,7 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
             case TERMINAL_INFO: {
               TerminalInfo ti =
                   socketHandler->readProto<TerminalInfo>(routerFd, false);
-              winsize tmpwin;
-              tmpwin.ws_row = static_cast<unsigned short>(ti.row());
-              tmpwin.ws_col = static_cast<unsigned short>(ti.column());
-              tmpwin.ws_xpixel = static_cast<unsigned short>(ti.width());
-              tmpwin.ws_ypixel = static_cast<unsigned short>(ti.height());
-              term->setInfo(tmpwin);
+              killRequested = handleTerminalInfo(*term, ti);
               break;
             }
             case TERMINAL_CLOSE: {
@@ -226,6 +245,11 @@ void UserTerminalHandler::runConPtyTerminal(PseudoUserTerminal& conpty) {
               break;
           }
         }
+      }
+      if (killRequested) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+        break;
       }
 
       // ConPTY -> router output as TERMINAL_BUFFER packets (matches Unix).
@@ -265,6 +289,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
   const size_t maxPendingInput = 256 * 1024;
   const int inputFd = term->getInputFd();
   int activeStderrFd = term->getStderrFd();
+  bool killRequested = false;
 
   while (true) {
     {
@@ -359,12 +384,7 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
           case TERMINAL_INFO: {
             TerminalInfo ti =
                 socketHandler->readProto<TerminalInfo>(routerFd, false);
-            winsize tmpwin;
-            tmpwin.ws_row = static_cast<unsigned short>(ti.row());
-            tmpwin.ws_col = static_cast<unsigned short>(ti.column());
-            tmpwin.ws_xpixel = static_cast<unsigned short>(ti.width());
-            tmpwin.ws_ypixel = static_cast<unsigned short>(ti.height());
-            term->setInfo(tmpwin);
+            killRequested = handleTerminalInfo(*term, ti);
             break;
           }
           case TERMINAL_CLOSE: {
@@ -375,6 +395,11 @@ void UserTerminalHandler::runSocketTerminal(int masterFd) {
           default:
             break;
         }
+      }
+      if (killRequested) {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+        break;
       }
 
       if (!pendingInput.empty()) {

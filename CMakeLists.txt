@@ -521,10 +521,14 @@ add_library(
   src/terminal/MuxMaster.cpp
   src/terminal/MuxClient.hpp
   src/terminal/MuxClient.cpp
+  src/terminal/TitleParser.hpp
+  src/terminal/TitleParser.cpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
+  src/terminal/SessionStore.hpp
+  src/terminal/SessionStore.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
@@ -679,13 +683,23 @@ if(WIN32)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/*Test.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/*Test.cpp)
 
+    add_executable(
+      et-conpty-output-helper
+      test/helpers/ConPtyOutputHelper.cpp)
+
     # Same test set as Unix (see the else(WIN32) branch below): every test is
     # expected to compile and pass on Windows. Platform-impossible cases
     # SKIP at runtime with a reason instead of being excluded here.
     add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
     target_include_directories(
       et-test PRIVATE test test/integration_tests test/unit_tests)
-    add_dependencies(et-test generated-code TerminalCommon et-lib HtmCommon)
+    add_dependencies(
+      et-test
+      generated-code
+      TerminalCommon
+      et-lib
+      HtmCommon
+      et-conpty-output-helper)
     target_link_libraries(
       et-test
       PRIVATE
