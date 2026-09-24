@@ -36,8 +36,9 @@ ParsedConnect parseEtConnectArgv(int argc, const char** argv) {
       "F,ssh-config", "SSH config file", cxxopts::value<std::string>())(
       "o", "OpenSSH-style session option",
       cxxopts::value<std::vector<std::string>>())(
-      "logtostdout", "Write log to stdout")("host", "Remote host name",
-                                            cxxopts::value<std::string>());
+      "disconnect-timeout", "Session disconnect timeout minutes",
+      cxxopts::value<int>())("logtostdout", "Write log to stdout")(
+      "host", "Remote host name", cxxopts::value<std::string>());
   options.parse_positional({"host"});
   ParsedConnect parsed{
       options.parse(static_cast<int>(clientArgv.size()), clientArgv.data()),
@@ -199,6 +200,28 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(sessionOpts[0] == "ConnectTimeout=9");
     REQUIRE(sessionOpts[1] == "RemoteCommand=true");
     REQUIRE(commandFromParse(parsed) == "");
+  }
+
+  SECTION("--disconnect-timeout consumes its value before the host") {
+    const char* argv[] = {"et", "--disconnect-timeout", "10080", "user@host"};
+    auto parsed = parseEtConnectArgv(4, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "user@host");
+    REQUIRE(result.count("disconnect-timeout") == 1);
+    REQUIRE(result["disconnect-timeout"].as<int>() == 10080);
+    REQUIRE(commandFromParse(parsed) == "");
+  }
+
+  SECTION("--disconnect-timeout=minutes keeps the host positional") {
+    const char* argv[] = {"et", "--disconnect-timeout=10080", "host", "echo",
+                          "hi"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    REQUIRE(parsed.result.count("host") == 1);
+    REQUIRE(parsed.result["host"].as<string>() == "host");
+    REQUIRE(parsed.result.count("disconnect-timeout") == 1);
+    REQUIRE(parsed.result["disconnect-timeout"].as<int>() == 10080);
+    REQUIRE(commandFromParse(parsed) == "echo hi");
   }
 }
 
