@@ -33,6 +33,9 @@ ParsedConnect parseEtConnectArgv(int argc, const char** argv) {
       cxxopts::value<std::string>())("terminal-path", "Path to etterminal",
                                      cxxopts::value<std::string>())(
       "serverfifo", "Server fifo", cxxopts::value<std::string>())(
+      "F,ssh-config", "SSH config file", cxxopts::value<std::string>())(
+      "o", "OpenSSH-style session option",
+      cxxopts::value<std::vector<std::string>>())(
       "logtostdout", "Write log to stdout")("host", "Remote host name",
                                             cxxopts::value<std::string>());
   options.parse_positional({"host"});
@@ -172,6 +175,30 @@ TEST_CASE("et accepts ssh-style positional remote command",
     REQUIRE(result.count("host") == 1);
     REQUIRE(result["host"].as<string>() == "host");
     REQUIRE(commandFromParse(parsed) == "-- cmd");
+  }
+
+  SECTION("-F and -o consume values so the host stays positional") {
+    const char* argv[] = {"et",
+                          "-G",
+                          "-F",
+                          "/tmp/ssh_config",
+                          "-o",
+                          "ConnectTimeout=9",
+                          "-o",
+                          "RemoteCommand=true",
+                          "nowhere.invalid"};
+    auto parsed = parseEtConnectArgv(9, argv);
+    auto& result = parsed.result;
+    REQUIRE(result.count("host") == 1);
+    REQUIRE(result["host"].as<string>() == "nowhere.invalid");
+    REQUIRE(result.count("ssh-config") == 1);
+    REQUIRE(result["ssh-config"].as<string>() == "/tmp/ssh_config");
+    REQUIRE(result.count("o") == 2);
+    auto sessionOpts = result["o"].as<std::vector<string>>();
+    REQUIRE(sessionOpts.size() == 2);
+    REQUIRE(sessionOpts[0] == "ConnectTimeout=9");
+    REQUIRE(sessionOpts[1] == "RemoteCommand=true");
+    REQUIRE(commandFromParse(parsed) == "");
   }
 }
 

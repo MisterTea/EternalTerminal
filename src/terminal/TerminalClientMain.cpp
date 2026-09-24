@@ -6,6 +6,7 @@
 #include "ClientArgParsing.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
+#include "OpenSshLocalQueries.hpp"
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
@@ -72,13 +73,16 @@ void parseSelectedSshConfig(const string& host, Options* options,
     return;
   }
 
+  // Share seen[] across user then system so first-wins (user over system),
+  // including explicit zero/"no" values that look unset on Options alone.
+  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
   char* homeDir = ssh_get_user_home_dir();
   if (homeDir != NULL) {
     parse_ssh_config_file(host.c_str(), options,
-                          string(homeDir) + USER_SSH_CONFIG_PATH);
+                          string(homeDir) + USER_SSH_CONFIG_PATH, seen);
     free(homeDir);
   }
-  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH);
+  parse_ssh_config_file(host.c_str(), options, SYSTEM_SSH_CONFIG_PATH, seen);
 }
 
 // Resolve a host alias via SSH config lookup
@@ -153,6 +157,11 @@ int main(int argc, char** argv) {
     options.add_options()             //
         ("h,help", "Print help")      //
         ("version", "Print version")  //
+        ("V",
+         "Print an OpenSSH-compatible version line and exit")  //
+        ("G",
+         "Print resolved OpenSSH-style configuration for the destination and "
+         "exit without connecting")  //
         ("u,username", "Username",
          cxxopts::value<std::string>())  //
         ("host", "Remote host name",
@@ -209,7 +218,7 @@ int main(int argc, char** argv) {
         ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
-        ("ssh-config",
+        ("F,ssh-config",
          "Read only this absolute SSH configuration file (or 'none')",
          cxxopts::value<std::string>())  //
         ("no-ssh-config",
@@ -222,6 +231,10 @@ int main(int argc, char** argv) {
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
         ("ssh-option", "Options to pass down to `ssh -o`",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("o",
+         "OpenSSH-style session option applied to the resolved config "
+         "(e.g. -o ConnectTimeout=10). Distinct from --ssh-option.",
          cxxopts::value<std::vector<std::string>>());
 
     options.parse_positional({"host"});
@@ -254,6 +267,11 @@ int main(int argc, char** argv) {
 
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
+      exit(0);
+    }
+
+    if (result.count("V")) {
+      CLOG(INFO, "stdout") << openSshCompatibilityVersionLine() << endl;
       exit(0);
     }
 
@@ -402,6 +420,38 @@ int main(int argc, char** argv) {
       }
     }
 
+    // Apply OpenSSH-style -o session options after config resolution so they
+    // override file values. --ssh-option remains a separate bootstrap-ssh path.
+    if (result.count("o")) {
+      for (const auto& sessionOption : result["o"].as<std::vector<string>>()) {
+        if (!applySessionOption(&sshConfigOptions, sessionOption)) {
+          CLOG(INFO, "stdout")
+              << "Invalid -o option: " << sessionOption << endl;
+          exit(1);
+        }
+        string key = sessionOption;
+        size_t sep = key.find('=');
+        if (sep == string::npos) {
+          sep = key.find(' ');
+        }
+        if (sep != string::npos) {
+          key = key.substr(0, sep);
+        }
+        key = lowercaseAscii(trimAsciiBlanks(std::move(key)));
+        if (key == "hostname" && sshConfigOptions.host) {
+          destinationHost = string(sshConfigOptions.host);
+        } else if (key == "user" && sshConfigOptions.username) {
+          username = string(sshConfigOptions.username);
+        }
+      }
+    }
+
+    if (result.count("G")) {
+      CLOG(INFO, "stdout") << formatOpenSshResolvedConfig(
+          host_alias, destinationHost, username, sshConfigOptions);
+      exit(0);
+    }
+
     // Parse jumphost: cmd > sshconfig
     if (!jumphostSpecified && sshConfigOptions.ProxyJump &&
         strcasecmp(sshConfigOptions.ProxyJump, "none") != 0 &&
@@ -545,7 +595,23 @@ int main(int argc, char** argv) {
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
         noPty, command);
-    terminalClient.run(command, result.count("noexit"));
+    const int remoteExitStatus =
+        terminalClient.run(command, result.count("noexit"));
+
+    // Clean up ssh config options
+    freeOptionsFields(&sshConfigOptions);
+
+#ifdef WIN32
+    WSACleanup();
+#endif
+
+    TelemetryService::get()->shutdown();
+    TelemetryService::destroy();
+
+    // Uninstall log rotation callback
+    el::Helpers::uninstallPreRollOutCallback();
+
+    return remoteExitStatus;
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
   } catch (cxxopts::exceptions::exception& oe) {

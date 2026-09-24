@@ -128,10 +128,16 @@ class PipeUserTerminal : public UserTerminal {
   }
 
   virtual void runTerminal() override {}
-  virtual void handleSessionEnd() override {
+  virtual int handleSessionEnd() override {
+    int exitCode = 0;
     if (processHandle != INVALID_HANDLE_VALUE) {
       WaitForSingleObject(processHandle, INFINITE);
+      DWORD code = 0;
+      if (GetExitCodeProcess(processHandle, &code)) {
+        exitCode = static_cast<int>(code);
+      }
     }
+    return exitCode;
   }
   virtual void cleanup() override {
     running = false;

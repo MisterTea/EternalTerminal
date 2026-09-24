@@ -76,16 +76,23 @@ TEST_CASE("TerminalHandler stop is idempotent and reaps the child",
 TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   term.start();
-  auto pollExit = [&]() {
-    term.pollUserTerminal();
+  REQUIRE(term.isRunning());
+  // Wait for the child to attach to the pty before writing. Flooding "exit"
+  // every poll races on FreeBSD VMs where fork/exec is still in flight
+  // (master flake: REQUIRE(exited) false after 20s).
+  std::this_thread::sleep_for(std::chrono::milliseconds(200));
+  term.pollUserTerminal();
 #ifdef WIN32
-    term.appendData("exit\r\n");
+  term.appendData("exit\r\n");
 #else
-    term.appendData("exit\n");
+  term.appendData("exit\n");
 #endif
-    return !term.isRunning();
-  };
-  bool exited = waitUntil(pollExit, 20000);
+  bool exited = waitUntil(
+      [&]() {
+        term.pollUserTerminal();
+        return !term.isRunning();
+      },
+      20000);
 #ifdef WIN32
   if (!exited) {
     SKIP(
