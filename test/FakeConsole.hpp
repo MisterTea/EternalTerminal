@@ -4,6 +4,7 @@
 #include <fcntl.h>
 
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <thread>
 
@@ -226,25 +227,38 @@ class FakeUserTerminal : public UserTerminal {
 #endif
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
-    serverClientFd = -1;
+    setupComplete.store(false);
+    {
+      // Mutate fds under _mutex: drainKeystrokes/hasKeystrokes may run on the
+      // test thread as soon as UserTerminalHandler starts (TSan race).
+      lock_guard<recursive_mutex> lock(_mutex);
+      serverClientFd = -1;
+      clientServerFd = -1;
+    }
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    clientServerFd = socketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
+    int connectedFd = socketHandler->connect(endpoint);
+    FATAL_FAIL(connectedFd);
     serverListenThread.join();
-    FATAL_FAIL(serverClientFd);
-    // Honor the UserTerminal contract: the handler polls this fd non-blocking.
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = connectedFd;
+      FATAL_FAIL(serverClientFd);
+      // Honor the UserTerminal contract: the handler polls this fd
+      // non-blocking.
 #ifdef WIN32
-    u_long nonBlocking = 1;
-    FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+      u_long nonBlocking = 1;
+      FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
 #else
-    int flags = fcntl(clientServerFd, F_GETFL, 0);
-    if (flags != -1) {
-      fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
-    }
+      int flags = fcntl(clientServerFd, F_GETFL, 0);
+      if (flags != -1) {
+        fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
+      }
 #endif
+    }
+    setupComplete.store(true);
     return getFd();
   };
 
@@ -252,7 +266,13 @@ class FakeUserTerminal : public UserTerminal {
 
   };
 
-  virtual int getFd() { return clientServerFd; }
+  virtual int getFd() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd;
+  }
+
+  /** @brief True once setup() has published both pipe ends. */
+  bool isSetupComplete() const { return setupComplete.load(); }
 
   string getKeystrokes(int count) {
     lock_guard<recursive_mutex> lock(_mutex);
@@ -357,6 +377,7 @@ class FakeUserTerminal : public UserTerminal {
   bool didCleanUp;
   bool didHandleSessionEnd;
   winsize lastWinInfo;
+  std::atomic<bool> setupComplete{false};
 };
 }  // namespace et
 

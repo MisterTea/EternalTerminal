@@ -705,8 +705,17 @@ uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,
   uint32_t status = *passenger.exitStatus;
   passenger.active = false;
   passenger.cancelRequested = false;
+  // Prefer suppress over clearing sticky so a late MuxMaster cancel that
+  // races the return path cannot re-arm cancelRequested for the next attach.
+  passenger.suppressStickyCancel = true;
   passenger.inFd = passenger.outFd = passenger.errFd = -1;
   return status;
+}
+
+void TerminalClient::beginPassengerWatch() {
+  lock_guard<mutex> guard(passengerMutex);
+  // New mux watch: allow hangup-before-active sticky cancel again.
+  passenger.suppressStickyCancel = false;
 }
 
 void TerminalClient::cancelPassengerSession() {
@@ -718,6 +727,11 @@ void TerminalClient::cancelPassengerSession() {
       passenger.exitStatus = 1;
       passengerCv.notify_all();
     }
+    // A late cancel after this attach returns must not sticky-arm the next one.
+    passenger.suppressStickyCancel = true;
+    return;
+  }
+  if (passenger.suppressStickyCancel) {
     return;
   }
   // Hangup before active: sticky until runPassengerSession attaches.

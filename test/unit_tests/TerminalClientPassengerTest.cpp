@@ -70,7 +70,10 @@ struct PassengerBridgeStack {
                                            fakeUserTerminal, true,
                                            routerEndpoint, id + "/" + passkey);
     uthThread = thread([this]() { uth->run(); });
-    testSleepMicros(200000);
+    // setup() sleeps ~1s inside FakeUserTerminal; give it a moment to bind
+    // before the client connects. Fd publication is mutex-protected so a
+    // concurrent drainKeystrokes will just spin until serverClientFd is set.
+    testSleepMicros(1200000);
 
     terminalClient = make_shared<TerminalClient>(
         clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id,
@@ -371,6 +374,7 @@ TEST_CASE("TerminalClient passenger bridge propagates command exit status",
   master.setPassengerSessionHandler([&](int inFd, int outFd, int errFd,
                                         const string& command,
                                         bool /*wantTty*/) -> uint32_t {
+    stack.terminalClient->beginPassengerWatch();
     return stack.terminalClient->runPassengerSession(inFd, outFd, errFd,
                                                      command);
   });
@@ -434,6 +438,7 @@ TEST_CASE(
   master.setPassengerSessionHandler([&](int inFd, int outFd, int errFd,
                                         const string& /*command*/,
                                         bool /*wantTty*/) -> uint32_t {
+    stack.terminalClient->beginPassengerWatch();
     handlerEntered.store(true);
     // Hold off becoming active until hangup has had a chance to fire cancel
     // while passenger.active is still false.
@@ -540,6 +545,7 @@ TEST_CASE("hangup mid-attach does not poison the next passenger session",
   master.setPassengerSessionHandler([&](int inFd, int outFd, int errFd,
                                         const string& command,
                                         bool /*wantTty*/) -> uint32_t {
+    stack.terminalClient->beginPassengerWatch();
     return stack.terminalClient->runPassengerSession(inFd, outFd, errFd,
                                                      command);
   });

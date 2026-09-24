@@ -439,18 +439,24 @@ bool MuxMaster::replySessionOpened(MuxConnection* conn, uint32_t requestId,
 uint32_t MuxMaster::runPassengerWithControlWatch(
     MuxConnection* conn, int inFd, int outFd, int errFd, const string& command,
     bool wantTty, PassengerSessionHandler handler) {
-  atomic<bool> finished{false};
+  std::mutex watchMutex;
+  bool finished = false;
   atomic<uint32_t> exitStatus{255};
   exception_ptr handlerError;
 
   thread sessionThread([&]() {
+    uint32_t status = 255;
     try {
-      exitStatus.store(handler(inFd, outFd, errFd, command, wantTty));
+      status = handler(inFd, outFd, errFd, command, wantTty);
     } catch (...) {
       handlerError = current_exception();
-      exitStatus.store(255);
+      status = 255;
     }
-    finished.store(true);
+    // Publish finished under watchMutex before returning so a late hangup
+    // cannot fire cancel after runPassengerSession cleared sticky state.
+    lock_guard<std::mutex> lock(watchMutex);
+    exitStatus.store(status);
+    finished = true;
   });
 
   PassengerCancelHandler cancel;
@@ -460,20 +466,32 @@ uint32_t MuxMaster::runPassengerWithControlWatch(
   }
 
   // Sticky cancel on TerminalClient covers hangup before passenger.active.
-  // Fire cancel at most once: re-invoking after the session clears
-  // cancelRequested poisons the next attach (instant status 1).
+  // Fire cancel at most once, and never after the session thread finishes:
+  // re-invoking after the session clears cancelRequested poisons the next
+  // attach (instant status 1 / empty command inject).
   bool cancelFired = false;
   auto fireCancel = [&]() {
-    if (cancelFired) {
-      return;
+    PassengerCancelHandler toCall;
+    {
+      lock_guard<std::mutex> lock(watchMutex);
+      if (cancelFired || finished) {
+        return;
+      }
+      cancelFired = true;
+      toCall = cancel;
     }
-    cancelFired = true;
-    if (cancel) {
-      cancel();
+    if (toCall) {
+      toCall();
     }
   };
 
-  while (!finished.load()) {
+  while (true) {
+    {
+      lock_guard<std::mutex> lock(watchMutex);
+      if (finished) {
+        break;
+      }
+    }
     if (!running.load() || terminateRequested.load()) {
       fireCancel();
     }

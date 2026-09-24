@@ -692,6 +692,7 @@ int main(int argc, char** argv) {
                 [&terminalClient](int inFd, int outFd, int errFd,
                                   const string& passengerCommand,
                                   bool /*wantTty*/) -> uint32_t {
+                  terminalClient.beginPassengerWatch();
                   return terminalClient.runPassengerSession(inFd, outFd, errFd,
                                                             passengerCommand);
                 });

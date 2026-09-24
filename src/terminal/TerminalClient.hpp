@@ -67,10 +67,16 @@ class TerminalClient {
    * @brief Complete an in-flight passenger attach (e.g. mux control hangup).
    * Sticky only while not yet active: a hangup before `passenger.active` is
    * remembered and applied as soon as `runPassengerSession` attaches. Once
-   * active, cancel completes the current session without leaving sticky state
-   * for a later attach.
+   * active, cancel completes the current session and suppresses further sticky
+   * arms until `beginPassengerWatch`.
    */
   void cancelPassengerSession();
+  /**
+   * @brief Clear sticky-cancel suppression at the start of a mux passenger
+   * watch so hangup-before-active still works. Call before any gate that
+   * precedes `runPassengerSession`.
+   */
+  void beginPassengerWatch();
   /** @brief Port-forward handler owned by this client (for mux OPEN_FWD). */
   shared_ptr<PortForwardHandler> getPortForwardHandler() const {
     return portForwardHandler;
@@ -133,6 +139,12 @@ class TerminalClient {
      * or when the attach ends; not set while already active.
      */
     bool cancelRequested = false;
+    /**
+     * After an attach has been active (or finished), ignore further sticky
+     * cancel arms so a late MuxMaster hangup poll cannot poison the next
+     * passenger session.
+     */
+    bool suppressStickyCancel = false;
   };
   PassengerAttach passenger;
   mutex passengerMutex;
