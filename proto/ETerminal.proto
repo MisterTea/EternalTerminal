@@ -85,7 +85,8 @@ message InitialPayload {
   optional bool no_shell = 7 [default = false];
   // When set, overrides etserver's global disconnect timeout for this session.
   // Seconds a disconnected etterminal may stay alive before etserver closes it.
-  // 0 means no timeout. Clients convert --disconnect-timeout minutes to seconds.
+  // 0 means no timeout. Clients convert --disconnect-timeout minutes to
+  // seconds.
   optional int32 disconnect_timeout_seconds = 8;
 }
 
