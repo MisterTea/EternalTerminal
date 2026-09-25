@@ -19,28 +19,21 @@
 namespace et {
 namespace control_paths {
 
-// Create a directory 0700 if missing; fatal on any other error.
-inline void ensureDir0700(const string& dir) {
-  if (::mkdir(dir.c_str(), 0700) == -1 && errno != EEXIST) {
-    throw std::runtime_error("could not create " + dir + ": " +
-                             strerror(errno));
-  }
-}
-
 // Create a directory (and any missing parents) at 0700; fatal on real errors.
 inline void mkdirp0700(const string& dir) {
   if (dir.empty()) {
     return;
   }
-  for (size_t p = 1; p <= dir.size(); ++p) {
-    if (p == dir.size() || dir[p] == '/') {
-      const string sub = dir.substr(0, p);
-      if (!sub.empty() && ::mkdir(sub.c_str(), 0700) == -1 && errno != EEXIST) {
-        throw std::runtime_error("could not create " + sub + ": " +
-                                 strerror(errno));
-      }
-    }
+  std::error_code ec;
+  fs::create_directories(dir, ec);
+  if (ec && !fs::is_directory(dir)) {
+    throw std::runtime_error("could not create " + dir + ": " + ec.message());
   }
+#ifndef WIN32
+  // POSIX permission bits have no Windows equivalent; the directory is only
+  // access-restricted on platforms where that concept applies.
+  fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, ec);
+#endif
 }
 
 // The directory holding a session's socket, alongside its saved record.
