@@ -1,4 +1,5 @@
-// Make struct ucred / SO_PEERCRED visible on glibc (Linux peer-credential check).
+// Make struct ucred / SO_PEERCRED visible on glibc (Linux peer-credential
+// check).
 #if defined(__linux__) && !defined(_GNU_SOURCE)
 #define _GNU_SOURCE
 #endif
@@ -104,7 +105,8 @@ bool ControlListener::peerAuthorized(int connFd) const {
   // Only the owning user may drive the session, even if perms were loosened.
   uid_t peerUid = (uid_t)-1;
 #ifdef __linux__
-  // Linux reports peer credentials through SO_PEERCRED (getpeereid is BSD-only).
+  // Linux reports peer credentials through SO_PEERCRED (getpeereid is
+  // BSD-only).
   struct ucred cred;
   socklen_t len = sizeof(cred);
   if (::getsockopt(connFd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0) {

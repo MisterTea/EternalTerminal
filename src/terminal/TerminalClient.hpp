@@ -157,9 +157,7 @@ class TerminalClient {
   // flips this to false during a drop and back to true once it reconnects, so
   // it distinguishes "link down" from "the daemon is gone" (the latter shows as
   // an unreachable control socket).
-  bool isConnected() {
-    return connection && !connection->isDisconnected();
-  }
+  bool isConnected() { return connection && !connection->isDisconnected(); }
 
  protected:
   /** @brief Console wrapper used for local terminal input/output. */

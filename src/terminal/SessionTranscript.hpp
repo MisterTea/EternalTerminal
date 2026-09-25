@@ -33,9 +33,9 @@ struct TranscriptRead {
  * A bounded, ordered log of both injected input and produced output, used by
  * `etctl peep` to tap the byte exchange (» sent / « received).  Records are
  * appended in processing order and addressed by a monotonic record index; the
- * ring evicts oldest records once a byte cap is exceeded.  This is separate from
- * the SessionScrollback (which is output-only and serves `read`), so peep can
- * show the two directions interleaved without disturbing reads.
+ * ring evicts oldest records once a byte cap is exceeded.  This is separate
+ * from the SessionScrollback (which is output-only and serves `read`), so peep
+ * can show the two directions interleaved without disturbing reads.
  */
 class SessionTranscript {
  public:

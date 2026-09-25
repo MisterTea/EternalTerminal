@@ -1,6 +1,7 @@
 #ifndef __ET_SESSION_TOMBSTONE_HPP__
 #define __ET_SESSION_TOMBSTONE_HPP__
 
+#include "ControlPaths.hpp"
 #include "Headers.hpp"
 #include "SessionStore.hpp"
 
@@ -12,8 +13,8 @@
  * "you never opened it" or "something removed it". The daemon knows the reason
  * at the moment it exits; the tombstone is where it leaves that reason behind.
  *
- * It lives beside the session's saved record, under the name it ended as, and
- * is suffixed so a session listing never mistakes a note for a session.
+ * It lives with the session's control socket, under the name it ended as, in
+ * the control directory rather than the saved-session one.
  */
 namespace et {
 namespace session_tombstone {
@@ -22,13 +23,14 @@ inline string pathForName(const string& name) {
   if (!isValidSessionName(name)) {
     throw std::runtime_error("invalid session name '" + name + "'");
   }
-  return sessionDirPath() + "/" + name + ".gone";
+  return control_paths::controlDir() + "/" + name + ".gone";
 }
 
 // Record why a session ended. Best effort: a session that cannot leave a note
 // is no worse off than one that never wrote one.
 inline void write(const string& name, const string& reason) {
   try {
+    control_paths::ensureControlDir();
     std::ofstream out(pathForName(name), std::ios::trunc);
     if (!out) {
       return;

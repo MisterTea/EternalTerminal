@@ -75,7 +75,8 @@ TEST_CASE("ScrollbackMultiReaderCursorsAreIndependent", "[SessionScrollback]") {
   auto rb = sb.read(0);  // a fresh reader sees everything
   REQUIRE(rb.data == "onetwo");
 
-  auto ra2 = sb.read(ra.nextCursor);  // the first reader sees only the new bytes
+  auto ra2 =
+      sb.read(ra.nextCursor);  // the first reader sees only the new bytes
   REQUIRE(ra2.data == "two");
 }
 

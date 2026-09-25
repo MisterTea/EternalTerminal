@@ -32,7 +32,7 @@ struct ScrollbackRead {
  * already uses in htm's TerminalHandler (a deque<string> buffer plus a byte
  * count); the only additions are a monotonic absolute cursor and FIFO eviction.
  *
- * Cursors are absolute byte offsets from the start of the session.  `headOffset`
+ * Cursors are absolute byte offsets from the start of the session. `headOffset`
  * is the offset just past the most recent byte (the live cursor); `baseOffset`
  * is the offset of the oldest byte still retained.  Both only ever increase.
  */
@@ -87,9 +87,8 @@ class SessionScrollback {
     for (const auto& chunk : chunks) {
       const int64_t chunkEnd = chunkStart + static_cast<int64_t>(chunk.size());
       if (chunkEnd > cursor) {
-        const size_t from = cursor > chunkStart
-                                ? static_cast<size_t>(cursor - chunkStart)
-                                : 0;
+        const size_t from =
+            cursor > chunkStart ? static_cast<size_t>(cursor - chunkStart) : 0;
         result.data.append(chunk, from, std::string::npos);
       }
       chunkStart = chunkEnd;

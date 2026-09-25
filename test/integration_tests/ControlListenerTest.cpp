@@ -58,8 +58,8 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
   auto console = std::make_shared<ControlConsole>();
   string path = makeTempSocketPath();
   std::atomic<bool> killed{false};
-  ControlListener listener(console, path, [&]() { killed = true; }, nullptr,
-                           "tester@example.host");
+  ControlListener listener(
+      console, path, [&]() { killed = true; }, nullptr, "tester@example.host");
   listener.start();
 
   SECTION("write injects input reaching the console fd") {

@@ -17,8 +17,8 @@ namespace et {
  * router bridge, but speaks the (unencrypted, local) control framing.
  *
  * Connections are short-lived: one request, one response, close.  Streaming
- * reads (etctl read --follow / observe) are done by the client polling CTL_READ,
- * so the daemon keeps no per-reader state.
+ * reads (etctl read --follow / observe) are done by the client polling
+ * CTL_READ, so the daemon keeps no per-reader state.
  */
 class ControlListener {
  public:

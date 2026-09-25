@@ -13,29 +13,30 @@ namespace et {
  * of from a local TTY.  It is the seam that lets the *unmodified*
  * TerminalClient::run() loop be controlled by an external tool (etctl):
  *
- *   * getFd() returns the read end of an internal pipe.  run() selects on it and
- *     forwards whatever appears as TERMINAL_BUFFER input, so injectInput() bytes
- *     (keystrokes, 0x03, 0x04, escape sequences, anything) reach the remote PTY
- *     exactly as if typed.
+ *   * getFd() returns the read end of an internal pipe.  run() selects on it
+ * and forwards whatever appears as TERMINAL_BUFFER input, so injectInput()
+ * bytes (keystrokes, 0x03, 0x04, escape sequences, anything) reach the remote
+ * PTY exactly as if typed.
  *   * write() is the output sink: run() hands every TERMINAL_BUFFER it receives
  *     here, and we append the raw bytes to a non-destructive scrollback that
  *     readOutput() serves by cursor.
- *   * getTerminalInfo() returns a settable size; setSize() changes it, and run()
- *     emits a TERMINAL_INFO (resize) on its next poll.
+ *   * getTerminalInfo() returns a settable size; setSize() changes it, and
+ * run() emits a TERMINAL_INFO (resize) on its next poll.
  *   * setup()/teardown() are no-ops: there is no TTY to put in raw mode.
  *
- * The pipe is kernel-synchronized; the scrollback is internally locked; the size
- * is guarded here.  run() touches this object on its main thread (getFd reads,
- * write, getTerminalInfo); the control listener touches it on another thread
- * (injectInput, readOutput, setSize) — a clean producer/consumer split.
+ * The pipe is kernel-synchronized; the scrollback is internally locked; the
+ * size is guarded here.  run() touches this object on its main thread (getFd
+ * reads, write, getTerminalInfo); the control listener touches it on another
+ * thread (injectInput, readOutput, setSize) — a clean producer/consumer split.
  */
 class ControlConsole : public Console {
  public:
-  explicit ControlConsole(size_t scrollbackCapBytes =
-                              SessionScrollback::kDefaultCapBytes);
+  explicit ControlConsole(
+      size_t scrollbackCapBytes = SessionScrollback::kDefaultCapBytes);
   virtual ~ControlConsole();
 
-  // --- Console interface (called by TerminalClient::run on its main thread) ---
+  // --- Console interface (called by TerminalClient::run on its main thread)
+  // ---
   std::optional<TerminalInfo> getTerminalInfo() override;
   virtual void setup() {}
   virtual void teardown() {}

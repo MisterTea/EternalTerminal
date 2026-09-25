@@ -6,15 +6,16 @@
 
 /*
  * Local, per-user discovery for control sessions.  Backgrounded `et --ctl`
- * sessions each own a socket at ~/.et/sessions/<name>.sock; `etctl sessions`
+ * sessions each own a socket at ~/.et/control/<name>.sock; `etctl sessions`
  * enumerates that directory.  The directory is created 0700 and the sockets are
  * 0600, so another local user can neither see nor open them.
  *
- * That is the same directory a named session's record lives in, deliberately: a
- * session's socket and its saved record are two artifacts of one named thing,
- * so they share a directory rather than each inventing their own.  The records
- * are bare names and the sockets are suffixed, so neither listing sees the
- * other's files.
+ * It is a sibling of the saved-session directory rather than the same one.
+ * Co-locating them reads well until a name collides: `~/.et/sessions/<name>` is
+ * one file per session, and a session may legally be named "foo.sock", which is
+ * exactly where session "foo" wants its socket.  Keeping the live control files
+ * in their own directory leaves the saved-session namespace entirely to
+ * SessionStore, so neither side has to reserve names from the other.
  */
 namespace et {
 namespace control_paths {
@@ -36,8 +37,11 @@ inline void mkdirp0700(const string& dir) {
 #endif
 }
 
-// The directory holding a session's socket, alongside its saved record.
-inline string controlDir() { return sessionDirPath(); }
+// The directory holding live control sockets, beside the saved-session
+// directory rather than inside it.
+inline string controlDir() {
+  return fs::path(sessionDirPath()).parent_path().string() + "/control";
+}
 
 // Resolve (and materialize) the control directory.
 inline string ensureControlDir() {
