@@ -102,7 +102,7 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool readPeerCatchupFirst) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -128,19 +128,23 @@ bool Connection::recover(int newSocketFd) {
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
 
-    {
-      // Fetch the catchup bytes and send
-      et::CatchupBuffer catchupBuffer;
-      vector<string> recoveredMessages =
-          writer->recover(remoteHeader.sequencenumber());
-      for (auto it : recoveredMessages) {
-        catchupBuffer.add_buffer(it);
-      }
-      socketHandler->writeProto(newSocketFd, catchupBuffer, true);
+    // Fetch our catchup bytes before any I/O, so a sequence number we cannot
+    // serve fails the same way whichever side sends its catchup first.
+    et::CatchupBuffer localCatchup;
+    for (auto& message : writer->recover(remoteHeader.sequencenumber())) {
+      localCatchup.add_buffer(message);
     }
 
-    et::CatchupBuffer catchupBuffer =
-        socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+    et::CatchupBuffer catchupBuffer;
+    if (readPeerCatchupFirst) {
+      catchupBuffer =
+          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+      socketHandler->writeProto(newSocketFd, localCatchup, true);
+    } else {
+      socketHandler->writeProto(newSocketFd, localCatchup, true);
+      catchupBuffer =
+          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+    }
 
     socketFd = newSocketFd;
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),

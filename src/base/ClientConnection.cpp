@@ -129,7 +129,7 @@ void ClientConnection::pollReconnect() {
                 << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {
-            recover(newSocketFd);
+            recover(newSocketFd, /*readPeerCatchupFirst=*/true);
           }
         } catch (const std::runtime_error& re) {
           LOG(INFO) << "Got failure during reconnect";
