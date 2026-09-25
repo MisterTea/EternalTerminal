@@ -120,6 +120,11 @@ class TerminalClient {
     return connection &&
            connection->lastStatus() == et::ConnectStatus::INVALID_KEY;
   }
+
+  // True when this client adopted a session that was already running rather
+  // than creating one. The shell is mid-life, so connect-time setup has already
+  // happened and re-running it would type into whatever is in the foreground.
+  bool attachedToExisting() { return connection && connection->wasRecovered(); }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
