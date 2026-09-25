@@ -21,7 +21,7 @@ jobs:
         run: |
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
+          brew install cmake ninja ccache; brew install protobuf libsodium automake autoconf autoconf-archive libtool
           auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
@@ -45,6 +45,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: macos-ubsan
+
       - name: Test with ubsan
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -53,7 +58,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
           cmake --build . --parallel "${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -76,7 +81,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
+          brew install cmake ninja ccache; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -97,6 +102,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: macos-asan
+
       - name: Test with asan
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -105,7 +115,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_ADDRESS=ON ../
           cmake --build . --parallel "${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -128,7 +138,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
+          brew install cmake ninja ccache; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -149,6 +159,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: macos-msan
+
       - name: Test with msan
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -157,7 +172,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_MEMORY=ON ../
           cmake --build . --parallel "${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -180,7 +195,7 @@ jobs:
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
+          brew install cmake ninja ccache; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
       - name: Restore vcpkg and its artifacts.
@@ -201,6 +216,11 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: macos-tsan
+
       - name: Test with tsan
         run: |
           parallel_level="${CI_PARALLEL_LEVEL:-2}"
@@ -209,7 +229,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           cmake --build . --parallel "${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --output-on-failure
           popd
