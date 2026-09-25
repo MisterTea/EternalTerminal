@@ -2,11 +2,6 @@
 #include "PortForwardHandler.hpp"
 #include "TestHeaders.hpp"
 
-#ifndef WIN32
-#include <fcntl.h>
-#include <unistd.h>
-#endif
-
 using namespace et;
 
 namespace {
@@ -103,6 +98,7 @@ class FakePortForwardSocketHandler : public SocketHandler {
 
   void stopListening(const SocketEndpoint& endpoint) override {
     stoppedEndpoints.push_back(endpoint);
+    listenerFds.erase(endpointKey(endpoint));
   }
 
   void close(int fd) override {
@@ -903,6 +899,71 @@ TEST_CASE("PortForwardHandler sendDataToSourceOnSocket",
   // Verify data was written
   REQUIRE(networkHandler->writes.count(clientFd) == 1);
   CHECK(networkHandler->writes[clientFd][0] == "hello world");
+}
+
+TEST_CASE("PortForwardHandler removeSource stops listening",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  PortForwardSourceRequest request;
+  request.mutable_source()->set_name("127.0.0.1");
+  request.mutable_source()->set_port(18081);
+  request.mutable_destination()->set_name("127.0.0.1");
+  request.mutable_destination()->set_port(80);
+
+  REQUIRE_FALSE(handler.createSource(request, nullptr, -1, -1).has_error());
+  REQUIRE_FALSE(networkHandler->getEndpointFds(request.source()).empty());
+
+  REQUIRE(handler.removeSource(request));
+  REQUIRE_FALSE(networkHandler->stoppedEndpoints.empty());
+  REQUIRE(networkHandler->getEndpointFds(request.source()).empty());
+  REQUIRE_FALSE(handler.removeSource(request));
+}
+
+TEST_CASE("PortForwardHandler createSource and update are serialized",
+          "[PortForwardHandler]") {
+  auto networkHandler = make_shared<FakePortForwardSocketHandler>();
+  auto pipeHandler = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(networkHandler, pipeHandler);
+
+  atomic<bool> start{false};
+  atomic<int> errors{0};
+  thread updater([&]() {
+    while (!start.load()) {
+    }
+    for (int i = 0; i < 200; ++i) {
+      vector<PortForwardDestinationRequest> requests;
+      vector<PortForwardData> data;
+      try {
+        handler.update(&requests, &data);
+      } catch (...) {
+        errors++;
+      }
+    }
+  });
+  thread creator([&]() {
+    while (!start.load()) {
+    }
+    for (int i = 0; i < 50; ++i) {
+      PortForwardSourceRequest request;
+      request.mutable_source()->set_port(20000 + i);
+      request.mutable_destination()->set_port(80);
+      try {
+        auto resp = handler.createSource(request, nullptr, -1, -1);
+        if (!resp.has_error()) {
+          handler.removeSource(request);
+        }
+      } catch (...) {
+        errors++;
+      }
+    }
+  });
+  start = true;
+  updater.join();
+  creator.join();
+  REQUIRE(errors.load() == 0);
 }
 
 namespace {

@@ -1,6 +1,8 @@
 #include "TerminalClient.hpp"
 
 #include <cstdint>
+#include <cstdlib>
+#include <cstring>
 
 #include "PseudoTerminalConsole.hpp"
 #include "RawSocketUtils.hpp"
@@ -11,6 +13,59 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+namespace {
+// Printed by a commanded passenger after the isolated subshell returns so the
+// ControlPersist bridge can recover a real exit status without killing the
+// shared remote shell via `; exit`.
+constexpr char kPassengerExitMarker[] = "__ET_PASSENGER_EXIT__:";
+
+bool consumePassengerExitMarker(string* carry, const string& chunk,
+                                string* forward,
+                                optional<uint32_t>* parsedStatus) {
+  carry->append(chunk);
+  forward->clear();
+  const size_t markerLen = sizeof(kPassengerExitMarker) - 1;
+  while (true) {
+    size_t pos = carry->find(kPassengerExitMarker);
+    if (pos == string::npos) {
+      size_t suffix = 0;
+      for (size_t n = min(carry->size(), markerLen - 1); n > 0; --n) {
+        if (carry->compare(carry->size() - n, n, kPassengerExitMarker, n) ==
+            0) {
+          suffix = n;
+          break;
+        }
+      }
+      if (carry->size() > suffix) {
+        forward->append(carry->data(), carry->size() - suffix);
+      }
+      *carry = carry->substr(carry->size() - suffix);
+      return false;
+    }
+    forward->append(carry->data(), pos);
+    size_t statusStart = pos + markerLen;
+    size_t end = carry->find('\n', statusStart);
+    if (end == string::npos) {
+      *carry = carry->substr(pos);
+      return false;
+    }
+    string statusStr = carry->substr(statusStart, end - statusStart);
+    char* endp = nullptr;
+    unsigned long val = strtoul(statusStr.c_str(), &endp, 10);
+    if (endp != statusStr.c_str()) {
+      *parsedStatus = static_cast<uint32_t>(val);
+    } else {
+      *parsedStatus = 255;
+    }
+    *carry = carry->substr(end + 1);
+    if (!carry->empty()) {
+      forward->append(*carry);
+      carry->clear();
+    }
+    return true;
+  }
+}
+}  // namespace
 std::atomic<bool> TerminalClient::closeOnHangup(false);
 std::atomic<bool> TerminalClient::hangupCloseRequested(false);
 std::atomic<bool> TerminalClient::hangupCloseCompleted(false);
@@ -715,6 +770,361 @@ int TerminalClient::run(const string& command, const bool noexit) {
     return remoteExitStatus;
   }
   return 0;
+}
+
+uint32_t TerminalClient::runPassengerSession(int inFd, int outFd, int errFd,
+                                             const string& command) {
+  if (!idleServicing.load()) {
+    throw runtime_error(
+        "mux session attach is only available while ControlPersist is "
+        "servicing the transport");
+  }
+  {
+    lock_guard<mutex> guard(passengerMutex);
+    if (passenger.active) {
+      throw runtime_error("another mux passenger session is already attached");
+    }
+    passenger.inFd = inFd;
+    passenger.outFd = outFd;
+    passenger.errFd = errFd;
+    passenger.command = command;
+    passenger.generation++;
+    passenger.active = true;
+    // Honor a hangup/cancel that arrived before we became active.
+    if (passenger.cancelRequested) {
+      passenger.exitStatus = 1;
+      passenger.cancelRequested = false;
+    } else {
+      passenger.exitStatus.reset();
+    }
+  }
+  unique_lock<mutex> lock(passengerMutex);
+  passengerCv.wait(lock, [this]() { return passenger.exitStatus.has_value(); });
+  uint32_t status = *passenger.exitStatus;
+  passenger.active = false;
+  passenger.cancelRequested = false;
+  // Prefer suppress over clearing sticky so a late MuxMaster cancel that
+  // races the return path cannot re-arm cancelRequested for the next attach.
+  passenger.suppressStickyCancel = true;
+  passenger.inFd = passenger.outFd = passenger.errFd = -1;
+  // The idle loop may already have copied these fds and be inside poll/read/
+  // write. Wait until that section finishes before the caller closes them.
+  passengerCv.wait(lock, [this]() { return passenger.ioDepth == 0; });
+  return status;
+}
+
+void TerminalClient::beginPassengerWatch() {
+  lock_guard<mutex> guard(passengerMutex);
+  // New mux watch: allow hangup-before-active sticky cancel again.
+  passenger.suppressStickyCancel = false;
+}
+
+void TerminalClient::cancelPassengerSession() {
+  lock_guard<mutex> guard(passengerMutex);
+  if (passenger.active) {
+    // Current attach is in flight or completing: finish it, but do not leave
+    // sticky cancel for a later session (MuxMaster may re-enter this handler).
+    if (!passenger.exitStatus.has_value()) {
+      passenger.exitStatus = 1;
+      passengerCv.notify_all();
+    }
+    // A late cancel after this attach returns must not sticky-arm the next one.
+    passenger.suppressStickyCancel = true;
+    return;
+  }
+  if (passenger.suppressStickyCancel) {
+    return;
+  }
+  // Hangup before active: sticky until runPassengerSession attaches.
+  passenger.cancelRequested = true;
+}
+
+void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
+  idleServicing = true;
+  time_t keepaliveTime = time(NULL) + keepaliveDuration;
+  bool waitingOnKeepalive = false;
+  WriteBuffer passengerOut;
+  // Like primary run()'s consoleInputDisabled: local stdin EOF must not be
+  // treated as a successful remote session end (e.g. `et -S … -- cmd
+  // </dev/null`).
+  bool passengerInputDisabled = false;
+  bool awaitingPassengerExitMarker = false;
+  string passengerExitCarry;
+  // Tracks which attach `serviceIdleUntil` has armed. Must not rely solely on
+  // observing `!passenger.active`: a second attach can flip `active` again
+  // before the idle loop sees the inactive gap, which would leave
+  // passengerInputDisabled stuck and skip injecting the new command.
+  uint64_t boundPassengerGeneration = 0;
+
+  while (keepGoing() && !connection->isShuttingDown()) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
+
+    int passengerInFd = -1;
+    int passengerOutFd = -1;
+    struct IoHold {
+      TerminalClient* self = nullptr;
+      ~IoHold() {
+        if (self == nullptr) {
+          return;
+        }
+        lock_guard<mutex> guard(self->passengerMutex);
+        if (self->passenger.ioDepth > 0) {
+          self->passenger.ioDepth--;
+        }
+        self->passengerCv.notify_all();
+      }
+    } ioHold;
+    {
+      lock_guard<mutex> guard(passengerMutex);
+      if (passenger.active && !passenger.exitStatus.has_value()) {
+        if (boundPassengerGeneration != passenger.generation) {
+          boundPassengerGeneration = passenger.generation;
+          passengerInputDisabled = false;
+          awaitingPassengerExitMarker = false;
+          passengerExitCarry.clear();
+        }
+        if (!passengerInputDisabled) {
+          passengerInFd = passenger.inFd;
+        }
+        passengerOutFd = passenger.outFd;
+        if (passengerInFd >= 0 || passengerOutFd >= 0) {
+          passenger.ioDepth++;
+          ioHold.self = this;
+        }
+        // Key inject off non-empty command (cleared after write); do not keep
+        // a sticky injectedPassengerCommand across missed inactive gaps.
+        if (!passenger.command.empty()) {
+          et::TerminalBuffer tb;
+          if (noPty) {
+            tb.set_buffer(passenger.command);
+          } else {
+            // Isolate in a subshell so an `exit` inside the passenger command
+            // cannot kill the shared ControlPersist PTY, then print a marker
+            // with $? so the bridge can propagate a real status.
+            tb.set_buffer("(" + passenger.command + "); printf '\\n" +
+                          string(kPassengerExitMarker) + "%d\\n' $?\n");
+            awaitingPassengerExitMarker = true;
+            passengerExitCarry.clear();
+          }
+          passenger.command.clear();
+          try {
+            connection->writePacket(
+                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          } catch (...) {
+          }
+        }
+      } else if (!passenger.active) {
+        passengerInputDisabled = false;
+        awaitingPassengerExitMarker = false;
+        passengerExitCarry.clear();
+      }
+    }
+
+    const int clientFd = connection->getSocketFd();
+    set<int> pfFds;
+    portForwardHandler->getForwardFds(&pfFds);
+    set<int> readyFds;
+
+#ifndef WIN32
+    vector<struct pollfd> pollFds;
+    auto watch = [&pollFds](int fd, short events) {
+      if (fd < 0) {
+        return;
+      }
+      for (auto& pollFd : pollFds) {
+        if (pollFd.fd == fd) {
+          pollFd.events |= events;
+          return;
+        }
+      }
+      pollFds.push_back({fd, events, 0});
+    };
+    if (passengerInFd >= 0) {
+      watch(passengerInFd, POLLIN);
+    }
+    if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
+      watch(passengerOutFd, POLLOUT);
+    }
+    if (clientFd > 0) {
+      watch(clientFd, POLLIN);
+    }
+    for (int fd : pfFds) {
+      watch(fd, POLLIN);
+    }
+    if (!pollFds.empty()) {
+      int rc = ::poll(pollFds.data(), static_cast<nfds_t>(pollFds.size()), 50);
+      if (rc > 0) {
+        for (const auto& pollFd : pollFds) {
+          if (pollFd.revents != 0) {
+            readyFds.insert(pollFd.fd);
+          }
+        }
+      }
+    } else {
+      this_thread::sleep_for(chrono::milliseconds(50));
+    }
+#else
+    this_thread::sleep_for(chrono::milliseconds(50));
+    (void)passengerInFd;
+    (void)passengerOutFd;
+#endif
+
+    try {
+#ifndef WIN32
+      if (passengerInFd >= 0 && readyFds.count(passengerInFd)) {
+        char b[4096];
+        ssize_t rc = ::read(passengerInFd, b, sizeof(b));
+        if (rc > 0) {
+          et::TerminalBuffer tb;
+          tb.set_buffer(string(b, rc));
+          connection->writePacket(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          keepaliveTime = time(NULL) + keepaliveDuration;
+        } else if (rc == 0 || (rc < 0 && errno != EAGAIN &&
+                               errno != EWOULDBLOCK && errno != EINTR)) {
+          // Mirror primary run(): disable further local input; keep bridging
+          // until a real session-end signal (exit marker / TERMINAL_CLOSE /
+          // idle teardown).
+          passengerInputDisabled = true;
+        }
+      }
+#endif
+
+      if (clientFd > 0) {
+        bool haveData = true;
+#ifndef WIN32
+        haveData = readyFds.count(clientFd) != 0 || connection->hasData();
+#endif
+        while (haveData && connection->hasData()) {
+          Packet packet;
+          if (!connection->readPacket(&packet)) {
+            break;
+          }
+          auto packetType = packet.getHeader();
+          switch (TerminalPacketType(packetType)) {
+            case TerminalPacketType::TERMINAL_BUFFER: {
+              et::TerminalBuffer tb =
+                  stringToProto<et::TerminalBuffer>(packet.getPayload());
+#ifndef WIN32
+              if (passengerOutFd >= 0 || awaitingPassengerExitMarker) {
+                if (awaitingPassengerExitMarker) {
+                  string forward;
+                  optional<uint32_t> parsedStatus;
+                  bool complete = consumePassengerExitMarker(
+                      &passengerExitCarry, tb.buffer(), &forward,
+                      &parsedStatus);
+                  if (!forward.empty() && passengerOutFd >= 0) {
+                    passengerOut.enqueue(forward);
+                  }
+                  if (complete && parsedStatus.has_value()) {
+                    lock_guard<mutex> guard(passengerMutex);
+                    if (passenger.active && !passenger.exitStatus.has_value()) {
+                      passenger.exitStatus = *parsedStatus;
+                      passengerCv.notify_all();
+                    }
+                    awaitingPassengerExitMarker = false;
+                    passengerExitCarry.clear();
+                  }
+                } else if (passengerOutFd >= 0) {
+                  passengerOut.enqueue(tb.buffer());
+                }
+              }
+#else
+              (void)tb;
+#endif
+              break;
+            }
+            case TerminalPacketType::PORT_FORWARD_DATA:
+            case TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST:
+            case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE:
+              portForwardHandler->handlePacket(packet, connection);
+              break;
+            case TerminalPacketType::KEEP_ALIVE:
+              waitingOnKeepalive = false;
+              break;
+            case TerminalPacketType::TERMINAL_CLOSE: {
+              lock_guard<mutex> guard(passengerMutex);
+              if (passenger.active && !passenger.exitStatus.has_value()) {
+                // Interactive attach: clean remote close. Commanded attach
+                // that never saw a marker: fail closed (status unknown).
+                passenger.exitStatus = awaitingPassengerExitMarker ? 255u : 0u;
+                passengerCv.notify_all();
+              }
+              awaitingPassengerExitMarker = false;
+              passengerExitCarry.clear();
+              break;
+            }
+            default:
+              break;
+          }
+          haveData = connection->hasData();
+        }
+      }
+
+#ifndef WIN32
+      if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
+        size_t count = 0;
+        const char* data = passengerOut.peekData(&count);
+        if (data != nullptr && count > 0) {
+          ssize_t written = ::write(passengerOutFd, data, count);
+          if (written > 0) {
+            passengerOut.consume(static_cast<size_t>(written));
+          }
+        }
+      }
+#endif
+
+      if (clientFd > 0 && keepaliveTime < time(NULL)) {
+        keepaliveTime = time(NULL) + keepaliveDuration;
+        if (waitingOnKeepalive) {
+          connection->closeSocketAndMaybeReconnect();
+          waitingOnKeepalive = false;
+        } else {
+          connection->writePacket(Packet(TerminalPacketType::KEEP_ALIVE, ""));
+          waitingOnKeepalive = true;
+        }
+      }
+
+      vector<PortForwardDestinationRequest> requests;
+      vector<PortForwardData> dataToSend;
+#ifndef WIN32
+      portForwardHandler->update(&requests, &dataToSend, &readyFds);
+#else
+      portForwardHandler->update(&requests, &dataToSend);
+#endif
+      for (auto& pfr : requests) {
+        connection->writePacket(
+            Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
+                   protoToString(pfr)));
+        keepaliveTime = time(NULL) + keepaliveDuration;
+      }
+      for (auto& pwd : dataToSend) {
+        connection->writePacket(
+            Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
+        keepaliveTime = time(NULL) + keepaliveDuration;
+      }
+    } catch (const runtime_error& re) {
+      LOG(WARNING) << "ControlPersist service error: " << re.what();
+      lock_guard<mutex> guard(passengerMutex);
+      if (passenger.active && !passenger.exitStatus.has_value()) {
+        passenger.exitStatus = 1;
+        passengerCv.notify_all();
+      }
+      break;
+    }
+  }
+
+  lock_guard<mutex> guard(passengerMutex);
+  if (passenger.active && !passenger.exitStatus.has_value()) {
+    passenger.exitStatus = 1;
+    passengerCv.notify_all();
+  }
+  idleServicing = false;
 }
 
 #ifdef WIN32

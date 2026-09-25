@@ -69,13 +69,13 @@ TEST_CASE("FakeUserTerminalTest", "[FakeUserTerminalTest]") {
   REQUIRE(s == s2);
   t.join();
 
-  REQUIRE(!socketHandler->hasData(fakeUserTerminal->getFd()));
+  REQUIRE(!fakeUserTerminal->hasKeystrokes());
   thread t2([fakeUserTerminal, s]() {
     fakeUserTerminal->simulateTerminalResponse(s);
   });
 
   string s3(payloadSize, '\0');
-  socketHandler->readAll(fakeUserTerminal->getFd(), &s3[0], s3.length(), false);
+  RawSocketUtils::readAll(fakeUserTerminal->getFd(), &s3[0], s3.length());
 
   t2.join();
   REQUIRE(s == s3);
