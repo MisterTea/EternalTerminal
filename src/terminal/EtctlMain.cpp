@@ -2,7 +2,7 @@
  * etctl: the client-side control CLI for backgrounded `et --ctl` sessions.
  *
  * It is a thin, stateless translator: each invocation resolves a session's
- * local control socket (~/.et/sessions/<name>.sock), sends one native control
+ * local control socket (~/.et/control/<name>.sock), sends one native control
  * frame, and prints the response.  The transport carries ET's own vocabulary
  * (raw input bytes, a TerminalInfo resize); the richer verbs here (writeln,
  * key, interrupt, eof, expect, observe) are ergonomic sugar composed from it.
@@ -17,12 +17,13 @@
 #include <regex>
 #include <sstream>
 
+#include "ClientArgParsing.hpp"
 #include "ControlPaths.hpp"
 #include "ControlProtocol.hpp"
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
 #include "Osc133.hpp"
-#include "SessionCredentials.hpp"
+#include "SessionTombstone.hpp"
 
 using namespace et;
 
@@ -226,8 +227,8 @@ void printOverview() {
       "output and\n"
       "  send it input. Run 'etctl <command> --help' for a command's "
       "options.\n"
-      "  NAME is a session name (under ~/.et/sessions, or "
-      "$ET_SESSION_DIR) or a socket path.\n"
+      "  NAME is a session name (its socket lives under ~/.et/control) or a "
+      "socket path.\n"
       "\n"
       "  open        start a control session in the background (idempotent)\n"
       "  kill        force-stop a session daemon (key NAME eof ends it "
@@ -298,7 +299,7 @@ bool oneShot(const string& name, uint8_t opcode, const string& payload,
       // which can only say the socket is missing and cannot distinguish a
       // session that ended from a name that never existed.
       const int savedErrno = errno;
-      const string ended = session_creds::readTombstone(name);
+      const string ended = session_tombstone::read(name);
       if (!ended.empty()) {
         fprintf(stderr, "etctl: session '%s' ended: %s\n", name.c_str(),
                 ended.c_str());
@@ -450,7 +451,7 @@ string readAllStdin() {
 // stateful, I/O-bound half that only makes sense against a live session.
 
 // Per-session cache of the resolved run framing, a sibling of the session's
-// socket (~/.et/ctl/<name>.framing). Detection is done once (lazily, on the
+// socket (~/.et/control/<name>.framing). Detection is done once (lazily, on the
 // first run) and reused, since etctl is otherwise stateless per call. The
 // stored value is the resolved RunProfile bits (see the struct below).
 string framingCachePath(const string& name) {
@@ -1546,10 +1547,10 @@ int cmdRun(const string& name, const string& command, double timeoutSec,
 
 int cmdOpen(int argc, char** argv) {
   /*
-   * etctl open NAME [et-args...]  ->  et --ctl --attach NAME [et-args...]
+   * etctl open NAME [et-args...]  ->  et --ctl --name NAME [et-args...]
    *
    * NAME is a positional (consistent with the other verbs); etctl owns it and
-   * hands it to et as --attach, which both names the session and adopts one
+   * hands it to et as --name, which both names the session and adopts one
    * already running under that name.  The call is idempotent at two levels: a
    * live session short-circuits below, and a session whose *client* died is
    * adopted rather than duplicated.  That second case is the one that used to
@@ -1572,6 +1573,7 @@ int cmdOpen(int argc, char** argv) {
   // reusing a name that points at a different host.
   string checkTarget = name;
   string requestedDest;
+  int destIndex = -1;
   string userCommand;
   vector<bool> skip(argc, false);
   for (int i = 3; i < argc; i++) {
@@ -1581,8 +1583,8 @@ int cmdOpen(int argc, char** argv) {
       i++;
     } else if (a.rfind("--ctl-socket=", 0) == 0) {
       checkTarget = a.substr(strlen("--ctl-socket="));
-    } else if (a == "--attach" && i + 1 < argc) {
-      i++;  // skip et's --attach value, it isn't the destination
+    } else if (a == "--name" && i + 1 < argc) {
+      i++;  // skip et's --name value, it isn't the destination
     } else if ((a == "-c" || a == "--command") && i + 1 < argc) {
       // Pull out a user-supplied connect command so we can merge it with our
       // own setup (below) rather than fight over et's single -c.  Marking its
@@ -1595,8 +1597,17 @@ int cmdOpen(int argc, char** argv) {
     } else if (a.rfind("--command=", 0) == 0) {
       userCommand = a.substr(strlen("--command="));
       skip[i] = true;
-    } else if (!a.empty() && a[0] != '-') {
+    } else if (!a.empty() && a[0] == '-') {
+      // Any other et option: step over a separate value token so it is never
+      // mistaken for the destination (`--port 2099` must not make 2099 the
+      // host). et owns the list of options that take a value, so use its.
+      if (a.find('=') == string::npos && etOptionConsumesValue(a) &&
+          i + 1 < argc) {
+        i++;
+      }
+    } else if (!a.empty()) {
       requestedDest = a;  // last bare positional wins (et's destination)
+      destIndex = i;
     }
   }
   if (sessionAlive(checkTarget)) {
@@ -1663,14 +1674,23 @@ int cmdOpen(int argc, char** argv) {
   vector<char*> args;
   args.push_back(strdup(etPath.c_str()));
   args.push_back(strdup("--ctl"));
-  args.push_back(strdup("--attach"));
+  args.push_back(strdup("--name"));
   args.push_back(strdup(name.c_str()));
+  /*
+   * et parses ssh-style: the first bare token is the destination and
+   * everything after it is a remote command, so every flag has to precede the
+   * host.  `etctl open NAME HOST [et-args...]` puts the host first for
+   * readability, so reorder here rather than making callers do it.
+   */
   for (int i = 3; i < argc; i++) {
-    if (skip[i]) continue;  // user's -c is folded into setupCommand below
+    if (skip[i] || i == destIndex) continue;  // user's -c folded into setup
     args.push_back(strdup(argv[i]));
   }
   args.push_back(strdup("--command"));
   args.push_back(strdup(setupCommand.c_str()));
+  if (destIndex >= 0) {
+    args.push_back(strdup(argv[destIndex]));
+  }
   args.push_back(nullptr);
   execvp(args[0], args.data());
   fprintf(stderr, "etctl open: could not exec et (%s): %s\n", etPath.c_str(),
@@ -1722,7 +1742,7 @@ int main(int argc, char** argv) {
         printf(
             "  ...         Passed directly to et (see `et --help`)\n"
             "\n"
-            "  NAME is the session name (etctl supplies et's --attach);\n"
+            "  NAME is the session name (etctl supplies et's --name);\n"
             "  if NAME is already running it does nothing.\n");
         return 0;
       }

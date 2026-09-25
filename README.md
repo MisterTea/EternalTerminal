@@ -298,8 +298,8 @@ arguments, so `etctl open main user@hostname -c '<cmd>'` runs a startup command
 on connect (for example, to drop into a bare, prompt-free shell for cleaner
 capture). The session's remote shell is stamped with `ETCTL_SESSION=<name>`, so a
 process can tell which named control session it is running under. The socket
-lives at `~/.et/sessions/<name>.sock` (`0700` dir, `0600` socket, owning-uid
-only), beside the session's credentials; set `$ET_SESSION_DIR` to relocate both.
+lives at `~/.et/control/<name>.sock` (`0700` dir, `0600` socket, owning-uid
+only), beside the session's saved record in `~/.et/sessions/<name>`.
 
 ### How `run` frames a command
 
@@ -307,7 +307,7 @@ only), beside the session's credentials; set `$ET_SESSION_DIR` to relocate both.
 with, and it has to inject the command safely (a multi-line body must run as one
 command, and quotes/braces/`!`/parse errors must not desync the frame or hang on
 a continuation prompt). It picks the cleanest of three framings for the far-side
-prompt, detected once per session and cached (`~/.et/ctl/<name>.framing`):
+prompt, detected once per session and cached (`~/.et/control/<name>.framing`):
 
 - **Bracketed paste + OSC 133** (the default when the prompt has FinalTerm/iTerm2
   shell integration *and* a bracketed-paste-aware line editor -- the official
