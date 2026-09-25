@@ -206,9 +206,16 @@ pair<string, string> SshSetupHandler::SetupSsh(
       throw std::runtime_error("etserver jumpclient failed to start");
     }
     try {
-      auto idpasskey = split(sshLinkBuffer, ':')[1];
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-      idpasskey = idpasskey.substr(0, 16 + 1 + 32);
+      // Prefer the IDPASSKEY marker (same as the destination path). Splitting
+      // on ':' breaks when SSH banners contain colons (Warning:, https://...).
+      auto passKeyIndex = sshLinkBuffer.find(string("IDPASSKEY:"));
+      if (passKeyIndex == string::npos) {
+        throw std::runtime_error(
+            "Error starting etserver jumpclient: missing IDPASSKEY in "
+            "output: " +
+            sshLinkBuffer);
+      }
+      auto idpasskey = sshLinkBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
       auto idpasskey_splited = split(idpasskey, '/');
       id = idpasskey_splited[0];
       passkey = idpasskey_splited[1];
