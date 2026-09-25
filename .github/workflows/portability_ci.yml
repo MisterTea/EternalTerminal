@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   linux_distros:
@@ -33,6 +34,7 @@ jobs:
                 automake \
                 build-essential \
                 ca-certificates \
+                ccache \
                 cmake \
                 curl \
                 debhelper \
@@ -57,6 +59,7 @@ jobs:
               dnf install -y \
                 @development-tools \
                 ca-certificates \
+                ccache \
                 cmake \
                 curl \
                 gcc \
@@ -85,6 +88,7 @@ jobs:
                 automake \
                 boost-devel \
                 ca-certificates \
+                ccache \
                 cmake \
                 curl-devel \
                 gcc \
@@ -108,13 +112,20 @@ jobs:
           - distro: gentoo
             container: gentoo/stage3:latest
             install: |
-              emerge-webrsync
+              mkdir -p /etc/portage /var/cache/binpkgs /var/cache/distfiles
+              if [ -f /etc/portage/make.conf ]; then
+                printf '%s\n' 'FEATURES="${FEATURES} buildpkg"' 'EMERGE_DEFAULT_OPTS="${EMERGE_DEFAULT_OPTS} --usepkg=y"' >> /etc/portage/make.conf
+              fi
+              if [ ! -f /var/db/repos/gentoo/profiles/repo_name ]; then
+                emerge-webrsync
+              fi
               emerge --jobs=2 \
                 dev-build/autoconf \
                 dev-build/automake \
                 dev-build/cmake \
                 dev-build/libtool \
                 dev-build/ninja \
+                dev-util/ccache \
                 dev-libs/boost \
                 dev-libs/libsodium \
                 dev-libs/openssl \
@@ -134,6 +145,7 @@ jobs:
                 automake \
                 base-devel \
                 ca-certificates \
+                ccache \
                 cmake \
                 curl \
                 git \
@@ -160,6 +172,7 @@ jobs:
                 automake \
                 binutils \
                 ca-certificates \
+                ccache \
                 cmake \
                 curl \
                 gcc \
@@ -180,6 +193,18 @@ jobs:
                 unzip \
                 zip
     steps:
+      - name: Restore Gentoo package cache
+        if: matrix.distro == 'gentoo'
+        uses: actions/cache@v5
+        with:
+          path: |
+            /var/cache/distfiles
+            /var/cache/binpkgs
+            /var/db/repos/gentoo
+          key: gentoo-packages-${{ github.sha }}
+          restore-keys: |
+            gentoo-packages-
+
       - name: Install dependencies
         shell: bash
         run: ${{ matrix.install }}
@@ -188,11 +213,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Restore ccache
+        uses: ./.github/actions/ccache
+        with:
+          key: portability-${{ matrix.distro }}
+
       - name: Generate project files
         shell: bash
         run: |
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
         shell: bash
@@ -201,6 +231,7 @@ jobs:
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
           ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
+          ccache --show-stats || true
 
   freebsd:
     name: build-freebsd
@@ -211,6 +242,16 @@ jobs:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Restore FreeBSD package and ccache
+        uses: actions/cache@v5
+        with:
+          path: |
+            .ci-cache/pkg
+            .ci-cache/ccache
+          key: freebsd-build-${{ github.sha }}
+          restore-keys: |
+            freebsd-build-
 
       - name: Install act QEMU dependencies
         if: ${{ env.ACT }}
@@ -252,10 +293,17 @@ jobs:
             cd "${GITHUB_WORKSPACE}"
           fi
 
+          mkdir -p "$(pwd)/.ci-cache/pkg" "$(pwd)/.ci-cache/ccache"
+          export PKG_CACHEDIR="$(pwd)/.ci-cache/pkg"
+          export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
+          export CCACHE_MAXSIZE=500M
+          export CCACHE_COMPRESS=true
+
           pkg install -y \
             autoconf \
             automake \
             ca_root_nss \
+            ccache \
             cmake \
             curl \
             git \
@@ -268,11 +316,12 @@ jobs:
             unzip \
             zip
 
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
           ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure
+          ccache --show-stats || true
 
   openwrt:
     name: build-openwrt
@@ -282,16 +331,45 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Restore OpenWrt SDK cache
+        uses: actions/cache@v5
+        with:
+          path: .openwrt-cache
+          key: openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-${{ github.sha }}
+          restore-keys: |
+            openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-
+            openwrt-sdk-x86-64-23.05.5-
+
       - name: Build OpenWrt package with SDK
         shell: bash
         run: |
-          mkdir -p bin/openwrt && chmod 777 bin/openwrt
+          mkdir -p bin/openwrt .openwrt-cache && chmod 777 bin/openwrt .openwrt-cache
           docker run --rm \
             --platform linux/amd64 \
             -v "${GITHUB_WORKSPACE}:/workspace" \
+            -v "${GITHUB_WORKSPACE}/.openwrt-cache:/owrt-cache" \
             openwrt/sdk:x86-64-23.05.5 \
             bash -c '
               set -euo pipefail
+              sdk_root=$(pwd)
+              mkdir -p /owrt-cache/dl /owrt-cache/feeds /owrt-cache/build_dir
+              adopt_cache() {
+                local name="$1"
+                if [ -n "$(ls -A "/owrt-cache/${name}" 2>/dev/null || true)" ]; then
+                  rm -rf "${sdk_root}/${name}"
+                  ln -s "/owrt-cache/${name}" "${sdk_root}/${name}"
+                fi
+              }
+              persist_cache() {
+                local name="$1"
+                if [ ! -L "${sdk_root}/${name}" ] && [ -d "${sdk_root}/${name}" ]; then
+                  mkdir -p "/owrt-cache/${name}"
+                  cp -a "${sdk_root}/${name}/." "/owrt-cache/${name}/"
+                fi
+              }
+              adopt_cache dl
+              adopt_cache feeds
+              adopt_cache build_dir
               sed \
                 -e "s,https://git.openwrt.org/feed/,https://github.com/openwrt/," \
                 -e "s,https://git.openwrt.org/openwrt/,https://github.com/openwrt/," \
@@ -308,6 +386,9 @@ jobs:
               make package/eternalterminal/compile V=s -j"${parallel_level}" ET_SRC_DIR=/workspace
               mkdir -p /workspace/bin/openwrt
               find bin -name "eternalterminal*.ipk" -exec cp -v {} /workspace/bin/openwrt/ \;
+              persist_cache dl
+              persist_cache feeds
+              persist_cache build_dir
             '
 
       - name: Test OpenWrt package in target rootfs
