@@ -3,6 +3,11 @@
 
 #include <fcntl.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 #include "Console.hpp"
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
@@ -213,35 +218,52 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
+    (void)routerFd;
+    setupComplete.store(false);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      serverClientFd = -1;
+      clientServerFd = -1;
+    }
 #ifdef WIN32
     pipePath = "et_test_userterminal_" + genRandomAlphaNum(12) + ".ipc";
-#else
-    string tmpPath =
-        GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
-    pipePath = string(pipeDirectory) + "/pipe";
-#endif
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
-    serverClientFd = -1;
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
     std::this_thread::sleep_for(std::chrono::seconds(1));
-    clientServerFd = socketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
+    int connectedFd = socketHandler->connect(endpoint);
+    FATAL_FAIL(connectedFd);
     serverListenThread.join();
-    FATAL_FAIL(serverClientFd);
-    // Honor the UserTerminal contract: the handler polls this fd non-blocking.
-#ifdef WIN32
-    u_long nonBlocking = 1;
-    FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = connectedFd;
+      FATAL_FAIL(serverClientFd);
+      u_long nonBlocking = 1;
+      FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+      FATAL_FAIL(ioctlsocket(serverClientFd, FIONBIO, &nonBlocking));
+    }
 #else
-    int flags = fcntl(clientServerFd, F_GETFL, 0);
-    if (flags != -1) {
-      fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
+    // Use an anonymous socketpair so the fake PTY ends are never registered in
+    // PipeSocketHandler. Concurrent UTH ::read/::write and test-side drain then
+    // cannot race SocketHandler's fd-mutex map (Linux TSan abort after Catch
+    // success with no printed report).
+    int fds[2] = {-1, -1};
+    FATAL_FAIL(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = fds[0];
+      serverClientFd = fds[1];
+      for (int fd : {clientServerFd, serverClientFd}) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags != -1) {
+          fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+      }
     }
 #endif
+    setupComplete.store(true, std::memory_order_release);
     return getFd();
   };
 
@@ -249,19 +271,124 @@ class FakeUserTerminal : public UserTerminal {
 
   };
 
-  virtual int getFd() { return clientServerFd; }
+  virtual int getFd() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd;
+  }
+
+  /** @brief True once setup() has published both pipe ends. */
+  bool isSetupComplete() const {
+    return setupComplete.load(std::memory_order_acquire);
+  }
 
   string getKeystrokes(int count) {
-    lock_guard<recursive_mutex> lock(_mutex);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    // Do not hold _mutex across blocking I/O: writers call getFd() under the
+    // same mutex (FakeUserTerminalTest), which would otherwise deadlock.
     string s(count, '\0');
-    socketHandler->readAll(serverClientFd, &s[0], count, false);
+#ifdef WIN32
+    socketHandler->readAll(fd, &s[0], count, false);
+#else
+    size_t got = 0;
+    while (got < static_cast<size_t>(count)) {
+      ssize_t rc = ::read(fd, &s[got], count - got);
+      if (rc > 0) {
+        got += static_cast<size_t>(rc);
+        continue;
+      }
+      if (rc < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
+#endif
     return s;
   }
 
+  /** @brief Non-blocking: returns true when keystrokes are readable. */
+  bool hasKeystrokes() {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    if (fd < 0) {
+      return false;
+    }
+    // Poll the raw fd: avoid SocketHandler map TOCTOU with the UTH thread.
+    return et::waitOnSocketData(fd, 0, 0);
+  }
+
+  /**
+   * @brief Read up to `maxCount` keystroke bytes, waiting at most `timeoutMs`.
+   * Returns whatever arrived (possibly empty) without hanging forever.
+   */
+  string drainKeystrokes(int maxCount, int timeoutMs) {
+    string got;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (static_cast<int>(got.size()) < maxCount &&
+           std::chrono::steady_clock::now() < deadline) {
+      if (!hasKeystrokes()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      int fd;
+      {
+        lock_guard<recursive_mutex> lock(_mutex);
+        fd = serverClientFd;
+      }
+      if (fd < 0) {
+        break;
+      }
+      char b[64];
+      int want = std::min(maxCount - static_cast<int>(got.size()), 64);
+      ssize_t rc = ::read(fd, b, want);
+      if (rc > 0) {
+        got.append(b, static_cast<size_t>(rc));
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+    return got;
+  }
+
   void simulateTerminalResponse(const string& s) {
-    lock_guard<recursive_mutex> lock(_mutex);
-    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
-                                   false);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    if (fd < 0 || s.empty()) {
+      return;
+    }
+#ifdef WIN32
+    // Windows AF_UNIX needs SocketHandler (::write is not valid on sockets).
+    socketHandler->writeAllOrThrow(fd, s.c_str(), s.length(), false);
+#else
+    const char* p = s.data();
+    size_t left = s.size();
+    while (left > 0) {
+      ssize_t w = ::write(fd, p, left);
+      if (w > 0) {
+        p += w;
+        left -= static_cast<size_t>(w);
+        continue;
+      }
+      if (w < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
+#endif
   }
   virtual int handleSessionEnd() {
     didHandleSessionEnd = true;
@@ -274,6 +401,7 @@ class FakeUserTerminal : public UserTerminal {
     if (didCleanUp) {
       return;
     }
+#ifdef WIN32
     if (clientServerFd >= 0) {
       socketHandler->close(clientServerFd);
       clientServerFd = -1;
@@ -287,9 +415,15 @@ class FakeUserTerminal : public UserTerminal {
       endpoint.set_name(pipePath);
       socketHandler->stopListening(endpoint);
     }
-#ifndef WIN32
-    if (!pipeDirectory.empty()) {
-      FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#else
+    // socketpair fds are not in SocketHandler's map.
+    if (clientServerFd >= 0) {
+      ::close(clientServerFd);
+      clientServerFd = -1;
+    }
+    if (serverClientFd >= 0) {
+      ::close(serverClientFd);
+      serverClientFd = -1;
     }
 #endif
     didCleanUp = true;
@@ -324,6 +458,7 @@ class FakeUserTerminal : public UserTerminal {
   bool didHandleSessionEnd;
   int exitCode;
   winsize lastWinInfo;
+  std::atomic<bool> setupComplete{false};
 };
 }  // namespace et
 

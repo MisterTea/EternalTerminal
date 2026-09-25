@@ -5,6 +5,32 @@
 #include "PipeSocketHandler.hpp"
 
 namespace et {
+namespace {
+
+bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
+  if (a.has_port() != b.has_port()) {
+    return false;
+  }
+  if (a.has_port() && a.port() != b.port()) {
+    return false;
+  }
+  string aName = a.has_name() ? a.name() : "";
+  string bName = b.has_name() ? b.name() : "";
+  return aName == bName;
+}
+
+bool sourceRequestsEqual(const PortForwardSourceRequest& a,
+                         const SocketEndpoint& source,
+                         const SocketEndpoint& destination) {
+  if (!a.has_source() || !a.has_destination()) {
+    return false;
+  }
+  return endpointsEqual(a.source(), source) &&
+         endpointsEqual(a.destination(), destination);
+}
+
+}  // namespace
+
 PortForwardHandler::PortForwardHandler(
     shared_ptr<SocketHandler> _networkSocketHandler,
     shared_ptr<SocketHandler> _pipeSocketHandler, uid_t userid, gid_t groupid)
@@ -14,6 +40,7 @@ PortForwardHandler::PortForwardHandler(
       sessionGid(groupid) {}
 
 PortForwardHandler::~PortForwardHandler() {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   socketIdSourceHandlerMap.clear();
   sourceHandlers.clear();
   for (const auto& directory : temporaryDirectories) {
@@ -28,6 +55,7 @@ PortForwardHandler::~PortForwardHandler() {
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend,
                                 const set<int>* readyFds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->update(dataToSend, readyFds)) {
       ++forwardFdsGeneration;
@@ -57,6 +85,7 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   try {
     if (pfsr.has_source() && sourceName) {
       throw runtime_error(
@@ -129,8 +158,32 @@ PortForwardSourceResponse PortForwardHandler::createSource(
   }
 }
 
+bool PortForwardHandler::removeSource(const PortForwardSourceRequest& pfsr) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  for (auto it = sourceHandlers.begin(); it != sourceHandlers.end(); ++it) {
+    if (!sourceRequestsEqual(pfsr, (*it)->getSource(),
+                             (*it)->getDestination())) {
+      continue;
+    }
+    // Drop socket-id mappings that pointed at this source.
+    for (auto mapIt = socketIdSourceHandlerMap.begin();
+         mapIt != socketIdSourceHandlerMap.end();) {
+      if (mapIt->second == *it) {
+        mapIt = socketIdSourceHandlerMap.erase(mapIt);
+      } else {
+        ++mapIt;
+      }
+    }
+    sourceHandlers.erase(it);
+    ++forwardFdsGeneration;
+    return true;
+  }
+  return false;
+}
+
 PortForwardSourceResponse PortForwardHandler::createSocksSource(
     const SocketEndpoint& source) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   try {
     SocketEndpoint unusedDestination;
     auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
@@ -147,6 +200,7 @@ PortForwardSourceResponse PortForwardHandler::createSocksSource(
 
 PortForwardSourceResponse PortForwardHandler::createStdioForward(
     const SocketEndpoint& destination, int readFd, int writeFd, bool closeFds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   try {
     auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
         networkSocketHandler, destination, readFd, writeFd, closeFds));
@@ -162,6 +216,7 @@ PortForwardSourceResponse PortForwardHandler::createStdioForward(
 
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   int fd = -1;
   bool isTcp = pfdr.destination().has_port();
   if (pfdr.destination().has_port()) {
@@ -227,6 +282,7 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
 
 void PortForwardHandler::handlePacket(const Packet& packet,
                                       shared_ptr<Connection> connection) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   switch (TerminalPacketType(packet.getHeader())) {
     case TerminalPacketType::PORT_FORWARD_DATA: {
       PortForwardData pwd = stringToProto<PortForwardData>(packet.getPayload());
@@ -298,6 +354,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
 }
 
 void PortForwardHandler::closeSourceFd(int fd) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->hasUnassignedFd(fd)) {
       it->closeUnassignedFd(fd);
@@ -310,6 +367,7 @@ void PortForwardHandler::closeSourceFd(int fd) {
 }
 
 void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->hasUnassignedFd(sourceFd)) {
       it->addSocket(socketId, sourceFd);
@@ -324,6 +382,7 @@ void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
 }
 
 void PortForwardHandler::closeSourceSocketId(int socketId) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
     STERROR << "Tried to close a socket id that doesn't exist";
@@ -335,6 +394,7 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
 }
 
 void PortForwardHandler::getForwardFds(set<int>* fds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& handler : sourceHandlers) {
     handler->getActiveFds(fds);
   }
@@ -357,6 +417,7 @@ bool PortForwardHandler::hasActiveStdioForward() const {
 
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
                                                   const string& data) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
     STERROR << "Tried to send data on a socket id that doesn't exist: "

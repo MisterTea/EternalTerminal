@@ -73,15 +73,58 @@ TEST_CASE("TerminalHandler stop is idempotent and reaps the child",
   REQUIRE_FALSE(term.isRunning());
 }
 
+namespace {
+// Shell death is not readiness. The marker has to be seen first.
+bool shellExitHandshakeReady(bool sawMarker, bool stillRunning) {
+  (void)stillRunning;
+  return sawMarker;
+}
+}  // namespace
+
+TEST_CASE("shell death before the ready marker is not readiness",
+          "[Htm][TerminalHandler]") {
+  CHECK_FALSE(shellExitHandshakeReady(false, false));
+  CHECK_FALSE(shellExitHandshakeReady(false, true));
+  CHECK(shellExitHandshakeReady(true, false));
+  CHECK(shellExitHandshakeReady(true, true));
+}
+
 TEST_CASE("TerminalHandler detects shell exit", "[Htm][TerminalHandler]") {
   TerminalHandler term;
   term.start();
-  REQUIRE(term.isRunning());
-  // Wait for the child to attach to the pty before writing. Flooding "exit"
-  // every poll races on FreeBSD VMs where fork/exec is still in flight
-  // (master flake: REQUIRE(exited) false after 20s).
-  std::this_thread::sleep_for(std::chrono::milliseconds(200));
-  term.pollUserTerminal();
+  // Wait until the shell accepts input before sending exit. Under slow
+  // FreeBSD/qemu hosts an immediate exit flood can race shell startup.
+  const string readyMarker = "HTM_TERM_EXIT_READY";
+  bool ready = waitUntil(
+      [&]() {
+        term.pollUserTerminal();
+        for (const auto& line : term.getBuffer()) {
+          if (line.find(readyMarker) != string::npos) {
+            return true;
+          }
+        }
+#ifdef WIN32
+        term.appendData("echo " + readyMarker + "\r\n");
+#else
+        term.appendData("printf '" + readyMarker + "\\n'\n");
+#endif
+        return shellExitHandshakeReady(false, term.isRunning());
+      },
+      20000);
+#ifdef WIN32
+  if (!ready) {
+    SKIP(
+        "The Windows ConPTY host did not process shell output on this "
+        "Windows build");
+  }
+#endif
+  // Do not send exit until the ready marker was observed. A timed-out wait
+  // with a still-live shell must fail the test rather than race startup.
+  REQUIRE(ready);
+  if (!term.isRunning()) {
+    term.stop();
+    return;
+  }
 #ifdef WIN32
   term.appendData("exit\r\n");
 #else

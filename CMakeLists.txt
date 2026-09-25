@@ -515,6 +515,12 @@ add_library(
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/MuxProtocol.hpp
+  src/terminal/MuxProtocol.cpp
+  src/terminal/MuxMaster.hpp
+  src/terminal/MuxMaster.cpp
+  src/terminal/MuxClient.hpp
+  src/terminal/MuxClient.cpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
@@ -861,6 +867,24 @@ else(WIN32)
           SKIP_RETURN_CODE 77
           TIMEOUT 120
           LABELS "e2e;htm;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME et_wall_tmux_cc_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_wall_tmux_cc_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_wall_tmux_cc_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;et;system"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
       )

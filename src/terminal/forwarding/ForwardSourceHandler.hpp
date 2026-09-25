@@ -81,6 +81,7 @@ class ForwardSourceHandler {
   void getActiveFds(set<int>* fds);
 
   inline SocketEndpoint getDestination() { return destination; }
+  inline SocketEndpoint getSource() { return source; }
 
   /** @brief True when this handler bridges stdio (-W) rather than a listener.
    */

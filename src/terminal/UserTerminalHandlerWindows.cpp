@@ -46,8 +46,20 @@ void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
   if (length == 0) {
     return;
   }
+  string filtered;
+  const char* outData = data;
+  size_t outLength = length;
+  // Pipe mode is a raw command channel. Stderr is not the tmux -CC stream.
+  if (!pipeMode && !isStderr) {
+    filtered = controlOutputFilter_.apply(string(data, length));
+    if (filtered.empty()) {
+      return;
+    }
+    outData = filtered.data();
+    outLength = filtered.size();
+  }
   TerminalBuffer tb;
-  tb.set_buffer(string(data, length));
+  tb.set_buffer(string(outData, outLength));
   if (isStderr) {
     tb.set_is_stderr(true);
   }
