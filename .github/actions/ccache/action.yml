@@ -1,0 +1,27 @@
+name: ccache
+description: Restore a compiler cache for jobs that build bundled dependencies
+inputs:
+  key:
+    description: Stable prefix for this OS, compiler, and build flavor
+    required: true
+runs:
+  using: composite
+  steps:
+    - name: Restore ccache
+      uses: actions/cache@v5
+      with:
+        path: ${{ github.workspace }}/.ccache
+        key: ccache-${{ inputs.key }}-${{ github.sha }}
+        restore-keys: |
+          ccache-${{ inputs.key }}-
+    - name: Export ccache environment
+      shell: bash
+      run: |
+        mkdir -p "${GITHUB_WORKSPACE}/.ccache"
+        {
+          echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache"
+          echo "CCACHE_MAXSIZE=500M"
+          echo "CCACHE_COMPRESS=true"
+          echo "CCACHE_COMPILERCHECK=content"
+          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+        } >> "$GITHUB_ENV"

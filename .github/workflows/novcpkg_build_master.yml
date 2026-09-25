@@ -48,6 +48,7 @@ jobs:
                 libutempter-dev \
                 build-essential \
                 ninja-build \
+                ccache \
                 libcurl4-openssl-dev \
                 curl \
                 zip \
@@ -58,7 +59,7 @@ jobs:
                 libunwind-dev
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake pkg-config curl openssl protobuf libsodium automake autoconf libtool
+        run: brew update && brew install ninja cmake ccache pkg-config curl openssl protobuf libsodium automake autoconf libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
@@ -76,22 +77,27 @@ jobs:
         run: |
           sudo apt-get update
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
-            gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }}
+            gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} ccache
+
+      - name: Restore dependency compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          key: novcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
 
       - name: Install dependencies and generate project files (mac)
         run: |
-          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'macos-latest'
       - name: Install dependencies and generate project files (linux)
         env:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'ubuntu-latest'
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
         if: matrix.os == 'windows-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build

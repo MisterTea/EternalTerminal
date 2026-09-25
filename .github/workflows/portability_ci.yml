@@ -35,6 +35,7 @@ jobs:
                 build-essential \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 debhelper \
                 git \
@@ -59,6 +60,7 @@ jobs:
                 @development-tools \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 gcc \
                 gcc-c++ \
@@ -87,6 +89,7 @@ jobs:
                 boost-devel \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl-devel \
                 gcc \
                 gcc-c++ \
@@ -120,6 +123,7 @@ jobs:
                 dev-build/autoconf \
                 dev-build/automake \
                 dev-build/cmake \
+                dev-util/ccache \
                 dev-build/libtool \
                 dev-build/ninja \
                 dev-libs/boost \
@@ -142,6 +146,7 @@ jobs:
                 base-devel \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 git \
                 jq \
@@ -168,6 +173,7 @@ jobs:
                 binutils \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 gcc \
                 gcc-c++ \
@@ -207,11 +213,16 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Restore dependency compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          key: portability-${{ matrix.distro }}
+
       - name: Generate project files
         shell: bash
         run: |
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
         shell: bash
@@ -236,6 +247,7 @@ jobs:
         with:
           path: |
             .ci-cache/pkg
+            .ci-cache/ccache
           key: freebsd-build-${{ github.sha }}
           restore-keys: |
             freebsd-build-
@@ -280,13 +292,18 @@ jobs:
             cd "${GITHUB_WORKSPACE}"
           fi
 
-          mkdir -p "$(pwd)/.ci-cache/pkg"
+          mkdir -p "$(pwd)/.ci-cache/pkg" "$(pwd)/.ci-cache/ccache"
           export PKG_CACHEDIR="$(pwd)/.ci-cache/pkg"
+          export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
+          export CCACHE_MAXSIZE=500M
+          export CCACHE_COMPRESS=true
+          export CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime
 
           pkg install -y \
             autoconf \
             automake \
             ca_root_nss \
+            ccache \
             cmake \
             curl \
             git \
@@ -299,7 +316,7 @@ jobs:
             unzip \
             zip
 
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
