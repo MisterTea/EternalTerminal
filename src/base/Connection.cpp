@@ -131,7 +131,7 @@ bool Connection::recover(int newSocketFd, bool readPeerCatchupFirst) {
     // Fetch our catchup bytes before any I/O, so a sequence number we cannot
     // serve fails the same way whichever side sends its catchup first.
     et::CatchupBuffer localCatchup;
-    for (auto& message : writer->recover(remoteHeader.sequencenumber())) {
+    for (const auto& message : writer->recover(remoteHeader.sequencenumber())) {
       localCatchup.add_buffer(message);
     }
 

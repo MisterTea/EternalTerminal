@@ -496,9 +496,10 @@ TEST_CASE("ConnectionTest_RecoverLargeCatchupBothWays",
       receivedByClient.append(clientCollector->read());
     }
     {
+      // CHECK, not REQUIRE: a throw here would skip the teardown below.
       lock_guard<recursive_mutex> lock(testMutex);
-      REQUIRE(receivedByServer == clientData);
-      REQUIRE(receivedByClient == serverData);
+      CHECK(receivedByServer == clientData);
+      CHECK(receivedByClient == serverData);
     }
 
     clientCollector->finish();
