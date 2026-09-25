@@ -77,6 +77,22 @@ TEST_CASE("Parses ssh style -L/-R arg", "[TunnelUtils]") {
   REQUIRE(requests[0].destination().port() == 9999);
 }
 
+TEST_CASE("Multiple comma-separated ssh-style reverse tunnels",
+          "[TunnelUtils][issue-789]") {
+  // #789: parse each four-part entry as SSH style.
+  auto requests = parseRangesToRequests(
+      "localhost:8888:0.0.0.0:9999,localhost:7777:1.2.3.4:6666");
+  REQUIRE(requests.size() == 2);
+  REQUIRE(requests[0].source().name() == "localhost");
+  REQUIRE(requests[0].source().port() == 8888);
+  REQUIRE(requests[0].destination().name() == "0.0.0.0");
+  REQUIRE(requests[0].destination().port() == 9999);
+  REQUIRE(requests[1].source().name() == "localhost");
+  REQUIRE(requests[1].source().port() == 7777);
+  REQUIRE(requests[1].destination().name() == "1.2.3.4");
+  REQUIRE(requests[1].destination().port() == 6666);
+}
+
 TEST_CASE("Parses environment variable forward", "[TunnelUtils]") {
   auto requests = parseRangesToRequests("SSH_AUTH_SOCK:/tmp/agent.sock");
 

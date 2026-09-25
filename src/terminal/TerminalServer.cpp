@@ -1,10 +1,12 @@
 #include "TerminalServer.hpp"
 
 #include <cstdint>
+#include <deque>
 
 #include "FdPoller.hpp"
 #include "JumphostPending.hpp"
 #include "TelemetryService.hpp"
+#include "TerminalInterruptDrain.hpp"
 #include "TmuxCcFilter.hpp"
 #include "WriteBuffer.hpp"
 
@@ -12,26 +14,6 @@
 
 namespace et {
 namespace {
-
-void drainDiscardReadableBytes(shared_ptr<SocketHandler> handler, int fd,
-                               WriteBuffer* buf) {
-  char bufBytes[BUF_SIZE];
-  bool got = false;
-  while (true) {
-    if (!waitOnSocketData(fd, 0, 0)) {
-      break;
-    }
-    ssize_t rc = handler->read(fd, bufBytes, BUF_SIZE);
-    if (rc <= 0) {
-      break;
-    }
-    buf->enqueue(string(bufBytes, rc));
-    got = true;
-  }
-  if (got) {
-    buf->filterDroppable();
-  }
-}
 
 // Returns true when control notifications were just sent and a large
 // droppable backlog remains: the caller should wait for client input
@@ -292,7 +274,12 @@ void TerminalServer::runJumpHost(
         try {
           Packet packet;
           if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
-            if (stillConnected) {
+            if (packet.getHeader() ==
+                    TerminalPacketType::TERMINAL_EXIT_STATUS &&
+                !payload.supports_exit_status()) {
+              LOG(INFO) << "Dropping jumphost terminal exit status for a "
+                           "client that did not request it";
+            } else if (stillConnected) {
               pending.enqueue(packet);
               if (!holdDroppableForClient) {
                 holdDroppableForClient = pending.drainToClient(
@@ -354,6 +341,20 @@ void TerminalServer::runTerminal(
       pipePaths.push_back(sourceName);
     }
   }
+  const bool pipeMode = payload.no_pty();
+  const bool noShell = payload.no_shell();
+  if (pipeMode && noShell) {
+    response.set_error("no_pty and no_shell cannot both be set");
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+    return;
+  }
+  if (pipeMode && (!payload.has_command() || payload.command().empty())) {
+    response.set_error("no_pty requires a non-empty command");
+    serverClientState->writePacket(Packet(
+        uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
+    return;
+  }
   serverClientState->writePacket(
       Packet(uint8_t(EtPacketType::INITIAL_RESPONSE), protoToString(response)));
 
@@ -361,9 +362,6 @@ void TerminalServer::runTerminal(
   el::Helpers::setThreadName(serverClientState->getId());
   // Whether the TE should keep running.
   bool run = true;
-
-  // TE sends/receives data to/from the shell one char at a time.
-  char b[BUF_SIZE];
 
   int terminalFd = userInfo.fd();
   shared_ptr<SocketHandler> terminalSocketHandler =
@@ -376,13 +374,23 @@ void TerminalServer::runTerminal(
     *(termInit.add_environmentnames()) = it.first;
     *(termInit.add_environmentvalues()) = it.second;
   }
+  if (pipeMode) {
+    termInit.set_no_pty(true);
+    termInit.set_command(payload.command());
+  }
+  if (noShell) {
+    termInit.set_no_shell(true);
+  }
   terminalSocketHandler->writePacket(
       terminalFd,
       Packet(TerminalPacketType::TERMINAL_INIT, protoToString(termInit)));
 
   WriteBuffer terminalOutputBuffer;
+  // Non-buffer packets saved during interrupt drain for the dispatch path.
+  std::deque<Packet> terminalPendingPackets;
   string clientInterruptCarry;
   bool holdDroppableForClient = false;
+  DisconnectDeadline disconnectedSince;
 
   while (run) {
     {
@@ -397,12 +405,19 @@ void TerminalServer::runTerminal(
     set<int> refreshFds;
     int serverClientFd = serverClientState->getSocketFd();
     const bool connected = serverClientFd > 0;
-    // Connected: stage in WriteBuffer (16MB cap). Disconnected: today's
-    // 64MB BackedWriter path, so a job keeps running after the laptop
-    // closes.
-    bool readTerminal = connected
-                            ? terminalOutputBuffer.canAcceptMore()
-                            : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    bool readTerminal;
+    if (pipeMode) {
+      // Packet-framed pipe output skips WriteBuffer; bound via BackedWriter.
+      readTerminal =
+          connected ? true : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    } else {
+      // Connected: stage in WriteBuffer (16MB cap). Disconnected: today's
+      // 64MB BackedWriter path, so a job keeps running after the laptop
+      // closes.
+      readTerminal = connected
+                         ? terminalOutputBuffer.canAcceptMore()
+                         : serverClientState->canBufferWrite(2 * BUF_SIZE);
+    }
     if (readTerminal && !holdDroppableForClient) {
       readFds.insert(terminalFd);
     }
@@ -412,7 +427,8 @@ void TerminalServer::runTerminal(
       serverSocketHandler->minimizeKernelBuffering(serverClientFd);
       readFds.insert(serverClientFd);
       refreshFds.insert(serverClientFd);
-      if (terminalOutputBuffer.hasPendingData() && !holdDroppableForClient) {
+      if (!pipeMode && terminalOutputBuffer.hasPendingData() &&
+          !holdDroppableForClient) {
         writeFds.insert(serverClientFd);
       }
     }
@@ -462,9 +478,10 @@ void TerminalServer::runTerminal(
               VLOG(2) << "Got bytes from client: " << tb.buffer().length()
                       << " "
                       << serverClientState->getReader()->getSequenceNumber();
-              if (WriteBuffer::containsInterruptByte(tb.buffer()) ||
-                  tmuxCcInputRequestsInterrupt(clientInterruptCarry,
-                                               tb.buffer())) {
+              if (!pipeMode &&
+                  (WriteBuffer::containsInterruptByte(tb.buffer()) ||
+                   tmuxCcInputRequestsInterrupt(clientInterruptCarry,
+                                                tb.buffer()))) {
                 LOG(INFO) << "Interrupt from client (" << tb.buffer().size()
                           << " bytes), WriteBuffer="
                           << terminalOutputBuffer.size();
@@ -473,14 +490,25 @@ void TerminalServer::runTerminal(
                   LOG(INFO) << "Flushed " << dropped
                             << " bytes of terminal output on interrupt";
                   drainDiscardReadableBytes(terminalSocketHandler, terminalFd,
-                                            &terminalOutputBuffer);
+                                            &terminalOutputBuffer,
+                                            &terminalPendingPackets);
                 }
               }
-              tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
-              char c = TERMINAL_BUFFER;
-              terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
-                                                     sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, tb, false);
+              if (!pipeMode) {
+                tmuxCcRetainIncompleteLine(&clientInterruptCarry, tb.buffer());
+              }
+              // PTY may already be gone (EOF/`finishSession`); do not close the
+              // client here — fall through so TERMINAL_EXIT_STATUS can still be
+              // forwarded for `et -c`.
+              try {
+                char c = TERMINAL_BUFFER;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, tb, false);
+              } catch (const std::runtime_error& ex) {
+                LOG(INFO) << "Terminal gone while writing client buffer: "
+                          << ex.what();
+              }
               break;
             }
             case et::TerminalPacketType::KEEP_ALIVE: {
@@ -494,14 +522,32 @@ void TerminalServer::runTerminal(
               LOG(INFO) << "Got terminal info";
               et::TerminalInfo ti =
                   stringToProto<et::TerminalInfo>(packet.getPayload());
-              char c = TERMINAL_INFO;
+              // Same as TERMINAL_BUFFER: a late resize must not tear down the
+              // client before EXIT_STATUS is forwarded.
+              try {
+                char c = TERMINAL_INFO;
+                terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
+                                                       sizeof(char), false);
+                terminalSocketHandler->writeProto(terminalFd, ti, false);
+              } catch (const std::runtime_error& ex) {
+                LOG(INFO) << "Terminal gone while applying TERMINAL_INFO: "
+                          << ex.what();
+              }
+              break;
+            }
+            case et::TerminalPacketType::TERMINAL_CLOSE: {
+              char c = TERMINAL_CLOSE;
               terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
                                                      sizeof(char), false);
-              terminalSocketHandler->writeProto(terminalFd, ti, false);
+              run = false;
               break;
             }
             default:
-              STFATAL << "Unknown packet type: " << int(packetType);
+              LOG(WARNING) << "Rejecting untrusted packet type from client: "
+                           << int(packetType) << "; closing connection";
+              serverClientState->closeSocket();
+              run = false;
+              break;
           }
         }
       }
@@ -511,53 +557,94 @@ void TerminalServer::runTerminal(
       // of staying gated on the connected 16MB cap.
       serverClientFd = serverClientState->getSocketFd();
       const bool stillConnected = serverClientFd > 0;
-      if (holdDroppableForClient) {
-        // Already waited one select for send-keys. Resume droppable
-        // drain only after that wait; do not write flood in this gap.
-        holdDroppableForClient = false;
-      } else {
-        holdDroppableForClient =
-            drainWriteBufferToClient(&terminalOutputBuffer, serverClientState,
-                                     stillConnected ? serverClientFd : -1);
+      if (disconnectDeadlineReached(&disconnectedSince,
+                                    std::chrono::steady_clock::now(),
+                                    stillConnected, disconnectTimeoutSec) &&
+          serverClientState->claimDisconnectedExpiry()) {
+        LOG(INFO) << "Disconnect timeout (" << disconnectTimeoutSec
+                  << "s) elapsed; closing terminal session "
+                  << serverClientState->getId();
+        try {
+          char c = TERMINAL_CLOSE;
+          terminalSocketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char),
+                                                 false);
+        } catch (const std::runtime_error& ex) {
+          LOG(INFO) << "Failed to notify terminal of disconnect timeout: "
+                    << ex.what();
+        }
+        run = false;
+        break;
+      }
+      if (!pipeMode) {
+        if (holdDroppableForClient) {
+          // Already waited one select for send-keys. Resume droppable
+          // drain only after that wait; do not write flood in this gap.
+          holdDroppableForClient = false;
+        } else {
+          holdDroppableForClient =
+              drainWriteBufferToClient(&terminalOutputBuffer, serverClientState,
+                                       stillConnected ? serverClientFd : -1);
+        }
       }
 
-      // Check for data to receive; the received
-      // data includes also the data previously sent
-      // on the same master descriptor (line 90).
-      if (readyFds.count(terminalFd) != 0) {
-        // Read from terminal and write to client
-        memset(b, 0, BUF_SIZE);
-        ssize_t rc = terminalSocketHandler->read(terminalFd, b, BUF_SIZE);
-        if (rc > 0) {
-          VLOG(2) << "Sending bytes from terminal: " << rc << " "
-                  << serverClientState->getWriter()->getSequenceNumber();
-          string s(b, rc);
+      // Packet-framed terminal output and session exit status from etterminal.
+      // Also dispatch non-buffer packets preserved during interrupt drain.
+      auto handleTerminalPacket = [&](const Packet& packet) {
+        const uint8_t header = packet.getHeader();
+        if (header == TerminalPacketType::TERMINAL_EXIT_STATUS) {
+          if (!payload.supports_exit_status()) {
+            LOG(INFO) << "Dropping terminal exit status for a client "
+                         "that did not request it";
+          } else {
+            if (!pipeMode) {
+              // Flush pending output so the client sees bytes before status.
+              holdDroppableForClient = drainWriteBufferToClient(
+                  &terminalOutputBuffer, serverClientState,
+                  stillConnected ? serverClientFd : -1);
+            }
+            serverClientState->writePacket(packet);
+            LOG(INFO) << "Forwarded terminal exit status";
+          }
+        } else if (pipeMode) {
+          // Preserve is_stderr framing for the raw command channel.
+          serverClientState->writePacket(packet);
+        } else if (header == TerminalPacketType::TERMINAL_BUFFER) {
+          et::TerminalBuffer tb =
+              stringToProto<et::TerminalBuffer>(packet.getPayload());
+          VLOG(2) << "Sending bytes from terminal: " << tb.buffer().size()
+                  << " " << serverClientState->getWriter()->getSequenceNumber();
           if (stillConnected) {
-            terminalOutputBuffer.enqueue(s);
+            terminalOutputBuffer.enqueue(tb.buffer());
             if (!holdDroppableForClient) {
               holdDroppableForClient = drainWriteBufferToClient(
                   &terminalOutputBuffer, serverClientState, serverClientFd);
             }
           } else {
-            et::TerminalBuffer tb;
-            tb.set_buffer(s);
-            serverClientState->writePacket(
-                Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+            serverClientState->writePacket(packet);
           }
-        } else if (rc == 0) {
-          LOG(INFO) << "Terminal session ended";
-          run = false;
-          break;
-        } else if ((GetErrno() == EAGAIN) || (GetErrno() == EWOULDBLOCK)) {
-          // Common after a Ctrl+C drain-discard of already-readable bytes.
-          continue;
         } else {
-          int readErr = GetErrno();
-          LOG(ERROR) << "Error reading from socket: " << readErr << " "
-                     << strerror(readErr);
-          run = false;
-          break;
+          LOG(WARNING) << "Unexpected packet from terminal: " << int(header);
         }
+      };
+
+      try {
+        while (!terminalPendingPackets.empty()) {
+          Packet packet = terminalPendingPackets.front();
+          terminalPendingPackets.pop_front();
+          handleTerminalPacket(packet);
+        }
+        if (readyFds.count(terminalFd) != 0) {
+          Packet packet;
+          if (terminalSocketHandler->readPacket(terminalFd, &packet)) {
+            handleTerminalPacket(packet);
+          }
+        }
+      } catch (const std::runtime_error& ex) {
+        LOG(INFO) << (pipeMode ? "Pipe command session ended: "
+                               : "Terminal session ended: ")
+                  << ex.what();
+        run = false;
+        break;
       }
 
       vector<PortForwardDestinationRequest> requests;

@@ -174,6 +174,26 @@ Verify that the server is installed correctly by checking the service status: `s
 
 You are ready to start using ET!
 
+### Installed programs
+
+An Eternal Terminal installation may provide these executables:
+
+- `et` is the command-line client. It uses SSH to authenticate and start the
+  remote session, then maintains the reconnectable ET connection.
+- `etserver` is the system service that accepts ET client connections and
+  routes them to the correct user's session. Its default TCP port is 2022.
+- `etterminal` is an internal server-side helper launched through SSH. Normal
+  users do not invoke it directly.
+- `htm` is the foreground client for HTM, the bundled terminal multiplexer.
+  It speaks tmux control mode so compatible terminal emulators can show native
+  windows, tabs, and splits.
+- `htmd` is the per-user HTM daemon. It owns persistent multiplexer sessions
+  and is started automatically by `htm` when needed.
+
+For the protocol-level relationship between `et`, `etserver`, and
+`etterminal`, see [the protocol documentation](docs/protocol.md). For HTM, see
+[the HTM design documentation](docs/htm-design.md).
+
 ## Configuring
 
 If you'd like to modify the server settings (e.g. to change the listening
@@ -362,6 +382,22 @@ Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: C
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on GitHub](https://github.com/MisterTea/EternalTerminal/issues).
+
+## Server/Client Overview
+
+Eternal Terminal uses three binaries:
+
+- **`et`** (client): Runs on the user's machine (client). Connects to a remote server over SSH to launch the terminal session, then connects to `etserver` on port 2022 for the persistent session.
+- **`etterminal`** (server-side user process): Runs on the server as the user (launched by `et` via SSH). Hosts the terminal session and connects to `etserver` via a FIFO to register the session.
+- **`etserver`** (server daemon): Runs permanently on the server (usually as root/system service). Listens on TCP port 2022 (default) and manages connections between `et` clients and `etterminal` sessions.
+
+**Which machines need each part:**
+- Client machine: needs `et`.
+- Server machine: needs `etserver` (service/demon) and `etterminal` (installed for users; launched by `et` over SSH).
+
+**Port:** By default `etserver` listens on TCP 2022 (configured in `/etc/et.cfg` via the `Networking.port` setting).
+
+**Service setup:** After installation, start/enable `etserver` via systemd (`systemctl enable --now et`) or launchd (macOS), or run `./etserver` for testing.
 
 ## Protocol and design documentation
 

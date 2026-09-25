@@ -11,6 +11,7 @@ on:
 
 permissions:
   contents: read
+  actions: write
 
 jobs:
   openwrt:
@@ -22,16 +23,45 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Restore OpenWrt SDK cache
+        uses: actions/cache@v5
+        with:
+          path: .openwrt-cache
+          key: openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-${{ github.sha }}
+          restore-keys: |
+            openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-
+            openwrt-sdk-x86-64-23.05.5-
+
       - name: Build OpenWrt package with SDK
         shell: bash
         run: |
-          mkdir -p bin/openwrt && chmod 777 bin/openwrt
+          mkdir -p bin/openwrt .openwrt-cache && chmod 777 bin/openwrt .openwrt-cache
           docker run --rm \
             --platform linux/amd64 \
             -v "${GITHUB_WORKSPACE}:/workspace" \
+            -v "${GITHUB_WORKSPACE}/.openwrt-cache:/owrt-cache" \
             openwrt/sdk:x86-64-23.05.5 \
             bash -c '
               set -euo pipefail
+              sdk_root=$(pwd)
+              mkdir -p /owrt-cache/dl /owrt-cache/feeds /owrt-cache/build_dir
+              adopt_cache() {
+                local name="$1"
+                if [ -n "$(ls -A "/owrt-cache/${name}" 2>/dev/null || true)" ]; then
+                  rm -rf "${sdk_root}/${name}"
+                  ln -s "/owrt-cache/${name}" "${sdk_root}/${name}"
+                fi
+              }
+              persist_cache() {
+                local name="$1"
+                if [ ! -L "${sdk_root}/${name}" ] && [ -d "${sdk_root}/${name}" ]; then
+                  mkdir -p "/owrt-cache/${name}"
+                  cp -a "${sdk_root}/${name}/." "/owrt-cache/${name}/"
+                fi
+              }
+              adopt_cache dl
+              adopt_cache feeds
+              adopt_cache build_dir
               sed \
                 -e "s,https://git.openwrt.org/feed/,https://github.com/openwrt/," \
                 -e "s,https://git.openwrt.org/openwrt/,https://github.com/openwrt/," \
@@ -48,6 +78,9 @@ jobs:
               make package/eternalterminal/compile V=s -j"${parallel_level}" ET_SRC_DIR=/workspace
               mkdir -p /workspace/bin/openwrt
               find bin -name "eternalterminal*.ipk" -exec cp -v {} /workspace/bin/openwrt/ \;
+              persist_cache dl
+              persist_cache feeds
+              persist_cache build_dir
             '
 
       - name: Upload OpenWrt package artifact

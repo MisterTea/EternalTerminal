@@ -89,6 +89,14 @@ enum ssh_config_opcode_e {
   SOC_IDENTITYAGENT,
   SOC_LOCALFORWARD,
   SOC_SETENV,
+  SOC_SERVERALIVEINTERVAL,
+  SOC_CLEARALLFORWARDINGS,
+  SOC_EXITONFORWARDFAILURE,
+  SOC_BATCHMODE,
+  SOC_REMOTECOMMAND,
+  SOC_CONTROLMASTER,
+  SOC_CONTROLPATH,
+  SOC_CONTROLPERSIST,
   SOC_END /* Keep this one last in the list */
 };
 
@@ -131,7 +139,15 @@ enum ssh_options_e {
   SSH_OPTIONS_FORWARDAGENT,
   SSH_OPTIONS_IDENTITYAGENT,
   SSH_OPTIONS_LOCALFORWARD,
-  SSH_OPTIONS_SETENV
+  SSH_OPTIONS_SETENV,
+  SSH_OPTIONS_SERVERALIVEINTERVAL,
+  SSH_OPTIONS_CLEARALLFORWARDINGS,
+  SSH_OPTIONS_EXITONFORWARDFAILURE,
+  SSH_OPTIONS_BATCHMODE,
+  SSH_OPTIONS_REMOTECOMMAND,
+  SSH_OPTIONS_CONTROLMASTER,
+  SSH_OPTIONS_CONTROLPATH,
+  SSH_OPTIONS_CONTROLPERSIST
 };
 
 /**
@@ -156,6 +172,15 @@ struct Options {
   char* identity_agent;
   vector<pair<int, int>> local_forwards;
   vector<pair<string, string>> env_vars;
+  // OpenSSH session options used for local -G/-o queries (not mux behavior).
+  unsigned long server_alive_interval;
+  int clear_all_forwardings;
+  int exit_on_forward_failure;
+  int batch_mode;
+  char* remote_command;
+  char* control_master;
+  char* control_path;
+  char* control_persist;
 };
 
 // Free all allocated fields in an Options struct
@@ -169,6 +194,10 @@ inline void freeOptionsFields(Options* opts) {
   SAFE_FREE(opts->gss_server_identity);
   SAFE_FREE(opts->gss_client_identity);
   SAFE_FREE(opts->identity_agent);
+  SAFE_FREE(opts->remote_command);
+  SAFE_FREE(opts->control_master);
+  SAFE_FREE(opts->control_path);
+  SAFE_FREE(opts->control_persist);
 }
 
 /**
@@ -199,6 +228,14 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"identityagent", SOC_IDENTITYAGENT},
     {"localforward", SOC_LOCALFORWARD},
     {"setenv", SOC_SETENV},
+    {"serveraliveinterval", SOC_SERVERALIVEINTERVAL},
+    {"clearallforwardings", SOC_CLEARALLFORWARDINGS},
+    {"exitonforwardfailure", SOC_EXITONFORWARDFAILURE},
+    {"batchmode", SOC_BATCHMODE},
+    {"remotecommand", SOC_REMOTECOMMAND},
+    {"controlmaster", SOC_CONTROLMASTER},
+    {"controlpath", SOC_CONTROLPATH},
+    {"controlpersist", SOC_CONTROLPERSIST},
     {NULL, SOC_UNSUPPORTED}};
 
 /** @brief Returns the opcode associated with the given keyword string. */
@@ -217,9 +254,10 @@ static enum ssh_config_opcode_e ssh_config_get_opcode(char* keyword) {
 /** @brief Parses a single line of ssh config, updating the provided Options. */
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
-                                 unsigned int count, int* parsing, int seen[]);
+                                 unsigned int count, int* parsing, int seen[],
+                                 const char* fileDir);
 
-char* ssh_get_user_home_dir(void) {
+inline char* ssh_get_user_home_dir(void) {
 #ifdef WIN32
   return strdup(getenv("USERPROFILE"));
 #else
@@ -247,7 +285,7 @@ char* ssh_get_user_home_dir(void) {
 #endif
 }
 
-char* ssh_get_local_username(void) {
+inline char* ssh_get_local_username(void) {
 #ifdef WIN32
   char username[UNLEN + 1];
   DWORD username_len = UNLEN + 1;
@@ -275,7 +313,7 @@ char* ssh_get_local_username(void) {
 #endif
 }
 
-char* ssh_lowercase(const char* str) {
+inline char* ssh_lowercase(const char* str) {
   char *n, *p;
 
   if (str == NULL) {
@@ -434,7 +472,8 @@ static int match_pattern_list(const char* string, const char* pattern,
  * Returns -1 if negation matches, 1 if there is a positive match, 0 if there
  * is no match at all.
  */
-int match_hostname(const char* host, const char* pattern, unsigned int len) {
+inline int match_hostname(const char* host, const char* pattern,
+                          unsigned int len) {
   return match_pattern_list(host, pattern, len, 1);
 }
 
@@ -445,7 +484,7 @@ int match_hostname(const char* host, const char* pattern, unsigned int len) {
  *
  * @return              The expanded directory, NULL on error.
  */
-char* ssh_path_expand_tilde(const char* d) {
+inline char* ssh_path_expand_tilde(const char* d) {
   char *h = NULL, *r;
   const char* p;
   int ld;
@@ -504,7 +543,7 @@ char* ssh_path_expand_tilde(const char* d) {
   return r;
 }
 
-char* ssh_path_expand_escape(struct Options* options, const char* s) {
+inline char* ssh_path_expand_escape(struct Options* options, const char* s) {
   char host[NI_MAXHOST];
   char buf[MAX_BUF_SIZE];
   char *r, *x = NULL;
@@ -798,8 +837,8 @@ char* ssh_path_expand_escape(struct Options* options, const char* s) {
  *
  * @return       0 on success, < 0 on error.
  */
-int ssh_options_set(struct Options* options, enum ssh_options_e type,
-                    const void* value) {
+inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
+                           const void* value) {
   const char* v;
   char *p, *q;
   long int i;
@@ -852,12 +891,12 @@ int ssh_options_set(struct Options* options, enum ssh_options_e type,
         return -1;
       } else {
         int* x = (int*)value;
-        if (*x <= 0) {
+        if (*x < 1 || *x > 65535) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
-        options->port = *x & 0xffff;
+        options->port = *x;
       }
       break;
     case SSH_OPTIONS_PORT_STR:
@@ -871,17 +910,17 @@ int ssh_options_set(struct Options* options, enum ssh_options_e type,
           CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
+        errno = 0;
         i = strtol(q, &p, 10);
-        if (q == p) {
+        if (q == p || p == NULL || *p != '\0' || errno == ERANGE || i < 1 ||
+            i > 65535) {
           SAFE_FREE(q);
-        }
-        SAFE_FREE(q);
-        if (i <= 0) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
+        SAFE_FREE(q);
 
-        options->port = i & 0xffff;
+        options->port = static_cast<unsigned int>(i);
       }
       break;
     case SSH_OPTIONS_USER:
@@ -1122,6 +1161,95 @@ int ssh_options_set(struct Options* options, enum ssh_options_e type,
         SAFE_FREE(setenv_entry);
       }
       break;
+    case SSH_OPTIONS_SERVERALIVEINTERVAL:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        long* x = (long*)value;
+        if (*x < 0) {
+          CLOG(INFO, "stdout") << "invalid error" << endl;
+          return -1;
+        }
+        options->server_alive_interval = *x & 0xffffffff;
+      }
+      break;
+    case SSH_OPTIONS_CLEARALLFORWARDINGS:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->clear_all_forwardings = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_EXITONFORWARDFAILURE:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->exit_on_forward_failure = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_BATCHMODE:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->batch_mode = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_REMOTECOMMAND:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->remote_command);
+      if (v == NULL || v[0] == '\0') {
+        options->remote_command = NULL;
+      } else {
+        options->remote_command = strdup(v);
+        if (options->remote_command == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLMASTER:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_master);
+      if (v == NULL || v[0] == '\0') {
+        options->control_master = NULL;
+      } else {
+        options->control_master = strdup(v);
+        if (options->control_master == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLPATH:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_path);
+      if (v == NULL || v[0] == '\0') {
+        options->control_path = NULL;
+      } else {
+        options->control_path = strdup(v);
+        if (options->control_path == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLPERSIST:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_persist);
+      if (v == NULL || v[0] == '\0') {
+        options->control_persist = NULL;
+      } else {
+        options->control_persist = strdup(v);
+        if (options->control_persist == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
 
     default:
       CLOG(INFO, "stdout") << "Unknown ssh option" << endl;
@@ -1264,6 +1392,8 @@ static void local_parse_file(const char* targethost, struct Options* options,
                              const char* filename, int* parsing, int seen[]) {
   string line;
   int len = 0;
+  std::string fileDir = fs::path(filename).parent_path().string();
+  if (fileDir.empty()) fileDir = ".";
 
   unsigned int count = 0;
 
@@ -1276,7 +1406,7 @@ static void local_parse_file(const char* targethost, struct Options* options,
   while (std::getline(infile, line)) {
     count++;
     if (ssh_config_parse_line(targethost, options, line.c_str(), count, parsing,
-                              seen) < 0) {
+                              seen, fileDir.c_str()) < 0) {
       infile.close();
       return;
     }
@@ -1285,9 +1415,19 @@ static void local_parse_file(const char* targethost, struct Options* options,
   return;
 }
 
+static std::string resolveIncludePath(const std::string& includePath,
+                                      const std::string& fileDir) {
+  const fs::path path(includePath);
+  if (path.is_absolute() || path.has_root_directory()) {
+    return path.lexically_normal().generic_string();
+  }
+  return (fs::path(fileDir) / path).lexically_normal().generic_string();
+}
+
 static int ssh_config_parse_line(const char* targethost,
                                  struct Options* options, const char* line,
-                                 unsigned int count, int* parsing, int seen[]) {
+                                 unsigned int count, int* parsing, int seen[],
+                                 const char* fileDir) {
   enum ssh_config_opcode_e opcode;
   const char* p;
   char *s, *x;
@@ -1335,22 +1475,25 @@ static int ssh_config_parse_line(const char* targethost,
       if (p) {
         char* filename = ssh_path_expand_tilde(p);
         if (filename) {
+          const std::string resolved = resolveIncludePath(filename, fileDir);
           if (strchr(filename, '*') || strchr(filename, '?')) {
-            std::string dir = fs::path(filename).parent_path().string();
-            std::string pattern = fs::path(filename).filename().string();
+            std::string dir = fs::path(resolved).parent_path().string();
+            std::string pattern = fs::path(resolved).filename().string();
             std::regex pattern_regex(std::regex_replace(
                 std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
                 std::regex(R"(\*)"), ".*"));
-            for (const auto& entry :
-                 fs::directory_iterator(dir.empty() ? "." : dir)) {
-              if (std::regex_match(entry.path().filename().string(),
+            std::error_code ec;
+            for (fs::directory_iterator it(dir.empty() ? "." : dir, ec), end;
+                 !ec && it != end; it.increment(ec)) {
+              if (std::regex_match(it->path().filename().string(),
                                    pattern_regex)) {
                 local_parse_file(targethost, options,
-                                 entry.path().string().c_str(), parsing, seen);
+                                 it->path().string().c_str(), parsing, seen);
               }
             }
           } else {
-            local_parse_file(targethost, options, filename, parsing, seen);
+            local_parse_file(targethost, options, resolved.c_str(), parsing,
+                             seen);
           }
         }
         SAFE_FREE(filename);
@@ -1387,7 +1530,8 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_MATCH:
-      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen);
+      i = ssh_config_parse_line(targethost, options, s, count, parsing, seen,
+                                fileDir);
       SAFE_FREE(x);
       return i;
       break;
@@ -1527,6 +1671,55 @@ static int ssh_config_parse_line(const char* targethost,
         ssh_options_set(options, SSH_OPTIONS_SETENV, p);
       }
       break;
+    case SOC_SERVERALIVEINTERVAL: {
+      long interval = ssh_config_get_int(&s, -1);
+      if (interval >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_SERVERALIVEINTERVAL, &interval);
+      }
+      break;
+    }
+    case SOC_CLEARALLFORWARDINGS:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CLEARALLFORWARDINGS, &i);
+      }
+      break;
+    case SOC_EXITONFORWARDFAILURE:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_EXITONFORWARDFAILURE, &i);
+      }
+      break;
+    case SOC_BATCHMODE:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_BATCHMODE, &i);
+      }
+      break;
+    case SOC_REMOTECOMMAND:
+      p = ssh_config_get_cmd(&s);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_REMOTECOMMAND, p);
+      }
+      break;
+    case SOC_CONTROLMASTER:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CONTROLMASTER, p);
+      }
+      break;
+    case SOC_CONTROLPATH:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CONTROLPATH, p);
+      }
+      break;
+    case SOC_CONTROLPERSIST:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CONTROLPERSIST, p);
+      }
+      break;
     case SOC_UNSUPPORTED:
       LOG(INFO) << "unsupported config line: " << string(line) << ", ignored";
       break;
@@ -1541,14 +1734,16 @@ static int ssh_config_parse_line(const char* targethost,
   return 0;
 }
 
-int parse_ssh_config_file(const char* targethost, struct Options* options,
-                          string filename) {
+inline int parse_ssh_config_file(const char* targethost,
+                                 struct Options* options, string filename,
+                                 int* seen_inout = nullptr) {
   string line;
   int len = 0;
   int read = 0;
   unsigned int count = 0;
   int parsing;
-  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int local_seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int* seen = seen_inout != nullptr ? seen_inout : local_seen;
 
   char* expandedFilename = ssh_path_expand_tilde(filename.c_str());
   if (!expandedFilename) {
@@ -1556,6 +1751,11 @@ int parse_ssh_config_file(const char* targethost, struct Options* options,
     return 0;
   }
 
+  std::string fileDir =
+      fs::path(expandedFilename ? expandedFilename : filename.c_str())
+          .parent_path()
+          .string();
+  if (fileDir.empty()) fileDir = ".";
   ifstream infile(expandedFilename);
   free(expandedFilename);
   if (!infile.good()) {
@@ -1568,7 +1768,7 @@ int parse_ssh_config_file(const char* targethost, struct Options* options,
   while (std::getline(infile, line)) {
     count++;
     if (ssh_config_parse_line(targethost, options, line.c_str(), count,
-                              &parsing, seen) < 0) {
+                              &parsing, seen, fileDir.c_str()) < 0) {
       infile.close();
       return -1;
     }

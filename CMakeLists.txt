@@ -318,6 +318,10 @@ if(NOT Boost_FOUND)
 endif()
 
 IF(NOT APPLE AND NOT WIN32)
+  # Hardening: prevent executable stack (fixes RPM/ELF check for Issue #677)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,noexecstack")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,noexecstack")
+
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
   endif()
@@ -474,6 +478,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/SocksUtils.hpp
+  src/base/SocksUtils.cpp
   src/base/WriteBuffer.hpp
   src/base/TmuxCcFilter.hpp
 
@@ -504,10 +510,17 @@ add_library(
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
   src/terminal/JumphostPending.hpp
+  src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/MuxProtocol.hpp
+  src/terminal/MuxProtocol.cpp
+  src/terminal/MuxMaster.hpp
+  src/terminal/MuxMaster.cpp
+  src/terminal/MuxClient.hpp
+  src/terminal/MuxClient.cpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
@@ -821,6 +834,20 @@ else(WIN32)
       add_test(NAME et-test COMMAND et-test "~[.ghostty]")
     endif()
     find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(
+        NAME rpm_elf_noexecstack
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
+          $<TARGET_FILE:et>
+          $<TARGET_FILE:etserver>
+          $<TARGET_FILE:etterminal>
+          $<TARGET_FILE:htm>
+          $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(rpm_elf_noexecstack PROPERTIES LABELS "security;packaging")
+    endif()
     if(Python3_Interpreter_FOUND AND NOT WIN32)
       add_test(
         NAME htm_pty_e2e
@@ -836,6 +863,24 @@ else(WIN32)
           SKIP_RETURN_CODE 77
           TIMEOUT 120
           LABELS "e2e;htm;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME et_wall_tmux_cc_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_wall_tmux_cc_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_wall_tmux_cc_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;et;system"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
       )

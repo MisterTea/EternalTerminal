@@ -40,10 +40,28 @@ class PortForwardHandler {
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
                                          string* sourceName, uid_t userid,
                                          gid_t groupid);
+  /**
+   * @brief Listens for SOCKS clients on `source` and opens destinations chosen
+   * after each handshake (ssh -D).
+   */
+  PortForwardSourceResponse createSocksSource(const SocketEndpoint& source);
+  /**
+   * @brief Bridges `readFd`/`writeFd` (typically stdin/stdout) to a remote
+   * destination chosen at connect time (ssh -W). Does not start a shell.
+   */
+  PortForwardSourceResponse createStdioForward(
+      const SocketEndpoint& destination, int readFd, int writeFd,
+      bool closeFds = false);
   /** @brief Creates a remote destination handler that forwards data to a user's
    * socket. */
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
+
+  /**
+   * @brief Stops listening for a previously created source forward.
+   * @return true when a matching source handler was removed.
+   */
+  bool removeSource(const PortForwardSourceRequest& pfsr);
 
   /** @brief Tears down the source socket associated with `fd`. */
   void closeSourceFd(int fd);
@@ -57,6 +75,8 @@ class PortForwardHandler {
   void sendDataToSourceOnSocket(int socketId, const string& data);
   void getForwardFds(set<int>* fds);
   uint64_t getForwardFdsGeneration() const { return forwardFdsGeneration; }
+  /** @brief True while a `-W` stdio bridge still has an active local fd. */
+  bool hasActiveStdioForward() const;
 
  protected:
   /** @brief Handler used for the SSH/network-facing sockets. */
@@ -80,6 +100,11 @@ class PortForwardHandler {
    * a poller's only signal that it must re-register. */
   uint64_t forwardFdsGeneration = 0;
   vector<string> temporaryDirectories;
+  /**
+   * @brief Serializes createSource/update/handlePacket/removeSource against
+   * concurrent mux client threads and the TerminalClient event loop.
+   */
+  mutable recursive_mutex handlerMutex;
 };
 }  // namespace et
 

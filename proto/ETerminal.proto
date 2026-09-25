@@ -14,10 +14,22 @@ enum TerminalPacketType {
   TERMINAL_USER_INFO = 8;
   TERMINAL_INIT = 9;
   JUMPHOST_INIT = 10;
+  TERMINAL_CLOSE = 11;
+  // Wait status of the remote shell/command, sent once when the session ends.
+  TERMINAL_EXIT_STATUS = 12;
 }
 
 message TerminalBuffer {
   optional bytes buffer = 1;
+  // When true, buffer is remote stderr (raw pipe / -T sessions only).
+  // Named is_stderr (not stderr): musl #defines stderr as a macro.
+  optional bool is_stderr = 2 [default = false];
+}
+
+// Process status for the remote terminal child (OpenSSH-style exit code).
+message TerminalExitStatus {
+  // Normalized status: WEXITSTATUS when exited, or 128+signal when signaled.
+  optional int32 exitcode = 1;
 }
 
 message TerminalInfo {
@@ -55,12 +67,22 @@ message PortForwardData {
   optional bytes buffer = 3;
   optional string error = 4;
   optional bool closed = 5;
+  // Source finished writing. Keep the destination open for the reply direction.
+  optional bool half_close = 6;
 }
 
 message InitialPayload {
   optional bool jumphost = 1 [default = false];
   repeated PortForwardSourceRequest reversetunnels = 2;
   map<string, string> environmentvariables = 3;
+  // When true, etterminal runs `command` on pipes instead of a login pty.
+  optional bool no_pty = 4 [default = false];
+  optional string command = 5;
+  // Set by clients that understand TERMINAL_EXIT_STATUS. Older clients leave
+  // this unset, and etserver must not forward that packet to them.
+  optional bool supports_exit_status = 6 [default = false];
+  // ssh -W: keep the session without a pty or a shell.
+  optional bool no_shell = 7 [default = false];
 }
 
 message InitialResponse {
@@ -75,6 +97,9 @@ message ConfigParams {
 message TermInit {
   repeated string environmentnames = 1;
   repeated string environmentvalues = 2;
+  optional bool no_pty = 3 [default = false];
+  optional string command = 4;
+  optional bool no_shell = 5 [default = false];
 }
 
 message TerminalUserInfo {

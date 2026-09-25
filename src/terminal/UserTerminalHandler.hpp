@@ -3,6 +3,7 @@
 
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
+#include "TmuxCcFilter.hpp"
 #include "UserTerminal.hpp"
 
 namespace et {
@@ -41,9 +42,22 @@ class UserTerminalHandler {
   bool shuttingDown;
   /** @brief Guards `shuttingDown` across threads. */
   recursive_mutex shutdownMutex;
+  /** @brief True when TermInit requested a raw pipe command session. */
+  bool pipeMode;
+  /**
+   * @brief Removes journald/wall lines from a tmux -CC byte stream.
+   * Shell output before control mode is left alone.
+   */
+  TmuxCcInjectionFilter controlOutputFilter_;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
+  /** @brief Holds the router open without a pty or a shell (ssh -W). */
+  void runIdleSession();
+  /** @brief Forwards terminal output to the router as TERMINAL_BUFFER. */
+  void forwardOutputToRouter(const char* data, size_t length, bool isStderr);
+  /** @brief Reaps the child and sends TERMINAL_EXIT_STATUS to the router. */
+  void finishSession();
 #ifdef WIN32
   /** @brief Pumps a ConPTY terminal (see PseudoUserTerminal). */
   void runConPtyTerminal(class PseudoUserTerminal& conpty);

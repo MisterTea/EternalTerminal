@@ -236,7 +236,7 @@ class RealPtyEchoTerminal : public UserTerminal {
     return fds[0];
   }
   virtual void runTerminal() {}
-  virtual void handleSessionEnd() {}
+  virtual int handleSessionEnd() { return 0; }
   virtual void cleanup() {
     lock_guard<mutex> guard(cleanupMutex);
     if (cleanedUp) {
@@ -295,7 +295,7 @@ class RealPtyEchoTerminal : public UserTerminal {
     return masterFd;
   }
   virtual void runTerminal() {}
-  virtual void handleSessionEnd() {}
+  virtual int handleSessionEnd() { return 0; }
   virtual void cleanup() {
     if (masterFd >= 0) {
       close(masterFd);
@@ -596,6 +596,66 @@ void nonTtyConsoleKeepsSessionAliveTest(
   uth.reset();
 }
 
+void closeOnHangupTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                       shared_ptr<FakeUserTerminal> fakeUserTerminal,
+                       SocketEndpoint serverEndpoint,
+                       shared_ptr<SocketHandler> clientSocketHandler,
+                       shared_ptr<SocketHandler> clientPipeSocketHandler,
+                       const SocketEndpoint& routerEndpoint) {
+  TerminalClient::resetHangupClose();
+  TerminalClient::configureCloseOnHangup(true);
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  auto fileConsole = make_shared<FileBackedConsole>();
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fileConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+  sleep(2);
+
+  REQUIRE(!runReturned.load());
+
+#ifdef WIN32
+  // Exercise the Windows console control handler directly.
+  BOOL handled = TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT);
+  REQUIRE(handled == TRUE);
+#else
+  TerminalClient::requestHangupClose(0);
+#endif
+
+  REQUIRE(TerminalClient::waitForHangupClose(5000));
+
+  terminalClientThread.join();
+  REQUIRE(runReturned.load());
+  terminalClient.reset();
+
+  uthThread.join();
+  uth.reset();
+
+#ifdef WIN32
+  TerminalClient::configureCloseOnHangup(false);
+  REQUIRE(TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT) == FALSE);
+#endif
+
+  TerminalClient::resetHangupClose();
+}
+
 class LogInterceptHandler : public el::LogDispatchCallback {
  public:
   void handle(const el::LogDispatchData* data) {
@@ -777,6 +837,13 @@ TEST_CASE_METHOD(EndToEndTestFixture, "NonTtyConsoleKeepsSessionAlive",
                                      clientPipeSocketHandler, routerEndpoint);
 }
 
+TEST_CASE_METHOD(EndToEndTestFixture, "CloseOnHangup",
+                 "[EndToEndTest][integration]") {
+  closeOnHangupTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
+                    clientSocketHandler, clientPipeSocketHandler,
+                    routerEndpoint);
+}
+
 void simultaneousTerminalConnectionTest(
     LogInterceptHandler& logInterceptHandler,
     shared_ptr<PipeSocketHandler> routerSocketHandler,
@@ -921,6 +988,296 @@ TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
         clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 }
+
+#ifndef WIN32
+// Console that refuses all writeSome calls until openGate(). If the client
+// stops on EXIT_STATUS before consoleOut drains, run() finishes while the
+// gate is still closed and output is lost (BinaryStdioConsole / O_NONBLOCK).
+class GateWriteConsole : public FakeConsole {
+ public:
+  explicit GateWriteConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (!gateOpen.load()) {
+      return 0;
+    }
+    const size_t n = std::min(s.size(), size_t(64));
+    ssize_t rc = ::write(getFd(), s.data(), n);
+    if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        return 0;
+      }
+      throw std::runtime_error(string("console write failed: ") +
+                               strerror(errno));
+    }
+    {
+      lock_guard<mutex> lock(writtenMutex);
+      written.append(s.data(), static_cast<size_t>(rc));
+    }
+    return static_cast<size_t>(rc);
+  }
+
+  void openGate() { gateOpen.store(true); }
+
+  string writtenSnapshot() {
+    lock_guard<mutex> lock(writtenMutex);
+    return written;
+  }
+
+ private:
+  std::atomic<bool> gateOpen{false};
+  mutex writtenMutex;
+  string written;
+};
+
+// Console that returns 0 (would-block) until armHardFail(), then throws on
+// writeSome like a closed pipe (EPIPE). Used to cover the post-loop consoleOut
+// drain path that sits outside the main-loop try/catch.
+class HardWriteFailConsole : public FakeConsole {
+ public:
+  explicit HardWriteFailConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (failHard.load()) {
+      throw std::runtime_error("console write failed: Broken pipe");
+    }
+    return 0;
+  }
+
+  void armHardFail() { failHard.store(true); }
+
+ private:
+  std::atomic<bool> failHard{false};
+};
+
+// Shell child that exits immediately with a fixed status so the client can
+// observe TERMINAL_EXIT_STATUS over a real pty session.
+class RealPtyFixedExitTerminal : public UserTerminal {
+ public:
+  explicit RealPtyFixedExitTerminal(int code, const string& fullScript = "")
+      : masterFd(-1), childPid(-1), exitCode(code), fullScript(fullScript) {}
+  virtual ~RealPtyFixedExitTerminal() { cleanup(); }
+
+  virtual int setup(int /*routerFd*/) {
+    childPid = forkpty(&masterFd, NULL, NULL, NULL);
+    if (childPid == -1) {
+      FATAL_FAIL(childPid);
+    }
+    if (childPid == 0) {
+      // Give the client time to connect and enter run() before exiting by
+      // default; callers can supply a full script (e.g. print then exit).
+      string script = fullScript.empty()
+                          ? ("sleep 2; exit " + to_string(exitCode))
+                          : fullScript;
+      execl("/bin/sh", "sh", "-c", script.c_str(), (char*)NULL);
+      _exit(127);
+    }
+    int flags = fcntl(masterFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+    }
+    return masterFd;
+  }
+  virtual void runTerminal() {}
+  virtual int handleSessionEnd() {
+    if (childPid <= 0) {
+      return 0;
+    }
+    int status = 0;
+    FATAL_FAIL(waitpid(childPid, &status, 0));
+    childPid = -1;
+    if (WIFEXITED(status)) {
+      return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+      return 128 + WTERMSIG(status);
+    }
+    return 0;
+  }
+  virtual void cleanup() {
+    if (masterFd >= 0) {
+      close(masterFd);
+      masterFd = -1;
+    }
+    if (childPid > 0) {
+      int status = 0;
+      waitpid(childPid, &status, 0);
+      childPid = -1;
+    }
+  }
+  virtual int getFd() { return masterFd; }
+  virtual void setInfo(const winsize& /*tmpwin*/) {}
+
+ private:
+  int masterFd;
+  pid_t childPid;
+  int exitCode;
+  string fullScript;
+};
+
+void remoteExitStatusTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                          SocketEndpoint serverEndpoint,
+                          shared_ptr<SocketHandler> clientSocketHandler,
+                          shared_ptr<SocketHandler> clientPipeSocketHandler,
+                          shared_ptr<FakeConsole> fakeConsole,
+                          const SocketEndpoint& routerEndpoint,
+                          const string& command, int expectedStatus,
+                          const string& fullScript = "") {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, fullScript);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, command, &runStatus]() {
+    runStatus = terminalClient->run(command, false);
+  });
+  terminalClientThread.join();
+  REQUIRE(runStatus == expectedStatus);
+
+  uth->shutdown();
+  uthThread.join();
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_CommandPath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // -c path: client must exit with the remote shell's status (42).
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint,
+                       "true", 42);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_InteractivePath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // No command: keep today's success exit even when the remote exits 42.
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint, "",
+                       0);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_DrainsConsoleOutBeforeStop",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // writeSome may return 0 (BinaryStdioConsole / O_NONBLOCK). EXIT_STATUS must
+  // not stop the loop until consoleOut is empty.
+  const string marker(2048, 'M');
+  auto gatedConsole = make_shared<GateWriteConsole>(consoleSocketHandler);
+  // Stable size avoids unrelated TERMINAL_INFO noise while the gate is closed.
+  TerminalInfo stableInfo;
+  stableInfo.set_row(24);
+  stableInfo.set_column(80);
+  stableInfo.set_width(8);
+  stableInfo.set_height(16);
+  gatedConsole->setTerminalInfoResult(stableInfo);
+  fakeConsole = gatedConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, gatedConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runFinished{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runFinished]() {
+    runStatus = terminalClient->run("true", false);
+    runFinished.store(true);
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes are still gated.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Bug: shuttingDown on EXIT_STATUS finishes run() before the gate opens.
+  const bool finishedEarly = runFinished.load();
+
+  gatedConsole->openGate();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(finishedEarly);
+  REQUIRE(runStatus == 42);
+  REQUIRE(gatedConsole->writtenSnapshot().find(marker) != string::npos);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_HardWriteErrorDuringFinalDrain",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // Hard write errors (EPIPE/EBADF) during the post-loop consoleOut drain must
+  // not throw out of run() after EXIT_STATUS has already been received.
+  // Leave FakeConsole auto-resizes on: blocked consoleOut makes the client
+  // loop spin and send late TERMINAL_INFO after pty EOF — server must still
+  // forward EXIT_STATUS (macOS CI previously saw runStatus 0).
+  const string marker(2048, 'M');
+  auto failConsole = make_shared<HardWriteFailConsole>(consoleSocketHandler);
+  fakeConsole = failConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, failConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runThrew{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runThrew]() {
+    try {
+      runStatus = terminalClient->run("true", false);
+    } catch (const std::runtime_error&) {
+      runThrew.store(true);
+    }
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes still return 0.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Arm EPIPE: in-loop writeSome throws (caught), then post-loop drain throws
+  // outside the try/catch unless that path stops draining and returns status.
+  failConsole->armHardFail();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(runThrew.load());
+  REQUIRE(runStatus == 42);
+}
+#endif
 
 // TODO: Multiple clients
 

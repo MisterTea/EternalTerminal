@@ -30,8 +30,13 @@ class PseudoUserTerminal : public UserTerminal {
  public:
   virtual ~PseudoUserTerminal() {}
 
+  static string loginShellArg0(const string& shell) {
+    const size_t slash = shell.find_last_of('/');
+    return "-" + shell.substr(slash == string::npos ? 0 : slash + 1);
+  }
+
   virtual int setup(int routerFd) {
-    pid_t pid = forkpty(&masterFd, NULL, NULL, NULL);
+    pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
         FATAL_FAIL(pid);
@@ -97,7 +102,10 @@ class PseudoUserTerminal : public UserTerminal {
     // no requirements for any wait(2) on our part.
     //
     signal(SIGCHLD, SIG_DFL);
-    FATAL_FAIL(execl(terminal.c_str(), terminal.c_str(), "-l", NULL));
+    // POSIX login shells are selected by prefixing argv[0] with '-'. Passing
+    // `-l` as an option is not portable; FreeBSD /bin/sh rejects it.
+    const string arg0 = loginShellArg0(terminal);
+    FATAL_FAIL(execl(terminal.c_str(), arg0.c_str(), NULL));
   }
 
   /** @brief Removes any temporary PTY bookkeeping (utempter). */
@@ -107,19 +115,38 @@ class PseudoUserTerminal : public UserTerminal {
 #endif
   }
 
-  /** @brief Waits for the child shell to exit before returning. */
-  virtual void handleSessionEnd() {
+  /**
+   * @brief Waits for the child shell to exit and returns its OpenSSH-style
+   * status.
+   */
+  virtual int handleSessionEnd() {
 #if __NetBSD__  // this unfortunateness seems to be fixed in NetBSD-8 (or at
                 // least -CURRENT) sadness for now :/
-    int throwaway;
-    FATAL_FAIL(waitpid(getPid(), &throwaway, WUNTRACED));
+    int status = 0;
+    FATAL_FAIL(waitpid(getPid(), &status, WUNTRACED));
+    if (WIFEXITED(status)) {
+      return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+      return 128 + WTERMSIG(status);
+    }
+    return 0;
 #else
     siginfo_t childInfo;
+    memset(&childInfo, 0, sizeof(childInfo));
     if (getPid() > 0) {
       if (waitid(P_PID, getPid(), &childInfo, WEXITED) == -1) {
         LOG(ERROR) << "waitid failed, child already reaped.";
+        return 0;
+      }
+      if (childInfo.si_code == CLD_EXITED) {
+        return childInfo.si_status;
+      }
+      if (childInfo.si_code == CLD_KILLED || childInfo.si_code == CLD_DUMPED) {
+        return 128 + childInfo.si_status;
       }
     }
+    return 0;
 #endif
   }
 
@@ -136,9 +163,9 @@ class PseudoUserTerminal : public UserTerminal {
 
  protected:
   /** @brief PID of the child shell spawned by `forkpty`. */
-  pid_t pid;
+  pid_t pid = -1;
   /** @brief Master PTY file descriptor shared with the router. */
-  int masterFd;
+  int masterFd = -1;
 };
 }  // namespace et
 

@@ -160,7 +160,9 @@ class HtmPty:
     def start(self, extra_args: list[str] | None = None) -> None:
         env = os.environ.copy()
         env["PATH"] = f"{self.htm.parent.resolve()}:{env.get('PATH', '')}"
-        env.setdefault("SHELL", "/bin/sh")
+        # Panes run $SHELL and the tests type POSIX syntax into them, so a
+        # non-POSIX login shell (e.g. fish) must not leak in.
+        env["SHELL"] = "/bin/sh"
         args = [str(self.htm)]
         if extra_args is None:
             args.append("-x")
@@ -323,7 +325,7 @@ def run_leftover_stdin_test(htm: Path, htmd: Path) -> None:
 
     env = os.environ.copy()
     env["PATH"] = f"{htm.parent.resolve()}:{env.get('PATH', '')}"
-    env.setdefault("SHELL", "/bin/sh")
+    env["SHELL"] = "/bin/sh"
     master_fd, slave_fd = pty.openpty()
     wrapper = (
         f"{shlex.quote(str(htm))} -x; "

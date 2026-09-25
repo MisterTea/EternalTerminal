@@ -110,7 +110,7 @@ sequenceDiagram
 
 One of the core features of EternalTerminal is handling reconnections, in a way that is seamless to the user: If the previous connection gets interrupted, a new connection is established and continues where the previous connection left off.
 
-When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver.
+When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up.
 
 To enable reconnects, **et** opens a new connection to the EternalTerminal port, and sends a new [ConnectRequest](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ET.proto#L12-L15) message containing the same **client-id** and protocol version as the initial request.
 
@@ -239,11 +239,12 @@ It then forwards the InitialPayload to the destination server, and waits for an 
 
 The terminal run loop is within [`UserTerminalHandler::runUserTerminal`](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/src/terminal/UserTerminalHandler.cpp#L64), within the `etterminal` process, and starts after the `TERMINAL_INIT` (with a TermInit payload) is received.
 
-It proxies between the user terminal fd (`masterFd`) and the router fifo. When terminal output is generated, it is read and the raw bytes are forwarded to the router fifo.
+It proxies between the user terminal fd (`masterFd`) and the router fifo. When terminal output is generated, it is read and forwarded to the router as a length-prefixed `TERMINAL_BUFFER` packet. When the session ends, etterminal reaps the child shell and sends a `TERMINAL_EXIT_STATUS` packet (with a `TerminalExitStatus` payload) before closing the router connection.
 
 From the router fifo, packets may be sent to either forward input to the terminal or configure the terminal state:
 - `TERMINAL_BUFFER` (with a TerminalBuffer payload) data is written to the terminal as user input.
 - `TERMINAL_INFO` (with a TerminalInfo) is used to adjust the window size of the terminal.
+- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client only when `InitialPayload.supports_exit_status` is set, so `et -c` can exit with the remote command status. Clients that leave the field unset (including et-v7.0.0) never see packet type 12.
 
 ## Jumphost Run Loop
 
