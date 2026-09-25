@@ -55,7 +55,6 @@ jobs:
                 libutempter-dev \
                 build-essential \
                 ninja-build \
-                ccache \
                 libcurl4-openssl-dev \
                 curl \
                 zip \
@@ -69,10 +68,10 @@ jobs:
                 automake
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
-        run: choco install -y ninja ccache
+        run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake ccache automake autoconf autoconf-archive libtool
+        run: brew update && brew install ninja cmake automake autoconf autoconf-archive libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
@@ -105,12 +104,6 @@ jobs:
         shell: bash
         run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: vcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
-
-      # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
       - uses: ilammy/msvc-dev-cmd@v1
         if: matrix.os == 'windows-latest'
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
@@ -119,17 +112,17 @@ jobs:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'ubuntu-latest'
 
       - name: Install dependencies and generate project files (mac)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'macos-latest'
 
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'windows-latest'
 
       # Build the whole project with Ninja (which is spawn by CMake).
@@ -142,7 +135,6 @@ jobs:
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
-          ccache --show-stats || true
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
@@ -151,7 +143,6 @@ jobs:
           $parallelLevel = if ($env:CI_PARALLEL_LEVEL) { $env:CI_PARALLEL_LEVEL } else { "2" }
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --output-on-failure
-          ccache --show-stats
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}

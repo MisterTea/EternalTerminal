@@ -34,7 +34,6 @@ jobs:
                 automake \
                 build-essential \
                 ca-certificates \
-                ccache \
                 cmake \
                 curl \
                 debhelper \
@@ -59,7 +58,6 @@ jobs:
               dnf install -y \
                 @development-tools \
                 ca-certificates \
-                ccache \
                 cmake \
                 curl \
                 gcc \
@@ -88,7 +86,6 @@ jobs:
                 automake \
                 boost-devel \
                 ca-certificates \
-                ccache \
                 cmake \
                 curl-devel \
                 gcc \
@@ -125,7 +122,6 @@ jobs:
                 dev-build/cmake \
                 dev-build/libtool \
                 dev-build/ninja \
-                dev-util/ccache \
                 dev-libs/boost \
                 dev-libs/libsodium \
                 dev-libs/openssl \
@@ -145,7 +141,6 @@ jobs:
                 automake \
                 base-devel \
                 ca-certificates \
-                ccache \
                 cmake \
                 curl \
                 git \
@@ -172,7 +167,6 @@ jobs:
                 automake \
                 binutils \
                 ca-certificates \
-                ccache \
                 cmake \
                 curl \
                 gcc \
@@ -213,16 +207,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: portability-${{ matrix.distro }}
-
       - name: Generate project files
         shell: bash
         run: |
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
         shell: bash
@@ -231,7 +220,6 @@ jobs:
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
           ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
-          ccache --show-stats || true
 
   freebsd:
     name: build-freebsd
@@ -243,12 +231,11 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Restore FreeBSD package and ccache
+      - name: Restore FreeBSD packages
         uses: actions/cache@v5
         with:
           path: |
             .ci-cache/pkg
-            .ci-cache/ccache
           key: freebsd-build-${{ github.sha }}
           restore-keys: |
             freebsd-build-
@@ -293,17 +280,13 @@ jobs:
             cd "${GITHUB_WORKSPACE}"
           fi
 
-          mkdir -p "$(pwd)/.ci-cache/pkg" "$(pwd)/.ci-cache/ccache"
+          mkdir -p "$(pwd)/.ci-cache/pkg"
           export PKG_CACHEDIR="$(pwd)/.ci-cache/pkg"
-          export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
-          export CCACHE_MAXSIZE=500M
-          export CCACHE_COMPRESS=true
 
           pkg install -y \
             autoconf \
             automake \
             ca_root_nss \
-            ccache \
             cmake \
             curl \
             git \
@@ -316,13 +299,12 @@ jobs:
             unzip \
             zip
 
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
           ctest_status=0
           ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure || ctest_status=$?
-          ccache --show-stats || true
           # vmactions copies the workspace back after this script. The
           # RelWithDebInfo tree is several gigabytes and that rsync fails
           # after a green test run.

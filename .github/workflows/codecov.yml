@@ -22,7 +22,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ lcov libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1\n  Port 2222\n\n" >> ~/.ssh/config
 
@@ -58,18 +58,9 @@ jobs:
           key: |
             et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-codecov-1
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: linux-codecov
-
       - name: Build Test with code coverage
-        env:
-          CMAKE_C_COMPILER_LAUNCHER: ccache
-          CMAKE_CXX_COMPILER_LAUNCHER: ccache
         run: |
           bash coverage.sh
-          ccache --show-stats || true
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v4
