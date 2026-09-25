@@ -7,6 +7,7 @@
 #include "PseudoUserTerminal.hpp"
 #include "ServerFifoPath.hpp"
 #include "TcpSocketHandler.hpp"
+#include "TerminalStdinParsing.hpp"
 #include "UserJumphostHandler.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
@@ -154,9 +155,9 @@ int main(int argc, char** argv) {
                "this information on stdin\n";
         exit(1);
       }
-      auto tokens = split(stdinData, '_');
-      if (tokens.size() == 2) {
-        idpasskey = tokens[0];
+      TerminalStdinLine stdinLine;
+      if (parseTerminalStdinLine(stdinData, &stdinLine)) {
+        idpasskey = stdinLine.idpasskey;
         if (idpasskey.substr(0, 3) == std::string("XXX")) {
           // New client connecting to new server, throw away passkey and
           // regenerate
@@ -165,9 +166,9 @@ int main(int argc, char** argv) {
           idpasskey = id + string("/") + passkey;
         }
 
-        SetTermEnv(tokens[1].c_str());
+        SetTermEnv(stdinLine.term.c_str());
       } else {
-        STFATAL << "Invalid number of tokens: " << tokens.size();
+        STFATAL << "Invalid stdin line: expected <id>/<passkey>_<TERM>";
       }
     } else {
       idpasskey = result["idpasskey"].as<string>();
