@@ -1,6 +1,7 @@
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <fstream>
+#include <limits>
 
 #include "BinaryStdioConsole.hpp"
 #include "ClientArgParsing.hpp"
@@ -226,6 +227,11 @@ int main(int argc, char** argv) {
         ("close-on-hangup",
          "terminate the remote session when this terminal receives SIGHUP or "
          "closes")  //
+        ("disconnect-timeout",
+         "Minutes a disconnected etterminal may stay alive before etserver "
+         "closes it for this session. 0 means no timeout. Overrides the "
+         "etserver global when set.",
+         cxxopts::value<int>())  //
         ("macserver",
          "Set when connecting to an macOS server.  Sets "
          "--terminal-path=/usr/local/bin/etterminal")  //
@@ -524,6 +530,24 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
+    optional<int> disconnectTimeoutMinutes;
+    if (result.count("disconnect-timeout")) {
+      int minutes = result["disconnect-timeout"].as<int>();
+      if (minutes < 0) {
+        CLOG(INFO, "stdout")
+            << "--disconnect-timeout must be a non-negative number of minutes"
+            << endl;
+        CLOG(INFO, "stdout") << options.help({}) << endl;
+        exit(1);
+      }
+      if (minutes > std::numeric_limits<int>::max() / 60) {
+        CLOG(INFO, "stdout") << "--disconnect-timeout is too large" << endl;
+        CLOG(INFO, "stdout") << options.help({}) << endl;
+        exit(1);
+      }
+      disconnectTimeoutMinutes = minutes;
+    }
+
     if (!noSshConfig) {
       ssh_options_set(&sshConfigOptions, SSH_OPTIONS_HOST,
                       destinationHost.c_str());
@@ -732,7 +756,8 @@ int main(int argc, char** argv) {
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
-        noPty, command, dynamicForwards, stdioForward);
+        noPty, command, dynamicForwards, stdioForward,
+        disconnectTimeoutMinutes);
 
     unique_ptr<MuxMaster> muxMaster;
     if (shouldBecomeMuxMaster(muxOptions)) {
@@ -748,7 +773,6 @@ int main(int argc, char** argv) {
         exit(1);
       }
     }
-
     const int remoteExitStatus =
         terminalClient.run(command, result.count("noexit"));
 

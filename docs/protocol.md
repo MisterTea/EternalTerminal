@@ -110,7 +110,7 @@ sequenceDiagram
 
 One of the core features of EternalTerminal is handling reconnections, in a way that is seamless to the user: If the previous connection gets interrupted, a new connection is established and continues where the previous connection left off.
 
-When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up.
+When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up. A client may also set `InitialPayload.disconnect_timeout_seconds` via `et --disconnect-timeout MINUTES` (converted to seconds on the wire); when present, that value overrides the etserver global for that session.
 
 To enable reconnects, **et** opens a new connection to the EternalTerminal port, and sends a new [ConnectRequest](https://github.com/MisterTea/EternalTerminal/blob/113fb23133eabce3d11681392d75ba4772814b44/proto/ET.proto#L12-L15) message containing the same **client-id** and protocol version as the initial request.
 

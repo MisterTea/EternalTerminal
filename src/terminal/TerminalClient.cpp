@@ -79,7 +79,7 @@ TerminalClient::TerminalClient(
     const string& identityAgent, int _keepaliveDuration,
     const vector<pair<string, string>>& envVars, bool _noPty,
     const string& command, const vector<string>& dynamicForwards,
-    const string& stdioForward)
+    const string& stdioForward, optional<int> disconnectTimeoutMinutes)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -95,6 +95,11 @@ TerminalClient::TerminalClient(
   } else if (noPty) {
     payload.set_no_pty(true);
     payload.set_command(command);
+  }
+  if (disconnectTimeoutMinutes) {
+    // Overflow already rejected in TerminalClientMain; convert minutes →
+    // seconds.
+    payload.set_disconnect_timeout_seconds(*disconnectTimeoutMinutes * 60);
   }
 
   for (const auto& envVar : envVars) {
