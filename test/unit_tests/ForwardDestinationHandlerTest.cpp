@@ -74,9 +74,7 @@ class MockSocketHandler : public SocketHandler {
 TEST_CASE("ForwardDestinationHandler closes its socket on destruction",
           "[ForwardDestinationHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
-  {
-    ForwardDestinationHandler handler(socketHandler, 42, 123);
-  }
+  { ForwardDestinationHandler handler(socketHandler, 42, 123); }
   CHECK(socketHandler->closedFds == std::vector<int>{42});
 }
 
