@@ -11,9 +11,9 @@ runs:
       uses: actions/cache@v5
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-${{ inputs.key }}-${{ github.sha }}
+        key: ccache-v2-${{ inputs.key }}-${{ github.sha }}
         restore-keys: |
-          ccache-${{ inputs.key }}-
+          ccache-v2-${{ inputs.key }}-
     - name: Export ccache environment
       shell: bash
       run: |

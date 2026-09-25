@@ -248,9 +248,9 @@ jobs:
           path: |
             .ci-cache/pkg
             .ci-cache/ccache
-          key: freebsd-build-${{ github.sha }}
+          key: freebsd-build-v2-${{ github.sha }}
           restore-keys: |
-            freebsd-build-
+            freebsd-build-v2-
 
       - name: Install act QEMU dependencies
         if: ${{ env.ACT }}
