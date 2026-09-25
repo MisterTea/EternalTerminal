@@ -97,6 +97,33 @@ class FakeSshSubprocessHandlerWithJumphost : public SubprocessUtils {
 };
 
 /**
+ * @brief Jumphost ssh output with banner text that contains colons.
+ *
+ * Merging SSH_MSG_USERAUTH_BANNER into the capture buffer must not break
+ * credential parsing; `split(..., ':')[1]` steals the field from "Warning:".
+ */
+class FakeSshSubprocessHandlerJumphostBannerColon : public SubprocessUtils {
+ public:
+  const string destinationId = string(16, 'D');
+  const string destinationPasskey = string(32, 'd');
+  const string jumphostId = string(16, 'J');
+  const string jumphostPasskey = string(32, 'j');
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    if (args.size() == 2) {
+      return "Warning: Permanently added 'jump' (ED25519) to the list of "
+             "known hosts.\n"
+             "To authenticate, visit: https://login.ts.net/a/xyz\n"
+             "IDPASSKEY:" +
+             jumphostId + "/" + jumphostPasskey + "\n";
+    }
+    return "IDPASSKEY:" + destinationId + "/" + destinationPasskey + "\n";
+  }
+};
+
+/**
  * @brief Fake subprocess handler that records every SSH invocation.
  */
 class RecordingSshSubprocessHandler : public SubprocessUtils {
@@ -224,6 +251,21 @@ TEST_CASE("SshSetupHandler with jumphost", "[SshSetupHandler]") {
     REQUIRE(id.length() == 16);
     REQUIRE(passkey.length() == 32);
   }
+}
+
+TEST_CASE("SshSetupHandler jumphost parses IDPASSKEY despite banner colons",
+          "[SshSetupHandler]") {
+  auto fakeSubprocess =
+      make_shared<FakeSshSubprocessHandlerJumphostBannerColon>();
+  SshSetupHandler handler(fakeSubprocess);
+
+  auto [id, passkey] =
+      handler.SetupSsh("testuser", "testhost", "testhost", 2022, "jumphost", "",
+                       false, 0, "", "", std::vector<string>());
+
+  // Jump setup overwrites credentials from the second ssh invocation.
+  REQUIRE(id == fakeSubprocess->jumphostId);
+  REQUIRE(passkey == fakeSubprocess->jumphostPasskey);
 }
 
 TEST_CASE("SshSetupHandler keeps destination options off the jumphost",

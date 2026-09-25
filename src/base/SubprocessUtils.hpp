@@ -28,8 +28,9 @@ class SubprocessUtils {
   virtual ~SubprocessUtils() = default;
 
   /**
-   * @brief Runs a command with arguments while capturing its stdout without a
-   * shell.
+   * @brief Runs a command with arguments, capturing stdout and streaming
+   * stderr live to the parent stderr (for SSH banners) without mixing
+   * credential-bearing stdout into the terminal.
    */
   virtual string SubprocessToStringInteractive(const string& command,
                                                const vector<string>& args);

@@ -29,6 +29,8 @@ jobs:
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       INPUT_RELEASE_TAG: ${{ github.event.release.tag_name || inputs.release_tag }}
       OVERWRITE_ASSET: ${{ inputs.overwrite_asset || false }}
     steps:
@@ -101,20 +103,19 @@ jobs:
         run: choco install -y ninja
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
+      - name: Restore vcpkg binary cache
         if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}
         uses: actions/cache@v5
         with:
           path: |
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-windows-latest-11-release-1
+            ${{ github.workspace }}/.vcpkg-binary-cache
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
+          key: et-vcpkg-bin-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-windows-latest-11-release
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Show content of workspace after cache has been restored
         if: ${{ steps.check_release_asset.outputs.should_build == 'true' }}

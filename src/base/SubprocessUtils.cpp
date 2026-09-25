@@ -13,6 +13,8 @@ string SubprocessUtils::SubprocessToStringInteractive(
   HANDLE g_hChildStd_IN_Wr = NULL;
   HANDLE g_hChildStd_OUT_Rd = NULL;
   HANDLE g_hChildStd_OUT_Wr = NULL;
+  HANDLE g_hChildStd_ERR_Rd = NULL;
+  HANDLE g_hChildStd_ERR_Wr = NULL;
 
   // Set the bInheritHandle flag so pipe handles are inherited.
 
@@ -29,6 +31,15 @@ string SubprocessUtils::SubprocessToStringInteractive(
 
   if (!SetHandleInformation(g_hChildStd_OUT_Rd, HANDLE_FLAG_INHERIT, 0))
     ThrowWindowsError("Stdout SetHandleInformation");
+
+  // Create a pipe for the child process's STDERR (streamed live; not mixed
+  // into the captured stdout credential buffer).
+
+  if (!CreatePipe(&g_hChildStd_ERR_Rd, &g_hChildStd_ERR_Wr, &saAttr, 0))
+    ThrowWindowsError("StderrRd CreatePipe");
+
+  if (!SetHandleInformation(g_hChildStd_ERR_Rd, HANDLE_FLAG_INHERIT, 0))
+    ThrowWindowsError("Stderr SetHandleInformation");
 
   // Create a pipe for the child process's STDIN.
 
@@ -60,7 +71,7 @@ string SubprocessUtils::SubprocessToStringInteractive(
 
   ZeroMemory(&siStartInfo, sizeof(STARTUPINFO));
   siStartInfo.cb = sizeof(STARTUPINFO);
-  siStartInfo.hStdError = g_hChildStd_OUT_Wr;
+  siStartInfo.hStdError = g_hChildStd_ERR_Wr;
   siStartInfo.hStdOutput = g_hChildStd_OUT_Wr;
   siStartInfo.hStdInput = g_hChildStd_IN_Rd;
   siStartInfo.dwFlags |= STARTF_USESTDHANDLES;
@@ -84,6 +95,8 @@ string SubprocessUtils::SubprocessToStringInteractive(
   if (!bSuccess) {
     CloseHandle(g_hChildStd_OUT_Rd);
     CloseHandle(g_hChildStd_OUT_Wr);
+    CloseHandle(g_hChildStd_ERR_Rd);
+    CloseHandle(g_hChildStd_ERR_Wr);
     CloseHandle(g_hChildStd_IN_Rd);
     CloseHandle(g_hChildStd_IN_Wr);
     ThrowWindowsError("CreateProcess");
@@ -93,6 +106,7 @@ string SubprocessUtils::SubprocessToStringInteractive(
     // that the child process has ended.
 
     CloseHandle(g_hChildStd_OUT_Wr);
+    CloseHandle(g_hChildStd_ERR_Wr);
     CloseHandle(g_hChildStd_IN_Rd);
     // This API captures output but does not currently provide input. Closing
     // the remaining parent write end ensures programs waiting on stdin see
@@ -100,23 +114,75 @@ string SubprocessUtils::SubprocessToStringInteractive(
     CloseHandle(g_hChildStd_IN_Wr);
   }
 
-  // Read from pipe that is the standard output for child process.
-  // Read output from the child process's pipe for STDOUT
-  // and write to the parent process's pipe for STDOUT.
-  // Stop when there is no more data.
+  // Drain stdout (captured) and stderr (streamed live) before waiting so a
+  // chatty child cannot fill a pipe and deadlock against WaitForSingleObject.
   DWORD dwRead;
   CHAR chBuf[BUFSIZE];
-  bSuccess = FALSE;
   string childOutput = "";
+  HANDLE parentStderr = GetStdHandle(STD_ERROR_HANDLE);
+  bool stdoutOpen = true;
+  bool stderrOpen = true;
 
-  for (;;) {
-    bSuccess = ReadFile(g_hChildStd_OUT_Rd, chBuf, BUFSIZE, &dwRead, NULL);
-    if (!bSuccess || dwRead == 0) break;
+  while (stdoutOpen || stderrOpen) {
+    bool drained = false;
 
-    childOutput += string((const char*)chBuf, (size_t)dwRead);
+    auto tryRead = [&](HANDLE src, bool* openFlag, bool isStderr) {
+      DWORD available = 0;
+      if (!PeekNamedPipe(src, NULL, 0, NULL, &available, NULL)) {
+        *openFlag = false;
+        return;
+      }
+      if (available == 0) {
+        return;
+      }
+      drained = true;
+      DWORD toRead = (available < BUFSIZE) ? available : BUFSIZE;
+      bSuccess = ReadFile(src, chBuf, toRead, &dwRead, NULL);
+      if (!bSuccess || dwRead == 0) {
+        *openFlag = false;
+        return;
+      }
+      if (isStderr) {
+        if (parentStderr != NULL && parentStderr != INVALID_HANDLE_VALUE) {
+          DWORD written = 0;
+          WriteFile(parentStderr, chBuf, dwRead, &written, NULL);
+        }
+      } else {
+        childOutput += string((const char*)chBuf, (size_t)dwRead);
+      }
+    };
+
+    if (stdoutOpen) {
+      tryRead(g_hChildStd_OUT_Rd, &stdoutOpen, false);
+    }
+    if (stderrOpen) {
+      tryRead(g_hChildStd_ERR_Rd, &stderrOpen, true);
+    }
+
+    if (!drained) {
+      // No data right now. If the child has already exited, a successful peek
+      // with zero bytes means that pipe has reached EOF.
+      if (WaitForSingleObject(piProcInfo.hProcess, 10) == WAIT_OBJECT_0) {
+        DWORD remainingOut = 1;
+        DWORD remainingErr = 1;
+        if (stdoutOpen &&
+            PeekNamedPipe(g_hChildStd_OUT_Rd, NULL, 0, NULL, &remainingOut,
+                          NULL) &&
+            remainingOut == 0) {
+          stdoutOpen = false;
+        }
+        if (stderrOpen &&
+            PeekNamedPipe(g_hChildStd_ERR_Rd, NULL, 0, NULL, &remainingErr,
+                          NULL) &&
+            remainingErr == 0) {
+          stderrOpen = false;
+        }
+      }
+    }
   }
 
   CloseHandle(g_hChildStd_OUT_Rd);
+  CloseHandle(g_hChildStd_ERR_Rd);
   WaitForSingleObject(piProcInfo.hProcess, INFINITE);
   CloseHandle(piProcInfo.hThread);
   CloseHandle(piProcInfo.hProcess);
@@ -144,20 +210,29 @@ string SubprocessUtils::SubprocessToStringInteractive(
 #else
 string SubprocessUtils::SubprocessToStringInteractive(
     const string& command, const vector<string>& args) {
-  int link_client[2];
-  char buf_client[4096];
-  if (pipe(link_client) == -1) {
+  int stdout_pipe[2];
+  int stderr_pipe[2];
+  char buf[4096];
+  if (pipe(stdout_pipe) == -1) {
+    STFATAL << "pipe";
+    exit(1);
+  }
+  if (pipe(stderr_pipe) == -1) {
     STFATAL << "pipe";
     exit(1);
   }
 
   pid_t pid = fork();
   if (pid == 0) {
-    // child process
-    dup2(link_client[1], STDOUT_FILENO);
-    dup2(link_client[1], STDERR_FILENO);
-    close(link_client[0]);
-    close(link_client[1]);
+    // child process: keep stdout and stderr on separate pipes so the parent
+    // can capture credentials without streaming them, while still showing
+    // SSH_MSG_USERAUTH_BANNER text live on the parent's stderr.
+    dup2(stdout_pipe[1], STDOUT_FILENO);
+    dup2(stderr_pipe[1], STDERR_FILENO);
+    close(stdout_pipe[0]);
+    close(stdout_pipe[1]);
+    close(stderr_pipe[0]);
+    close(stderr_pipe[1]);
 
     char** argsArray = new char*[args.size() + 2];
     argsArray[0] = strdup(command.c_str());
@@ -175,20 +250,96 @@ string SubprocessUtils::SubprocessToStringInteractive(
     exit(1);
   } else if (pid > 0) {
     // parent process
-    close(link_client[1]);
-    string sshBuffer;
-    while (true) {
-      int nbytes = read(link_client[0], buf_client, sizeof(buf_client));
-      if (nbytes <= 0) {
-        break;
+    close(stdout_pipe[1]);
+    close(stderr_pipe[1]);
+
+    string stdoutBuffer;
+    bool stdoutOpen = true;
+    bool stderrOpen = true;
+    while (stdoutOpen || stderrOpen) {
+      struct pollfd fds[2];
+      nfds_t nfds = 0;
+      int stdoutIdx = -1;
+      int stderrIdx = -1;
+      if (stdoutOpen) {
+        stdoutIdx = static_cast<int>(nfds);
+        fds[nfds].fd = stdout_pipe[0];
+        fds[nfds].events = POLLIN;
+        fds[nfds].revents = 0;
+        nfds++;
       }
-      sshBuffer += string(buf_client, nbytes);
+      if (stderrOpen) {
+        stderrIdx = static_cast<int>(nfds);
+        fds[nfds].fd = stderr_pipe[0];
+        fds[nfds].events = POLLIN;
+        fds[nfds].revents = 0;
+        nfds++;
+      }
+
+      int ready = poll(fds, nfds, -1);
+      if (ready == -1) {
+        if (errno == EINTR) {
+          continue;
+        }
+        STFATAL << "poll";
+        exit(1);
+      }
+
+      auto drainFd = [&](int fd, bool* openFlag, bool isStderr) {
+        while (true) {
+          int nbytes = read(fd, buf, sizeof(buf));
+          if (nbytes < 0) {
+            if (errno == EINTR) {
+              continue;
+            }
+            *openFlag = false;
+            return;
+          }
+          if (nbytes == 0) {
+            *openFlag = false;
+            return;
+          }
+          if (isStderr) {
+            const char* cursor = buf;
+            size_t remaining = static_cast<size_t>(nbytes);
+            while (remaining > 0) {
+              ssize_t written = write(STDERR_FILENO, cursor, remaining);
+              if (written < 0) {
+                if (errno == EINTR) {
+                  continue;
+                }
+                // Best-effort live tee; keep draining so the child cannot
+                // deadlock even if the parent's stderr is unavailable.
+                break;
+              }
+              cursor += written;
+              remaining -= static_cast<size_t>(written);
+            }
+          } else {
+            stdoutBuffer.append(buf, static_cast<size_t>(nbytes));
+          }
+          // Read once per poll readiness notification; additional data will
+          // wake poll again. Avoid busy-spinning on a non-blocking fd.
+          return;
+        }
+      };
+
+      if (stdoutIdx >= 0 &&
+          (fds[stdoutIdx].revents & (POLLIN | POLLHUP | POLLERR))) {
+        drainFd(stdout_pipe[0], &stdoutOpen, false);
+      }
+      if (stderrIdx >= 0 &&
+          (fds[stderrIdx].revents & (POLLIN | POLLHUP | POLLERR))) {
+        drainFd(stderr_pipe[0], &stderrOpen, true);
+      }
     }
-    close(link_client[0]);
+
+    close(stdout_pipe[0]);
+    close(stderr_pipe[0]);
     int status = 0;
     while (waitpid(pid, &status, 0) == -1 && errno == EINTR) {
     }
-    return sshBuffer;
+    return stdoutBuffer;
   } else {
     LOG(INFO) << "Failed to fork";
     exit(1);
