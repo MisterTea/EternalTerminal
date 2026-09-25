@@ -530,6 +530,7 @@ add_library(
   src/terminal/ControlProtocol.hpp
   src/terminal/ControlPaths.hpp
   src/terminal/SessionScrollback.hpp
+  src/terminal/SessionTombstone.hpp
   src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp

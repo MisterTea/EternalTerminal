@@ -125,6 +125,26 @@ class TerminalClient {
   // than creating one. The shell is mid-life, so connect-time setup has already
   // happened and re-running it would type into whatever is in the foreground.
   bool attachedToExisting() { return connection && connection->wasRecovered(); }
+
+  /**
+   * @brief Why `run()` returned, in a form fit to show a user.
+   *
+   * `run()` returning is what ends a control session, and every caller so far
+   * has had to guess which of several very different things happened. Ask here
+   * instead of inferring it.
+   */
+  string exitReason() {
+    if (sessionEndedByServer()) {
+      return "the remote session ended (server no longer has it)";
+    }
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return "shutdown was requested";
+      }
+    }
+    return "the connection closed";
+  }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */

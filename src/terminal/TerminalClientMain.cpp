@@ -21,6 +21,7 @@
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
 #include "SessionStore.hpp"
+#include "SessionTombstone.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -1474,6 +1475,9 @@ int main(int argc, char** argv) {
             << "Could not prepare control socket: " << e.what() << endl;
         exit(1);
       }
+      // This name is starting, so whatever ended it last time no longer
+      // applies; clear the note before anyone can read a stale one.
+      session_tombstone::clear(ctlName);
       CLOG(INFO, "stdout") << "et control session: " << ctlName << endl;
       CLOG(INFO, "stdout") << "control socket: " << socketPath << endl;
 
@@ -1496,6 +1500,15 @@ int main(int argc, char** argv) {
       const bool adopted = terminalClient.attachedToExisting();
       remoteExitStatus = terminalClient.run(adopted ? "" : command, /*noexit=*/true);
       sessionEndedByServer = terminalClient.sessionEndedByServer();
+      // run() returning is what ends a control session, and unlinking the
+      // socket below is all the next `etctl` command would otherwise see. Leave
+      // the reason behind first, so that command can say what happened instead
+      // of reporting a missing file. The saved session record is dropped on the
+      // way out when the server has genuinely forgotten it.
+      const string endedBecause = terminalClient.exitReason();
+      LOG(INFO) << "Control session '" << ctlName
+                << "' ending: " << endedBecause;
+      session_tombstone::write(ctlName, endedBecause);
       listener.shutdown();
 #endif
     } else {
