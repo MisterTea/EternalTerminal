@@ -96,6 +96,7 @@ pair<string, string> SshSetupHandler::SetupSsh(
     ssh_args.push_back("-J");
     ssh_args.push_back(jumphost);
   }
+  appendBootstrapArgs(&ssh_args, true);
 
   ssh_args.push_back(SSH_USER_PREFIX + host_alias);
 
@@ -193,6 +194,8 @@ pair<string, string> SshSetupHandler::SetupSsh(
       jump_ssh_args.push_back("-p");
       jump_ssh_args.push_back(parsedJump.portSuffix.substr(1));
     }
+    // Destination `-p` is the sshd port of the final host, not the jumphost.
+    appendBootstrapArgs(&jump_ssh_args, false);
     // ssh_options configure the destination. Jump-specific options are
     // resolved independently from the jumphost's SSH configuration.
     jump_ssh_args.push_back(jumphostDest);

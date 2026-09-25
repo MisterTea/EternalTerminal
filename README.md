@@ -222,7 +222,7 @@ et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostn
 et hostname:8888 --jumphost jump_hostname --jport 9999
 ```
 
-Additional arguments that et accepts are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accepts are port forwarding pairs with `--tunnel "18000:8000, 18001-18003:8001-8003"` (or OpenSSH-style `-L`), and a command to run immediately after the connection is set up through `--command` or as a positional command after the host. Short flags match OpenSSH: `-p` is the sshd port, `--port` is the etserver port, and `-t` requests a pty.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide SSH config files.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.

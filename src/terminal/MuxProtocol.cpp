@@ -2,6 +2,8 @@
 
 #include <sys/stat.h>
 
+#include "ClientArgParsing.hpp"
+
 #ifndef WIN32
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -27,14 +29,6 @@ string toLower(string s) {
     c = static_cast<char>(::tolower(static_cast<unsigned char>(c)));
   }
   return s;
-}
-
-bool consumeArg(vector<string>* args, size_t* i, string* out) {
-  if (*i + 1 >= args->size()) {
-    return false;
-  }
-  *out = (*args)[++(*i)];
-  return true;
 }
 
 }  // namespace
@@ -360,6 +354,217 @@ string expandControlPath(const string& path) {
   return path;
 }
 
+namespace {
+
+bool isPortToken(const string& value) {
+  if (value.empty()) {
+    return false;
+  }
+  char* end = nullptr;
+  long port = strtol(value.c_str(), &end, 10);
+  return end != value.c_str() && end != nullptr && *end == '\0' && port >= 1 &&
+         port <= 65535;
+}
+
+void recordSessionOption(MuxParseResult* result, const string& option) {
+  auto eq = option.find('=');
+  string key = eq == string::npos ? option : option.substr(0, eq);
+  string value = eq == string::npos ? "yes" : option.substr(eq + 1);
+  string keyLower = toLower(key);
+  if (keyLower == "controlmaster") {
+    result->options.controlMaster = parseControlMasterValue(value);
+  } else if (keyLower == "controlpath") {
+    result->options.controlPath = expandControlPath(value);
+  } else if (keyLower == "controlpersist") {
+    result->options.controlPersist = parseControlPersistValue(value);
+  } else {
+    result->options.passthroughOptions.push_back(option);
+  }
+  // cxxopts still has to see -o. -G and session options read it from the
+  // remaining argv; mux only records the Control* subset above.
+  result->remainingArgs.push_back("-o");
+  result->remainingArgs.push_back(option);
+}
+
+// OpenSSH: a value-taking short consumes the rest of a cluster, or the next
+// argv token when the cluster ends on that letter.
+string takeShortValue(const vector<string>& args, size_t* argIndex,
+                      const string& cluster, size_t* charIndex, char flag) {
+  if (*charIndex + 1 < cluster.size()) {
+    string value = cluster.substr(*charIndex + 1);
+    *charIndex = cluster.size();
+    return value;
+  }
+  if (*argIndex + 1 >= args.size()) {
+    throw runtime_error(string("-") + flag + " requires an argument");
+  }
+  *charIndex += 1;
+  return args[++(*argIndex)];
+}
+
+void parseShortCluster(MuxParseResult* result, const vector<string>& args,
+                       size_t* argIndex) {
+  const string& arg = args[*argIndex];
+  const string cluster = arg.substr(1);
+  size_t k = 0;
+  while (k < cluster.size()) {
+    const char flag = cluster[k];
+    switch (flag) {
+      case 'p': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (!isPortToken(value)) {
+          throw runtime_error("Invalid sshd port: " + value);
+        }
+        result->ssh.sshPortSet = true;
+        result->ssh.sshPort = std::stoi(value);
+        break;
+      }
+      case 'l': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-l requires a username");
+        }
+        result->ssh.loginNameSet = true;
+        result->ssh.loginName = value;
+        break;
+      }
+      case 'c': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-c requires a cipher spec");
+        }
+        result->ssh.cipherSet = true;
+        result->ssh.cipher = value;
+        break;
+      }
+      case 'e': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-e requires an escape character");
+        }
+        result->ssh.escapeSet = true;
+        result->ssh.escapeChar = value;
+        break;
+      }
+      case 'L': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-L requires a forward specification");
+        }
+        result->ssh.localForwards.push_back(value);
+        break;
+      }
+      case 'R': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-R requires a forward specification");
+        }
+        result->ssh.remoteForwards.push_back(value);
+        break;
+      }
+      case 'i': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-i requires an identity file");
+        }
+        result->ssh.identityFiles.push_back(value);
+        break;
+      }
+      case 'J': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        if (value.empty()) {
+          throw runtime_error("-J requires a jump host");
+        }
+        result->ssh.jumpHostSet = true;
+        result->ssh.jumpHost = value;
+        result->ssh.jumpHostArgIndex = static_cast<int>(*argIndex);
+        break;
+      }
+      case 't':
+        result->ssh.pty = PtyOverride::Force;
+        ++k;
+        break;
+      case 'T':
+        result->ssh.pty = PtyOverride::Disable;
+        result->remainingArgs.push_back("-T");
+        ++k;
+        break;
+      case 'x':
+        result->ssh.disableX11 = true;
+        ++k;
+        break;
+      case 'f':
+        result->ssh.background = true;
+        ++k;
+        break;
+      case 'N':
+        result->ssh.noRemoteCommand = true;
+        ++k;
+        break;
+      case 'v':
+        result->ssh.verboseCount++;
+        ++k;
+        break;
+      case 'M':
+        result->options.controlMaster = ControlMasterMode::Yes;
+        ++k;
+        break;
+      case 'S': {
+        string path = takeShortValue(args, argIndex, cluster, &k, flag);
+        result->options.controlPath = expandControlPath(path);
+        break;
+      }
+      case 'O': {
+        string cmd = takeShortValue(args, argIndex, cluster, &k, flag);
+        result->options.ctlCommand = toLower(cmd);
+        break;
+      }
+      case 'o': {
+        string option = takeShortValue(args, argIndex, cluster, &k, flag);
+        recordSessionOption(result, option);
+        break;
+      }
+      case 'D':
+      case 'W':
+      case 'F':
+      case 'r':
+      case 'u':
+      case 'k': {
+        string value = takeShortValue(args, argIndex, cluster, &k, flag);
+        result->remainingArgs.push_back(string("-") + flag);
+        result->remainingArgs.push_back(value);
+        break;
+      }
+      case 'G':
+      case 'V':
+      case 'h':
+        result->remainingArgs.push_back(string("-") + flag);
+        ++k;
+        break;
+      case 'B':
+      case 'b':
+      case 'E':
+      case 'I':
+      case 'm':
+      case 'P':
+      case 'Q':
+      case 'w':
+        // Unsupported OpenSSH options that take a value. Drop the value too
+        // so it is not taken as the host.
+        takeShortValue(args, argIndex, cluster, &k, flag);
+        break;
+      default:
+        // Other letters take no value. cxxopts' allow_unrecognised_options
+        // tolerates them one at a time.
+        result->remainingArgs.push_back(string("-") + flag);
+        ++k;
+        break;
+    }
+  }
+}
+
+}  // namespace
+
 MuxParseResult parseMuxCliOptions(int argc, char** argv) {
   MuxParseResult result;
   result.remainingArgs.reserve(static_cast<size_t>(argc));
@@ -372,65 +577,41 @@ MuxParseResult parseMuxCliOptions(int argc, char** argv) {
     args.push_back(argv[i]);
   }
 
-  for (size_t i = 0; i < args.size(); i++) {
+  for (size_t i = 0; i < args.size();) {
     const string& arg = args[i];
-    if (arg == "-M") {
-      result.options.controlMaster = ControlMasterMode::Yes;
-      continue;
+    if (arg == "--") {
+      // Host follows, even when it looks like a flag. Do not parse the
+      // remote command.
+      for (; i < args.size(); ++i) {
+        result.remainingArgs.push_back(args[i]);
+      }
+      break;
     }
-    if (arg == "-S" || arg.rfind("-S", 0) == 0) {
-      string path;
-      if (arg == "-S") {
-        if (!consumeArg(&args, &i, &path)) {
-          throw runtime_error("-S requires a ControlPath argument");
+    if (arg.size() >= 2 && arg[0] == '-' && arg != "-") {
+      if (arg[1] == '-') {
+        if (arg == "--jumphost" || arg.rfind("--jumphost=", 0) == 0) {
+          result.ssh.explicitJumpHostIndex = static_cast<int>(i);
+        } else if (arg == "--no-pty") {
+          result.ssh.pty = PtyOverride::Disable;
         }
-      } else {
-        path = arg.substr(2);
-      }
-      result.options.controlPath = expandControlPath(path);
-      continue;
-    }
-    if (arg == "-O" || arg.rfind("-O", 0) == 0) {
-      string cmd;
-      if (arg == "-O") {
-        if (!consumeArg(&args, &i, &cmd)) {
-          throw runtime_error("-O requires a control command");
+        result.remainingArgs.push_back(arg);
+        if (arg.find('=') == string::npos && etOptionConsumesValue(arg) &&
+            i + 1 < args.size()) {
+          result.remainingArgs.push_back(args[++i]);
         }
-      } else {
-        cmd = arg.substr(2);
+        ++i;
+        continue;
       }
-      result.options.ctlCommand = toLower(cmd);
+      parseShortCluster(&result, args, &i);
+      ++i;
       continue;
     }
-    if (arg == "-o" || arg.rfind("-o", 0) == 0) {
-      string option;
-      if (arg == "-o") {
-        if (!consumeArg(&args, &i, &option)) {
-          throw runtime_error("-o requires an argument");
-        }
-      } else {
-        option = arg.substr(2);
-      }
-      auto eq = option.find('=');
-      string key = eq == string::npos ? option : option.substr(0, eq);
-      string value = eq == string::npos ? "yes" : option.substr(eq + 1);
-      string keyLower = toLower(key);
-      if (keyLower == "controlmaster") {
-        result.options.controlMaster = parseControlMasterValue(value);
-      } else if (keyLower == "controlpath") {
-        result.options.controlPath = expandControlPath(value);
-      } else if (keyLower == "controlpersist") {
-        result.options.controlPersist = parseControlPersistValue(value);
-      } else {
-        result.options.passthroughOptions.push_back(option);
-      }
-      // cxxopts still has to see -o. -G and session options read it from the
-      // remaining argv; mux only records the Control* subset above.
-      result.remainingArgs.push_back("-o");
-      result.remainingArgs.push_back(option);
-      continue;
+    // First positional is the destination. Flags after it belong to the
+    // remote command.
+    for (; i < args.size(); ++i) {
+      result.remainingArgs.push_back(args[i]);
     }
-    result.remainingArgs.push_back(arg);
+    break;
   }
 
   return result;

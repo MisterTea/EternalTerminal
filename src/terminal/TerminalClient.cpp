@@ -79,7 +79,8 @@ TerminalClient::TerminalClient(
     const string& identityAgent, int _keepaliveDuration,
     const vector<pair<string, string>>& envVars, bool _noPty,
     const string& command, const vector<string>& dynamicForwards,
-    const string& stdioForward, optional<int> disconnectTimeoutMinutes)
+    const string& stdioForward, optional<int> disconnectTimeoutMinutes,
+    bool noShell)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -90,7 +91,7 @@ TerminalClient::TerminalClient(
   InitialPayload payload;
   payload.set_jumphost(jumphost);
   payload.set_supports_exit_status(true);
-  if (stdioForwardActive) {
+  if (stdioForwardActive || noShell) {
     payload.set_no_shell(true);
   } else if (noPty) {
     payload.set_no_pty(true);

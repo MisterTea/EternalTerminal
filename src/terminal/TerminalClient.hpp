@@ -42,7 +42,8 @@ class TerminalClient {
                  bool noPty = false, const string& command = "",
                  const vector<string>& dynamicForwards = {},
                  const string& stdioForward = "",
-                 optional<int> disconnectTimeoutMinutes = nullopt);
+                 optional<int> disconnectTimeoutMinutes = nullopt,
+                 bool noShell = false);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();

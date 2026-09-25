@@ -501,7 +501,7 @@ void TerminalServer::runTerminal(
               }
               // PTY may already be gone (EOF/`finishSession`); do not close the
               // client here — fall through so TERMINAL_EXIT_STATUS can still be
-              // forwarded for `et -c`.
+              // forwarded for `et --command`.
               try {
                 char c = TERMINAL_BUFFER;
                 terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
