@@ -14,6 +14,8 @@ jobs:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -39,24 +41,21 @@ jobs:
           git submodule update --init --force --recursive
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
+      - name: Restore vcpkg binary cache
         uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
           # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
           path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ github.workspace }}/cov_build/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-codecov-1
+            ${{ github.workspace }}/.vcpkg-binary-cache
+            ${{ github.workspace }}/cov_build/vcpkg_installed
+          key: et-vcpkg-bin-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-linux-codecov
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build Test with code coverage
         run: |
