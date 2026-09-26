@@ -15,7 +15,7 @@ namespace et {
 /**
  * @brief Runs a remote command on pipes (stdin/stdout/stderr) without a pty.
  *
- * Used for `et -T -c ...`: binary stdio, separate stderr, no login shell
+ * Used for `et -T --command ...`: binary stdio, separate stderr, no login shell
  * motd/echo, and no `; exit` typed into a shell.
  */
 class PipeUserTerminal : public UserTerminal {

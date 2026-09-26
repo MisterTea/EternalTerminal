@@ -158,6 +158,20 @@ inline bool disconnectExpiryClosesSession(
   return disconnectDeadlineReached(deadline, now, stillConnected, timeoutSec);
 }
 
+/**
+ * @brief Per-session disconnect timeout in seconds.
+ *
+ * A client may set `InitialPayload.disconnect_timeout_seconds` (from `et
+ * --disconnect-timeout` minutes). When unset, the etserver global applies.
+ */
+inline int sessionDisconnectTimeoutSec(int serverTimeoutSec,
+                                       const InitialPayload& payload) {
+  if (payload.has_disconnect_timeout_seconds()) {
+    return payload.disconnect_timeout_seconds();
+  }
+  return serverTimeoutSec;
+}
+
 }  // namespace et
 
 #endif  // __ET_TERMINAL_SERVER__

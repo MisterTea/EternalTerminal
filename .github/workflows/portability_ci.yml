@@ -34,8 +34,8 @@ jobs:
                 automake \
                 build-essential \
                 ca-certificates \
-                ccache \
                 cmake \
+                ccache \
                 curl \
                 debhelper \
                 git \
@@ -59,8 +59,8 @@ jobs:
               dnf install -y \
                 @development-tools \
                 ca-certificates \
-                ccache \
                 cmake \
+                ccache \
                 curl \
                 gcc \
                 gcc-c++ \
@@ -88,8 +88,8 @@ jobs:
                 automake \
                 boost-devel \
                 ca-certificates \
-                ccache \
                 cmake \
+                ccache \
                 curl-devel \
                 gcc \
                 gcc-c++ \
@@ -123,9 +123,9 @@ jobs:
                 dev-build/autoconf \
                 dev-build/automake \
                 dev-build/cmake \
+                dev-util/ccache \
                 dev-build/libtool \
                 dev-build/ninja \
-                dev-util/ccache \
                 dev-libs/boost \
                 dev-libs/libsodium \
                 dev-libs/openssl \
@@ -145,8 +145,8 @@ jobs:
                 automake \
                 base-devel \
                 ca-certificates \
-                ccache \
                 cmake \
+                ccache \
                 curl \
                 git \
                 jq \
@@ -172,8 +172,8 @@ jobs:
                 automake \
                 binutils \
                 ca-certificates \
-                ccache \
                 cmake \
+                ccache \
                 curl \
                 gcc \
                 gcc-c++ \
@@ -213,7 +213,7 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Restore ccache
+      - name: Restore dependency compiler cache
         uses: ./.github/actions/ccache
         with:
           key: portability-${{ matrix.distro }}
@@ -231,7 +231,6 @@ jobs:
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
           ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
-          ccache --show-stats || true
 
   freebsd:
     name: build-freebsd
@@ -243,15 +242,15 @@ jobs:
         with:
           submodules: recursive
 
-      - name: Restore FreeBSD package and ccache
+      - name: Restore FreeBSD packages
         uses: actions/cache@v5
         with:
           path: |
             .ci-cache/pkg
             .ci-cache/ccache
-          key: freebsd-build-${{ github.sha }}
+          key: freebsd-build-v2-${{ github.sha }}
           restore-keys: |
-            freebsd-build-
+            freebsd-build-v2-
 
       - name: Install act QEMU dependencies
         if: ${{ env.ACT }}
@@ -298,6 +297,7 @@ jobs:
           export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
           export CCACHE_MAXSIZE=500M
           export CCACHE_COMPRESS=true
+          export CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime
 
           pkg install -y \
             autoconf \
@@ -322,7 +322,6 @@ jobs:
           export SHELL=/bin/sh
           ctest_status=0
           ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure || ctest_status=$?
-          ccache --show-stats || true
           # vmactions copies the workspace back after this script. The
           # RelWithDebInfo tree is several gigabytes and that rsync fails
           # after a green test run.

@@ -7,10 +7,10 @@ source "$(dirname "$0")/session_test_lib.sh"
 start_server
 
 # Ordinary sessions are saved under a generated name; --no-persist opts out.
-start_client 8 "$LOGS/unnamed.log" -N "localhost:$ET_PORT"
+start_client 8 "$LOGS/unnamed.log" --no-terminal "localhost:$ET_PORT"
 wait_for 30 grep -q 'ET running' "$LOGS/unnamed.log"
 build/et --list | grep -E -q '^20[0-9]{6}-[[:alnum:]]{4}'
-start_client 9 "$LOGS/nopersist.log" --no-persist -N "localhost:$ET_PORT"
+start_client 9 "$LOGS/nopersist.log" --no-persist --no-terminal "localhost:$ET_PORT"
 wait_for 30 grep -q 'ET running' "$LOGS/nopersist.log"
 [ "$(find "$SESSIONS" -type f | wc -l)" -eq 1 ]
 
@@ -19,16 +19,16 @@ wait_for 30 grep -q 'ET running' "$LOGS/nopersist.log"
 PIPE_ET="build/et --serverfifo=$ET_FIFO --terminal-path $RUN_DIR/etterminal"
 for flag in "--name pipe localhost:$ET_PORT" "--attach pipe"; do
   # shellcheck disable=SC2086
-  $PIPE_ET -T -c true $flag >"$LOGS/pipe-reject.log" 2>&1 </dev/null && exit 1
+  $PIPE_ET -T --command true $flag >"$LOGS/pipe-reject.log" 2>&1 </dev/null && exit 1
   grep -q 'no-pty sessions are not saved' "$LOGS/pipe-reject.log"
 done
 head -c 3000000 /dev/urandom >"$RUN_DIR/blob"
-$PIPE_ET -T -c "cat $RUN_DIR/blob" "localhost:$ET_PORT" </dev/null \
+$PIPE_ET -T --command "cat $RUN_DIR/blob" "localhost:$ET_PORT" </dev/null \
   >"$RUN_DIR/blob.out"
 perl -0777 -e 'local $/; open my $a, "<:raw", $ARGV[0] or die;
   open my $b, "<:raw", $ARGV[1] or die; exit(index(<$b>, <$a>) < 0)' \
   "$RUN_DIR/blob" "$RUN_DIR/blob.out"
-$PIPE_ET -T -c 'seq 1 100000 | md5sum' "localhost:$ET_PORT" </dev/null |
+$PIPE_ET -T --command 'seq 1 100000 | md5sum' "localhost:$ET_PORT" </dev/null |
   grep -qxF -- "$(seq 1 100000 | md5sum)"
 [ "$(find "$SESSIONS" -type f | wc -l)" -eq 1 ]
 

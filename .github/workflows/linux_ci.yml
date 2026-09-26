@@ -18,6 +18,8 @@ jobs:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2222
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +29,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -44,28 +46,21 @@ jobs:
           git submodule update --init --force --recursive
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
+      - name: Restore vcpkg binary cache
         uses: actions/cache@v5
         with:
           # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
           # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
           # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
           path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-${{ matrix.sanitize }}-1
+            ${{ github.workspace }}/.vcpkg-binary-cache
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
+          key: et-vcpkg-bin-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-linux-${{ matrix.sanitize }}
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: linux-${{ matrix.sanitize }}
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build with ubsan
         run: |
@@ -75,7 +70,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -89,7 +84,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_ADDRESS=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -103,7 +98,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_MEMORY=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -117,7 +112,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
           make -j"${parallel_level}"
           TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --output-on-failure
           popd
@@ -135,6 +130,8 @@ jobs:
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2223
     steps:
       - uses: actions/checkout@v4
@@ -144,7 +141,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -160,22 +157,18 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
-      - name: Restore vcpkg and its artifacts.
+      - name: Restore vcpkg binary cache
         uses: actions/cache@v5
         with:
           path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+            ${{ github.workspace }}/.vcpkg-binary-cache
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
+          key: et-vcpkg-bin-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-linux-ubsan
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: linux-jumphost
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build for jumphost system test
         run: |
@@ -185,7 +178,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
@@ -210,6 +203,8 @@ jobs:
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2224
     steps:
       - uses: actions/checkout@v4
@@ -219,7 +214,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -235,22 +230,18 @@ jobs:
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
-      - name: Restore vcpkg and its artifacts.
+      - name: Restore vcpkg binary cache
         uses: actions/cache@v5
         with:
           path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+            ${{ github.workspace }}/.vcpkg-binary-cache
+            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
+          key: et-vcpkg-bin-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-linux-ubsan
 
-      - name: Restore ccache
-        uses: ./.github/actions/ccache
-        with:
-          key: linux-backwards-compatibility
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build for backwards compatibility system test
         run: |
@@ -260,7 +251,7 @@ jobs:
           fi
           mkdir -p build
           pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DSANITIZE_UNDEFINED=ON ../
+          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
           cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 

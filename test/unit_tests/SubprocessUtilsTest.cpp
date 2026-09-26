@@ -39,6 +39,29 @@ TEST_CASE("SubprocessUtils SubprocessToStringInteractive with no args",
 #endif
 }
 
+#ifndef WIN32
+TEST_CASE("SubprocessToStringInteractive does not consume parent stdin",
+          "[SubprocessUtils]") {
+  int fds[2];
+  REQUIRE(pipe(fds) == 0);
+  const char secret[] = "SECRET_STDIN";
+  REQUIRE(write(fds[1], secret, sizeof(secret) - 1) ==
+          static_cast<ssize_t>(sizeof(secret) - 1));
+  REQUIRE(close(fds[1]) == 0);
+  int savedStdin = dup(STDIN_FILENO);
+  REQUIRE(savedStdin >= 0);
+  REQUIRE(dup2(fds[0], STDIN_FILENO) == STDIN_FILENO);
+  REQUIRE(close(fds[0]) == 0);
+
+  SubprocessUtils utils;
+  string result = utils.SubprocessToStringInteractive("cat", {});
+
+  REQUIRE(dup2(savedStdin, STDIN_FILENO) == STDIN_FILENO);
+  REQUIRE(close(savedStdin) == 0);
+  REQUIRE(result.empty());
+}
+#endif
+
 TEST_CASE("SubprocessUtils SubprocessToStringInteractive captures stdout",
           "[SubprocessUtils]") {
   // Test that we capture stdout properly

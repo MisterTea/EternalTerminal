@@ -124,7 +124,7 @@ sequenceDiagram
 
 One of the core features of EternalTerminal is handling reconnections, in a way that is seamless to the user: If the previous connection gets interrupted, a new connection is established and continues where the previous connection left off.
 
-When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up.
+When a client disconnects, the etterminal process continues running, and the client id remains registered with etserver. If `etserver` was started with `--disconnect-timeout MINUTES` (or `disconnect_timeout` in `et.cfg`), a terminal that stays disconnected for that long is closed. `0`, the default, leaves the session up. A client may also set `InitialPayload.disconnect_timeout_seconds` via `et --disconnect-timeout MINUTES` (converted to seconds on the wire); when present, that value overrides the etserver global for that session.
 
 To enable reconnects, **et** opens a new connection to the EternalTerminal port, and sends a new [ConnectRequest](../proto/ET.proto#L12-L19) message containing the same **client-id** and protocol version as the initial request, and repeats the challenge exchange.
 
@@ -150,7 +150,7 @@ Port forwarding is supported in Eternal Terminal using the same connection that 
 
 ![Simple Connection with Port Forwarding](images/port_forwarding.png)
 
-Forward port forwarding listens to a port on the client, and forwards connections to it to the server, which "tunnels" the connection to the server's port. It is activated by passing either a `-t` (or `--tunnel`) parameter to `et`, and providing a source and destination port or range.
+Forward port forwarding listens to a port on the client, and forwards connections to it to the server, which "tunnels" the connection to the server's port. It is activated by passing `--tunnel` or OpenSSH-style `-L` to `et`, and providing a source and destination port or range.
 
 The port range is in the form of `source:destination` or `srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the client, and `destination` is the port on the server. These forms connect to loopback on the server. Multiple two-part ports or ranges may be forwarded by specifying a comma-separated list.
 
@@ -158,11 +158,11 @@ An SSH-style argument in the form `bind_address:source:destination_host:destinat
 
 | Command | Description |
 | ------- | ----------- |
-| `et -x -t 8080:8080 user@myhost` | Forwards connections to port 8080 on the client to 8080 on the server. |
-| `et -x -t 2222:22 user@myhost` | Forwards connections to port 2222 on the client to port 22 on the server. |
-| `et -x -t 127.0.0.1:2222:destination.example.com:22 user@gateway` | Listens on `127.0.0.1:2222` on the client and forwards through `gateway` to `destination.example.com:22`. |
-| `et -x -t 8080:8080,2222:22 user@myhost` | Forwards connections to both 8080 and 2022 on the client to port 8080 and 22 on the server (respectively). |
-| `et -x -t 8080-8089:8080-8089 user@myhost` | Forwards connections to port 8080-8089 (inclusive) on the client to the server. |
+| `et --tunnel 8080:8080 user@myhost` | Forwards connections to port 8080 on the client to 8080 on the server. |
+| `et -L 2222:localhost:22 user@myhost` | Forwards connections to port 2222 on the client to port 22 on the server. |
+| `et --tunnel 127.0.0.1:2222:destination.example.com:22 user@gateway` | Listens on `127.0.0.1:2222` on the client and forwards through `gateway` to `destination.example.com:22`. |
+| `et --tunnel 8080:8080,2222:22 user@myhost` | Forwards connections to both 8080 and 2222 on the client to port 8080 and 22 on the server (respectively). |
+| `et --tunnel 8080-8089:8080-8089 user@myhost` | Forwards connections to port 8080-8089 (inclusive) on the client to the server. |
 
 ```mermaid
 sequenceDiagram
@@ -203,17 +203,17 @@ To establish port forwarding:
 
 ### Reverse Port Forwarding
 
-Reverse port forwarding is available by providing the `-r` or `--reversetunnel` parameter, and accepts the same port range parameter as forward tunnels. These are in the form of `source:destination` or `srcStart-srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the *server*, and `destination` is the port on the `client`.  Multiple ports may be forwarded by specifying a comma-separated list.
+Reverse port forwarding is available by providing `-r`, `--reversetunnel`, or OpenSSH-style `-R`, and accepts the same port range parameter as forward tunnels. These are in the form of `source:destination` or `srcStart-srcStart-srcEnd:dstStart-dstEnd` (inclusive), where `source` is the port on the *server*, and `destination` is the port on the `client`.  Multiple ports may be forwarded by specifying a comma-separated list.
 
 It's also possible to forward Unix sockets, by using the syntax of `ENV_VAR_NAME:/var/run/example.sock`, which will create a temporary file on the server and forward it to `/var/run/example.sock` on the client.  It will then set the temporary file path to the provided environment variable, `ENV_VAR_NAME` in this case.
 
 | Command | Description |
 | ------- | ----------- |
-| `et -x -r 8080:8080 user@myhost` | Forwards connections to port 8080 on the server to 8080 on the client. |
-| `et -x -r 22:2222 user@myhost` | Forwards connections to port 22 on the server to port 2222 on the client. |
-| `et -x -r 5037:5037 user@myhost` | Forwards connections to both 5037 (adb) from the server to the client, enabling adb to be used from the server to a locally-connected device. |
-| `et -x -r 5037:5037,8080:8080 user@myhost` | Forwards connections from the server to client on port 5037 (adb) and port 8080. |
-| `et -x -r ENV_VAR_NAME:/var/run/example.sock user@myhost` | Creates a socket in the temp dir on the server, sets its path to `ENV_VAR_NAME`, and forwards connections to `/var/run/example.sock` on the client. |
+| `et -r 8080:8080 user@myhost` | Forwards connections to port 8080 on the server to 8080 on the client. |
+| `et -R 22:localhost:2222 user@myhost` | Forwards connections to port 22 on the server to port 2222 on the client. |
+| `et -r 5037:5037 user@myhost` | Forwards connections to port 5037 (adb) from the server to the client, enabling adb to be used from the server to a locally-connected device. |
+| `et -r 5037:5037,8080:8080 user@myhost` | Forwards connections from the server to client on port 5037 (adb) and port 8080. |
+| `et -r ENV_VAR_NAME:/var/run/example.sock user@myhost` | Creates a socket in the temp dir on the server, sets its path to `ENV_VAR_NAME`, and forwards connections to `/var/run/example.sock` on the client. |
 
 ```mermaid
 sequenceDiagram
@@ -268,7 +268,7 @@ It proxies between the user terminal fd (`masterFd`) and the router fifo. When t
 From the router fifo, packets may be sent to either forward input to the terminal or configure the terminal state:
 - `TERMINAL_BUFFER` (with a TerminalBuffer payload) data is written to the terminal as user input.
 - `TERMINAL_INFO` (with a TerminalInfo) is used to adjust the window size of the terminal.
-- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client only when `InitialPayload.supports_exit_status` is set, so `et -c` can exit with the remote command status. Clients that leave the field unset (including et-v7.0.0) never see packet type 12.
+- `TERMINAL_EXIT_STATUS` is forwarded from etterminal through etserver to the client only when `InitialPayload.supports_exit_status` is set, so `et --command` can exit with the remote command status. Clients that leave the field unset (including et-v7.0.0) never see packet type 12.
 
 ## Jumphost Run Loop
 

@@ -84,7 +84,8 @@ TerminalClient::TerminalClient(
     const string& command, const vector<string>& dynamicForwards,
     const string& stdioForward, int _maxConnectAttempts,
     bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
-    std::function<bool(const string&)> _sessionTitleUpdate)
+    std::function<bool(const string&)> _sessionTitleUpdate,
+    optional<int> disconnectTimeoutMinutes, bool noShell)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -97,11 +98,16 @@ TerminalClient::TerminalClient(
   InitialPayload payload;
   payload.set_jumphost(jumphost);
   payload.set_supports_exit_status(true);
-  if (stdioForwardActive) {
+  if (stdioForwardActive || noShell) {
     payload.set_no_shell(true);
   } else if (noPty) {
     payload.set_no_pty(true);
     payload.set_command(command);
+  }
+  if (disconnectTimeoutMinutes) {
+    // Overflow already rejected in TerminalClientMain; convert minutes →
+    // seconds.
+    payload.set_disconnect_timeout_seconds(*disconnectTimeoutMinutes * 60);
   }
 
   for (const auto& envVar : envVars) {

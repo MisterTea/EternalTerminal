@@ -670,6 +670,10 @@ if(WIN32)
     TARGETS et htm htmd etserver etterminal
     DESTINATION "bin"
     COMPONENT client)
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
+    DESTINATION "bin"
+    COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
   set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
 
@@ -1004,6 +1008,17 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
+    DESTINATION "bin"
+    PERMISSIONS
+    OWNER_EXECUTE
+    OWNER_WRITE
+    OWNER_READ
+    GROUP_EXECUTE
+    GROUP_READ
+    WORLD_EXECUTE
+    WORLD_READ)
 
   if(INSTALL_BASH_COMPLETION)
     find_package(BashCompletion QUIET)
@@ -1050,6 +1065,15 @@ SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/lib/systemd/syst
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
 SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libprotobuf-dev, libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 12), libutempter0 (>= 1.1.5)")
 SET(CPACK_DEBIAN_PACKAGE_SUGGESTS "systemd")
+
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME et1_script
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/et1_script_test.py)
+  endif()
+endif()
 
 # This must always be last!
 include(CPack)

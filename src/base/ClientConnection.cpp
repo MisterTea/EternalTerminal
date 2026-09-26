@@ -72,7 +72,8 @@ bool ClientConnection::connect() {
       // This process has no sequence history for the server's session, so
       // both sides restart at sequence 0 and the caller skips bootstrap.
       VLOG(1) << "Returning client: performing reset recovery";
-      if (!recover(socketFd, response.resetrequired(), response.resetsalt())) {
+      if (!recover(socketFd, /*readPeerCatchupFirst=*/true,
+                   response.resetrequired(), response.resetsalt())) {
         LOG(WARNING) << "Reset recovery failed during connect";
         return false;
       }
@@ -220,8 +221,8 @@ void ClientConnection::pollReconnect() {
                 << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {
-            recover(newSocketFd, response.resetrequired(),
-                    response.resetsalt());
+            recover(newSocketFd, /*readPeerCatchupFirst=*/true,
+                    response.resetrequired(), response.resetsalt());
           }
         } catch (const std::runtime_error& re) {
           LOG(INFO) << "Got failure during reconnect";

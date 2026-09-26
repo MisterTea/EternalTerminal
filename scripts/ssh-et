@@ -96,7 +96,7 @@ main() {
       return 1
     fi
     _log_info "Found open port: ${port}"
-    local et_cmd=(et -t "${port}":22 -N "${remote}")
+    local et_cmd=(et --tunnel "${port}:22" --no-terminal "${remote}")
     _log_info "Running: ${et_cmd[*]}"
     "${et_cmd[@]}" > "${et_fifo}" &
     et_pid=$!

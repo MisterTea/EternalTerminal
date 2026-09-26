@@ -306,6 +306,38 @@ TEST_CASE_METHOD(TerminalSessionFixture,
   checkSessionClosed();
 }
 
+TEST_CASE("sessionDisconnectTimeoutSec prefers client InitialPayload",
+          "[TerminalServerLifecycle]") {
+  InitialPayload payload;
+  CHECK(sessionDisconnectTimeoutSec(3600, payload) == 3600);
+  payload.set_disconnect_timeout_seconds(1);
+  CHECK(sessionDisconnectTimeoutSec(0, payload) == 1);
+  CHECK(sessionDisconnectTimeoutSec(3600, payload) == 1);
+  payload.set_disconnect_timeout_seconds(0);
+  CHECK(sessionDisconnectTimeoutSec(3600, payload) == 0);
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
+                 "Client InitialPayload disconnect timeout closes the session",
+                 "[TerminalServerLifecycle]") {
+  // Server default remains 0 (no timeout). Only the client-requested
+  // per-session deadline must close this idle disconnect — the path et1
+  // relies on when it passes --disconnect-timeout to et.
+  CHECK(server->getDisconnectTimeoutSeconds() == 0);
+  client->payload.set_disconnect_timeout_seconds(1);
+  startSession();
+  waitForInit();
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+
+  REQUIRE(peerHandler->waitForData(terminalPeer, 4, 0));
+  char packetType = 0;
+  REQUIRE(peerHandler->read(terminalPeer, &packetType, 1) == 1);
+  CHECK(packetType == TERMINAL_CLOSE);
+
+  waitForSessionEnd();
+  checkSessionClosed();
+}
+
 TEST_CASE_METHOD(TerminalSessionFixture,
                  "Disconnect timeout closes a resumed terminal whose client "
                  "never returns",

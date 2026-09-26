@@ -47,7 +47,9 @@ class TerminalClient {
                  const string& stdioForward = "", int _maxConnectAttempts = 3,
                  bool _resumeSavedSession = false,
                  std::function<bool()> _sessionHeartbeat = {},
-                 std::function<bool(const string&)> _sessionTitleUpdate = {});
+                 std::function<bool(const string&)> _sessionTitleUpdate = {},
+                 optional<int> disconnectTimeoutMinutes = nullopt,
+                 bool noShell = false);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();

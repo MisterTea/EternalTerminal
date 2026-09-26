@@ -28,12 +28,12 @@ wait_for 60 grep -q POST-first "$LOGS/one.log"
 
 # Attach after both the server and the client restarted.
 kill_client --name one
-$ET --attach one -c 'echo ATTACH-$S_ONE' >"$LOGS/attach.log" 2>&1 || true
+$ET --attach one --command 'echo ATTACH-$S_ONE' >"$LOGS/attach.log" 2>&1 || true
 grep -q ATTACH-first "$LOGS/attach.log"
 
 # A pipe (-T) session cannot be resumed by a new server: it ends, and its
 # whole process group goes with it.
-timeout 90 $ET -T -c 'sleep 617 | cat' "localhost:$ET_PORT" </dev/null \
+timeout 90 $ET -T --command 'sleep 617 | cat' "localhost:$ET_PORT" </dev/null \
   >"$LOGS/pipe.log" 2>&1 &
 pipe_client=$!
 wait_for 30 pgrep -f 'sleep 617'

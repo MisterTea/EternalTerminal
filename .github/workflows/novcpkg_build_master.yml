@@ -79,12 +79,11 @@ jobs:
           sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             gcc-${{ matrix.gcc }} g++-${{ matrix.gcc }} ccache
 
-      - name: Restore ccache
+      - name: Restore dependency compiler cache
         uses: ./.github/actions/ccache
         with:
           key: novcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
 
-        # Run CMake to generate Ninja project files.
       - name: Install dependencies and generate project files (mac)
         run: |
           OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
@@ -109,7 +108,6 @@ jobs:
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
           ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
-          ccache --show-stats || true
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}

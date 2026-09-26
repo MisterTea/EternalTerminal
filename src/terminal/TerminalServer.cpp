@@ -457,6 +457,8 @@ void TerminalServer::runTerminal(
   string clientInterruptCarry;
   bool holdDroppableForClient = false;
   DisconnectDeadline disconnectedSince;
+  const int disconnectTimeoutForSession =
+      sessionDisconnectTimeoutSec(disconnectTimeoutSec, payload);
 
   while (run) {
     {
@@ -565,7 +567,7 @@ void TerminalServer::runTerminal(
               }
               // PTY may already be gone (EOF/`finishSession`); do not close the
               // client here — fall through so TERMINAL_EXIT_STATUS can still be
-              // forwarded for `et -c`.
+              // forwarded for `et --command`.
               try {
                 char c = TERMINAL_BUFFER;
                 terminalSocketHandler->writeAllOrThrow(terminalFd, &c,
@@ -627,11 +629,11 @@ void TerminalServer::runTerminal(
       // of staying gated on the connected 16MB cap.
       serverClientFd = serverClientState->getSocketFd();
       const bool stillConnected = serverClientFd > 0;
-      if (disconnectDeadlineReached(&disconnectedSince,
-                                    std::chrono::steady_clock::now(),
-                                    stillConnected, disconnectTimeoutSec) &&
+      if (disconnectDeadlineReached(
+              &disconnectedSince, std::chrono::steady_clock::now(),
+              stillConnected, disconnectTimeoutForSession) &&
           serverClientState->claimDisconnectedExpiry()) {
-        LOG(INFO) << "Disconnect timeout (" << disconnectTimeoutSec
+        LOG(INFO) << "Disconnect timeout (" << disconnectTimeoutForSession
                   << "s) elapsed; closing terminal session "
                   << serverClientState->getId();
         try {

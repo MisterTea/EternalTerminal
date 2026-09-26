@@ -1,4 +1,5 @@
 #include "CryptoHandler.hpp"
+#include "MuxProtocol.hpp"
 #include "SshSetupHandler.hpp"
 #include "TestHeaders.hpp"
 
@@ -233,6 +234,33 @@ class FakeSshSubprocessHandlerWithJumphost : public SubprocessUtils {
 };
 
 /**
+ * @brief Jumphost ssh output with banner text that contains colons.
+ *
+ * Merging SSH_MSG_USERAUTH_BANNER into the capture buffer must not break
+ * credential parsing; `split(..., ':')[1]` steals the field from "Warning:".
+ */
+class FakeSshSubprocessHandlerJumphostBannerColon : public SubprocessUtils {
+ public:
+  const string destinationId = string(16, 'D');
+  const string destinationPasskey = string(32, 'd');
+  const string jumphostId = string(16, 'J');
+  const string jumphostPasskey = string(32, 'j');
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    if (args.size() == 2) {
+      return "Warning: Permanently added 'jump' (ED25519) to the list of "
+             "known hosts.\n"
+             "To authenticate, visit: https://login.ts.net/a/xyz\n"
+             "IDPASSKEY:" +
+             jumphostId + "/" + jumphostPasskey + "\n";
+    }
+    return "IDPASSKEY:" + destinationId + "/" + destinationPasskey + "\n";
+  }
+};
+
+/**
  * @brief Fake subprocess handler that records every SSH invocation.
  */
 class RecordingSshSubprocessHandler : public SubprocessUtils {
@@ -362,6 +390,21 @@ TEST_CASE("SshSetupHandler with jumphost", "[SshSetupHandler]") {
   }
 }
 
+TEST_CASE("SshSetupHandler jumphost parses IDPASSKEY despite banner colons",
+          "[SshSetupHandler]") {
+  auto fakeSubprocess =
+      make_shared<FakeSshSubprocessHandlerJumphostBannerColon>();
+  SshSetupHandler handler(fakeSubprocess);
+
+  auto [id, passkey] =
+      handler.SetupSsh("testuser", "testhost", "testhost", 2022, "jumphost", "",
+                       false, 0, "", "", std::vector<string>());
+
+  // Jump setup overwrites credentials from the second ssh invocation.
+  REQUIRE(id == fakeSubprocess->jumphostId);
+  REQUIRE(passkey == fakeSubprocess->jumphostPasskey);
+}
+
 TEST_CASE("SshSetupHandler keeps destination options off the jumphost",
           "[SshSetupHandler]") {
   auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
@@ -402,6 +445,38 @@ TEST_CASE("SshSetupHandler keeps destination options off the jumphost",
   for (const auto& option : destination_options) {
     REQUIRE(std::find(jump_args.begin(), jump_args.end(), "-o" + option) ==
             jump_args.end());
+  }
+}
+
+TEST_CASE("SshSetupHandler passes -p only when the user gave -p",
+          "[SshSetupHandler]") {
+  auto runSetup = [](const OpenSshClientFlags& flags) {
+    auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
+    SshSetupHandler handler(fakeSubprocess);
+    BootstrapSshPort sshPort = bootstrapSshPort(flags);
+    handler.setBootstrapOverrides(sshPort.set, sshPort.port, {}, "");
+    handler.SetupSsh("user", "target", "target", 2022, "", "", false, 0, "", "",
+                     {"Port=22"});
+    REQUIRE(fakeSubprocess->calls.size() == 1);
+    return fakeSubprocess->calls[0];
+  };
+
+  SECTION("without -p, --ssh-option Port stays in charge") {
+    OpenSshClientFlags flags;
+    auto args = runSetup(flags);
+    REQUIRE(std::find(args.begin(), args.end(), "-p") == args.end());
+    REQUIRE(std::find(args.begin(), args.end(), "-oPort=22") != args.end());
+  }
+
+  SECTION("-p comes before the host and --ssh-option Port") {
+    OpenSshClientFlags flags;
+    flags.sshPortSet = true;
+    flags.sshPort = 2201;
+    auto args = runSetup(flags);
+    REQUIRE(args.size() >= 3);
+    REQUIRE(args[0] == "-p");
+    REQUIRE(args[1] == "2201");
+    REQUIRE(args[2] == "user@target");
   }
 }
 
