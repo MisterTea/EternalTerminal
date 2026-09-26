@@ -1052,6 +1052,23 @@ int main(int argc, char** argv) {
       }
     }
 
+    const bool keepaliveExplicit = result.count("keepalive") > 0;
+    if (!keepaliveExplicit &&
+        sshConfigOptions.server_alive_interval >
+            static_cast<unsigned long>(keepaliveDuration)) {
+      LOG(INFO) << "ServerAliveInterval "
+                << sshConfigOptions.server_alive_interval
+                << "s is longer than ET's maximum keepalive of "
+                << MAX_CLIENT_KEEP_ALIVE_DURATION << "s; using "
+                << keepaliveDuration;
+    }
+    keepaliveDuration =
+        resolveEtKeepaliveSeconds(keepaliveExplicit, keepaliveDuration,
+                                  sshConfigOptions.server_alive_interval);
+    // OpenSSH clears every forward at the end when this flag is yes, including
+    // ones from the command line and ones that appeared after the keyword.
+    applyClearAllForwardings(&sshConfigOptions);
+
     // -p is the sshd port. It overrides config and -o Port, and it does not
     // change the etserver port (that stays --port / host:port).
     if (muxParse.ssh.sshPortSet) {
@@ -1221,6 +1238,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-option")) {
       ssh_options = result["ssh-option"].as<std::vector<string>>();
     }
+    appendBatchModeSshOption(&ssh_options, sshConfigOptions.batch_mode);
     string etterminal_path = "";
     if (result.count("macserver") > 0) {
       etterminal_path = "/usr/local/bin/etterminal";
@@ -1235,9 +1253,11 @@ int main(int argc, char** argv) {
     // -t / -T / --no-pty: the later flag wins. None means the existing pty
     // path.
     const bool noPty = remotePtyDisabled(muxParse.ssh);
-    string command = resolveRemoteCommand(
-        argvSplit.commandOperands, result.count("command") > 0,
-        result.count("command") ? result["command"].as<string>() : "");
+    string command = resolveConfiguredRemoteCommand(
+        resolveRemoteCommand(
+            argvSplit.commandOperands, result.count("command") > 0,
+            result.count("command") ? result["command"].as<string>() : ""),
+        sshConfigOptions.remote_command, muxParse.ssh.noRemoteCommand);
     const string commandOptionsError =
         remoteCommandOptionsError(muxParse.ssh, command, !stdioForward.empty());
     if (!commandOptionsError.empty()) {
@@ -1270,29 +1290,32 @@ int main(int argc, char** argv) {
     }
     TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
                                           __FILE__, __LINE__);
-    string tunnel_arg = mergeForwardSpecs(
-        extractSingleOptionWithDefault<string>(result, options, "tunnel", ""),
-        muxParse.ssh.localForwards);
-    string r_tunnel_arg =
-        mergeForwardSpecs(extractSingleOptionWithDefault<string>(
-                              result, options, "reversetunnel", ""),
-                          muxParse.ssh.remoteForwards);
+    // ClearAllForwardings drops -L/-R/-D as well as config forwards. The
+    // config vectors were already emptied when the flag was applied.
+    string tunnel_arg;
+    string r_tunnel_arg;
     vector<string> dynamicForwards;
-    if (result.count("dynamic")) {
-      dynamicForwards = result["dynamic"].as<vector<string>>();
-    }
-
-    for (const auto& localForward : sshConfigOptions.local_forwards) {
-      string tunnelEntry =
-          to_string(localForward.first) + ":" + to_string(localForward.second);
-      LOG(INFO) << "Adding tunnel from SSH config LocalForward: "
-                << tunnelEntry;
-      if (tunnel_arg.empty()) {
-        tunnel_arg = tunnelEntry;
-      } else {
-        tunnel_arg += "," + tunnelEntry;
+    if (!sshConfigOptions.clear_all_forwardings) {
+      tunnel_arg = mergeForwardSpecs(
+          extractSingleOptionWithDefault<string>(result, options, "tunnel", ""),
+          muxParse.ssh.localForwards);
+      r_tunnel_arg =
+          mergeForwardSpecs(extractSingleOptionWithDefault<string>(
+                                result, options, "reversetunnel", ""),
+                            muxParse.ssh.remoteForwards);
+      if (result.count("dynamic")) {
+        dynamicForwards = result["dynamic"].as<vector<string>>();
       }
     }
+    tunnel_arg = mergeForwardSpecs(tunnel_arg, sshConfigOptions.local_forwards);
+    r_tunnel_arg =
+        mergeForwardSpecs(r_tunnel_arg, sshConfigOptions.remote_forwards);
+    for (const auto& dynamicForward : sshConfigOptions.dynamic_forwards) {
+      dynamicForwards.push_back(dynamicForward);
+    }
+    vector<pair<string, string>> sessionEnv = mergeSessionEnvironment(
+        sshConfigOptions.send_env, sshConfigOptions.env_vars,
+        captureLocalEnviron());
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
@@ -1341,8 +1364,8 @@ int main(int argc, char** argv) {
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
-        forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
-        noPty, command, dynamicForwards, stdioForward,
+        forwardAgent, sshSocket, keepaliveDuration, sessionEnv, noPty, command,
+        dynamicForwards, stdioForward,
         /*maxConnectAttempts=*/3,
         /*resumeSavedSession=*/false,
         [&sessionName]() {
@@ -1351,7 +1374,8 @@ int main(int argc, char** argv) {
         [&sessionName](const string& title) {
           return sessionName.empty() || updateSessionTitle(sessionName, title);
         },
-        disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand);
+        disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand,
+        sshConfigOptions.exit_on_forward_failure);
 
 #ifndef WIN32
     if (backgroundWriteFd >= 0) {
