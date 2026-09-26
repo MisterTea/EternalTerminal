@@ -65,12 +65,22 @@ void UserJumphostHandler::run() {
       jumpClientSocketHandler, dstSocketEndpoint, id, passkey));
 
   int connectFailCount = 0;
+  bool connected = false;
+  bool payloadSent = false;
   while (true) {
     try {
       bool fail = true;
-      if (jumpclient->connect()) {
-        jumpclient->writePacket(
-            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+      // Same rule as TerminalClient: retry connect() only after it fails, and
+      // keep waiting on a socket whose INITIAL_RESPONSE has not arrived.
+      if (!connected) {
+        connected = jumpclient->connect();
+      }
+      if (connected) {
+        if (!payloadSent) {
+          jumpclient->writePacket(
+              Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+          payloadSent = true;
+        }
         fd_set rfd;
         timeval tv;
         for (int a = 0; a < 3; a++) {
@@ -116,6 +126,7 @@ void UserJumphostHandler::run() {
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
         }
+        continue;
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to dst server";

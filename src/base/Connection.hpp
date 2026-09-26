@@ -109,10 +109,14 @@ class Connection {
  protected:
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
+   *
+   * Servers write their catchup before reading the peer's. Clients pass
+   * `readCatchupFirst` so one side is always draining the socket; otherwise
+   * both block once each catchup is larger than the socket buffer.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd);
+  bool recover(int newSocketFd, bool readCatchupFirst = false);
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;
