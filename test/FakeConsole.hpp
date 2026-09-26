@@ -154,6 +154,15 @@ class FakeConsole : public Console {
     return s;
   }
 
+  bool hasTerminalData() {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    return fd >= 0 && socketHandler->hasData(fd);
+  }
+
   void simulateKeystrokes(const string& s) {
     int localClientServerFd;
     int localServerClientFd;
@@ -396,6 +405,7 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   void setExitCode(int code) { exitCode = code; }
+  virtual void terminate() {}
   virtual void cleanup() {
     lock_guard<recursive_mutex> lock(_mutex);
     if (didCleanUp) {
@@ -442,6 +452,21 @@ class FakeUserTerminal : public UserTerminal {
   winsize getLastWinInfo() {
     lock_guard<recursive_mutex> lock(terminalInfoMutex);
     return lastWinInfo;
+  }
+
+  bool wasCleanedUp() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return didCleanUp;
+  }
+  bool sessionEndHandled() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return didHandleSessionEnd;
+  }
+
+  /** @brief True once setup() has both pipe ends connected. */
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return serverClientFd >= 0 && clientServerFd >= 0;
   }
 
  protected:

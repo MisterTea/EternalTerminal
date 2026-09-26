@@ -71,6 +71,9 @@ std::atomic<bool> TerminalClient::closeOnHangup(false);
 std::atomic<bool> TerminalClient::hangupCloseRequested(false);
 std::atomic<bool> TerminalClient::hangupCloseCompleted(false);
 
+const string TerminalClient::INVALID_SESSION_CONNECT_ERROR =
+    "Server has no session for this client id";
+
 TerminalClient::TerminalClient(
     shared_ptr<SocketHandler> _socketHandler,
     shared_ptr<SocketHandler> _pipeSocketHandler,
@@ -80,13 +83,18 @@ TerminalClient::TerminalClient(
     const string& identityAgent, int _keepaliveDuration,
     const vector<pair<string, string>>& envVars, bool _noPty,
     const string& command, const vector<string>& dynamicForwards,
-    const string& stdioForward, optional<int> disconnectTimeoutMinutes,
-    bool noShell, bool exitOnForwardFailure)
+    const string& stdioForward, int _maxConnectAttempts,
+    bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
+    std::function<bool(const string&)> _sessionTitleUpdate,
+    optional<int> disconnectTimeoutMinutes, bool noShell,
+    bool exitOnForwardFailure)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
       noPty(_noPty),
-      stdioForwardActive(!stdioForward.empty()) {
+      stdioForwardActive(!stdioForward.empty()),
+      sessionHeartbeat(_sessionHeartbeat),
+      sessionTitleUpdate(_sessionTitleUpdate) {
   portForwardHandler = shared_ptr<PortForwardHandler>(
       new PortForwardHandler(_socketHandler, _pipeSocketHandler));
   InitialPayload payload;
@@ -194,38 +202,44 @@ TerminalClient::TerminalClient(
   }
 
   connection = shared_ptr<ClientConnection>(
-      new ClientConnection(_socketHandler, _socketEndpoint, id, passkey));
+      new ClientConnection(_socketHandler, _socketEndpoint, id, passkey,
+                           /*_resetIntent=*/_resumeSavedSession));
 
   int connectFailCount = 0;
   while (true) {
     try {
       bool fail = true;
       if (connection->connect()) {
-        connection->writePacket(
-            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
-        for (int a = 0; a < 3; a++) {
-          int clientFd = connection->getSocketFd();
-          if (clientFd < 0) {
-            std::this_thread::sleep_for(std::chrono::seconds(1));
-            continue;
-          }
-          if (waitOnSocketData(clientFd)) {
-            Packet initialResponsePacket;
-            if (connection->readPacket(&initialResponsePacket)) {
-              if (initialResponsePacket.getHeader() !=
-                  EtPacketType::INITIAL_RESPONSE) {
-                CLOG(INFO, "stdout") << "Error: Missing initial response\n";
-                STFATAL << "Missing initial response!";
+        if (connection->wasRecovered()) {
+          // Reattached: the session was bootstrapped when it started.
+          fail = false;
+        } else {
+          connection->writePacket(
+              Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+          for (int a = 0; a < 3; a++) {
+            int clientFd = connection->getSocketFd();
+            if (clientFd < 0) {
+              std::this_thread::sleep_for(std::chrono::seconds(1));
+              continue;
+            }
+            if (waitOnSocketData(clientFd)) {
+              Packet initialResponsePacket;
+              if (connection->readPacket(&initialResponsePacket)) {
+                if (initialResponsePacket.getHeader() !=
+                    EtPacketType::INITIAL_RESPONSE) {
+                  CLOG(INFO, "stdout") << "Error: Missing initial response\n";
+                  STFATAL << "Missing initial response!";
+                }
+                auto initialResponse = stringToProto<InitialResponse>(
+                    initialResponsePacket.getPayload());
+                if (initialResponse.has_error()) {
+                  CLOG(INFO, "stdout") << "Error initializing connection: "
+                                       << initialResponse.error() << endl;
+                  exit(1);
+                }
+                fail = false;
+                break;
               }
-              auto initialResponse = stringToProto<InitialResponse>(
-                  initialResponsePacket.getPayload());
-              if (initialResponse.has_error()) {
-                CLOG(INFO, "stdout") << "Error initializing connection: "
-                                     << initialResponse.error() << endl;
-                exit(1);
-              }
-              fail = false;
-              break;
             }
           }
         }
@@ -233,22 +247,37 @@ TerminalClient::TerminalClient(
       if (fail) {
         LOG(WARNING) << "Connecting to server failed: Connect timeout";
         connectFailCount++;
-        if (connectFailCount == 3) {
+        if (_resumeSavedSession && connection &&
+            connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
+          throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
+        }
+        if (connectFailCount >= _maxConnectAttempts) {
           throw std::runtime_error("Connect Timeout");
         }
+        std::this_thread::sleep_for(std::chrono::seconds(1));
+        continue;
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
-      CLOG(INFO, "stdout") << "Could not make initial connection to "
-                           << _socketEndpoint << ": " << err.what() << endl;
-      exit(1);
+      if (_resumeSavedSession && connection &&
+          connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
+        connection->shutdown();
+        throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
+      }
+      if (!_resumeSavedSession) {
+        CLOG(INFO, "stdout") << "Could not make initial connection to "
+                             << _socketEndpoint << ": " << err.what() << endl;
+        exit(1);
+      }
+      throw;
     }
 
     TelemetryService::get()->logToDatadog("Connection Established",
                                           el::Level::Info, __FILE__, __LINE__);
     break;
   }
-  VLOG(1) << "Client created with id: " << connection->getId();
+  // The client id is half of the reconnect credential.
+  VLOG(1) << "Client created";
 };
 
 TerminalClient::~TerminalClient() {
@@ -256,6 +285,32 @@ TerminalClient::~TerminalClient() {
   console.reset();
   portForwardHandler.reset();
   connection.reset();
+}
+
+bool TerminalClient::killSession(int timeoutSeconds) {
+  TerminalInfo command;
+  command.set_command(TerminalInfo::KILL_SESSION);
+  command.set_commandversion(SESSION_KILL_COMMAND_VERSION);
+  connection->writePacket(
+      Packet(TerminalPacketType::TERMINAL_INFO, protoToString(command)));
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (connection->hasData()) {
+      Packet packet;
+      if (connection->read(&packet) &&
+          packet.getHeader() == TerminalPacketType::KEEP_ALIVE &&
+          packet.getPayload() == SESSION_KILL_ACK) {
+        return true;
+      }
+    }
+    if (connection->lastStatus() == ConnectStatus::INVALID_KEY) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
 }
 
 int TerminalClient::run(const string& command, const bool noexit) {
@@ -272,6 +327,12 @@ int TerminalClient::run(const string& command, const bool noexit) {
   const bool wantRemoteExitStatus = !command.empty() && !noexit;
   int remoteExitStatus = 0;
   bool haveRemoteExitStatus = false;
+  time_t sessionHeartbeatTime = time(NULL);
+  bool sessionHeartbeatWarningLogged = false;
+  time_t sessionTitleUpdateTime = time(NULL);
+  bool sessionTitleWarningLogged = false;
+  optional<string> currentSessionTitle;
+  optional<string> pendingSessionTitle;
 
   if (command.length() && !noPty) {
     LOG(INFO) << "Got command: " << command;
@@ -622,6 +683,15 @@ int TerminalClient::run(const string& command, const bool noexit) {
                                          tb.buffer().size());
 #endif
               } else if (console) {
+                if (sessionTitleUpdate && !tb.buffer().empty()) {
+                  const optional<string> parsedTitle =
+                      titleParser.parse(tb.buffer());
+                  if (parsedTitle && (!currentSessionTitle ||
+                                      *parsedTitle != *currentSessionTitle)) {
+                    currentSessionTitle = parsedTitle;
+                    pendingSessionTitle = parsedTitle;
+                  }
+                }
                 consoleOut.enqueue(tb.buffer());
               } else {
 #ifdef WIN32
@@ -737,6 +807,37 @@ int TerminalClient::run(const string& command, const bool noexit) {
         connection->writePacket(Packet(TerminalPacketType::TERMINAL_CLOSE, ""));
         lock_guard<recursive_mutex> guard(shutdownMutex);
         shuttingDown = true;
+      }
+
+      const time_t now = time(NULL);
+      if (sessionHeartbeat && connection->getSocketFd() > 0 &&
+          sessionHeartbeatTime <= now) {
+        bool heartbeatSucceeded = false;
+        try {
+          heartbeatSucceeded = sessionHeartbeat();
+        } catch (...) {
+          // Best-effort: never end the connection over session storage.
+        }
+        if (!heartbeatSucceeded && !sessionHeartbeatWarningLogged) {
+          LOG(WARNING) << "Could not update saved session heartbeat";
+          sessionHeartbeatWarningLogged = true;
+        }
+        sessionHeartbeatTime = now + 15;
+      }
+      if (sessionTitleUpdate && pendingSessionTitle &&
+          connection->getSocketFd() > 0 && sessionTitleUpdateTime <= now) {
+        bool updateSucceeded = false;
+        try {
+          updateSucceeded = sessionTitleUpdate(*pendingSessionTitle);
+        } catch (...) {
+        }
+        if (updateSucceeded) {
+          pendingSessionTitle.reset();
+        } else if (!sessionTitleWarningLogged) {
+          LOG(WARNING) << "Could not update saved session title";
+          sessionTitleWarningLogged = true;
+        }
+        sessionTitleUpdateTime = now + 2;
       }
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();

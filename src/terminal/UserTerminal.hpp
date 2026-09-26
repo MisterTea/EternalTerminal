@@ -31,6 +31,8 @@ class UserTerminal {
    * @return OpenSSH-style exit code of the child (0 if unknown).
    */
   virtual int handleSessionEnd() = 0;
+  // Ends the terminal child and its descendants.
+  virtual void terminate() = 0;
   /** @brief Reclaims resources allocated by the terminal implementation. */
   virtual void cleanup() = 0;
   /** @brief Returns the descriptor that can be polled for terminal output. */

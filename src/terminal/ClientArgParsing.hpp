@@ -75,18 +75,21 @@ inline string joinRemoteCommandOperands(const vector<string>& operands) {
 // positional is a remote command word, including tokens that look like flags.
 // OpenSSH letters whose meaning changed (`-p`, `-l`, `-c`, `-t`, `-v`, ...)
 // are removed by the short-flag pre-pass and are not listed here. `-D` and
-// `-W` are re-emitted by that pre-pass and still take a value.
+// `-W` are re-emitted by that pre-pass and still take a value. `-j` is still
+// the jumphost and is re-emitted without consuming its value, so it is listed
+// here along with the named-session options.
 inline bool etOptionConsumesValue(const string& arg) {
   return arg == "-u" || arg == "--username" || arg == "--port" ||
          arg == "--command" || arg == "--terminal-path" || arg == "--tunnel" ||
-         arg == "-r" || arg == "--reversetunnel" || arg == "--jumphost" ||
-         arg == "--jport" || arg == "--jserverfifo" || arg == "--verbose" ||
-         arg == "-k" || arg == "--keepalive" || arg == "--logdir" ||
-         arg == "--ssh-socket" || arg == "-F" || arg == "--ssh-config" ||
-         arg == "--telemetry" || arg == "--serverfifo" ||
-         arg == "--ssh-option" || arg == "-o" ||
+         arg == "-r" || arg == "--reversetunnel" || arg == "-j" ||
+         arg == "--jumphost" || arg == "--jport" || arg == "--jserverfifo" ||
+         arg == "--verbose" || arg == "-k" || arg == "--keepalive" ||
+         arg == "--logdir" || arg == "--ssh-socket" || arg == "-F" ||
+         arg == "--ssh-config" || arg == "--telemetry" ||
+         arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o" ||
          arg == "--disconnect-timeout" || arg == "-D" || arg == "--dynamic" ||
-         arg == "-W" || arg == "--stdio-forward";
+         arg == "-W" || arg == "--stdio-forward" || arg == "--name" ||
+         arg == "--attach" || arg == "--kill";
 }
 
 struct EtArgvSplit {

@@ -1,6 +1,8 @@
+#include <ctime>
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 
 #include "BinaryStdioConsole.hpp"
@@ -14,6 +16,7 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SessionStore.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -56,6 +59,207 @@ T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
                        << " must be specified only once\n";
   CLOG(INFO, "stdout") << options.help({}) << endl;
   exit(0);
+}
+
+enum class AttachResult { ATTACHED, INVALID_SESSION, FAILED };
+enum class KillResult { KILLED, INVALID_SESSION, FAILED };
+
+bool deleteSavedSession(const string& name) {
+  try {
+    deleteSession(name);
+    return true;
+  } catch (const std::exception& e) {
+    CLOG(INFO, "stdout") << "Warning: Could not delete saved session '" << name
+                         << "': " << e.what() << endl;
+    return false;
+  }
+}
+
+string displayTitle(const string& title) {
+  if (title.empty()) {
+    return "-";
+  }
+  if (title.size() <= 32) {
+    return title;
+  }
+  // Leave room for the 3-byte ellipsis without splitting a UTF-8 sequence.
+  size_t keep = 29;
+  while (keep > 0 && (static_cast<unsigned char>(title[keep]) & 0xc0) == 0x80) {
+    --keep;
+  }
+  return title.substr(0, keep) + "…";
+}
+
+void printSessionCandidate(const SessionInfo& session) {
+  CLOG(INFO, "stdout") << "  " << session.name << " ["
+                       << displayTitle(session.title) << "] (" << session.host
+                       << ":" << session.port << ")" << endl;
+}
+
+bool sessionNameIsOccupied(const string& name) {
+  try {
+    const fs::path path = sessionDirPath() + "/" + name;
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(path, ec);
+    if (ec) {
+      return ec.value() != ENOENT;
+    }
+    return status.type() != fs::file_type::not_found;
+  } catch (...) {
+    return true;
+  }
+}
+
+string makeDefaultSessionName() {
+  char date[16];
+  const time_t now = time(NULL);
+  struct tm localTm;
+#ifdef WIN32
+  localtime_s(&localTm, &now);
+#else
+  localtime_r(&now, &localTm);
+#endif
+  strftime(date, sizeof(date), "%Y%m%d", &localTm);
+
+  const string base = string(date) + "-";
+  string lastCandidate;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    const string candidate = base + genRandomAlphaNum(4);
+    lastCandidate = candidate;
+    if (!sessionNameIsOccupied(candidate)) {
+      return candidate;
+    }
+  }
+
+  // The no-clobber save will fail on an occupied name.
+  return lastCandidate;
+}
+
+optional<SessionInfo> resolveSavedSession(const string& query) {
+  const vector<SessionInfo> savedSessions = listSessions();
+  for (const auto& candidate : savedSessions) {
+    if (candidate.name == query) {
+      return candidate;
+    }
+  }
+
+  if (!query.empty()) {
+    const string lowercaseQuery = lowercaseAscii(query);
+    vector<SessionInfo> matches;
+    for (const auto& candidate : savedSessions) {
+      if (lowercaseAscii(candidate.name).find(lowercaseQuery) != string::npos ||
+          lowercaseAscii(candidate.title).find(lowercaseQuery) !=
+              string::npos) {
+        matches.push_back(candidate);
+      }
+    }
+    if (matches.size() == 1) {
+      return matches.front();
+    }
+    if (matches.size() > 1) {
+      CLOG(INFO, "stdout") << "Multiple saved sessions match '" << query
+                           << "':" << endl;
+      for (const auto& candidate : matches) {
+        printSessionCandidate(candidate);
+      }
+      return nullopt;
+    }
+  }
+
+  CLOG(INFO, "stdout") << "No saved session named '" << query << "'" << endl;
+  for (const auto& candidate : savedSessions) {
+    printSessionCandidate(candidate);
+  }
+  return nullopt;
+}
+
+AttachResult attachSavedSession(const string& name, const SessionInfo& session,
+                                const string& command, bool noexit,
+                                bool noTerminal, int keepaliveDuration) {
+  SocketEndpoint endpoint;
+  endpoint.set_name(session.host);
+  endpoint.set_port(session.port);
+  shared_ptr<SocketHandler> socket(new TcpSocketHandler());
+  shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
+
+  if (!ping(endpoint, socket)) {
+    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
+                         << ":" << endpoint.port() << endl;
+    return AttachResult::FAILED;
+  }
+
+  shared_ptr<Console> console;
+  if (!noTerminal) {
+    console.reset(new PseudoTerminalConsole());
+  }
+  bool sessionEnded = false;
+  try {
+    TerminalClient client(
+        socket, pipeSocket, endpoint, session.id, session.passkey, console,
+        /*jumphost=*/false, /*tunnels=*/"", /*reverseTunnels=*/"",
+        /*forwardSshAgent=*/false, /*identityAgent=*/"", keepaliveDuration,
+        /*envVars=*/{}, /*noPty=*/false, /*command=*/"",
+        /*dynamicForwards=*/{}, /*stdioForward=*/"",
+        /*maxConnectAttempts=*/15,
+        /*resumeSavedSession=*/true, [name]() { return touchSession(name); },
+        [name](const string& title) {
+          return updateSessionTitle(name, title);
+        });
+    client.run(command, noexit);
+    sessionEnded = client.sessionEndedByServer();
+  } catch (const runtime_error& err) {
+    if (string(err.what()) == TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
+      return AttachResult::INVALID_SESSION;
+    }
+    CLOG(INFO, "stdout") << "Could not attach to session '" << name
+                         << "': " << err.what() << endl;
+    return AttachResult::FAILED;
+  }
+
+  if (sessionEnded) {
+    deleteSavedSession(name);
+  }
+  return AttachResult::ATTACHED;
+}
+
+KillResult killSavedSession(const SessionInfo& session) {
+  SocketEndpoint endpoint;
+  endpoint.set_name(session.host);
+  endpoint.set_port(session.port);
+  shared_ptr<SocketHandler> socket(new TcpSocketHandler());
+  shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
+
+  if (!ping(endpoint, socket)) {
+    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
+                         << ":" << endpoint.port() << endl;
+    return KillResult::FAILED;
+  }
+
+  try {
+    TerminalClient client(
+        socket, pipeSocket, endpoint, session.id, session.passkey,
+        /*console=*/nullptr, /*jumphost=*/false, /*tunnels=*/"",
+        /*reverseTunnels=*/"", /*forwardSshAgent=*/false,
+        /*identityAgent=*/"", MAX_CLIENT_KEEP_ALIVE_DURATION,
+        /*envVars=*/{}, /*noPty=*/false, /*command=*/"",
+        /*dynamicForwards=*/{}, /*stdioForward=*/"",
+        /*maxConnectAttempts=*/3,
+        /*resumeSavedSession=*/true);
+    if (!client.killSession(15)) {
+      CLOG(INFO, "stdout")
+          << "The server did not confirm termination of session '"
+          << session.name << "'" << endl;
+      return KillResult::FAILED;
+    }
+  } catch (const runtime_error& err) {
+    if (string(err.what()) == TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
+      return KillResult::INVALID_SESSION;
+    }
+    CLOG(INFO, "stdout") << "Could not kill session '" << session.name
+                         << "': " << err.what() << endl;
+    return KillResult::FAILED;
+  }
+  return KillResult::KILLED;
 }
 
 // Resolved SSH config information for a host
@@ -121,6 +325,10 @@ int main(int argc, char** argv) {
   LogHandler::setupStdoutLogger();
 
   et::HandleTerminate();
+
+  // Empty when the session is not saved.
+  string sessionName = "";
+  bool sessionEndedByServer = false;
 
   // Override easylogging handler for sigint
   ::signal(SIGINT, et::InterruptSignalHandler);
@@ -219,7 +427,7 @@ int main(int argc, char** argv) {
          "Reverse Tunnel: Same syntax as --tunnel but reversed. "
          "-R is the OpenSSH form.",
          cxxopts::value<std::string>())  //
-        ("jumphost", "jumphost between localhost and destination",
+        ("j,jumphost", "jumphost between localhost and destination",
          cxxopts::value<std::string>())  //
         ("jport", "Jumphost machine port",
          cxxopts::value<int>()->default_value("2022"))  //
@@ -277,6 +485,14 @@ int main(int argc, char** argv) {
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
+        ("name", "Name this session so it can be reattached later",
+         cxxopts::value<std::string>())                             //
+        ("no-persist", "Do not save credentials for this session")  //
+        ("attach", "Reattach by session name or unique title substring",
+         cxxopts::value<std::string>())  //
+        ("kill", "End a saved session by name or unique title substring",
+         cxxopts::value<std::string>())           //
+        ("list", "List saved sessions and exit")  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
@@ -449,6 +665,72 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
+    if (result.count("kill") &&
+        (result.count("name") || result.count("attach") ||
+         result.count("list") || result.count("host"))) {
+      CLOG(INFO, "stdout")
+          << "--kill takes a saved session name; it cannot be combined with "
+             "--name, --attach, --list, or a host"
+          << endl;
+      exit(1);
+    }
+
+    if (result.count("no-persist") &&
+        (result.count("name") || result.count("attach") ||
+         result.count("kill"))) {
+      CLOG(INFO, "stdout")
+          << "--no-persist cannot be combined with --name, --attach, or "
+             "--kill"
+          << endl;
+      exit(1);
+    }
+
+    if (result.count("list")) {
+      CLOG(INFO, "stdout") << left << setw(24) << "NAME" << ' ' << setw(34)
+                           << "TITLE" << ' ' << setw(24) << "HOST" << ' '
+                           << setw(8) << "PORT" << ' ' << "LAST SEEN" << endl;
+      const int64_t now = static_cast<int64_t>(time(NULL));
+      for (const auto& session : listSessions()) {
+        CLOG(INFO, "stdout")
+            << left << setw(24) << session.name << ' ' << setw(34)
+            << displayTitle(session.title) << ' ' << setw(24) << session.host
+            << ' ' << setw(8) << session.port << ' '
+            << formatLastSeen(session.lastSeenAt, now) << endl;
+      }
+      exit(0);
+    }
+
+    if (result.count("attach") &&
+        (result.count("name") || result.count("host"))) {
+      CLOG(INFO, "stdout") << "--attach takes a session name; it cannot be "
+                              "combined with --name or a host"
+                           << endl;
+      exit(1);
+    }
+    if (result.count("attach") &&
+        (result.count("tunnel") || result.count("reversetunnel") ||
+         result.count("dynamic") || result.count("forward-ssh-agent") ||
+         result.count("jumphost") || muxParse.ssh.jumpHostSet ||
+         !muxParse.ssh.localForwards.empty() ||
+         !muxParse.ssh.remoteForwards.empty())) {
+      CLOG(INFO, "stdout")
+          << "--attach cannot be combined with port forwarding "
+             "(--tunnel, -r, -L, -R, -D), --forward-ssh-agent, or a jumphost "
+             "(-j/-J); reconnect without --attach to establish forwarding or "
+             "a jumphost"
+          << endl;
+      exit(1);
+    }
+
+    if (remotePtyDisabled(muxParse.ssh) &&
+        (result.count("name") || result.count("attach"))) {
+      CLOG(INFO, "stdout")
+          << "-T/--no-pty sessions are not saved and cannot be named or "
+             "reattached; drop --name/--attach"
+          << endl;
+      exit(1);
+    }
+
     const string earlyCommand = resolveRemoteCommand(
         argvSplit.commandOperands, result.count("command") > 0,
         result.count("command") ? result["command"].as<string>() : "");
@@ -515,6 +797,63 @@ int main(int argc, char** argv) {
     TelemetryService::create(result["telemetry"].as<bool>(),
                              tmpDir + "/.sentry-native-et", "Client");
 
+    if (result.count("kill")) {
+      const optional<SessionInfo> session =
+          resolveSavedSession(result["kill"].as<string>());
+      if (!session) {
+        exit(1);
+      }
+      const KillResult killResult = killSavedSession(*session);
+      if (killResult == KillResult::INVALID_SESSION) {
+        if (!deleteSavedSession(session->name)) {
+          exit(1);
+        }
+        CLOG(INFO, "stdout")
+            << "Session '" << session->name
+            << "' was already gone; removed stale record" << endl;
+        exit(0);
+      }
+      if (killResult == KillResult::FAILED) {
+        CLOG(INFO, "stdout") << "Session '" << session->name
+                             << "' was not removed; retry --kill or delete "
+                                "~/.et/sessions/"
+                             << session->name << " manually" << endl;
+        exit(1);
+      }
+      if (!deleteSavedSession(session->name)) {
+        exit(1);
+      }
+      CLOG(INFO, "stdout") << "Killed session '" << session->name << "'"
+                           << endl;
+      exit(0);
+    }
+
+    if (result.count("attach")) {
+      const optional<SessionInfo> session =
+          resolveSavedSession(result["attach"].as<string>());
+      if (!session) {
+        exit(1);
+      }
+      const string attachName = session->name;
+
+      int attachKeepalive = extractSingleOptionWithDefault<int>(
+          result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
+      const AttachResult attachResult = attachSavedSession(
+          attachName, *session,
+          result.count("command") ? result["command"].as<string>() : "",
+          result.count("noexit"), result.count("no-terminal"), attachKeepalive);
+      if (attachResult == AttachResult::INVALID_SESSION) {
+        deleteSavedSession(attachName);
+        CLOG(INFO, "stdout")
+            << "Session '" << attachName << "' is no longer running on "
+            << session->host << endl;
+        exit(1);
+      }
+      if (attachResult == AttachResult::FAILED) {
+        exit(1);
+      }
+      exit(0);
+    }
     string username = "";
     if (result.count("username")) {
       username = result["username"].as<string>();
@@ -650,6 +989,32 @@ int main(int argc, char** argv) {
       }
     }
 
+    // --name attaches if the session exists and creates it otherwise.
+    optional<SessionInfo> namedSession;
+    if (result.count("name")) {
+      sessionName = result["name"].as<string>();
+      if (!isValidSessionName(sessionName)) {
+        CLOG(INFO, "stdout") << "Invalid session name: " << sessionName << endl;
+        exit(1);
+      }
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+      sessionName.clear();
+#else
+      try {
+        namedSession = loadSession(sessionName);
+      } catch (const std::exception& e) {
+        CLOG(INFO, "stdout")
+            << "Warning: Named session storage is unavailable: " << e.what()
+            << ". Continuing without saving this session." << endl;
+        sessionName.clear();
+      }
+#endif
+    }
+
     // Parse username: cmdline > sshconfig > localuser
     if (username.empty()) {
       if (sshConfigOptions.username) {
@@ -771,6 +1136,85 @@ int main(int argc, char** argv) {
       socketEndpoint.set_name(destinationHost);
       socketEndpoint.set_port(destinationPort);
     }
+
+    bool forwardingRequested =
+        result.count("tunnel") || result.count("reversetunnel") ||
+        result.count("dynamic") || result.count("forward-ssh-agent") ||
+        !muxParse.ssh.localForwards.empty() ||
+        !muxParse.ssh.remoteForwards.empty();
+#ifndef WIN32
+    forwardingRequested = forwardingRequested ||
+                          sshConfigOptions.forward_agent ||
+                          !sshConfigOptions.local_forwards.empty();
+#endif
+
+    if (is_jumphost) {
+      if (namedSession) {
+        CLOG(INFO, "stdout")
+            << "Session '" << sessionName
+            << "' cannot be reattached through a jumphost because the saved "
+               "record does not contain jumphost metadata; use --attach "
+               "without a jumphost"
+            << endl;
+        exit(1);
+      }
+      if (!result.count("no-persist")) {
+        CLOG(INFO, "stdout")
+            << "Warning: Sessions using a jumphost are not saved because the "
+               "saved record does not contain jumphost metadata"
+            << endl;
+        sessionName.clear();
+      }
+    } else if (!result.count("name") && !result.count("no-persist") &&
+               !remotePtyDisabled(muxParse.ssh)) {
+      // Neither --attach nor a restarted etserver can resume a -T stream.
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+#else
+      sessionName = makeDefaultSessionName();
+#endif
+    }
+
+    if (forwardingRequested && !sessionName.empty()) {
+      CLOG(INFO, "stdout")
+          << "Warning: Saved-session reattach restores the shell but does "
+             "not recreate port or SSH agent forwarding"
+          << endl;
+    }
+
+    if (namedSession) {
+      if (namedSession->host != socketEndpoint.name() ||
+          namedSession->port != socketEndpoint.port()) {
+        CLOG(INFO, "stdout") << "session " << sessionName << " is saved for "
+                             << namedSession->host << ":" << namedSession->port
+                             << "; use --attach " << sessionName
+                             << " or a different --name" << endl;
+        exit(1);
+      }
+
+      const AttachResult attachResult = attachSavedSession(
+          sessionName, *namedSession,
+          resolveRemoteCommand(
+              argvSplit.commandOperands, result.count("command") > 0,
+              result.count("command") ? result["command"].as<string>() : ""),
+          result.count("noexit"), result.count("no-terminal"),
+          keepaliveDuration);
+      if (attachResult == AttachResult::ATTACHED) {
+        exit(0);
+      }
+      if (attachResult == AttachResult::FAILED) {
+        exit(1);
+      }
+
+      deleteSavedSession(sessionName);
+      CLOG(INFO, "stdout") << "Session '" << sessionName
+                           << "' is no longer running; creating a fresh session"
+                           << endl;
+    }
+
     shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
@@ -882,17 +1326,56 @@ int main(int argc, char** argv) {
     sshSetupHandler.setBootstrapOverrides(
         bootstrapPort.set, bootstrapPort.port, muxParse.ssh.identityFiles,
         muxParse.ssh.cipherSet ? muxParse.ssh.cipher : "");
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("kill-other-sessions") > 0, verboseLevel,
-        etterminal_path, serverFifo, ssh_options);
+    pair<string, string> idpasskeypair;
+    try {
+      idpasskeypair = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("kill-other-sessions") > 0, verboseLevel,
+          etterminal_path, serverFifo, ssh_options);
+    } catch (const runtime_error&) {
+      // SetupSsh already printed a message without the ssh output.
+      exit(1);
+    }
+
+    // Save before connecting so a local failure leaves the session
+    // recoverable.
+    if (!sessionName.empty()) {
+      try {
+        SessionInfo sessionInfo;
+        sessionInfo.name = sessionName;
+        sessionInfo.host = socketEndpoint.name();
+        sessionInfo.port = socketEndpoint.port();
+        sessionInfo.id = idpasskeypair.first;
+        sessionInfo.passkey = idpasskeypair.second;
+        sessionInfo.savedAt = (int64_t)time(NULL);
+        saveSession(sessionInfo, /*replaceExisting=*/false);
+      } catch (const std::exception& se) {
+        LOG(WARNING) << "Could not save session '" << sessionName
+                     << "': " << se.what();
+        CLOG(INFO, "stdout")
+            << "Warning: Could not save session '" << sessionName
+            << "': this connection will not be recoverable "
+               "after the client exits"
+            << endl;
+        sessionName = "";
+      }
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sessionEnv, noPty, command,
-        dynamicForwards, stdioForward, disconnectTimeoutMinutes,
-        muxParse.ssh.noRemoteCommand, sshConfigOptions.exit_on_forward_failure);
+        dynamicForwards, stdioForward,
+        /*maxConnectAttempts=*/3,
+        /*resumeSavedSession=*/false,
+        [&sessionName]() {
+          return sessionName.empty() || touchSession(sessionName);
+        },
+        [&sessionName](const string& title) {
+          return sessionName.empty() || updateSessionTitle(sessionName, title);
+        },
+        disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand,
+        sshConfigOptions.exit_on_forward_failure);
 
 #ifndef WIN32
     if (backgroundWriteFd >= 0) {
@@ -929,6 +1412,7 @@ int main(int argc, char** argv) {
     }
     const int remoteExitStatus =
         terminalClient.run(command, result.count("noexit"));
+    sessionEndedByServer = terminalClient.sessionEndedByServer();
 
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
@@ -957,6 +1441,11 @@ int main(int argc, char** argv) {
         });
       }
       muxMaster->stop();
+    }
+
+    // Any other exit leaves the remote shell running and reattachable.
+    if (!sessionName.empty() && sessionEndedByServer) {
+      deleteSavedSession(sessionName);
     }
 
     // Clean up ssh config options
@@ -988,6 +1477,11 @@ int main(int argc, char** argv) {
 
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
+
+  // Any other exit leaves the remote shell running and reattachable.
+  if (!sessionName.empty() && sessionEndedByServer) {
+    deleteSavedSession(sessionName);
+  }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

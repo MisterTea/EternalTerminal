@@ -188,6 +188,49 @@ TEST_CASE("BackedReader revive seeds local buffer", "[BackedIO]") {
   REQUIRE(reader.getSequenceNumber() == 1);
 }
 
+TEST_CASE("BackedIO reset zeroes sequences and drops buffered state",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  auto encryptCrypto = make_shared<CryptoHandler>(
+      "12345678901234567890123456789012", 0 /*verbosity*/);
+  auto decryptCrypto = make_shared<CryptoHandler>(
+      "12345678901234567890123456789012", 0 /*verbosity*/);
+  const int fd = handler->createChannel();
+
+  BackedWriter writer(handler, encryptCrypto, fd);
+  BackedReader reader(handler, decryptCrypto, fd);
+
+  REQUIRE(writer.write(Packet(1, "one")) == BackedWriterWriteState::SUCCESS);
+  REQUIRE(writer.write(Packet(2, "two")) == BackedWriterWriteState::SUCCESS);
+  Packet output;
+  REQUIRE(reader.read(&output) == 1);
+  REQUIRE(writer.getSequenceNumber() == 2);
+  REQUIRE(reader.getSequenceNumber() == 1);
+
+  writer.revive(-1);
+  REQUIRE(writer.write(Packet(3, "buffered")) ==
+          BackedWriterWriteState::BUFFERED_ONLY);
+
+  {
+    std::lock_guard<std::mutex> readerGuard(reader.getRecoverMutex());
+    std::lock_guard<std::mutex> writerGuard(writer.getRecoverMutex());
+    const string resetSalt(CryptoHandler::EPOCH_SALT_BYTES, 'r');
+    reader.reset(resetSalt);
+    writer.reset(resetSalt);
+  }
+  REQUIRE(writer.getSequenceNumber() == 0);
+  REQUIRE(reader.getSequenceNumber() == 0);
+
+  REQUIRE(writer.write(Packet(4, "fresh")) ==
+          BackedWriterWriteState::BUFFERED_ONLY);
+  REQUIRE(writer.getSequenceNumber() == 1);
+  auto recovered = writer.recover(0);
+  REQUIRE(recovered.size() == 1);
+  Packet replayed(recovered[0]);
+  replayed.decrypt(decryptCrypto);
+  REQUIRE(replayed.getPayload() == "fresh");
+}
+
 TEST_CASE("RawSocketUtils readAll waits for data then returns fully",
           "[RawSocketUtils]") {
   int fds[2];
