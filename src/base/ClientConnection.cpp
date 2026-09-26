@@ -22,16 +22,19 @@ ClientConnection::~ClientConnection() {
 }
 
 bool ClientConnection::connect() {
+  // Keep the live socket if this attempt fails before the session is replaced.
+  const int previousFd = socketFd;
+  int newFd = -1;
   try {
     VLOG(1) << "Connecting";
-    socketFd = socketHandler->connect(remoteEndpoint);
-    if (socketFd == -1) {
+    newFd = socketHandler->connect(remoteEndpoint);
+    if (newFd == -1) {
       VLOG(1) << "Could not connect to host";
       return false;
     }
     VLOG(1) << "Sending id";
     et::ConnectResponse response;
-    connectHandshake(socketFd, &response, resetOnConnect);
+    connectHandshake(newFd, &response, resetOnConnect);
     lastStatus_.store(response.status());
     if (response.status() == RETRY_LATER) {
       throw std::runtime_error("Server is recovering; retry later");
@@ -56,6 +59,28 @@ bool ClientConnection::connect() {
                  to_string(response.status()) + string(": ") + response.error();
       throw std::runtime_error(s.c_str());
     }
+
+    // A second connect() on this object meets a server that already has the
+    // session. Keep the reader and writer and run the recover exchange.
+    // Replacing them at sequence 0 drops whatever is written next. Reset
+    // recovery is different: this process has no sequence history, so it
+    // installs fresh reader/writer and restarts at sequence 0 below.
+    if (response.status() == RETURNING_CLIENT && reader && writer &&
+        !response.resetrequired()) {
+      if (previousFd != -1) {
+        socketFd = previousFd;
+        closeSocket();
+      }
+      VLOG(1) << "Recovering existing client connection";
+      return recover(newFd, /*readPeerCatchupFirst=*/true);
+    }
+
+    if (previousFd != -1) {
+      socketFd = previousFd;
+      closeSocket();
+    }
+    socketFd = newFd;
+    newFd = -1;
     VLOG(1) << "Creating backed reader";
     reader = std::shared_ptr<BackedReader>(
         new BackedReader(socketHandler,
@@ -83,9 +108,8 @@ bool ClientConnection::connect() {
     return true;
   } catch (const runtime_error& err) {
     LOG(INFO) << "Got failure during connect";
-    if (socketFd != -1) {
-      // socketHandler->close() would leave socketFd set and double-close it.
-      closeSocket();
+    if (newFd != -1) {
+      socketHandler->close(newFd);
     }
     if (err.what() == LEGACY_SERVER_REATTACH_ERROR) {
       throw;

@@ -195,16 +195,27 @@ TerminalClient::TerminalClient(
                            /*_resetIntent=*/_resumeSavedSession));
 
   int connectFailCount = 0;
+  bool connected = false;
+  bool payloadSent = false;
   while (true) {
     try {
       bool fail = true;
-      if (connection->connect()) {
+      // Retry connect() only when it failed. A live socket whose
+      // INITIAL_RESPONSE is slow must stay up: calling connect() again is a
+      // RETURNING_CLIENT reconnect and would resend INITIAL_PAYLOAD.
+      if (!connected) {
+        connected = connection->connect();
+      }
+      if (connected) {
         if (connection->wasRecovered()) {
           // Reattached: the session was bootstrapped when it started.
           fail = false;
         } else {
-          connection->writePacket(
-              Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+          if (!payloadSent) {
+            connection->writePacket(
+                Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+            payloadSent = true;
+          }
           for (int a = 0; a < 3; a++) {
             int clientFd = connection->getSocketFd();
             if (clientFd < 0) {
