@@ -39,7 +39,12 @@ ParsedConnect parseEtConnectArgv(int argc, const char** argv) {
       cxxopts::value<std::vector<std::string>>())(
       "disconnect-timeout", "Session disconnect timeout minutes",
       cxxopts::value<int>())("logtostdout", "Write log to stdout")(
-      "host", "Remote host name", cxxopts::value<std::string>());
+      "host", "Remote host name", cxxopts::value<std::string>())(
+      "j,jumphost", "Jumphost", cxxopts::value<std::string>())(
+      "T,no-pty", "No pty")("name", "Session name",
+                            cxxopts::value<std::string>())(
+      "attach", "Reattach", cxxopts::value<std::string>())(
+      "kill", "Kill", cxxopts::value<std::string>())("list", "List");
   options.parse_positional({"host"});
   ParsedConnect parsed{
       options.parse(static_cast<int>(clientArgv.size()), clientArgv.data()),
@@ -490,6 +495,78 @@ TEST_CASE("Unhandled OpenSSH letters do not end a short cluster",
     REQUIRE(parsed.ssh.sshPortSet);
     REQUIRE(parsed.ssh.sshPort == 2201);
     REQUIRE(hostAfterPrePass(parsed) == "host");
+  }
+}
+
+TEST_CASE("named-session flags are not mistaken for the destination",
+          "[ClientArgParsing]") {
+  SECTION("--attach NAME needs no host") {
+    const char* argv[] = {"et", "--attach", "work"};
+    auto parsed = parseEtConnectArgv(3, argv);
+    REQUIRE(parsed.result["attach"].as<string>() == "work");
+    REQUIRE(parsed.result.count("host") == 0);
+    REQUIRE(parsed.commandOperands.empty());
+  }
+
+  SECTION("--attach=NAME needs no host") {
+    const char* argv[] = {"et", "--attach=work"};
+    auto parsed = parseEtConnectArgv(2, argv);
+    REQUIRE(parsed.result["attach"].as<string>() == "work");
+    REQUIRE(parsed.result.count("host") == 0);
+  }
+
+  SECTION("--kill NAME needs no host") {
+    const char* argv[] = {"et", "--kill", "work"};
+    auto parsed = parseEtConnectArgv(3, argv);
+    REQUIRE(parsed.result["kill"].as<string>() == "work");
+    REQUIRE(parsed.result.count("host") == 0);
+  }
+
+  SECTION("--list needs no host") {
+    const char* argv[] = {"et", "--list"};
+    auto parsed = parseEtConnectArgv(2, argv);
+    REQUIRE(parsed.result.count("list") == 1);
+    REQUIRE(parsed.result.count("host") == 0);
+  }
+
+  SECTION("--name NAME host keeps the host and a positional command") {
+    const char* argv[] = {"et", "--name", "work", "user@host", "top"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    REQUIRE(parsed.result["name"].as<string>() == "work");
+    REQUIRE(parsed.result["host"].as<string>() == "user@host");
+    REQUIRE(commandFromParse(parsed) == "top");
+  }
+
+  SECTION("--name=NAME host keeps the host") {
+    const char* argv[] = {"et", "--name=work", "host"};
+    auto parsed = parseEtConnectArgv(3, argv);
+    REQUIRE(parsed.result["name"].as<string>() == "work");
+    REQUIRE(parsed.result["host"].as<string>() == "host");
+    REQUIRE(parsed.commandOperands.empty());
+  }
+
+  SECTION("-j JUMPHOST host keeps the host") {
+    const char* argv[] = {"et", "-j", "bastion", "host", "uptime"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    REQUIRE(parsed.result["jumphost"].as<string>() == "bastion");
+    REQUIRE(parsed.result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "uptime");
+  }
+
+  SECTION("-T --command cmd host") {
+    const char* argv[] = {"et", "-T", "--command", "cat", "host"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    REQUIRE(parsed.result.count("T") == 1);
+    REQUIRE(parsed.result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "cat");
+  }
+
+  SECTION("-T host cmd") {
+    const char* argv[] = {"et", "-T", "host", "cat", "-n"};
+    auto parsed = parseEtConnectArgv(5, argv);
+    REQUIRE(parsed.result.count("T") == 1);
+    REQUIRE(parsed.result["host"].as<string>() == "host");
+    REQUIRE(commandFromParse(parsed) == "cat -n");
   }
 }
 

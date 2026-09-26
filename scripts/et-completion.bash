@@ -28,7 +28,7 @@ _et() {
             COMPREPLY=($(compgen -c -- "$cur"))
             return
             ;;
-        --ssh-option|-o|-c)
+        --ssh-option|-o|-c|--name|--attach|--kill)
             return
             ;;
     esac
@@ -40,7 +40,7 @@ _et() {
             --no-terminal --tunnel --reversetunnel --port --silent
             --serverfifo --ssh-socket --username --noexit --jserverfifo
             --macserver --keepalive --logdir --telemetry --terminal-path
-            --ssh-option
+            --ssh-option --name --attach --kill --list --no-persist
             -N -T -D -W -L -R -M -S -O -F -G -V
             -c -f -h -p -r -t -u -v -x -e -k -l -o -i -J
         " -- "$cur"))

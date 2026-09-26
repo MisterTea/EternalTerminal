@@ -49,6 +49,13 @@ class UserTerminalHandler {
    * Shell output before control mode is left alone.
    */
   TmuxCcInjectionFilter controlOutputFilter_;
+  string id;
+  string passkey;
+  optional<SocketEndpoint> routerEndpoint;
+  bool ptyActive;
+  bool hadReverseTunnels;
+  // From TermInit; re-advertised on router re-register after etserver restart.
+  std::optional<int32_t> disconnectTimeoutSeconds;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);
@@ -64,6 +71,12 @@ class UserTerminalHandler {
   /** @brief Pumps a socket-backed terminal (test doubles, same protocol). */
   void runSocketTerminal(int masterFd);
 #endif
+
+  void registerWithRouter();
+
+  // Retries with backoff until the router is back; returns -1 on shutdown.
+  // The master fd is not drained meanwhile, so the shell blocks on output.
+  int reconnectRouter();
 };
 }  // namespace et
 

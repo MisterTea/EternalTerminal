@@ -54,6 +54,8 @@ class BackedWriter {
    * peer.
    */
   vector<std::string> recover(int64_t lastValidSequenceNumber);
+  // Restart at sequence 0 under a new epoch salt. Hold the recover mutex.
+  void reset(const string& salt);
 
   /**
    * @brief Points the writer at a new socket fd so writes can resume.
