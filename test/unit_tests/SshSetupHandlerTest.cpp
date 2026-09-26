@@ -1,4 +1,5 @@
 #include "CryptoHandler.hpp"
+#include "MuxProtocol.hpp"
 #include "SshSetupHandler.hpp"
 #include "TestHeaders.hpp"
 
@@ -308,6 +309,38 @@ TEST_CASE("SshSetupHandler keeps destination options off the jumphost",
   for (const auto& option : destination_options) {
     REQUIRE(std::find(jump_args.begin(), jump_args.end(), "-o" + option) ==
             jump_args.end());
+  }
+}
+
+TEST_CASE("SshSetupHandler passes -p only when the user gave -p",
+          "[SshSetupHandler]") {
+  auto runSetup = [](const OpenSshClientFlags& flags) {
+    auto fakeSubprocess = make_shared<RecordingSshSubprocessHandler>();
+    SshSetupHandler handler(fakeSubprocess);
+    BootstrapSshPort sshPort = bootstrapSshPort(flags);
+    handler.setBootstrapOverrides(sshPort.set, sshPort.port, {}, "");
+    handler.SetupSsh("user", "target", "target", 2022, "", "", false, 0, "", "",
+                     {"Port=22"});
+    REQUIRE(fakeSubprocess->calls.size() == 1);
+    return fakeSubprocess->calls[0];
+  };
+
+  SECTION("without -p, --ssh-option Port stays in charge") {
+    OpenSshClientFlags flags;
+    auto args = runSetup(flags);
+    REQUIRE(std::find(args.begin(), args.end(), "-p") == args.end());
+    REQUIRE(std::find(args.begin(), args.end(), "-oPort=22") != args.end());
+  }
+
+  SECTION("-p comes before the host and --ssh-option Port") {
+    OpenSshClientFlags flags;
+    flags.sshPortSet = true;
+    flags.sshPort = 2201;
+    auto args = runSetup(flags);
+    REQUIRE(args.size() >= 3);
+    REQUIRE(args[0] == "-p");
+    REQUIRE(args[1] == "2201");
+    REQUIRE(args[2] == "user@target");
   }
 }
 

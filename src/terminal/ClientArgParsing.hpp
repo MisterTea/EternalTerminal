@@ -73,17 +73,20 @@ inline string joinRemoteCommandOperands(const vector<string>& operands) {
 
 // Options that consume the following argv token. Everything after the host
 // positional is a remote command word, including tokens that look like flags.
+// OpenSSH letters whose meaning changed (`-p`, `-l`, `-c`, `-t`, `-v`, ...)
+// are removed by the short-flag pre-pass and are not listed here. `-D` and
+// `-W` are re-emitted by that pre-pass and still take a value.
 inline bool etOptionConsumesValue(const string& arg) {
-  return arg == "-u" || arg == "--username" || arg == "-p" || arg == "--port" ||
-         arg == "-c" || arg == "--command" || arg == "--terminal-path" ||
-         arg == "-t" || arg == "--tunnel" || arg == "-r" ||
-         arg == "--reversetunnel" || arg == "--jumphost" || arg == "--jport" ||
-         arg == "--jserverfifo" || arg == "-v" || arg == "--verbose" ||
-         arg == "-k" || arg == "--keepalive" || arg == "-l" ||
-         arg == "--logdir" || arg == "--ssh-socket" || arg == "-F" ||
-         arg == "--ssh-config" || arg == "--telemetry" ||
-         arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o" ||
-         arg == "--disconnect-timeout";
+  return arg == "-u" || arg == "--username" || arg == "--port" ||
+         arg == "--command" || arg == "--terminal-path" || arg == "--tunnel" ||
+         arg == "-r" || arg == "--reversetunnel" || arg == "--jumphost" ||
+         arg == "--jport" || arg == "--jserverfifo" || arg == "--verbose" ||
+         arg == "-k" || arg == "--keepalive" || arg == "--logdir" ||
+         arg == "--ssh-socket" || arg == "-F" || arg == "--ssh-config" ||
+         arg == "--telemetry" || arg == "--serverfifo" ||
+         arg == "--ssh-option" || arg == "-o" ||
+         arg == "--disconnect-timeout" || arg == "-D" || arg == "--dynamic" ||
+         arg == "-W" || arg == "--stdio-forward";
 }
 
 struct EtArgvSplit {
@@ -133,7 +136,8 @@ inline EtArgvSplit splitEtArgvAtHost(const vector<string>& args) {
   return split;
 }
 
-// Prefer a positional command over -c/--command when both are present.
+// Prefer a positional command over --command when both are present. `-c` is an
+// OpenSSH cipher spec and is not a remote command.
 inline string resolveRemoteCommand(const vector<string>& positionalOperands,
                                    bool hasCommandFlag,
                                    const string& commandFlagValue) {

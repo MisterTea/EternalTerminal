@@ -5,30 +5,30 @@ _et() {
     _init_completion || return
 
     case "$prev" in
-        --logdir|-l|--serverfifo|--jserverfifo|--terminal-path)
+        --logdir|--serverfifo|--jserverfifo|--terminal-path)
             _filedir -d
             return
             ;;
-        --ssh-socket)
+        --ssh-socket|-i)
             _filedir
             return
             ;;
-        --host|--jumphost)
+        --host|--jumphost|-J)
             _known_hosts_real -- "$cur"
             return
             ;;
-        --port|--jport|--tunnel|--reversetunnel|--keepalive)
+        --port|-p|--jport|--tunnel|--reversetunnel|-L|-R|-D|-W|--keepalive|-e)
             return
             ;;
-        --username|-u)
+        --username|-u|-l)
             COMPREPLY=($(compgen -u -- "$cur"))
             return
             ;;
-        --command|-c)
+        --command)
             COMPREPLY=($(compgen -c -- "$cur"))
             return
             ;;
-        --ssh-option|-o)
+        --ssh-option|-o|-c)
             return
             ;;
     esac
@@ -41,7 +41,8 @@ _et() {
             --serverfifo --ssh-socket --username --noexit --jserverfifo
             --macserver --keepalive --logdir --telemetry --terminal-path
             --ssh-option
-            -N -c -f -h -p -r -t -u -v -x -e -k -l -o
+            -N -T -D -W -L -R -M -S -O -F -G -V
+            -c -f -h -p -r -t -u -v -x -e -k -l -o -i -J
         " -- "$cur"))
         return
     fi

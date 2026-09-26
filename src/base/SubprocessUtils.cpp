@@ -234,6 +234,23 @@ string SubprocessUtils::SubprocessToStringInteractive(
     close(stderr_pipe[0]);
     close(stderr_pipe[1]);
 
+    // Do not inherit the client's stdin. OpenSSH would forward it to the
+    // bootstrap session and consume the remote command stream (VS Code writes
+    // the install script on stdin before `et` starts reading). Passphrases
+    // still come from /dev/tty.
+    int devnull = open("/dev/null", O_RDONLY);
+    if (devnull < 0) {
+      STFATAL << "open /dev/null: " << strerror(errno);
+      exit(1);
+    }
+    if (dup2(devnull, STDIN_FILENO) < 0) {
+      STFATAL << "dup2 /dev/null: " << strerror(errno);
+      exit(1);
+    }
+    if (devnull != STDIN_FILENO) {
+      close(devnull);
+    }
+
     char** argsArray = new char*[args.size() + 2];
     argsArray[0] = strdup(command.c_str());
     for (int a = 0; a < args.size(); a++) {
