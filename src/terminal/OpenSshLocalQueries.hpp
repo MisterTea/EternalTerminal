@@ -9,7 +9,7 @@
 
 #include "ParseConfigFile.hpp"
 
-#ifndef WIN32
+#if !defined(_MSC_VER)
 extern "C" {
 extern char** environ;
 }
@@ -393,11 +393,17 @@ inline vector<pair<string, string>> mergeSessionEnvironment(
 
 inline vector<pair<string, string>> captureLocalEnviron() {
   vector<pair<string, string>> vars;
-#ifndef WIN32
-  if (environ == nullptr) {
+#ifdef _MSC_VER
+  // Prefer the CRT environ block over Win32 GetEnvironmentStringsA so this
+  // header does not need windows.h (httplib must be included before it).
+  char** env = _environ;
+#else
+  char** env = environ;
+#endif
+  if (env == nullptr) {
     return vars;
   }
-  for (char** it = environ; *it != nullptr; ++it) {
+  for (char** it = env; *it != nullptr; ++it) {
     string entry(*it);
     size_t eq = entry.find('=');
     if (eq == string::npos || eq == 0) {
@@ -405,21 +411,6 @@ inline vector<pair<string, string>> captureLocalEnviron() {
     }
     vars.emplace_back(entry.substr(0, eq), entry.substr(eq + 1));
   }
-#else
-  LPCH block = GetEnvironmentStringsA();
-  if (block == nullptr) {
-    return vars;
-  }
-  for (LPCH entry = block; *entry != '\0'; entry += strlen(entry) + 1) {
-    string line(entry);
-    size_t eq = line.find('=');
-    if (eq == string::npos || eq == 0) {
-      continue;
-    }
-    vars.emplace_back(line.substr(0, eq), line.substr(eq + 1));
-  }
-  FreeEnvironmentStringsA(block);
-#endif
   return vars;
 }
 

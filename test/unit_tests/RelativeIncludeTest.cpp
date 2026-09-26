@@ -539,6 +539,32 @@ TEST_CASE("SendEnv selection and SetEnv override", "[OpenSshLocalQueries]") {
   REQUIRE_FALSE(sshEnvPatternMatches("LC_*", "LANG"));
 }
 
+TEST_CASE("captureLocalEnviron reads process environment",
+          "[OpenSshLocalQueries]") {
+  const char* markerName = "ET_TEST_CAPTURE_LOCAL_ENVIRON";
+  const char* markerValue = "honor-ssh-config-ci";
+#ifdef WIN32
+  REQUIRE(_putenv_s(markerName, markerValue) == 0);
+#else
+  REQUIRE(setenv(markerName, markerValue, 1) == 0);
+#endif
+  auto vars = captureLocalEnviron();
+  bool found = false;
+  for (const auto& env : vars) {
+    if (env.first == markerName) {
+      REQUIRE(env.second == markerValue);
+      found = true;
+      break;
+    }
+  }
+  REQUIRE(found);
+#ifdef WIN32
+  REQUIRE(_putenv_s(markerName, "") == 0);
+#else
+  unsetenv(markerName);
+#endif
+}
+
 TEST_CASE("keepalive, remote command, and BatchMode resolution",
           "[OpenSshLocalQueries]") {
   REQUIRE(resolveEtKeepaliveSeconds(true, 2, 30) == 2);
