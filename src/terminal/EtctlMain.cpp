@@ -23,6 +23,7 @@
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
 #include "Osc133.hpp"
+#include "RunGuard.hpp"
 #include "SessionTombstone.hpp"
 
 using namespace et;
@@ -1421,6 +1422,7 @@ int runCommand(const string& name, const string& command, double timeoutSec,
   const auto deadline =
       typedAt + std::chrono::milliseconds((long long)(timeoutSec * 1000));
   bool accepted = false;
+  auto lastDataAt = typedAt;
   while (std::chrono::steady_clock::now() < deadline) {
     uint8_t op = 0;
     string payload;
@@ -1430,6 +1432,7 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     }
     ScrollbackRead r = control_proto::decodeReadResp(payload);
     cursor = r.nextCursor;
+    if (!r.data.empty()) lastDataAt = std::chrono::steady_clock::now();
     acc += r.data;
 
     string body;
@@ -1482,38 +1485,30 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     // shell, and acting on that guess is what discarded the output of commands
     // that had already run.
     if (useBracket) {
-      bool parked = false;
       const size_t pasteOff = acc.find("\x1b[?2004l");
-      const bool rearmed = pasteOff != string::npos &&
-                           acc.find("\x1b[?2004h", pasteOff) != string::npos;
+      run_guard::Evidence ev;
+      ev.oscRead = oscRead;
+      ev.rearmed = pasteOff != string::npos &&
+                   acc.find("\x1b[?2004h", pasteOff) != string::npos;
       if (oscRead) {
         // Either mark proves the line was accepted: C is emitted by preexec the
-        // instant it runs, D by precmd when it finishes. Once accepted, never
-        // interrupt -- whatever is missing, the command is the shell's now.
+        // instant it runs, D by precmd when it finishes.
         if (std::regex_search(acc, kOsc133C) ||
             std::regex_search(acc, kOsc133D))
           accepted = true;
-        parked = !accepted && rearmed;
-      } else {
-        // kBracketMark has no C mark, and two shells park two ways:
-        //  - bash runs the leading marker line then parks on PS2, toggling
-        //    paste off (?2004l) then back on (?2004h): that re-arm, with no
-        //    end marker, means it re-prompted = parked (fast).
-        //  - fish parks atomically, running nothing and never toggling paste:
-        //    no executed start marker (mark at column 0, vs the echoed
-        //    `echo <mark>`) after a short grace = parked.
-        // A still-running command keeps paste disabled and has already emitted
-        // the executed marker, so neither branch fires: it is never
-        // interrupted.
-        if (rearmed) {
-          parked = true;
-        } else if (std::chrono::steady_clock::now() - typedAt >
-                       std::chrono::milliseconds(2000) &&
-                   !std::regex_search(acc, execStartRe)) {
-          parked = true;
-        }
+      } else if (std::regex_search(acc, execStartRe)) {
+        // kBracketMark has no C mark, but the executed start marker proves the
+        // same thing: `echo <mark>` is the first line of the submitted buffer,
+        // so that marker at column 0 (as against the echoed `echo <mark>`)
+        // means the shell took the line and began working through it.
+        accepted = true;
       }
-      if (parked) {
+      ev.accepted = accepted;
+      const auto now = std::chrono::steady_clock::now();
+      ev.pastFallbackGrace = now - typedAt > std::chrono::milliseconds(2000);
+      ev.streamSettled = now - lastDataAt > std::chrono::milliseconds(400);
+
+      if (run_guard::shouldDeclareParked(ev)) {
         cmdWrite(name, "\x03");  // Ctrl-C to abort the continuation prompt
         // Let the interrupt land and the shell re-prompt before returning. The
         // D that precmd emits for the aborted line has to be in the scrollback
@@ -1532,11 +1527,27 @@ int runCommand(const string& name, const string& command, double timeoutSec,
   // A bracketed inject that never completed may have left the shell parked on a
   // continuation prompt; recover it, and drain the aftermath so the next run is
   // not handed an orphan done-mark.
+  //
+  // A re-armed paste with no end marker is the continuation prompt the guard
+  // above deliberately declined to act on once the command had started. Say so
+  // here, where waiting out the deadline has ruled out the other reading, so a
+  // malformed body still names its own failure instead of reporting a bare
+  // timeout.
+  const bool looksParked =
+      useBracket && acc.find("\x1b[?2004l") != string::npos &&
+      acc.find("\x1b[?2004h", acc.find("\x1b[?2004l")) != string::npos;
   if (useBracket) {
     cmdWrite(name, "\x03");
     snapshotPrompt(name, 2.0, 200, /*awaitActivity=*/true);
   }
-  fprintf(stderr, "etctl: run timed out after %.1fs\n", timeoutSec);
+  if (looksParked) {
+    fprintf(stderr,
+            "etctl: no end marker after %.1fs; the shell looks parked on a "
+            "continuation prompt (malformed body?)\n",
+            timeoutSec);
+  } else {
+    fprintf(stderr, "etctl: run timed out after %.1fs\n", timeoutSec);
+  }
   return 124;
 }
 

@@ -568,6 +568,7 @@ add_library(
   src/terminal/ControlListener.cpp
   src/terminal/ControlProtocol.hpp
   src/terminal/ControlPaths.hpp
+  src/terminal/RunGuard.hpp
   src/terminal/SessionScrollback.hpp
   src/terminal/SessionTombstone.hpp
   src/terminal/SessionTranscript.hpp
