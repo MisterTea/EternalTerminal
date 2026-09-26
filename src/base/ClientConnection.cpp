@@ -59,7 +59,7 @@ bool ClientConnection::connect() {
         closeSocket();
       }
       VLOG(1) << "Recovering existing client connection";
-      return recover(newFd, true);
+      return recover(newFd, /*readPeerCatchupFirst=*/true);
     }
 
     if (previousFd != -1) {
@@ -151,7 +151,7 @@ void ClientConnection::pollReconnect() {
                 << response.error() << endl;
             socketHandler->close(newSocketFd);
           } else {
-            recover(newSocketFd, true);
+            recover(newSocketFd, /*readPeerCatchupFirst=*/true);
           }
         } catch (const std::runtime_error& re) {
           LOG(INFO) << "Got failure during reconnect";

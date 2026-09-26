@@ -102,7 +102,7 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd, bool readCatchupFirst) {
+bool Connection::recover(int newSocketFd, bool readPeerCatchupFirst) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -128,32 +128,29 @@ bool Connection::recover(int newSocketFd, bool readCatchupFirst) {
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
 
+    // Fetch our catchup bytes before any I/O, so a sequence number we cannot
+    // serve fails the same way whichever side sends its catchup first.
     et::CatchupBuffer localCatchup;
-    vector<string> recoveredMessages =
-        writer->recover(remoteHeader.sequencenumber());
-    for (auto it : recoveredMessages) {
-      localCatchup.add_buffer(it);
+    for (const auto& message : writer->recover(remoteHeader.sequencenumber())) {
+      localCatchup.add_buffer(message);
     }
 
-    // Clients read before they write. The server still writes first, so an
-    // updated client can recover against a server that has not changed, and
-    // neither side blocks in writeProto when both catchups are large.
-    et::CatchupBuffer remoteCatchup;
-    if (readCatchupFirst) {
-      remoteCatchup =
+    et::CatchupBuffer catchupBuffer;
+    if (readPeerCatchupFirst) {
+      catchupBuffer =
           socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
       socketHandler->writeProto(newSocketFd, localCatchup, true);
     } else {
       socketHandler->writeProto(newSocketFd, localCatchup, true);
-      remoteCatchup =
+      catchupBuffer =
           socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
     }
 
     socketFd = newSocketFd;
-    vector<string> remoteMessages(remoteCatchup.buffer().begin(),
-                                  remoteCatchup.buffer().end());
+    vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
+                                     catchupBuffer.buffer().end());
 
-    reader->revive(socketFd, remoteMessages);
+    reader->revive(socketFd, recoveredMessages);
     writer->revive(socketFd);
     LOG(INFO) << "Finished recovering with socket fd: " << socketFd;
     return true;
