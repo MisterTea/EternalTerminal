@@ -14,10 +14,16 @@
 #include "TestHeaders.hpp"
 
 #ifndef WIN32
+#include <limits.h>
 #include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
+#ifdef __APPLE__
+#include <mach-o/dyld.h>
+#elif defined(__FreeBSD__)
+#include <sys/sysctl.h>
+#endif
 #endif
 
 using namespace et;
@@ -45,10 +51,47 @@ int lastAcceptCount(const string& output) {
   return count;
 }
 
+// macOS has no /proc/self/exe. Resolve the path in the parent and exec the
+// copied buffer in the child; only async-signal-safe calls are safe there.
+string currentExecutablePath() {
+  char buf[PATH_MAX];
+  buf[0] = '\0';
+#ifdef __APPLE__
+  uint32_t size = sizeof(buf);
+  if (_NSGetExecutablePath(buf, &size) != 0) {
+    return "";
+  }
+#elif defined(__FreeBSD__)
+  size_t len = sizeof(buf);
+  int mib[4] = {CTL_KERN, KERN_PROC, KERN_PROC_PATHNAME, -1};
+  if (sysctl(mib, 4, buf, &len, nullptr, 0) != 0 || buf[0] == '\0') {
+    return "";
+  }
+#else
+  ssize_t n = ::readlink("/proc/self/exe", buf, sizeof(buf) - 1);
+  if (n <= 0) {
+    return "";
+  }
+  buf[n] = '\0';
+#endif
+  char resolved[PATH_MAX];
+  if (realpath(buf, resolved) == nullptr) {
+    return string(buf);
+  }
+  return string(resolved);
+}
+
 // Runs et-test again as a clean process. TerminalClient calls exit(1) when the
 // initial connection gives up, which would take down the Catch runner.
 ReproResult runIssue866Repro(const string& mode, const string& directory,
                              int timeoutSec) {
+  string exePath = currentExecutablePath();
+  if (exePath.empty()) {
+    STFATAL << "could not resolve test executable path";
+  }
+  vector<char> exeBuf(exePath.begin(), exePath.end());
+  exeBuf.push_back('\0');
+
   int pipefd[2];
   if (pipe(pipefd) != 0) {
     STFATAL << "pipe failed: " << strerror(errno);
@@ -70,9 +113,8 @@ ReproResult runIssue866Repro(const string& mode, const string& directory,
     dup2(pipefd[1], STDERR_FILENO);
     close(pipefd[0]);
     close(pipefd[1]);
-    char exe[] = "/proc/self/exe";
-    char* argv[] = {exe, nullptr};
-    execv(exe, argv);
+    char* argv[] = {exeBuf.data(), nullptr};
+    execv(exeBuf.data(), argv);
     _exit(127);
   }
   unsetenv("ET_REPRO_866");
