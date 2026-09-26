@@ -19,6 +19,7 @@
 #include "ServerConnection.hpp"
 #include "SshSetupHandler.hpp"
 #include "TcpSocketHandler.hpp"
+#include "TitleParser.hpp"
 
 namespace et {
 /**
@@ -27,6 +28,8 @@ namespace et {
  */
 class TerminalClient {
  public:
+  static const string INVALID_SESSION_CONNECT_ERROR;
+
   /**
    * @brief Configures the client with the required sockets, console, and
    * tunnels.
@@ -41,8 +44,12 @@ class TerminalClient {
                  const vector<pair<string, string>>& envVars,
                  bool noPty = false, const string& command = "",
                  const vector<string>& dynamicForwards = {},
-                 const string& stdioForward = "",
-                 optional<int> disconnectTimeoutMinutes = nullopt);
+                 const string& stdioForward = "", int _maxConnectAttempts = 3,
+                 bool _resumeSavedSession = false,
+                 std::function<bool()> _sessionHeartbeat = {},
+                 std::function<bool(const string&)> _sessionTitleUpdate = {},
+                 optional<int> disconnectTimeoutMinutes = nullopt,
+                 bool noShell = false);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();
@@ -108,6 +115,11 @@ class TerminalClient {
 #ifdef WIN32
   static BOOL WINAPI consoleCtrlHandler(DWORD ctrlType);
 #endif
+  bool killSession(int timeoutSeconds);
+  bool sessionEndedByServer() {
+    return connection &&
+           connection->lastStatus() == et::ConnectStatus::INVALID_KEY;
+  }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
@@ -171,6 +183,9 @@ class TerminalClient {
   static std::atomic<bool> closeOnHangup;
   static std::atomic<bool> hangupCloseRequested;
   static std::atomic<bool> hangupCloseCompleted;
+  std::function<bool()> sessionHeartbeat;
+  std::function<bool(const string&)> sessionTitleUpdate;
+  TitleParser titleParser;
 };
 
 }  // namespace et

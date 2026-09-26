@@ -15,7 +15,7 @@ namespace et {
 /**
  * @brief Runs a remote command on pipes (stdin/stdout/stderr) without a pty.
  *
- * Used for `et -T -c ...`: binary stdio, separate stderr, no login shell
+ * Used for `et -T --command ...`: binary stdio, separate stderr, no login shell
  * motd/echo, and no `; exit` typed into a shell.
  */
 class PipeUserTerminal : public UserTerminal {
@@ -59,6 +59,9 @@ class PipeUserTerminal : public UserTerminal {
         close(stdinPipe[0]);
         close(stdoutPipe[1]);
         close(stderrPipe[1]);
+        // Lead a process group, as forkpty does, so terminate() reaches every
+        // descendant of `sh -c 'a | b'`.
+        FATAL_FAIL(setsid());
 
         // Signal parent that stdout/stderr write ends are held via dup2 so it
         // may close its copies without racing a premature EOF on the readers.
@@ -164,6 +167,31 @@ class PipeUserTerminal : public UserTerminal {
     }
     return 0;
 #endif
+  }
+
+  virtual void terminate() {
+    if (pid <= 0) {
+      return;
+    }
+    closeInput();
+    // The child is not reaped until handleSessionEnd(), so its group id
+    // cannot be reused while we signal it.
+    if (::kill(-pid, SIGHUP) == -1) {
+      return;
+    }
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(1);
+    while (std::chrono::steady_clock::now() < deadline) {
+      siginfo_t info;
+      info.si_pid = 0;
+      if (waitid(P_PID, pid, &info, WEXITED | WNOHANG | WNOWAIT) == -1 ||
+          info.si_pid == pid) {
+        break;
+      }
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    }
+    // Catches descendants that ignored SIGHUP.
+    ::kill(-pid, SIGKILL);
   }
 
   virtual void setInfo(const winsize& /*tmpwin*/) {

@@ -181,6 +181,11 @@ class PipeUserTerminal : public UserTerminal {
       processHandle = INVALID_HANDLE_VALUE;
     }
   }
+  virtual void terminate() override {
+    if (processHandle != INVALID_HANDLE_VALUE) {
+      TerminateProcess(processHandle, 1);
+    }
+  }
   virtual void setInfo(const winsize& /*tmpwin*/) override {}
   virtual int getFd() override { return stdoutSocket; }
   virtual int getInputFd() override { return stdinSocket; }

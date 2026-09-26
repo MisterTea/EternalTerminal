@@ -77,6 +77,27 @@ TEST_CASE("Parses ssh style -L/-R arg", "[TunnelUtils]") {
   REQUIRE(requests[0].destination().port() == 9999);
 }
 
+TEST_CASE("Parses OpenSSH 3-field -L/-R port:host:hostport", "[TunnelUtils]") {
+  auto requests = parseRangesToRequests("8080:localhost:80");
+  REQUIRE(requests.size() == 1);
+  REQUIRE(requests[0].source().name() == "localhost");
+  REQUIRE(requests[0].source().port() == 8080);
+  REQUIRE(requests[0].destination().name() == "localhost");
+  REQUIRE(requests[0].destination().port() == 80);
+
+  auto ipv6 = parseRangesToRequests("9090:[::1]:443");
+  REQUIRE(ipv6.size() == 1);
+  REQUIRE(ipv6[0].source().name() == "localhost");
+  REQUIRE(ipv6[0].source().port() == 9090);
+  REQUIRE(ipv6[0].destination().name() == "::1");
+  REQUIRE(ipv6[0].destination().port() == 443);
+
+  auto both = parseRangesToRequests("8080:localhost:80,9090:example.com:443");
+  REQUIRE(both.size() == 2);
+  REQUIRE(both[1].destination().name() == "example.com");
+  REQUIRE(both[1].destination().port() == 443);
+}
+
 TEST_CASE("Multiple comma-separated ssh-style reverse tunnels",
           "[TunnelUtils][issue-789]") {
   // #789: parse each four-part entry as SSH style.
@@ -187,9 +208,13 @@ TEST_CASE("Rejects malformed port forward input", "[TunnelUtils]") {
             "Tunnel argument must have source and destination between a ':'"));
   }
 
-  SECTION("Ssh-style tunneling arg must be 4 parts") {
-    REQUIRE_THROWS_WITH(parseRangesToRequests("8888:0.0.0.0:9999"),
-                        ContainsSubstring("The 4 part ssh-style"));
+  SECTION("OpenSSH 3-field forward binds localhost") {
+    auto requests = parseRangesToRequests("8888:0.0.0.0:9999");
+    REQUIRE(requests.size() == 1);
+    REQUIRE(requests[0].source().name() == "localhost");
+    REQUIRE(requests[0].source().port() == 8888);
+    REQUIRE(requests[0].destination().name() == "0.0.0.0");
+    REQUIRE(requests[0].destination().port() == 9999);
   }
 
   SECTION("Ssh-style tunneling arg must use brackets for ipv6 addresses") {

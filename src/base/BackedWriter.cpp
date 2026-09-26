@@ -117,4 +117,12 @@ void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
   disconnectedBytes = 0;
 }
+
+void BackedWriter::reset(const string& salt) {
+  backupBuffer.clear();
+  backupSize = 0;
+  disconnectedBytes = 0;
+  sequenceNumber = 0;
+  cryptoHandler->rekey(salt);
+}
 }  // namespace et

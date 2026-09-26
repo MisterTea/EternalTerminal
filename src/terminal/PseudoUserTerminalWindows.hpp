@@ -5,6 +5,7 @@
 #include <windows.h>
 
 #include <atomic>
+#include <condition_variable>
 #include <mutex>
 #include <thread>
 
@@ -45,6 +46,25 @@ inline std::string DefaultWindowsHomeLocal() {
   }
   return std::string();
 }
+
+// Job termination is asynchronous and the job is optional, so fall back to
+// terminating the root process directly.
+inline bool TerminateProcessWithFallbackLocal(HANDLE process, HANDLE job) {
+  bool terminatedByJob = false;
+  if (job != nullptr) {
+    terminatedByJob = TerminateJobObject(job, 1) != FALSE;
+  }
+  if (!terminatedByJob) {
+    TerminateProcess(process, 1);
+  }
+
+  DWORD waitResult = WaitForSingleObject(process, 2000);
+  if (waitResult != WAIT_OBJECT_0) {
+    TerminateProcess(process, 1);
+    waitResult = WaitForSingleObject(process, 2000);
+  }
+  return waitResult == WAIT_OBJECT_0;
+}
 }  // namespace
 
 /**
@@ -62,7 +82,8 @@ class PseudoUserTerminal : public UserTerminal {
         inputWrite(INVALID_HANDLE_VALUE),
         outputRead(INVALID_HANDLE_VALUE),
         processHandle(INVALID_HANDLE_VALUE),
-        running(false) {}
+        jobHandle(nullptr),
+        closing(false) {}
   virtual ~PseudoUserTerminal() { cleanup(); }
 
   virtual int setup(int /*routerFd*/) override {
@@ -130,8 +151,9 @@ class PseudoUserTerminal : public UserTerminal {
     ZeroMemory(&pi, sizeof(pi));
     BOOL ok = CreateProcessW(
         wideShell.c_str(), cmdBuf.data(), NULL, NULL, FALSE,
-        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT, NULL,
-        wideHome.empty() ? NULL : wideHome.c_str(), &si.StartupInfo, &pi);
+        EXTENDED_STARTUPINFO_PRESENT | CREATE_UNICODE_ENVIRONMENT |
+            CREATE_SUSPENDED,
+        NULL, wideHome.empty() ? NULL : wideHome.c_str(), &si.StartupInfo, &pi);
 
     DeleteProcThreadAttributeList(attrList);
     HeapFree(GetProcessHeap(), 0, attrList);
@@ -145,6 +167,43 @@ class PseudoUserTerminal : public UserTerminal {
       LOG(FATAL) << "CreateProcess for etterminal failed: " << GetLastError();
     }
 
+    // A job lets cleanup reach children that outlive the shell process.
+    HANDLE job = CreateJobObjectW(NULL, NULL);
+    if (job == NULL) {
+      LOG(WARNING) << "CreateJobObject failed; using direct-process cleanup: "
+                   << GetLastError();
+    } else {
+      JOBOBJECT_EXTENDED_LIMIT_INFORMATION jobInfo = {};
+      jobInfo.BasicLimitInformation.LimitFlags =
+          JOB_OBJECT_LIMIT_KILL_ON_JOB_CLOSE;
+      if (!SetInformationJobObject(job, JobObjectExtendedLimitInformation,
+                                   &jobInfo, sizeof(jobInfo)) ||
+          !AssignProcessToJobObject(job, pi.hProcess)) {
+        const DWORD error = GetLastError();
+        LOG(WARNING) << "Configuring terminal process job failed; using "
+                        "direct-process cleanup: "
+                     << error;
+        CloseHandle(job);
+        job = nullptr;
+      }
+    }
+
+    if (ResumeThread(pi.hThread) == static_cast<DWORD>(-1)) {
+      const DWORD error = GetLastError();
+      TerminateProcessWithFallbackLocal(pi.hProcess, job);
+      if (job != nullptr) {
+        CloseHandle(job);
+      }
+      CloseHandle(pi.hThread);
+      CloseHandle(pi.hProcess);
+      ClosePseudoConsole(pc);
+      CloseHandle(ptyIn);
+      CloseHandle(ptyOut);
+      CloseHandle(ourIn);
+      CloseHandle(ourOut);
+      LOG(FATAL) << "Resuming terminal process failed: " << error;
+    }
+
     CloseHandle(pi.hThread);
     CloseHandle(ptyIn);
     CloseHandle(ptyOut);
@@ -152,17 +211,29 @@ class PseudoUserTerminal : public UserTerminal {
     inputWrite = ourIn;
     outputRead = ourOut;
     processHandle = pi.hProcess;
-    running = true;
+    jobHandle = job;
     outputThread = std::thread([this]() {
       char bytes[16 * 1024];
       DWORD count = 0;
       HANDLE output = static_cast<HANDLE>(outputRead);
-      while (ReadFile(output, bytes, sizeof(bytes), &count, NULL) &&
-             count > 0) {
+      // Runs until ClosePseudoConsole releases the pipe; the cap is lifted
+      // while closing so the host can always flush.
+      while (true) {
+        {
+          std::unique_lock<std::mutex> guard(pendingMutex);
+          pendingDrained.wait(guard, [this]() {
+            return closing || pendingOutput.size() < MAX_PENDING_OUTPUT;
+          });
+        }
+        if (!ReadFile(output, bytes, sizeof(bytes), &count, NULL) ||
+            count == 0) {
+          break;
+        }
         std::lock_guard<std::mutex> guard(pendingMutex);
+        // The process tree is already terminated, so this is bounded; keep
+        // queued output for the router.
         pendingOutput.append(bytes, count);
       }
-      running = false;
     });
     VLOG(1) << "ConPTY opened for " << shell;
     // No pollable fd on Windows; the handler drains via drainOutput().
@@ -172,8 +243,7 @@ class PseudoUserTerminal : public UserTerminal {
   virtual void runTerminal() override {}
 
   virtual void cleanup() override {
-    bool wasRunning = running.exchange(false);
-    (void)wasRunning;
+    // Stop the producers before lifting the output cap.
     if (inputWrite != INVALID_HANDLE_VALUE) {
       CloseHandle(static_cast<HANDLE>(inputWrite));
       inputWrite = INVALID_HANDLE_VALUE;
@@ -181,13 +251,23 @@ class PseudoUserTerminal : public UserTerminal {
     if (processHandle != INVALID_HANDLE_VALUE) {
       if (WaitForSingleObject(static_cast<HANDLE>(processHandle), 0) !=
           WAIT_OBJECT_0) {
-        TerminateProcess(static_cast<HANDLE>(processHandle), 1);
-        WaitForSingleObject(static_cast<HANDLE>(processHandle), 2000);
+        TerminateProcessWithFallbackLocal(static_cast<HANDLE>(processHandle),
+                                          static_cast<HANDLE>(jobHandle));
       }
       CloseHandle(static_cast<HANDLE>(processHandle));
       processHandle = INVALID_HANDLE_VALUE;
     }
+    if (jobHandle != nullptr) {
+      // KILL_ON_JOB_CLOSE also removes descendants that outlived the shell.
+      CloseHandle(static_cast<HANDLE>(jobHandle));
+      jobHandle = nullptr;
+    }
+    // Wake a reader parked at the cap: ClosePseudoConsole can wait on a host
+    // that is blocked writing to a full pipe.
+    closing = true;
+    pendingDrained.notify_all();
     if (hPC != nullptr) {
+      // Blocks until the host exits; the uncapped reader keeps it flowing.
       ClosePseudoConsole(static_cast<HPCON>(hPC));
       hPC = nullptr;
     }
@@ -212,8 +292,20 @@ class PseudoUserTerminal : public UserTerminal {
         exitCode = static_cast<int>(code);
       }
     }
-    running = false;
     return exitCode;
+  }
+
+  virtual void terminate() override {
+    if (jobHandle != nullptr &&
+        !TerminateJobObject(static_cast<HANDLE>(jobHandle), 1)) {
+      LOG(WARNING) << "Terminating terminal process tree failed: "
+                   << GetLastError();
+      if (processHandle != INVALID_HANDLE_VALUE) {
+        TerminateProcess(static_cast<HANDLE>(processHandle), 1);
+      }
+    } else if (jobHandle == nullptr && processHandle != INVALID_HANDLE_VALUE) {
+      TerminateProcess(static_cast<HANDLE>(processHandle), 1);
+    }
   }
 
   virtual void setInfo(const winsize& tmpwin) override {
@@ -230,9 +322,12 @@ class PseudoUserTerminal : public UserTerminal {
 
   /** @brief Drains bytes collected by the ConPTY reader thread. */
   std::string drainOutput() {
-    std::lock_guard<std::mutex> guard(pendingMutex);
     std::string out;
-    out.swap(pendingOutput);
+    {
+      std::lock_guard<std::mutex> guard(pendingMutex);
+      out.swap(pendingOutput);
+    }
+    pendingDrained.notify_one();
     return out;
   }
 
@@ -258,14 +353,17 @@ class PseudoUserTerminal : public UserTerminal {
   }
 
  protected:
+  static constexpr size_t MAX_PENDING_OUTPUT = 256 * 1024;
   void* hPC;
   void* inputWrite;
   void* outputRead;
   void* processHandle;
+  void* jobHandle;
   std::thread outputThread;
   std::mutex pendingMutex;
+  std::condition_variable pendingDrained;
   std::string pendingOutput;
-  std::atomic<bool> running;
+  std::atomic<bool> closing;
 };
 }  // namespace et
 #endif  // WIN32

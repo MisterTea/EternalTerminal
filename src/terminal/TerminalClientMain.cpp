@@ -1,6 +1,8 @@
+#include <ctime>
 #include <cxxopts.hpp>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
 #include <limits>
 
 #include "BinaryStdioConsole.hpp"
@@ -14,6 +16,7 @@
 #include "ParseConfigFile.hpp"
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
+#include "SessionStore.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -56,6 +59,207 @@ T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
                        << " must be specified only once\n";
   CLOG(INFO, "stdout") << options.help({}) << endl;
   exit(0);
+}
+
+enum class AttachResult { ATTACHED, INVALID_SESSION, FAILED };
+enum class KillResult { KILLED, INVALID_SESSION, FAILED };
+
+bool deleteSavedSession(const string& name) {
+  try {
+    deleteSession(name);
+    return true;
+  } catch (const std::exception& e) {
+    CLOG(INFO, "stdout") << "Warning: Could not delete saved session '" << name
+                         << "': " << e.what() << endl;
+    return false;
+  }
+}
+
+string displayTitle(const string& title) {
+  if (title.empty()) {
+    return "-";
+  }
+  if (title.size() <= 32) {
+    return title;
+  }
+  // Leave room for the 3-byte ellipsis without splitting a UTF-8 sequence.
+  size_t keep = 29;
+  while (keep > 0 && (static_cast<unsigned char>(title[keep]) & 0xc0) == 0x80) {
+    --keep;
+  }
+  return title.substr(0, keep) + "…";
+}
+
+void printSessionCandidate(const SessionInfo& session) {
+  CLOG(INFO, "stdout") << "  " << session.name << " ["
+                       << displayTitle(session.title) << "] (" << session.host
+                       << ":" << session.port << ")" << endl;
+}
+
+bool sessionNameIsOccupied(const string& name) {
+  try {
+    const fs::path path = sessionDirPath() + "/" + name;
+    std::error_code ec;
+    const fs::file_status status = fs::symlink_status(path, ec);
+    if (ec) {
+      return ec.value() != ENOENT;
+    }
+    return status.type() != fs::file_type::not_found;
+  } catch (...) {
+    return true;
+  }
+}
+
+string makeDefaultSessionName() {
+  char date[16];
+  const time_t now = time(NULL);
+  struct tm localTm;
+#ifdef WIN32
+  localtime_s(&localTm, &now);
+#else
+  localtime_r(&now, &localTm);
+#endif
+  strftime(date, sizeof(date), "%Y%m%d", &localTm);
+
+  const string base = string(date) + "-";
+  string lastCandidate;
+  for (int attempt = 0; attempt < 16; ++attempt) {
+    const string candidate = base + genRandomAlphaNum(4);
+    lastCandidate = candidate;
+    if (!sessionNameIsOccupied(candidate)) {
+      return candidate;
+    }
+  }
+
+  // The no-clobber save will fail on an occupied name.
+  return lastCandidate;
+}
+
+optional<SessionInfo> resolveSavedSession(const string& query) {
+  const vector<SessionInfo> savedSessions = listSessions();
+  for (const auto& candidate : savedSessions) {
+    if (candidate.name == query) {
+      return candidate;
+    }
+  }
+
+  if (!query.empty()) {
+    const string lowercaseQuery = lowercaseAscii(query);
+    vector<SessionInfo> matches;
+    for (const auto& candidate : savedSessions) {
+      if (lowercaseAscii(candidate.name).find(lowercaseQuery) != string::npos ||
+          lowercaseAscii(candidate.title).find(lowercaseQuery) !=
+              string::npos) {
+        matches.push_back(candidate);
+      }
+    }
+    if (matches.size() == 1) {
+      return matches.front();
+    }
+    if (matches.size() > 1) {
+      CLOG(INFO, "stdout") << "Multiple saved sessions match '" << query
+                           << "':" << endl;
+      for (const auto& candidate : matches) {
+        printSessionCandidate(candidate);
+      }
+      return nullopt;
+    }
+  }
+
+  CLOG(INFO, "stdout") << "No saved session named '" << query << "'" << endl;
+  for (const auto& candidate : savedSessions) {
+    printSessionCandidate(candidate);
+  }
+  return nullopt;
+}
+
+AttachResult attachSavedSession(const string& name, const SessionInfo& session,
+                                const string& command, bool noexit,
+                                bool noTerminal, int keepaliveDuration) {
+  SocketEndpoint endpoint;
+  endpoint.set_name(session.host);
+  endpoint.set_port(session.port);
+  shared_ptr<SocketHandler> socket(new TcpSocketHandler());
+  shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
+
+  if (!ping(endpoint, socket)) {
+    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
+                         << ":" << endpoint.port() << endl;
+    return AttachResult::FAILED;
+  }
+
+  shared_ptr<Console> console;
+  if (!noTerminal) {
+    console.reset(new PseudoTerminalConsole());
+  }
+  bool sessionEnded = false;
+  try {
+    TerminalClient client(
+        socket, pipeSocket, endpoint, session.id, session.passkey, console,
+        /*jumphost=*/false, /*tunnels=*/"", /*reverseTunnels=*/"",
+        /*forwardSshAgent=*/false, /*identityAgent=*/"", keepaliveDuration,
+        /*envVars=*/{}, /*noPty=*/false, /*command=*/"",
+        /*dynamicForwards=*/{}, /*stdioForward=*/"",
+        /*maxConnectAttempts=*/15,
+        /*resumeSavedSession=*/true, [name]() { return touchSession(name); },
+        [name](const string& title) {
+          return updateSessionTitle(name, title);
+        });
+    client.run(command, noexit);
+    sessionEnded = client.sessionEndedByServer();
+  } catch (const runtime_error& err) {
+    if (string(err.what()) == TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
+      return AttachResult::INVALID_SESSION;
+    }
+    CLOG(INFO, "stdout") << "Could not attach to session '" << name
+                         << "': " << err.what() << endl;
+    return AttachResult::FAILED;
+  }
+
+  if (sessionEnded) {
+    deleteSavedSession(name);
+  }
+  return AttachResult::ATTACHED;
+}
+
+KillResult killSavedSession(const SessionInfo& session) {
+  SocketEndpoint endpoint;
+  endpoint.set_name(session.host);
+  endpoint.set_port(session.port);
+  shared_ptr<SocketHandler> socket(new TcpSocketHandler());
+  shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
+
+  if (!ping(endpoint, socket)) {
+    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
+                         << ":" << endpoint.port() << endl;
+    return KillResult::FAILED;
+  }
+
+  try {
+    TerminalClient client(
+        socket, pipeSocket, endpoint, session.id, session.passkey,
+        /*console=*/nullptr, /*jumphost=*/false, /*tunnels=*/"",
+        /*reverseTunnels=*/"", /*forwardSshAgent=*/false,
+        /*identityAgent=*/"", MAX_CLIENT_KEEP_ALIVE_DURATION,
+        /*envVars=*/{}, /*noPty=*/false, /*command=*/"",
+        /*dynamicForwards=*/{}, /*stdioForward=*/"",
+        /*maxConnectAttempts=*/3,
+        /*resumeSavedSession=*/true);
+    if (!client.killSession(15)) {
+      CLOG(INFO, "stdout")
+          << "The server did not confirm termination of session '"
+          << session.name << "'" << endl;
+      return KillResult::FAILED;
+    }
+  } catch (const runtime_error& err) {
+    if (string(err.what()) == TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
+      return KillResult::INVALID_SESSION;
+    }
+    CLOG(INFO, "stdout") << "Could not kill session '" << session.name
+                         << "': " << err.what() << endl;
+    return KillResult::FAILED;
+  }
+  return KillResult::KILLED;
 }
 
 // Resolved SSH config information for a host
@@ -122,6 +326,10 @@ int main(int argc, char** argv) {
 
   et::HandleTerminate();
 
+  // Empty when the session is not saved.
+  string sessionName = "";
+  bool sessionEndedByServer = false;
+
   // Override easylogging handler for sigint
   ::signal(SIGINT, et::InterruptSignalHandler);
 
@@ -174,9 +382,12 @@ int main(int argc, char** argv) {
         "[OPTION...] [user@]host[:port] [command...]\n\n"
         "  Note that 'host' can be a hostname or ipv4 address with or without "
         "a port\n  or an ipv6 address. If the ipv6 address is abbreviated with "
-        ":: then it must\n  be specified without a port (use -p,--port).\n"
-        "  A positional command after the host is equivalent to -c/--command "
-        "(ssh-style).\n\n"
+        ":: then it must\n  be specified without a port (use --port).\n"
+        "  A positional command after the host is equivalent to --command "
+        "(ssh-style).\n"
+        "  -p is the sshd port, not the etserver port. -L/-R/-D/-W are "
+        "OpenSSH forwards.\n"
+        "  -t requests a pty; --tunnel is the ET forward syntax.\n\n"
         "  OpenSSH mux: -M / -o ControlMaster=yes|auto|no, "
         "-S / -o ControlPath=PATH, -o ControlPersist=yes|<seconds>|no, "
         "-O check|exit|stop|forward|cancel.");
@@ -193,17 +404,17 @@ int main(int argc, char** argv) {
          cxxopts::value<std::string>())  //
         ("host", "Remote host name",
          cxxopts::value<std::string>())  //
-        ("p,port", "Remote machine etserver port",
+        ("port", "Remote machine etserver port",
          cxxopts::value<int>()->default_value("2022"))  //
-        ("c,command", "Run command on connect and exit after command is run",
+        ("command", "Run command on connect and exit after command is run",
          cxxopts::value<std::string>())  //
-        ("e,noexit",
-         "Used together with -c to not exit after command is run")  //
+        ("noexit",
+         "Used together with --command to not exit after command is run")  //
         ("terminal-path",
          "Path to etterminal on server side. "
          "Use if etterminal is not on the system path.",
          cxxopts::value<std::string>())  //
-        ("t,tunnel",
+        ("tunnel",
          "Tunnel: Array of source:destination ports or "
          "srcStart-srcEnd:dstStart-dstEnd (inclusive) port ranges (e.g. "
          "10080:80,10443:443, 10090-10092:8000-8002), ssh-style -L/-R "
@@ -213,16 +424,17 @@ int main(int argc, char** argv) {
          "unless ssh-style tunnel argument is used.",
          cxxopts::value<std::string>())  //
         ("r,reversetunnel",
-         "Reverse Tunnel: Same syntax as -t/--tunnel but reversed.",
+         "Reverse Tunnel: Same syntax as --tunnel but reversed. "
+         "-R is the OpenSSH form.",
          cxxopts::value<std::string>())  //
-        ("jumphost", "jumphost between localhost and destination",
+        ("j,jumphost", "jumphost between localhost and destination",
          cxxopts::value<std::string>())  //
         ("jport", "Jumphost machine port",
          cxxopts::value<int>()->default_value("2022"))  //
         ("jserverfifo",
          "If set, communicate to jumphost on the matching fifo name",
          cxxopts::value<string>()->default_value(""))  //
-        ("x,kill-other-sessions",
+        ("kill-other-sessions",
          "kill all old sessions belonging to the user")  //
         ("close-on-hangup",
          "terminate the remote session when this terminal receives SIGHUP or "
@@ -235,15 +447,17 @@ int main(int argc, char** argv) {
         ("macserver",
          "Set when connecting to an macOS server.  Sets "
          "--terminal-path=/usr/local/bin/etterminal")  //
-        ("v,verbose", "Enable verbose logging",
-         cxxopts::value<int>()->default_value("0"))  //
+        ("verbose", "Log verbosity. Overrides repeatable -v when both are set.",
+         cxxopts::value<int>())  //
         ("k,keepalive", "Client keepalive duration in seconds",
          cxxopts::value<int>())  //
-        ("l,logdir", "Base directory for log files.",
+        ("logdir", "Base directory for log files.",
          cxxopts::value<std::string>()->default_value(tmpDir))  //
         ("logtostdout", "Write log to stdout")                  //
         ("silent", "Disable logging")                           //
-        ("N,no-terminal", "Do not create a terminal")           //
+        ("no-terminal",
+         "Do not create a local terminal. The remote shell still starts. "
+         "-N is the OpenSSH form and runs no remote command.")  //
         ("D,dynamic",
          "Dynamic application-level port forwarding: listen on "
          "[bind_address:]port and accept SOCKS4/SOCKS5 connections that "
@@ -256,9 +470,10 @@ int main(int argc, char** argv) {
          "terminal.",
          cxxopts::value<std::string>())  //
         ("T,no-pty",
-         "Run -c command on pipes instead of a pty (binary stdio, "
-         "separate stderr, no shell injection)")             //
-        ("f,forward-ssh-agent", "Forward ssh-agent socket")  //
+         "Run the remote command on pipes instead of a pty (binary stdio, "
+         "separate stderr, no shell injection). -t requests a pty and wins "
+         "when it appears later.")                         //
+        ("forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
         ("F,ssh-config",
@@ -270,6 +485,14 @@ int main(int argc, char** argv) {
         ("telemetry",
          "Allow et to anonymously send errors to guide future improvements",
          cxxopts::value<bool>()->default_value("true"))  //
+        ("name", "Name this session so it can be reattached later",
+         cxxopts::value<std::string>())                             //
+        ("no-persist", "Do not save credentials for this session")  //
+        ("attach", "Reattach by session name or unique title substring",
+         cxxopts::value<std::string>())  //
+        ("kill", "End a saved session by name or unique title substring",
+         cxxopts::value<std::string>())           //
+        ("list", "List saved sessions and exit")  //
         ("serverfifo",
          "If set, communicate to etserver on the matching fifo name",
          cxxopts::value<std::string>()->default_value(""))  //
@@ -278,7 +501,31 @@ int main(int argc, char** argv) {
         ("o",
          "OpenSSH-style session option applied to the resolved config "
          "(e.g. -o ConnectTimeout=10). Distinct from --ssh-option.",
-         cxxopts::value<std::vector<std::string>>());
+         cxxopts::value<std::vector<std::string>>())  //
+        // These letters are removed by the short-flag pre-pass. They are
+        // registered so --help lists the OpenSSH meanings.
+        ("p", "sshd port. Does not change the etserver port (--port).",
+         cxxopts::value<int>())                                  //
+        ("l", "Remote username", cxxopts::value<std::string>())  //
+        ("c", "Cipher spec passed to the bootstrap ssh",
+         cxxopts::value<std::string>())                                       //
+        ("t", "Request a pty. Does not open a tunnel.")                       //
+        ("x", "Accepted and ignored (disable X11). Does not kill sessions.")  //
+        ("f",
+         "Background after the session is up. Does not forward ssh-agent.")  //
+        ("N", "Do not run a remote command (forwards only)")                 //
+        ("v",
+         "Increase log verbosity. Repeatable. --verbose=N overrides it.")  //
+        ("e", "Escape character. Accepted and not applied.",
+         cxxopts::value<std::string>())  //
+        ("L", "Local port forward (OpenSSH -L). Repeatable.",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("R", "Remote port forward (OpenSSH -R). Repeatable.",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("i", "Identity file passed to the bootstrap ssh. Repeatable.",
+         cxxopts::value<std::vector<std::string>>())  //
+        ("J", "Jump host. Same as --jumphost; the later flag wins.",
+         cxxopts::value<std::string>());
 
     options.parse_positional({"host"});
     vector<string> rawArgs;
@@ -329,11 +576,13 @@ int main(int argc, char** argv) {
               << endl;
           exit(1);
         }
-        string tunnel_arg = extractSingleOptionWithDefault<string>(
-            result, options, "tunnel", "");
+        string tunnel_arg =
+            mergeForwardSpecs(extractSingleOptionWithDefault<string>(
+                                  result, options, "tunnel", ""),
+                              muxParse.ssh.localForwards);
         if (tunnel_arg.empty()) {
           CLOG(INFO, "stdout") << "-O " << muxOptions.ctlCommand
-                               << " requires -t/--tunnel" << endl;
+                               << " requires -L or --tunnel" << endl;
           exit(1);
         }
         auto requests = parseRangesToRequests(tunnel_arg);
@@ -362,8 +611,9 @@ int main(int argc, char** argv) {
                              << muxOptions.controlPath << endl;
         exit(1);
       }
-      string tunnel_arg =
-          extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
+      string tunnel_arg = mergeForwardSpecs(
+          extractSingleOptionWithDefault<string>(result, options, "tunnel", ""),
+          muxParse.ssh.localForwards);
       if (!tunnel_arg.empty()) {
         auto requests = parseRangesToRequests(tunnel_arg);
         for (const auto& pfsr : requests) {
@@ -379,13 +629,21 @@ int main(int argc, char** argv) {
       string command = resolveRemoteCommand(
           argvSplit.commandOperands, result.count("command") > 0,
           result.count("command") ? result["command"].as<string>() : "");
+      if (remoteCommandConflictsWithNoCommand(muxParse.ssh.noRemoteCommand,
+                                              command)) {
+        CLOG(INFO, "stdout")
+            << "-N cannot be combined with a remote command" << endl;
+        exit(1);
+      }
+      const bool wantTty = muxParse.ssh.pty != PtyOverride::Disable &&
+                           !muxParse.ssh.noRemoteCommand;
 #ifndef WIN32
       uint32_t sessionId = 0;
       uint32_t exitStatus = 255;
       string error;
-      if (!passenger.newSession(command, !result.count("N"), STDIN_FILENO,
-                                STDOUT_FILENO, STDERR_FILENO, &sessionId,
-                                &error, &exitStatus)) {
+      if (!passenger.newSession(command, wantTty, STDIN_FILENO, STDOUT_FILENO,
+                                STDERR_FILENO, &sessionId, &error,
+                                &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
         exit(1);
       }
@@ -393,8 +651,8 @@ int main(int argc, char** argv) {
       uint32_t sessionId = 0;
       uint32_t exitStatus = 255;
       string error;
-      if (!passenger.newSession(command, !result.count("N"), -1, -1, -1,
-                                &sessionId, &error, &exitStatus)) {
+      if (!passenger.newSession(command, wantTty, -1, -1, -1, &sessionId,
+                                &error, &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
         exit(1);
       }
@@ -407,7 +665,88 @@ int main(int argc, char** argv) {
       exit(0);
     }
 
-    el::Loggers::setVerboseLevel(result["verbose"].as<int>());
+    if (result.count("kill") &&
+        (result.count("name") || result.count("attach") ||
+         result.count("list") || result.count("host"))) {
+      CLOG(INFO, "stdout")
+          << "--kill takes a saved session name; it cannot be combined with "
+             "--name, --attach, --list, or a host"
+          << endl;
+      exit(1);
+    }
+
+    if (result.count("no-persist") &&
+        (result.count("name") || result.count("attach") ||
+         result.count("kill"))) {
+      CLOG(INFO, "stdout")
+          << "--no-persist cannot be combined with --name, --attach, or "
+             "--kill"
+          << endl;
+      exit(1);
+    }
+
+    if (result.count("list")) {
+      CLOG(INFO, "stdout") << left << setw(24) << "NAME" << ' ' << setw(34)
+                           << "TITLE" << ' ' << setw(24) << "HOST" << ' '
+                           << setw(8) << "PORT" << ' ' << "LAST SEEN" << endl;
+      const int64_t now = static_cast<int64_t>(time(NULL));
+      for (const auto& session : listSessions()) {
+        CLOG(INFO, "stdout")
+            << left << setw(24) << session.name << ' ' << setw(34)
+            << displayTitle(session.title) << ' ' << setw(24) << session.host
+            << ' ' << setw(8) << session.port << ' '
+            << formatLastSeen(session.lastSeenAt, now) << endl;
+      }
+      exit(0);
+    }
+
+    if (result.count("attach") &&
+        (result.count("name") || result.count("host"))) {
+      CLOG(INFO, "stdout") << "--attach takes a session name; it cannot be "
+                              "combined with --name or a host"
+                           << endl;
+      exit(1);
+    }
+    if (result.count("attach") &&
+        (result.count("tunnel") || result.count("reversetunnel") ||
+         result.count("dynamic") || result.count("forward-ssh-agent") ||
+         result.count("jumphost") || muxParse.ssh.jumpHostSet ||
+         !muxParse.ssh.localForwards.empty() ||
+         !muxParse.ssh.remoteForwards.empty())) {
+      CLOG(INFO, "stdout")
+          << "--attach cannot be combined with port forwarding "
+             "(--tunnel, -r, -L, -R, -D), --forward-ssh-agent, or a jumphost "
+             "(-j/-J); reconnect without --attach to establish forwarding or "
+             "a jumphost"
+          << endl;
+      exit(1);
+    }
+
+    if (remotePtyDisabled(muxParse.ssh) &&
+        (result.count("name") || result.count("attach"))) {
+      CLOG(INFO, "stdout")
+          << "-T/--no-pty sessions are not saved and cannot be named or "
+             "reattached; drop --name/--attach"
+          << endl;
+      exit(1);
+    }
+
+    const string earlyCommand = resolveRemoteCommand(
+        argvSplit.commandOperands, result.count("command") > 0,
+        result.count("command") ? result["command"].as<string>() : "");
+    if (remoteCommandConflictsWithNoCommand(muxParse.ssh.noRemoteCommand,
+                                            earlyCommand)) {
+      CLOG(INFO, "stdout") << "-N cannot be combined with a remote command"
+                           << endl;
+      exit(1);
+    }
+
+    int verboseLevel = muxParse.ssh.verboseCount;
+    if (result.count("verbose")) {
+      // --verbose=N wins over repeatable -v.
+      verboseLevel = result["verbose"].as<int>();
+    }
+    el::Loggers::setVerboseLevel(verboseLevel);
 
     // silent Flag, since etclient doesn't read /etc/et.cfg file
     if (result.count("silent")) {
@@ -428,9 +767,93 @@ int main(int argc, char** argv) {
     GOOGLE_PROTOBUF_VERIFY_VERSION;
     srand(1);
 
+    // -f backgrounds after the session is up. Fork before any worker thread
+    // exists so the parent can wait, then exit, without duplicating threads.
+    // The child signals once TerminalClient has connected.
+#ifndef WIN32
+    int backgroundWriteFd = -1;
+    if (muxParse.ssh.background && result.count("host") && !result.count("G")) {
+      int notifyPipe[2] = {-1, -1};
+      if (pipe(notifyPipe) != 0) {
+        CLOG(INFO, "stdout") << "Failed to background: pipe failed" << endl;
+        exit(1);
+      }
+      pid_t pid = fork();
+      if (pid < 0) {
+        CLOG(INFO, "stdout") << "Failed to background: fork failed" << endl;
+        exit(1);
+      }
+      if (pid > 0) {
+        close(notifyPipe[1]);
+        char byte = 0;
+        ssize_t n = ::read(notifyPipe[0], &byte, 1);
+        _exit(n == 1 && byte == 1 ? 0 : 1);
+      }
+      close(notifyPipe[0]);
+      backgroundWriteFd = notifyPipe[1];
+    }
+#endif
+
     TelemetryService::create(result["telemetry"].as<bool>(),
                              tmpDir + "/.sentry-native-et", "Client");
 
+    if (result.count("kill")) {
+      const optional<SessionInfo> session =
+          resolveSavedSession(result["kill"].as<string>());
+      if (!session) {
+        exit(1);
+      }
+      const KillResult killResult = killSavedSession(*session);
+      if (killResult == KillResult::INVALID_SESSION) {
+        if (!deleteSavedSession(session->name)) {
+          exit(1);
+        }
+        CLOG(INFO, "stdout")
+            << "Session '" << session->name
+            << "' was already gone; removed stale record" << endl;
+        exit(0);
+      }
+      if (killResult == KillResult::FAILED) {
+        CLOG(INFO, "stdout") << "Session '" << session->name
+                             << "' was not removed; retry --kill or delete "
+                                "~/.et/sessions/"
+                             << session->name << " manually" << endl;
+        exit(1);
+      }
+      if (!deleteSavedSession(session->name)) {
+        exit(1);
+      }
+      CLOG(INFO, "stdout") << "Killed session '" << session->name << "'"
+                           << endl;
+      exit(0);
+    }
+
+    if (result.count("attach")) {
+      const optional<SessionInfo> session =
+          resolveSavedSession(result["attach"].as<string>());
+      if (!session) {
+        exit(1);
+      }
+      const string attachName = session->name;
+
+      int attachKeepalive = extractSingleOptionWithDefault<int>(
+          result, options, "keepalive", MAX_CLIENT_KEEP_ALIVE_DURATION);
+      const AttachResult attachResult = attachSavedSession(
+          attachName, *session,
+          result.count("command") ? result["command"].as<string>() : "",
+          result.count("noexit"), result.count("no-terminal"), attachKeepalive);
+      if (attachResult == AttachResult::INVALID_SESSION) {
+        deleteSavedSession(attachName);
+        CLOG(INFO, "stdout")
+            << "Session '" << attachName << "' is no longer running on "
+            << session->host << endl;
+        exit(1);
+      }
+      if (attachResult == AttachResult::FAILED) {
+        exit(1);
+      }
+      exit(0);
+    }
     string username = "";
     if (result.count("username")) {
       username = result["username"].as<string>();
@@ -456,6 +879,10 @@ int main(int argc, char** argv) {
     if (!parsedDestination.username.empty()) {
       username = parsedDestination.username;
     }
+    // -l is the OpenSSH login name and wins over -u and user@.
+    if (muxParse.ssh.loginNameSet) {
+      username = muxParse.ssh.loginName;
+    }
     if (parsedDestination.hasExplicitPort) {
       destinationPort = parsedDestination.port;
     }
@@ -465,9 +892,12 @@ int main(int argc, char** argv) {
     // overridden port or pass --ssh-option Port=<sshd_port>
     string host_alias = destinationHost;
 
-    const bool jumphostSpecified = result.count("jumphost") > 0;
+    const bool jumphostSpecified =
+        result.count("jumphost") > 0 || muxParse.ssh.jumpHostSet;
     string jumphost =
-        extractSingleOptionWithDefault<string>(result, options, "jumphost", "");
+        resolveJumpHost(muxParse.ssh, result.count("jumphost") > 0,
+                        extractSingleOptionWithDefault<string>(result, options,
+                                                               "jumphost", ""));
     if (strcasecmp(jumphost.c_str(), "none") == 0) {
       jumphost.clear();
     }
@@ -559,6 +989,32 @@ int main(int argc, char** argv) {
       }
     }
 
+    // --name attaches if the session exists and creates it otherwise.
+    optional<SessionInfo> namedSession;
+    if (result.count("name")) {
+      sessionName = result["name"].as<string>();
+      if (!isValidSessionName(sessionName)) {
+        CLOG(INFO, "stdout") << "Invalid session name: " << sessionName << endl;
+        exit(1);
+      }
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+      sessionName.clear();
+#else
+      try {
+        namedSession = loadSession(sessionName);
+      } catch (const std::exception& e) {
+        CLOG(INFO, "stdout")
+            << "Warning: Named session storage is unavailable: " << e.what()
+            << ". Continuing without saving this session." << endl;
+        sessionName.clear();
+      }
+#endif
+    }
+
     // Parse username: cmdline > sshconfig > localuser
     if (username.empty()) {
       if (sshConfigOptions.username) {
@@ -593,6 +1049,16 @@ int main(int argc, char** argv) {
         } else if (key == "user" && sshConfigOptions.username) {
           username = string(sshConfigOptions.username);
         }
+      }
+    }
+
+    // -p is the sshd port. It overrides config and -o Port, and it does not
+    // change the etserver port (that stays --port / host:port).
+    if (muxParse.ssh.sshPortSet) {
+      int sshPort = muxParse.ssh.sshPort;
+      if (ssh_options_set(&sshConfigOptions, SSH_OPTIONS_PORT, &sshPort) != 0) {
+        CLOG(INFO, "stdout") << "Invalid sshd port: " << sshPort << endl;
+        exit(1);
       }
     }
 
@@ -653,6 +1119,85 @@ int main(int argc, char** argv) {
       socketEndpoint.set_name(destinationHost);
       socketEndpoint.set_port(destinationPort);
     }
+
+    bool forwardingRequested =
+        result.count("tunnel") || result.count("reversetunnel") ||
+        result.count("dynamic") || result.count("forward-ssh-agent") ||
+        !muxParse.ssh.localForwards.empty() ||
+        !muxParse.ssh.remoteForwards.empty();
+#ifndef WIN32
+    forwardingRequested = forwardingRequested ||
+                          sshConfigOptions.forward_agent ||
+                          !sshConfigOptions.local_forwards.empty();
+#endif
+
+    if (is_jumphost) {
+      if (namedSession) {
+        CLOG(INFO, "stdout")
+            << "Session '" << sessionName
+            << "' cannot be reattached through a jumphost because the saved "
+               "record does not contain jumphost metadata; use --attach "
+               "without a jumphost"
+            << endl;
+        exit(1);
+      }
+      if (!result.count("no-persist")) {
+        CLOG(INFO, "stdout")
+            << "Warning: Sessions using a jumphost are not saved because the "
+               "saved record does not contain jumphost metadata"
+            << endl;
+        sessionName.clear();
+      }
+    } else if (!result.count("name") && !result.count("no-persist") &&
+               !remotePtyDisabled(muxParse.ssh)) {
+      // Neither --attach nor a restarted etserver can resume a -T stream.
+#ifdef WIN32
+      CLOG(INFO, "stdout")
+          << "Warning: Session persistence is unavailable on Windows until "
+             "owner-only credential storage is configured"
+          << endl;
+#else
+      sessionName = makeDefaultSessionName();
+#endif
+    }
+
+    if (forwardingRequested && !sessionName.empty()) {
+      CLOG(INFO, "stdout")
+          << "Warning: Saved-session reattach restores the shell but does "
+             "not recreate port or SSH agent forwarding"
+          << endl;
+    }
+
+    if (namedSession) {
+      if (namedSession->host != socketEndpoint.name() ||
+          namedSession->port != socketEndpoint.port()) {
+        CLOG(INFO, "stdout") << "session " << sessionName << " is saved for "
+                             << namedSession->host << ":" << namedSession->port
+                             << "; use --attach " << sessionName
+                             << " or a different --name" << endl;
+        exit(1);
+      }
+
+      const AttachResult attachResult = attachSavedSession(
+          sessionName, *namedSession,
+          resolveRemoteCommand(
+              argvSplit.commandOperands, result.count("command") > 0,
+              result.count("command") ? result["command"].as<string>() : ""),
+          result.count("noexit"), result.count("no-terminal"),
+          keepaliveDuration);
+      if (attachResult == AttachResult::ATTACHED) {
+        exit(0);
+      }
+      if (attachResult == AttachResult::FAILED) {
+        exit(1);
+      }
+
+      deleteSavedSession(sessionName);
+      CLOG(INFO, "stdout") << "Session '" << sessionName
+                           << "' is no longer running; creating a fresh session"
+                           << endl;
+    }
+
     shared_ptr<SocketHandler> clientSocket(new TcpSocketHandler());
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
@@ -687,30 +1232,32 @@ int main(int argc, char** argv) {
     shared_ptr<Console> console;
     string stdioForward = extractSingleOptionWithDefault<string>(
         result, options, "stdio-forward", "");
-    const bool noPty = result.count("T") > 0;
+    // -t / -T / --no-pty: the later flag wins. None means the existing pty
+    // path.
+    const bool noPty = remotePtyDisabled(muxParse.ssh);
     string command = resolveRemoteCommand(
         argvSplit.commandOperands, result.count("command") > 0,
         result.count("command") ? result["command"].as<string>() : "");
-    if (noPty && command.empty()) {
-      CLOG(INFO, "stdout") << "-T/--no-pty requires -c/--command" << endl;
-      CLOG(INFO, "stdout") << options.help({}) << endl;
+    const string commandOptionsError =
+        remoteCommandOptionsError(muxParse.ssh, command, !stdioForward.empty());
+    if (!commandOptionsError.empty()) {
+      CLOG(INFO, "stdout") << commandOptionsError << endl;
+      if (noPty && command.empty()) {
+        CLOG(INFO, "stdout") << options.help({}) << endl;
+      }
       exit(1);
     }
-    if (noPty && !stdioForward.empty()) {
-      CLOG(INFO, "stdout") << "-W/--stdio-forward cannot be combined with "
-                              "-T/--no-pty"
-                           << endl;
-      exit(1);
-    }
-    if (!stdioForward.empty() || result.count("N")) {
-      // -W ties stdio to a remote destination; do not attach a local shell.
+    if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand ||
+        result.count("no-terminal")) {
+      // -W and -N do not attach a local shell. --no-terminal only hides the
+      // local console; the remote shell still starts.
     } else if (noPty) {
       console.reset(new BinaryStdioConsole());
     } else {
       console.reset(new PseudoTerminalConsole());
     }
 
-    bool forwardAgent = result.count("f") > 0;
+    bool forwardAgent = result.count("forward-ssh-agent") > 0;
     string sshSocket = "";
 #ifndef WIN32
     if (sshConfigOptions.identity_agent) {
@@ -723,10 +1270,13 @@ int main(int argc, char** argv) {
     }
     TelemetryService::get()->logToDatadog("Session Started", el::Level::Info,
                                           __FILE__, __LINE__);
-    string tunnel_arg =
-        extractSingleOptionWithDefault<string>(result, options, "tunnel", "");
-    string r_tunnel_arg = extractSingleOptionWithDefault<string>(
-        result, options, "reversetunnel", "");
+    string tunnel_arg = mergeForwardSpecs(
+        extractSingleOptionWithDefault<string>(result, options, "tunnel", ""),
+        muxParse.ssh.localForwards);
+    string r_tunnel_arg =
+        mergeForwardSpecs(extractSingleOptionWithDefault<string>(
+                              result, options, "reversetunnel", ""),
+                          muxParse.ssh.remoteForwards);
     vector<string> dynamicForwards;
     if (result.count("dynamic")) {
       dynamicForwards = result["dynamic"].as<vector<string>>();
@@ -746,18 +1296,81 @@ int main(int argc, char** argv) {
 
     auto subprocessUtils = make_shared<SubprocessUtils>();
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
-    sshSetupHandler.setDisplayLoginOutput(console != nullptr);
-    pair<string, string> idpasskeypair = sshSetupHandler.SetupSsh(
-        username, destinationHost, host_alias, destinationPort, jumphost,
-        jServerFifo, result.count("x") > 0, result["verbose"].as<int>(),
-        etterminal_path, serverFifo, ssh_options);
+    // -T uses BinaryStdioConsole so the remote command owns stdout. SSH
+    // banners and shell prompts must stay off that channel.
+    sshSetupHandler.setDisplayLoginOutput(console != nullptr && !noPty);
+    const BootstrapSshPort bootstrapPort = bootstrapSshPort(muxParse.ssh);
+    sshSetupHandler.setBootstrapOverrides(
+        bootstrapPort.set, bootstrapPort.port, muxParse.ssh.identityFiles,
+        muxParse.ssh.cipherSet ? muxParse.ssh.cipher : "");
+    pair<string, string> idpasskeypair;
+    try {
+      idpasskeypair = sshSetupHandler.SetupSsh(
+          username, destinationHost, host_alias, destinationPort, jumphost,
+          jServerFifo, result.count("kill-other-sessions") > 0, verboseLevel,
+          etterminal_path, serverFifo, ssh_options);
+    } catch (const runtime_error&) {
+      // SetupSsh already printed a message without the ssh output.
+      exit(1);
+    }
+
+    // Save before connecting so a local failure leaves the session
+    // recoverable.
+    if (!sessionName.empty()) {
+      try {
+        SessionInfo sessionInfo;
+        sessionInfo.name = sessionName;
+        sessionInfo.host = socketEndpoint.name();
+        sessionInfo.port = socketEndpoint.port();
+        sessionInfo.id = idpasskeypair.first;
+        sessionInfo.passkey = idpasskeypair.second;
+        sessionInfo.savedAt = (int64_t)time(NULL);
+        saveSession(sessionInfo, /*replaceExisting=*/false);
+      } catch (const std::exception& se) {
+        LOG(WARNING) << "Could not save session '" << sessionName
+                     << "': " << se.what();
+        CLOG(INFO, "stdout")
+            << "Warning: Could not save session '" << sessionName
+            << "': this connection will not be recoverable "
+               "after the client exits"
+            << endl;
+        sessionName = "";
+      }
+    }
 
     TerminalClient terminalClient(
         clientSocket, clientPipeSocket, socketEndpoint, idpasskeypair.first,
         idpasskeypair.second, console, is_jumphost, tunnel_arg, r_tunnel_arg,
         forwardAgent, sshSocket, keepaliveDuration, sshConfigOptions.env_vars,
         noPty, command, dynamicForwards, stdioForward,
-        disconnectTimeoutMinutes);
+        /*maxConnectAttempts=*/3,
+        /*resumeSavedSession=*/false,
+        [&sessionName]() {
+          return sessionName.empty() || touchSession(sessionName);
+        },
+        [&sessionName](const string& title) {
+          return sessionName.empty() || updateSessionTitle(sessionName, title);
+        },
+        disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand);
+
+#ifndef WIN32
+    if (backgroundWriteFd >= 0) {
+      ::setsid();
+      int devnull = ::open("/dev/null", O_RDONLY);
+      if (devnull >= 0) {
+        ::dup2(devnull, STDIN_FILENO);
+        if (devnull != STDIN_FILENO) {
+          ::close(devnull);
+        }
+      }
+      char ok = 1;
+      if (::write(backgroundWriteFd, &ok, 1) != 1) {
+        CLOG(INFO, "stdout") << "Failed to detach background client" << endl;
+      }
+      ::close(backgroundWriteFd);
+      backgroundWriteFd = -1;
+    }
+#endif
 
     unique_ptr<MuxMaster> muxMaster;
     if (shouldBecomeMuxMaster(muxOptions)) {
@@ -775,6 +1388,7 @@ int main(int argc, char** argv) {
     }
     const int remoteExitStatus =
         terminalClient.run(command, result.count("noexit"));
+    sessionEndedByServer = terminalClient.sessionEndedByServer();
 
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
@@ -803,6 +1417,11 @@ int main(int argc, char** argv) {
         });
       }
       muxMaster->stop();
+    }
+
+    // Any other exit leaves the remote shell running and reattachable.
+    if (!sessionName.empty() && sessionEndedByServer) {
+      deleteSavedSession(sessionName);
     }
 
     // Clean up ssh config options
@@ -834,6 +1453,11 @@ int main(int argc, char** argv) {
 
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();
+
+  // Any other exit leaves the remote shell running and reattachable.
+  if (!sessionName.empty() && sessionEndedByServer) {
+    deleteSavedSession(sessionName);
+  }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();

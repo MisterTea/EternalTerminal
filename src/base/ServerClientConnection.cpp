@@ -36,7 +36,8 @@ ServerClientConnection::~ServerClientConnection() {
   }
 }
 
-bool ServerClientConnection::recoverClient(int newSocketFd) {
+bool ServerClientConnection::recoverClient(int newSocketFd, bool forceReset,
+                                           const string& resetSalt) {
   bool idle = false;
   if (!recoveryInFlight.compare_exchange_strong(idle, true)) {
     // Waiting for the reconnect that is already running would hold this handler
@@ -67,9 +68,11 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
   socketFd = -1;
 
-  bool success = recover(newSocketFd, /*readPeerCatchupFirst=*/false);
+  bool success = recover(newSocketFd, /*readPeerCatchupFirst=*/false,
+                         forceReset, resetSalt);
   if (success) {
-    if (oldSocketFd != -1) {
+    // A resumed connection was constructed with newSocketFd.
+    if (oldSocketFd != -1 && oldSocketFd != newSocketFd) {
       socketHandler->close(oldSocketFd);
     }
     return true;

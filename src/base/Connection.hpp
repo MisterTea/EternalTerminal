@@ -113,11 +113,15 @@ class Connection {
    * ours. Exactly one side must do this: when both send first, catchup larger
    * than the socket buffers leaves both blocked in write until the socket
    * timeout. The client reads first and the server sends first, so an updated
-   * client also recovers against servers that predate this parameter.
+   * client also recovers against servers that predate this parameter. Reset
+   * recovery ignores this flag and exchanges empty catchup buffers.
+   * @param forceReset Both sides drop sequence history and rekey from
+   * resetSalt. Used when a fresh process resumes a live session.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd, bool readPeerCatchupFirst);
+  bool recover(int newSocketFd, bool readPeerCatchupFirst,
+               bool forceReset = false, const string& resetSalt = string());
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;

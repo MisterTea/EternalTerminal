@@ -70,7 +70,21 @@ void writeConnectRequest(const shared_ptr<SocketHandler>& handler, int fd,
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
+  request.set_supportschallenge(true);
   handler->writeProto(fd, request, true);
+}
+
+void writeConnectAuth(const shared_ptr<SocketHandler>& handler, int fd,
+                      const string& clientId, const string& clientKey) {
+  const auto challenge = handler->readProto<ConnectResponse>(
+      fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+  REQUIRE(challenge.has_authchallenge());
+  REQUIRE(challenge.authchallenge().size() ==
+          CryptoHandler::AUTH_CHALLENGE_BYTES);
+  ConnectAuth auth;
+  auth.set_proof(CryptoHandler::connectionProof(
+      clientKey, clientId, PROTOCOL_VERSION, challenge.authchallenge()));
+  handler->writeProto(fd, auth, true);
 }
 
 // Runs before the thread/future are destroyed: closing the stuck peer lets
@@ -106,11 +120,15 @@ struct Cleanup {
 // provable, so a test can act while it is still in effect.
 void wedgeReconnect(const shared_ptr<SocketHandler>& handler,
                     TestServerConnection& server, const string& clientId,
-                    int live[2], int stuck[2], std::thread& reconnectThread) {
+                    const string& clientKey, int live[2], int stuck[2],
+                    std::thread& reconnectThread) {
   // A live session the reconnect can come back to.
   REQUIRE(createTestSocketPair(live) == 0);
   writeConnectRequest(handler, live[1], clientId);
-  server.clientHandler(live[0]);
+  std::thread liveHandler(
+      [&server, &live]() { server.clientHandler(live[0]); });
+  writeConnectAuth(handler, live[1], clientId, clientKey);
+  liveHandler.join();
   REQUIRE(server.clientConnectionExists(clientId));
   handler->readProto<ConnectResponse>(live[1], true);
 
@@ -121,6 +139,7 @@ void wedgeReconnect(const shared_ptr<SocketHandler>& handler,
   const int stuckServerFd = stuck[0];
   reconnectThread = std::thread(
       [&server, stuckServerFd]() { server.clientHandler(stuckServerFd); });
+  writeConnectAuth(handler, stuck[1], clientId, clientKey);
 
   // recover() is provably in flight once it has answered RETURNING_CLIENT and
   // written its sequence header; the next thing it does is block on the reply.
@@ -147,7 +166,8 @@ TEST_CASE("Reconnect stuck in recover still allows new connections",
   std::future<bool> accepted;
   Cleanup cleanup{server, reconnectThread, stuck[1], live[1], fresh[1]};
 
-  wedgeReconnect(handler, server, clientId, live, stuck, reconnectThread);
+  wedgeReconnect(handler, server, clientId, "abcdefghijklmnopqrstuvwxyz012345",
+                 live, stuck, reconnectThread);
 
   // An unrelated client must still get accepted. The pooled handler owns and
   // closes fresh[0]; an oversized length makes it fail fast instead of
@@ -183,7 +203,8 @@ TEST_CASE("A second reconnect is refused while one is in flight",
   std::future<void> refused;
   Cleanup cleanup{server, reconnectThread, stuck[1], live[1], second[1]};
 
-  wedgeReconnect(handler, server, clientId, live, stuck, reconnectThread);
+  wedgeReconnect(handler, server, clientId, "abcdefghijklmnopqrstuvwxyz012345",
+                 live, stuck, reconnectThread);
 
   // A second reconnect for the same client, arriving while the first is still
   // blocked. Queueing it would hold this handler until the first one's socket
@@ -192,6 +213,8 @@ TEST_CASE("A second reconnect is refused while one is in flight",
   writeConnectRequest(handler, second[1], clientId);
   refused = std::async(std::launch::async,
                        [&]() { server.clientHandler(second[0]); });
+  writeConnectAuth(handler, second[1], clientId,
+                   "abcdefghijklmnopqrstuvwxyz012345");
 
   INFO("the second reconnect waited for the first instead of being refused");
   REQUIRE(refused.wait_for(std::chrono::seconds(5)) ==
