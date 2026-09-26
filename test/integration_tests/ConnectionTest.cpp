@@ -1,3 +1,6 @@
+#include <atomic>
+#include <chrono>
+
 #include "ClientConnection.hpp"
 #include "Connection.hpp"
 #include "FlakySocketHandler.hpp"
@@ -257,6 +260,44 @@ void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
   }
 }
 
+bool readWithDeadline(shared_ptr<Collector> collector, int seconds,
+                      string* result) {
+  time_t deadline = time(NULL) + seconds;
+  while (time(NULL) <= deadline) {
+    if (collector->hasData()) {
+      *result = collector->pop();
+      return true;
+    }
+    testSleepMicros(10 * 1000);
+  }
+  return false;
+}
+
+shared_ptr<ServerClientConnection> waitForServerClient(const string& clientId,
+                                                       int seconds) {
+  time_t deadline = time(NULL) + seconds;
+  while (time(NULL) <= deadline) {
+    {
+      lock_guard<mutex> lock(serverClientConnectionMutex);
+      auto it = serverClientConnections.find(clientId);
+      if (it != serverClientConnections.end()) {
+        return it->second;
+      }
+    }
+    testSleepMicros(10 * 1000);
+  }
+  return nullptr;
+}
+
+// connect() overwrites socketFd without closing the previous one. Drop those
+// leftovers so a failed assertion still reaches Catch instead of the harness
+// aborting on a dangling fd.
+void closeLeftoverClientSockets(shared_ptr<FlakySocketHandler> handler) {
+  for (int fd : handler->getActiveSockets()) {
+    handler->close(fd);
+  }
+}
+
 bool waitForPeerClose(shared_ptr<SocketHandler> socketHandler, int fd) {
   time_t startTime = time(NULL);
   char byte;
@@ -405,4 +446,211 @@ TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
     lock_guard<mutex> lock(serverClientConnectionMutex);
     REQUIRE(serverClientConnections.empty());
   });
+}
+
+// https://github.com/MisterTea/EternalTerminal/issues/862
+// A second connect() on the same ClientConnection is what TerminalClient would
+// do if it retried after a slow INITIAL_RESPONSE. The server already has the
+// session, answers RETURNING_CLIENT, and runs recoverClient(). connect()
+// accepts that status but does not recover: it installs a fresh reader and
+// writer at sequence 0. The packet written afterwards (the resent
+// INITIAL_PAYLOAD) never arrives.
+TEST_CASE("ConnectionTest_ConnectRetryAfterNewClient",
+          "[ConnectionTest][integration]") {
+  string clientReceived;
+  string serverReceived;
+  string failure;
+  runConnectionTestCase(false, [&](ConnectionTestContext& ctx) {
+    const string clientId = "1234567890123456";
+    shared_ptr<ClientConnection> clientConnection;
+    shared_ptr<Collector> serverCollector;
+    shared_ptr<Collector> clientCollector;
+    auto finish = [&]() {
+      if (clientCollector) {
+        clientCollector->finish();
+        clientCollector.reset();
+      }
+      if (clientConnection) {
+        clientConnection->shutdown();
+        clientConnection->waitReconnect();
+        clientConnection.reset();
+      }
+      ctx.serverConnection->removeClient(clientId);
+      if (serverCollector) {
+        serverCollector->join();
+        serverCollector.reset();
+      }
+      closeLeftoverClientSockets(ctx.clientSocketHandler);
+    };
+
+    ctx.serverConnection->addClientKey(clientId, CRYPTO_KEY);
+    clientConnection.reset(new ClientConnection(
+        ctx.clientSocketHandler, ctx.endpoint, clientId, CRYPTO_KEY));
+    if (!clientConnection->connect()) {
+      failure = "initial connect() failed";
+      finish();
+      return;
+    }
+    clientConnection->writePacket(Packet(HEADER_DATA, "first"));
+
+    shared_ptr<ServerClientConnection> serverClientConnection =
+        waitForServerClient(clientId, 5);
+    if (!serverClientConnection) {
+      failure = "server did not accept the client";
+      finish();
+      return;
+    }
+    serverCollector.reset(new Collector(
+        std::static_pointer_cast<Connection>(serverClientConnection),
+        "Server"));
+    serverCollector->start();
+    string received;
+    if (!readWithDeadline(serverCollector, 5, &received) ||
+        received != "first") {
+      failure = "server did not receive the first packet: '" + received + "'";
+      finish();
+      return;
+    }
+
+    // The retry, followed by the resend TerminalClient does after it.
+    if (!clientConnection->connect()) {
+      failure = "retry connect() failed";
+      finish();
+      return;
+    }
+    clientConnection->writePacket(Packet(HEADER_DATA, "second"));
+    serverCollector->write("reply");
+
+    clientCollector.reset(new Collector(
+        std::static_pointer_cast<Connection>(clientConnection), "Client"));
+    clientCollector->start();
+
+    bool clientGotReply = readWithDeadline(clientCollector, 10, &received);
+    clientReceived = clientGotReply ? received : "";
+    bool serverGotSecond = readWithDeadline(serverCollector, 10, &received);
+    serverReceived = serverGotSecond ? received : "";
+
+    finish();
+  });
+
+  INFO("clientReceived='" << clientReceived << "' serverReceived='"
+                          << serverReceived << "'");
+  REQUIRE(failure.empty());
+  REQUIRE(clientReceived == "reply");
+  REQUIRE(serverReceived == "second");
+}
+
+// https://github.com/MisterTea/EternalTerminal/issues/861
+// Connection::recover writes its whole CatchupBuffer before reading the
+// peer's. When both directions are larger than the socket buffer, each side
+// blocks in that write and recovery never finishes.
+TEST_CASE("ConnectionTest_ReconnectLargeBidirectionalCatchup",
+          "[ConnectionTest][integration]") {
+  const string clientBlob(4 * 1024 * 1024, 'C');
+  const string serverBlob(4 * 1024 * 1024, 'S');
+  std::atomic<bool> clientDelivered{false};
+  std::atomic<bool> serverDelivered{false};
+  string clientGot;
+  string serverGot;
+  string failure;
+
+  runConnectionTestCase(false, [&](ConnectionTestContext& ctx) {
+    const string clientId = "1234567890123456";
+    shared_ptr<ClientConnection> clientConnection;
+    shared_ptr<ServerClientConnection> serverClientConnection;
+    std::atomic<bool> stop{false};
+    std::thread clientProbe;
+    std::thread serverProbe;
+
+    auto finish = [&]() {
+      stop.store(true);
+      if (clientConnection) {
+        clientConnection->shutdown();
+        clientConnection->waitReconnect();
+      }
+      ctx.serverConnection->removeClient(clientId);
+      if (clientProbe.joinable()) {
+        clientProbe.join();
+      }
+      if (serverProbe.joinable()) {
+        serverProbe.join();
+      }
+      clientConnection.reset();
+      serverClientConnection.reset();
+      closeLeftoverClientSockets(ctx.clientSocketHandler);
+    };
+
+    ctx.serverConnection->addClientKey(clientId, CRYPTO_KEY);
+    clientConnection.reset(new ClientConnection(
+        ctx.clientSocketHandler, ctx.endpoint, clientId, CRYPTO_KEY));
+    if (!clientConnection->connect()) {
+      failure = "initial connect() failed";
+      finish();
+      return;
+    }
+    serverClientConnection = waitForServerClient(clientId, 5);
+    if (!serverClientConnection) {
+      failure = "server did not accept the client";
+      finish();
+      return;
+    }
+
+    // Drop both sockets without starting reconnect, then queue catchup that
+    // cannot fit in an AF_UNIX socket buffer (~176 KiB on Linux).
+    clientConnection->closeSocket();
+    serverClientConnection->closeSocket();
+    if (!clientConnection->write(Packet(HEADER_DATA, clientBlob))) {
+      failure = "failed to buffer client catchup";
+      finish();
+      return;
+    }
+    if (!serverClientConnection->write(Packet(HEADER_DATA, serverBlob))) {
+      failure = "failed to buffer server catchup";
+      finish();
+      return;
+    }
+
+    auto watch = [&](shared_ptr<Connection> connection, const string& expected,
+                     std::atomic<bool>* delivered, string* got) {
+      while (!stop.load()) {
+        if (connection->hasData()) {
+          Packet packet;
+          if (connection->readPacket(&packet) &&
+              packet.getHeader() == HEADER_DATA) {
+            *got = packet.getPayload();
+            delivered->store(*got == expected);
+            return;
+          }
+        }
+        testSleepMicros(10 * 1000);
+      }
+    };
+    clientProbe = std::thread(
+        watch, std::static_pointer_cast<Connection>(clientConnection),
+        std::cref(serverBlob), &clientDelivered, &clientGot);
+    serverProbe = std::thread(
+        watch, std::static_pointer_cast<Connection>(serverClientConnection),
+        std::cref(clientBlob), &serverDelivered, &serverGot);
+
+    clientConnection->closeSocketAndMaybeReconnect();
+
+    // A working recovery finishes in well under a second. The bug blocks in
+    // writeProto until SOCKET_IDLE_TIMEOUT_SEC, so this wait returns first
+    // and finish() then unblocks the stuck recover calls.
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::seconds(8);
+    while ((!clientDelivered.load() || !serverDelivered.load()) &&
+           std::chrono::steady_clock::now() < deadline) {
+      testSleepMicros(20 * 1000);
+    }
+    finish();
+  });
+
+  INFO("failure=" << failure << " clientDelivered=" << clientDelivered.load()
+                  << " clientBytes=" << clientGot.size()
+                  << " serverDelivered=" << serverDelivered.load()
+                  << " serverBytes=" << serverGot.size());
+  REQUIRE(failure.empty());
+  REQUIRE(clientDelivered.load());
+  REQUIRE(serverDelivered.load());
 }

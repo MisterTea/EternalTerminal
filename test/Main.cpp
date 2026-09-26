@@ -29,7 +29,18 @@ bool argEqualsIgnoreCase(const char* a, const char* b) {
 }
 }  // namespace
 
+#ifndef WIN32
+// Defined in InitialConnectFailureTest.cpp. A fresh process (not a fork of the
+// test runner) so TerminalClient's exit(1) is observable.
+int RunIssue866Repro(int argc, char** argv, const char* mode);
+#endif
+
 int main(int argc, char** argv) {
+#ifndef WIN32
+  if (const char* repro = getenv("ET_REPRO_866")) {
+    return RunIssue866Repro(argc, argv, repro);
+  }
+#endif
   srand(1);
 
   for (int i = 1; i < argc; ++i) {
