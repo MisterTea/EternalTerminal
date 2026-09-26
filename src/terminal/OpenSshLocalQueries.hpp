@@ -9,6 +9,12 @@
 
 #include "ParseConfigFile.hpp"
 
+#ifndef WIN32
+extern "C" {
+extern char** environ;
+}
+#endif
+
 namespace et {
 
 inline string openSshCompatibilityVersionLine() {
@@ -88,7 +94,16 @@ inline bool applySessionOption(Options* options, const string& option) {
   string key;
   string value;
   size_t eq = option.find('=');
+  // Equals form when the key side (trimmed) is a single token. Space form
+  // otherwise, including `-o "SetEnv NAME=VALUE"` where the value contains `=`.
+  bool useEqualsForm = false;
   if (eq != string::npos) {
+    string keySide = trimAsciiBlanks(option.substr(0, eq));
+    if (!keySide.empty() && keySide.find_first_of(" \t") == string::npos) {
+      useEqualsForm = true;
+    }
+  }
+  if (useEqualsForm) {
     key = option.substr(0, eq);
     value = option.substr(eq + 1);
   } else {
@@ -191,9 +206,221 @@ inline bool applySessionOption(Options* options, const string& option) {
     return ssh_options_set(options, SSH_OPTIONS_CONTROLPERSIST,
                            value.c_str()) == 0;
   }
+  if (keyLower == "localforward") {
+    return ssh_options_set(options, SSH_OPTIONS_LOCALFORWARD, value.c_str()) ==
+           0;
+  }
+  if (keyLower == "remoteforward") {
+    return ssh_options_set(options, SSH_OPTIONS_REMOTEFORWARD, value.c_str()) ==
+           0;
+  }
+  if (keyLower == "dynamicforward") {
+    return ssh_options_set(options, SSH_OPTIONS_DYNAMICFORWARD,
+                           value.c_str()) == 0;
+  }
+  if (keyLower == "sendenv") {
+    if (value.empty()) {
+      return false;
+    }
+    size_t pos = 0;
+    bool any = false;
+    while (pos < value.size()) {
+      while (pos < value.size() &&
+             isblank(static_cast<unsigned char>(value[pos]))) {
+        pos++;
+      }
+      if (pos >= value.size()) {
+        break;
+      }
+      size_t end = pos;
+      while (end < value.size() &&
+             !isblank(static_cast<unsigned char>(value[end]))) {
+        end++;
+      }
+      string pattern = value.substr(pos, end - pos);
+      if (ssh_options_set(options, SSH_OPTIONS_SENDENV, pattern.c_str()) != 0) {
+        return false;
+      }
+      any = true;
+      pos = end;
+    }
+    return any;
+  }
+  if (keyLower == "setenv") {
+    if (value.empty()) {
+      return false;
+    }
+    size_t pos = 0;
+    bool any = false;
+    while (pos < value.size()) {
+      while (pos < value.size() &&
+             isblank(static_cast<unsigned char>(value[pos]))) {
+        pos++;
+      }
+      if (pos >= value.size()) {
+        break;
+      }
+      size_t end = pos;
+      while (end < value.size() &&
+             !isblank(static_cast<unsigned char>(value[end]))) {
+        end++;
+      }
+      string assignment = value.substr(pos, end - pos);
+      if (ssh_options_set(options, SSH_OPTIONS_SETENV, assignment.c_str()) !=
+          0) {
+        return false;
+      }
+      any = true;
+      pos = end;
+    }
+    return any;
+  }
 
   // Unrecognized session options are ignored (OpenSSH warns; we stay quiet).
   return true;
+}
+
+/** @brief OpenSSH wipes every forward when ClearAllForwardings is yes. */
+inline void applyClearAllForwardings(Options* options) {
+  if (options == nullptr || !options->clear_all_forwardings) {
+    return;
+  }
+  options->local_forwards.clear();
+  options->remote_forwards.clear();
+  options->dynamic_forwards.clear();
+}
+
+/**
+ * @brief ET keepalive interval. An explicit --keepalive wins. Otherwise a
+ *        positive ServerAliveInterval is used, clamped to ET's maximum.
+ *        Zero leaves the ET default: the server drops a quiet client.
+ */
+inline int resolveEtKeepaliveSeconds(bool keepaliveExplicit, int keepaliveValue,
+                                     unsigned long serverAliveInterval) {
+  if (keepaliveExplicit || serverAliveInterval == 0) {
+    return keepaliveValue;
+  }
+  if (serverAliveInterval >
+      static_cast<unsigned long>(MAX_CLIENT_KEEP_ALIVE_DURATION)) {
+    return MAX_CLIENT_KEEP_ALIVE_DURATION;
+  }
+  return static_cast<int>(serverAliveInterval);
+}
+
+/**
+ * @brief Command-line command wins. RemoteCommand none means no command.
+ *        `-N` (SessionType none) suppresses config RemoteCommand the same way
+ *        OpenSSH does; a non-empty CLI command is still returned so callers can
+ *        report the -N conflict.
+ */
+inline string resolveConfiguredRemoteCommand(const string& cliCommand,
+                                             const char* remoteCommand,
+                                             bool noRemoteCommand = false) {
+  if (!cliCommand.empty()) {
+    return cliCommand;
+  }
+  if (noRemoteCommand) {
+    return "";
+  }
+  if (remoteCommand == nullptr || remoteCommand[0] == '\0' ||
+      strcasecmp(remoteCommand, "none") == 0) {
+    return "";
+  }
+  return remoteCommand;
+}
+
+/** @brief Pass BatchMode through to bootstrap ssh when ET resolved it. */
+inline void appendBatchModeSshOption(vector<string>* sshOptions,
+                                     int batchMode) {
+  if (sshOptions == nullptr || !batchMode) {
+    return;
+  }
+  for (const auto& option : *sshOptions) {
+    string lower = lowercaseAscii(option);
+    if (lower.rfind("batchmode", 0) == 0) {
+      return;
+    }
+  }
+  sshOptions->push_back("BatchMode=yes");
+}
+
+/** @brief Copy local variables whose names match SendEnv patterns. */
+inline vector<pair<string, string>> selectSendEnv(
+    const vector<string>& patterns,
+    const vector<pair<string, string>>& localEnv) {
+  vector<pair<string, string>> selected;
+  for (const auto& pattern : patterns) {
+    for (const auto& env : localEnv) {
+      if (!sshEnvPatternMatches(pattern, env.first)) {
+        continue;
+      }
+      bool already = false;
+      for (const auto& have : selected) {
+        if (have.first == env.first) {
+          already = true;
+          break;
+        }
+      }
+      if (!already) {
+        selected.push_back(env);
+      }
+    }
+  }
+  return selected;
+}
+
+/** @brief SendEnv matches first, then SetEnv assignments replace them. */
+inline vector<pair<string, string>> mergeSessionEnvironment(
+    const vector<string>& sendPatterns,
+    const vector<pair<string, string>>& setenv,
+    const vector<pair<string, string>>& localEnv) {
+  vector<pair<string, string>> merged = selectSendEnv(sendPatterns, localEnv);
+  for (const auto& assigned : setenv) {
+    bool replaced = false;
+    for (auto& existing : merged) {
+      if (existing.first == assigned.first) {
+        existing.second = assigned.second;
+        replaced = true;
+        break;
+      }
+    }
+    if (!replaced) {
+      merged.push_back(assigned);
+    }
+  }
+  return merged;
+}
+
+inline vector<pair<string, string>> captureLocalEnviron() {
+  vector<pair<string, string>> vars;
+#ifndef WIN32
+  if (environ == nullptr) {
+    return vars;
+  }
+  for (char** it = environ; *it != nullptr; ++it) {
+    string entry(*it);
+    size_t eq = entry.find('=');
+    if (eq == string::npos || eq == 0) {
+      continue;
+    }
+    vars.emplace_back(entry.substr(0, eq), entry.substr(eq + 1));
+  }
+#else
+  LPCH block = GetEnvironmentStringsA();
+  if (block == nullptr) {
+    return vars;
+  }
+  for (LPCH entry = block; *entry != '\0'; entry += strlen(entry) + 1) {
+    string line(entry);
+    size_t eq = line.find('=');
+    if (eq == string::npos || eq == 0) {
+      continue;
+    }
+    vars.emplace_back(line.substr(0, eq), line.substr(eq + 1));
+  }
+  FreeEnvironmentStringsA(block);
+#endif
+  return vars;
 }
 
 inline string formatOpenSshResolvedConfig(const string& hostAlias,
@@ -232,6 +459,21 @@ inline string formatOpenSshResolvedConfig(const string& hostAlias,
   }
   if (opts.remote_command && opts.remote_command[0] != '\0') {
     out << "remotecommand " << opts.remote_command << "\n";
+  }
+  for (const auto& forward : opts.local_forwards) {
+    out << "localforward " << forward << "\n";
+  }
+  for (const auto& forward : opts.remote_forwards) {
+    out << "remoteforward " << forward << "\n";
+  }
+  for (const auto& forward : opts.dynamic_forwards) {
+    out << "dynamicforward " << forward << "\n";
+  }
+  for (const auto& pattern : opts.send_env) {
+    out << "sendenv " << pattern << "\n";
+  }
+  for (const auto& env : opts.env_vars) {
+    out << "setenv " << env.first << "=" << env.second << "\n";
   }
   return out.str();
 }

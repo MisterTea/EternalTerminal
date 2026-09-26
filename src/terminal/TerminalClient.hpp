@@ -43,7 +43,7 @@ class TerminalClient {
                  const vector<string>& dynamicForwards = {},
                  const string& stdioForward = "",
                  optional<int> disconnectTimeoutMinutes = nullopt,
-                 bool noShell = false);
+                 bool noShell = false, bool exitOnForwardFailure = false);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();
