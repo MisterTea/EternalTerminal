@@ -91,7 +91,9 @@ class RecoverableConnection : public Connection {
     socketFd = fd;
   }
 
-  bool recoverPublic(int fd) { return recover(fd); }
+  bool recoverPublic(int fd, bool readPeerCatchupFirst) {
+    return recover(fd, readPeerCatchupFirst);
+  }
 
   void closeSocketAndMaybeReconnect() override { closeSocket(); }
 };
@@ -357,10 +359,78 @@ TEST_CASE("Connection recover exchanges sequence and catchup", "[Connection]") {
     handler->close(reconnect[1]);
   });
 
-  REQUIRE(conn.recoverPublic(reconnect[0]));
+  REQUIRE(conn.recoverPublic(reconnect[0], /*readPeerCatchupFirst=*/false));
 
   conn.shutdown();
   handler->close(live[1]);
   handler->close(reconnect[0]);
   remote.join();
+}
+
+TEST_CASE("Connection recover can read the peer catchup first",
+          "[Connection]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int live[2];
+  REQUIRE(createTestSocketPair(live) == 0);
+
+  const string key = "zyxwvutsrqponmlkjihgfedcba987654";
+  auto encryptCrypto = make_shared<CryptoHandler>(key, 0);
+  auto decryptCrypto = make_shared<CryptoHandler>(key, 0);
+
+  auto reader = make_shared<BackedReader>(handler, decryptCrypto, live[0]);
+  auto writer = make_shared<BackedWriter>(handler, encryptCrypto, live[0]);
+  RecoverableConnection conn(handler, reader, writer, live[0], key);
+
+  conn.write(Packet(1, "first"));
+  conn.write(Packet(2, "second"));
+  conn.closeSocket();
+
+  int reconnect[2];
+  REQUIRE(createTestSocketPair(reconnect) == 0);
+
+  // The peer follows the server's order: it sends its catchup, then reads. It
+  // only records what it sees; the assertions run on the test thread.
+  int64_t peerSawSequence = -1;
+  bool catchupArrivedEarly = true;
+  int peerCatchupSize = -1;
+  std::exception_ptr peerError;
+  std::thread remote([&]() {
+    try {
+      auto seqHeader = handler->readProto<SequenceHeader>(reconnect[1], true);
+      peerSawSequence = seqHeader.sequencenumber();
+
+      SequenceHeader seqResponse;
+      seqResponse.set_sequencenumber(1);
+      handler->writeProto(reconnect[1], seqResponse, true);
+
+      // A connection that reads first sends nothing until our catchup
+      // arrives. A connection that sends first writes its small catchup as
+      // soon as it has our header, well inside this window.
+      std::this_thread::sleep_for(std::chrono::milliseconds(200));
+      catchupArrivedEarly = handler->hasData(reconnect[1]);
+
+      CatchupBuffer back;
+      handler->writeProto(reconnect[1], back, true);
+      auto catchup = handler->readProto<CatchupBuffer>(reconnect[1], true);
+      peerCatchupSize = catchup.buffer_size();
+    } catch (...) {
+      peerError = std::current_exception();
+    }
+    handler->close(reconnect[1]);
+  });
+
+  bool recovered =
+      conn.recoverPublic(reconnect[0], /*readPeerCatchupFirst=*/true);
+  remote.join();
+  if (peerError) {
+    std::rethrow_exception(peerError);
+  }
+  REQUIRE(recovered);
+  REQUIRE(peerSawSequence == 0);
+  REQUIRE_FALSE(catchupArrivedEarly);
+  REQUIRE(peerCatchupSize == 1);
+
+  // conn owns reconnect[0] now: shutdown() closes it.
+  conn.shutdown();
+  handler->close(live[1]);
 }

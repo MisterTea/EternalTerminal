@@ -406,3 +406,108 @@ TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
     REQUIRE(serverClientConnections.empty());
   });
 }
+
+// Both sides queue more catchup than the socket buffers hold while the
+// connection is down, then the client reconnects. recover() must still finish:
+// if each side writes its whole CatchupBuffer before reading the peer's, both
+// block in write until the socket timeout and every retry does the same.
+TEST_CASE("ConnectionTest_RecoverLargeCatchupBothWays",
+          "[ConnectionTest][integration]") {
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    const string clientId = "1234567890123456";
+    ctx.serverConnection->addClientKey(clientId, CRYPTO_KEY);
+
+    shared_ptr<ClientConnection> clientConnection(new ClientConnection(
+        ctx.clientSocketHandler, ctx.endpoint, clientId, CRYPTO_KEY));
+    while (!clientConnection->connect()) {
+      testSleepMicros(100 * 1000);
+    }
+
+    shared_ptr<ServerClientConnection> serverClientConnection;
+    while (!serverClientConnection) {
+      {
+        lock_guard<mutex> lock(serverClientConnectionMutex);
+        auto it = serverClientConnections.find(clientId);
+        if (it != serverClientConnections.end()) {
+          serverClientConnection = it->second;
+        }
+      }
+      testSleepMicros(10 * 1000);
+    }
+
+    // Drop the link on both sides without starting a reconnect yet.
+    clientConnection->closeSocket();
+    serverClientConnection->closeSocket();
+
+    // 4 MiB per direction, far more than a socket buffer holds. Large packets
+    // keep the count low, since Collector reads one packet per poll.
+    const int NUM_MESSAGES = 256;
+    const int MESSAGE_SIZE = 16 * 1024;
+    string clientData(NUM_MESSAGES * MESSAGE_SIZE, '\0');
+    string serverData(NUM_MESSAGES * MESSAGE_SIZE, '\0');
+    for (size_t a = 0; a < clientData.size(); a++) {
+      clientData[a] = rand() % 26 + 'A';
+      serverData[a] = rand() % 26 + 'a';
+    }
+    for (int a = 0; a < NUM_MESSAGES; a++) {
+      clientConnection->writePacket(Packet(
+          HEADER_DATA, clientData.substr(a * MESSAGE_SIZE, MESSAGE_SIZE)));
+      serverClientConnection->writePacket(Packet(
+          HEADER_DATA, serverData.substr(a * MESSAGE_SIZE, MESSAGE_SIZE)));
+    }
+
+    clientConnection->closeSocketAndMaybeReconnect();
+
+    // Well under SOCKET_IDLE_TIMEOUT_SEC, so a stalled recover cannot pass by
+    // timing out and retrying.
+    time_t deadline = time(NULL) + 15;
+    bool recovered = false;
+    while (time(NULL) <= deadline) {
+      if (clientConnection->getSocketFd() >= 0 &&
+          serverClientConnection->getSocketFd() >= 0) {
+        recovered = true;
+        break;
+      }
+      testSleepMicros(10 * 1000);
+    }
+    if (!recovered) {
+      // Fail without throwing: a REQUIRE here would skip the harness teardown
+      // and abort the whole test binary on the unjoined listen thread.
+      FAIL_CHECK("recover did not complete within the deadline");
+      clientConnection->shutdown();
+      serverClientConnection->shutdown();
+      clientConnection.reset();
+      ctx.serverConnection->removeClient(clientId);
+      return;
+    }
+
+    shared_ptr<Collector> serverCollector(new Collector(
+        std::static_pointer_cast<Connection>(serverClientConnection),
+        "Server"));
+    serverCollector->start();
+    shared_ptr<Collector> clientCollector(new Collector(
+        std::static_pointer_cast<Connection>(clientConnection), "Client"));
+    clientCollector->start();
+
+    string receivedByServer;
+    string receivedByClient;
+    for (int a = 0; a < NUM_MESSAGES; a++) {
+      receivedByServer.append(serverCollector->read());
+      receivedByClient.append(clientCollector->read());
+    }
+    {
+      // CHECK, not REQUIRE: a throw here would skip the teardown below.
+      lock_guard<recursive_mutex> lock(testMutex);
+      CHECK(receivedByServer == clientData);
+      CHECK(receivedByClient == serverData);
+    }
+
+    clientCollector->finish();
+    clientCollector.reset();
+    clientConnection.reset();
+
+    ctx.serverConnection->removeClient(clientId);
+    serverCollector->join();
+    serverCollector.reset();
+  });
+}

@@ -67,7 +67,7 @@ bool ServerClientConnection::recoverClient(int newSocketFd) {
   }
   socketFd = -1;
 
-  bool success = recover(newSocketFd);
+  bool success = recover(newSocketFd, /*readPeerCatchupFirst=*/false);
   if (success) {
     if (oldSocketFd != -1) {
       socketHandler->close(oldSocketFd);
