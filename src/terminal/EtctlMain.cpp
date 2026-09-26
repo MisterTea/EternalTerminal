@@ -17,7 +17,6 @@
 #include <regex>
 #include <sstream>
 
-#include "ClientArgParsing.hpp"
 #include "ControlPaths.hpp"
 #include "ControlProtocol.hpp"
 #include "ETerminal.pb.h"
@@ -1585,6 +1584,18 @@ int cmdOpen(int argc, char** argv) {
   string checkTarget = name;
   string requestedDest;
   int destIndex = -1;
+  /*
+   * `etctl open NAME HOST [et-args...]` puts the host third, and etctl owns
+   * that contract, so read it from there rather than hunting for a bare token.
+   * et's short flags follow ssh now (-p, -l, -i, -J and friends all take a
+   * value), and a scanner that does not know each letter's arity would happily
+   * read an option's value as the destination. A live session re-opened as
+   * `etctl open NAME` has no host at all and short-circuits below.
+   */
+  if (argc > 3 && argv[3][0] != '-') {
+    requestedDest = argv[3];
+    destIndex = 3;
+  }
   string userCommand;
   vector<bool> skip(argc, false);
   for (int i = 3; i < argc; i++) {
@@ -1608,17 +1619,6 @@ int cmdOpen(int argc, char** argv) {
     } else if (a.rfind("--command=", 0) == 0) {
       userCommand = a.substr(strlen("--command="));
       skip[i] = true;
-    } else if (!a.empty() && a[0] == '-') {
-      // Any other et option: step over a separate value token so it is never
-      // mistaken for the destination (`--port 2099` must not make 2099 the
-      // host). et owns the list of options that take a value, so use its.
-      if (a.find('=') == string::npos && etOptionConsumesValue(a) &&
-          i + 1 < argc) {
-        i++;
-      }
-    } else if (!a.empty()) {
-      requestedDest = a;  // last bare positional wins (et's destination)
-      destIndex = i;
     }
   }
   if (sessionAlive(checkTarget)) {
