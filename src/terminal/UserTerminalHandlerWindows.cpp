@@ -70,7 +70,8 @@ UserTerminalHandler::UserTerminalHandler(
       pipeMode(false),
       routerEndpoint(routerEndpoint),
       ptyActive(false),
-      hadReverseTunnels(false) {
+      hadReverseTunnels(false),
+      disconnectTimeoutSeconds(std::nullopt) {
   auto idpasskey_splited = split(idPasskey, '/');
   id = idpasskey_splited[0];
   passkey = idpasskey_splited[1];
@@ -90,6 +91,9 @@ void UserTerminalHandler::registerWithRouter() {
   tui.set_gid(0);
   tui.set_ptyactive(ptyActive);
   tui.set_hadreversetunnels(hadReverseTunnels);
+  if (disconnectTimeoutSeconds) {
+    tui.set_disconnect_timeout_seconds(*disconnectTimeoutSeconds);
+  }
 
   routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
   socketHandler->writePacket(
@@ -204,6 +208,9 @@ void UserTerminalHandler::run() {
     }
     TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
     hadReverseTunnels = ti.hadreversetunnels();
+    if (ti.has_disconnect_timeout_seconds()) {
+      disconnectTimeoutSeconds = ti.disconnect_timeout_seconds();
+    }
     for (int a = 0; a < ti.environmentnames_size(); a++) {
       // _putenv updates both the CRT environment (so getenv() in this
       // process observes it) and the OS environment block.

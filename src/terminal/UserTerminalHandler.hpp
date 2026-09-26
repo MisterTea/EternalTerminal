@@ -54,6 +54,8 @@ class UserTerminalHandler {
   optional<SocketEndpoint> routerEndpoint;
   bool ptyActive;
   bool hadReverseTunnels;
+  // From TermInit; re-advertised on router re-register after etserver restart.
+  std::optional<int32_t> disconnectTimeoutSeconds;
 
   /** @brief Reads from the master fd and forwards data to the client socket. */
   void runUserTerminal(int masterFd);

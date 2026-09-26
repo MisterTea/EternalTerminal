@@ -426,6 +426,10 @@ void TerminalServer::runTerminal(
   if (!resume) {
     TermInit termInit;
     termInit.set_hadreversetunnels(payload.reversetunnels_size() > 0);
+    if (payload.has_disconnect_timeout_seconds()) {
+      termInit.set_disconnect_timeout_seconds(
+          payload.disconnect_timeout_seconds());
+    }
     for (auto& it : environmentVariables) {
       *(termInit.add_environmentnames()) = it.first;
       *(termInit.add_environmentvalues()) = it.second;
@@ -826,8 +830,15 @@ void TerminalServer::handleConnectionResume(
       LOG(ERROR) << "Resuming client failed to bind to terminal router";
     } else {
       LOG(INFO) << "RESUMING TERMINAL";
-      runTerminal(serverClientState, InitialPayload(), *userInfo,
-                  /*resume=*/true, &terminalEof);
+      // Clients that reconnect after a reset skip InitialPayload, so restore
+      // the per-session disconnect timeout etterminal preserved in userInfo.
+      InitialPayload payload;
+      if (userInfo->has_disconnect_timeout_seconds()) {
+        payload.set_disconnect_timeout_seconds(
+            userInfo->disconnect_timeout_seconds());
+      }
+      runTerminal(serverClientState, payload, *userInfo, /*resume=*/true,
+                  &terminalEof);
     }
   } catch (const std::exception& ex) {
     LOG(ERROR) << "Resumed terminal thread failed: " << ex.what();

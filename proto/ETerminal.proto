@@ -113,6 +113,9 @@ message TermInit {
   optional string command = 4;
   optional bool no_shell = 5 [default = false];
   optional bool hadreversetunnels = 6 [default = false];
+  // Copied from InitialPayload so etterminal can re-advertise it after an
+  // etserver restart (see TerminalUserInfo.disconnect_timeout_seconds).
+  optional int32 disconnect_timeout_seconds = 7;
 }
 
 message TerminalUserInfo {
@@ -128,4 +131,7 @@ message TerminalUserInfo {
   // Preserved by etterminal so a replacement server can warn that the
   // server-side listeners from the original bootstrap no longer exist.
   optional bool hadreversetunnels = 7 [default = false];
+  // Preserved from TermInit so a resumed pump keeps the client's per-session
+  // disconnect timeout across etserver restart.
+  optional int32 disconnect_timeout_seconds = 8;
 }

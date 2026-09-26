@@ -22,7 +22,8 @@ UserTerminalHandler::UserTerminalHandler(
       pipeMode(false),
       routerEndpoint(routerEndpoint),
       ptyActive(false),
-      hadReverseTunnels(false) {
+      hadReverseTunnels(false),
+      disconnectTimeoutSeconds(std::nullopt) {
   auto idpasskey_splited = split(idPasskey, '/');
   id = idpasskey_splited[0];
   passkey = idpasskey_splited[1];
@@ -81,6 +82,9 @@ void UserTerminalHandler::registerWithRouter() {
   tui.set_gid(getgid());
   tui.set_ptyactive(ptyActive);
   tui.set_hadreversetunnels(hadReverseTunnels);
+  if (disconnectTimeoutSeconds) {
+    tui.set_disconnect_timeout_seconds(*disconnectTimeoutSeconds);
+  }
 
   routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
   try {
@@ -175,6 +179,9 @@ void UserTerminalHandler::run() {
       }
       TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
       hadReverseTunnels = ti.hadreversetunnels();
+      if (ti.has_disconnect_timeout_seconds()) {
+        disconnectTimeoutSeconds = ti.disconnect_timeout_seconds();
+      }
       for (int a = 0; a < ti.environmentnames_size(); a++) {
         setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
                true);

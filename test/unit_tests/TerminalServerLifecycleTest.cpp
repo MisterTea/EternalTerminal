@@ -339,6 +339,46 @@ TEST_CASE_METHOD(TerminalSessionFixture,
 }
 
 TEST_CASE_METHOD(TerminalSessionFixture,
+                 "Client disconnect timeout survives pty-active resume",
+                 "[TerminalServerLifecycle]") {
+  // etserver restart (or any pty-active re-register) builds a fresh pump via
+  // resumeClient with no client InitialPayload. The per-session timeout must
+  // still come from TerminalUserInfo that etterminal preserved from TermInit.
+  CHECK(server->getDisconnectTimeoutSeconds() == 0);
+  server->dropConnection(id);
+  closeTerminal();
+
+  terminalPeer = peerHandler->connect(routerEndpoint);
+  REQUIRE(terminalPeer >= 0);
+  TerminalUserInfo userInfo;
+  userInfo.set_id(id);
+  userInfo.set_passkey(key);
+  userInfo.set_uid(getuid());
+  userInfo.set_gid(getgid());
+  userInfo.set_ptyactive(true);
+  userInfo.set_disconnect_timeout_seconds(1);
+  peerHandler->writePacket(
+      terminalPeer,
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(userInfo)));
+  REQUIRE(server->terminalRouter->acceptNewConnection().id == id);
+  server->registerClient(client, key);
+  auto info = server->terminalRouter->tryGetInfoForConnection(client);
+  REQUIRE(info.has_value());
+  terminalFd = info->fd();
+
+  server->resumeClient(client);
+  CHECK(fcntl(terminalFd, F_GETFD) >= 0);
+
+  REQUIRE(peerHandler->waitForData(terminalPeer, 4, 0));
+  char packetType = 0;
+  REQUIRE(peerHandler->read(terminalPeer, &packetType, 1) == 1);
+  CHECK(packetType == TERMINAL_CLOSE);
+
+  waitForSessionEnd();
+  checkSessionClosed();
+}
+
+TEST_CASE_METHOD(TerminalSessionFixture,
                  "Disconnect timeout closes a resumed terminal whose client "
                  "never returns",
                  "[TerminalServerLifecycle]") {
