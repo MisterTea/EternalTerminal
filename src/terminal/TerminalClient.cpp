@@ -31,11 +31,32 @@ string refreshAgentProxyPath(const string& id, const string& authSock) {
     throw runtime_error("Unable to secure SSH agent proxy directory");
   }
 #endif
+  // Create under a temp name then rename over the stable path so readers never
+  // observe a missing agent.sock between remove and recreate (Issue #506).
   const fs::path proxy = directory / "agent.sock";
-  fs::remove(proxy, error);
-  error.clear();
-  fs::create_symlink(authSock, proxy, error);
+  const fs::path proxyTmp =
+      directory / ("agent.sock.tmp." + genRandomAlphaNum(8));
+  fs::create_symlink(authSock, proxyTmp, error);
   if (error) {
+    fs::remove(proxyTmp, error);
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to refresh SSH agent proxy: " +
+                        error.message());
+#endif
+  }
+  error.clear();
+  fs::rename(proxyTmp, proxy, error);
+  if (error) {
+    // Some platforms refuse rename-over-existing for symlinks; fall back.
+    std::error_code removeError;
+    fs::remove(proxy, removeError);
+    error.clear();
+    fs::rename(proxyTmp, proxy, error);
+  }
+  if (error) {
+    fs::remove(proxyTmp, error);
 #ifdef WIN32
     return authSock;
 #else

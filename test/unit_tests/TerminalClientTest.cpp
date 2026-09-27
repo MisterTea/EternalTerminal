@@ -86,7 +86,12 @@ string agentProxyPathFor(const string& clientId) {
 }
 
 string readAgentProxyTarget(const string& clientId) {
-  return fs::read_symlink(agentProxyPathFor(clientId)).string();
+  std::error_code ec;
+  auto target = fs::read_symlink(agentProxyPathFor(clientId), ec);
+  if (ec) {
+    return "";
+  }
+  return target.string();
 }
 
 struct EnvVarGuard {
