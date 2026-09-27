@@ -49,7 +49,7 @@ class TerminalClient {
                  std::function<bool()> _sessionHeartbeat = {},
                  std::function<bool(const string&)> _sessionTitleUpdate = {},
                  optional<int> disconnectTimeoutMinutes = nullopt,
-                 bool noShell = false);
+                 bool noShell = false, bool exitOnForwardFailure = false);
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();

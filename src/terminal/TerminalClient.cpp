@@ -3,6 +3,7 @@
 #include <cstdint>
 #include <cstdlib>
 #include <cstring>
+#include <sstream>
 
 #include "PseudoTerminalConsole.hpp"
 #include "RawSocketUtils.hpp"
@@ -85,7 +86,8 @@ TerminalClient::TerminalClient(
     const string& stdioForward, int _maxConnectAttempts,
     bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
     std::function<bool(const string&)> _sessionTitleUpdate,
-    optional<int> disconnectTimeoutMinutes, bool noShell)
+    optional<int> disconnectTimeoutMinutes, bool noShell,
+    bool exitOnForwardFailure)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -115,15 +117,24 @@ TerminalClient::TerminalClient(
   }
 
   try {
+    auto failForward = [&](const string& message) {
+      if (exitOnForwardFailure) {
+        CLOG(INFO, "stdout") << message << endl;
+        exit(1);
+      }
+      LOG(WARNING) << message;
+    };
     if (tunnels.length()) {
       auto pfsrs = parseRangesToRequests(tunnels);
       for (auto& pfsr : pfsrs) {
         auto pfsresponse =
             portForwardHandler->createSource(pfsr, nullptr, -1, -1);
         if (pfsresponse.has_error()) {
-          LOG(WARNING) << "Failed to establish port forward " << pfsr.source()
-                       << " -> " << pfsr.destination() << " - "
-                       << pfsresponse.error();
+          std::ostringstream failed;
+          failed << "Failed to establish port forward " << pfsr.source()
+                 << " -> " << pfsr.destination() << " - "
+                 << pfsresponse.error();
+          failForward(failed.str());
           continue;
         }
       }
@@ -132,8 +143,8 @@ TerminalClient::TerminalClient(
       SocketEndpoint socksSource = parseDynamicForwardArg(dynamicArg);
       auto response = portForwardHandler->createSocksSource(socksSource);
       if (response.has_error()) {
-        LOG(WARNING) << "Failed to establish dynamic forward " << dynamicArg
-                     << " - " << response.error();
+        failForward("Failed to establish dynamic forward " + dynamicArg +
+                    " - " + response.error());
         continue;
       }
     }
