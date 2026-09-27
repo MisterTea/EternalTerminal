@@ -127,9 +127,7 @@ TEST_CASE("ForwardSourceHandler stops listening on destruction",
   destination.set_name("remote");
   destination.set_port(9090);
 
-  {
-    ForwardSourceHandler handler(socketHandler, source, destination);
-  }
+  { ForwardSourceHandler handler(socketHandler, source, destination); }
 
   REQUIRE(socketHandler->stopListeningCalls.size() == 1);
   REQUIRE(socketHandler->stopListeningCalls[0].name() == source.name());

@@ -337,7 +337,7 @@ bool controlPathSocketExists(const string& path) {
   if (path.empty()) {
     return false;
   }
-  struct stat st{};
+  struct stat st {};
   if (::stat(path.c_str(), &st) != 0) {
     return false;
   }

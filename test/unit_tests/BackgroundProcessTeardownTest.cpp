@@ -224,16 +224,22 @@ TEST_CASE("sessionHasEnded without master EOF while descendant holds PTY slave",
     std::this_thread::sleep_for(std::chrono::milliseconds(10));
   }
   REQUIRE(term.sessionHasEnded());
+  // Grandchild must still be alive: session end is driven by the foreground
+  // child exit, not by waiting for unrelated descendants.
+  REQUIRE(::kill(term.knownGrandchild, 0) == 0);
 
-  // Master must not be at EOF: a non-blocking read is EAGAIN while the
-  // grandchild still holds the slave (and the holder is still alive).
+#if !defined(__APPLE__)
+  // On Linux, the master must not be at EOF while the grandchild holds the
+  // slave (non-blocking read is EAGAIN). Darwin EOFs the master when the
+  // forkpty session leader exits even if a descendant still holds a reopened
+  // slave fd, so the EOF probe is Linux-only.
   char probe = 0;
   const ssize_t n = ::read(masterFd, &probe, 1);
   REQUIRE(n != 0);
   if (n < 0) {
     REQUIRE((errno == EAGAIN || errno == EWOULDBLOCK));
   }
-  REQUIRE(::kill(term.knownGrandchild, 0) == 0);
+#endif
 
   REQUIRE(term.handleSessionEnd() == 42);
 

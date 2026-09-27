@@ -46,9 +46,23 @@ def get_free_port() -> int:
         return s.getsockname()[1]
 
 
+def strip_terminal_noise(text: str) -> str:
+    """Remove OSC/CSI sequences that shell integration may glue onto output lines."""
+    # OSC: ESC ] ... BEL  or  ESC ] ... ESC \
+    without_osc = re.sub(r"\x1b\][^\x07\x1b]*(?:\x07|\x1b\\)", "", text)
+    # CSI / private-mode sequences (e.g. bracketed paste)
+    return re.sub(r"\x1b\[[0-9;?]*[ -/]*[@-~]", "", without_osc)
+
+
 def line_is_exactly(accumulated: str, marker: str) -> bool:
-    """True if any line equals marker after stripping CR (not a substring)."""
-    for raw in accumulated.splitlines():
+    """True if any line equals marker after stripping CR and terminal noise.
+
+    Exact-line matching avoids treating local PTY echo of `echo MARKER` as
+    readiness. Shell-integration OSC can share a physical line with the marker
+    (ST immediately followed by the echo payload), so strip that noise first.
+    """
+    cleaned = strip_terminal_noise(accumulated)
+    for raw in cleaned.splitlines():
         if raw.strip("\r") == marker:
             return True
     return False
