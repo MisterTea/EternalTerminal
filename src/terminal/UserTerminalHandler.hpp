@@ -70,6 +70,13 @@ class UserTerminalHandler {
   void runConPtyTerminal(class PseudoUserTerminal& conpty);
   /** @brief Pumps a socket-backed terminal (test doubles, same protocol). */
   void runSocketTerminal(int masterFd);
+#else
+  /**
+   * @brief Non-blocking drain of already-buffered PTY/pipe output to the
+   * router. Ignores the rows/sec rate limit so shell-exit teardown does not
+   * drop the final bytes.
+   */
+  void drainBufferedTerminalOutput(int masterFd, int stderrFd);
 #endif
 
   void registerWithRouter();

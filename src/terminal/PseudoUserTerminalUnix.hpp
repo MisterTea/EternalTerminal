@@ -141,12 +141,7 @@ class PseudoUserTerminal : public UserTerminal {
       waitResult = waitpid(getPid(), &status, WUNTRACED);
     } while (waitResult == -1 && errno == EINTR);
     if (waitResult == getPid()) {
-      childReaped = true;
-      if (WIFEXITED(status)) {
-        exitStatus = WEXITSTATUS(status);
-      } else if (WIFSIGNALED(status)) {
-        exitStatus = 128 + WTERMSIG(status);
-      }
+      recordReapedWaitStatus(status);
     } else if (waitResult == -1 && errno == ECHILD) {
       childReaped = true;
       LOG(ERROR) << "waitpid failed, child already reaped.";
@@ -225,6 +220,23 @@ class PseudoUserTerminal : public UserTerminal {
   }
 
   /**
+   * @brief True once the foreground forkpty child has exited.
+   *
+   * On platforms where childIsRunning() uses WNOWAIT, this does not reap the
+   * child or set childReaped, so a later handleSessionEnd() can still record
+   * the real exit status.
+   */
+  bool sessionHasEnded() override {
+    if (childReaped) {
+      return true;
+    }
+    if (pid <= 0) {
+      return false;
+    }
+    return !childIsRunning(pid);
+  }
+
+  /**
    * @brief Applies terminal resize changes via `ioctl(TIOCSWINSZ)`.
    */
   virtual void setInfo(const winsize& tmpwin) {
@@ -236,6 +248,21 @@ class PseudoUserTerminal : public UserTerminal {
   virtual int getFd() { return masterFd; }
 
  protected:
+  /**
+   * @brief Cache OpenSSH-style status after waitpid reaps the child.
+   *
+   * Used on NetBSD where childIsRunning() must reap (no WNOWAIT). Leaving
+   * exitStatus unset would make a later handleSessionEnd() return 0.
+   */
+  void recordReapedWaitStatus(int status) {
+    childReaped = true;
+    if (WIFEXITED(status)) {
+      exitStatus = WEXITSTATUS(status);
+    } else if (WIFSIGNALED(status)) {
+      exitStatus = 128 + WTERMSIG(status);
+    }
+  }
+
   bool childIsRunning(pid_t childPid) {
     if (childReaped) {
       return false;
@@ -246,8 +273,11 @@ class PseudoUserTerminal : public UserTerminal {
     do {
       waitResult = waitpid(childPid, &status, WNOHANG);
     } while (waitResult == -1 && errno == EINTR);
-    if (waitResult == childPid ||
-        (waitResult == -1 && (errno == ECHILD || errno == ESRCH))) {
+    if (waitResult == childPid) {
+      recordReapedWaitStatus(status);
+      return false;
+    }
+    if (waitResult == -1 && (errno == ECHILD || errno == ESRCH)) {
       childReaped = true;
       return false;
     }
