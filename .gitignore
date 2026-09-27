@@ -11,6 +11,10 @@ out
 .vscode
 *PVS-Studio*
 .dccache
+.ccache
+.ci-cache
+.openwrt-cache
+.vcpkg-binary-cache
 /*build/
 bin/
 

@@ -689,7 +689,7 @@ end tell
                 "UserKnownHostsFile=/dev/null",
                 "--ssh-option",
                 "BatchMode=yes",
-                "-c",
+                "--command",
                 remote,
                 f"127.0.0.1:{self.server.port}",
             ]),

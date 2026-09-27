@@ -44,6 +44,19 @@ class UserTerminalRouter {
     return socketHandler;
   }
 
+  bool isPtyActive(const string& id);
+
+  bool isCurrentRegistration(const string& id, int terminalFd) const;
+
+  // No-op returning false when a newer registration replaced terminalFd.
+  bool removeTerminal(const string& id, int terminalFd);
+
+  // Sends TERMINAL_CLOSE, then drops the registration.
+  bool closeTerminal(const string& id);
+
+  // Terminals see EOF and keep their pty for a replacement router.
+  void shutdown();
+
  protected:
   /** @brief File descriptor used by external clients to reach the router. */
   int serverFd;
@@ -52,7 +65,7 @@ class UserTerminalRouter {
   /** @brief Pipe handler used for communicating with router clients. */
   shared_ptr<PipeSocketHandler> socketHandler;
   /** @brief Synchronizes access to the router state. */
-  recursive_mutex routerMutex;
+  mutable recursive_mutex routerMutex;
 };
 }  // namespace et
 

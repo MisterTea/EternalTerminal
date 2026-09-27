@@ -318,6 +318,10 @@ if(NOT Boost_FOUND)
 endif()
 
 IF(NOT APPLE AND NOT WIN32)
+  # Hardening: prevent executable stack (fixes RPM/ELF check for Issue #677)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,noexecstack")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,noexecstack")
+
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
   endif()
@@ -474,6 +478,8 @@ add_library(
   src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/SocksUtils.hpp
+  src/base/SocksUtils.cpp
   src/base/WriteBuffer.hpp
   src/base/TmuxCcFilter.hpp
 
@@ -504,14 +510,25 @@ add_library(
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
   src/terminal/JumphostPending.hpp
+  src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/MuxProtocol.hpp
+  src/terminal/MuxProtocol.cpp
+  src/terminal/MuxMaster.hpp
+  src/terminal/MuxMaster.cpp
+  src/terminal/MuxClient.hpp
+  src/terminal/MuxClient.cpp
+  src/terminal/TitleParser.hpp
+  src/terminal/TitleParser.cpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
+  src/terminal/SessionStore.hpp
+  src/terminal/SessionStore.cpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
@@ -653,6 +670,10 @@ if(WIN32)
     TARGETS et htm htmd etserver etterminal
     DESTINATION "bin"
     COMPONENT client)
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
+    DESTINATION "bin"
+    COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
   set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
 
@@ -666,13 +687,23 @@ if(WIN32)
       ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/*Test.cpp
       ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/*Test.cpp)
 
+    add_executable(
+      et-conpty-output-helper
+      test/helpers/ConPtyOutputHelper.cpp)
+
     # Same test set as Unix (see the else(WIN32) branch below): every test is
     # expected to compile and pass on Windows. Platform-impossible cases
     # SKIP at runtime with a reason instead of being excluded here.
     add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
     target_include_directories(
       et-test PRIVATE test test/integration_tests test/unit_tests)
-    add_dependencies(et-test generated-code TerminalCommon et-lib HtmCommon)
+    add_dependencies(
+      et-test
+      generated-code
+      TerminalCommon
+      et-lib
+      HtmCommon
+      et-conpty-output-helper)
     target_link_libraries(
       et-test
       PRIVATE
@@ -815,12 +846,27 @@ else(WIN32)
         TEST_PREFIX "et-test."
         WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
         ADD_TAGS_AS_LABELS
-        PROPERTIES TIMEOUT 600
+        # RouterRestartTest runs full client/server/terminal stacks.
+        PROPERTIES TIMEOUT 900
       )
     else()
       add_test(NAME et-test COMMAND et-test "~[.ghostty]")
     endif()
     find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(
+        NAME rpm_elf_noexecstack
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
+          $<TARGET_FILE:et>
+          $<TARGET_FILE:etserver>
+          $<TARGET_FILE:etterminal>
+          $<TARGET_FILE:htm>
+          $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(rpm_elf_noexecstack PROPERTIES LABELS "security;packaging")
+    endif()
     if(Python3_Interpreter_FOUND AND NOT WIN32)
       add_test(
         NAME htm_pty_e2e
@@ -836,6 +882,24 @@ else(WIN32)
           SKIP_RETURN_CODE 77
           TIMEOUT 120
           LABELS "e2e;htm;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME et_wall_tmux_cc_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_wall_tmux_cc_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_wall_tmux_cc_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;et;system"
           WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
           RUN_SERIAL TRUE
       )
@@ -962,6 +1026,17 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
+    DESTINATION "bin"
+    PERMISSIONS
+    OWNER_EXECUTE
+    OWNER_WRITE
+    OWNER_READ
+    GROUP_EXECUTE
+    GROUP_READ
+    WORLD_EXECUTE
+    WORLD_READ)
 
   if(INSTALL_BASH_COMPLETION)
     find_package(BashCompletion QUIET)
@@ -1008,6 +1083,15 @@ SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/lib/systemd/syst
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
 SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libprotobuf-dev, libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 12), libutempter0 (>= 1.1.5)")
 SET(CPACK_DEBIAN_PACKAGE_SUGGESTS "systemd")
+
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME et1_script
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/et1_script_test.py)
+  endif()
+endif()
 
 # This must always be last!
 include(CPack)

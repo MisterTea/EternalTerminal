@@ -127,7 +127,9 @@ TEST_CASE("ForwardSourceHandler stops listening on destruction",
   destination.set_name("remote");
   destination.set_port(9090);
 
-  { ForwardSourceHandler handler(socketHandler, source, destination); }
+  {
+    ForwardSourceHandler handler(socketHandler, source, destination);
+  }
 
   REQUIRE(socketHandler->stopListeningCalls.size() == 1);
   REQUIRE(socketHandler->stopListeningCalls[0].name() == source.name());
@@ -432,11 +434,11 @@ TEST_CASE("ForwardSourceHandler listens only on ready fds",
   ForwardSourceHandler handler(socketHandler, source, destination);
 
   set<int> readyFds;
-  CHECK(handler.listen(&readyFds) == -1);
+  CHECK(handler.listen(nullptr, &readyFds) == -1);
   CHECK(socketHandler->acceptCallFds.empty());
 
   readyFds.insert(100);
-  CHECK(handler.listen(&readyFds) == 42);
+  CHECK(handler.listen(nullptr, &readyFds) == 42);
 }
 
 TEST_CASE("ForwardSourceHandler sendDataOnSocket writes to socket",
