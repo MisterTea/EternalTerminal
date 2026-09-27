@@ -273,5 +273,8 @@ void ClientConnection::pollReconnect() {
     }
   }
   LOG(INFO) << "Reconnect complete";
+  if (postReconnectCallback) {
+    postReconnectCallback();
+  }
 }
 }  // namespace et

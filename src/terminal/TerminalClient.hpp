@@ -134,6 +134,13 @@ class TerminalClient {
   }
 
  protected:
+  /**
+   * @brief Retargets the stable SSH agent proxy to the current auth sock.
+   * No-op unless agent forwarding was established or a saved session resume
+   * refreshed an existing proxy.
+   */
+  void refreshAgentProxy();
+
   /** @brief Console wrapper used for local terminal input/output. */
   shared_ptr<Console> console;
   /** @brief Client connection that talks to the ET server. */
@@ -150,6 +157,15 @@ class TerminalClient {
   bool noPty;
   /** @brief Set when `-W` is active so stdout stays a pure byte pipe. */
   bool stdioForwardActive = false;
+  /** @brief True when a stable agent proxy should be kept current. */
+  bool agentProxyEnabled = false;
+  /** @brief Client id used in the per-client agent proxy directory name. */
+  string agentClientId;
+  /**
+   * @brief Explicit `--ssh-socket` path when set; otherwise SSH_AUTH_SOCK is
+   * re-read on each refresh.
+   */
+  string agentIdentityAgent;
 
   struct PassengerAttach {
     int inFd = -1;

@@ -212,14 +212,17 @@ TerminalClient::TerminalClient(
         *(payload.add_reversetunnels()) = pfsr;
       }
     }
-    if (forwardSshAgent) {
-      PortForwardSourceRequest pfsr;
-      string authSock = "";
+    // Resolve the current agent socket once for both fresh forward and
+    // saved-session reattach. Returning clients keep the server-side reverse
+    // tunnel destination from the first InitialPayload; we only retarget the
+    // stable local proxy symlink.
+    auto resolveAuthSock = [&](bool requireAuthSock) -> string {
       if (identityAgent.length()) {
-        authSock.assign(identityAgent);
-      } else {
-        auto authSockEnv = getenv("SSH_AUTH_SOCK");
-        if (!authSockEnv) {
+        return identityAgent;
+      }
+      auto authSockEnv = getenv("SSH_AUTH_SOCK");
+      if (!authSockEnv) {
+        if (requireAuthSock) {
           CLOG(INFO, "stdout")
               << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
                  "you "
@@ -227,15 +230,31 @@ TerminalClient::TerminalClient(
               << endl;
           exit(1);
         }
-        authSock.assign(authSockEnv);
+        return "";
       }
+      return string(authSockEnv);
+    };
+    if (forwardSshAgent) {
+      string authSock = resolveAuthSock(/*requireAuthSock=*/true);
       if (authSock.length()) {
-        // Returning clients reuse the original server-side reverse tunnel.
-        // Keep its destination stable and retarget it to the current agent.
+        PortForwardSourceRequest pfsr;
         pfsr.mutable_destination()->set_name(
             refreshAgentProxyPath(id, authSock));
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
+        agentProxyEnabled = true;
+        agentClientId = id;
+        agentIdentityAgent = identityAgent;
+      }
+    } else if (_resumeSavedSession) {
+      // attachSavedSession forbids --forward-ssh-agent, but the server still
+      // holds the original reverse-tunnel destination. Retarget the proxy.
+      string authSock = resolveAuthSock(/*requireAuthSock=*/false);
+      if (authSock.length()) {
+        refreshAgentProxyPath(id, authSock);
+        agentProxyEnabled = true;
+        agentClientId = id;
+        agentIdentityAgent = identityAgent;
       }
     }
   } catch (const std::runtime_error& ex) {
@@ -247,6 +266,9 @@ TerminalClient::TerminalClient(
   connection = shared_ptr<ClientConnection>(
       new ClientConnection(_socketHandler, _socketEndpoint, id, passkey,
                            /*_resetIntent=*/_resumeSavedSession));
+  if (agentProxyEnabled) {
+    connection->setPostReconnectCallback([this]() { refreshAgentProxy(); });
+  }
 
   int connectFailCount = 0;
   bool connected = false;
@@ -339,6 +361,26 @@ TerminalClient::~TerminalClient() {
   console.reset();
   portForwardHandler.reset();
   connection.reset();
+}
+
+void TerminalClient::refreshAgentProxy() {
+  if (!agentProxyEnabled) {
+    return;
+  }
+  string authSock = agentIdentityAgent;
+  if (authSock.empty()) {
+    auto authSockEnv = getenv("SSH_AUTH_SOCK");
+    if (!authSockEnv) {
+      LOG(WARNING) << "SSH_AUTH_SOCK unset; leaving agent proxy unchanged";
+      return;
+    }
+    authSock.assign(authSockEnv);
+  }
+  try {
+    refreshAgentProxyPath(agentClientId, authSock);
+  } catch (const std::exception& ex) {
+    LOG(WARNING) << "Unable to refresh SSH agent proxy: " << ex.what();
+  }
 }
 
 bool TerminalClient::killSession(int timeoutSeconds) {
