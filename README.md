@@ -215,6 +215,23 @@ et hostname (etserver running on default port 2022, username is the same as curr
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
 
+### Saved sessions
+
+On macOS and Linux, `et` saves each direct session's reattachment credentials
+in `~/.et/sessions` (owner-only, plaintext), so after a client crash or reboot
+you can return to a remote shell that is still running. Sessions get a
+generated `YYYYMMDD-xxxx` name unless you pick one; `--attach` and `--kill`
+accept a name or a unique substring of the name or terminal title. Port
+forwards, agent forwarding, and jumphosts are not restored on attach.
+
+```bash
+et --name work hostname   # start (or reattach to) a named session
+et --list                 # list saved sessions without contacting servers
+et --attach work          # reattach after the client restarted
+et --kill work            # end the remote session and remove its record
+et --no-persist hostname  # do not write credentials to disk
+```
+
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 
 ```bash
@@ -222,7 +239,7 @@ et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostn
 et hostname:8888 --jumphost jump_hostname --jport 9999
 ```
 
-Additional arguments that et accepts are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accepts are port forwarding pairs with `--tunnel "18000:8000, 18001-18003:8001-8003"` (or OpenSSH-style `-L`), and a command to run immediately after the connection is set up through `--command` or as a positional command after the host. Short flags match OpenSSH: `-p` is the sshd port, `--port` is the etserver port, and `-t` requests a pty.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide SSH config files.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.

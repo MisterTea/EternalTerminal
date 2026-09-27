@@ -12,6 +12,9 @@ namespace et {
  */
 class CryptoHandler {
  public:
+  static constexpr size_t EPOCH_SALT_BYTES = 32;
+  static constexpr size_t AUTH_CHALLENGE_BYTES = 32;
+
   /**
    * @brief Initializes libsodium, copies the provided key, and seeds the nonce.
    * @param key Exactly crypto_secretbox_KEYBYTES bytes of shared key material.
@@ -20,6 +23,27 @@ class CryptoHandler {
    */
   explicit CryptoHandler(const string& key, unsigned char nonceMSB);
   ~CryptoHandler();
+
+  static string randomBytes(size_t length);
+  static string connectionProof(const string& key, const string& clientId,
+                                int protocolVersion, const string& challenge,
+                                bool resetIntent = false);
+  static bool verifyConnectionProof(const string& proof, const string& key,
+                                    const string& clientId, int protocolVersion,
+                                    const string& challenge,
+                                    bool resetIntent = false);
+  // Binds the server's status and reset decision to this handshake's
+  // challenge so a captured ConnectResponse can't be replayed.
+  static string resetDecisionProof(const string& key, const string& clientId,
+                                   int protocolVersion, const string& challenge,
+                                   int status, bool resetRequired,
+                                   const string& resetSalt);
+  static bool verifyResetDecisionProof(const string& proof, const string& key,
+                                       const string& clientId,
+                                       int protocolVersion,
+                                       const string& challenge, int status,
+                                       bool resetRequired,
+                                       const string& resetSalt);
 
   /**
    * @brief Encrypts a plaintext buffer and advances the nonce.
@@ -35,6 +59,9 @@ class CryptoHandler {
    */
   string decrypt(const string& buffer);
 
+  // Derives a new epoch key from the original key and resets the nonce.
+  void rekey(const string& salt);
+
  protected:
   /**
    * @brief Increments the nonce to guarantee a unique per-message secretbox
@@ -45,6 +72,8 @@ class CryptoHandler {
   unsigned char nonce[crypto_secretbox_NONCEBYTES];
   /** @brief Shared secret key used for encrypt/decrypt operations. */
   unsigned char key[crypto_secretbox_KEYBYTES];
+  unsigned char baseKey[crypto_secretbox_KEYBYTES];
+  unsigned char nonceMSB;
 
  private:
   /** @brief Guards the nonce/key pair to keep operations thread-safe. */

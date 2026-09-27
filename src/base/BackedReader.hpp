@@ -53,6 +53,8 @@ class BackedReader {
    * @param newLocalEntries Serialized packets buffered while reconnecting.
    */
   void revive(int newSocketFd, const vector<string>& newLocalEntries);
+  // Restart at sequence 0 under a new epoch salt. Hold the recover mutex.
+  void reset(const string& salt);
 
   /**
    * @brief Marks the reader as disconnected so callers stop issuing reads.

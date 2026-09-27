@@ -26,7 +26,8 @@ class ServerClientConnection : public Connection {
    * Returns false without touching the live session if another reconnect for
    * this client is already in flight.
    */
-  bool recoverClient(int newSocketFd);
+  bool recoverClient(int newSocketFd, bool forceReset = false,
+                     const string& resetSalt = string());
 
   /**
    * @brief Constant-time comparison of the stored key and a supplied passkey.

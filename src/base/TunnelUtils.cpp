@@ -86,32 +86,86 @@ void processEtStyleTunnelArg(vector<PortForwardSourceRequest>& pfsrs,
   }
 }
 
-// This is necessary rather than using simply split with ":" due to the fact
-// that ipv6 addresses must be within square brackets for the ssh-style
-// tunneling args
-vector<string> parseSshTunnelArg(const string& input) {
+namespace {
+
+bool isPortToken(const string& value) {
+  return !value.empty() &&
+         value.find_first_not_of("0123456789") == string::npos;
+}
+
+// Bracket-aware ':' split. Square brackets are not part of a field, so an
+// IPv6 address stays one field.
+vector<string> splitTunnelFields(const string& input) {
   const char colon = ':';
   const char l_bracket = '[';
   const char r_bracket = ']';
 
   bool inBrackets = false;
   string currentPart;
-  vector<string> sshArgParts;
-
+  vector<string> parts;
   for (char c : input) {
     if (c == l_bracket) {
       inBrackets = true;
     } else if (c == r_bracket) {
       inBrackets = false;
     } else if (c == colon && !inBrackets) {
-      sshArgParts.push_back(currentPart);
+      parts.push_back(currentPart);
       currentPart.clear();
     } else {
       currentPart += c;
     }
   }
-  // pushback last part
-  sshArgParts.push_back(currentPart);
+  parts.push_back(currentPart);
+  return parts;
+}
+
+void appendSshStyleTunnel(vector<PortForwardSourceRequest>& pfsrs,
+                          const vector<string>& parts, const string& input) {
+  if (parts.size() == 3) {
+    // OpenSSH -L/-R port:host:hostport. Bind address defaults to localhost.
+    if (!isPortToken(parts[0]) || !isPortToken(parts[2])) {
+      throw TunnelParseException(
+          "OpenSSH 3-field forward must be port:host:hostport, got '" + input +
+          "'");
+    }
+    PortForwardSourceRequest pfsr;
+    pfsr.mutable_source()->set_name("localhost");
+    pfsr.mutable_source()->set_port(stoi(parts[0]));
+    pfsr.mutable_destination()->set_name(parts[1]);
+    pfsr.mutable_destination()->set_port(stoi(parts[2]));
+    pfsrs.push_back(pfsr);
+    return;
+  }
+  if (parts.size() != 4) {
+    throw TunnelParseException(
+        "Ipv6 addresses must be inside of square brackets, ie "
+        "[::1]:8080:[::]:9090");
+  }
+  PortForwardSourceRequest pfsr;
+  pfsr.mutable_source()->set_name(parts[0]);
+  pfsr.mutable_source()->set_port(stoi(parts[1]));
+  pfsr.mutable_destination()->set_name(parts[2]);
+  pfsr.mutable_destination()->set_port(stoi(parts[3]));
+  pfsrs.push_back(pfsr);
+}
+
+void appendOneTunnel(vector<PortForwardSourceRequest>& pfsrs,
+                     const string& element) {
+  vector<string> parts = splitTunnelFields(element);
+  if (parts.size() <= 2) {
+    processEtStyleTunnelArg(pfsrs, parts, element);
+    return;
+  }
+  appendSshStyleTunnel(pfsrs, parts, element);
+}
+
+}  // namespace
+
+// This is necessary rather than using simply split with ":" due to the fact
+// that ipv6 addresses must be within square brackets for the ssh-style
+// tunneling args
+vector<string> parseSshTunnelArg(const string& input) {
+  vector<string> sshArgParts = splitTunnelFields(input);
   if (sshArgParts.size() < 4) {
     throw TunnelParseException(
         "The 4 part ssh-style tunneling arg (bind_address:port:host:hostport) "
@@ -128,42 +182,11 @@ vector<string> parseSshTunnelArg(const string& input) {
 vector<PortForwardSourceRequest> parseRangesToRequests(const string& input) {
   vector<PortForwardSourceRequest> pfsrs;
   auto splitByComma = split(input, ',');
-  if (splitByComma.size() > 1) {
-    for (auto& element : splitByComma) {
-      vector<string> sourceDestination = split(element, ':');
-      if (sourceDestination.size() <= 2) {
-        processEtStyleTunnelArg(pfsrs, sourceDestination, element);
-      } else {
-        auto sshStyleArgParts = parseSshTunnelArg(element);
-        PortForwardSourceRequest pfsr;
-        pfsr.mutable_source()->set_name(sshStyleArgParts[0]);
-        pfsr.mutable_source()->set_port(stoi(sshStyleArgParts[1]));
-        pfsr.mutable_destination()->set_name(sshStyleArgParts[2]);
-        pfsr.mutable_destination()->set_port(stoi(sshStyleArgParts[3]));
-        pfsrs.push_back(pfsr);
-      }
-    }
-  } else {
-    // no commas
-    auto tunnelArg = splitByComma[0];
-    vector<string> sourceDestination = split(tunnelArg, ':');
-    if (sourceDestination.size() <= 2) {
-      // et style tunnel arg
-      processEtStyleTunnelArg(pfsrs, sourceDestination, input);
-    } else {
-      // ssh style tunnel arg
-      // -L [bind_address:]port:host:hostport (supported with bind_address)
-      // -L [bind_address:]port:remote_socket (not supported yet)
-      // -L local_socket:host:hostport (not supported yet)
-      // -L local_socket:remote_socket (not supported yet)
-      auto sshStyleArgParts = parseSshTunnelArg(tunnelArg);
-      PortForwardSourceRequest pfsr;
-      pfsr.mutable_source()->set_name(sshStyleArgParts[0]);
-      pfsr.mutable_source()->set_port(stoi(sshStyleArgParts[1]));
-      pfsr.mutable_destination()->set_name(sshStyleArgParts[2]);
-      pfsr.mutable_destination()->set_port(stoi(sshStyleArgParts[3]));
-      pfsrs.push_back(pfsr);
-    }
+  for (auto& element : splitByComma) {
+    // -L [bind_address:]port:host:hostport
+    // -L port:host:hostport (bind address defaults to localhost)
+    // Socket forms other than ET's two-field syntax are not supported.
+    appendOneTunnel(pfsrs, element);
   }
   return pfsrs;
 }

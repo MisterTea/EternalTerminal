@@ -19,18 +19,21 @@ ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   if (fd <= 0) {
     STFATAL << "Tried to read from an invalid socket: " << fd;
   }
-  map<int, shared_ptr<recursive_mutex>>::iterator it;
+  // Copy the per-fd mutex under globalMutex. Holding only an iterator across
+  // waitForData races with close() erasing the map entry (TSan UAF on Linux).
+  shared_ptr<recursive_mutex> sockMutex;
   {
     lock_guard<std::recursive_mutex> guard(globalMutex);
-    it = activeSocketMutexes.find(fd);
+    auto it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
       SetErrno(EPIPE);
       return -1;
     }
+    sockMutex = it->second;
   }
   waitForData(fd, 5, 0);
-  lock_guard<recursive_mutex> guard(*(it->second));
+  lock_guard<recursive_mutex> guard(*sockMutex);
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
 #ifdef WIN32
   ssize_t readBytes = ::recv(fd, (char*)buf, count, 0);
@@ -51,21 +54,22 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   if (fd <= 0) {
     STFATAL << "Tried to write to an invalid socket: " << fd;
   }
-  map<int, shared_ptr<recursive_mutex>>::iterator it;
+  shared_ptr<recursive_mutex> sockMutex;
   {
     lock_guard<std::recursive_mutex> guard(globalMutex);
-    it = activeSocketMutexes.find(fd);
+    auto it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
       SetErrno(EPIPE);
       return -1;
     }
+    sockMutex = it->second;
   }
   // Try to write for around 5 seconds before giving up
   time_t startTime = time(NULL);
   ssize_t bytesWritten = 0;
   while (static_cast<size_t>(bytesWritten) < count) {
-    lock_guard<recursive_mutex> guard(*(it->second));
+    lock_guard<recursive_mutex> guard(*sockMutex);
     ssize_t w;
 #ifdef WIN32
     w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
@@ -178,6 +182,7 @@ void UnixSocketHandler::close(int fd) {
 }
 
 vector<int> UnixSocketHandler::getActiveSockets() {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
   vector<int> fds;
   for (auto it : activeSocketMutexes) {
     fds.push_back(it.first);

@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Headers.hpp"
+#include "SocksUtils.hpp"
 
 /* This is needed for a standard getpwuid_r on opensolaris */
 #define _POSIX_PTHREAD_SEMANTICS
@@ -89,6 +90,17 @@ enum ssh_config_opcode_e {
   SOC_IDENTITYAGENT,
   SOC_LOCALFORWARD,
   SOC_SETENV,
+  SOC_SERVERALIVEINTERVAL,
+  SOC_CLEARALLFORWARDINGS,
+  SOC_EXITONFORWARDFAILURE,
+  SOC_BATCHMODE,
+  SOC_REMOTECOMMAND,
+  SOC_CONTROLMASTER,
+  SOC_CONTROLPATH,
+  SOC_CONTROLPERSIST,
+  SOC_REMOTEFORWARD,
+  SOC_DYNAMICFORWARD,
+  SOC_SENDENV,
   SOC_END /* Keep this one last in the list */
 };
 
@@ -131,7 +143,18 @@ enum ssh_options_e {
   SSH_OPTIONS_FORWARDAGENT,
   SSH_OPTIONS_IDENTITYAGENT,
   SSH_OPTIONS_LOCALFORWARD,
-  SSH_OPTIONS_SETENV
+  SSH_OPTIONS_SETENV,
+  SSH_OPTIONS_SERVERALIVEINTERVAL,
+  SSH_OPTIONS_CLEARALLFORWARDINGS,
+  SSH_OPTIONS_EXITONFORWARDFAILURE,
+  SSH_OPTIONS_BATCHMODE,
+  SSH_OPTIONS_REMOTECOMMAND,
+  SSH_OPTIONS_CONTROLMASTER,
+  SSH_OPTIONS_CONTROLPATH,
+  SSH_OPTIONS_CONTROLPERSIST,
+  SSH_OPTIONS_REMOTEFORWARD,
+  SSH_OPTIONS_DYNAMICFORWARD,
+  SSH_OPTIONS_SENDENV
 };
 
 /**
@@ -154,8 +177,23 @@ struct Options {
   int gss_delegate_creds;
   int forward_agent;
   char* identity_agent;
-  vector<pair<int, int>> local_forwards;
+  // Tunnel specs in the same form -L/-R/-D accept (bind:port:host:hostport).
+  vector<string> local_forwards;
+  vector<string> remote_forwards;
+  vector<string> dynamic_forwards;
   vector<pair<string, string>> env_vars;
+  // SendEnv patterns, in file order. A pattern starting with '-' is consumed
+  // while parsing and never stored.
+  vector<string> send_env;
+  // OpenSSH session options used for local -G/-o queries (not mux behavior).
+  unsigned long server_alive_interval;
+  int clear_all_forwardings;
+  int exit_on_forward_failure;
+  int batch_mode;
+  char* remote_command;
+  char* control_master;
+  char* control_path;
+  char* control_persist;
 };
 
 // Free all allocated fields in an Options struct
@@ -169,6 +207,10 @@ inline void freeOptionsFields(Options* opts) {
   SAFE_FREE(opts->gss_server_identity);
   SAFE_FREE(opts->gss_client_identity);
   SAFE_FREE(opts->identity_agent);
+  SAFE_FREE(opts->remote_command);
+  SAFE_FREE(opts->control_master);
+  SAFE_FREE(opts->control_path);
+  SAFE_FREE(opts->control_persist);
 }
 
 /**
@@ -199,6 +241,17 @@ static struct ssh_config_keyword_table_s ssh_config_keyword_table[] = {
     {"identityagent", SOC_IDENTITYAGENT},
     {"localforward", SOC_LOCALFORWARD},
     {"setenv", SOC_SETENV},
+    {"serveraliveinterval", SOC_SERVERALIVEINTERVAL},
+    {"clearallforwardings", SOC_CLEARALLFORWARDINGS},
+    {"exitonforwardfailure", SOC_EXITONFORWARDFAILURE},
+    {"batchmode", SOC_BATCHMODE},
+    {"remotecommand", SOC_REMOTECOMMAND},
+    {"controlmaster", SOC_CONTROLMASTER},
+    {"controlpath", SOC_CONTROLPATH},
+    {"controlpersist", SOC_CONTROLPERSIST},
+    {"remoteforward", SOC_REMOTEFORWARD},
+    {"dynamicforward", SOC_DYNAMICFORWARD},
+    {"sendenv", SOC_SENDENV},
     {NULL, SOC_UNSUPPORTED}};
 
 /** @brief Returns the opcode associated with the given keyword string. */
@@ -800,6 +853,208 @@ inline char* ssh_path_expand_escape(struct Options* options, const char* s) {
  *
  * @return       0 on success, < 0 on error.
  */
+
+/** @brief `*` bind address means every interface. ET listens on 0.0.0.0. */
+inline string normalizeSshListenToken(string listen) {
+  if (listen.size() >= 2 && listen[0] == '*' && listen[1] == ':') {
+    return "0.0.0.0" + listen.substr(1);
+  }
+  return listen;
+}
+
+/**
+ * @brief Turn an ssh_config forward ("[bind:]port host:hostport" or the
+ *        colon form used by -o) into one ET tunnel spec.
+ */
+inline string sshForwardArgumentsToTunnelSpec(const string& value) {
+  size_t start = 0;
+  while (start < value.size() &&
+         isblank(static_cast<unsigned char>(value[start]))) {
+    start++;
+  }
+  size_t end = value.size();
+  while (end > start && isblank(static_cast<unsigned char>(value[end - 1]))) {
+    end--;
+  }
+  string trimmed = value.substr(start, end - start);
+  if (trimmed.empty()) {
+    return "";
+  }
+  size_t splitAt = trimmed.find_first_of(" \t");
+  if (splitAt == string::npos) {
+    return normalizeSshListenToken(trimmed);
+  }
+  string listen = normalizeSshListenToken(trimmed.substr(0, splitAt));
+  size_t destStart = trimmed.find_first_not_of(" \t", splitAt);
+  if (destStart == string::npos) {
+    return listen;
+  }
+  size_t destEnd = trimmed.size();
+  while (destEnd > destStart &&
+         isblank(static_cast<unsigned char>(trimmed[destEnd - 1]))) {
+    destEnd--;
+  }
+  return listen + ":" + trimmed.substr(destStart, destEnd - destStart);
+}
+
+/** @brief Bracket-aware ':' field split for forward tunnel specs. */
+inline vector<string> splitSshForwardSpecFields(const string& input) {
+  vector<string> parts;
+  string current;
+  bool inBrackets = false;
+  for (char c : input) {
+    if (c == '[') {
+      inBrackets = true;
+      current += c;
+    } else if (c == ']') {
+      inBrackets = false;
+      current += c;
+    } else if (c == ':' && !inBrackets) {
+      parts.push_back(current);
+      current.clear();
+    } else {
+      current += c;
+    }
+  }
+  parts.push_back(current);
+  return parts;
+}
+
+inline bool isSshForwardPortToken(const string& value) {
+  if (value.empty() || value.find_first_not_of("0123456789") != string::npos) {
+    return false;
+  }
+  // Match parseTcpPort / avoid stoi overflow: reject out-of-range digit ports.
+  errno = 0;
+  char* end = nullptr;
+  const long parsed = strtol(value.c_str(), &end, 10);
+  if (end == nullptr || end != value.c_str() + value.size() ||
+      errno == ERANGE || parsed < 1 || parsed > 65535) {
+    return false;
+  }
+  return true;
+}
+
+/**
+ * @brief True when `start-end` is a numeric port range processEtStyleTunnelArg
+ *        can parse (exactly one '-', both sides valid TCP ports).
+ */
+inline bool isSshForwardPortRangeToken(const string& value) {
+  const size_t dash = value.find('-');
+  if (dash == string::npos || value.find('-', dash + 1) != string::npos) {
+    return false;
+  }
+  const string start = value.substr(0, dash);
+  const string end = value.substr(dash + 1);
+  return isSshForwardPortToken(start) && isSshForwardPortToken(end);
+}
+
+/**
+ * @brief True when a:b is a port:port or equal-length port-range pair that
+ *        processEtStyleTunnelArg accepts. Rejects one-sided ranges and unequal
+ *        range lengths that the tunnel parser would throw on later.
+ */
+inline bool isValidEtStylePortPortPair(const string& a, const string& b) {
+  const bool aIsPort = isSshForwardPortToken(a);
+  const bool bIsPort = isSshForwardPortToken(b);
+  if (aIsPort && bIsPort) {
+    return true;
+  }
+  if (!isSshForwardPortRangeToken(a) || !isSshForwardPortRangeToken(b)) {
+    return false;
+  }
+  const size_t aDash = a.find('-');
+  const size_t bDash = b.find('-');
+  // Ports already validated as 1..65535 digit tokens; strtol cannot overflow.
+  const long sourceStart = strtol(a.substr(0, aDash).c_str(), nullptr, 10);
+  const long sourceEnd = strtol(a.substr(aDash + 1).c_str(), nullptr, 10);
+  const long destStart = strtol(b.substr(0, bDash).c_str(), nullptr, 10);
+  const long destEnd = strtol(b.substr(bDash + 1).c_str(), nullptr, 10);
+  return sourceEnd - sourceStart == destEnd - destStart;
+}
+
+inline bool isSshForwardSocketPath(const string& value) {
+  return !value.empty() && value[0] == '/';
+}
+
+/**
+ * @brief True when a tunnelized LocalForward/RemoteForward has a connect
+ *        target. Listen-only forms (remote SOCKS, incomplete LocalForward)
+ *        such as 1080 or 127.0.0.1:8080 are rejected. Accepts only forms that
+ *        parseRangesToRequests can parse: OpenSSH port:host:hostport /
+ *        bind:port:host:hostport, ET port:port / equal-length port ranges, and
+ *        unix-socket pairs (or socket:port / port:socket). Socket:host:hostport
+ *        is rejected.
+ */
+inline bool isCompleteSshForwardTunnelSpec(const string& spec) {
+  if (spec.empty()) {
+    return false;
+  }
+  const vector<string> parts = splitSshForwardSpecFields(spec);
+  if (parts.size() == 2) {
+    const string& a = parts[0];
+    const string& b = parts[1];
+    if (isSshForwardSocketPath(a)) {
+      // socket:socket or socket:port — not socket:hostname
+      return isSshForwardSocketPath(b) || isSshForwardPortToken(b);
+    }
+    if (isSshForwardSocketPath(b)) {
+      // port:socket, or env-var:socket (SSH_AUTH_SOCK:/tmp/...)
+      return isSshForwardPortToken(a) ||
+             a.find_first_not_of("0123456789-") != string::npos;
+    }
+    return isValidEtStylePortPortPair(a, b);
+  }
+  if (parts.size() == 3) {
+    // port:host:hostport only (socket:host:hostport is not supported)
+    return isSshForwardPortToken(parts[0]) && isSshForwardPortToken(parts[2]);
+  }
+  if (parts.size() == 4) {
+    // bind:port:host:hostport
+    return isSshForwardPortToken(parts[1]) && isSshForwardPortToken(parts[3]);
+  }
+  return false;
+}
+
+/** @brief `*` and `?` match, matching OpenSSH SendEnv patterns. */
+inline bool sshEnvPatternMatches(const string& pattern, const string& name) {
+  size_t pi = 0;
+  size_t ti = 0;
+  size_t star = string::npos;
+  size_t mark = 0;
+  while (ti < name.size()) {
+    if (pi < pattern.size() &&
+        (pattern[pi] == '?' || pattern[pi] == name[ti])) {
+      pi++;
+      ti++;
+    } else if (pi < pattern.size() && pattern[pi] == '*') {
+      star = pi++;
+      mark = ti;
+    } else if (star != string::npos) {
+      pi = star + 1;
+      ti = ++mark;
+    } else {
+      return false;
+    }
+  }
+  while (pi < pattern.size() && pattern[pi] == '*') {
+    pi++;
+  }
+  return pi == pattern.size();
+}
+
+/** @brief Drop SendEnv patterns that match `pattern` (the text after '-'). */
+inline void removeSendEnvPatterns(Options* options, const string& pattern) {
+  vector<string> kept;
+  kept.reserve(options->send_env.size());
+  for (const auto& existing : options->send_env) {
+    if (!sshEnvPatternMatches(pattern, existing)) {
+      kept.push_back(existing);
+    }
+  }
+  options->send_env.swap(kept);
+}
+
 inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
                            const void* value) {
   const char* v;
@@ -854,12 +1109,12 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
         return -1;
       } else {
         int* x = (int*)value;
-        if (*x <= 0) {
+        if (*x < 1 || *x > 65535) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
 
-        options->port = *x & 0xffff;
+        options->port = *x;
       }
       break;
     case SSH_OPTIONS_PORT_STR:
@@ -873,17 +1128,17 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
           CLOG(INFO, "stdout") << "error" << endl;
           return -1;
         }
+        errno = 0;
         i = strtol(q, &p, 10);
-        if (q == p) {
+        if (q == p || p == NULL || *p != '\0' || errno == ERANGE || i < 1 ||
+            i > 65535) {
           SAFE_FREE(q);
-        }
-        SAFE_FREE(q);
-        if (i <= 0) {
           CLOG(INFO, "stdout") << "invalid error" << endl;
           return -1;
         }
+        SAFE_FREE(q);
 
-        options->port = i & 0xffff;
+        options->port = static_cast<unsigned int>(i);
       }
       break;
     case SSH_OPTIONS_USER:
@@ -1074,35 +1329,61 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
       }
       break;
     case SSH_OPTIONS_LOCALFORWARD:
+    case SSH_OPTIONS_REMOTEFORWARD: {
       v = static_cast<const char*>(value);
       if (v == NULL || v[0] == '\0') {
         CLOG(INFO, "stdout") << "invalid error" << endl;
         return -1;
+      }
+      string spec = sshForwardArgumentsToTunnelSpec(v);
+      if (!isCompleteSshForwardTunnelSpec(spec)) {
+        LOG(INFO) << "forward requires a listen address and a target: " << v;
+        return -1;
+      }
+      if (type == SSH_OPTIONS_LOCALFORWARD) {
+        options->local_forwards.push_back(spec);
       } else {
-        char* forward_entry = strdup(v);
-        if (forward_entry == NULL) {
-          CLOG(INFO, "stdout") << "error" << endl;
-          return -1;
-        }
-
-        // Format is [bind_address:]port host:hostport
-        char* local_port_str = strtok(forward_entry, " ");
-        char* remote_part = strtok(NULL, " ");
-
-        // TODO: Support bind_address before the local port.
-        if (local_port_str && remote_part) {
-          int local_port = atoi(local_port_str);
-          char* colon_pos = strrchr(remote_part, ':');
-          if (colon_pos) {
-            int remote_port = atoi(colon_pos + 1);
-            options->local_forwards.push_back(
-                make_pair(local_port, remote_port));
-          }
-        }
-
-        SAFE_FREE(forward_entry);
+        options->remote_forwards.push_back(spec);
       }
       break;
+    }
+    case SSH_OPTIONS_DYNAMICFORWARD: {
+      v = static_cast<const char*>(value);
+      if (v == NULL || v[0] == '\0') {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      }
+      string spec = normalizeSshListenToken(v);
+      if (spec.empty()) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      }
+      try {
+        et::parseDynamicForwardArg(spec);
+      } catch (const et::TunnelParseException&) {
+        LOG(INFO) << "invalid DynamicForward listen spec: " << v;
+        return -1;
+      }
+      options->dynamic_forwards.push_back(spec);
+      break;
+    }
+    case SSH_OPTIONS_SENDENV: {
+      v = static_cast<const char*>(value);
+      if (v == NULL || v[0] == '\0' || strchr(v, '=') != NULL) {
+        LOG(INFO) << "Invalid SendEnv name";
+        return -1;
+      }
+      if (v[0] == '-') {
+        if (v[1] == '\0') {
+          LOG(INFO) << "Invalid SendEnv name";
+          return -1;
+        }
+        removeSendEnvPatterns(options, v + 1);
+      } else {
+        options->send_env.emplace_back(v);
+      }
+      break;
+    }
     case SSH_OPTIONS_SETENV:
       v = static_cast<const char*>(value);
       if (v == NULL || v[0] == '\0') {
@@ -1122,6 +1403,95 @@ inline int ssh_options_set(struct Options* options, enum ssh_options_e type,
         }
 
         SAFE_FREE(setenv_entry);
+      }
+      break;
+    case SSH_OPTIONS_SERVERALIVEINTERVAL:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        long* x = (long*)value;
+        if (*x < 0) {
+          CLOG(INFO, "stdout") << "invalid error" << endl;
+          return -1;
+        }
+        options->server_alive_interval = *x & 0xffffffff;
+      }
+      break;
+    case SSH_OPTIONS_CLEARALLFORWARDINGS:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->clear_all_forwardings = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_EXITONFORWARDFAILURE:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->exit_on_forward_failure = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_BATCHMODE:
+      if (value == NULL) {
+        CLOG(INFO, "stdout") << "invalid error" << endl;
+        return -1;
+      } else {
+        options->batch_mode = (*(int*)value) ? 1 : 0;
+      }
+      break;
+    case SSH_OPTIONS_REMOTECOMMAND:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->remote_command);
+      if (v == NULL || v[0] == '\0') {
+        options->remote_command = NULL;
+      } else {
+        options->remote_command = strdup(v);
+        if (options->remote_command == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLMASTER:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_master);
+      if (v == NULL || v[0] == '\0') {
+        options->control_master = NULL;
+      } else {
+        options->control_master = strdup(v);
+        if (options->control_master == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLPATH:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_path);
+      if (v == NULL || v[0] == '\0') {
+        options->control_path = NULL;
+      } else {
+        options->control_path = strdup(v);
+        if (options->control_path == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
+      }
+      break;
+    case SSH_OPTIONS_CONTROLPERSIST:
+      v = static_cast<const char*>(value);
+      SAFE_FREE(options->control_persist);
+      if (v == NULL || v[0] == '\0') {
+        options->control_persist = NULL;
+      } else {
+        options->control_persist = strdup(v);
+        if (options->control_persist == NULL) {
+          CLOG(INFO, "stdout") << "error" << endl;
+          return -1;
+        }
       }
       break;
 
@@ -1334,7 +1704,9 @@ static int ssh_config_parse_line(const char* targethost,
   opcode = ssh_config_get_opcode(keyword);
   if (*parsing == 1 && opcode != SOC_HOST && opcode != SOC_MATCH &&
       opcode != SOC_UNSUPPORTED && opcode != SOC_INCLUDE &&
-      opcode != SOC_LOCALFORWARD && opcode != SOC_SETENV) {
+      opcode != SOC_LOCALFORWARD && opcode != SOC_REMOTEFORWARD &&
+      opcode != SOC_DYNAMICFORWARD && opcode != SOC_SENDENV &&
+      opcode != SOC_SETENV) {
     if (seen[opcode] != 0) {
       SAFE_FREE(x);
       return 0;
@@ -1529,20 +1901,125 @@ static int ssh_config_parse_line(const char* targethost,
       }
       break;
     case SOC_LOCALFORWARD:
+    case SOC_REMOTEFORWARD:
       p = ssh_config_get_str_tok(&s, NULL);
       if (p && *parsing) {
         const char* remote_part = ssh_config_get_str_tok(&s, NULL);
         if (remote_part) {
-          char forward_str[1024];
-          snprintf(forward_str, sizeof(forward_str), "%s %s", p, remote_part);
-          ssh_options_set(options, SSH_OPTIONS_LOCALFORWARD, forward_str);
+          string forward_str = string(p) + " " + remote_part;
+          ssh_options_set(options,
+                          opcode == SOC_LOCALFORWARD
+                              ? SSH_OPTIONS_LOCALFORWARD
+                              : SSH_OPTIONS_REMOTEFORWARD,
+                          forward_str.c_str());
+        } else if (opcode == SOC_REMOTEFORWARD) {
+          LOG(INFO) << "RemoteForward " << p
+                    << " has no target; remote dynamic forward is not "
+                       "supported, ignored";
+        } else {
+          LOG(INFO) << "LocalForward " << p << " is missing a target, ignored";
+        }
+      }
+      break;
+    case SOC_DYNAMICFORWARD:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_DYNAMICFORWARD, p);
+      }
+      break;
+    case SOC_SENDENV:
+      while ((p = ssh_config_get_str_tok(&s, NULL)) != NULL) {
+        if (*parsing) {
+          ssh_options_set(options, SSH_OPTIONS_SENDENV, p);
         }
       }
       break;
     case SOC_SETENV:
+      // NAME=VALUE must stay one token. The generic tokenizer treats '=' as a
+      // delimiter, which would keep only the name.
+      if (*parsing && s != nullptr) {
+        string rest(s);
+        size_t pos = 0;
+        while (pos < rest.size()) {
+          while (pos < rest.size() &&
+                 isblank(static_cast<unsigned char>(rest[pos]))) {
+            pos++;
+          }
+          if (pos >= rest.size() || rest[pos] == '#') {
+            break;
+          }
+          string token;
+          if (rest[pos] == '"') {
+            size_t end = rest.find('"', pos + 1);
+            if (end == string::npos) {
+              token = rest.substr(pos + 1);
+              pos = rest.size();
+            } else {
+              token = rest.substr(pos + 1, end - pos - 1);
+              pos = end + 1;
+            }
+          } else {
+            size_t end = pos;
+            while (end < rest.size() &&
+                   !isblank(static_cast<unsigned char>(rest[end]))) {
+              end++;
+            }
+            token = rest.substr(pos, end - pos);
+            pos = end;
+          }
+          if (!token.empty()) {
+            ssh_options_set(options, SSH_OPTIONS_SETENV, token.c_str());
+          }
+        }
+      }
+      break;
+    case SOC_SERVERALIVEINTERVAL: {
+      long interval = ssh_config_get_int(&s, -1);
+      if (interval >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_SERVERALIVEINTERVAL, &interval);
+      }
+      break;
+    }
+    case SOC_CLEARALLFORWARDINGS:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CLEARALLFORWARDINGS, &i);
+      }
+      break;
+    case SOC_EXITONFORWARDFAILURE:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_EXITONFORWARDFAILURE, &i);
+      }
+      break;
+    case SOC_BATCHMODE:
+      i = ssh_config_get_yesno(&s, -1);
+      if (i >= 0 && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_BATCHMODE, &i);
+      }
+      break;
+    case SOC_REMOTECOMMAND:
+      p = ssh_config_get_cmd(&s);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_REMOTECOMMAND, p);
+      }
+      break;
+    case SOC_CONTROLMASTER:
       p = ssh_config_get_str_tok(&s, NULL);
       if (p && *parsing) {
-        ssh_options_set(options, SSH_OPTIONS_SETENV, p);
+        ssh_options_set(options, SSH_OPTIONS_CONTROLMASTER, p);
+      }
+      break;
+    case SOC_CONTROLPATH:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CONTROLPATH, p);
+      }
+      break;
+    case SOC_CONTROLPERSIST:
+      p = ssh_config_get_str_tok(&s, NULL);
+      if (p && *parsing) {
+        ssh_options_set(options, SSH_OPTIONS_CONTROLPERSIST, p);
       }
       break;
     case SOC_UNSUPPORTED:
@@ -1560,13 +2037,15 @@ static int ssh_config_parse_line(const char* targethost,
 }
 
 inline int parse_ssh_config_file(const char* targethost,
-                                 struct Options* options, string filename) {
+                                 struct Options* options, string filename,
+                                 int* seen_inout = nullptr) {
   string line;
   int len = 0;
   int read = 0;
   unsigned int count = 0;
   int parsing;
-  int seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int local_seen[SOC_END - SOC_UNSUPPORTED] = {0};
+  int* seen = seen_inout != nullptr ? seen_inout : local_seen;
 
   char* expandedFilename = ssh_path_expand_tilde(filename.c_str());
   if (!expandedFilename) {
