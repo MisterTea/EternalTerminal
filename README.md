@@ -174,6 +174,26 @@ Verify that the server is installed correctly by checking the service status: `s
 
 You are ready to start using ET!
 
+### Installed programs
+
+An Eternal Terminal installation may provide these executables:
+
+- `et` is the command-line client. It uses SSH to authenticate and start the
+  remote session, then maintains the reconnectable ET connection.
+- `etserver` is the system service that accepts ET client connections and
+  routes them to the correct user's session. Its default TCP port is 2022.
+- `etterminal` is an internal server-side helper launched through SSH. Normal
+  users do not invoke it directly.
+- `htm` is the foreground client for HTM, the bundled terminal multiplexer.
+  It speaks tmux control mode so compatible terminal emulators can show native
+  windows, tabs, and splits.
+- `htmd` is the per-user HTM daemon. It owns persistent multiplexer sessions
+  and is started automatically by `htm` when needed.
+
+For the protocol-level relationship between `et`, `etserver`, and
+`etterminal`, see [the protocol documentation](docs/protocol.md). For HTM, see
+[the HTM design documentation](docs/htm-design.md).
+
 ## Configuring
 
 If you'd like to modify the server settings (e.g. to change the listening
@@ -195,6 +215,23 @@ et hostname (etserver running on default port 2022, username is the same as curr
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
 
+### Saved sessions
+
+On macOS and Linux, `et` saves each direct session's reattachment credentials
+in `~/.et/sessions` (owner-only, plaintext), so after a client crash or reboot
+you can return to a remote shell that is still running. Sessions get a
+generated `YYYYMMDD-xxxx` name unless you pick one; `--attach` and `--kill`
+accept a name or a unique substring of the name or terminal title. Port
+forwards, agent forwarding, and jumphosts are not restored on attach.
+
+```bash
+et --name work hostname   # start (or reattach to) a named session
+et --list                 # list saved sessions without contacting servers
+et --attach work          # reattach after the client restarted
+et --kill work            # end the remote session and remove its record
+et --no-persist hostname  # do not write credentials to disk
+```
+
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 
 ```bash
@@ -202,7 +239,7 @@ et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostn
 et hostname:8888 --jumphost jump_hostname --jport 9999
 ```
 
-Additional arguments that et accepts are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accepts are port forwarding pairs with `--tunnel "18000:8000, 18001-18003:8001-8003"` (or OpenSSH-style `-L`), and a command to run immediately after the connection is set up through `--command` or as a positional command after the host. Short flags match OpenSSH: `-p` is the sshd port, `--port` is the etserver port, and `-t` requests a pty.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide SSH config files.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
@@ -362,6 +399,22 @@ Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: C
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on GitHub](https://github.com/MisterTea/EternalTerminal/issues).
+
+## Server/Client Overview
+
+Eternal Terminal uses three binaries:
+
+- **`et`** (client): Runs on the user's machine (client). Connects to a remote server over SSH to launch the terminal session, then connects to `etserver` on port 2022 for the persistent session.
+- **`etterminal`** (server-side user process): Runs on the server as the user (launched by `et` via SSH). Hosts the terminal session and connects to `etserver` via a FIFO to register the session.
+- **`etserver`** (server daemon): Runs permanently on the server (usually as root/system service). Listens on TCP port 2022 (default) and manages connections between `et` clients and `etterminal` sessions.
+
+**Which machines need each part:**
+- Client machine: needs `et`.
+- Server machine: needs `etserver` (service/demon) and `etterminal` (installed for users; launched by `et` over SSH).
+
+**Port:** By default `etserver` listens on TCP 2022 (configured in `/etc/et.cfg` via the `Networking.port` setting).
+
+**Service setup:** After installation, start/enable `etserver` via systemd (`systemctl enable --now et`) or launchd (macOS), or run `./etserver` for testing.
 
 ## Protocol and design documentation
 

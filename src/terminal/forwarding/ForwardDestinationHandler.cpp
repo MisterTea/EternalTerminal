@@ -16,8 +16,23 @@ void ForwardDestinationHandler::close() {
 }
 
 void ForwardDestinationHandler::write(const string& s) {
+  if (writeShutdown || fd < 0) {
+    return;
+  }
   VLOG(1) << "Writing " << s.length() << " bytes to port destination";
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
+}
+
+void ForwardDestinationHandler::shutdownWrite() {
+  if (writeShutdown || fd < 0) {
+    return;
+  }
+  writeShutdown = true;
+#ifdef WIN32
+  ::shutdown(fd, SD_SEND);
+#else
+  ::shutdown(fd, SHUT_WR);
+#endif
 }
 
 void ForwardDestinationHandler::update(vector<PortForwardData>* retval,

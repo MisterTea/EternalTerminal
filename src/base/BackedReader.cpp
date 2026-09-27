@@ -104,6 +104,13 @@ void BackedReader::revive(int newSocketFd,
   socketFd = newSocketFd;
 }
 
+void BackedReader::reset(const string& salt) {
+  localBuffer.clear();
+  partialMessage.clear();
+  sequenceNumber = 0;
+  cryptoHandler->rekey(salt);
+}
+
 int BackedReader::getPartialMessageLength() {
   if (partialMessage.length() < 4) {
     STFATAL << "Tried to construct a message header that wasn't complete";

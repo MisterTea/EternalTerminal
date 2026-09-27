@@ -189,7 +189,7 @@ TEST_CASE("ForwardDestinationHandler ignores transient EAGAIN reads",
 }
 
 TEST_CASE("ForwardDestinationHandler yields after a bounded data batch",
-          "[ForwardDestinationHandler][#298]") {
+          "[ForwardDestinationHandler][issue298]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
   ForwardDestinationHandler handler(socketHandler, /*fd=*/71, /*socketId=*/6);
 
