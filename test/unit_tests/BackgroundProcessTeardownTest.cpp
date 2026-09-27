@@ -125,8 +125,14 @@ class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
     }
     if (grandchild == 0) {
       ::close(grandchildPidPipe[1]);
+      // Leave the forkpty session/process group before the session leader
+      // exits. Otherwise Darwin (and some Linux CI configs) can reclaim the
+      // holder with the session, defeating the "descendant still alive" setup.
+      if (::setsid() < 0) {
+        _exit(127);
+      }
       ::signal(SIGHUP, SIG_IGN);
-      const int held = ::open(slaveName, O_RDWR);
+      const int held = ::open(slaveName, O_RDWR | O_NOCTTY);
       if (held < 0) {
         _exit(127);
       }
@@ -225,21 +231,10 @@ TEST_CASE("sessionHasEnded without master EOF while descendant holds PTY slave",
   }
   REQUIRE(term.sessionHasEnded());
   // Grandchild must still be alive: session end is driven by the foreground
-  // child exit, not by waiting for unrelated descendants.
+  // child exit, not by waiting for unrelated descendants. (Do not probe the
+  // master for EOF here — Darwin/FreeBSD EOF the master when the forkpty
+  // session leader exits even if a descendant still holds a reopened slave.)
   REQUIRE(::kill(term.knownGrandchild, 0) == 0);
-
-#if !defined(__APPLE__)
-  // On Linux, the master must not be at EOF while the grandchild holds the
-  // slave (non-blocking read is EAGAIN). Darwin EOFs the master when the
-  // forkpty session leader exits even if a descendant still holds a reopened
-  // slave fd, so the EOF probe is Linux-only.
-  char probe = 0;
-  const ssize_t n = ::read(masterFd, &probe, 1);
-  REQUIRE(n != 0);
-  if (n < 0) {
-    REQUIRE((errno == EAGAIN || errno == EWOULDBLOCK));
-  }
-#endif
 
   REQUIRE(term.handleSessionEnd() == 42);
 
