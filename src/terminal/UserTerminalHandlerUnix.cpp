@@ -74,6 +74,28 @@ void UserTerminalHandler::finishSession() {
   }
 }
 
+void UserTerminalHandler::drainBufferedTerminalOutput(int masterFd,
+                                                      int stderrFd) {
+  const int drainBufSize = 16 * 1024;
+  char b[16 * 1024];
+  auto drainFd = [&](int fd, bool isStderr) {
+    if (fd < 0) {
+      return;
+    }
+    while (true) {
+      memset(b, 0, static_cast<size_t>(drainBufSize));
+      const int rc = read(fd, b, static_cast<size_t>(drainBufSize));
+      if (rc > 0) {
+        forwardOutputToRouter(b, static_cast<size_t>(rc), isStderr);
+        continue;
+      }
+      break;
+    }
+  };
+  drainFd(masterFd, false);
+  drainFd(stderrFd, true);
+}
+
 void UserTerminalHandler::registerWithRouter() {
   TerminalUserInfo tui;
   tui.set_id(id);
@@ -337,16 +359,6 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     select(maxfd + 1, &rfd, &wfd, NULL, &tv);
     VLOG(4) << "select is done";
 
-    // A background descendant can keep the PTY slave open after the login
-    // shell exits. End the ET session when the shell itself is gone, matching
-    // SSH behavior, rather than waiting for unrelated descendants.
-    if (term->sessionHasEnded()) {
-      LOG(INFO) << "Terminal shell exited";
-      lock_guard<recursive_mutex> guard(shutdownMutex);
-      shuttingDown = true;
-      break;
-    }
-
     time_t currentSecond = time(NULL);
     if (lastSecond != currentSecond) {
       outputPerSecond = 0;
@@ -354,6 +366,26 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
     }
 
     try {
+      // A background descendant can keep the PTY slave open after the login
+      // shell exits. End the ET session when the shell itself is gone, matching
+      // SSH behavior, rather than waiting for unrelated descendants. Drain any
+      // already-buffered output first (ignoring the rows/sec limit) so the
+      // client still receives the final shell bytes, then finishSession() so
+      // TERMINAL_EXIT_STATUS is delivered like the PTY EOF path.
+      if (term->sessionHasEnded()) {
+        LOG(INFO) << "Terminal shell exited";
+        try {
+          drainBufferedTerminalOutput(masterFd, activeStderrFd);
+        } catch (const std::exception& ex) {
+          LOG(INFO) << "Failed draining terminal output on shell exit: "
+                    << ex.what();
+        }
+        finishSession();
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+        break;
+      }
+
       // Check for data to receive; the received
       // data includes also the data previously sent
       // on the same master descriptor (line 90).

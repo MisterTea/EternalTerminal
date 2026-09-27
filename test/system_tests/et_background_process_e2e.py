@@ -12,7 +12,9 @@ import argparse
 import fcntl
 import os
 import pty
+import re
 import select
+import signal
 import socket
 import subprocess
 import sys
@@ -22,6 +24,10 @@ import time
 from pathlib import Path
 
 SKIP = 77
+
+# Must be produced by the remote shell as its own output line. Local PTY echo
+# of the typed `echo …` command must not satisfy readiness.
+READY_MARKER = "ET_448_READY"
 
 
 def skip(reason: str) -> None:
@@ -38,6 +44,14 @@ def get_free_port() -> int:
     with socket.socket(socket.AF_INET, socket.SOCK_STREAM) as s:
         s.bind(("127.0.0.1", 0))
         return s.getsockname()[1]
+
+
+def line_is_exactly(accumulated: str, marker: str) -> bool:
+    """True if any line equals marker after stripping CR (not a substring)."""
+    for raw in accumulated.splitlines():
+        if raw.strip("\r") == marker:
+            return True
+    return False
 
 
 def parse_args() -> argparse.Namespace:
@@ -83,6 +97,7 @@ def main() -> None:
             skip(f"{name} binary not found or not executable at {binary}")
 
     port = get_free_port()
+    bg_sleep_pid: int | None = None
 
     with tempfile.TemporaryDirectory(prefix="et_test_448_") as temp_dir:
         temp_path = Path(temp_dir)
@@ -90,9 +105,9 @@ def main() -> None:
         log_dir = temp_path / "logs"
         log_dir.mkdir(parents=True, exist_ok=True)
 
-        # Create a self-contained ssh shim in a temp bin directory.
-        # This executes the remote command passed by et locally without
-        # requiring an external ssh daemon or pre-configured credentials.
+        # Self-contained ssh shim: execute the remote command locally so this
+        # test does not need a listening sshd (localhost:22 may be refused).
+        # Matches the IDPASSKEY bootstrap path used by other et system tests.
         bin_dir = temp_path / "bin"
         bin_dir.mkdir(parents=True, exist_ok=True)
         ssh_shim = bin_dir / "ssh"
@@ -135,11 +150,14 @@ def main() -> None:
             if not server_ready:
                 fail(f"etserver failed to start and listen on port {port}")
 
-            # 2. Start et inside a PTY
+            # 2. Start et inside a PTY.
+            # Client flags must come before the host: anything after the host
+            # positional is a remote command (see splitEtArgvAtHost).
             env = os.environ.copy()
             env["PATH"] = f"{bin_dir}:{env.get('PATH', '')}"
             env["TERM"] = "xterm-256color"
             env["SHELL"] = "/bin/sh"
+            env["ET_NO_TELEMETRY"] = "YES"
 
             master_fd, slave_fd = pty.openpty()
 
@@ -152,11 +170,12 @@ def main() -> None:
 
             et_cmd = [
                 str(et_bin),
-                f"127.0.0.1:{port}",
                 f"--terminal-path={etterminal_bin}",
                 f"--serverfifo={fifo_path}",
+                "--no-ssh-config",
                 "--logtostdout",
                 "--verbose=1",
+                f"127.0.0.1:{port}",
             ]
 
             et_proc = subprocess.Popen(
@@ -191,30 +210,61 @@ def main() -> None:
                         break
                 return buf
 
-            # Wait for shell to be ready by sending a probe
-            prompt_marker = "ET_448_READY_PROMPT"
+            # Wait for remote shell by requiring an exact output line from echo.
             ready = False
-            probe_deadline = time.time() + 15.0
+            probe_deadline = time.time() + 30.0
             accumulated = ""
             while time.time() < probe_deadline:
-                os.write(master_fd, f"echo {prompt_marker}\n".encode())
+                os.write(master_fd, f"echo {READY_MARKER}\n".encode())
                 accumulated += pump_pty(0.5)
-                if prompt_marker in accumulated:
+                if line_is_exactly(accumulated, READY_MARKER):
                     ready = True
+                    print(
+                        f"Remote shell ready (exact line {READY_MARKER!r})",
+                        flush=True,
+                    )
                     break
                 if et_proc.poll() is not None:
-                    fail(f"et exited unexpectedly during startup with code {et_proc.returncode}")
+                    fail(
+                        "et exited unexpectedly during startup with code "
+                        f"{et_proc.returncode}; accumulated={accumulated[-800:]!r}"
+                    )
 
             if not ready:
-                fail("Timed out waiting for remote shell prompt")
+                fail(
+                    "Timed out waiting for remote shell ready line; "
+                    f"accumulated={accumulated[-800:]!r}"
+                )
 
             # 3. Issue #448 playbook:
             # - Send a long sleep to background with '&'
+            # - Record its PID from shell output (no global pkill)
             # - Send Ctrl+D (EOF)
             # - Ensure et session ends promptly
-            print("Sending 'sleep 100 &'", flush=True)
-            os.write(master_fd, b"sleep 100 &\n")
-            pump_pty(0.5)
+            print("Sending HUP-immune 'sleep 100 &' and capturing PID", flush=True)
+            # Interactive shells may SIGHUP background jobs on exit; trap HUP so
+            # the descendant keeps the PTY slave open (the Issue #448 hang).
+            os.write(
+                master_fd,
+                b"/bin/sh -c 'trap \"\" HUP; sleep 100 & "
+                b"printf \"ET_448_BG_PID=%s\\n\" \"$!\"'\n",
+            )
+            pid_deadline = time.time() + 5.0
+            while time.time() < pid_deadline and bg_sleep_pid is None:
+                accumulated += pump_pty(0.3)
+                match = re.search(
+                    r"ET_448_BG_PID=(\d+)", accumulated.replace("\r", "")
+                )
+                if match:
+                    bg_sleep_pid = int(match.group(1))
+                    print(f"Background sleep pid={bg_sleep_pid}", flush=True)
+                    break
+
+            if bg_sleep_pid is None:
+                fail(
+                    "Could not capture background sleep PID; "
+                    f"accumulated={accumulated[-800:]!r}"
+                )
 
             print("Sending Ctrl+D (EOF)", flush=True)
             exit_start = time.time()
@@ -233,7 +283,7 @@ def main() -> None:
                     duration = time.time() - exit_start
                     print(
                         f"SUCCESS: et exited with code {ret} after {duration:.2f}s "
-                        f"(did not hang on background sleep)",
+                        f"(did not hang on background sleep pid={bg_sleep_pid})",
                         flush=True,
                     )
                     session_ended = True
@@ -247,9 +297,21 @@ def main() -> None:
                     second_eof_sent = True
 
             if not session_ended:
-                fail("et failed to exit promptly after shell exited; session blocked on background process")
+                fail(
+                    "et failed to exit promptly after shell exited; "
+                    "session blocked on background process"
+                )
 
         finally:
+            if bg_sleep_pid is not None:
+                try:
+                    os.kill(bg_sleep_pid, signal.SIGKILL)
+                except OSError:
+                    pass
+                try:
+                    os.waitpid(bg_sleep_pid, os.WNOHANG)
+                except OSError:
+                    pass
             if master_fd >= 0:
                 try:
                     os.close(master_fd)
@@ -267,17 +329,6 @@ def main() -> None:
                     server_proc.wait(timeout=2)
                 except subprocess.TimeoutExpired:
                     server_proc.kill()
-
-            # Clean up any orphan background sleep processes
-            try:
-                subprocess.run(
-                    ["pkill", "-f", "sleep 100"],
-                    stdout=subprocess.DEVNULL,
-                    stderr=subprocess.DEVNULL,
-                    check=False,
-                )
-            except OSError:
-                pass
 
 
 if __name__ == "__main__":
