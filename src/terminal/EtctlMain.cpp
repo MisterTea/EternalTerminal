@@ -15,6 +15,7 @@
 #include <fstream>
 #include <map>
 #include <regex>
+#include <set>
 #include <sstream>
 
 #include "ControlPaths.hpp"
@@ -23,6 +24,7 @@
 #include "Headers.hpp"
 #include "Osc133.hpp"
 #include "RunGuard.hpp"
+#include "SessionStore.hpp"
 #include "SessionTombstone.hpp"
 
 using namespace et;
@@ -578,6 +580,53 @@ int64_t parseDuration(const string& s, int64_t fallback) {
   return (int64_t)(n * (double)mult);
 }
 
+/*
+ * Sweep control-plane files an older etctl left in the saved-session directory.
+ *
+ * Through 7.0.0-etctl.8 a session's socket, framing cache and end-note lived in
+ * ~/.et/sessions, beside the records `et --list` reads.  They are suffixed, so
+ * they still satisfy isValidSessionName() and `et --list` reports every one of
+ * them as an unreadable or corrupt session.  One busy machine had 340 of them
+ * against 2 real records.
+ *
+ * Nothing writes there any more, so anything suffixed is debris and safe to
+ * drop: the framing caches re-detect on demand, the notes have already been
+ * read, and the credentials name sessions the server forgot long ago.  A live
+ * socket is the one thing worth keeping, so it is left for the owning session
+ * (or a later gc, once the daemon behind it exits).
+ */
+void sweepLegacySidecars() {
+  string dir;
+  try {
+    dir = sessionDirPath();
+  } catch (const std::exception&) {
+    return;
+  }
+  if (dir == control_paths::controlDir()) {
+    return;  // nothing to migrate away from
+  }
+  static const char* kSuffixes[] = {".creds", ".framing", ".gone"};
+  std::error_code ec;
+  int removed = 0;
+  for (const auto& entry : fs::directory_iterator(dir, ec)) {
+    if (ec) break;
+    if (!entry.is_regular_file(ec)) continue;
+    const string name = entry.path().filename().string();
+    for (const char* suffix : kSuffixes) {
+      const size_t len = strlen(suffix);
+      if (name.size() > len &&
+          name.compare(name.size() - len, len, suffix) == 0) {
+        if (::unlink(entry.path().c_str()) == 0) removed++;
+        break;
+      }
+    }
+  }
+  if (removed > 0) {
+    printf("removed %d stale control file%s from %s\n", removed,
+           removed == 1 ? "" : "s", dir.c_str());
+  }
+}
+
 int cmdGc(int argc, char** argv) {
   bool idle = false, force = false;
   int64_t idleSecs = 8 * 3600;  // default --idle threshold (8h)
@@ -587,7 +636,9 @@ int cmdGc(int argc, char** argv) {
       printf(
           "etctl gc [--idle [DUR]] [--force]\n"
           "  Remove dead session sockets (a daemon that has exited leaves a\n"
-          "  stale socket).  With --idle, also end live sessions idle longer\n"
+          "  stale socket), and sweep control files an older etctl left in\n"
+          "  the saved-session directory.  With --idle, also end live\n"
+          "  sessions idle longer\n"
           "  than DUR (default 8h; e.g. 30m, 6h, 2d): eof first, then a "
           "forced\n"
           "  stop if it doesn't exit within a few seconds.  --force skips the\n"
@@ -641,6 +692,8 @@ int cmdGc(int argc, char** argv) {
     // Drop the session's framing detection cache along with its socket.
     ::unlink(framingCachePath(name).c_str());
   }
+
+  sweepLegacySidecars();
   return 0;
 }
 
@@ -651,6 +704,7 @@ int cmdSessions() {
   };
   vector<Row> rows;
   const int64_t now = (int64_t)time(NULL);
+  std::set<string> driven(names.begin(), names.end());
   for (const string& name : names) {
     std::map<string, string> in = sessionInfo(name);
     if (in.empty()) {
@@ -667,6 +721,27 @@ int cmdSessions() {
                     created > 0 ? humanizeDuration(now - created) : "-",
                     last > 0 ? humanizeDuration(now - last) : "-"});
   }
+  /*
+   * A session only appears above if it has a control socket, which is what
+   * etctl can actually drive.  ET's own named sessions are the same kind of
+   * thing minus that socket, so list them too rather than pretending they do
+   * not exist: seeing one here is the difference between "that name is free"
+   * and "something else already owns it".  `etctl open` on one of these
+   * attaches to the running shell and adds the socket.
+   */
+  try {
+    for (const SessionInfo& saved : listSessions()) {
+      if (driven.count(saved.name)) continue;
+      rows.push_back(
+          {saved.name, saved.host.empty() ? "-" : saved.host, "no-control", "-",
+           saved.lastSeenAt > 0 ? humanizeDuration(now - saved.lastSeenAt)
+                                : "-"});
+    }
+  } catch (const std::exception&) {
+    // A missing or unreadable session store just means nothing to add.
+  }
+  std::sort(rows.begin(), rows.end(),
+            [](const Row& a, const Row& b) { return a.name < b.name; });
   if (rows.empty()) {
     return 0;
   }
