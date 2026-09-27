@@ -148,3 +148,233 @@ TEST_CASE("tmuxCcInputRequestsInterrupt joins a split send-keys command",
   REQUIRE_FALSE(tmuxCcContainsInterruptCommand("send-keys -t %0 -H "));
   REQUIRE(tmuxCcInputRequestsInterrupt("send-keys -t %0 -H ", "03\n"));
 }
+
+TEST_CASE("TmuxCcInjectionFilter passes shell output before control mode",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string prompt = "user@host:~$ ";
+  REQUIRE(filter.apply(prompt) == prompt);
+  REQUIRE(filter.apply("ls\r\nfile\r\n") == "ls\r\nfile\r\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter drops a journald wall inside tmux -CC",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  const string head = dcs + "%session-changed $0 wall\n";
+  REQUIRE(filter.apply(head) == head);
+
+  const string wall =
+      "\r\n"
+      "Broadcast message from systemd-journald@host "
+      "(Wed 2026-09-23 23:04:10 UTC):\r\n"
+      "\r\n"
+      "journald-test[4556]: Test message at priority: emerg "
+      "WALL_INJECT_856\r\n"
+      "\r\n";
+  REQUIRE(filter.apply(wall).empty());
+
+  const string output = "%output %0 still-alive\n\x1b\\";
+  REQUIRE(filter.apply(output) == output);
+  REQUIRE(filter.apply("%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n") ==
+          "%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter reassembles a wall line split across reads",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%sessions-changed\n") ==
+          dcs + "%sessions-changed\n");
+  REQUIRE(filter.apply("Broad").empty());
+  REQUIRE(filter.apply("cast message from systemd-journald\r\n").empty());
+  REQUIRE(filter.apply("%window-add @0\n") == "%window-add @0\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter ignores bare percent line without DCS",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  REQUIRE(filter.apply("%output %0 fake\n") == "%output %0 fake\n");
+  REQUIRE(filter.apply("hello\n") == "hello\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter bare %sessions-changed does not enter mode",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  REQUIRE(filter.apply("%sessions-changed\n") == "%sessions-changed\n");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter forwards shell output after ST ends control mode",
+    "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+  REQUIRE(filter.apply("\x1b\\") == "\x1b\\");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE("TmuxCcInjectionFilter clears control mode on %exit",
+          "[TmuxCcFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+  REQUIRE(filter.apply("%exit\n") == "%exit\n");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter arms control mode when DCS arrives with a partial "
+    "first line",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  // DCS plus an incomplete first notification (no newline yet) must be held
+  // so control mode can arm when the line completes.
+  REQUIRE(filter.apply(dcs + "%session-changed").empty());
+  REQUIRE(filter.apply(" $0 wall\n") == dcs + "%session-changed $0 wall\n");
+
+  const string wall =
+      "Broadcast message from systemd-journald@host "
+      "(Wed 2026-09-23 23:04:10 UTC):\r\n";
+  REQUIRE(filter.apply(wall).empty());
+  REQUIRE(filter.apply("%output %0 still-alive\n") ==
+          "%output %0 still-alive\n");
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter exits control mode when ST is coalesced with shell "
+    "text",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+
+  // tmux may write the DCS terminator stuck to the following shell prompt.
+  const string prompt = "user@host$ ";
+  REQUIRE(filter.apply(string("\x1b\\") + prompt) == string("\x1b\\") + prompt);
+  REQUIRE(filter.apply("ls\n") == "ls\n");
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter does not glue a held wall fragment onto a following "
+    "% notification",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+
+  // Short read left a wall prefix in pending_; the next read is a real
+  // control notification. The wall prefix must be dropped, not concatenated.
+  REQUIRE(filter.apply("Broad").empty());
+  REQUIRE(filter.apply("%exit\n") == "%exit\n");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+
+  TmuxCcInjectionFilter filter2;
+  REQUIRE(filter2.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+  REQUIRE(filter2.apply("Broad").empty());
+  REQUIRE(filter2.apply("%window-add @0\n") == "%window-add @0\n");
+  REQUIRE(filter2.apply("still-alive\n").empty());
+  REQUIRE(filter2.apply("%output %0 pane\n") == "%output %0 pane\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter detects ST after a held wall fragment",
+          "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+
+  REQUIRE(filter.apply("Broad").empty());
+  REQUIRE(filter.apply("\x1b\\") == "\x1b\\");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE("TmuxCcInjectionFilter drops wall text after a bare DCS introducer",
+          "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs).empty());
+  const string out = filter.apply("Broadcast message\r\n");
+  REQUIRE(out.find("Broadcast") == string::npos);
+  REQUIRE(out.find(dcs) != string::npos);
+
+  REQUIRE(filter.apply("Broadcast message from systemd-journald\r\n").empty());
+  REQUIRE(filter.apply("%output %0 still-alive\n") ==
+          "%output %0 still-alive\n");
+}
+
+TEST_CASE("TmuxCcInjectionFilter does not arm on DCS bytes embedded mid-line",
+          "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  // Shell text that merely contains the DCS byte sequence must not latch
+  // control mode or truncate the line to the introducer alone.
+  const string embedded = string("echo ") + dcs + " mid\n";
+  REQUIRE(filter.apply(embedded) == embedded);
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter clears mode when ST follows a held incomplete % "
+    "line",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+
+  // Short read of "%exit" leaves pending_ starting with '%'. ST must still
+  // clear the latch so post-control-mode shell is forwarded.
+  REQUIRE(filter.apply("%ex").empty());
+  REQUIRE(filter.apply("\x1b\\") == "\x1b\\");
+  const string shell = "user@host:~$ ls\r\nfile\r\n";
+  REQUIRE(filter.apply(shell) == shell);
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter ignores pre-DCS %begin when latching begin block",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+
+  // Shell can echo a literal "%begin ..." line before tmux -CC starts. That
+  // must not leave inBeginBlock_ set, or a later wall is forwarded as body.
+  REQUIRE(filter.apply("%begin 1 2 0\n") == "%begin 1 2 0\n");
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+  REQUIRE(filter.apply("Broadcast message\r\n").empty());
+
+  // A real %begin…%end body after control mode is armed must still be kept.
+  REQUIRE(filter.apply("%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n") ==
+          "%begin 1 2 0\nAFTER_WALL\n%end 1 2 0\n");
+}
+
+TEST_CASE(
+    "TmuxCcInjectionFilter clears control mode on wall line with trailing ST",
+    "[TmuxCcFilter][InjectionFilter]") {
+  TmuxCcInjectionFilter filter;
+  const string dcs = "\x1bP1000p";
+  REQUIRE(filter.apply(dcs + "%session-changed $0 wall\n") ==
+          dcs + "%session-changed $0 wall\n");
+
+  // Newline-terminated wall text with an embedded trailing ST is dropped by
+  // filterCompletedLine without seeing a leading terminator; control mode
+  // must still clear so the following shell line is forwarded.
+  const string wallWithSt = "Broadcast\x1b\\\n";
+  const string out = filter.apply(wallWithSt);
+  REQUIRE(out.find("Broadcast") == string::npos);
+  REQUIRE(filter.apply("prompt$ ls\n") == "prompt$ ls\n");
+}

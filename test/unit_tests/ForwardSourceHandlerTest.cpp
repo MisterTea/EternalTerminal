@@ -432,11 +432,11 @@ TEST_CASE("ForwardSourceHandler listens only on ready fds",
   ForwardSourceHandler handler(socketHandler, source, destination);
 
   set<int> readyFds;
-  CHECK(handler.listen(&readyFds) == -1);
+  CHECK(handler.listen(nullptr, &readyFds) == -1);
   CHECK(socketHandler->acceptCallFds.empty());
 
   readyFds.insert(100);
-  CHECK(handler.listen(&readyFds) == 42);
+  CHECK(handler.listen(nullptr, &readyFds) == 42);
 }
 
 TEST_CASE("ForwardSourceHandler sendDataOnSocket writes to socket",

@@ -102,7 +102,8 @@ void Connection::closeSocket() {
   VLOG(1) << "Closed socket";
 }
 
-bool Connection::recover(int newSocketFd) {
+bool Connection::recover(int newSocketFd, bool readPeerCatchupFirst,
+                         bool forceReset, const string& resetSalt) {
   LOG(INFO) << "Locking reader/writer to recover...";
   lock_guard<std::recursive_mutex> guard(connectionMutex);
   if (shuttingDown) {
@@ -114,12 +115,25 @@ bool Connection::recover(int newSocketFd) {
   }
   lock_guard<std::mutex> readerGuard(reader->getRecoverMutex());
   lock_guard<std::mutex> writerGuard(writer->getRecoverMutex());
-  LOG(INFO) << "Recovering with socket fd " << newSocketFd << "...";
+  LOG(INFO) << "Recovering with socket fd " << newSocketFd
+            << (forceReset ? " (reset)" : "") << "...";
   try {
+    if (forceReset && resetSalt.length() != CryptoHandler::EPOCH_SALT_BYTES) {
+      throw std::runtime_error("Reset recovery has no negotiated salt");
+    }
+    if (!forceReset && !resetSalt.empty()) {
+      throw std::runtime_error("Reset salt supplied without reset recovery");
+    }
     {
       // Write the current sequence number
       et::SequenceHeader sh;
-      sh.set_sequencenumber(reader->getSequenceNumber());
+      if (forceReset) {
+        sh.set_sequencenumber(0);
+        sh.set_reset(true);
+        sh.set_resetsalt(resetSalt);
+      } else {
+        sh.set_sequencenumber(reader->getSequenceNumber());
+      }
       socketHandler->writeProto(newSocketFd, sh, true);
     }
 
@@ -128,19 +142,47 @@ bool Connection::recover(int newSocketFd) {
         socketHandler->readProto<et::SequenceHeader>(
             newSocketFd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
 
-    {
-      // Fetch the catchup bytes and send
-      et::CatchupBuffer catchupBuffer;
-      vector<string> recoveredMessages =
-          writer->recover(remoteHeader.sequencenumber());
-      for (auto it : recoveredMessages) {
-        catchupBuffer.add_buffer(it);
+    if (forceReset) {
+      if (!remoteHeader.reset() || remoteHeader.resetsalt() != resetSalt) {
+        throw std::runtime_error(
+            "Reset request does not match the negotiated salt");
       }
-      socketHandler->writeProto(newSocketFd, catchupBuffer, true);
+      LOG(INFO) << "Performing reset recovery";
+
+      et::CatchupBuffer emptyCatchup;
+      socketHandler->writeProto(newSocketFd, emptyCatchup, true);
+      socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+
+      writer->reset(resetSalt);
+      reader->reset(resetSalt);
+      socketFd = newSocketFd;
+      reader->revive(socketFd, {});
+      writer->revive(socketFd);
+      LOG(INFO) << "Finished reset recovery with socket fd: " << socketFd;
+      return true;
     }
 
-    et::CatchupBuffer catchupBuffer =
-        socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+    if (remoteHeader.reset() || !remoteHeader.resetsalt().empty()) {
+      throw std::runtime_error("Unexpected reset request");
+    }
+
+    // Fetch our catchup bytes before any I/O, so a sequence number we cannot
+    // serve fails the same way whichever side sends its catchup first.
+    et::CatchupBuffer localCatchup;
+    for (const auto& message : writer->recover(remoteHeader.sequencenumber())) {
+      localCatchup.add_buffer(message);
+    }
+
+    et::CatchupBuffer catchupBuffer;
+    if (readPeerCatchupFirst) {
+      catchupBuffer =
+          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+      socketHandler->writeProto(newSocketFd, localCatchup, true);
+    } else {
+      socketHandler->writeProto(newSocketFd, localCatchup, true);
+      catchupBuffer =
+          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+    }
 
     socketFd = newSocketFd;
     vector<string> recoveredMessages(catchupBuffer.buffer().begin(),
@@ -155,6 +197,15 @@ bool Connection::recover(int newSocketFd) {
     socketHandler->close(newSocketFd);
     return false;
   }
+}
+
+bool Connection::claimDisconnectedExpiry() {
+  lock_guard<std::recursive_mutex> guard(connectionMutex);
+  if (socketFd > 0 || shuttingDown) {
+    return false;
+  }
+  shuttingDown = true;
+  return true;
 }
 
 void Connection::shutdown() {

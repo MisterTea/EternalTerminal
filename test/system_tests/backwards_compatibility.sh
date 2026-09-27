@@ -103,14 +103,14 @@ OLD_SERVER_PID=$!
 sleep 3
 
 run_and_expect "compat new to old" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
   localhost:9920
 
 run_and_expect "compat new to old ipv6 full" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 full'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
@@ -119,7 +119,7 @@ run_and_expect "compat new to old ipv6 full" \
   0:0:0:0:0:0:0:1
 
 run_and_expect "compat new to old ipv6 full host port" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 full host port'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full host port'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
@@ -127,7 +127,7 @@ run_and_expect "compat new to old ipv6 full host port" \
   0:0:0:0:0:0:0:1:9920
 
 run_and_expect "compat new to old ipv6 abbreviated" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 abbreviated'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 abbreviated'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \

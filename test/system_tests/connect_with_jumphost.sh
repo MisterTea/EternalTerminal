@@ -31,10 +31,10 @@ second_server_pid=$!
 sleep 3
 
 # Make sure servers are working
-build/et -c "echo 'Hello World 1!'" --serverfifo=/tmp/etserver.idpasskey.fifo1 --logtostdout --terminal-path $PWD/build/etterminal localhost:9900
-build/et -c "echo 'Hello World 2!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal localhost:9901
+build/et --command "echo 'Hello World 1!'" --serverfifo=/tmp/etserver.idpasskey.fifo1 --logtostdout --terminal-path $PWD/build/etterminal localhost:9900
+build/et --command "echo 'Hello World 2!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal localhost:9901
 
-build/et -c "echo 'Hello World 3!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jumphost localhost --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 127.0.0.1:9901 # We can't use 'localhost' for both the jumphost and the destination because ssh doesn't support keeping them the same.
+build/et --command "echo 'Hello World 3!'" --serverfifo=/tmp/etserver.idpasskey.fifo2 --logtostdout --terminal-path $PWD/build/etterminal --jumphost localhost --jport 9900 --jserverfifo=/tmp/etserver.idpasskey.fifo1 127.0.0.1:9901 # We can't use 'localhost' for both the jumphost and the destination because ssh doesn't support keeping them the same.
 
 kill -9 $first_server_pid
 first_server_pid=""
