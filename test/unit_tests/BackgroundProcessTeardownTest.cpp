@@ -100,17 +100,16 @@ TEST_CASE("recordReapedWaitStatus caches OpenSSH-style signal status",
  */
 class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
  public:
-  bool openPidPipe() { return ::pipe(grandchildPidPipe) == 0; }
+  bool openPidPipe() {
+    return ::pipe(grandchildPidPipe) == 0 && ::pipe(readyPipe) == 0;
+  }
 
   ~DescendantHoldsSlaveTerminal() override {
     reapGrandchild();
-    closePidPipe();
+    closePipes();
   }
 
   void runTerminal() override {
-    ::close(grandchildPidPipe[0]);
-    grandchildPidPipe[0] = -1;
-
     // Capture the slave path before forking so the grandchild can reopen it
     // after we exit. On macOS, merely inheriting the slave fds is not enough
     // to keep the master from EOF once the session leader exits.
@@ -124,10 +123,10 @@ class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
       _exit(127);
     }
     if (grandchild == 0) {
-      ::close(grandchildPidPipe[1]);
+      ::close(grandchildPidPipe[0]);
+      ::close(readyPipe[0]);
       // Leave the forkpty session/process group before the session leader
-      // exits. Otherwise Darwin (and some Linux CI configs) can reclaim the
-      // holder with the session, defeating the "descendant still alive" setup.
+      // exits. Otherwise Darwin can reclaim the holder with the session.
       if (::setsid() < 0) {
         _exit(127);
       }
@@ -136,16 +135,39 @@ class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
       if (held < 0) {
         _exit(127);
       }
+
+      // Publish pid only after setsid+open so the test sees a live holder.
+      const pid_t self = ::getpid();
+      const ssize_t written =
+          ::write(grandchildPidPipe[1], &self, sizeof(self));
+      ::close(grandchildPidPipe[1]);
+      if (written != static_cast<ssize_t>(sizeof(self))) {
+        _exit(127);
+      }
+
+      // Unblock the session-leader child only once we are fully detached and
+      // holding the slave — otherwise it may exit while we are still in its
+      // process group and Darwin will tear us down with the session.
+      const char ready = 1;
+      const ssize_t readyWritten = ::write(readyPipe[1], &ready, 1);
+      ::close(readyPipe[1]);
+      if (readyWritten != 1) {
+        _exit(127);
+      }
+
       // Keep held open for the lifetime of this process.
       execl("/bin/sleep", "sleep", "60", static_cast<char*>(nullptr));
       _exit(127);
     }
 
-    const ssize_t written =
-        ::write(grandchildPidPipe[1], &grandchild, sizeof(grandchild));
+    // Session leader: wait for the holder to finish setup, then exit.
+    ::close(grandchildPidPipe[0]);
     ::close(grandchildPidPipe[1]);
-    grandchildPidPipe[1] = -1;
-    if (written != static_cast<ssize_t>(sizeof(grandchild))) {
+    ::close(readyPipe[1]);
+    char ready = 0;
+    const ssize_t n = ::read(readyPipe[0], &ready, 1);
+    ::close(readyPipe[0]);
+    if (n != 1) {
       ::kill(grandchild, SIGKILL);
       ::waitpid(grandchild, nullptr, 0);
       _exit(127);
@@ -192,8 +214,14 @@ class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
     knownGrandchild = -1;
   }
 
-  void closePidPipe() {
+  void closePipes() {
     for (int& fd : grandchildPidPipe) {
+      if (fd >= 0) {
+        ::close(fd);
+        fd = -1;
+      }
+    }
+    for (int& fd : readyPipe) {
       if (fd >= 0) {
         ::close(fd);
         fd = -1;
@@ -203,6 +231,7 @@ class DescendantHoldsSlaveTerminal : public PseudoUserTerminal {
 
   pid_t knownGrandchild = -1;
   int grandchildPidPipe[2] = {-1, -1};
+  int readyPipe[2] = {-1, -1};
 };
 
 TEST_CASE("sessionHasEnded without master EOF while descendant holds PTY slave",
