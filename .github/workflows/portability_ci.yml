@@ -297,7 +297,10 @@ jobs:
           export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
           export CCACHE_MAXSIZE=500M
           export CCACHE_COMPRESS=true
-          export CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime
+          # CMake regenerates the PCH wrapper files during configuration. Do
+          # not let ccache reuse a Clang PCH whose wrapper has a different
+          # timestamp; Clang rejects it as stale before compiling any source.
+          export CCACHE_SLOPPINESS=pch_defines,time_macros
 
           pkg install -y \
             autoconf \
