@@ -33,6 +33,21 @@ class SshSetupHandler {
   /** Controls whether non-secret SSH login output is shown to the user. */
   void setDisplayLoginOutput(bool display) { displayLoginOutput_ = display; }
 
+  /**
+   * @brief OpenSSH client arguments for the bootstrap ssh. `sshPort` is the
+   * sshd port (`-p`), not the etserver port. Pass `sshPortSet` false to leave
+   * ssh's own default. Identity files and the cipher spec are forwarded as
+   * `-i` and `-c`.
+   */
+  void setBootstrapOverrides(bool sshPortSet, int sshPort,
+                             std::vector<std::string> identityFiles,
+                             std::string cipher) {
+    sshPortSet_ = sshPortSet;
+    sshPort_ = sshPort;
+    identityFiles_ = std::move(identityFiles);
+    cipher_ = std::move(cipher);
+  }
+
   /** Returns SSH login output with the ET handshake credential removed. */
   static string ExtractLoginOutput(const string& sshOutput);
 
@@ -50,9 +65,29 @@ class SshSetupHandler {
   static bool IsSshConfigPathSafeForProxyJump(const string& path);
 
  private:
+  void appendBootstrapArgs(std::vector<std::string>* sshArgs,
+                           bool includeSshPort) const {
+    if (includeSshPort && sshPortSet_) {
+      sshArgs->push_back("-p");
+      sshArgs->push_back(std::to_string(sshPort_));
+    }
+    for (const auto& identity : identityFiles_) {
+      sshArgs->push_back("-i");
+      sshArgs->push_back(identity);
+    }
+    if (!cipher_.empty()) {
+      sshArgs->push_back("-c");
+      sshArgs->push_back(cipher_);
+    }
+  }
+
   shared_ptr<SubprocessUtils> subprocessUtils_;
   string sshConfigPath_;
   bool displayLoginOutput_ = false;
+  bool sshPortSet_ = false;
+  int sshPort_ = 22;
+  std::vector<std::string> identityFiles_;
+  std::string cipher_;
 };
 }  // namespace et
 #endif  // __ET_SSH_SETUP_HANDLER__

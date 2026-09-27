@@ -45,7 +45,9 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
   command -v ninja >/dev/null 2>&1 || die "ninja not found; install ninja"
   mkdir -p "${BUILD_DIR}"
   pushd "./${BUILD_DIR}"
-  cmake ../ -DBUILD_TESTING=ON -DCODE_COVERAGE=ON -DDISABLE_TELEMETRY=ON -G Ninja
+  cmake ../ -DBUILD_TESTING=ON -DCODE_COVERAGE=ON -DDISABLE_TELEMETRY=ON -G Ninja \
+    ${CMAKE_C_COMPILER_LAUNCHER:+-DCMAKE_C_COMPILER_LAUNCHER="$CMAKE_C_COMPILER_LAUNCHER"} \
+    ${CMAKE_CXX_COMPILER_LAUNCHER:+-DCMAKE_CXX_COMPILER_LAUNCHER="$CMAKE_CXX_COMPILER_LAUNCHER"}
   find . -name "*.gcda" -delete
   ninja
   jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)

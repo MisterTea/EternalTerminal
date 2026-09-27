@@ -24,6 +24,9 @@ class ForwardDestinationHandler {
   /** @brief Sends bytes that need to travel to the destination socket. */
   void write(const string& s);
 
+  /** @brief Stops writes while leaving the socket readable. */
+  void shutdownWrite();
+
   /** @brief Polls for incoming data to send back to the source. Does nothing
    * unless `readyFds` names this handler's fd; `nullptr` always polls. */
   void update(vector<PortForwardData>* retval,
@@ -42,6 +45,8 @@ class ForwardDestinationHandler {
   int fd;
   /** @brief Logical identifier supplied over the control channel. */
   int socketId;
+  /** @brief True after the source half-closed its write direction. */
+  bool writeShutdown = false;
 };
 }  // namespace et
 

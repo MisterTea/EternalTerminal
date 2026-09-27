@@ -153,11 +153,19 @@ TelemetryService::TelemetryService(const bool _allow,
 
     sentry_init(options);
 
-    auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
     sentry_value_t user = sentry_value_new_object();
     sentry_value_set_by_key(user, "id",
                             sentry_value_new_string(telemetryId.str().c_str()));
     sentry_set_user(user);
+    auto sentryShutdownHandler = [](int i) {
+      // For synchronous faults (SIGSEGV, SIGILL, SIGFPE, SIGABRT),
+      // shutdownTelemetry() is unsafe: it joins threads and takes
+      // locks. Just reset to default and re-raise so the process
+      // terminates with the correct signal (and a core dump) rather
+      // than re-executing the faulting instruction indefinitely.
+      signal(i, SIG_DFL);
+      raise(i);
+    };
 
     vector<int> signalsToCatch = {
 #ifdef SIGILL

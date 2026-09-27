@@ -34,7 +34,7 @@ TEST_CASE("refreshAgentProxyPath creates and retargets agent proxy socket",
   REQUIRE(fs::read_symlink(proxyPath1).string() == target1);
 
   // Verify secure directory permissions (0700)
-  struct stat st{};
+  struct stat st {};
   REQUIRE(::stat(expectedDir.c_str(), &st) == 0);
   REQUIRE((st.st_mode & 0777) == (S_IRUSR | S_IWUSR | S_IXUSR));
 #endif
