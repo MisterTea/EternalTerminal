@@ -9,8 +9,9 @@ namespace et {
  * @brief IPC client that sends local stdin keystrokes to `htmd` and prints its
  * output.
  *
- * Unix uses `select()` on STDIN and the pipe fd. Windows waits on the stdin
- * handle and the IPC socket because stdin is not a selectable socket.
+ * Unix uses `select()` on STDIN and the pipe fd (HtmClientUnix.cpp). Windows
+ * reads the stdin handle on a thread and polls the IPC socket because stdin is
+ * not a selectable socket (HtmClientWindows.cpp).
  */
 class HtmClient : public IpcPairClient {
  public:
@@ -22,7 +23,8 @@ class HtmClient : public IpcPairClient {
 };
 
 /** @brief Discard pending stdin so leftover tmux -CC lines do not reach the
- * wrapping shell after ``htm`` exits (``/bin/sh -c 'htm; exec $SHELL'``). */
+ * wrapping shell after ``htm`` exits (``/bin/sh -c 'htm; exec $SHELL'``).
+ * Unix only. */
 void drainHtmStdin();
 }  // namespace et
 

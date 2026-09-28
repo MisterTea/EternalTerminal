@@ -19,6 +19,15 @@ class RawSocketUtils {
    * @brief Reads exactly `count` bytes from the descriptor, waiting for data.
    */
   static void readAll(int fd, char* buf, size_t count);
+
+  /**
+   * @brief One read(2) from @p fd (recv() on Windows, where descriptors
+   * handed around as ints are sockets). Errors are reported via GetErrno().
+   */
+  static ssize_t readSome(int fd, char* buf, size_t count);
+
+  /** @brief One write(2) to @p fd (send() on Windows). */
+  static ssize_t writeSome(int fd, const char* buf, size_t count);
 };
 }  // namespace et
 #endif  // __ET_RAW_SOCKET_UTILS__

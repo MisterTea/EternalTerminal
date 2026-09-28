@@ -514,11 +514,15 @@ decorate_target(et-lib)
 
 if(WIN32)
   set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ConsoleWindows.cpp
+    src/terminal/PseudoTerminalConsoleWindows.cpp
     src/terminal/ServerFifoPathWindows.cpp
     src/terminal/SessionStoreWindows.cpp
     src/terminal/UserTerminalHandlerWindows.cpp)
 else()
   set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ConsoleUnix.cpp
+    src/terminal/PseudoTerminalConsoleUnix.cpp
     src/terminal/ServerFifoPathUnix.cpp
     src/terminal/SessionStoreUnix.cpp
     src/terminal/UserTerminalHandlerUnix.cpp)
@@ -538,6 +542,10 @@ add_library(
   src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
+  src/terminal/BinaryStdioConsole.hpp
+  src/terminal/Console.hpp
+  src/terminal/PseudoTerminalConsole.hpp
+  src/terminal/StdioConsole.hpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/MuxProtocol.hpp
@@ -624,9 +632,15 @@ if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 endif()
 
 if(WIN32)
-  set(HTM_PLATFORM_SRCS src/htm/HtmServerWindows.cpp)
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientWindows.cpp
+    src/htm/HtmServerWindows.cpp
+    src/htm/TerminalHandlerWindows.cpp)
 else()
-  set(HTM_PLATFORM_SRCS src/htm/HtmServerUnix.cpp)
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientUnix.cpp
+    src/htm/HtmServerUnix.cpp
+    src/htm/TerminalHandlerUnix.cpp)
 endif()
 
 add_library(

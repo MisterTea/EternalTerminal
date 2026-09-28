@@ -1,5 +1,7 @@
 #include <Lmcons.h>
 
+#include <climits>
+
 #include "PlatformUtils.hpp"
 
 namespace et {
