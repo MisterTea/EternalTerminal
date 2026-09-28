@@ -4,8 +4,8 @@
  * It is a thin, stateless translator: each invocation resolves a session's
  * local control socket (~/.et/control/<name>.sock), sends one native control
  * frame, and prints the response.  The transport carries ET's own vocabulary
- * (raw input bytes, a TerminalInfo resize); the richer verbs here (writeln,
- * key, interrupt, eof, expect, observe) are ergonomic sugar composed from it.
+ * (raw input bytes, a TerminalInfo resize); the richer commands here (run,
+ * writeln, key, expect, observe) are ergonomic sugar composed from it.
  */
 #include <sys/ioctl.h>
 
@@ -66,7 +66,8 @@ void onWinch(int) { g_winchPending = 1; }
 string descFor(const string& cmd) {
   if (cmd == "open")
     return "Start a control session in the background (idempotent).";
-  if (cmd == "sessions") return "List local control sessions.";
+  if (cmd == "sessions")
+    return "List control sessions, and saved sessions with no control socket.";
   if (cmd == "gc")
     return "Remove dead session sockets (and, with --idle, end idle sessions).";
   if (cmd == "info")
@@ -250,7 +251,7 @@ void printOverview() {
       "  observe     watch the live screen (read-only)\n"
       "  attach      attach interactively (Ctrl-] to detach)\n"
       "\n"
-      "  sessions    list local control sessions\n"
+      "  sessions    list control sessions (+ saved ones with no socket)\n"
       "  info        show session status\n"
       "  gc          remove dead session sockets\n"
       "\n"
@@ -581,19 +582,17 @@ int64_t parseDuration(const string& s, int64_t fallback) {
 }
 
 /*
- * Sweep control-plane files an older etctl left in the saved-session directory.
+ * Remove control-plane files from the saved-session directory.
  *
- * Through 7.0.0-etctl.8 a session's socket, framing cache and end-note lived in
- * ~/.et/sessions, beside the records `et --list` reads.  They are suffixed, so
- * they still satisfy isValidSessionName() and `et --list` reports every one of
- * them as an unreadable or corrupt session.  One busy machine had 340 of them
- * against 2 real records.
+ * `~/.et/sessions` holds one record per session, and `et --list` reads every
+ * file there.  A control file named after its session (`<name>.sock`,
+ * `<name>.framing`, `<name>.gone`) still satisfies isValidSessionName(), so any
+ * that land there are reported as corrupt session records.  Control files
+ * belong in `~/.et/control`; these are stale, and dropping them is safe because
+ * a framing cache re-detects on demand and a note has already been read.
  *
- * Nothing writes there any more, so anything suffixed is debris and safe to
- * drop: the framing caches re-detect on demand, the notes have already been
- * read, and the credentials name sessions the server forgot long ago.  A live
- * socket is the one thing worth keeping, so it is left for the owning session
- * (or a later gc, once the daemon behind it exits).
+ * A live socket is left alone for the session that owns it, and swept once that
+ * daemon exits.
  */
 void sweepLegacySidecars() {
   string dir;
@@ -607,23 +606,30 @@ void sweepLegacySidecars() {
   }
   static const char* kSuffixes[] = {".creds", ".framing", ".gone"};
   std::error_code ec;
-  int removed = 0;
   for (const auto& entry : fs::directory_iterator(dir, ec)) {
     if (ec) break;
     if (!entry.is_regular_file(ec)) continue;
     const string name = entry.path().filename().string();
+    bool sidecar = false;
     for (const char* suffix : kSuffixes) {
       const size_t len = strlen(suffix);
       if (name.size() > len &&
           name.compare(name.size() - len, len, suffix) == 0) {
-        if (::unlink(entry.path().c_str()) == 0) removed++;
+        sidecar = true;
         break;
       }
     }
-  }
-  if (removed > 0) {
-    printf("removed %d stale control file%s from %s\n", removed,
-           removed == 1 ? "" : "s", dir.c_str());
+    if (!sidecar) continue;
+    /*
+     * A session name may itself end in one of those suffixes, and its record
+     * lives at exactly the path a sidecar would.  Deleting one would take the
+     * session's id and passkey with it and strand a running shell, so only
+     * remove a file that does not parse as a session record.
+     */
+    if (loadSession(name)) continue;
+    if (::unlink(entry.path().c_str()) == 0) {
+      printf("removed stale control file: %s\n", name.c_str());
+    }
   }
 }
 
@@ -636,9 +642,9 @@ int cmdGc(int argc, char** argv) {
       printf(
           "etctl gc [--idle [DUR]] [--force]\n"
           "  Remove dead session sockets (a daemon that has exited leaves a\n"
-          "  stale socket), and sweep control files an older etctl left in\n"
-          "  the saved-session directory.  With --idle, also end live\n"
-          "  sessions idle longer\n"
+          "  stale socket), and remove stale control files from the\n"
+          "  saved-session directory.  With --idle, also end live sessions\n"
+          "  idle longer\n"
           "  than DUR (default 8h; e.g. 30m, 6h, 2d): eof first, then a "
           "forced\n"
           "  stop if it doesn't exit within a few seconds.  --force skips the\n"
@@ -652,7 +658,7 @@ int cmdGc(int argc, char** argv) {
     } else if (a.rfind("--idle=", 0) == 0) {
       idle = true;
       idleSecs = parseDuration(a.substr(strlen("--idle=")), idleSecs);
-    } else if (a == "--force" || a == "--kill") {
+    } else if (a == "--force") {
       force = true;
     }
   }
@@ -679,7 +685,7 @@ int cmdGc(int argc, char** argv) {
     }
   }
 
-  // Sweep dead sockets: originally-dangling ones plus any just reaped.
+  // Sweep dead sockets: those already dangling plus any just reaped.
   for (const string& name : control_paths::listSessionNames()) {
     if (sessionAlive(name)) continue;
     const string path = control_paths::socketPathForName(name);
@@ -788,14 +794,21 @@ int cmdRead(const string& name, int64_t cursor, bool strip, bool follow,
   };
 
   if (follow) {
+    // "[session ended]" is only true for a session that was reachable at least
+    // once; a name that never connected is an error, not an ending.
+    bool everConnected = false;
     while (true) {
       uint8_t op = 0;
       string payload;
       if (!oneShot(name, CTL_READ, control_proto::encodeCursor(cursor), &op,
-                   &payload, /*quiet=*/true)) {
+                   &payload, /*quiet=*/everConnected)) {
+        if (!everConnected) {
+          return 1;
+        }
         fprintf(stderr, "[session ended]\n");
         return 0;
       }
+      everConnected = true;
       ScrollbackRead r = control_proto::decodeReadResp(payload);
       emit(r);
       cursor = r.nextCursor;
@@ -806,7 +819,7 @@ int cmdRead(const string& name, int64_t cursor, bool strip, bool follow,
   if (timeoutSec > 0) {
     /*
      * Wait up to timeoutSec for new output; once it starts, keep reading until
-     * a brief quiet gap, then return (etch read() semantics).
+     * a brief quiet gap, then return.
      */
     const auto deadline =
         std::chrono::steady_clock::now() +
@@ -928,7 +941,7 @@ int cmdExpect(const string& name, const string& pattern, double timeoutSec,
   int64_t cursor = startCursor >= 0 ? startCursor
                                     : (fromStart ? 0 : sessionHeadCursor(name));
   if (cursor < 0) cursor = 0;
-  string acc;
+  string raw, acc;
   const auto deadline =
       std::chrono::steady_clock::now() +
       std::chrono::milliseconds((long long)(timeoutSec * 1000));
@@ -941,7 +954,10 @@ int cmdExpect(const string& name, const string& pattern, double timeoutSec,
     }
     ScrollbackRead r = control_proto::decodeReadResp(payload);
     cursor = r.nextCursor;
-    acc += stripAnsi(r.data);
+    // Strip the whole buffer rather than each chunk: an escape sequence split
+    // across two reads survives a per-chunk strip and breaks the match.
+    raw += r.data;
+    acc = stripAnsi(raw);
     bool matched = exact ? (acc.find(pattern) != string::npos)
                          : std::regex_search(acc, re);
     if (matched) {
@@ -1042,6 +1058,15 @@ int cmdWait(const string& name, double idleSec, double timeoutSec) {
 
 int cmdAttach(const string& name, bool readOnly, int64_t startCursor,
               bool resize) {
+  // Fail loudly on a name that is not there, rather than opening a terminal and
+  // reporting the clean "[session ended]" a real session gets when it stops.
+  {
+    uint8_t probeOp = 0;
+    string probePayload;
+    if (!oneShot(name, CTL_INFO, "", &probeOp, &probePayload)) {
+      return 1;
+    }
+  }
   /*
    * Best-effort interactive attach: stream output to stdout and (unless
    * read-only) forward stdin as input.  The local terminal renders full-screen
@@ -1256,7 +1281,7 @@ string probeRead(const string& name, const string& framed,
 // start of the session), drains what is there, and -- if the marker hasn't
 // landed yet (first run racing the connect) -- waits for it plus a short beat
 // for the following prompt. Returns the accumulated bytes; an absent marker
-// (older etctl, or the handshake scrolled away) tells the caller to fall back.
+// (the handshake has scrolled away) tells the caller to fall back.
 string readConnectHandshake(const string& name, double timeoutSec) {
   const std::regex marker("ETCTL_EC=[0-9]*[\r\n]");
   bool sawMarker = false;
@@ -1281,7 +1306,7 @@ string readConnectHandshake(const string& name, double timeoutSec) {
 // capability ($status expands to a digit in fish/zsh, empty in bash/sh) and, in
 // the prompt right after it, the framing marks (OSC-133 D, bracketed-paste
 // ?2004). Reading those back is a zero-probe first run. Only when the marker is
-// absent (older etctl, or the handshake scrolled away) do we fall back to a
+// absent (the handshake has scrolled away) do we fall back to a
 // single probe. Run once per session by runCommand and cached.
 RunProfile detectFraming(const string& name, double timeoutSec) {
   RunProfile prof;
@@ -1506,6 +1531,13 @@ int runCommand(const string& name, const string& command, double timeoutSec,
     }
     ScrollbackRead r = control_proto::decodeReadResp(payload);
     cursor = r.nextCursor;
+    if (r.truncated) {
+      fprintf(
+          stderr,
+          "etctl: output outran the session buffer; result discarded "
+          "(read it with `etctl read` or raise the session's scrollback)\n");
+      return 2;
+    }
     if (!r.data.empty()) lastDataAt = std::chrono::steady_clock::now();
     acc += r.data;
 
@@ -1638,13 +1670,13 @@ int cmdOpen(int argc, char** argv) {
    * hands it to et as --name, which both names the session and adopts one
    * already running under that name.  The call is idempotent at two levels: a
    * live session short-circuits below, and a session whose *client* died is
-   * adopted rather than duplicated.  That second case is the one that used to
-   * strand sessions: the socket is gone, so the checks below see nothing and a
-   * plain open would bootstrap a second session over SSH while the first kept
-   * running on the host, holding its shell, cwd and jobs with nothing able to
-   * reach them.  Either way `open` is a cheap "ensure this session exists" step
-   * you can safely run before driving it, which is the clean version of etch's
-   * autospawn -- the connection details live only here, not on every command.
+   * adopted rather than duplicated.  The second case matters because its socket
+   * is gone, so the checks below see nothing: without the adopt, a second
+   * session would be bootstrapped over SSH while the first kept running on the
+   * host, holding its shell, cwd and jobs with nothing able to reach them.
+   *
+   * So `open` is a cheap "ensure this session exists" step to run before
+   * driving it, and connection details live only here, not on every command.
    */
   if (argc < 3) {
     fprintf(stderr,
@@ -1682,11 +1714,10 @@ int cmdOpen(int argc, char** argv) {
       checkTarget = a.substr(strlen("--ctl-socket="));
     } else if (a == "--name" && i + 1 < argc) {
       i++;  // skip et's --name value, it isn't the destination
-    } else if ((a == "-c" || a == "--command") && i + 1 < argc) {
-      // Pull out a user-supplied connect command so we can merge it with our
-      // own setup (below) rather than fight over et's single -c.  Marking its
-      // tokens to skip also keeps the value from being mistaken for the
-      // destination by the bare-positional branch.
+    } else if (a == "--command" && i + 1 < argc) {
+      // Merge a user-supplied connect command into our own setup below rather
+      // than fighting over et's single --command.  `-c` is not accepted here:
+      // et gives it ssh's meaning, a cipher spec, and forwards it untouched.
       userCommand = argv[i + 1];
       skip[i] = true;
       skip[i + 1] = true;
@@ -1722,6 +1753,20 @@ int cmdOpen(int argc, char** argv) {
     fprintf(stderr, "etctl: session '%s' already running (%s)\n", name.c_str(),
             existingHost.empty() ? "?" : existingHost.c_str());
     return 0;
+  }
+
+  /*
+   * et splits its command line at the first bare token, so a flag sitting where
+   * HOST belongs would leave the host mid-line and turn everything after it,
+   * including our setup, into a remote command.  Refuse instead of execing
+   * something that silently does the wrong thing.
+   */
+  if (destIndex < 0) {
+    fprintf(stderr,
+            "etctl open: HOST must come before any et options "
+            "(etctl open %s HOST [et-args...])\n",
+            name.c_str());
+    return 2;
   }
 
   // Establishing a fresh session under this name: drop any stale framing
@@ -1823,13 +1868,15 @@ int main(int argc, char** argv) {
         cxxopts::Options opts("etctl open", descFor("open"));
         opts.add_options()("h,help", "Print help");
         opts.positional_help("");
-        opts.custom_help("NAME [OPTION...] [user@]host[:port]");
+        opts.custom_help("NAME [user@]host[:port] [OPTION...]");
         fputs(opts.help({""}).c_str(), stdout);
         printf(
-            "  ...         Passed directly to et (see `et --help`)\n"
+            "  ...         Passed through to et (see `et --help`); --command\n"
+            "              is merged into the session's setup\n"
             "\n"
             "  NAME is the session name (etctl supplies et's --name);\n"
-            "  if NAME is already running it does nothing.\n");
+            "  if NAME is already running it does nothing.  HOST comes\n"
+            "  before any et options.\n");
         return 0;
       }
     }
@@ -1906,6 +1953,11 @@ int main(int argc, char** argv) {
     return cmdWrite(name, text + "\n", secret);
   }
   if (cmd == "key") {
+    if (!res.count("KEYS")) {
+      fprintf(stderr, "etctl key: KEY required (try: etctl key %s eof)\n",
+              name.c_str());
+      return 2;
+    }
     string bytes;
     for (const string& k : res["KEYS"].as<vector<string>>()) {
       string b = keyToBytes(k);

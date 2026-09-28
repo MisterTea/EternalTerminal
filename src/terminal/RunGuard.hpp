@@ -12,8 +12,8 @@
  * with Ctrl-C rather than hanging to the deadline.
  *
  * The two ways of being wrong do not cost the same.  Failing to spot a parked
- * shell costs a slow return: the deadline sends the same Ctrl-C and reports
- * the same diagnosis, just later.  Interrupting a shell that is *running* the
+ * shell costs a slow return: the deadline sends the same Ctrl-C and names the
+ * same cause, just later.  Interrupting a shell that is *running* the
  * body kills it partway and discards its output, which for anything
  * non-idempotent is data loss the caller cannot even detect, because an
  * aborted run looks exactly like a body that never started.  The rule below

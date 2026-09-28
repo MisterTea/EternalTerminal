@@ -14,9 +14,9 @@ using et::run_guard::shouldDeclareParked;
 
 TEST_CASE("run guard never interrupts a body that started", "[RunGuard]") {
   SECTION("a running command whose output re-armed bracketed paste") {
-    // The regression: a themed prompt redrawing, or any program that enables
-    // bracketed paste, re-arms paste while the command is still working. That
-    // used to read as a continuation prompt and Ctrl-C the command.
+    // A themed prompt redrawing, or any program that enables bracketed paste,
+    // re-arms paste while the command is still working. That must not read as
+    // a continuation prompt, or the guard interrupts a running command.
     Evidence e;
     e.accepted = true;
     e.rearmed = true;

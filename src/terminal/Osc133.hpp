@@ -20,7 +20,7 @@ namespace et {
 // optional numeric exit code. Integrations vary the payload -- iTerm2's
 // fish/xonsh append ";aid=<id>", C may carry ";<CR>" or ";cmdline_url=..." --
 // so [^\x07\x1b]* absorbs whatever trails the essential part, and either a BEL
-// (\a) or an ST (ESC \) terminates (shells differ). kOsc133D's group 1 is the
+// (\a) or an ST (ESC \) terminates (shells differ). kOsc133D's group 2 is the
 // exit code when present.
 inline const std::regex kOsc133C("\x1b\\]133;C[^\x07\x1b]*(\x07|\x1b\\\\)");
 inline const std::regex kOsc133D(

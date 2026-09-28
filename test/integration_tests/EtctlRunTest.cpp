@@ -192,8 +192,7 @@ TEST_CASE("EtctlRunAgainstRealShell", "[EtctlRun]") {
   {
     // Frame robustness: brace / bang / quote metacharacters in the body are
     // inert, since it is quoted here-doc data, not source the line reader
-    // parses.  (A bare
-    // '}' or '!' in the body used to be able to break the brace-group wrap.)
+    // parses.
     RunResult r = runEtctl("run " + name + " 'echo \"a!b{c}d\"' --timeout 10");
     INFO("run metachars -> code=" << r.code << " out=[" << r.out << "]");
     CHECK(r.code == 0);
