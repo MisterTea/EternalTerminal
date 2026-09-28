@@ -125,6 +125,31 @@ class TerminalClient {
     return connection &&
            connection->lastStatus() == et::ConnectStatus::INVALID_KEY;
   }
+
+  // True when this client adopted a session that was already running rather
+  // than creating one. The shell is mid-life, so connect-time setup has already
+  // happened and re-running it would type into whatever is in the foreground.
+  bool attachedToExisting() { return connection && connection->wasRecovered(); }
+
+  /**
+   * @brief Why `run()` returned, in a form fit to show a user.
+   *
+   * `run()` returning is what ends a control session, and every caller so far
+   * has had to guess which of several very different things happened. Ask here
+   * instead of inferring it.
+   */
+  string exitReason() {
+    if (sessionEndedByServer()) {
+      return "the remote session ended (server no longer has it)";
+    }
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return "shutdown was requested";
+      }
+    }
+    return "the connection closed";
+  }
   /**
    * @brief Flags the client loop to exit gracefully on the next iteration.
    */
@@ -132,6 +157,12 @@ class TerminalClient {
     lock_guard<recursive_mutex> guard(shutdownMutex);
     shuttingDown = true;
   }
+
+  // True when the client currently holds a live connection to etserver.  ET
+  // flips this to false during a drop and back to true once it reconnects, so
+  // it distinguishes "link down" from "the daemon is gone" (the latter shows as
+  // an unreachable control socket).
+  bool isConnected() { return connection && !connection->isDisconnected(); }
 
  protected:
   /**

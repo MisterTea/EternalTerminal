@@ -523,6 +523,15 @@ add_library(
   src/terminal/MuxClient.cpp
   src/terminal/TitleParser.hpp
   src/terminal/TitleParser.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
+  src/terminal/ControlListener.hpp
+  src/terminal/ControlListener.cpp
+  src/terminal/ControlProtocol.hpp
+  src/terminal/ControlPaths.hpp
+  src/terminal/SessionScrollback.hpp
+  src/terminal/SessionTombstone.hpp
+  src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp

@@ -7,6 +7,10 @@
 
 #include "BinaryStdioConsole.hpp"
 #include "ClientArgParsing.hpp"
+#include "ControlConsole.hpp"
+#include "ControlListener.hpp"
+#include "ControlPaths.hpp"
+#include "DaemonCreator.hpp"
 #include "Headers.hpp"
 #include "HostParsing.hpp"
 #include "MuxClient.hpp"
@@ -17,6 +21,7 @@
 #include "PipeSocketHandler.hpp"
 #include "PseudoTerminalConsole.hpp"
 #include "SessionStore.hpp"
+#include "SessionTombstone.hpp"
 #include "SshSetupHandler.hpp"
 #include "SubprocessUtils.hpp"
 #include "TelemetryService.hpp"
@@ -25,6 +30,17 @@
 #include "WinsockContext.hpp"
 
 using namespace et;
+
+// A short random suffix for an unnamed --ctl session's socket name.
+static string genRandomHandle() {
+  static const char* kHex = "0123456789abcdef";
+  std::random_device rd;
+  string handle;
+  for (int i = 0; i < 6; i++) {
+    handle.push_back(kHex[rd() % 16]);
+  }
+  return handle;
+}
 
 bool ping(SocketEndpoint socketEndpoint,
           shared_ptr<SocketHandler> clientSocketHandler) {
@@ -173,9 +189,51 @@ optional<SessionInfo> resolveSavedSession(const string& query) {
   return nullopt;
 }
 
-AttachResult attachSavedSession(const string& name, const SessionInfo& session,
-                                const string& command, bool noexit,
-                                bool noTerminal, int keepaliveDuration) {
+/*
+ * Serve a control session: detach, answer etctl on the control socket for as
+ * long as the session lives, and leave a note behind saying why it stopped.
+ *
+ * Both ways of arriving at a live session -- bootstrapping a new one over SSH
+ * and reattaching to one already running -- end up here, so a control session
+ * behaves the same either way.
+ */
+#ifndef WIN32
+int runControlSession(TerminalClient& client,
+                      shared_ptr<ControlConsole> controlConsole,
+                      const string& ctlName, const string& socketPath,
+                      const string& command, const string& hostLabel) {
+  // Double-fork into the background; the parent exits here.
+  DaemonCreator::create(true, "");
+
+  ControlListener listener(
+      controlConsole, socketPath, [&client]() { client.shutdown(); },
+      [&client]() { return client.isConnected(); }, hostLabel);
+  listener.start();
+  // A control session is always persistent, so honor --command as a one-shot
+  // startup command run on connect (e.g. to set up a clean-room shell) instead
+  // of silently dropping it.  noexit is implied, so run() injects
+  // "<command>\n" and does not append "; exit".  An adopted session already
+  // ran it when it was created, and its shell may have something in the
+  // foreground now, so it is not replayed.
+  const bool adopted = client.attachedToExisting();
+  const int status = client.run(adopted ? "" : command, /*noexit=*/true);
+  // run() returning is what ends a control session, and unlinking the socket
+  // is all the next `etctl` command would otherwise see. Leave the reason
+  // behind first, so that command can say what happened instead of reporting
+  // a missing file.
+  const string endedBecause = client.exitReason();
+  LOG(INFO) << "Control session '" << ctlName << "' ending: " << endedBecause;
+  session_tombstone::write(ctlName, endedBecause);
+  listener.shutdown();
+  return status;
+}
+#endif
+
+AttachResult attachSavedSession(
+    const string& name, const SessionInfo& session, const string& command,
+    bool noexit, bool noTerminal, int keepaliveDuration,
+    shared_ptr<Console> consoleOverride = nullptr,
+    const std::function<void(TerminalClient&)>& drive = nullptr) {
   SocketEndpoint endpoint;
   endpoint.set_name(session.host);
   endpoint.set_port(session.port);
@@ -188,8 +246,8 @@ AttachResult attachSavedSession(const string& name, const SessionInfo& session,
     return AttachResult::FAILED;
   }
 
-  shared_ptr<Console> console;
-  if (!noTerminal) {
+  shared_ptr<Console> console = consoleOverride;
+  if (!console && !noTerminal) {
     console.reset(new PseudoTerminalConsole());
   }
   bool sessionEnded = false;
@@ -205,7 +263,11 @@ AttachResult attachSavedSession(const string& name, const SessionInfo& session,
         [name](const string& title) {
           return updateSessionTitle(name, title);
         });
-    client.run(command, noexit);
+    if (drive) {
+      drive(client);
+    } else {
+      client.run(command, noexit);
+    }
     sessionEnded = client.sessionEndedByServer();
   } catch (const runtime_error& err) {
     if (string(err.what()) == TerminalClient::INVALID_SESSION_CONNECT_ERROR) {
@@ -472,7 +534,15 @@ int main(int argc, char** argv) {
         ("T,no-pty",
          "Run the remote command on pipes instead of a pty (binary stdio, "
          "separate stderr, no shell injection). -t requests a pty and wins "
-         "when it appears later.")                         //
+         "when it appears later.")  //
+        ("ctl",
+         "Run as a background control session driven by etctl (no local "
+         "terminal); name it with --name, relocate its socket with "
+         "--ctl-socket. With --command, that command runs once on "
+         "connect and the session stays alive.")  //
+        ("ctl-socket",
+         "Path for the --ctl socket (default ~/.et/sessions/<name>.sock)",
+         cxxopts::value<std::string>())                    //
         ("forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
          cxxopts::value<std::string>())  //
@@ -1185,6 +1255,95 @@ int main(int argc, char** argv) {
           << endl;
     }
 
+    shared_ptr<Console> console;
+    string stdioForward = extractSingleOptionWithDefault<string>(
+        result, options, "stdio-forward", "");
+    // -t / -T / --no-pty: the later flag wins. None means the existing pty
+    // path.
+    const bool noPty = remotePtyDisabled(muxParse.ssh);
+    string command = resolveConfiguredRemoteCommand(
+        resolveRemoteCommand(
+            argvSplit.commandOperands, result.count("command") > 0,
+            result.count("command") ? result["command"].as<string>() : ""),
+        sshConfigOptions.remote_command, muxParse.ssh.noRemoteCommand);
+    const string commandOptionsError =
+        remoteCommandOptionsError(muxParse.ssh, command, !stdioForward.empty());
+    if (!commandOptionsError.empty()) {
+      CLOG(INFO, "stdout") << commandOptionsError << endl;
+      if (noPty && command.empty()) {
+        CLOG(INFO, "stdout") << options.help({}) << endl;
+      }
+      exit(1);
+    }
+    shared_ptr<ControlConsole> controlConsole;
+    if (result.count("ctl")) {
+      // Programmatic control mode: drive the session through a local socket
+      // instead of a TTY.  ControlConsole is a Console, so TerminalClient is
+      // unchanged.
+      controlConsole.reset(new ControlConsole());
+      console = controlConsole;
+    } else if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand ||
+               result.count("no-terminal")) {
+      // -W and -N do not attach a local shell. --no-terminal only hides the
+      // local console; the remote shell still starts.
+    } else if (noPty) {
+      console.reset(new BinaryStdioConsole());
+    } else {
+      console.reset(new PseudoTerminalConsole());
+    }
+
+    /*
+     * Resolve the control socket before either path connects, so a bad path
+     * fails before a session exists, and announce it on the real stdout while
+     * one still exists to announce on.  A persisted session is already named,
+     * so the control socket takes that name and the two cannot drift apart;
+     * only --no-persist needs a locally generated one.
+     */
+    string ctlName;
+    string ctlSocketPath;
+    std::function<void(TerminalClient&)> driveCtl;
+    if (controlConsole) {
+#ifdef WIN32
+      CLOG(INFO, "stdout") << "--ctl is not supported on Windows" << endl;
+      exit(1);
+#else
+      ctlName = sessionName.empty()
+                    ? (destinationHost + "-" + genRandomHandle())
+                    : sessionName;
+      try {
+        if (result.count("ctl-socket")) {
+          // Explicit location: honor it verbatim, creating parent dirs as
+          // needed. Such a session won't appear in `etctl sessions` (it lives
+          // outside the control dir); address it by path.
+          ctlSocketPath = result["ctl-socket"].as<string>();
+          size_t slash = ctlSocketPath.find_last_of('/');
+          if (slash != string::npos && slash > 0) {
+            control_paths::mkdirp0700(ctlSocketPath.substr(0, slash));
+          }
+        } else {
+          control_paths::ensureControlDir();
+          ctlSocketPath = control_paths::socketPathForName(ctlName);
+        }
+      } catch (const std::exception& e) {
+        CLOG(INFO, "stdout")
+            << "Could not prepare control socket: " << e.what() << endl;
+        exit(1);
+      }
+      // This name is starting, so whatever ended it last time no longer
+      // applies; clear the note before anyone can read a stale one.
+      session_tombstone::clear(ctlName);
+      CLOG(INFO, "stdout") << "et control session: " << ctlName << endl;
+      CLOG(INFO, "stdout") << "control socket: " << ctlSocketPath << endl;
+      const string hostLabel = username.empty()
+                                   ? destinationHost
+                                   : (username + "@" + destinationHost);
+      driveCtl = [&, hostLabel](TerminalClient& client) {
+        runControlSession(client, controlConsole, ctlName, ctlSocketPath,
+                          command, hostLabel);
+      };
+#endif
+    }
+
     if (namedSession) {
       if (namedSession->host != socketEndpoint.name() ||
           namedSession->port != socketEndpoint.port()) {
@@ -1196,12 +1355,8 @@ int main(int argc, char** argv) {
       }
 
       const AttachResult attachResult = attachSavedSession(
-          sessionName, *namedSession,
-          resolveRemoteCommand(
-              argvSplit.commandOperands, result.count("command") > 0,
-              result.count("command") ? result["command"].as<string>() : ""),
-          result.count("noexit"), result.count("no-terminal"),
-          keepaliveDuration);
+          sessionName, *namedSession, command, result.count("noexit"),
+          result.count("no-terminal"), keepaliveDuration, console, driveCtl);
       if (attachResult == AttachResult::ATTACHED) {
         exit(0);
       }
@@ -1245,36 +1400,6 @@ int main(int argc, char** argv) {
     }
     if (result.count("terminal-path")) {
       etterminal_path = result["terminal-path"].as<string>();
-    }
-
-    shared_ptr<Console> console;
-    string stdioForward = extractSingleOptionWithDefault<string>(
-        result, options, "stdio-forward", "");
-    // -t / -T / --no-pty: the later flag wins. None means the existing pty
-    // path.
-    const bool noPty = remotePtyDisabled(muxParse.ssh);
-    string command = resolveConfiguredRemoteCommand(
-        resolveRemoteCommand(
-            argvSplit.commandOperands, result.count("command") > 0,
-            result.count("command") ? result["command"].as<string>() : ""),
-        sshConfigOptions.remote_command, muxParse.ssh.noRemoteCommand);
-    const string commandOptionsError =
-        remoteCommandOptionsError(muxParse.ssh, command, !stdioForward.empty());
-    if (!commandOptionsError.empty()) {
-      CLOG(INFO, "stdout") << commandOptionsError << endl;
-      if (noPty && command.empty()) {
-        CLOG(INFO, "stdout") << options.help({}) << endl;
-      }
-      exit(1);
-    }
-    if (!stdioForward.empty() || muxParse.ssh.noRemoteCommand ||
-        result.count("no-terminal")) {
-      // -W and -N do not attach a local shell. --no-terminal only hides the
-      // local console; the remote shell still starts.
-    } else if (noPty) {
-      console.reset(new BinaryStdioConsole());
-    } else {
-      console.reset(new PseudoTerminalConsole());
     }
 
     bool forwardAgent = result.count("forward-ssh-agent") > 0;
@@ -1410,9 +1535,14 @@ int main(int argc, char** argv) {
         exit(1);
       }
     }
-    const int remoteExitStatus =
-        terminalClient.run(command, result.count("noexit"));
-    sessionEndedByServer = terminalClient.sessionEndedByServer();
+    int remoteExitStatus = 0;
+    if (driveCtl) {
+      driveCtl(terminalClient);
+      sessionEndedByServer = terminalClient.sessionEndedByServer();
+    } else {
+      remoteExitStatus = terminalClient.run(command, result.count("noexit"));
+      sessionEndedByServer = terminalClient.sessionEndedByServer();
+    }
 
     if (muxMaster) {
       muxMaster->notifyPrimaryClientExited();
