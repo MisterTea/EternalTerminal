@@ -386,6 +386,36 @@ TEST_CASE("ForwardSourceHandler update ignores transient EAGAIN reads",
   REQUIRE(socketHandler->closedFds.empty());
 }
 
+TEST_CASE("ForwardSourceHandler update yields after a bounded data batch",
+          "[ForwardSourceHandler][issue298]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  int fd = handler.listen();
+  handler.addSocket(123, fd);
+
+  const string chunk(16 * 1024, 'x');
+  for (int i = 0; i < 5; ++i) {
+    socketHandler->enqueueHasData(true);
+    socketHandler->enqueueRead(chunk.size(), chunk);
+  }
+
+  std::vector<PortForwardData> data;
+  handler.update(&data);
+
+  REQUIRE(data.size() == 4);
+  REQUIRE(socketHandler->performedReads.size() == 4);
+}
+
 TEST_CASE("ForwardSourceHandler update reads only ready fds",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();

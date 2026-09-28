@@ -11,6 +11,7 @@ namespace et {
  */
 class ForwardDestinationHandler {
  public:
+  static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
   /** @brief Binds the handler to a destination fd so data can be sent
    * downstream. */
   ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,

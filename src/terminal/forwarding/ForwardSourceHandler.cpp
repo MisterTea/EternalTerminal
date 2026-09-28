@@ -193,6 +193,7 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
   }
 
   vector<int> socketsToRemove;
+  size_t bytesThisUpdate = 0;
 
   for (auto& it : socketFdMap) {
     int socketId = it.first;
@@ -215,25 +216,25 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
       continue;
     }
 
-    while (true) {
+    while (bytesThisUpdate < MAX_BYTES_PER_UPDATE) {
       if (!stdioMode && !socketHandler->hasData(fd)) {
         break;
       }
 
-      char buf[1024];
+      char buf[16 * 1024];
       int bytesRead = -1;
       int readErrno = 0;
       if (stdioMode) {
 #ifndef WIN32
-        bytesRead = ::read(fd, buf, 1024);
+        bytesRead = ::read(fd, buf, sizeof(buf));
         readErrno = errno;
         SetErrno(readErrno);
 #else
-        bytesRead = socketHandler->read(fd, buf, 1024);
+        bytesRead = socketHandler->read(fd, buf, sizeof(buf));
         readErrno = GetErrno();
 #endif
       } else {
-        bytesRead = socketHandler->read(fd, buf, 1024);
+        bytesRead = socketHandler->read(fd, buf, sizeof(buf));
         readErrno = GetErrno();
       }
       if (bytesRead == -1 &&
@@ -260,6 +261,7 @@ bool ForwardSourceHandler::update(vector<PortForwardData>* data,
       } else {
         VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
         pwd.set_buffer(string(buf, bytesRead));
+        bytesThisUpdate += bytesRead;
       }
       data->push_back(pwd);
       if (bytesRead < 1) {
