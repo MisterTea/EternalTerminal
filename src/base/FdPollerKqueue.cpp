@@ -1,5 +1,3 @@
-#if !defined(WIN32) && !defined(__linux__)
-#if __has_include(<sys/event.h>)
 #include <sys/event.h>
 
 #include "FdPoller.hpp"
@@ -15,6 +13,8 @@ FdPoller::FdPoller() : pollerFd(kqueue()) {
     throw runtime_error(string("fcntl failed: ") + strerror(savedErrno));
   }
 }
+
+FdPoller::~FdPoller() { ::close(pollerFd); }
 
 FdPoller::Ready FdPoller::waitImpl(int capacity, int timeoutMs) {
   vector<struct kevent> events(capacity);
@@ -81,7 +81,3 @@ void FdPoller::removeFd(int fd, short interest) {
   }
 }
 }  // namespace et
-#else
-#error "FdPoller requires epoll or kqueue"
-#endif
-#endif

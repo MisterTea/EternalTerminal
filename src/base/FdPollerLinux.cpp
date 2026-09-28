@@ -1,4 +1,3 @@
-#ifdef __linux__
 #include <sys/epoll.h>
 
 #include "FdPoller.hpp"
@@ -9,6 +8,8 @@ FdPoller::FdPoller() : pollerFd(epoll_create1(EPOLL_CLOEXEC)) {
     throw runtime_error(string("epoll_create1 failed: ") + strerror(errno));
   }
 }
+
+FdPoller::~FdPoller() { ::close(pollerFd); }
 
 FdPoller::Ready FdPoller::waitImpl(int capacity, int timeoutMs) {
   vector<epoll_event> events(capacity);
@@ -68,4 +69,3 @@ void FdPoller::removeFd(int fd, short) {
   }
 }
 }  // namespace et
-#endif

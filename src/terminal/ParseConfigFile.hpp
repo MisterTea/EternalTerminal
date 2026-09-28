@@ -9,6 +9,7 @@
 #include <vector>
 
 #include "Headers.hpp"
+#include "PlatformUtils.hpp"
 #include "SocksUtils.hpp"
 
 /* This is needed for a standard getpwuid_r on opensolaris */
@@ -46,19 +47,8 @@ using namespace std;
     }                  \
   } while (0)
 
-#ifndef NSS_BUFLEN_PASSWD
-#define NSS_BUFLEN_PASSWD 4096
-#endif /* NSS_BUFLEN_PASSWD */
-
 #ifndef MAX_BUF_SIZE
 #define MAX_BUF_SIZE 4096
-#endif
-
-/* Socket type */
-#ifndef WIN32
-#ifndef socket_t
-typedef int socket_t;
-#endif
 #endif
 
 #ifdef _MSC_VER
@@ -274,59 +264,20 @@ static int ssh_config_parse_line(const char* targethost,
                                  const char* fileDir);
 
 inline char* ssh_get_user_home_dir(void) {
-#ifdef WIN32
-  return strdup(getenv("USERPROFILE"));
-#else
-  char* szPath = NULL;
-  struct passwd pwd;
-  struct passwd* pwdbuf;
-  char buf[NSS_BUFLEN_PASSWD];
-  int rc;
-
-  rc = getpwuid_r(getuid(), &pwd, buf, NSS_BUFLEN_PASSWD, &pwdbuf);
-  if (rc != 0) {
-    szPath = getenv("HOME");
-    if (szPath == NULL) {
+  optional<string> home = et::GetAccountHomeDirectory();
+  if (!home) {
+    const char* envHome = getenv("HOME");
+    if (envHome == NULL) {
       return NULL;
     }
-    memset(buf, 0, sizeof(buf));
-    snprintf(buf, sizeof(buf), "%s", szPath);
-
-    return strdup(buf);
+    home = string(envHome);
   }
-
-  szPath = strdup(pwd.pw_dir);
-
-  return szPath;
-#endif
+  return strdup(home->c_str());
 }
 
 inline char* ssh_get_local_username(void) {
-#ifdef WIN32
-  char username[UNLEN + 1];
-  DWORD username_len = UNLEN + 1;
-  GetUserNameA(username, &username_len);
-  return strdup(username);
-#else
-  struct passwd pwd;
-  struct passwd* pwdbuf;
-  char buf[NSS_BUFLEN_PASSWD];
-  char* name;
-  int rc;
-
-  rc = getpwuid_r(getuid(), &pwd, buf, NSS_BUFLEN_PASSWD, &pwdbuf);
-  if (rc != 0) {
-    return NULL;
-  }
-
-  name = strdup(pwd.pw_name);
-
-  if (name == NULL) {
-    return NULL;
-  }
-
-  return name;
-#endif
+  const optional<string> name = et::GetAccountUsername();
+  return name ? strdup(name->c_str()) : NULL;
 }
 
 inline char* ssh_lowercase(const char* str) {
@@ -1620,9 +1571,6 @@ static int ssh_config_get_yesno(char** str, int notfound) {
     return notfound;
   }
 
-#ifdef WIN32
-#define strncasecmp(x, y, z) _strnicmp(x, y, z)
-#endif
   if (strncasecmp(p, "yes", 3) == 0) {
     return 1;
   } else if (strncasecmp(p, "no", 2) == 0) {

@@ -1,4 +1,3 @@
-#ifdef WIN32
 #include "FdPoller.hpp"
 
 namespace et {
@@ -96,4 +95,3 @@ bool FdPoller::addFd(int fd, short /*interest*/) {
 void FdPoller::removeFd(int /*fd*/, short /*interest*/) {}
 
 }  // namespace et
-#endif

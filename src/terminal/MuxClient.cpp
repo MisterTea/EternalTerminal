@@ -1,15 +1,5 @@
 #include "MuxClient.hpp"
 
-#ifndef WIN32
-#include <sys/socket.h>
-#include <sys/un.h>
-#else
-// clang-format off
-#include <winsock2.h>
-#include <afunix.h>
-// clang-format on
-#endif
-
 namespace et {
 
 MuxClient::MuxClient(string controlPath) : path(std::move(controlPath)) {}
@@ -26,11 +16,7 @@ void MuxClient::hangup() {
   if (fd < 0) {
     return;
   }
-#ifdef WIN32
-  ::shutdown(fd, SD_BOTH);
-#else
   ::shutdown(fd, SHUT_RDWR);
-#endif
 }
 
 bool MuxClient::connect(int timeoutMs) {
@@ -51,27 +37,14 @@ bool MuxClient::connect(int timeoutMs) {
     return false;
   }
   memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-#ifndef WIN32
-  socklen_t addrLen =
-      static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + path.size() + 1);
-#else
-  socklen_t addrLen = sizeof(addr);
-#endif
 
   // Non-blocking connect with optional timeout.
-#ifndef WIN32
-  int flags = ::fcntl(fd, F_GETFL, 0);
-  if (flags >= 0) {
-    ::fcntl(fd, F_SETFL, flags | O_NONBLOCK);
-  }
-#endif
-  int rc = ::connect(fd, reinterpret_cast<sockaddr*>(&addr), addrLen);
+  const bool nonBlocking = setSocketBlocking(fd, false);
+  int rc = ::connect(fd, reinterpret_cast<sockaddr*>(&addr),
+                     unixAddressLength(addr));
   if (rc < 0) {
-    if (errno != EINPROGRESS && errno != EAGAIN
-#ifdef WIN32
-        && errno != WSAEWOULDBLOCK && errno != WSAEINPROGRESS
-#endif
-    ) {
+    const int err = GetErrno();
+    if (err != EINPROGRESS && err != EAGAIN && err != EWOULDBLOCK) {
       ::close(fd);
       return false;
     }
@@ -89,11 +62,9 @@ bool MuxClient::connect(int timeoutMs) {
       return false;
     }
   }
-#ifndef WIN32
-  if (flags >= 0) {
-    ::fcntl(fd, F_SETFL, flags);
+  if (nonBlocking) {
+    setSocketBlocking(fd, true);
   }
-#endif
 
   conn = make_unique<MuxConnection>(fd, true);
   if (!exchangeHello()) {
@@ -305,14 +276,10 @@ bool MuxClient::newSession(const string& command, bool wantTty, int stdinFd,
     if (fd >= 0) {
       return fd;
     }
-#ifndef WIN32
     if (localNull < 0) {
       localNull = ::open("/dev/null", O_RDWR);
     }
     return localNull;
-#else
-    return fd;
-#endif
   };
   int inFd = ensureFd(stdinFd);
   int outFd = ensureFd(stdoutFd);

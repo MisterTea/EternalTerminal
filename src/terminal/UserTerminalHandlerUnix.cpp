@@ -8,8 +8,6 @@
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 
-#ifndef WIN32
-
 namespace et {
 UserTerminalHandler::UserTerminalHandler(
     shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
@@ -538,4 +536,3 @@ void UserTerminalHandler::runUserTerminal(int masterFd) {
   term->cleanup();
 }
 }  // namespace et
-#endif

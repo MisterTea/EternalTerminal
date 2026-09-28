@@ -100,12 +100,7 @@ string LogHandler::createLogFile(const string& path, const string& filename) {
     throw std::runtime_error("Cannot create logfile directory: " +
                              string(fse.what()));
   }
-#ifdef WIN32
-  // O_NOFOLLOW does not exist on windows
-  FATAL_FAIL(::open(fullFname.c_str(), O_EXCL | O_CREAT, 0600));
-#else
   FATAL_FAIL(::open(fullFname.c_str(), O_NOFOLLOW | O_EXCL | O_CREAT, 0600));
-#endif
   return fullFname;
 }
 

@@ -71,15 +71,11 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   while (static_cast<size_t>(bytesWritten) < count) {
     lock_guard<recursive_mutex> guard(*sockMutex);
     ssize_t w;
-#ifdef WIN32
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
-#else
 #ifdef MSG_NOSIGNAL
     w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten,
                MSG_NOSIGNAL);
 #else
     w = ::write(fd, ((const char*)buf) + bytesWritten, count - bytesWritten);
-#endif
 #endif
     auto localErrno = GetErrno();
     if (w < 0) {
@@ -210,26 +206,8 @@ void UnixSocketHandler::initServerSocket(int fd) {
 }
 
 void UnixSocketHandler::setBlocking(int sockFd, bool blocking) {
-#ifdef WIN32
-  {
-    u_long iMode = u_long(!blocking);
-    auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
-    if (result != NO_ERROR) {
-      STFATAL << result;
-    }
+  if (!setSocketBlocking(sockFd, blocking)) {
+    FATAL_FAIL(-1);
   }
-#else
-  {
-    int opts;
-    opts = fcntl(sockFd, F_GETFL);
-    FATAL_FAIL(opts);
-    if (blocking) {
-      opts &= (~O_NONBLOCK);
-    } else {
-      opts |= O_NONBLOCK;
-    }
-    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-  }
-#endif
 }
 }  // namespace et

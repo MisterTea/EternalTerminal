@@ -1,10 +1,6 @@
 #include "FdPoller.hpp"
 
 namespace et {
-#ifndef WIN32
-FdPoller::~FdPoller() { ::close(pollerFd); }
-#endif
-
 void FdPoller::setFds(const set<int>& readFds, const set<int>& writeFds,
                       const set<int>& refreshFds) {
   auto interestFor = [&readFds, &writeFds](int fd) -> short {
