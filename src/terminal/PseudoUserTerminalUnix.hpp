@@ -86,9 +86,16 @@ class PseudoUserTerminal : public UserTerminal {
   virtual void runTerminal() {
     passwd* pwd = getpwuid(getuid());
     chdir(pwd->pw_dir);
-    string terminal = string(::getenv("SHELL"));
+    const char* shellEnv = ::getenv("SHELL");
+    string terminal = (shellEnv && *shellEnv)
+                          ? string(shellEnv)
+                          : (pwd && pwd->pw_shell ? string(pwd->pw_shell)
+                                                  : string("/bin/sh"));
     VLOG(1) << "Child process launching terminal " << terminal;
     setenv("ET_VERSION", ET_VERSION, 1);
+    if (const char* tty = ttyname(STDIN_FILENO)) {
+      setenv("SSH_TTY", tty, 1);
+    }
     // bash will not reset SIGCHLD to SIG_DFL when run, remembering the current
     // SIGCHLD disposition as the "original value" and allowing the user to
     // "reset" the signal handler to it's "original value" (trap --help).
