@@ -14,6 +14,67 @@
 #include "WriteBuffer.hpp"
 
 namespace et {
+string refreshAgentProxyPath(const string& id, const string& authSock) {
+  const fs::path directory = fs::path(GetTempDirectory()) / ("et-agent-" + id);
+  std::error_code error;
+  fs::create_directories(directory, error);
+  if (error) {
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to create SSH agent proxy directory: " +
+                        error.message());
+#endif
+  }
+#ifndef WIN32
+  if (::chmod(directory.c_str(), S_IRUSR | S_IWUSR | S_IXUSR) != 0) {
+    throw runtime_error("Unable to secure SSH agent proxy directory");
+  }
+#endif
+  // Create under a temp name then rename over the stable path so readers never
+  // observe a missing agent.sock between remove and recreate (Issue #506).
+  const fs::path proxy = directory / "agent.sock";
+  const fs::path proxyTmp =
+      directory / ("agent.sock.tmp." + genRandomAlphaNum(8));
+  fs::create_symlink(authSock, proxyTmp, error);
+  if (error) {
+    fs::remove(proxyTmp, error);
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to refresh SSH agent proxy: " +
+                        error.message());
+#endif
+  }
+  error.clear();
+  fs::rename(proxyTmp, proxy, error);
+  if (error) {
+    // Some platforms refuse rename-over-existing for symlinks; fall back.
+    std::error_code removeError;
+    fs::remove(proxy, removeError);
+    error.clear();
+    fs::rename(proxyTmp, proxy, error);
+  }
+  if (error) {
+    fs::remove(proxyTmp, error);
+#ifdef WIN32
+    return authSock;
+#else
+    throw runtime_error("Unable to refresh SSH agent proxy: " +
+                        error.message());
+#endif
+  }
+  string proxyPath = proxy.string();
+#ifdef WIN32
+  for (char& c : proxyPath) {
+    if (c == '\\') {
+      c = '/';
+    }
+  }
+#endif
+  return proxyPath;
+}
+
 namespace {
 // Printed by a commanded passenger after the isolated subshell returns so the
 // ControlPersist bridge can recover a real exit status without killing the
@@ -172,14 +233,17 @@ TerminalClient::TerminalClient(
         *(payload.add_reversetunnels()) = pfsr;
       }
     }
-    if (forwardSshAgent) {
-      PortForwardSourceRequest pfsr;
-      string authSock = "";
+    // Resolve the current agent socket once for both fresh forward and
+    // saved-session reattach. Returning clients keep the server-side reverse
+    // tunnel destination from the first InitialPayload; we only retarget the
+    // stable local proxy symlink.
+    auto resolveAuthSock = [&](bool requireAuthSock) -> string {
       if (identityAgent.length()) {
-        authSock.assign(identityAgent);
-      } else {
-        auto authSockEnv = getenv("SSH_AUTH_SOCK");
-        if (!authSockEnv) {
+        return identityAgent;
+      }
+      auto authSockEnv = getenv("SSH_AUTH_SOCK");
+      if (!authSockEnv) {
+        if (requireAuthSock) {
           CLOG(INFO, "stdout")
               << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
                  "you "
@@ -187,12 +251,31 @@ TerminalClient::TerminalClient(
               << endl;
           exit(1);
         }
-        authSock.assign(authSockEnv);
+        return "";
       }
+      return string(authSockEnv);
+    };
+    if (forwardSshAgent) {
+      string authSock = resolveAuthSock(/*requireAuthSock=*/true);
       if (authSock.length()) {
-        pfsr.mutable_destination()->set_name(authSock);
+        PortForwardSourceRequest pfsr;
+        pfsr.mutable_destination()->set_name(
+            refreshAgentProxyPath(id, authSock));
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
+        agentProxyEnabled = true;
+        agentClientId = id;
+        agentIdentityAgent = identityAgent;
+      }
+    } else if (_resumeSavedSession) {
+      // attachSavedSession forbids --forward-ssh-agent, but the server still
+      // holds the original reverse-tunnel destination. Retarget the proxy.
+      string authSock = resolveAuthSock(/*requireAuthSock=*/false);
+      if (authSock.length()) {
+        refreshAgentProxyPath(id, authSock);
+        agentProxyEnabled = true;
+        agentClientId = id;
+        agentIdentityAgent = identityAgent;
       }
     }
   } catch (const std::runtime_error& ex) {
@@ -204,6 +287,9 @@ TerminalClient::TerminalClient(
   connection = shared_ptr<ClientConnection>(
       new ClientConnection(_socketHandler, _socketEndpoint, id, passkey,
                            /*_resetIntent=*/_resumeSavedSession));
+  if (agentProxyEnabled) {
+    connection->setPostReconnectCallback([this]() { refreshAgentProxy(); });
+  }
 
   int connectFailCount = 0;
   bool connected = false;
@@ -296,6 +382,26 @@ TerminalClient::~TerminalClient() {
   console.reset();
   portForwardHandler.reset();
   connection.reset();
+}
+
+void TerminalClient::refreshAgentProxy() {
+  if (!agentProxyEnabled) {
+    return;
+  }
+  string authSock = agentIdentityAgent;
+  if (authSock.empty()) {
+    auto authSockEnv = getenv("SSH_AUTH_SOCK");
+    if (!authSockEnv) {
+      LOG(WARNING) << "SSH_AUTH_SOCK unset; leaving agent proxy unchanged";
+      return;
+    }
+    authSock.assign(authSockEnv);
+  }
+  try {
+    refreshAgentProxyPath(agentClientId, authSock);
+  } catch (const std::exception& ex) {
+    LOG(WARNING) << "Unable to refresh SSH agent proxy: " << ex.what();
+  }
 }
 
 bool TerminalClient::killSession(int timeoutSeconds) {

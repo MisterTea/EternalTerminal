@@ -1,6 +1,8 @@
 #ifndef __ET_CLIENT_CONNECTION__
 #define __ET_CLIENT_CONNECTION__
 
+#include <functional>
+
 #include "Connection.hpp"
 #include "Headers.hpp"
 
@@ -46,6 +48,14 @@ class ClientConnection : public Connection {
    */
   void waitReconnect();
 
+  /**
+   * @brief Invoked on the reconnect thread after a successful recover.
+   * Used by TerminalClient to retarget the SSH agent proxy symlink.
+   */
+  void setPostReconnectCallback(std::function<void()> callback) {
+    postReconnectCallback = std::move(callback);
+  }
+
  protected:
   void connectHandshake(int fd, et::ConnectResponse* response,
                         bool resetIntent);
@@ -64,6 +74,7 @@ class ClientConnection : public Connection {
   std::atomic<et::ConnectStatus> lastStatus_{et::ConnectStatus::NEW_CLIENT};
   /** @brief Thread that keeps retrying the handshake after disconnects. */
   std::shared_ptr<std::thread> reconnectThread;
+  std::function<void()> postReconnectCallback;
 };
 }  // namespace et
 
