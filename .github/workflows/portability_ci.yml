@@ -297,9 +297,9 @@ jobs:
           export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
           export CCACHE_MAXSIZE=500M
           export CCACHE_COMPRESS=true
-          # CMake regenerates the PCH wrapper files during configuration. Do
-          # not let ccache reuse a Clang PCH whose wrapper has a different
-          # timestamp; Clang rejects it as stale before compiling any source.
+          # Clang PCH caching requires both this sloppiness setting and
+          # -fno-pch-timestamp below: CMake regenerates the wrapper files
+          # with new timestamps even when their contents are unchanged.
           export CCACHE_SLOPPINESS=pch_defines,time_macros
 
           pkg install -y \
@@ -319,7 +319,7 @@ jobs:
             unzip \
             zip
 
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_FLAGS="-Xclang -fno-pch-timestamp" -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
