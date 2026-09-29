@@ -166,3 +166,57 @@ TEST_CASE("Socket polling surfaces invalid descriptors", "[FdPoller]") {
 
   test::closeTestFd(sockets[1]);
 }
+
+TEST_CASE("FdPoller refresh skips a closed requested descriptor",
+          "[FdPoller]") {
+#ifdef WIN32
+  SKIP("Unix descriptor recycling");
+#else
+  int pipeFds[2];
+  REQUIRE(pipe(pipeFds) == 0);
+  FdPoller poller;
+  poller.setFds({pipeFds[0]});
+  REQUIRE(close(pipeFds[0]) == 0);
+  REQUIRE_NOTHROW(poller.setFds({pipeFds[0]}, {}, {pipeFds[0]}));
+  CHECK(poller.wait(0).readable.empty());
+  CHECK(close(pipeFds[1]) == 0);
+#endif
+}
+
+TEST_CASE("FdPoller drops a descriptor recycled into a directory",
+          "[FdPoller]") {
+#ifdef WIN32
+  SKIP("Unix descriptor recycling");
+#else
+  int retiredPipe[2];
+  int livePipe[2];
+  REQUIRE(pipe(retiredPipe) == 0);
+  REQUIRE(pipe(livePipe) == 0);
+  const int retiredFd = retiredPipe[0];
+  FdPoller poller;
+  poller.setFds({retiredFd});
+  REQUIRE(close(retiredFd) == 0);
+
+  const int directoryFd =
+      open(GetTempDirectory().c_str(), O_RDONLY | O_DIRECTORY);
+  REQUIRE(directoryFd >= 0);
+  if (directoryFd != retiredFd) {
+    REQUIRE(dup2(directoryFd, retiredFd) == retiredFd);
+    REQUIRE(close(directoryFd) == 0);
+  }
+
+  // Removing the retired registration must not operate on this unrelated fd.
+  REQUIRE_NOTHROW(poller.setFds({livePipe[0]}));
+  CHECK(fcntl(retiredFd, F_GETFD) >= 0);
+  const char byte = 'x';
+  REQUIRE(write(livePipe[1], &byte, 1) == 1);
+  const auto ready = poller.wait(1000);
+  CHECK(ready.readable.count(livePipe[0]) == 1);
+  CHECK(ready.readable.count(retiredFd) == 0);
+
+  CHECK(close(retiredFd) == 0);
+  CHECK(close(retiredPipe[1]) == 0);
+  CHECK(close(livePipe[0]) == 0);
+  CHECK(close(livePipe[1]) == 0);
+#endif
+}

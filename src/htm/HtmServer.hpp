@@ -19,18 +19,31 @@ class HtmServer : public IpcPairServer {
   void requestPaneDump() { paneDumpRequested.store(true); }
   static string getPipeName();
   static string getPaneDumpPath();
-#ifdef WIN32
   /** @brief Returns the per-user event used for graceful Windows restarts. */
   static string getShutdownEventName();
   /** @brief Returns the per-user event that requests a pane-text dump. */
   static string getPaneDumpEventName();
-#endif
   virtual void recover();
 
  protected:
   void handleClientData();
   void processLine(const string& line);
   void writePaneDumpIfRequested();
+  /** @brief Sends %exit, drops the client, and makes sure its process ends. */
+  void endControlSession();
+
+  /**
+   * @brief Returns the pid of the process on the other end of @p fd, or -1
+   * where the OS cannot report it.
+   */
+  static int64_t controlClientPid(int fd);
+  /**
+   * @brief Waits for the detached htm client (and any stale ones) to exit,
+   * killing them if they stay wedged.
+   *
+   * Implemented in HtmServerUnix.cpp and HtmServerWindows.cpp.
+   */
+  static void reapControlClient(int64_t peer);
 
   MultiplexerState state;
   ControlWriter writer;

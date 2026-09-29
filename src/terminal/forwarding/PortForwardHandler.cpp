@@ -129,7 +129,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       ++forwardFdsGeneration;
       return PortForwardSourceResponse();
     } else {
-#ifndef WIN32
       // Perform unlink/bind/listen as the session user so a client-chosen path
       // cannot delete or chown root-owned files.
       auto concretePipe =
@@ -144,7 +143,6 @@ PortForwardSourceResponse PortForwardHandler::createSource(
         ++forwardFdsGeneration;
         return PortForwardSourceResponse();
       }
-#endif
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
@@ -238,7 +236,6 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
       }
     }
   } else {
-#ifndef WIN32
     // Connect as the session user so root etserver cannot open privileged
     // sockets (e.g. docker.sock) on behalf of an unprivileged client.
     auto concretePipe =
@@ -250,9 +247,6 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     } else {
       fd = pipeSocketHandler->connect(pfdr.destination());
     }
-#else
-    fd = pipeSocketHandler->connect(pfdr.destination());
-#endif
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());

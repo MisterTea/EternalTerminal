@@ -43,6 +43,13 @@ inline int close(int fd) { return ::closesocket(fd); }
 #ifdef WIN32
 using uid_t = int;
 using gid_t = int;
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#define SHUT_RDWR SD_BOTH
+// Windows has no symlink-following open(); there is nothing to refuse.
+#define O_NOFOLLOW 0
+// Winsock never raises SIGPIPE.
+#define MSG_NOSIGNAL 0
 // Portable terminal-size payload used by UserTerminal implementations. Unix
 // provides this through <sys/ioctl.h>; Windows consumers translate it to
 // CONSOLE_SCREEN_BUFFER_INFO or ConPTY dimensions.
@@ -178,6 +185,21 @@ typedef int ssize_t;
 #define ssize_t SSIZE_T
 #endif
 
+inline struct tm* localtime_r(const time_t* timer, struct tm* result) {
+  return localtime_s(result, timer) == 0 ? result : nullptr;
+}
+
+// Updates both the CRT table (getenv) and the Win32 block that CreateProcess
+// children inherit.
+inline int setenv(const char* name, const char* value, int overwrite) {
+  if (!overwrite && getenv(name) != nullptr) {
+    return 0;
+  }
+  if (_putenv_s(name, value) != 0) {
+    return -1;
+  }
+  return SetEnvironmentVariableA(name, value) ? 0 : -1;
+}
 #endif
 
 using namespace std;
@@ -527,6 +549,30 @@ inline bool isSocketWritable(int fd, int64_t sec = 0, int64_t usec = 0) {
 #endif
 }
 
+/**
+ * @brief Toggles blocking mode on a socket.
+ * @return false on failure, with GetErrno() set.
+ */
+inline bool setSocketBlocking(int fd, bool blocking) {
+#ifdef WIN32
+  u_long nonBlocking = blocking ? 0 : 1;
+  return ::ioctlsocket(fd, FIONBIO, &nonBlocking) == 0;
+#else
+  int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0) {
+    return false;
+  }
+  flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+  return ::fcntl(fd, F_SETFL, flags) == 0;
+#endif
+}
+
+/** @brief Length of a pathname AF_UNIX address, including the trailing NUL. */
+inline socklen_t unixAddressLength(const sockaddr_un& address) {
+  return static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) +
+                                strlen(address.sun_path) + 1);
+}
+
 inline string genRandomAlphaNum(int len) {
   static const char alphanum[] =
       "0123456789"
@@ -541,18 +587,8 @@ inline string genRandomAlphaNum(int len) {
   return s;
 }
 
-inline string GetTempDirectory() {
-#ifdef WIN32
-  WCHAR buf[65536];
-  int retval = GetTempPath(65536, buf);
-  int a = 0;
-  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
-  std::string tmpDir = converter.to_bytes(wstring(buf, retval));
-#else
-  string tmpDir = _PATH_TMP;
-#endif
-  return tmpDir;
-}
+/** @brief OS temporary directory, with a trailing separator. */
+string GetTempDirectory();
 
 /** @brief Per-user token used in HTM IPC socket names (uid on Unix, username
  * on Windows). */

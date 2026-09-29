@@ -4,51 +4,14 @@
 #include "Headers.hpp"
 
 namespace et {
-#ifdef WIN32
 /**
- * @brief Create or connect UNIX sockets on Windows.
+ * @brief Create or connect UNIX sockets with another user's credentials.
  *
- * Windows has no uid/gid privilege model, so the `*AsUser` variants perform
- * the operation directly in-process instead of forking a privilege-dropped
- * child (there is nothing to drop to). The API mirrors Unix so the same tests
- * exercise the same socket behavior on every platform.
+ * On Unix the `*AsUser` variants fork a privilege-dropped child. Windows has
+ * no uid/gid privilege model, so they perform the operation directly
+ * in-process there (there is nothing to drop to). The API is the same on
+ * every platform so the same tests exercise the same socket behavior.
  */
-class UserSocketOps {
- public:
-  /**
-   * @brief unlink/bind/listen a UNIX socket path.
-   * @return Listening fd owned by the caller, or -1 on failure (errno set).
-   */
-  static int listenUnixAsUser(const string& path, uid_t uid, gid_t gid);
-
-  /**
-   * @brief connect() to a UNIX socket path.
-   * @return Connected fd owned by the caller, or -1 on failure (errno set).
-   */
-  static int connectUnixAsUser(const string& path, uid_t uid, gid_t gid);
-
-  /**
-   * @brief Create a listening UNIX socket at @p path in the current process.
-   * @return Listening fd, or -1 with errno set.
-   */
-  static int listenAtPath(const string& path);
-
-  /**
-   * @brief Connect to a UNIX socket at @p path in the current process.
-   * @return Connected fd, or -1 with errno set.
-   */
-  static int connectAtPath(const string& path);
-
-  /**
-   * @brief Flush gcov (when CODE_COVERAGE is on) and _exit.
-   *
-   * Unix forked children must call this instead of _exit so coverage from the
-   * child process is written before the image disappears. Kept on Windows so
-   * call sites stay portable; it behaves like _exit.
-   */
-  static void coverageExit(int code);
-};
-#else
 class UserSocketOps {
  public:
   /**
@@ -94,7 +57,6 @@ class UserSocketOps {
   static void sendFd(int channel, int fdToSend, int status, int err);
   static int recvFd(int channel, int* errOut);
 };
-#endif
 }  // namespace et
 
 #endif  // __ET_USER_SOCKET_OPS__

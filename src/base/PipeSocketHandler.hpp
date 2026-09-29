@@ -7,6 +7,10 @@ namespace et {
 /**
  * @brief Handles UNIX domain socket connections that are represented as named
  * pipes.
+ *
+ * The connect/listen flow is shared; the platform-specific steps (socket
+ * options, Windows' lack of client autobind, privilege-dropped variants) live
+ * in PipeSocketHandlerUnix.cpp and PipeSocketHandlerWindows.cpp.
  */
 class PipeSocketHandler : public UnixSocketHandler {
  public:
@@ -17,22 +21,22 @@ class PipeSocketHandler : public UnixSocketHandler {
    * @brief Connects to a pipe identified by the endpoint name.
    */
   virtual int connect(const SocketEndpoint& endpoint);
-#ifndef WIN32
   /**
    * @brief Connects to a UNIX socket after dropping to @p uid/@p gid.
+   *
+   * Windows has no uid/gid privilege model, so this is a plain connect there.
    */
   int connectAsUser(const SocketEndpoint& endpoint, uid_t uid, gid_t gid);
-#endif
   /**
    * @brief Creates a listening UNIX socket and stores it internally.
    */
   virtual set<int> listen(const SocketEndpoint& endpoint);
-#ifndef WIN32
   /**
    * @brief Creates a listening UNIX socket after dropping to @p uid/@p gid.
+   *
+   * Windows has no uid/gid privilege model, so this is a plain listen there.
    */
   set<int> listenAsUser(const SocketEndpoint& endpoint, uid_t uid, gid_t gid);
-#endif
   /**
    * @brief Returns the listening fds for a previously registered pipe.
    */
@@ -41,19 +45,31 @@ class PipeSocketHandler : public UnixSocketHandler {
    * @brief Stops listening on the specified pipe and closes its fd.
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
-  /** @brief Closes a connection and removes its Windows client socket path. */
+  /** @brief Closes a connection and removes its client socket path, if any. */
   void close(int fd) override;
 
   virtual void minimizeKernelBuffering(int fd);
 
  protected:
+  /**
+   * @brief Readies a fresh socket for connect().
+   *
+   * @param clientPath Receives a pathname the socket was bound to, which is
+   *   removed when the socket closes. Left empty where the OS autobinds.
+   * @return false if the socket cannot be used; the caller closes it.
+   */
+  bool prepareClientSocket(int fd, string* clientPath);
+  /** @brief Configures a listening socket before bind(). */
+  void prepareListenSocket(int fd);
+  /** @brief Configures a listening socket after bind() and listen(). */
+  void finishListenSocket(int fd, const string& pipePath);
+  /** @brief Closes a client socket that never finished connecting. */
+  void discardClientSocket(int fd, const string& clientPath);
+
   /** @brief Tracks path -> listening socket descriptors for each pipe. */
   map<string, set<int>> pipeServerSockets;
-#ifdef WIN32
-  /** @brief Client pathname required because Windows AF_UNIX has no autobind.
-   */
+  /** @brief Client pathnames bound by prepareClientSocket, keyed by fd. */
   map<int, string> clientSocketPaths;
-#endif
 };
 }  // namespace et
 

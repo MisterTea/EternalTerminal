@@ -1,7 +1,5 @@
 #include "ServerFifoPath.hpp"
 
-#ifndef WIN32
-
 namespace et {
 
 /**
@@ -225,4 +223,3 @@ int ServerFifoPath::detectAndConnect(
 }
 
 }  // namespace et
-#endif

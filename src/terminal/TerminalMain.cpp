@@ -12,9 +12,6 @@
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
 #include "WinsockContext.hpp"
-#ifdef WIN32
-#include <windows.h>
-#endif
 
 using namespace et;
 
@@ -34,21 +31,12 @@ inline bool HasNonEmptyOption(const cxxopts::ParseResult& result,
 }
 
 inline void SetTermEnv(const char* value) {
-#ifdef WIN32
-  SetEnvironmentVariableA("TERM", value);
-  // Also update the CRT environment for getenv("TERM") consumers.
-  string entry = string("TERM=") + value;
-  _putenv(entry.c_str());
-#else
   FATAL_FAIL(setenv("TERM", value, 1));
-#endif
 }
 }  // namespace
 
 int main(int argc, char** argv) {
-#ifdef WIN32
   WinsockContext winsockContext;
-#endif
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();

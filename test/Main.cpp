@@ -139,6 +139,12 @@ int main(int argc, char** argv) {
   // HTM tests send Bourne-shell syntax (printf, awk, exit). Login csh/zsh on
   // some CI images otherwise ignore those commands and time out.
   setenv("SHELL", "/bin/sh", 1);
+#else
+  // Windows smoke commands use cmd syntax. The host's SHELL may be
+  // PowerShell, which cannot run commands such as "echo OUT& more".
+  const char* commandShell = getenv("COMSPEC");
+  _putenv_s("SHELL",
+            commandShell && commandShell[0] ? commandShell : "cmd.exe");
 #endif
 
   int result = Catch::Session().run(argc, argv);

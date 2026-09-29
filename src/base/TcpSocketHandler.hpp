@@ -55,6 +55,10 @@ class TcpSocketHandler : public UnixSocketHandler {
    * (NODELAY/linger).
    */
   virtual void initSocket(int fd);
+
+ private:
+  static void refreshResolver();
+  static const char* addressError(int error);
 };
 }  // namespace et
 

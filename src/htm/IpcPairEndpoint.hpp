@@ -20,12 +20,8 @@ class IpcPairEndpoint {
     int fd = endpointFd;
     endpointFd = -1;
     try {
-#ifdef WIN32
-      socketHandler->close(fd);
-#else
       ::shutdown(fd, SHUT_RDWR);
       socketHandler->close(fd);
-#endif
     } catch (const std::exception& ex) {
       LOG(INFO) << "Failed to close endpoint: " << ex.what();
     }

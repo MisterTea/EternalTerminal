@@ -253,22 +253,25 @@ TEST_CASE("TerminalClient reattach retargets SSH agent proxy",
   { std::ofstream(sock1).close(); }
   { std::ofstream(sock2).close(); }
 
-  AgentProxySession session;
   {
-    EnvVarGuard authSock("SSH_AUTH_SOCK", sock1);
-    session.startClient(/*forwardSshAgent=*/true,
-                        /*resumeSavedSession=*/false);
-    REQUIRE(readAgentProxyTarget(session.id) == sock1);
-    session.stopClient();
-  }
+    AgentProxySession session;
+    {
+      EnvVarGuard authSock("SSH_AUTH_SOCK", sock1);
+      session.startClient(/*forwardSshAgent=*/true,
+                          /*resumeSavedSession=*/false);
+      REQUIRE(readAgentProxyTarget(session.id) == sock1);
+      session.stopClient();
+    }
 
-  // Reattach mirrors saved-session attach: forwardSshAgent is false, but the
-  // server still has the original reverse-tunnel destination.
-  {
-    EnvVarGuard authSock("SSH_AUTH_SOCK", sock2);
-    session.startClient(/*forwardSshAgent=*/false,
-                        /*resumeSavedSession=*/true);
-    REQUIRE(readAgentProxyTarget(session.id) == sock2);
+    // Reattach mirrors saved-session attach: forwardSshAgent is false, but the
+    // server still has the original reverse-tunnel destination.
+    {
+      EnvVarGuard authSock("SSH_AUTH_SOCK", sock2);
+      session.startClient(/*forwardSshAgent=*/false,
+                          /*resumeSavedSession=*/true);
+      REQUIRE(readAgentProxyTarget(session.id) == sock2);
+      session.stopClient();
+    }
   }
 
   std::error_code ec;
@@ -283,17 +286,20 @@ TEST_CASE("TerminalClient in-process reconnect retargets SSH agent proxy",
   { std::ofstream(sock1).close(); }
   { std::ofstream(sock2).close(); }
 
-  AgentProxySession session;
   EnvVarGuard authSock("SSH_AUTH_SOCK", sock1);
-  session.startClient(/*forwardSshAgent=*/true, /*resumeSavedSession=*/false);
-  REQUIRE(readAgentProxyTarget(session.id) == sock1);
+  {
+    AgentProxySession session;
+    session.startClient(/*forwardSshAgent=*/true, /*resumeSavedSession=*/false);
+    REQUIRE(readAgentProxyTarget(session.id) == sock1);
 
-  REQUIRE(::setenv("SSH_AUTH_SOCK", sock2.c_str(), 1) == 0);
-  session.client->forceReconnect();
-  requireEventually([&]() { return !session.client->isDisconnected(); }, 30,
-                    "client reconnect");
-  requireEventually([&]() { return readAgentProxyTarget(session.id) == sock2; },
-                    10, "agent proxy retarget after reconnect");
+    REQUIRE(::setenv("SSH_AUTH_SOCK", sock2.c_str(), 1) == 0);
+    session.client->forceReconnect();
+    requireEventually([&]() { return !session.client->isDisconnected(); }, 30,
+                      "client reconnect");
+    requireEventually(
+        [&]() { return readAgentProxyTarget(session.id) == sock2; }, 10,
+        "agent proxy retarget after reconnect");
+  }
 
   std::error_code ec;
   fs::remove_all(sockDir, ec);

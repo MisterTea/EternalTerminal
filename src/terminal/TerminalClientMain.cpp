@@ -130,11 +130,7 @@ string makeDefaultSessionName() {
   char date[16];
   const time_t now = time(NULL);
   struct tm localTm;
-#ifdef WIN32
-  localtime_s(&localTm, &now);
-#else
   localtime_r(&now, &localTm);
-#endif
   strftime(date, sizeof(date), "%Y%m%d", &localTm);
 
   const string base = string(date) + "-";
@@ -1581,9 +1577,7 @@ int main(int argc, char** argv) {
     // Clean up ssh config options
     freeOptionsFields(&sshConfigOptions);
 
-#ifdef WIN32
-    WSACleanup();
-#endif
+    context.release();
 
     TelemetryService::get()->shutdown();
     TelemetryService::destroy();
@@ -1601,9 +1595,7 @@ int main(int argc, char** argv) {
   // Clean up ssh config options
   freeOptionsFields(&sshConfigOptions);
 
-#ifdef WIN32
-  WSACleanup();
-#endif
+  context.release();
 
   TelemetryService::get()->shutdown();
   TelemetryService::destroy();

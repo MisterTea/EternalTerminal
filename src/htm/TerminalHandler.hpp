@@ -35,17 +35,7 @@ class TerminalHandler {
    */
   void appendData(const string& data);
   /** @brief Indicates whether the PTY child is still alive. */
-  inline bool isRunning() {
-#ifdef WIN32
-    if (processHandle == INVALID_HANDLE_VALUE) {
-      return false;
-    }
-    return WaitForSingleObject(static_cast<HANDLE>(processHandle), 0) !=
-           WAIT_OBJECT_0;
-#else
-    return run;
-#endif
-  }
+  bool isRunning();
   /** @brief Stops the handler's child process and closes PTY handles. */
   void stop();
   /** @brief Returns the buffered output that should be sent to the client. */
@@ -54,11 +44,7 @@ class TerminalHandler {
  protected:
   /** @brief Appends freshly read PTY bytes to the scrollback ring. */
   string bufferOutput(const string& newChars);
-#ifndef WIN32
-  /** @brief Writes as much of `pendingWrite` as the PTY will accept. */
-  void flushPendingWrite();
-#endif
-
+  // Platform state; see TerminalHandlerUnix.cpp and TerminalHandlerWindows.cpp.
 #ifdef WIN32
   /** @brief ConPTY handle (`HPCON`). */
   void* hPC;
@@ -82,6 +68,8 @@ class TerminalHandler {
   /** @brief Bytes waiting to be written because the PTY input buffer is full.
    */
   string pendingWrite;
+  /** @brief Writes as much of `pendingWrite` as the PTY will accept. */
+  void flushPendingWrite();
 #endif
   /** @brief Flag that indicates whether the handler is live. */
   atomic<bool> run;

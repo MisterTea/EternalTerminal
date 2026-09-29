@@ -2,14 +2,13 @@
 
 #include "ETerminal.pb.h"
 #include "PipeUserTerminal.hpp"
+#include "PseudoUserTerminalWindows.hpp"
 #include "RawSocketUtils.hpp"
 #include "ServerConnection.hpp"
 #include "ServerFifoPath.hpp"
 #include "UserTerminalHandler.hpp"
 #include "UserTerminalRouter.hpp"
-#ifdef WIN32
-#include "PseudoUserTerminalWindows.hpp"
-#endif
+
 namespace et {
 namespace {
 bool handleTerminalInfo(UserTerminal& term, const TerminalInfo& ti) {

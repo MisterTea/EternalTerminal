@@ -3,13 +3,6 @@
 #include "MuxClient.hpp"
 #include "PipeSocketHandler.hpp"
 
-#ifdef WIN32
-// clang-format off
-#include <winsock2.h>
-#include <afunix.h>
-// clang-format on
-#endif
-
 namespace et {
 namespace {
 
@@ -136,33 +129,25 @@ void MuxMaster::start() {
     throw runtime_error("ControlPath too long");
   }
   memcpy(addr.sun_path, path.c_str(), path.size() + 1);
-#ifndef WIN32
-  socklen_t addrLen =
-      static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) + path.size() + 1);
-#else
-  socklen_t addrLen = sizeof(addr);
-#endif
-  if (::bind(listenFd, reinterpret_cast<sockaddr*>(&addr), addrLen) < 0) {
-    int err = errno;
+  if (::bind(listenFd, reinterpret_cast<sockaddr*>(&addr),
+             unixAddressLength(addr)) < 0) {
+    int err = GetErrno();
     ::close(listenFd);
     listenFd = -1;
     throw runtime_error(string("bind ControlPath failed: ") + strerror(err));
   }
   if (::listen(listenFd, 16) < 0) {
-    int err = errno;
+    int err = GetErrno();
     ::close(listenFd);
     listenFd = -1;
     ::unlink(path.c_str());
     throw runtime_error(string("listen ControlPath failed: ") + strerror(err));
   }
 
-#ifndef WIN32
-  int flags = ::fcntl(listenFd, F_GETFL, 0);
-  if (flags >= 0) {
-    ::fcntl(listenFd, F_SETFL, flags | O_NONBLOCK);
-  }
-  ::chmod(path.c_str(), S_IRUSR | S_IWUSR);
-#endif
+  setSocketBlocking(listenFd, false);
+  std::error_code permissionsError;
+  fs::permissions(path, fs::perms::owner_read | fs::perms::owner_write,
+                  fs::perm_options::replace, permissionsError);
 
   running = true;
   acceptNew = true;
@@ -174,11 +159,7 @@ void MuxMaster::start() {
 void MuxMaster::closeListenFd() {
   lock_guard<recursive_mutex> guard(mutex);
   if (listenFd >= 0) {
-#ifdef WIN32
-    ::shutdown(listenFd, SD_BOTH);
-#else
     ::shutdown(listenFd, SHUT_RDWR);
-#endif
     ::close(listenFd);
     listenFd = -1;
   }
@@ -194,19 +175,11 @@ void MuxMaster::stop() {
   {
     lock_guard<recursive_mutex> guard(mutex);
     if (listenFd >= 0) {
-#ifdef WIN32
-      ::shutdown(listenFd, SD_BOTH);
-#else
       ::shutdown(listenFd, SHUT_RDWR);
-#endif
     }
     for (const auto& slot : clientSlots) {
       if (slot.fd >= 0) {
-#ifdef WIN32
-        ::shutdown(slot.fd, SD_BOTH);
-#else
         ::shutdown(slot.fd, SHUT_RDWR);
-#endif
       }
     }
   }
@@ -270,7 +243,7 @@ void MuxMaster::acceptLoop() {
 
     int rc = muxPollFd(listenFd, POLLIN, 100);
     if (rc < 0) {
-      if (errno == EINTR) {
+      if (GetErrno() == EINTR) {
         continue;
       }
       break;
@@ -281,20 +254,15 @@ void MuxMaster::acceptLoop() {
 
     int clientFd = ::accept(listenFd, nullptr, nullptr);
     if (clientFd < 0) {
-      if (errno == EINTR || errno == EAGAIN || errno == EWOULDBLOCK ||
-          errno == ECONNABORTED) {
+      const int err = GetErrno();
+      if (err == EINTR || err == EAGAIN || err == EWOULDBLOCK ||
+          err == ECONNABORTED) {
         continue;
       }
       break;
     }
-#ifndef WIN32
-    {
-      int flags = ::fcntl(clientFd, F_GETFL, 0);
-      if (flags >= 0) {
-        ::fcntl(clientFd, F_SETFL, flags & ~O_NONBLOCK);
-      }
-    }
-#endif
+    // Accepted sockets inherit the listener's non-blocking mode.
+    setSocketBlocking(clientFd, true);
 
     {
       lock_guard<recursive_mutex> guard(mutex);
@@ -410,11 +378,7 @@ bool MuxMaster::replyAlive(MuxConnection* conn, uint32_t requestId) {
   MuxBuffer reply;
   reply.putU32(MUX_S_ALIVE);
   reply.putU32(requestId);
-#ifndef WIN32
   reply.putU32(static_cast<uint32_t>(::getpid()));
-#else
-  reply.putU32(static_cast<uint32_t>(::_getpid()));
-#endif
   return conn->writePacket(reply);
 }
 

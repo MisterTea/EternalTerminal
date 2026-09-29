@@ -28,11 +28,7 @@ void ForwardDestinationHandler::shutdownWrite() {
     return;
   }
   writeShutdown = true;
-#ifdef WIN32
-  ::shutdown(fd, SD_SEND);
-#else
   ::shutdown(fd, SHUT_WR);
-#endif
 }
 
 void ForwardDestinationHandler::update(vector<PortForwardData>* retval,

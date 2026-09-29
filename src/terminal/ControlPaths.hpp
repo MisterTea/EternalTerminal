@@ -30,11 +30,9 @@ inline void mkdirp0700(const string& dir) {
   if (ec && !fs::is_directory(dir)) {
     throw std::runtime_error("could not create " + dir + ": " + ec.message());
   }
-#ifndef WIN32
-  // POSIX permission bits have no Windows equivalent; the directory is only
-  // access-restricted on platforms where that concept applies.
+  // On Windows this only clears the read-only attribute; POSIX permission
+  // bits have no equivalent there.
   fs::permissions(dir, fs::perms::owner_all, fs::perm_options::replace, ec);
-#endif
 }
 
 // The directory holding live control sockets, beside the saved-session
