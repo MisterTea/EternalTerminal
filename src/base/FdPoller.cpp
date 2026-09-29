@@ -14,13 +14,13 @@ void FdPoller::setFds(const set<int>& readFds, const set<int>& writeFds,
     return interest;
   };
 
-  for (auto it = registeredFds.begin(); it != registeredFds.end();) {
-    if (interestFor(it->first) != it->second ||
-        refreshFds.count(it->first) != 0) {
-      removeFd(it->first, it->second);
-      it = registeredFds.erase(it);
-    } else {
-      ++it;
+  for (const auto& [fd, interest] : registeredFds) {
+    if (interestFor(fd) != interest || refreshFds.count(fd) != 0) {
+      // Removed descriptors may already be closed and their numbers reused
+      // by another thread. Rebuild without operating on those stale numbers.
+      reset();
+      registeredFds.clear();
+      break;
     }
   }
 

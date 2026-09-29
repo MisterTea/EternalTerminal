@@ -92,6 +92,6 @@ bool FdPoller::addFd(int fd, short /*interest*/) {
   return true;
 }
 
-void FdPoller::removeFd(int /*fd*/, short /*interest*/) {}
+void FdPoller::reset() {}
 
 }  // namespace et

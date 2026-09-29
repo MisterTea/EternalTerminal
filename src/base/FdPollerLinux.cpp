@@ -3,10 +3,17 @@
 #include "FdPoller.hpp"
 
 namespace et {
-FdPoller::FdPoller() : pollerFd(epoll_create1(EPOLL_CLOEXEC)) {
-  if (pollerFd < 0) {
+FdPoller::FdPoller() : pollerFd(-1) { reset(); }
+
+void FdPoller::reset() {
+  const int newPollerFd = epoll_create1(EPOLL_CLOEXEC);
+  if (newPollerFd < 0) {
     throw runtime_error(string("epoll_create1 failed: ") + strerror(errno));
   }
+  if (pollerFd >= 0) {
+    ::close(pollerFd);
+  }
+  pollerFd = newPollerFd;
 }
 
 FdPoller::~FdPoller() { ::close(pollerFd); }
@@ -43,6 +50,10 @@ FdPoller::Ready FdPoller::waitImpl(int capacity, int timeoutMs) {
 }
 
 bool FdPoller::addFd(int fd, short interest) {
+  // reset() can reuse a closed requested descriptor for the poller itself.
+  if (fd == pollerFd) {
+    return false;
+  }
   epoll_event event = {};
   if ((interest & kRead) != 0) {
     event.events |= EPOLLIN | EPOLLRDHUP;
@@ -60,12 +71,4 @@ bool FdPoller::addFd(int fd, short interest) {
   return true;
 }
 
-// epoll keys the interest list by descriptor, so one delete clears both
-// directions.
-void FdPoller::removeFd(int fd, short) {
-  if (epoll_ctl(pollerFd, EPOLL_CTL_DEL, fd, nullptr) < 0 && errno != EBADF &&
-      errno != ENOENT) {
-    throw runtime_error(string("epoll_ctl delete failed: ") + strerror(errno));
-  }
-}
 }  // namespace et
