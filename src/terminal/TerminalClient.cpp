@@ -128,6 +128,33 @@ bool consumePassengerExitMarker(string* carry, const string& chunk,
     return true;
   }
 }
+
+// Restores the console when run() exits early, including by exception.
+class ConsoleSetupGuard {
+ public:
+  explicit ConsoleSetupGuard(const shared_ptr<Console>& console)
+      : console_(console) {}
+
+  void setup() {
+    if (console_) {
+      shouldTeardown_ = true;
+      console_->setup();
+    }
+  }
+
+  void teardown() {
+    if (shouldTeardown_) {
+      shouldTeardown_ = false;
+      console_->teardown();
+    }
+  }
+
+  ~ConsoleSetupGuard() { teardown(); }
+
+ private:
+  shared_ptr<Console> console_;
+  bool shouldTeardown_ = false;
+};
 }  // namespace
 std::atomic<bool> TerminalClient::closeOnHangup(false);
 std::atomic<bool> TerminalClient::hangupCloseRequested(false);
@@ -181,8 +208,7 @@ TerminalClient::TerminalClient(
   try {
     auto failForward = [&](const string& message) {
       if (exitOnForwardFailure) {
-        CLOG(INFO, "stdout") << message << endl;
-        exit(1);
+        throw std::runtime_error(message);
       }
       LOG(WARNING) << message;
     };
@@ -214,17 +240,15 @@ TerminalClient::TerminalClient(
 #ifdef WIN32
       // CRT fds 0/1 are not sockets. The Windows poller ignores fd 0 and
       // SocketHandler uses recv/send, so -W cannot bridge stdio yet.
-      CLOG(INFO, "stdout") << "-W/--stdio-forward is not supported on Windows"
-                           << endl;
-      exit(1);
+      throw std::runtime_error(
+          "-W/--stdio-forward is not supported on Windows");
 #else
       SocketEndpoint destination = parseStdioForwardArg(stdioForward);
       auto response = portForwardHandler->createStdioForward(
           destination, STDIN_FILENO, STDOUT_FILENO, false);
       if (response.has_error()) {
-        CLOG(INFO, "stdout")
-            << "Error establishing stdio forward: " << response.error() << endl;
-        exit(1);
+        throw std::runtime_error("Failed to establish stdio forward - " +
+                                 response.error());
       }
 #endif
     }
@@ -245,12 +269,9 @@ TerminalClient::TerminalClient(
       auto authSockEnv = getenv("SSH_AUTH_SOCK");
       if (!authSockEnv) {
         if (requireAuthSock) {
-          CLOG(INFO, "stdout")
-              << "Missing environment variable SSH_AUTH_SOCK.  Are you sure "
-                 "you "
-                 "ran ssh-agent first?"
-              << endl;
-          exit(1);
+          throw std::runtime_error(
+              "Missing environment variable SSH_AUTH_SOCK. Are you sure you "
+              "ran ssh-agent first?");
         }
         return "";
       }
@@ -280,9 +301,8 @@ TerminalClient::TerminalClient(
       }
     }
   } catch (const std::runtime_error& ex) {
-    CLOG(INFO, "stdout") << "Error establishing port forward: " << ex.what()
-                         << endl;
-    exit(1);
+    throw std::runtime_error(string("Error establishing port forward: ") +
+                             ex.what());
   }
 
   connection = shared_ptr<ClientConnection>(
@@ -331,9 +351,8 @@ TerminalClient::TerminalClient(
                 auto initialResponse = stringToProto<InitialResponse>(
                     initialResponsePacket.getPayload());
                 if (initialResponse.has_error()) {
-                  CLOG(INFO, "stdout") << "Error initializing connection: "
-                                       << initialResponse.error() << endl;
-                  exit(1);
+                  throw std::runtime_error("Error initializing connection: " +
+                                           initialResponse.error());
                 }
                 fail = false;
                 break;
@@ -357,15 +376,17 @@ TerminalClient::TerminalClient(
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to server";
-      if (_resumeSavedSession && connection &&
+      // The destructor does not run when the constructor throws.
+      connection->shutdown();
+      if (_resumeSavedSession &&
           connection->lastStatus() == et::ConnectStatus::INVALID_KEY) {
-        connection->shutdown();
         throw std::runtime_error(INVALID_SESSION_CONNECT_ERROR);
       }
       if (!_resumeSavedSession) {
-        CLOG(INFO, "stdout") << "Could not make initial connection to "
-                             << _socketEndpoint << ": " << err.what() << endl;
-        exit(1);
+        std::ostringstream message;
+        message << "Could not make initial connection to " << _socketEndpoint
+                << ": " << err.what();
+        throw std::runtime_error(message.str());
       }
       throw;
     }
@@ -432,9 +453,8 @@ bool TerminalClient::killSession(int timeoutSeconds) {
 }
 
 int TerminalClient::run(const string& command, const bool noexit) {
-  if (console) {
-    console->setup();
-  }
+  ConsoleSetupGuard consoleSetupGuard(console);
+  consoleSetupGuard.setup();
 
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
@@ -770,7 +790,7 @@ int TerminalClient::run(const string& command, const bool noexit) {
       writable.watch(console->getOutputPollFd(), false, true);
       writable.waitReadable(10);
     }
-    console->teardown();
+    consoleSetupGuard.teardown();
   }
   if (!stdioForwardActive) {
     CLOG(INFO, "stdout") << "Session terminated" << endl;

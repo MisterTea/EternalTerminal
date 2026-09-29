@@ -119,8 +119,9 @@ vector<string> splitTunnelFields(const string& input) {
   return parts;
 }
 
-void appendSshStyleTunnel(vector<PortForwardSourceRequest>& pfsrs,
-                          const vector<string>& parts, const string& input) {
+void appendSshStyleTunnelUnchecked(vector<PortForwardSourceRequest>& pfsrs,
+                                   const vector<string>& parts,
+                                   const string& input) {
   if (parts.size() == 3) {
     // OpenSSH -L/-R port:host:hostport. Bind address defaults to localhost.
     if (!isPortToken(parts[0]) || !isPortToken(parts[2])) {
@@ -147,6 +148,18 @@ void appendSshStyleTunnel(vector<PortForwardSourceRequest>& pfsrs,
   pfsr.mutable_destination()->set_name(parts[2]);
   pfsr.mutable_destination()->set_port(stoi(parts[3]));
   pfsrs.push_back(pfsr);
+}
+
+void appendSshStyleTunnel(vector<PortForwardSourceRequest>& pfsrs,
+                          const vector<string>& parts, const string& input) {
+  try {
+    appendSshStyleTunnelUnchecked(pfsrs, parts, input);
+  } catch (const TunnelParseException&) {
+    throw;
+  } catch (const std::logic_error& error) {
+    throw TunnelParseException("Invalid tunnel argument '" + input +
+                               "': " + error.what());
+  }
 }
 
 void appendOneTunnel(vector<PortForwardSourceRequest>& pfsrs,

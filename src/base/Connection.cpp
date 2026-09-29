@@ -66,6 +66,11 @@ void Connection::writePacket(const Packet& packet) {
     bool hasConnection;
     {
       lock_guard<std::recursive_mutex> guard(connectionMutex);
+      if (!writer) {
+        LOG_EVERY_N(100, ERROR)
+            << "Dropping a packet: the connection was never established";
+        break;
+      }
       hasConnection = (socketFd != -1);
     }
 

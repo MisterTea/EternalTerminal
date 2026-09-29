@@ -81,8 +81,8 @@ string currentExecutablePath() {
   return string(resolved);
 }
 
-// Runs et-test again as a clean process. TerminalClient calls exit(1) when the
-// initial connection gives up, which would take down the Catch runner.
+// Runs et-test again as a clean process so the repro reports the same exit
+// status as the et client when the initial connection gives up.
 ReproResult runIssue866Repro(const string& mode, const string& directory,
                              int timeoutSec) {
   string exePath = currentExecutablePath();
@@ -240,8 +240,8 @@ void serveSilentHandshake(shared_ptr<SocketHandler> serverHandler, int serverFd,
 }  // namespace
 
 #ifndef WIN32
-// Spawned via ET_REPRO_866 so exit(1) inside TerminalClient is the process
-// status. See the Catch cases below.
+// Spawned via ET_REPRO_866. Mirrors the et client's main(): a constructor
+// failure is printed and becomes exit status 1. See the Catch cases below.
 int RunIssue866Repro(int argc, char** argv, const char* mode) {
   configureReproLogging(&argc, &argv);
   ::signal(SIGPIPE, SIG_IGN);
@@ -275,16 +275,22 @@ int RunIssue866Repro(int argc, char** argv, const char* mode) {
   // Issue 866: a failed initial connect must exit. Today the constructor
   // counts the failure, then falls through to the unconditional break and
   // returns as if the session existed. run() would then spin in writePacket.
-  TerminalClient client(clientHandler, pipeHandler, endpoint, kClientId, kKey,
-                        nullptr, false, "", "", false, "", 5, {});
+  int exitCode = 0;
+  try {
+    TerminalClient client(clientHandler, pipeHandler, endpoint, kClientId, kKey,
+                          nullptr, false, "", "", false, "", 5, {});
+    fputs("CONSTRUCTOR_RETURNED\n", stdout);
+  } catch (const std::runtime_error& err) {
+    fprintf(stdout, "%s\n", err.what());
+    exitCode = 1;
+  }
 
-  fputs("CONSTRUCTOR_RETURNED\n", stdout);
   fflush(stdout);
   stopServer.store(true);
   if (serverThread.joinable()) {
     serverThread.join();
   }
-  _exit(0);
+  _exit(exitCode);
 }
 #endif
 

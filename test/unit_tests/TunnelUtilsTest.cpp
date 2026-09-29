@@ -222,6 +222,28 @@ TEST_CASE("Rejects malformed port forward input", "[TunnelUtils]") {
         parseRangesToRequests("::1:8888:0.0.0.0:9999"),
         ContainsSubstring("Ipv6 addresses must be inside of square brackets"));
   }
+
+  SECTION("Ssh-style source port must be numeric") {
+    REQUIRE_THROWS_WITH(parseRangesToRequests("localhost:notaport:remote:22"),
+                        ContainsSubstring("Invalid tunnel argument"));
+  }
+
+  SECTION("Ssh-style destination port must be numeric") {
+    REQUIRE_THROWS_WITH(parseRangesToRequests("localhost:22:remote:notaport"),
+                        ContainsSubstring("Invalid tunnel argument"));
+  }
+
+  SECTION("Ssh-style port must fit in an integer") {
+    REQUIRE_THROWS_WITH(
+        parseRangesToRequests("localhost:999999999999999999999:remote:22"),
+        ContainsSubstring("Invalid tunnel argument"));
+  }
+
+  SECTION("OpenSSH 3-field port must fit in an integer") {
+    REQUIRE_THROWS_WITH(
+        parseRangesToRequests("999999999999999999999:remote:22"),
+        ContainsSubstring("Invalid tunnel argument"));
+  }
 }
 
 TEST_CASE("Generates random alphanumeric strings", "[genRandomAlphaNum]") {
