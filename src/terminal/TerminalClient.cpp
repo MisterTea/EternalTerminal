@@ -5,7 +5,8 @@
 #include <cstring>
 #include <sstream>
 
-#include "PseudoTerminalConsole.hpp"
+#include "PlatformUtils.hpp"
+#include "PollSet.hpp"
 #include "RawSocketUtils.hpp"
 #include "SocksUtils.hpp"
 #include "TelemetryService.hpp"
@@ -435,10 +436,6 @@ int TerminalClient::run(const string& command, const bool noexit) {
     console->setup();
   }
 
-// TE sends/receives data to/from the shell one char at a time.
-#define BUF_SIZE (16 * 1024)
-  char b[BUF_SIZE];
-
   time_t keepaliveTime = time(NULL) + keepaliveDuration;
   bool waitingOnKeepalive = false;
   const bool wantRemoteExitStatus = !command.empty() && !noexit;
@@ -500,9 +497,10 @@ int TerminalClient::run(const string& command, const bool noexit) {
         break;
       }
     }
-    int consoleFd = -1;
-    if (console && !consoleInputDisabled) {
-      consoleFd = console->getFd();
+    const bool readConsole = console && !consoleInputDisabled;
+    vector<int> consoleInputFds;
+    if (readConsole) {
+      consoleInputFds = console->getInputPollFds();
     }
     const bool consoleWritable = console && consoleOut.hasPendingData();
     const int clientFd = connection->getSocketFd();
@@ -512,253 +510,53 @@ int TerminalClient::run(const string& command, const bool noexit) {
     set<int> pfFds;
     portForwardHandler->getForwardFds(&pfFds);
 
-    set<int> readyFds;
-#ifdef WIN32
-    vector<WSAPOLLFD> pollFds;
-    auto watch = [&pollFds](int fd, short events) {
-      if (fd <= 0) return;
-      for (auto& pollFd : pollFds) {
-        if (pollFd.fd == static_cast<SOCKET>(fd)) {
-          pollFd.events |= events;
-          return;
-        }
-      }
-      WSAPOLLFD pfd = {};
-      pfd.fd = static_cast<SOCKET>(fd);
-      pfd.events = events;
-      pollFds.push_back(pfd);
-    };
-    auto* pseudoConsole = dynamic_cast<PseudoTerminalConsole*>(console.get());
-    if (consoleFd >= 0 && !pseudoConsole) {
-      watch(consoleFd, POLLRDNORM);
-    }
-    if (consoleWritable && !pseudoConsole) {
-      watch(console->getFd(), POLLWRNORM);
-    }
-    if (watchClient) {
-      watch(clientFd, POLLRDNORM);
-    }
-    for (int fd : pfFds) {
-      watch(fd, POLLRDNORM);
-    }
-    if (!pollFds.empty()) {
-      const int pollResult =
-          ::WSAPoll(pollFds.data(), static_cast<ULONG>(pollFds.size()), 10);
-      if (pollResult > 0) {
-        for (const auto& pollFd : pollFds) {
-          if ((pollFd.events & (POLLRDNORM | POLLRDBAND)) != 0 &&
-              (pollFd.revents &
-               (POLLRDNORM | POLLRDBAND | POLLERR | POLLHUP | POLLNVAL)) != 0) {
-            readyFds.insert(static_cast<int>(pollFd.fd));
-          }
-        }
-      }
-    } else {
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-    }
-#else
-    // poll() has no FD_SETSIZE ceiling, and unlike epoll it accepts the
-    // regular file nohup(1) leaves on the console descriptor.
-    vector<struct pollfd> pollFds;
-    // The console read and write descriptors are the same fd, so interest is
-    // merged rather than appended.
-    auto watch = [&pollFds](int fd, short events) {
-      for (auto& pollFd : pollFds) {
-        if (pollFd.fd == fd) {
-          pollFd.events |= events;
-          return;
-        }
-      }
-      pollFds.push_back({fd, events, 0});
-    };
-    if (consoleFd >= 0) {
-      watch(consoleFd, POLLIN);
-      // PseudoTerminalConsole writes to stdout and reads keystrokes from
-      // stdin. FakeConsole (tests) uses one pipe for both; watching the
-      // process stdin there races an always-ready EOF and disables input.
-      if (consoleFd == STDOUT_FILENO) {
-        watch(STDIN_FILENO, POLLIN);
-      }
+    PollSet pollSet;
+    for (int fd : consoleInputFds) {
+      pollSet.watch(fd, true, false);
     }
     if (consoleWritable) {
       // Only needs to wake the loop; the drain below re-checks writability.
-      watch(console->getFd(), POLLOUT);
+      pollSet.watch(console->getOutputPollFd(), false, true);
     }
     if (watchClient) {
-      watch(clientFd, POLLIN);
+      pollSet.watch(clientFd, true, false);
     }
     for (int fd : pfFds) {
-      watch(fd, POLLIN);
+      pollSet.watch(fd, true, false);
     }
-    const int pollResult =
-        poll(pollFds.data(), static_cast<nfds_t>(pollFds.size()), 10);
-    if (pollResult < 0 && errno != EINTR) {
-      FATAL_FAIL(pollResult);
-    }
-    for (const auto& pollFd : pollFds) {
-      if ((pollFd.events & POLLIN) != 0 &&
-          (pollFd.revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL)) != 0) {
-        readyFds.insert(pollFd.fd);
-      }
-    }
-#endif
+    const set<int> readyFds = pollSet.waitReadable(10);
 
     try {
       bool skipServerRead = false;
-      if (console && consoleFd >= 0) {
-        bool inputReady = readyFds.count(consoleFd) != 0;
-#ifndef WIN32
-        if (consoleFd == STDOUT_FILENO) {
-          inputReady = inputReady || readyFds.count(STDIN_FILENO) != 0;
+      bool inputReady = readConsole && consoleInputFds.empty();
+      for (int fd : consoleInputFds) {
+        inputReady = inputReady || readyFds.count(fd) != 0;
+      }
+      if (inputReady) {
+        VLOG(4) << "Got data from stdin";
+        string s;
+        const ConsoleInputStatus status = console->readInput(readyFds, &s);
+        if (status == ConsoleInputStatus::FAILED) {
+          break;
         }
-#endif
-        if (inputReady) {
-          // Read from stdin and write to our client that will then send it to
-          // the server.
-          VLOG(4) << "Got data from stdin";
-#ifdef WIN32
-          auto* pseudoConsole =
-              dynamic_cast<PseudoTerminalConsole*>(console.get());
-          if (pseudoConsole) {
-            HANDLE handle = GetStdHandle(STD_INPUT_HANDLE);
-            DWORD consoleMode = 0;
-            if (handle == NULL || handle == INVALID_HANDLE_VALUE ||
-                !GetConsoleMode(handle, &consoleMode)) {
-              // stdin is redirected (nohup/background/service): there is no
-              // keyboard to read, but the session must survive. Mirrors the
-              // Unix non-tty path below.
-              LOG(INFO) << "Console stdin is not a console, disabling "
-                           "console input";
-              consoleInputDisabled = true;
-            } else {
-              DWORD events = 0;
-              INPUT_RECORD buffer[128];
-              if (!PeekConsoleInput(handle, buffer, 128, &events)) {
-                events = 0;
-              }
-              if (events > 0) {
-                if (!ReadConsoleInput(handle, buffer, 128, &events)) {
-                  events = 0;
-                }
-                string s;
-                for (int keyEvent = 0; keyEvent < events; keyEvent++) {
-                  if (buffer[keyEvent].EventType == KEY_EVENT &&
-                      buffer[keyEvent].Event.KeyEvent.bKeyDown) {
-                    char charPressed =
-                        ((char)buffer[keyEvent].Event.KeyEvent.uChar.AsciiChar);
-                    if (charPressed) {
-                      s += charPressed;
-                    }
-                  }
-                }
-                if (s.length()) {
-                  et::TerminalBuffer tb;
-                  tb.set_buffer(s);
+        if (status == ConsoleInputStatus::CLOSED) {
+          consoleInputDisabled = true;
+        }
+        if (status == ConsoleInputStatus::DATA && !s.empty()) {
+          et::TerminalBuffer tb;
+          tb.set_buffer(s);
 
-                  connection->writePacket(Packet(
-                      TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-                  keepaliveTime = time(NULL) + keepaliveDuration;
-                  if (WriteBuffer::containsInterruptByte(s) ||
-                      tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
-                    skipServerRead = true;
-                    consoleOut.filterDroppable();
-                    LOG(INFO) << "Interrupt from stdin (" << s.size()
-                              << " bytes), consoleOut=" << consoleOut.size();
-                  }
-                  tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
-                }
-              }
-            }
-          } else {
-            // Socket-backed console (e.g. FakeConsole in integration tests).
-            char b[BUF_SIZE];
-            int rc = ::recv(consoleFd, b, BUF_SIZE, 0);
-            int savedErrno = GetErrno();
-            if (rc > 0) {
-              string s(b, rc);
-              et::TerminalBuffer tb;
-              tb.set_buffer(s);
-
-              connection->writePacket(Packet(
-                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-              keepaliveTime = time(NULL) + keepaliveDuration;
-              if (WriteBuffer::containsInterruptByte(s) ||
-                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
-                skipServerRead = true;
-                consoleOut.filterDroppable();
-                LOG(INFO) << "Interrupt from stdin (" << s.size()
-                          << " bytes), consoleOut=" << consoleOut.size();
-              }
-              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
-            } else if (rc == 0) {
-              LOG(INFO) << "Console is at EOF, disabling console input";
-              consoleInputDisabled = true;
-            } else {
-              if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
-                // Transient error, retry
-              } else {
-                LOG(INFO) << "Console read error (" << savedErrno
-                          << "): " << strerror(savedErrno)
-                          << ", disabling console input";
-                consoleInputDisabled = true;
-              }
-            }
+          connection->writePacket(
+              Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+          keepaliveTime = time(NULL) + keepaliveDuration;
+          if (WriteBuffer::containsInterruptByte(s) ||
+              tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
+            skipServerRead = true;
+            consoleOut.filterDroppable();
+            LOG(INFO) << "Interrupt from stdin (" << s.size()
+                      << " bytes), consoleOut=" << consoleOut.size();
           }
-#else
-          if (console) {
-            int readFd = consoleFd;
-            if (consoleFd == STDOUT_FILENO &&
-                readyFds.count(STDIN_FILENO) != 0) {
-              readFd = STDIN_FILENO;
-            }
-            int rc = ::read(readFd, b, BUF_SIZE);
-            int savedErrno = errno;  // Save errno before any logging
-            if (rc > 0) {
-              // VLOG(1) << "Sending byte: " << int(b) << " " << char(b) << " "
-              // << connection->getWriter()->getSequenceNumber();
-              string s(b, rc);
-              et::TerminalBuffer tb;
-              tb.set_buffer(s);
-
-              connection->writePacket(Packet(
-                  TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
-              keepaliveTime = time(NULL) + keepaliveDuration;
-              if (WriteBuffer::containsInterruptByte(s) ||
-                  tmuxCcInputRequestsInterrupt(consoleInterruptCarry, s)) {
-                skipServerRead = true;
-                consoleOut.filterDroppable();
-                LOG(INFO) << "Interrupt from stdin (" << s.size()
-                          << " bytes), consoleOut=" << consoleOut.size();
-              }
-              tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
-            } else if (rc == 0) {
-              // Judge the descriptor that was read: a heredoc or pipe on stdin
-              // (`et -T host sh << EOF` in a terminal) hits EOF after its
-              // script while stdout is still a tty, and must not end the
-              // session.
-              if (isatty(readFd)) {
-                LOG(INFO) << "Console EOF";
-                break;
-              }
-              LOG(INFO) << "Console is not a tty and is at EOF, disabling "
-                           "console input";
-              consoleInputDisabled = true;
-            } else {
-              if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
-                // Transient error, retry
-              } else if (!isatty(readFd)) {
-                LOG(INFO) << "Console is not a tty and cannot be read ("
-                          << savedErrno << "): " << strerror(savedErrno)
-                          << ", disabling console input";
-                consoleInputDisabled = true;
-              } else {
-                LOG(INFO) << "Console read error: (" << savedErrno
-                          << "): " << strerror(savedErrno);
-                break;
-              }
-            }
-          }
-#endif
+          tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
         }
       }
 
@@ -793,16 +591,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
                   stringToProto<et::TerminalBuffer>(packet.getPayload());
               keepaliveTime = time(NULL) + keepaliveDuration;
               if (tb.is_stderr()) {
-#ifdef WIN32
-                auto hstderr = GetStdHandle(STD_ERROR_HANDLE);
-                DWORD written = 0;
-                WriteFile(hstderr, tb.buffer().data(),
-                          static_cast<DWORD>(tb.buffer().size()), &written,
-                          NULL);
-#else
-                RawSocketUtils::writeAll(STDERR_FILENO, tb.buffer().data(),
-                                         tb.buffer().size());
-#endif
+                WriteToStdStream(STDERR_FILENO, tb.buffer().data(),
+                                 tb.buffer().size());
               } else if (console) {
                 if (sessionTitleUpdate && !tb.buffer().empty()) {
                   const optional<string> parsedTitle =
@@ -815,16 +605,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
                 }
                 consoleOut.enqueue(tb.buffer());
               } else {
-#ifdef WIN32
-                auto hstdout = GetStdHandle(STD_OUTPUT_HANDLE);
-                DWORD written = 0;
-                WriteFile(hstdout, tb.buffer().data(),
-                          static_cast<DWORD>(tb.buffer().size()), &written,
-                          NULL);
-#else
-                RawSocketUtils::writeAll(STDOUT_FILENO, tb.buffer().data(),
-                                         tb.buffer().size());
-#endif
+                WriteToStdStream(STDOUT_FILENO, tb.buffer().data(),
+                                 tb.buffer().size());
               }
               break;
             }
@@ -904,13 +686,7 @@ int TerminalClient::run(const string& command, const bool noexit) {
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-#ifdef WIN32
-      // select() silently drops descriptors past FD_SETSIZE, so readiness is
-      // not authoritative here and every handler has to be checked.
-      portForwardHandler->update(&requests, &dataToSend);
-#else
       portForwardHandler->update(&requests, &dataToSend, &readyFds);
-#endif
       for (auto& pfr : requests) {
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,
@@ -990,14 +766,9 @@ int TerminalClient::run(const string& command, const bool noexit) {
         STERROR << "Error draining consoleOut: " << re.what();
         break;
       }
-#ifndef WIN32
-      pollfd pfd = {console->getFd(), POLLOUT, 0};
-      if (poll(&pfd, 1, 10) < 0 && errno != EINTR) {
-        break;
-      }
-#else
-      std::this_thread::sleep_for(std::chrono::milliseconds(10));
-#endif
+      PollSet writable;
+      writable.watch(console->getOutputPollFd(), false, true);
+      writable.waitReadable(10);
     }
     console->teardown();
   }
@@ -1166,78 +937,43 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
     const int clientFd = connection->getSocketFd();
     set<int> pfFds;
     portForwardHandler->getForwardFds(&pfFds);
-    set<int> readyFds;
-
-#ifndef WIN32
-    vector<struct pollfd> pollFds;
-    auto watch = [&pollFds](int fd, short events) {
-      if (fd < 0) {
-        return;
-      }
-      for (auto& pollFd : pollFds) {
-        if (pollFd.fd == fd) {
-          pollFd.events |= events;
-          return;
-        }
-      }
-      pollFds.push_back({fd, events, 0});
-    };
-    if (passengerInFd >= 0) {
-      watch(passengerInFd, POLLIN);
-    }
-    if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
-      watch(passengerOutFd, POLLOUT);
+    PollSet pollSet;
+    pollSet.watch(passengerInFd, true, false);
+    if (passengerOut.hasPendingData()) {
+      pollSet.watch(passengerOutFd, false, true);
     }
     if (clientFd > 0) {
-      watch(clientFd, POLLIN);
+      pollSet.watch(clientFd, true, false);
     }
     for (int fd : pfFds) {
-      watch(fd, POLLIN);
+      pollSet.watch(fd, true, false);
     }
-    if (!pollFds.empty()) {
-      int rc = ::poll(pollFds.data(), static_cast<nfds_t>(pollFds.size()), 50);
-      if (rc > 0) {
-        for (const auto& pollFd : pollFds) {
-          if (pollFd.revents != 0) {
-            readyFds.insert(pollFd.fd);
-          }
-        }
-      }
-    } else {
-      this_thread::sleep_for(chrono::milliseconds(50));
-    }
-#else
-    this_thread::sleep_for(chrono::milliseconds(50));
-    (void)passengerInFd;
-    (void)passengerOutFd;
-#endif
+    const set<int> readyFds = pollSet.waitReadable(50);
 
     try {
-#ifndef WIN32
       if (passengerInFd >= 0 && readyFds.count(passengerInFd)) {
         char b[4096];
-        ssize_t rc = ::read(passengerInFd, b, sizeof(b));
+        const ssize_t rc =
+            RawSocketUtils::readSome(passengerInFd, b, sizeof(b));
+        const int readErrno = GetErrno();
         if (rc > 0) {
           et::TerminalBuffer tb;
           tb.set_buffer(string(b, rc));
           connection->writePacket(
               Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
           keepaliveTime = time(NULL) + keepaliveDuration;
-        } else if (rc == 0 || (rc < 0 && errno != EAGAIN &&
-                               errno != EWOULDBLOCK && errno != EINTR)) {
+        } else if (rc == 0 ||
+                   (readErrno != EAGAIN && readErrno != EWOULDBLOCK &&
+                    readErrno != EINTR)) {
           // Mirror primary run(): disable further local input; keep bridging
           // until a real session-end signal (exit marker / TERMINAL_CLOSE /
           // idle teardown).
           passengerInputDisabled = true;
         }
       }
-#endif
 
       if (clientFd > 0) {
-        bool haveData = true;
-#ifndef WIN32
-        haveData = readyFds.count(clientFd) != 0 || connection->hasData();
-#endif
+        bool haveData = readyFds.count(clientFd) != 0 || connection->hasData();
         while (haveData && connection->hasData()) {
           Packet packet;
           if (!connection->readPacket(&packet)) {
@@ -1248,7 +984,6 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
             case TerminalPacketType::TERMINAL_BUFFER: {
               et::TerminalBuffer tb =
                   stringToProto<et::TerminalBuffer>(packet.getPayload());
-#ifndef WIN32
               if (passengerOutFd >= 0 || awaitingPassengerExitMarker) {
                 if (awaitingPassengerExitMarker) {
                   string forward;
@@ -1272,9 +1007,6 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
                   passengerOut.enqueue(tb.buffer());
                 }
               }
-#else
-              (void)tb;
-#endif
               break;
             }
             case TerminalPacketType::PORT_FORWARD_DATA:
@@ -1304,18 +1036,17 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
         }
       }
 
-#ifndef WIN32
       if (passengerOutFd >= 0 && passengerOut.hasPendingData()) {
         size_t count = 0;
         const char* data = passengerOut.peekData(&count);
         if (data != nullptr && count > 0) {
-          ssize_t written = ::write(passengerOutFd, data, count);
+          const ssize_t written =
+              RawSocketUtils::writeSome(passengerOutFd, data, count);
           if (written > 0) {
             passengerOut.consume(static_cast<size_t>(written));
           }
         }
       }
-#endif
 
       if (clientFd > 0 && keepaliveTime < time(NULL)) {
         keepaliveTime = time(NULL) + keepaliveDuration;
@@ -1330,11 +1061,7 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
 
       vector<PortForwardDestinationRequest> requests;
       vector<PortForwardData> dataToSend;
-#ifndef WIN32
       portForwardHandler->update(&requests, &dataToSend, &readyFds);
-#else
-      portForwardHandler->update(&requests, &dataToSend);
-#endif
       for (auto& pfr : requests) {
         connection->writePacket(
             Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_REQUEST,

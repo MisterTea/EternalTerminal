@@ -5,9 +5,7 @@
 #include "SimpleIni.h"
 #include "TelemetryService.hpp"
 #include "TerminalServer.hpp"
-#ifdef WIN32
 #include "WinsockContext.hpp"
-#endif
 
 using namespace et;
 namespace google {}
@@ -16,9 +14,7 @@ using namespace google;
 using namespace gflags;
 
 int main(int argc, char** argv) {
-#ifdef WIN32
   WinsockContext winsockContext;
-#endif
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
   LogHandler::setupStdoutLogger();

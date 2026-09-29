@@ -1329,6 +1329,12 @@ class RealPtyFixedExitTerminal : public UserTerminal {
   virtual ~RealPtyFixedExitTerminal() { cleanup(); }
 
   virtual int setup(int /*routerFd*/) {
+    // Allocate before fork: the child must not use heap locks inherited from
+    // the other threads in this test process.
+    const string script = fullScript.empty()
+                              ? ("sleep 2; exit " + to_string(exitCode))
+                              : fullScript;
+    const char* scriptArg = script.c_str();
     childPid = forkpty(&masterFd, NULL, NULL, NULL);
     if (childPid == -1) {
       FATAL_FAIL(childPid);
@@ -1336,10 +1342,7 @@ class RealPtyFixedExitTerminal : public UserTerminal {
     if (childPid == 0) {
       // Give the client time to connect and enter run() before exiting by
       // default; callers can supply a full script (e.g. print then exit).
-      string script = fullScript.empty()
-                          ? ("sleep 2; exit " + to_string(exitCode))
-                          : fullScript;
-      execl("/bin/sh", "sh", "-c", script.c_str(), (char*)NULL);
+      execl("/bin/sh", "sh", "-c", scriptArg, (char*)NULL);
       _exit(127);
     }
     int flags = fcntl(masterFd, F_GETFL, 0);

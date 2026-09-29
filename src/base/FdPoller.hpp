@@ -45,7 +45,7 @@ class FdPoller {
   static constexpr short kWrite = 2;
 
   bool addFd(int fd, short interest);
-  void removeFd(int fd, short interest);
+  void reset();
   Ready waitImpl(int capacity, int timeoutMs);
 
   int pollerFd;

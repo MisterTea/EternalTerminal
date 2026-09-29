@@ -43,6 +43,18 @@ class WinsockContext {
   }
 
   ~WinsockContext() {}
+
+  /**
+   * @brief Calls `WSACleanup` on Windows; a no-op elsewhere.
+   *
+   * Not done in the destructor: detached socket threads may still be running
+   * when main() returns.
+   */
+  void release() {
+#ifdef WIN32
+    WSACleanup();
+#endif
+  }
 };
 }  // namespace et
 

@@ -2,6 +2,8 @@
 
 #include <cstdint>
 
+#include "RawSocketUtils.hpp"
+
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
@@ -35,11 +37,8 @@ ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   waitForData(fd, 5, 0);
   lock_guard<recursive_mutex> guard(*sockMutex);
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
-#ifdef WIN32
-  ssize_t readBytes = ::recv(fd, (char*)buf, count, 0);
-#else
-  ssize_t readBytes = ::read(fd, buf, count);
-#endif
+  ssize_t readBytes =
+      RawSocketUtils::readSome(fd, static_cast<char*>(buf), count);
   auto localErrno = GetErrno();
   if (readBytes < 0 && localErrno != EAGAIN && localErrno != EWOULDBLOCK) {
     LOG(WARNING) << "Error reading: " << localErrno << " "
@@ -70,17 +69,8 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   ssize_t bytesWritten = 0;
   while (static_cast<size_t>(bytesWritten) < count) {
     lock_guard<recursive_mutex> guard(*sockMutex);
-    ssize_t w;
-#ifdef WIN32
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
-#else
-#ifdef MSG_NOSIGNAL
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten,
-               MSG_NOSIGNAL);
-#else
-    w = ::write(fd, ((const char*)buf) + bytesWritten, count - bytesWritten);
-#endif
-#endif
+    const ssize_t w = writeSocketSome(
+        fd, static_cast<const char*>(buf) + bytesWritten, count - bytesWritten);
     auto localErrno = GetErrno();
     if (w < 0) {
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
@@ -173,11 +163,7 @@ void UnixSocketHandler::close(int fd) {
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
   VLOG(1) << "Closing connection: " << fd;
-#ifdef _MSC_VER
-  ::closesocket(fd);
-#else
-  ::close(fd);
-#endif
+  RawSocketUtils::closeSocket(fd);
   activeSocketMutexes.erase(it);
 }
 
@@ -188,15 +174,6 @@ vector<int> UnixSocketHandler::getActiveSockets() {
     fds.push_back(it.first);
   }
   return fds;
-}
-
-void UnixSocketHandler::initSocket(int fd) {
-#if !defined(WIN32)
-  // ignore SIGPIPE globally
-  ::signal(SIGPIPE, SIG_IGN);
-#endif
-  // Also set the accept socket as non-blocking
-  setBlocking(fd, false);
 }
 
 void UnixSocketHandler::initServerSocket(int fd) {
@@ -210,26 +187,8 @@ void UnixSocketHandler::initServerSocket(int fd) {
 }
 
 void UnixSocketHandler::setBlocking(int sockFd, bool blocking) {
-#ifdef WIN32
-  {
-    u_long iMode = u_long(!blocking);
-    auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
-    if (result != NO_ERROR) {
-      STFATAL << result;
-    }
+  if (!setSocketBlocking(sockFd, blocking)) {
+    FATAL_FAIL(-1);
   }
-#else
-  {
-    int opts;
-    opts = fcntl(sockFd, F_GETFL);
-    FATAL_FAIL(opts);
-    if (blocking) {
-      opts &= (~O_NONBLOCK);
-    } else {
-      opts |= O_NONBLOCK;
-    }
-    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-  }
-#endif
 }
 }  // namespace et

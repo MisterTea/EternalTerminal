@@ -242,6 +242,7 @@ void TerminalServer::runJumpHost(
     set<int> readFds;
     set<int> writeFds;
     set<int> refreshFds;
+    auto socketLock = serverClientState->lockSocket();
     int serverClientFd = serverClientState->getSocketFd();
     const bool connected = serverClientFd > 0;
     // Connected: bound the userspace queue. Disconnected: keep today's
@@ -262,6 +263,7 @@ void TerminalServer::runJumpHost(
       }
     }
     poller.setFds(readFds, writeFds, refreshFds);
+    socketLock.unlock();
     // Write readiness only needs to wake the loop; the drain below re-checks
     // it per write.
     const set<int> readyFds = poller.wait(100).readable;
@@ -475,6 +477,7 @@ void TerminalServer::runTerminal(
     set<int> readFds;
     set<int> writeFds;
     set<int> refreshFds;
+    auto socketLock = serverClientState->lockSocket();
     int serverClientFd = serverClientState->getSocketFd();
     const bool connected = serverClientFd > 0;
     bool readTerminal;
@@ -517,6 +520,7 @@ void TerminalServer::runTerminal(
       forwardFdsGeneration = currentForwardFdsGeneration;
     }
     poller.setFds(readFds, writeFds, refreshFds);
+    socketLock.unlock();
     // Write readiness only needs to wake the loop; the drain below re-checks
     // it per write.
     const set<int> readyFds = poller.wait(100).readable;
@@ -525,14 +529,21 @@ void TerminalServer::runTerminal(
       // Handle client input before draining the output queue. Otherwise a
       // writable socket (fast client, or a client just resumed) sends the
       // whole backlog before Ctrl+C is read, and flushIfLarge sees nothing.
-      if (serverClientFd > 0 && readyFds.count(serverClientFd) != 0) {
+      if (serverClientFd > 0 && (readyFds.count(serverClientFd) != 0 ||
+                                 serverClientState->hasData())) {
         VLOG(3) << "ServerClientFd is ready";
-        while (serverClientState->hasData()) {
+        // A continuous stream of client packets must still leave time to
+        // forward terminal output and exit status in this iteration.
+        constexpr size_t maxClientPacketsPerIteration = 64;
+        size_t clientPacketsProcessed = 0;
+        while (clientPacketsProcessed < maxClientPacketsPerIteration &&
+               serverClientState->hasData()) {
           VLOG(3) << "ServerClientState has data";
           Packet packet;
           if (!serverClientState->readPacket(&packet)) {
             break;
           }
+          ++clientPacketsProcessed;
           uint8_t packetType = packet.getHeader();
           if (packetType == et::TerminalPacketType::PORT_FORWARD_DATA ||
               packetType ==

@@ -1,16 +1,8 @@
 #include "TcpSocketHandler.hpp"
 
-namespace et {
-namespace {
-const char* GaiStrError(int error) {
-#ifdef WIN32
-  return gai_strerrorA(error);
-#else
-  return gai_strerror(error);
-#endif
-}
-}  // namespace
+#include "RawSocketUtils.hpp"
 
+namespace et {
 TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
     : listenBacklog(_listenBacklog > 0 ? _listenBacklog
                                        : DEFAULT_LISTEN_BACKLOG) {
@@ -43,18 +35,15 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   std::string portname = std::to_string(endpoint.port());
   std::string hostname = endpoint.name();
 
-#ifndef WIN32
-  // (re)initialize the DNS system
-  ::res_init();
-#endif
+  refreshResolver();
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
   if (rc != 0) {
     lastConnectError = string("Could not resolve hostname ") + hostname + ": " +
-                       GaiStrError(rc);
+                       addressError(rc);
   }
   if (rc == EAI_NONAME) {
-    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << GaiStrError(rc);
+    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << addressError(rc);
     if (results) {
       freeaddrinfo(results);
     }
@@ -63,7 +52,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   if (rc != 0) {
     LOG(INFO) << "Error getting address info for " << endpoint << ": " << rc
-              << " (" << GaiStrError(rc) << ")";
+              << " (" << addressError(rc) << ")";
     if (results) {
       freeaddrinfo(results);
     }
@@ -94,11 +83,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
                   << strerror(localErrno);
       }
       setBlocking(sockFd, true);
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
       sockFd = -1;
       continue;
     }
@@ -132,11 +117,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
                     << " " << strerror(so_error);
         }
         setBlocking(sockFd, true);
-#ifdef _MSC_VER
-        FATAL_FAIL(::closesocket(sockFd));
-#else
-        FATAL_FAIL(::close(sockFd));
-#endif
+        FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
         sockFd = -1;
         continue;
       }
@@ -150,11 +131,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
         LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno
                   << " " << strerror(localErrno);
       }
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
       sockFd = -1;
       continue;
     }
@@ -194,7 +171,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   if ((rc = getaddrinfo(bindIp, portname.c_str(), &hints, &servinfo)) != 0) {
     STERROR << "Error getting address info for " << port << ": " << rc << " ("
-            << GaiStrError(rc) << ")";
+            << addressError(rc) << ")";
     throw std::runtime_error(
         std::string("Failed to resolve address for port ") +
         std::to_string(port));
@@ -232,11 +209,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
         auto localErrno = GetErrno();
         LOG(INFO) << "Unable to configure IPv6 listener: " << localErrno << " "
                   << strerror(localErrno) << " (continuing)";
-#ifdef _MSC_VER
-        ::closesocket(sockFd);
-#else
-        ::close(sockFd);
-#endif
+        RawSocketUtils::closeSocket(sockFd);
         continue;
       }
     }
@@ -254,11 +227,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       oss << "Error binding port " << port << ": " << localErrno << " "
           << strerror(localErrno);
       string s = oss.str();
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
       LOG(INFO) << s << " (continuing for other families)";
       continue;
     }
@@ -268,11 +237,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       auto localErrno = GetErrno();
       LOG(INFO) << "Unable to listen on family " << p->ai_family << ": "
                 << localErrno << " " << strerror(localErrno) << " (continuing)";
-#ifdef _MSC_VER
-      ::closesocket(sockFd);
-#else
-      ::close(sockFd);
-#endif
+      RawSocketUtils::closeSocket(sockFd);
       continue;
     }
     LOG(INFO) << "Listening on "
@@ -317,11 +282,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   }
   auto& serverSockets = it->second;
   for (int sockFd : serverSockets) {
-#ifdef _MSC_VER
-    FATAL_FAIL(::closesocket(sockFd));
-#else
-    FATAL_FAIL(::close(sockFd));
-#endif
+    FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
   }
   portServerSockets.erase(it);
 }
@@ -347,19 +308,4 @@ void TcpSocketHandler::initSocket(int fd) {
   }
 }
 
-void TcpSocketHandler::minimizeKernelBuffering(int fd) {
-#ifdef TCP_NOTSENT_LOWAT
-  // Keep the kernel's not-yet-sent queue small so pending terminal output
-  // stays in WriteBuffer, where Ctrl+C can drop it. Without this,
-  // select()/poll() report the socket writable whenever the autotuned
-  // (multi-MB) send buffer has room, and stale output piles up in the
-  // kernel where it cannot be discarded. TCP_NOTSENT_LOWAT only limits
-  // *unsent* data; sent-but-unacked (in-flight) data is unaffected.
-  int lowat = 32 * 1024;
-  if (setsockopt(fd, IPPROTO_TCP, TCP_NOTSENT_LOWAT, (char*)&lowat,
-                 sizeof(lowat)) < 0) {
-    LOG(WARNING) << "Failed to set TCP_NOTSENT_LOWAT: " << strerror(errno);
-  }
-#endif
-}
 }  // namespace et

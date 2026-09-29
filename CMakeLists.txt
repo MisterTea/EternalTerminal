@@ -431,6 +431,37 @@ if(NOT ANDROID)
   include_directories(${EXTERNAL_DIR}/UniversalStacktrace/ust)
 endif()
 
+if(WIN32)
+  set(BASE_PLATFORM_SRCS
+    src/base/DaemonCreatorWindows.cpp
+    src/base/FdPollerWindows.cpp
+    src/base/PipeSocketHandlerWindows.cpp
+    src/base/PlatformUtilsWindows.cpp
+    src/base/RawSocketUtilsWindows.cpp
+    src/base/UnixSocketHandlerWindows.cpp
+    src/base/TcpSocketHandlerWindows.cpp
+    src/base/PollSetWindows.cpp
+    src/base/SubprocessUtilsWindows.cpp
+    src/base/UserSocketOpsWindows.cpp)
+else()
+  if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+    set(BASE_FD_POLLER_SRC src/base/FdPollerLinux.cpp)
+  else()
+    set(BASE_FD_POLLER_SRC src/base/FdPollerKqueue.cpp)
+  endif()
+  set(BASE_PLATFORM_SRCS
+    src/base/DaemonCreatorUnix.cpp
+    ${BASE_FD_POLLER_SRC}
+    src/base/PipeSocketHandlerUnix.cpp
+    src/base/PlatformUtilsUnix.cpp
+    src/base/RawSocketUtilsUnix.cpp
+    src/base/UnixSocketHandlerUnix.cpp
+    src/base/TcpSocketHandlerUnix.cpp
+    src/base/PollSetUnix.cpp
+    src/base/SubprocessUtilsUnix.cpp
+    src/base/UserSocketOpsUnix.cpp)
+endif()
+
 add_library(
   et-lib STATIC
 
@@ -450,9 +481,6 @@ add_library(
   src/base/CryptoHandler.cpp
   src/base/FdPoller.hpp
   src/base/FdPoller.cpp
-  src/base/FdPollerKqueue.cpp
-  src/base/FdPollerLinux.cpp
-  src/base/FdPollerWindows.cpp
   src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
   src/base/ServerConnection.hpp
@@ -461,8 +489,10 @@ add_library(
   src/base/SocketHandler.cpp
   src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+  src/base/PlatformUtils.hpp
+  src/base/PollSet.hpp
+  src/base/PollSet.cpp
   src/base/UserSocketOps.hpp
-  src/base/UserSocketOps.cpp
   src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.hpp
@@ -470,18 +500,17 @@ add_library(
   src/base/LogHandler.hpp
   src/base/LogHandler.cpp
   src/base/DaemonCreator.hpp
-  src/base/DaemonCreator.cpp
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
   src/base/WinsockContext.hpp
   src/base/SubprocessUtils.hpp
-  src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
   src/base/SocksUtils.hpp
   src/base/SocksUtils.cpp
   src/base/WriteBuffer.hpp
   src/base/TmuxCcFilter.hpp
+  ${BASE_PLATFORM_SRCS}
 
   ${ET_HDRS}
   ${ET_SRCS}
@@ -491,11 +520,17 @@ decorate_target(et-lib)
 
 if(WIN32)
   set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ConsoleWindows.cpp
+    src/terminal/PseudoTerminalConsoleWindows.cpp
     src/terminal/ServerFifoPathWindows.cpp
+    src/terminal/SessionStoreWindows.cpp
     src/terminal/UserTerminalHandlerWindows.cpp)
 else()
   set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ConsoleUnix.cpp
+    src/terminal/PseudoTerminalConsoleUnix.cpp
     src/terminal/ServerFifoPathUnix.cpp
+    src/terminal/SessionStoreUnix.cpp
     src/terminal/UserTerminalHandlerUnix.cpp)
 endif()
 
@@ -513,6 +548,10 @@ add_library(
   src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
+  src/terminal/BinaryStdioConsole.hpp
+  src/terminal/Console.hpp
+  src/terminal/PseudoTerminalConsole.hpp
+  src/terminal/StdioConsole.hpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
   src/terminal/MuxProtocol.hpp
@@ -538,6 +577,7 @@ add_library(
   src/terminal/UserTerminalHandler.hpp
   src/terminal/SessionStore.hpp
   src/terminal/SessionStore.cpp
+  src/terminal/SessionStorePlatform.hpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
@@ -597,8 +637,21 @@ if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
   target_compile_options(libvterm PRIVATE -fno-profile-arcs -fno-test-coverage)
 endif()
 
+if(WIN32)
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientWindows.cpp
+    src/htm/HtmServerWindows.cpp
+    src/htm/TerminalHandlerWindows.cpp)
+else()
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientUnix.cpp
+    src/htm/HtmServerUnix.cpp
+    src/htm/TerminalHandlerUnix.cpp)
+endif()
+
 add_library(
   HtmCommon STATIC
+  ${HTM_PLATFORM_SRCS}
   src/htm/TerminalHandler.cpp
   src/htm/MultiplexerState.cpp
   src/htm/IpcPairClient.cpp
@@ -614,7 +667,12 @@ add_dependencies(HtmCommon generated-code et-lib)
 target_link_libraries(HtmCommon PUBLIC libvterm)
 decorate_target(HtmCommon)
 
-add_executable(htm src/htm/HtmClientMain.cpp)
+if(WIN32)
+  set(HTM_CLIENT_PLATFORM_SRC src/htm/HtmClientPlatformWindows.cpp)
+else()
+  set(HTM_CLIENT_PLATFORM_SRC src/htm/HtmClientPlatformUnix.cpp)
+endif()
+add_executable(htm src/htm/HtmClientMain.cpp ${HTM_CLIENT_PLATFORM_SRC})
 target_link_libraries(
   htm
   LINK_PUBLIC

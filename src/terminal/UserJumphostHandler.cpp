@@ -87,11 +87,7 @@ void UserJumphostHandler::run() {
           FD_ZERO(&rfd);
           int clientFd = jumpclient->getSocketFd();
           if (clientFd < 0) {
-#ifdef WIN32
             std::this_thread::sleep_for(std::chrono::seconds(1));
-#else
-            sleep(1);
-#endif
             continue;
           }
           FD_SET(clientFd, &rfd);
@@ -184,11 +180,7 @@ void UserJumphostHandler::run() {
             jumpclient->closeSocketAndMaybeReconnect();
           }
           LOG(INFO) << "Reconnecting, sleep for 3s...";
-#ifdef WIN32
           std::this_thread::sleep_for(std::chrono::seconds(3));
-#else
-          sleep(3);
-#endif
           continue;
         } else {
           Packet p;
@@ -227,10 +219,6 @@ void UserJumphostHandler::run() {
     }
   }
   LOG(INFO) << "Jumpclient shutdown";
-#ifdef WIN32
   routerSocketHandler->close(routerFd);
-#else
-  close(routerFd);
-#endif
 }
 }  // namespace et

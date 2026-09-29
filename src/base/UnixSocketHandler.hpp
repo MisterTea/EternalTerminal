@@ -53,6 +53,8 @@ class UnixSocketHandler : public SocketHandler {
    * @brief Toggles blocking mode on a descriptor.
    */
   void setBlocking(int sockFd, bool blocking);
+  /** @brief Native socket write, suppressing SIGPIPE where supported. */
+  static ssize_t writeSocketSome(int fd, const char* buf, size_t count);
 
   /** @brief Mutex per active socket to ensure serial read/write. */
   map<int, shared_ptr<recursive_mutex>> activeSocketMutexes;

@@ -54,6 +54,11 @@ class Connection {
 
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
+  /** @brief Holds the socket lifecycle stable while registering readiness. */
+  unique_lock<recursive_mutex> lockSocket() {
+    return unique_lock<recursive_mutex>(connectionMutex);
+  }
+
   inline bool isDisconnected() {
     lock_guard<std::recursive_mutex> guard(connectionMutex);
     return socketFd == -1;
