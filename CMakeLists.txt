@@ -437,6 +437,9 @@ if(WIN32)
     src/base/FdPollerWindows.cpp
     src/base/PipeSocketHandlerWindows.cpp
     src/base/PlatformUtilsWindows.cpp
+    src/base/RawSocketUtilsWindows.cpp
+    src/base/UnixSocketHandlerWindows.cpp
+    src/base/TcpSocketHandlerWindows.cpp
     src/base/PollSetWindows.cpp
     src/base/SubprocessUtilsWindows.cpp
     src/base/UserSocketOpsWindows.cpp)
@@ -451,6 +454,9 @@ else()
     ${BASE_FD_POLLER_SRC}
     src/base/PipeSocketHandlerUnix.cpp
     src/base/PlatformUtilsUnix.cpp
+    src/base/RawSocketUtilsUnix.cpp
+    src/base/UnixSocketHandlerUnix.cpp
+    src/base/TcpSocketHandlerUnix.cpp
     src/base/PollSetUnix.cpp
     src/base/SubprocessUtilsUnix.cpp
     src/base/UserSocketOpsUnix.cpp)

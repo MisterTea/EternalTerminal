@@ -1,5 +1,7 @@
 #include "PipeSocketHandler.hpp"
 
+#include "RawSocketUtils.hpp"
+
 namespace et {
 PipeSocketHandler::PipeSocketHandler() {}
 
@@ -13,7 +15,7 @@ int PipeSocketHandler::connect(const SocketEndpoint& endpoint) {
   FATAL_FAIL(sockFd);
   string clientPath;
   if (!prepareClientSocket(sockFd, &clientPath)) {
-    ::close(sockFd);
+    RawSocketUtils::closeSocket(sockFd);
     return -1;
   }
   remote.sun_family = AF_UNIX;
@@ -94,7 +96,7 @@ set<int> PipeSocketHandler::listen(const SocketEndpoint& endpoint) {
   prepareListenSocket(fd);
   local.sun_family = AF_UNIX; /* local is declared before socket() ^ */
   strncpy(local.sun_path, pipePath.c_str(), sizeof(local.sun_path));
-  ::unlink(local.sun_path);
+  RawSocketUtils::unlinkSocketPath(local.sun_path);
 
   FATAL_FAIL(::bind(fd, (struct sockaddr*)&local, unixAddressLength(local)));
   FATAL_FAIL(::listen(fd, 5));
@@ -125,8 +127,8 @@ void PipeSocketHandler::stopListening(const SocketEndpoint& endpoint) {
             << pipePath;
   }
   int sockFd = *(it->second.begin());
-  FATAL_FAIL(::close(sockFd));
-  ::unlink(pipePath.c_str());
+  FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
+  RawSocketUtils::unlinkSocketPath(pipePath.c_str());
   pipeServerSockets.erase(it);
 }
 
@@ -142,14 +144,14 @@ void PipeSocketHandler::close(int fd) {
   }
   UnixSocketHandler::close(fd);
   if (!clientPath.empty()) {
-    ::unlink(clientPath.c_str());
+    RawSocketUtils::unlinkSocketPath(clientPath.c_str());
   }
 }
 
 void PipeSocketHandler::discardClientSocket(int fd, const string& clientPath) {
-  FATAL_FAIL(::close(fd));
+  FATAL_FAIL(RawSocketUtils::closeSocket(fd));
   if (!clientPath.empty()) {
-    ::unlink(clientPath.c_str());
+    RawSocketUtils::unlinkSocketPath(clientPath.c_str());
   }
 }
 }  // namespace et

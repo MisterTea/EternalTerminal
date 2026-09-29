@@ -2,6 +2,8 @@
 #include "RawSocketUtils.hpp"
 
 namespace et {
+string GetTempDirectory() { return _PATH_TMP; }
+
 namespace {
 template <typename Field>
 optional<string> lookupPasswdField(Field field) {
