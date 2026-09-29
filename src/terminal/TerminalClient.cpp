@@ -732,7 +732,11 @@ int TerminalClient::run(const string& command, const bool noexit) {
               }
               tmuxCcRetainIncompleteLine(&consoleInterruptCarry, s);
             } else if (rc == 0) {
-              if (isatty(consoleFd)) {
+              // Judge the descriptor that was read: a heredoc or pipe on stdin
+              // (`et -T host sh << EOF` in a terminal) hits EOF after its
+              // script while stdout is still a tty, and must not end the
+              // session.
+              if (isatty(readFd)) {
                 LOG(INFO) << "Console EOF";
                 break;
               }
@@ -742,7 +746,7 @@ int TerminalClient::run(const string& command, const bool noexit) {
             } else {
               if (savedErrno == EAGAIN || savedErrno == EWOULDBLOCK) {
                 // Transient error, retry
-              } else if (!isatty(consoleFd)) {
+              } else if (!isatty(readFd)) {
                 LOG(INFO) << "Console is not a tty and cannot be read ("
                           << savedErrno << "): " << strerror(savedErrno)
                           << ", disabling console input";

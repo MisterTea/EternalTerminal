@@ -188,6 +188,14 @@ class SocketHandler {
    */
   virtual int connect(const SocketEndpoint& endpoint) = 0;
   /**
+   * @brief Why the most recent connect() failed, as the system error text
+   * (e.g. "Operation timed out"), or empty if unknown.
+   *
+   * OpenSSH wrappers such as VS Code Remote-SSH match this text to tell a
+   * transient network outage from a permanent failure.
+   */
+  virtual string getLastConnectError() { return ""; }
+  /**
    * @brief Starts listening on the endpoint and returns the active listen fds.
    */
   virtual set<int> listen(const SocketEndpoint& endpoint) = 0;
