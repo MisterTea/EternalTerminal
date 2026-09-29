@@ -54,6 +54,27 @@ TEST_CASE("TcpSocketHandler listen succeeds with IPv4 on localhost",
   handler.stopListening(endpoint);
 }
 
+TEST_CASE("TranslateSocketError maps socket errors to errno values",
+          "[TcpSocketHandler]") {
+  SECTION("leaves errno values unchanged") {
+    REQUIRE(TranslateSocketError(0) == 0);
+    REQUIRE(TranslateSocketError(ECONNREFUSED) == ECONNREFUSED);
+    REQUIRE(TranslateSocketError(ETIMEDOUT) == ETIMEDOUT);
+    REQUIRE(TranslateSocketError(ENETUNREACH) == ENETUNREACH);
+    REQUIRE(TranslateSocketError(EHOSTUNREACH) == EHOSTUNREACH);
+  }
+
+#ifdef WIN32
+  SECTION("translates Winsock errors") {
+    REQUIRE(TranslateSocketError(WSAECONNREFUSED) == ECONNREFUSED);
+    REQUIRE(TranslateSocketError(WSAETIMEDOUT) == ETIMEDOUT);
+    REQUIRE(TranslateSocketError(WSAENETUNREACH) == ENETUNREACH);
+    REQUIRE(TranslateSocketError(WSAEHOSTUNREACH) == EHOSTUNREACH);
+    REQUIRE(TranslateSocketError(WSAEADDRNOTAVAIL) == EADDRNOTAVAIL);
+  }
+#endif
+}
+
 TEST_CASE("TcpSocketHandler connect reports why it failed",
           "[TcpSocketHandler]") {
   TcpSocketHandler handler;

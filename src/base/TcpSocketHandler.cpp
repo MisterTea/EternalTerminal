@@ -109,6 +109,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
 
       FATAL_FAIL(
           ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+      so_error = TranslateSocketError(so_error);
 
       if (so_error == 0) {
         if (p->ai_canonname) {
