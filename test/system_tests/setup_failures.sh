@@ -214,7 +214,7 @@ PY
   background_pids+=($!)
   wait_for_log 10 "$LOGS/dropper.port" "" && sleep 0.2
   DROP_PORT=$(cat "$LOGS/dropper.port")
-  known_bug et_initial_connection_dropped "Could not make initial connection" \
+  expect_failure et_initial_connection_dropped "Could not make initial connection" \
     "${ET[@]}" "localhost:$DROP_PORT"
 elif [ -n "${CI:-}" ]; then
   echo "FAIL ssh: passwordless ssh localhost is required under CI"
