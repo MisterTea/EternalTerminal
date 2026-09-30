@@ -181,7 +181,9 @@ int TerminalMain(int argc, char** argv) {
       return 1;
     }
     string id = idAndPasskey[0];
-    string username = string(ssh_get_local_username());
+    char* usernamePtr = ssh_get_local_username();
+    string username = string(usernamePtr);
+    SAFE_FREE(usernamePtr);
     if (result.count("jump")) {
       // etserver with --jump cannot write to the default log file(root)
       LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
