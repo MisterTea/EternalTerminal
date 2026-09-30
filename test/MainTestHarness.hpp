@@ -178,6 +178,55 @@ ChildMainResult runMainInChild(const vector<string>& args,
   ::close(statusPipe[0]);
   return result;
 }
+
+/**
+ * Runs a background service in a forked child for the lifetime of this
+ * object. `serve` must start the service and return; the child then idles
+ * until the destructor kills it.
+ *
+ * Keeping a server's threads out of the test process matters because the main
+ * functions reconfigure easylogging and swap std::cout while they run, which
+ * races with any other thread that logs.
+ */
+class BackgroundChild {
+ public:
+  template <class Serve>
+  explicit BackgroundChild(Serve&& serve) {
+    int readyPipe[2];
+    FATAL_FAIL(::pipe(readyPipe));
+    std::cout.flush();
+    std::cerr.flush();
+    ::fflush(nullptr);
+    pid = ::fork();
+    FATAL_FAIL(pid);
+    if (pid == 0) {
+      ::close(readyPipe[0]);
+      serve();
+      char ready = 1;
+      RawSocketUtils::writeAll(readyPipe[1], &ready, 1);
+      while (true) {
+        ::pause();
+      }
+    }
+    ::close(readyPipe[1]);
+    char ready = 0;
+    started = ::read(readyPipe[0], &ready, 1) == 1 && ready == 1;
+    ::close(readyPipe[0]);
+  }
+
+  ~BackgroundChild() {
+    ::kill(pid, SIGKILL);
+    ::waitpid(pid, nullptr, 0);
+  }
+
+  BackgroundChild(const BackgroundChild&) = delete;
+  BackgroundChild& operator=(const BackgroundChild&) = delete;
+
+  bool started = false;
+
+ private:
+  pid_t pid = -1;
+};
 #endif
 
 /**

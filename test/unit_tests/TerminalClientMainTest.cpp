@@ -164,49 +164,49 @@ struct ClientMainFixture {
 // A real etserver on a loopback port with one registered terminal whose
 // id/passkey match kIdPasskeyResponse, so the scripted ssh bootstrap yields a
 // session the client can actually connect to.
+//
+// The server runs in a child process; see test::BackgroundChild.
 struct LiveServer {
-  explicit LiveServer(const string& directory) {
-    port = test::unusedLoopbackPort();
+  explicit LiveServer(const string& directory)
+      : port(test::unusedLoopbackPort()),
+        process([this, directory]() { serve(directory); }) {
+    REQUIRE(process.started);
+  }
+
+  string portArg() const { return std::to_string(port); }
+
+  const int port;
+
+ private:
+  // Runs in the child, which is killed rather than shut down, so everything
+  // here is intentionally leaked.
+  void serve(const string& directory) const {
+    auto routerSocketHandler = make_shared<PipeSocketHandler>();
     SocketEndpoint serverEndpoint;
     serverEndpoint.set_name("127.0.0.1");
     serverEndpoint.set_port(port);
     SocketEndpoint routerEndpoint;
     routerEndpoint.set_name(directory + "/router");
-    server = make_shared<TerminalServer>(make_shared<TcpSocketHandler>(),
-                                         serverEndpoint, routerSocketHandler,
-                                         routerEndpoint);
-    serverThread = thread([this]() { server->run(); });
+    auto server = make_shared<TerminalServer>(
+        make_shared<TcpSocketHandler>(), serverEndpoint, routerSocketHandler,
+        routerEndpoint);
+    thread([server]() { server->run(); }).detach();
     std::this_thread::sleep_for(std::chrono::seconds(1));
 
-    handler = make_shared<UserTerminalHandler>(
+    auto handler = make_shared<UserTerminalHandler>(
         routerSocketHandler, make_shared<FakeUserTerminal>(routerSocketHandler),
         true, routerEndpoint, kSessionId + "/" + kSessionPasskey);
-    handlerThread = thread([this]() {
+    thread([handler]() {
       try {
         handler->run();
       } catch (const std::exception&) {
         // A killed session tears the terminal down underneath run().
       }
-    });
+    }).detach();
     std::this_thread::sleep_for(std::chrono::seconds(1));
   }
 
-  ~LiveServer() {
-    handler->shutdown();
-    handlerThread.join();
-    server->shutdown();
-    serverThread.join();
-  }
-
-  string portArg() const { return std::to_string(port); }
-
-  int port = 0;
-  shared_ptr<PipeSocketHandler> routerSocketHandler =
-      make_shared<PipeSocketHandler>();
-  shared_ptr<TerminalServer> server;
-  shared_ptr<UserTerminalHandler> handler;
-  thread serverThread;
-  thread handlerThread;
+  test::BackgroundChild process;
 };
 #endif
 }  // namespace
@@ -796,38 +796,51 @@ TEST_CASE_METHOD(ClientMainFixture, "et runs a live session as ControlMaster",
 TEST_CASE_METHOD(ClientMainFixture, "et talks to a running ControlMaster",
                  "[TerminalClientMain]") {
   const string controlPath = directory + "/master.sock";
-  MuxMaster master(controlPath, ControlPersistConfig());
-  master.start();
+  // The master runs in a child process; see test::BackgroundChild.
+  auto startMaster = [&controlPath](bool withPassengerHandler) {
+    return make_unique<test::BackgroundChild>([controlPath,
+                                               withPassengerHandler]() {
+      auto* master = new MuxMaster(controlPath, ControlPersistConfig());
+      if (withPassengerHandler) {
+        master->setPassengerSessionHandler(
+            [](int, int, int, const string&, bool) -> uint32_t { return 7; });
+      }
+      master->start();
+    });
+  };
+  unique_ptr<test::BackgroundChild> master;
 
   SECTION("-O check") {
+    master = startMaster(false);
     MainResult result = run(args({"-O", "check", "-S", controlPath, "host"}));
     INFO(result.output);
     REQUIRE(result.exitCode == 0);
   }
 
   SECTION("-O forward without a forward") {
+    master = startMaster(false);
     MainResult result = run(args({"-O", "forward", "-S", controlPath, "host"}));
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "requires -L or --tunnel"));
   }
 
   SECTION("-O forward then cancel") {
+    master = startMaster(false);
     const string spec =
         std::to_string(test::unusedLoopbackPort()) + ":localhost:80";
     MainResult forward =
         run(args({"-O", "forward", "-S", controlPath, "-L", spec, "host"}));
     INFO(forward.output);
     REQUIRE(forward.exitCode == 0);
-    REQUIRE(master.trackedForwards().size() == 1);
 
     MainResult cancel =
         run(args({"-O", "cancel", "-S", controlPath, "-L", spec, "host"}));
     INFO(cancel.output);
     REQUIRE(cancel.exitCode == 0);
-    REQUIRE(master.trackedForwards().empty());
   }
 
   SECTION("Passenger without a session handler") {
+    master = startMaster(false);
     const string spec =
         std::to_string(test::unusedLoopbackPort()) + ":localhost:80";
     MainResult result =
@@ -837,20 +850,18 @@ TEST_CASE_METHOD(ClientMainFixture, "et talks to a running ControlMaster",
   }
 
   SECTION("Passenger -N with a command") {
+    master = startMaster(false);
     MainResult result = run(args({"-S", controlPath, "-N", "host", "ls"}));
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "-N cannot be combined"));
   }
 
   SECTION("Passenger returns the remote exit status") {
-    master.setPassengerSessionHandler(
-        [](int, int, int, const string&, bool) -> uint32_t { return 7; });
+    master = startMaster(true);
     MainResult result = run(args({"-S", controlPath, "-T", "host", "true"}));
     INFO(result.output);
     REQUIRE(result.exitCode == 7);
   }
-
-  master.stop();
 }
 #else
 TEST_CASE("et session, mux, and connection paths", "[TerminalClientMain]") {
