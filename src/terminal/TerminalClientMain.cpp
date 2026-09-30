@@ -574,7 +574,7 @@ int TerminalClientMain(int argc, char** argv,
          "--ctl-socket. With --command, that command runs once on "
          "connect and the session stays alive.")  //
         ("ctl-socket",
-         "Path for the --ctl socket (default ~/.et/sessions/<name>.sock)",
+         "Path for the --ctl socket (default ~/.et/control/<name>.sock)",
          cxxopts::value<std::string>())                    //
         ("forward-ssh-agent", "Forward ssh-agent socket")  //
         ("ssh-socket", "The ssh-agent socket to forward",
