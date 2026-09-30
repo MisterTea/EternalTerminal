@@ -89,7 +89,7 @@ inline bool etOptionConsumesValue(const string& arg) {
          arg == "--serverfifo" || arg == "--ssh-option" || arg == "-o" ||
          arg == "--disconnect-timeout" || arg == "-D" || arg == "--dynamic" ||
          arg == "-W" || arg == "--stdio-forward" || arg == "--name" ||
-         arg == "--attach" || arg == "--kill";
+         arg == "--attach" || arg == "--kill" || arg == "--ctl-socket";
 }
 
 struct EtArgvSplit {

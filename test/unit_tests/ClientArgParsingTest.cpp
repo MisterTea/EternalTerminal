@@ -333,6 +333,14 @@ TEST_CASE("OpenSSH short flags do not keep ET meanings", "[ClientArgParsing]") {
                                                 command));
   }
 
+  SECTION("--ctl-socket consumes its path") {
+    EtArgvSplit split = splitEtArgvAtHost(
+        {"et", "--ctl", "--ctl-socket", "/tmp/demo.sock", "host", "cmd"});
+    REQUIRE(split.clientArgs == vector<string>{"et", "--ctl", "--ctl-socket",
+                                               "/tmp/demo.sock", "host"});
+    REQUIRE(split.commandOperands == vector<string>{"cmd"});
+  }
+
   SECTION("later of -t and -T wins") {
     auto disable = parseArgv({"et", "-t", "-T", "host"});
     REQUIRE(disable.ssh.pty == PtyOverride::Disable);

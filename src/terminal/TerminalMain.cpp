@@ -1,3 +1,5 @@
+#include "TerminalMain.hpp"
+
 #include <cxxopts.hpp>
 
 #include "DaemonCreator.hpp"
@@ -13,8 +15,7 @@
 #include "UserTerminalRouter.hpp"
 #include "WinsockContext.hpp"
 
-using namespace et;
-
+namespace et {
 namespace {
 inline bool HasNonEmptyOption(const cxxopts::ParseResult& result,
                               const string& name) {
@@ -33,9 +34,13 @@ inline bool HasNonEmptyOption(const cxxopts::ParseResult& result,
 inline void SetTermEnv(const char* value) {
   FATAL_FAIL(setenv("TERM", value, 1));
 }
+
+const char* kMissingIdPasskey =
+    "Call etterminal with --idpasskey or --idpasskeyfile, or feed this "
+    "information on stdin\n";
 }  // namespace
 
-int main(int argc, char** argv) {
+int TerminalMain(int argc, char** argv) {
   WinsockContext winsockContext;
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -48,6 +53,7 @@ int main(int argc, char** argv) {
 
   // Parse command line arguments
   cxxopts::Options options("etterminal", "User terminal for Eternal Terminal.");
+  int exitCode = 0;
 
   try {
     options.allow_unrecognised_options();
@@ -83,7 +89,7 @@ int main(int argc, char** argv) {
     auto result = options.parse(argc, argv);
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
-      exit(0);
+      return 0;
     }
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
@@ -107,10 +113,8 @@ int main(int argc, char** argv) {
       HANDLE stdinHandle = GetStdHandle(STD_INPUT_HANDLE);
       DWORD waitResult = WaitForSingleObject(stdinHandle, 1000);
       if (waitResult != WAIT_OBJECT_0) {
-        CLOG(INFO, "stdout")
-            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
-               "this information on stdin\n";
-        exit(1);
+        CLOG(INFO, "stdout") << kMissingIdPasskey;
+        return 1;
       }
 #else
       struct timeval timeout;
@@ -129,19 +133,15 @@ int main(int argc, char** argv) {
 
       FATAL_FAIL(selectResult);
       if (selectResult == 0) {
-        CLOG(INFO, "stdout")
-            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
-               "this information on stdin\n";
-        exit(1);
+        CLOG(INFO, "stdout") << kMissingIdPasskey;
+        return 1;
       }
 #endif
 
       string stdinData;
       if (!getline(cin, stdinData)) {
-        CLOG(INFO, "stdout")
-            << "Call etterminal with --idpasskey or --idpasskeyfile, or feed "
-               "this information on stdin\n";
-        exit(1);
+        CLOG(INFO, "stdout") << kMissingIdPasskey;
+        return 1;
       }
       TerminalStdinLine stdinLine;
       if (parseTerminalStdinLine(stdinData, &stdinLine)) {
@@ -156,7 +156,9 @@ int main(int argc, char** argv) {
 
         SetTermEnv(stdinLine.term.c_str());
       } else {
-        STFATAL << "Invalid stdin line: expected <id>/<passkey>_<TERM>";
+        CLOG(INFO, "stdout")
+            << "Invalid stdin line: expected <id>/<passkey>_<TERM>" << endl;
+        return 1;
       }
     } else {
       idpasskey = result["idpasskey"].as<string>();
@@ -171,8 +173,17 @@ int main(int argc, char** argv) {
       }
     }
 
-    string id = split(idpasskey, '/')[0];
-    string username = string(ssh_get_local_username());
+    const vector<string> idAndPasskey = split(idpasskey, '/');
+    if (idAndPasskey.size() != 2 || idAndPasskey[0].empty() ||
+        idAndPasskey[1].empty()) {
+      CLOG(INFO, "stdout") << "Invalid idpasskey: expected <id>/<passkey>"
+                           << endl;
+      return 1;
+    }
+    string id = idAndPasskey[0];
+    char* usernamePtr = ssh_get_local_username();
+    string username = string(usernamePtr);
+    SAFE_FREE(usernamePtr);
     if (result.count("jump")) {
       // etserver with --jump cannot write to the default log file(root)
       LogHandler::setupLogFiles(&defaultConf, result["logdir"].as<string>(),
@@ -185,17 +196,19 @@ int main(int argc, char** argv) {
       // Install log rotation callback
       el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-      CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
-      if (DaemonCreator::createSessionLeader() == -1) {
-        STFATAL << "Error creating daemon: " << strerror(GetErrno());
-      }
       SocketEndpoint destinationEndpoint;
       destinationEndpoint.set_name(result["dsthost"].as<string>());
       destinationEndpoint.set_port(result["dstport"].as<int>());
       shared_ptr<SocketHandler> jumpClientSocketHandler(new TcpSocketHandler());
+      // Connect to the router before daemonizing so a failure reaches the
+      // caller's exit status instead of a detached child.
       UserJumphostHandler ujh(jumpClientSocketHandler, idpasskey,
                               destinationEndpoint, ipcSocketHandler,
                               serverFifo.getEndpointForConnect());
+      CLOG(INFO, "stdout") << "IDPASSKEY:" << idpasskey << endl;
+      if (DaemonCreator::createSessionLeader() == -1) {
+        STFATAL << "Error creating daemon: " << strerror(GetErrno());
+      }
       ujh.run();
 
       // Uninstall log rotation callback
@@ -226,10 +239,17 @@ int main(int argc, char** argv) {
   } catch (cxxopts::exceptions::exception& oe) {
     CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
     CLOG(INFO, "stdout") << options.help({}) << endl;
-    exit(1);
+    exitCode = 1;
+  } catch (const std::exception& error) {
+    CLOG(INFO, "stdout") << "Exception: " << error.what() << endl;
+    exitCode = 1;
+  } catch (...) {
+    CLOG(INFO, "stdout") << "Unknown exception" << endl;
+    exitCode = 1;
   }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
-  return 0;
+  return exitCode;
 }
+}  // namespace et

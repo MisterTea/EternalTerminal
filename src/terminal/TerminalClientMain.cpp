@@ -1,3 +1,5 @@
+#include "TerminalClientMain.hpp"
+
 #include <ctime>
 #include <cxxopts.hpp>
 #include <filesystem>
@@ -29,10 +31,10 @@
 #include "TunnelUtils.hpp"
 #include "WinsockContext.hpp"
 
-using namespace et;
-
+namespace et {
+namespace {
 // A short random suffix for an unnamed --ctl session's socket name.
-static string genRandomHandle() {
+string genRandomHandle() {
   static const char* kHex = "0123456789abcdef";
   std::random_device rd;
   string handle;
@@ -67,7 +69,6 @@ void reportUnreachable(const SocketEndpoint& endpoint,
 void handleParseException(std::exception& e, cxxopts::Options& options) {
   CLOG(INFO, "stdout") << "Exception: " << e.what() << "\n" << endl;
   CLOG(INFO, "stdout") << options.help({}) << endl;
-  exit(1);
 }
 
 template <class T, class DefaultT>
@@ -81,10 +82,8 @@ T extractSingleOptionWithDefault(const cxxopts::ParseResult& result,
   if (count == 1) {
     return result[name].as<T>();
   }
-  CLOG(INFO, "stdout") << "Value for " << name
-                       << " must be specified only once\n";
-  CLOG(INFO, "stdout") << options.help({}) << endl;
-  exit(0);
+  throw cxxopts::exceptions::exception("Value for " + name +
+                                       " must be specified only once");
 }
 
 enum class AttachResult { ATTACHED, INVALID_SESSION, FAILED };
@@ -239,7 +238,8 @@ AttachResult attachSavedSession(
     const string& name, const SessionInfo& session, const string& command,
     bool noexit, bool noTerminal, int keepaliveDuration,
     shared_ptr<Console> consoleOverride = nullptr,
-    const std::function<void(TerminalClient&)>& drive = nullptr) {
+    const std::function<void(TerminalClient&)>& drive = nullptr,
+    const std::function<void(TerminalClient&)>& onReady = nullptr) {
   SocketEndpoint endpoint;
   endpoint.set_name(session.host);
   endpoint.set_port(session.port);
@@ -268,6 +268,9 @@ AttachResult attachSavedSession(
         [name](const string& title) {
           return updateSessionTitle(name, title);
         });
+    if (onReady) {
+      onReady(client);
+    }
     if (drive) {
       drive(client);
     } else {
@@ -382,7 +385,31 @@ ResolvedSshConfig resolveSshConfigHost(const string& hostAlias,
   return result;
 }
 
-int main(int argc, char** argv) {
+// Releases process-wide client state on every return from
+// TerminalClientMain(), including early usage errors.
+class ClientMainCleanup {
+ public:
+  ClientMainCleanup(WinsockContext* context, Options* sshConfigOptions)
+      : context_(context), sshConfigOptions_(sshConfigOptions) {}
+
+  ~ClientMainCleanup() {
+    freeOptionsFields(sshConfigOptions_);
+    context_->release();
+    if (TelemetryService::exists()) {
+      TelemetryService::get()->shutdown();
+      TelemetryService::destroy();
+    }
+    el::Helpers::uninstallPreRollOutCallback();
+  }
+
+ private:
+  WinsockContext* context_;
+  Options* sshConfigOptions_;
+};
+}  // namespace
+
+int TerminalClientMain(int argc, char** argv,
+                       const TerminalClientMainHooks& hooks) {
   WinsockContext context;
   string tmpDir = GetTempDirectory();
 
@@ -418,6 +445,7 @@ int main(int argc, char** argv) {
       NULL,  // identity_agent
       {}     // local_forwards (empty vector)
   };
+  ClientMainCleanup cleanup(&context, &sshConfigOptions);
 
   // Parse OpenSSH mux Control* options before cxxopts. --ssh-option remains
   // the bootstrap-ssh escape hatch and is not reused for session mux.
@@ -426,7 +454,7 @@ int main(int argc, char** argv) {
     muxParse = parseMuxCliOptions(argc, argv);
   } catch (const std::exception& ex) {
     CLOG(INFO, "stdout") << "Exception: " << ex.what() << endl;
-    exit(1);
+    return 1;
   }
   MuxOptions muxOptions = muxParse.options;
   vector<string> argvStorage = muxParse.remainingArgs;
@@ -441,6 +469,7 @@ int main(int argc, char** argv) {
 
   // Parse command line arguments
   cxxopts::Options options("et", "Remote shell for the busy and impatient");
+  int exitCode = 0;
   try {
     options.allow_unrecognised_options();
     options.positional_help("");
@@ -626,12 +655,12 @@ int main(int argc, char** argv) {
 
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
-      exit(0);
+      return 0;
     }
 
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
-      exit(0);
+      return 0;
     }
 
     // -O control commands talk only to an existing master socket.
@@ -639,7 +668,7 @@ int main(int argc, char** argv) {
       if (muxOptions.controlPath.empty()) {
         CLOG(INFO, "stdout")
             << "-O requires ControlPath (-S or -o ControlPath=...)" << endl;
-        exit(1);
+        return 1;
       }
       MuxClient ctl(muxOptions.controlPath);
       if (muxOptions.ctlCommand == "forward" ||
@@ -648,7 +677,7 @@ int main(int argc, char** argv) {
           CLOG(INFO, "stdout")
               << "Control socket connect failed: " << muxOptions.controlPath
               << endl;
-          exit(1);
+          return 1;
         }
         string tunnel_arg =
             mergeForwardSpecs(extractSingleOptionWithDefault<string>(
@@ -657,7 +686,7 @@ int main(int argc, char** argv) {
         if (tunnel_arg.empty()) {
           CLOG(INFO, "stdout") << "-O " << muxOptions.ctlCommand
                                << " requires -L or --tunnel" << endl;
-          exit(1);
+          return 1;
         }
         auto requests = parseRangesToRequests(tunnel_arg);
         int rc = 0;
@@ -672,9 +701,9 @@ int main(int argc, char** argv) {
             rc = 1;
           }
         }
-        exit(rc);
+        return rc;
       }
-      exit(ctl.runCtlCommand(muxOptions.ctlCommand));
+      return ctl.runCtlCommand(muxOptions.ctlCommand);
     }
 
     // Attach to an existing ControlMaster instead of opening a new session.
@@ -683,7 +712,7 @@ int main(int argc, char** argv) {
       if (!passenger.connect()) {
         CLOG(INFO, "stdout") << "Failed to attach to ControlPath "
                              << muxOptions.controlPath << endl;
-        exit(1);
+        return 1;
       }
       string tunnel_arg = mergeForwardSpecs(
           extractSingleOptionWithDefault<string>(result, options, "tunnel", ""),
@@ -696,7 +725,7 @@ int main(int argc, char** argv) {
           if (!passenger.openForward(fwd, &error)) {
             CLOG(INFO, "stdout")
                 << "Mux open forward failed: " << error << endl;
-            exit(1);
+            return 1;
           }
         }
       }
@@ -707,7 +736,7 @@ int main(int argc, char** argv) {
                                               command)) {
         CLOG(INFO, "stdout")
             << "-N cannot be combined with a remote command" << endl;
-        exit(1);
+        return 1;
       }
       const bool wantTty = muxParse.ssh.pty != PtyOverride::Disable &&
                            !muxParse.ssh.noRemoteCommand;
@@ -719,7 +748,7 @@ int main(int argc, char** argv) {
                                 STDERR_FILENO, &sessionId, &error,
                                 &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
-        exit(1);
+        return 1;
       }
 #else
       uint32_t sessionId = 0;
@@ -728,15 +757,15 @@ int main(int argc, char** argv) {
       if (!passenger.newSession(command, wantTty, -1, -1, -1, &sessionId,
                                 &error, &exitStatus)) {
         CLOG(INFO, "stdout") << "Mux new session failed: " << error << endl;
-        exit(1);
+        return 1;
       }
 #endif
-      exit(static_cast<int>(exitStatus));
+      return static_cast<int>(exitStatus);
     }
 
     if (result.count("V")) {
       CLOG(INFO, "stdout") << openSshCompatibilityVersionLine() << endl;
-      exit(0);
+      return 0;
     }
 
     if (result.count("kill") &&
@@ -746,7 +775,7 @@ int main(int argc, char** argv) {
           << "--kill takes a saved session name; it cannot be combined with "
              "--name, --attach, --list, or a host"
           << endl;
-      exit(1);
+      return 1;
     }
 
     if (result.count("no-persist") &&
@@ -756,7 +785,7 @@ int main(int argc, char** argv) {
           << "--no-persist cannot be combined with --name, --attach, or "
              "--kill"
           << endl;
-      exit(1);
+      return 1;
     }
 
     if (result.count("list")) {
@@ -771,7 +800,7 @@ int main(int argc, char** argv) {
             << ' ' << setw(8) << session.port << ' '
             << formatLastSeen(session.lastSeenAt, now) << endl;
       }
-      exit(0);
+      return 0;
     }
 
     if (result.count("attach") &&
@@ -779,7 +808,7 @@ int main(int argc, char** argv) {
       CLOG(INFO, "stdout") << "--attach takes a session name; it cannot be "
                               "combined with --name or a host"
                            << endl;
-      exit(1);
+      return 1;
     }
     if (result.count("attach") &&
         (result.count("tunnel") || result.count("reversetunnel") ||
@@ -793,7 +822,7 @@ int main(int argc, char** argv) {
              "(-j/-J); reconnect without --attach to establish forwarding or "
              "a jumphost"
           << endl;
-      exit(1);
+      return 1;
     }
 
     if (remotePtyDisabled(muxParse.ssh) &&
@@ -802,7 +831,7 @@ int main(int argc, char** argv) {
           << "-T/--no-pty sessions are not saved and cannot be named or "
              "reattached; drop --name/--attach"
           << endl;
-      exit(1);
+      return 1;
     }
 
     const string earlyCommand = resolveRemoteCommand(
@@ -812,7 +841,7 @@ int main(int argc, char** argv) {
                                             earlyCommand)) {
       CLOG(INFO, "stdout") << "-N cannot be combined with a remote command"
                            << endl;
-      exit(1);
+      return 1;
     }
 
     int verboseLevel = muxParse.ssh.verboseCount;
@@ -850,12 +879,12 @@ int main(int argc, char** argv) {
       int notifyPipe[2] = {-1, -1};
       if (pipe(notifyPipe) != 0) {
         CLOG(INFO, "stdout") << "Failed to background: pipe failed" << endl;
-        exit(1);
+        return 1;
       }
       pid_t pid = fork();
       if (pid < 0) {
         CLOG(INFO, "stdout") << "Failed to background: fork failed" << endl;
-        exit(1);
+        return 1;
       }
       if (pid > 0) {
         close(notifyPipe[1]);
@@ -875,38 +904,38 @@ int main(int argc, char** argv) {
       const optional<SessionInfo> session =
           resolveSavedSession(result["kill"].as<string>());
       if (!session) {
-        exit(1);
+        return 1;
       }
       const KillResult killResult = killSavedSession(*session);
       if (killResult == KillResult::INVALID_SESSION) {
         if (!deleteSavedSession(session->name)) {
-          exit(1);
+          return 1;
         }
         CLOG(INFO, "stdout")
             << "Session '" << session->name
             << "' was already gone; removed stale record" << endl;
-        exit(0);
+        return 0;
       }
       if (killResult == KillResult::FAILED) {
         CLOG(INFO, "stdout") << "Session '" << session->name
                              << "' was not removed; retry --kill or delete "
                                 "~/.et/sessions/"
                              << session->name << " manually" << endl;
-        exit(1);
+        return 1;
       }
       if (!deleteSavedSession(session->name)) {
-        exit(1);
+        return 1;
       }
       CLOG(INFO, "stdout") << "Killed session '" << session->name << "'"
                            << endl;
-      exit(0);
+      return 0;
     }
 
     if (result.count("attach")) {
       const optional<SessionInfo> session =
           resolveSavedSession(result["attach"].as<string>());
       if (!session) {
-        exit(1);
+        return 1;
       }
       const string attachName = session->name;
 
@@ -915,18 +944,19 @@ int main(int argc, char** argv) {
       const AttachResult attachResult = attachSavedSession(
           attachName, *session,
           result.count("command") ? result["command"].as<string>() : "",
-          result.count("noexit"), result.count("no-terminal"), attachKeepalive);
+          result.count("noexit"), result.count("no-terminal"), attachKeepalive,
+          /*consoleOverride=*/nullptr, /*drive=*/nullptr, hooks.onClientReady);
       if (attachResult == AttachResult::INVALID_SESSION) {
         deleteSavedSession(attachName);
         CLOG(INFO, "stdout")
             << "Session '" << attachName << "' is no longer running on "
             << session->host << endl;
-        exit(1);
+        return 1;
       }
       if (attachResult == AttachResult::FAILED) {
-        exit(1);
+        return 1;
       }
-      exit(0);
+      return 0;
     }
     string username = "";
     if (result.count("username")) {
@@ -939,16 +969,16 @@ int main(int argc, char** argv) {
     if (!result.count("host")) {
       CLOG(INFO, "stdout") << "Missing host to connect to" << endl;
       CLOG(INFO, "stdout") << options.help({}) << endl;
-      exit(0);
+      return 0;
     }
     string host_arg = result["host"].as<std::string>();
     ParsedEtDestination parsedDestination;
     try {
       parsedDestination = parseEtDestinationHost(host_arg);
-    } catch (const std::invalid_argument&) {
+    } catch (const std::logic_error&) {
       CLOG(INFO, "stdout") << "Invalid host positional arg: " << host_arg
                            << endl;
-      exit(1);
+      return 1;
     }
     if (!parsedDestination.username.empty()) {
       username = parsedDestination.username;
@@ -978,7 +1008,7 @@ int main(int argc, char** argv) {
     if (result.count("ssh-config") && result.count("no-ssh-config")) {
       CLOG(INFO, "stdout")
           << "--ssh-config and --no-ssh-config are mutually exclusive" << endl;
-      exit(1);
+      return 1;
     }
     string sshConfigPath;
     if (result.count("ssh-config")) {
@@ -988,7 +1018,7 @@ int main(int argc, char** argv) {
         CLOG(INFO, "stdout")
             << "--ssh-config must be an absolute path or 'none': "
             << sshConfigPath << endl;
-        exit(1);
+        return 1;
       }
       if (sshConfigPath != "none" &&
           !SshSetupHandler::IsSshConfigPathSafeForProxyJump(sshConfigPath)) {
@@ -1000,7 +1030,7 @@ int main(int argc, char** argv) {
                "'.', '_', and '-'; OpenSSH does not quote this path when "
                "propagating it through ProxyJump"
             << endl;
-        exit(1);
+        return 1;
       }
       if (sshConfigPath != "none") {
         std::error_code configError;
@@ -1016,7 +1046,7 @@ int main(int argc, char** argv) {
           CLOG(INFO, "stdout")
               << "--ssh-config must name a readable, non-symlink regular file"
               << endl;
-          exit(1);
+          return 1;
         }
       }
     } else if (result.count("no-ssh-config")) {
@@ -1031,7 +1061,7 @@ int main(int argc, char** argv) {
                            << MAX_CLIENT_KEEP_ALIVE_DURATION << " seconds"
                            << endl;
       CLOG(INFO, "stdout") << options.help({}) << endl;
-      exit(0);
+      return 0;
     }
 
     optional<int> disconnectTimeoutMinutes;
@@ -1042,12 +1072,12 @@ int main(int argc, char** argv) {
             << "--disconnect-timeout must be a non-negative number of minutes"
             << endl;
         CLOG(INFO, "stdout") << options.help({}) << endl;
-        exit(1);
+        return 1;
       }
       if (minutes > std::numeric_limits<int>::max() / 60) {
         CLOG(INFO, "stdout") << "--disconnect-timeout is too large" << endl;
         CLOG(INFO, "stdout") << options.help({}) << endl;
-        exit(1);
+        return 1;
       }
       disconnectTimeoutMinutes = minutes;
     }
@@ -1069,7 +1099,7 @@ int main(int argc, char** argv) {
       sessionName = result["name"].as<string>();
       if (!isValidSessionName(sessionName)) {
         CLOG(INFO, "stdout") << "Invalid session name: " << sessionName << endl;
-        exit(1);
+        return 1;
       }
 #ifdef WIN32
       CLOG(INFO, "stdout")
@@ -1107,7 +1137,7 @@ int main(int argc, char** argv) {
         if (!applySessionOption(&sshConfigOptions, sessionOption)) {
           CLOG(INFO, "stdout")
               << "Invalid -o option: " << sessionOption << endl;
-          exit(1);
+          return 1;
         }
         string key = sessionOption;
         size_t sep = key.find('=');
@@ -1149,14 +1179,14 @@ int main(int argc, char** argv) {
       int sshPort = muxParse.ssh.sshPort;
       if (ssh_options_set(&sshConfigOptions, SSH_OPTIONS_PORT, &sshPort) != 0) {
         CLOG(INFO, "stdout") << "Invalid sshd port: " << sshPort << endl;
-        exit(1);
+        return 1;
       }
     }
 
     if (result.count("G")) {
       CLOG(INFO, "stdout") << formatOpenSshResolvedConfig(
           host_alias, destinationHost, username, sshConfigOptions);
-      exit(0);
+      return 0;
     }
 
     // Parse jumphost: cmd > sshconfig
@@ -1230,7 +1260,7 @@ int main(int argc, char** argv) {
                "record does not contain jumphost metadata; use --attach "
                "without a jumphost"
             << endl;
-        exit(1);
+        return 1;
       }
       if (!result.count("no-persist")) {
         CLOG(INFO, "stdout")
@@ -1277,7 +1307,7 @@ int main(int argc, char** argv) {
       if (noPty && command.empty()) {
         CLOG(INFO, "stdout") << options.help({}) << endl;
       }
-      exit(1);
+      return 1;
     }
     shared_ptr<ControlConsole> controlConsole;
     if (result.count("ctl")) {
@@ -1309,7 +1339,7 @@ int main(int argc, char** argv) {
     if (controlConsole) {
 #ifdef WIN32
       CLOG(INFO, "stdout") << "--ctl is not supported on Windows" << endl;
-      exit(1);
+      return 1;
 #else
       ctlName = sessionName.empty()
                     ? (destinationHost + "-" + genRandomHandle())
@@ -1331,7 +1361,7 @@ int main(int argc, char** argv) {
       } catch (const std::exception& e) {
         CLOG(INFO, "stdout")
             << "Could not prepare control socket: " << e.what() << endl;
-        exit(1);
+        return 1;
       }
       // This name is starting, so whatever ended it last time no longer
       // applies; clear the note before anyone can read a stale one.
@@ -1355,17 +1385,18 @@ int main(int argc, char** argv) {
                              << namedSession->host << ":" << namedSession->port
                              << "; use --attach " << sessionName
                              << " or a different --name" << endl;
-        exit(1);
+        return 1;
       }
 
       const AttachResult attachResult = attachSavedSession(
           sessionName, *namedSession, command, result.count("noexit"),
-          result.count("no-terminal"), keepaliveDuration, console, driveCtl);
+          result.count("no-terminal"), keepaliveDuration, console, driveCtl,
+          hooks.onClientReady);
       if (attachResult == AttachResult::ATTACHED) {
-        exit(0);
+        return 0;
       }
       if (attachResult == AttachResult::FAILED) {
-        exit(1);
+        return 1;
       }
 
       deleteSavedSession(sessionName);
@@ -1379,7 +1410,7 @@ int main(int argc, char** argv) {
 
     if (!ping(socketEndpoint, clientSocket)) {
       reportUnreachable(socketEndpoint, clientSocket);
-      exit(1);
+      return 1;
     }
 
     string jServerFifo = "";
@@ -1444,7 +1475,10 @@ int main(int argc, char** argv) {
         sshConfigOptions.send_env, sshConfigOptions.env_vars,
         captureLocalEnviron());
 
-    auto subprocessUtils = make_shared<SubprocessUtils>();
+    shared_ptr<SubprocessUtils> subprocessUtils = hooks.subprocessUtils;
+    if (!subprocessUtils) {
+      subprocessUtils = make_shared<SubprocessUtils>();
+    }
     SshSetupHandler sshSetupHandler(subprocessUtils, sshConfigPath);
     // -T uses BinaryStdioConsole so the remote command owns stdout. SSH
     // banners and shell prompts must stay off that channel.
@@ -1461,7 +1495,7 @@ int main(int argc, char** argv) {
           etterminal_path, serverFifo, ssh_options);
     } catch (const runtime_error&) {
       // SetupSsh already printed a message without the ssh output.
-      exit(1);
+      return 1;
     }
 
     // Save before connecting so a local failure leaves the session
@@ -1534,8 +1568,11 @@ int main(int argc, char** argv) {
       } catch (const std::exception& ex) {
         CLOG(INFO, "stdout")
             << "Failed to start ControlMaster: " << ex.what() << endl;
-        exit(1);
+        return 1;
       }
+    }
+    if (hooks.onClientReady) {
+      hooks.onClientReady(terminalClient);
     }
     int remoteExitStatus = 0;
     if (driveCtl) {
@@ -1580,39 +1617,29 @@ int main(int argc, char** argv) {
       deleteSavedSession(sessionName);
     }
 
-    // Clean up ssh config options
-    freeOptionsFields(&sshConfigOptions);
-
-    context.release();
-
-    TelemetryService::get()->shutdown();
-    TelemetryService::destroy();
-
-    // Uninstall log rotation callback
-    el::Helpers::uninstallPreRollOutCallback();
-
     return remoteExitStatus;
   } catch (TunnelParseException& tpe) {
     handleParseException(tpe, options);
+    exitCode = 1;
   } catch (cxxopts::exceptions::exception& oe) {
     handleParseException(oe, options);
+    exitCode = 1;
+  } catch (const std::exception& error) {
+    LOG(INFO) << "Failed to set up or run the session";
+    CLOG(INFO, "stdout") << error.what() << endl;
+    exitCode = 1;
+  } catch (...) {
+    LOG(INFO) << "Failed to set up or run the session";
+    CLOG(INFO, "stdout") << "Unknown error setting up or running the session"
+                         << endl;
+    exitCode = 1;
   }
-
-  // Clean up ssh config options
-  freeOptionsFields(&sshConfigOptions);
-
-  context.release();
-
-  TelemetryService::get()->shutdown();
-  TelemetryService::destroy();
 
   // Any other exit leaves the remote shell running and reattachable.
   if (!sessionName.empty() && sessionEndedByServer) {
     deleteSavedSession(sessionName);
   }
 
-  // Uninstall log rotation callback
-  el::Helpers::uninstallPreRollOutCallback();
-
-  return 0;
+  return exitCode;
 }
+}  // namespace et

@@ -191,6 +191,9 @@ jobs:
       - name: Sessions survive etserver restart
         run: ./test/system_tests/router_restart.sh
 
+      - name: Setup failures exit cleanly
+        run: ./test/system_tests/setup_failures.sh
+
       - name: Stop sshd for act
         if: ${{ always() }}
         run: |
