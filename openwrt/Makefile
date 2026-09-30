@@ -52,6 +52,7 @@ define Package/eternalterminal/install
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/et $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/etserver $(1)/usr/bin/
 	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/etterminal $(1)/usr/bin/
+	$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/et1 $(1)/usr/bin/
 	if [ -f $(PKG_INSTALL_DIR)/usr/bin/htm ]; then \
 		$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/htm $(1)/usr/bin/; \
 	fi
