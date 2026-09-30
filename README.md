@@ -300,8 +300,7 @@ path):
 {
   "remote.SSH.path": "/usr/local/bin/et1",
   "remote.SSH.useLocalServer": false,
-  "remote.SSH.reconnectionGraceTime": 604800,
-  "remote.SSH.remotePlatform": { "hostname": "linux" }
+  "remote.SSH.reconnectionGraceTime": 604800
 }
 ```
 
@@ -312,8 +311,6 @@ path):
   on the remote keeps your window's state while disconnected. The default is
   three hours. It only takes effect when that server starts, so run
   "Remote-SSH: Kill VS Code Server on Host..." after changing it.
-- `remote.SSH.remotePlatform` is optional; it skips platform detection on
-  connect.
 
 For Cursor, set `remote.SSH.path` to `et1` as well. Cursor's Remote-SSH
 extension has no local-server mode or grace-time setting; its closest
