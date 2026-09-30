@@ -1,3 +1,4 @@
+#include "LogHandler.hpp"
 #include "SubprocessUtils.hpp"
 
 namespace et {
@@ -110,20 +111,25 @@ string SubprocessUtils::SubprocessToStringInteractive(
             return;
           }
           if (isStderr) {
-            const char* cursor = buf;
-            size_t remaining = static_cast<size_t>(nbytes);
-            while (remaining > 0) {
-              ssize_t written = write(STDERR_FILENO, cursor, remaining);
-              if (written < 0) {
-                if (errno == EINTR) {
-                  continue;
+            // Redirected stderr: the helper writes the saved terminal and the
+            // log. Otherwise stderr is still the terminal, so write it here.
+            if (!LogHandler::forwardSubprocessStderr(
+                    buf, static_cast<size_t>(nbytes))) {
+              const char* cursor = buf;
+              size_t remaining = static_cast<size_t>(nbytes);
+              while (remaining > 0) {
+                ssize_t written = write(STDERR_FILENO, cursor, remaining);
+                if (written < 0) {
+                  if (errno == EINTR) {
+                    continue;
+                  }
+                  // Best-effort live tee; keep draining so the child cannot
+                  // deadlock even if the parent's stderr is unavailable.
+                  break;
                 }
-                // Best-effort live tee; keep draining so the child cannot
-                // deadlock even if the parent's stderr is unavailable.
-                break;
+                cursor += written;
+                remaining -= static_cast<size_t>(written);
               }
-              cursor += written;
-              remaining -= static_cast<size_t>(written);
             }
           } else {
             stdoutBuffer.append(buf, static_cast<size_t>(nbytes));
