@@ -1,9 +1,11 @@
+#include <future>
 #include <queue>
 #include <set>
 
 #include "ClientConnection.hpp"
 #include "ServerClientConnection.hpp"
 #include "ServerConnection.hpp"
+#include "TerminalClient.hpp"
 #include "TestHeaders.hpp"
 #include "TestSocketPair.hpp"
 
@@ -35,6 +37,7 @@ class SocketPairHandler : public SocketHandler {
   }
 
   int connect(const SocketEndpoint&) override {
+    connectCalls++;
     if (connectQueue.empty()) {
       return -1;
     }
@@ -66,6 +69,8 @@ class SocketPairHandler : public SocketHandler {
     auto it = closeCounts.find(fd);
     return it == closeCounts.end() ? 0 : it->second;
   }
+
+  int connectCalls = 0;
 
  private:
   std::queue<int> connectQueue;
@@ -196,6 +201,39 @@ class RecoverableConnection : public Connection {
 
 using namespace et;
 using namespace et::test;
+
+TEST_CASE("Connection stops writing when no handshake created a writer",
+          "[Connection]") {
+  Connection connection(nullptr, "client-id", "key");
+  auto write = std::async(std::launch::async, [&]() {
+    connection.writePacket(Packet(EtPacketType::HEARTBEAT, ""));
+  });
+
+  auto status = write.wait_for(std::chrono::seconds(1));
+  connection.shutdown();
+  write.wait();
+
+  REQUIRE(status == std::future_status::ready);
+}
+
+TEST_CASE("TerminalClient throws after failed initial connection attempts",
+          "[TerminalClient]") {
+  auto handler = make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("unreachable");
+  endpoint.set_port(2022);
+
+  REQUIRE_THROWS_WITH(
+      [&]() {
+        TerminalClient client(
+            handler, handler, endpoint, "client-id",
+            "0123456789abcdef0123456789abcdef", nullptr, false, "", "", false,
+            "", MAX_CLIENT_KEEP_ALIVE_DURATION, vector<pair<string, string>>());
+      }(),
+      Catch::Matchers::ContainsSubstring(
+          "Could not make initial connection to"));
+  REQUIRE(handler->connectCalls == 3);
+}
 
 TEST_CASE("ClientConnection completes handshake over socketpair",
           "[ClientConnection]") {

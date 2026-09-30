@@ -29,22 +29,12 @@ class ScriptedSubprocessUtils : public SubprocessUtils {
                                        const vector<string>& args) override {
     calls++;
     lastArgs = args;
-    if (!callLogPath.empty()) {
-      std::ofstream log(callLogPath, std::ios::app);
-      for (const auto& arg : args) {
-        log << arg << ' ';
-      }
-      log << '\n';
-    }
     return output;
   }
 
   string output;
   int calls = 0;
   vector<string> lastArgs;
-  // Also records each call here, one line per call, so calls made in a forked
-  // child stay visible to the test.
-  string callLogPath;
 };
 
 const string kSessionId = "abcdefghijklmnop";
@@ -116,30 +106,6 @@ struct ClientMainFixture {
       return TerminalClientMain(argc, argvPtr, hooks);
     });
   }
-
-#ifndef WIN32
-  test::ChildMainResult runInChild(const vector<string>& argv) {
-    ssh->callLogPath = directory + "/ssh-calls";
-    TerminalClientMainHooks hooks;
-    hooks.subprocessUtils = ssh;
-    return test::runMainInChild(argv, [&](int argc, char** argvPtr) {
-      if (TelemetryService::exists()) {
-        TelemetryService::get()->shutdown();
-        TelemetryService::destroy();
-      }
-      return TerminalClientMain(argc, argvPtr, hooks);
-    });
-  }
-
-  vector<string> recordedSshCalls() {
-    vector<string> calls;
-    std::ifstream log(directory + "/ssh-calls");
-    for (string line; std::getline(log, line);) {
-      calls.push_back(line);
-    }
-    return calls;
-  }
-#endif
 
   SessionInfo saveTestSession(const string& name, int port,
                               const string& title = "",
@@ -528,90 +494,80 @@ TEST_CASE_METHOD(ClientMainFixture, "et reports a failed ssh bootstrap",
   REQUIRE(ssh->calls == 1);
 }
 
-// These setup failures happen inside TerminalClient after ssh succeeds, where
-// it calls exit(1), throws from stoi, or retries a missing writer forever.
-// Each run happens in a child process so that cannot take et-test down.
-//
-// TODO(#873): TerminalClient, TunnelUtils, and Connection still have these
-// bugs on this branch, so the test case is tagged [!shouldfail] and passes
-// while they remain. Once #873 lands the test starts passing, which
-// [!shouldfail] reports as a failure: drop the tag then.
+// These setup failures happen inside TerminalClient after ssh succeeds. It
+// used to call exit(1) (killing this test process), let stoi throw, or retry
+// a missing writer forever.
 TEST_CASE_METHOD(ClientMainFixture,
                  "et exits cleanly when session setup fails after ssh",
-                 "[TerminalClientMain][!shouldfail]") {
+                 "[TerminalClientMain]") {
   LoopbackListener listener;
   const string port = std::to_string(listener.port());
 
   SECTION("Initial connection never completes") {
-    test::ChildMainResult result =
-        runInChild(args({"--no-ssh-config", "--no-persist", "--no-terminal",
-                         "--port", port, "127.0.0.1"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--no-persist", "--no-terminal", "--port",
+                  port, "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Could not make initial connection"));
-    REQUIRE(recordedSshCalls().size() == 1);
+    REQUIRE(ssh->calls == 1);
   }
 
   SECTION("Non-numeric port in an ssh-style tunnel") {
-    test::ChildMainResult result = runInChild(
-        args({"--no-ssh-config", "--no-persist", "--no-terminal", "--port",
-              port, "-L", "localhost:notaport:remote:22", "127.0.0.1"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--no-persist", "--no-terminal", "--port",
+                  port, "-L", "localhost:notaport:remote:22", "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Invalid tunnel argument"));
   }
 
   SECTION("Agent forwarding without SSH_AUTH_SOCK") {
     ScopedEnv noAgent("SSH_AUTH_SOCK", nullptr);
-    test::ChildMainResult result =
-        runInChild(args({"--no-ssh-config", "--no-persist", "--no-terminal",
-                         "--forward-ssh-agent", "--port", port, "127.0.0.1"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--no-persist", "--no-terminal",
+                  "--forward-ssh-agent", "--port", port, "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Missing environment variable"));
   }
 
   SECTION("Saved session with forwarding, default name, and a pipe console") {
-    test::ChildMainResult result = runInChild(args({"--no-ssh-config",
-                                                    "--port",
-                                                    port,
-                                                    "-T",
-                                                    "--tunnel",
-                                                    "18080:80",
-                                                    "-R",
-                                                    "19090:localhost:90",
-                                                    "-D",
-                                                    "11080",
-                                                    "--ssh-option",
-                                                    "BatchMode=yes",
-                                                    "--terminal-path",
-                                                    "/opt/et/etterminal",
-                                                    "--ssh-socket",
-                                                    "/tmp/agent.sock",
-                                                    "--close-on-hangup",
-                                                    "--verbose",
-                                                    "1",
-                                                    "--silent",
-                                                    "--disconnect-timeout",
-                                                    "5",
-                                                    "127.0.0.1",
-                                                    "echo",
-                                                    "hi"}));
+    MainResult result = run(args({"--no-ssh-config",
+                                  "--port",
+                                  port,
+                                  "-T",
+                                  "--tunnel",
+                                  "18080:80",
+                                  "-R",
+                                  "19090:localhost:90",
+                                  "-D",
+                                  "11080",
+                                  "--ssh-option",
+                                  "BatchMode=yes",
+                                  "--terminal-path",
+                                  "/opt/et/etterminal",
+                                  "--ssh-socket",
+                                  "/tmp/agent.sock",
+                                  "--close-on-hangup",
+                                  "--verbose",
+                                  "1",
+                                  "--silent",
+                                  "--disconnect-timeout",
+                                  "5",
+                                  "127.0.0.1",
+                                  "echo",
+                                  "hi"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
-    REQUIRE(recordedSshCalls().size() == 1);
+    REQUIRE(ssh->calls == 1);
   }
 
   SECTION("Named session with a pty console") {
-    test::ChildMainResult result =
-        runInChild(args({"--no-ssh-config", "--name", "fresh", "--port", port,
-                         "--macserver", "-k", "3", "127.0.0.1"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--name", "fresh", "--port", port,
+                  "--macserver", "-k", "3", "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Could not make initial connection"));
     // The record stays so the session can be retried with --attach.
@@ -619,14 +575,13 @@ TEST_CASE_METHOD(ClientMainFixture,
   }
 
   SECTION("Jumphost") {
-    test::ChildMainResult result =
-        runInChild(args({"--no-ssh-config", "--no-terminal", "--jport", port,
-                         "-J", "jumper@127.0.0.1:22", "dest.example"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--no-terminal", "--jport", port, "-J",
+                  "jumper@127.0.0.1:22", "dest.example"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Sessions using a jumphost are not saved"));
-    REQUIRE_FALSE(recordedSshCalls().empty());
+    REQUIRE(ssh->calls >= 1);
     REQUIRE(listSessions().empty());
   }
 
@@ -638,38 +593,36 @@ TEST_CASE_METHOD(ClientMainFixture,
                              "  LocalForward 18081 localhost:81\n"
                              "Host jumpalias\n  HostName 127.0.0.1\n"
                              "  User jumpuser\n";
-    test::ChildMainResult result = runInChild(
-        args({"--ssh-config", config, "--no-terminal", "--jport", port, "-u",
-              "alice", "--serverfifo", directory + "/sfifo", "--jserverfifo",
-              directory + "/jfifo", "dest"}));
+    MainResult result =
+        run(args({"--ssh-config", config, "--no-terminal", "--jport", port,
+                  "-u", "alice", "--serverfifo", directory + "/sfifo",
+                  "--jserverfifo", directory + "/jfifo", "dest"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "Sessions using a jumphost are not saved"));
-    const vector<string> sshCalls = recordedSshCalls();
-    REQUIRE_FALSE(sshCalls.empty());
-    INFO(sshCalls.back());
-    REQUIRE(contains(sshCalls.back(), "jumpuser@127.0.0.1"));
+    string sshArgs;
+    for (const auto& arg : ssh->lastArgs) {
+      sshArgs += arg + " ";
+    }
+    INFO(sshArgs);
+    REQUIRE(contains(sshArgs, "jumpuser@127.0.0.1"));
   }
 
   SECTION("Control session") {
     const string socketPath = directory + "/ctl/demo.sock";
-    test::ChildMainResult result = runInChild(
-        args({"--no-ssh-config", "--no-persist", "--ctl", "--ctl-socket",
-              socketPath, "--port", port, "127.0.0.1"}));
+    MainResult result =
+        run(args({"--no-ssh-config", "--no-persist", "--ctl", "--ctl-socket",
+                  socketPath, "--port", port, "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "control socket: " + socketPath));
     REQUIRE(contains(result.output, "Could not make initial connection"));
   }
 
   SECTION("Control session in the default directory") {
-    test::ChildMainResult result =
-        runInChild(args({"--no-ssh-config", "--name", "ctl-demo", "--ctl",
-                         "--port", port, "127.0.0.1"}));
+    MainResult result = run(args({"--no-ssh-config", "--name", "ctl-demo",
+                                  "--ctl", "--port", port, "127.0.0.1"}));
     INFO(result.output);
-    REQUIRE(result.returned);
     REQUIRE(result.exitCode == 1);
     REQUIRE(contains(result.output, "et control session: ctl-demo"));
   }
@@ -747,11 +700,9 @@ TEST_CASE_METHOD(ClientMainFixture, "et connects, reattaches, and kills",
 
 // The fresh session reuses the killed session's credentials (the scripted ssh
 // always returns them), so its initial connection fails inside TerminalClient.
-// TODO(#873): TerminalClient still calls exit(1) there on this branch; drop
-// [!shouldfail] once #873 lands and this starts passing.
 TEST_CASE_METHOD(ClientMainFixture,
                  "et replaces a named session the server no longer has",
-                 "[TerminalClientMain][!shouldfail]") {
+                 "[TerminalClientMain]") {
   LiveServer live(directory);
   onClientReady = [](TerminalClient& client) { client.shutdown(); };
 
@@ -763,13 +714,12 @@ TEST_CASE_METHOD(ClientMainFixture,
   MainResult kill = run(args({"--kill", "live"}));
   REQUIRE(kill.exitCode == 0);
 
-  test::ChildMainResult staleName = runInChild(
-      args({"--no-ssh-config", "--name", "stale-name", "--no-terminal",
-            "--port", live.portArg(), "127.0.0.1"}));
+  MainResult staleName =
+      run(args({"--no-ssh-config", "--name", "stale-name", "--no-terminal",
+                "--port", live.portArg(), "127.0.0.1"}));
   INFO(staleName.output);
   REQUIRE(contains(staleName.output, "creating a fresh session"));
-  REQUIRE(recordedSshCalls().size() == 1);
-  REQUIRE(staleName.returned);
+  REQUIRE(ssh->calls == 2);
   REQUIRE(staleName.exitCode == 1);
 }
 

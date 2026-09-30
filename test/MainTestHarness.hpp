@@ -10,7 +10,6 @@
 #include "TestHeaders.hpp"
 
 #ifndef WIN32
-#include <poll.h>
 #include <signal.h>
 #include <sys/wait.h>
 #include <unistd.h>
@@ -83,102 +82,6 @@ inline bool contains(const string& haystack, const string& needle) {
 }
 
 #ifndef WIN32
-struct ChildMainResult {
-  // False when the main function ended the process itself (exit, abort, or a
-  // signal) instead of returning its status.
-  bool returned = false;
-  bool timedOut = false;
-  int exitCode = -1;
-  int signal = 0;
-  string output;
-};
-
-/**
- * Runs an executable's main function in a forked child so a main that calls
- * exit(), aborts, or hangs cannot take the test process down with it. The
- * child's stdout and stderr are captured; a hung child is killed after
- * `timeoutSeconds`.
- */
-template <class MainFunction>
-ChildMainResult runMainInChild(const vector<string>& args,
-                               MainFunction&& mainFunction,
-                               int timeoutSeconds = 60) {
-  int outputPipe[2];
-  int statusPipe[2];
-  FATAL_FAIL(::pipe(outputPipe));
-  FATAL_FAIL(::pipe(statusPipe));
-  std::cout.flush();
-  std::cerr.flush();
-  ::fflush(nullptr);
-
-  pid_t pid = ::fork();
-  FATAL_FAIL(pid);
-  if (pid == 0) {
-    ::close(outputPipe[0]);
-    ::close(statusPipe[0]);
-    ::dup2(outputPipe[1], STDOUT_FILENO);
-    ::dup2(outputPipe[1], STDERR_FILENO);
-    ::close(outputPipe[1]);
-    vector<string> storage = args;
-    vector<char*> argv;
-    for (auto& arg : storage) {
-      argv.push_back(&arg[0]);
-    }
-    argv.push_back(nullptr);
-    int code = mainFunction(static_cast<int>(argv.size() - 1), argv.data());
-    el::Loggers::flushAll();
-    std::cout.flush();
-    std::cerr.flush();
-    ::fflush(nullptr);
-    RawSocketUtils::writeAll(statusPipe[1], reinterpret_cast<char*>(&code),
-                             sizeof(code));
-    ::_exit(0);
-  }
-
-  ::close(outputPipe[1]);
-  ::close(statusPipe[1]);
-  ChildMainResult result;
-  const auto deadline =
-      std::chrono::steady_clock::now() + std::chrono::seconds(timeoutSeconds);
-  char buffer[4096];
-  while (true) {
-    const auto remaining =
-        std::chrono::duration_cast<std::chrono::milliseconds>(
-            deadline - std::chrono::steady_clock::now());
-    if (remaining.count() <= 0) {
-      result.timedOut = true;
-      ::kill(pid, SIGKILL);
-      break;
-    }
-    pollfd pfd{outputPipe[0], POLLIN, 0};
-    int ready = ::poll(&pfd, 1, static_cast<int>(remaining.count()));
-    if (ready <= 0) {
-      continue;
-    }
-    ssize_t n = ::read(outputPipe[0], buffer, sizeof(buffer));
-    if (n <= 0) {
-      break;
-    }
-    result.output.append(buffer, n);
-  }
-  ::close(outputPipe[0]);
-
-  int status = 0;
-  ::waitpid(pid, &status, 0);
-  int code = 0;
-  if (!result.timedOut &&
-      ::read(statusPipe[0], &code, sizeof(code)) == sizeof(code)) {
-    result.returned = true;
-    result.exitCode = code;
-  } else if (WIFEXITED(status)) {
-    result.exitCode = WEXITSTATUS(status);
-  } else if (WIFSIGNALED(status)) {
-    result.signal = WTERMSIG(status);
-  }
-  ::close(statusPipe[0]);
-  return result;
-}
-
 /**
  * Runs a background service in a forked child for the lifetime of this
  * object. `serve` must start the service and return; the child then idles

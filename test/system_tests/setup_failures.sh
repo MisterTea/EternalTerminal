@@ -94,20 +94,6 @@ expect_failure() {
   fi
 }
 
-# known_bug NAME EXPECTED_TEXT COMMAND...
-# TODO(#873): these cases hit bugs in TerminalClient, TunnelUtils, and
-# Connection that #873 fixes. Until then they report xfail without failing
-# the run; switch them to expect_failure there.
-known_bug() {
-  check_failure "$@"
-  if [ -n "$problem" ]; then
-    echo "xfail $1: $problem (known bug, fixed by #873)"
-    sed 's/^/    /' "$log" | tail -n 5
-  else
-    echo "xpass $1: now fails cleanly; switch it to expect_failure"
-  fi
-}
-
 have_ssh() {
   ssh -o BatchMode=yes -o StrictHostKeyChecking=no \
     -o PreferredAuthentications=publickey localhost true >/dev/null 2>&1
@@ -188,10 +174,10 @@ EOF
   ET=("$ET_BIN" --serverfifo="$ET_FIFO" --terminal-path "$RUN_DIR/etterminal"
     --logtostdout --no-persist --no-terminal)
 
-  known_bug et_ssh_style_tunnel_bad_port "Invalid tunnel argument" \
+  expect_failure et_ssh_style_tunnel_bad_port "Invalid tunnel argument" \
     "${ET[@]}" -L localhost:notaport:localhost:22 "localhost:$ET_PORT"
 
-  known_bug et_ssh_style_tunnel_overflow "Invalid tunnel argument" \
+  expect_failure et_ssh_style_tunnel_overflow "Invalid tunnel argument" \
     "${ET[@]}" -L 99999999999999999999:localhost:22 "localhost:$ET_PORT"
 
   expect_failure et_agent_forward_without_agent "SSH_AUTH_SOCK" \
