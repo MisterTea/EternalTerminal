@@ -12,8 +12,14 @@ TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
   }
 }
 
+string TcpSocketHandler::getLastConnectError() {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
+  return lastConnectError;
+}
+
 int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
+  lastConnectError.clear();
   int sockFd = -1;
   addrinfo* results = NULL;
   addrinfo* p = NULL;
@@ -32,6 +38,10 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   refreshResolver();
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
+  if (rc != 0) {
+    lastConnectError = string("Could not resolve hostname ") + hostname + ": " +
+                       addressError(rc);
+  }
   if (rc == EAI_NONAME) {
     VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << addressError(rc);
     if (results) {
@@ -64,6 +74,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK) {
       auto localErrno = GetErrno();
+      lastConnectError = strerror(localErrno);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -83,6 +94,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
 
       FATAL_FAIL(
           ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+      so_error = TranslateSocketError(so_error);
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -96,6 +108,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
         setBlocking(sockFd, true);
         break;  // if we get here, we must have connected successfully
       } else {
+        lastConnectError = strerror(so_error);
         if (p->ai_canonname) {
           LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                     << so_error << " " << strerror(so_error);
@@ -110,6 +123,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
       }
     } else {
       auto localErrno = GetErrno();
+      lastConnectError = strerror(ETIMEDOUT);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);

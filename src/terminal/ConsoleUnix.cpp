@@ -7,11 +7,15 @@ namespace {
 constexpr size_t kConsoleReadSize = 16 * 1024;
 
 /**
- * @brief Reads @p readFd, using whether @p ttyFd is a tty to tell a user
- * closing the terminal (FAILED) from a launcher leaving an unreadable
- * descriptor behind (CLOSED).
+ * @brief Reads @p readFd, using whether it is a tty to tell a user closing the
+ * terminal (FAILED) from a pipe, file, or launcher-left descriptor running out
+ * (CLOSED).
+ *
+ * The descriptor that was read must be the one judged: a heredoc on stdin
+ * (`et -T host sh << EOF` in a terminal) hits EOF after its script while
+ * stdout is still a tty, and must not end the session.
  */
-ConsoleInputStatus readConsoleFd(int readFd, int ttyFd, string* out) {
+ConsoleInputStatus readConsoleFd(int readFd, string* out) {
   char b[kConsoleReadSize];
   const ssize_t rc = ::read(readFd, b, sizeof(b));
   const int savedErrno = errno;
@@ -20,7 +24,7 @@ ConsoleInputStatus readConsoleFd(int readFd, int ttyFd, string* out) {
     return ConsoleInputStatus::DATA;
   }
   if (rc == 0) {
-    if (isatty(ttyFd)) {
+    if (isatty(readFd)) {
       LOG(INFO) << "Console EOF";
       return ConsoleInputStatus::FAILED;
     }
@@ -31,7 +35,7 @@ ConsoleInputStatus readConsoleFd(int readFd, int ttyFd, string* out) {
       savedErrno == EINTR) {
     return ConsoleInputStatus::NONE;
   }
-  if (!isatty(ttyFd)) {
+  if (!isatty(readFd)) {
     LOG(INFO) << "Console is not a tty and cannot be read (" << savedErrno
               << "): " << strerror(savedErrno) << ", disabling console input";
     return ConsoleInputStatus::CLOSED;
@@ -63,7 +67,7 @@ size_t Console::writeSome(const string& s) {
 
 ConsoleInputStatus Console::readInput(const set<int>& /*readyFds*/,
                                       string* out) {
-  return readConsoleFd(getFd(), getFd(), out);
+  return readConsoleFd(getFd(), out);
 }
 
 void StdioConsole::setup() {
@@ -84,6 +88,6 @@ ConsoleInputStatus StdioConsole::readInput(const set<int>& readyFds,
                                            string* out) {
   const int readFd =
       readyFds.count(STDIN_FILENO) != 0 ? STDIN_FILENO : STDOUT_FILENO;
-  return readConsoleFd(readFd, STDOUT_FILENO, out);
+  return readConsoleFd(readFd, out);
 }
 }  // namespace et

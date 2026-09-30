@@ -29,6 +29,7 @@ class TcpSocketHandler : public UnixSocketHandler {
    * server.
    */
   virtual int connect(const SocketEndpoint& endpoint);
+  virtual string getLastConnectError();
   /**
    * @brief Binds and listens on all IP addresses for the given port.
    */
@@ -49,6 +50,8 @@ class TcpSocketHandler : public UnixSocketHandler {
   map<int, set<int>> portServerSockets;
   /** @brief Depth of the kernel accept queue, see DEFAULT_LISTEN_BACKLOG. */
   int listenBacklog;
+  /** @brief Reason the last connect() failed; guarded by globalMutex. */
+  string lastConnectError;
 
   /**
    * @brief Performs additional TCP-specific socket configuration

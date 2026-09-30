@@ -18,6 +18,7 @@
 #include <io.h>
 #endif
 
+#include "BinaryStdioConsole.hpp"
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
 #include "SshSetupHandler.hpp"
@@ -602,6 +603,88 @@ void nonTtyConsoleKeepsSessionAliveTest(
   uth.reset();
 }
 
+#ifndef WIN32
+// VS Code Remote-SSH "terminal mode" runs `et -T host sh << 'EOSSH'` inside a
+// terminal: stdout is a tty, stdin is a heredoc that hits EOF once the script
+// is read. That EOF must stop console input, not end the session.
+void pipedStdinWithTtyStdoutKeepsSessionAliveTest(
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  int ptyMaster = -1;
+  int ptySlave = -1;
+  FATAL_FAIL(openpty(&ptyMaster, &ptySlave, nullptr, nullptr, nullptr));
+  int stdinPipe[2];
+  FATAL_FAIL(::pipe(stdinPipe));
+  const string script = "echo hi\n";
+  FATAL_FAIL(::write(stdinPipe[1], script.data(), script.size()));
+  ::close(stdinPipe[1]);
+
+  const int savedStdin = ::dup(STDIN_FILENO);
+  const int savedStdout = ::dup(STDOUT_FILENO);
+  FATAL_FAIL(savedStdin);
+  FATAL_FAIL(savedStdout);
+  fflush(stdout);
+  FATAL_FAIL(::dup2(stdinPipe[0], STDIN_FILENO));
+  FATAL_FAIL(::dup2(ptySlave, STDOUT_FILENO));
+  ::close(stdinPipe[0]);
+  ::close(ptySlave);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      make_shared<BinaryStdioConsole>(), false, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+
+  const auto setupDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (!fakeUserTerminal->isSetupComplete() &&
+         std::chrono::steady_clock::now() < setupDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  const string received = fakeUserTerminal->getKeystrokes(script.size());
+  sleep(2);
+  const bool aliveAfterEof = !runReturned.load();
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  fflush(stdout);
+  FATAL_FAIL(::dup2(savedStdin, STDIN_FILENO));
+  FATAL_FAIL(::dup2(savedStdout, STDOUT_FILENO));
+  ::close(savedStdin);
+  ::close(savedStdout);
+  ::close(ptyMaster);
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
+
+  REQUIRE(received == script);
+  REQUIRE(aliveAfterEof);
+}
+#endif
+
 void closeOnHangupTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                        shared_ptr<FakeUserTerminal> fakeUserTerminal,
                        SocketEndpoint serverEndpoint,
@@ -1005,6 +1088,16 @@ TEST_CASE_METHOD(EndToEndTestFixture, "NonTtyConsoleKeepsSessionAlive",
                                      serverEndpoint, clientSocketHandler,
                                      clientPipeSocketHandler, routerEndpoint);
 }
+
+#ifndef WIN32
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "PipedStdinWithTtyStdoutKeepsSessionAlive",
+                 "[EndToEndTest][integration]") {
+  pipedStdinWithTtyStdoutKeepsSessionAliveTest(
+      routerSocketHandler, fakeUserTerminal, serverEndpoint,
+      clientSocketHandler, clientPipeSocketHandler, routerEndpoint);
+}
+#endif
 
 TEST_CASE_METHOD(EndToEndTestFixture, "CloseOnHangup",
                  "[EndToEndTest][integration]") {

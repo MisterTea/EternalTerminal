@@ -54,6 +54,16 @@ bool ping(SocketEndpoint socketEndpoint,
   return true;
 }
 
+// The reason keeps OpenSSH's wording (e.g. "Operation timed out"): VS Code
+// Remote-SSH retries on those phrases but gives up on anything else.
+void reportUnreachable(const SocketEndpoint& endpoint,
+                       const shared_ptr<SocketHandler>& socketHandler) {
+  const string reason = socketHandler->getLastConnectError();
+  CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
+                       << ":" << endpoint.port()
+                       << (reason.empty() ? "" : ": " + reason) << endl;
+}
+
 void handleParseException(std::exception& e, cxxopts::Options& options) {
   CLOG(INFO, "stdout") << "Exception: " << e.what() << "\n" << endl;
   CLOG(INFO, "stdout") << options.help({}) << endl;
@@ -237,8 +247,7 @@ AttachResult attachSavedSession(
   shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
 
   if (!ping(endpoint, socket)) {
-    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
-                         << ":" << endpoint.port() << endl;
+    reportUnreachable(endpoint, socket);
     return AttachResult::FAILED;
   }
 
@@ -288,8 +297,7 @@ KillResult killSavedSession(const SessionInfo& session) {
   shared_ptr<SocketHandler> pipeSocket(new PipeSocketHandler());
 
   if (!ping(endpoint, socket)) {
-    CLOG(INFO, "stdout") << "Could not reach the ET server: " << endpoint.name()
-                         << ":" << endpoint.port() << endl;
+    reportUnreachable(endpoint, socket);
     return KillResult::FAILED;
   }
 
@@ -1370,9 +1378,7 @@ int main(int argc, char** argv) {
     shared_ptr<SocketHandler> clientPipeSocket(new PipeSocketHandler());
 
     if (!ping(socketEndpoint, clientSocket)) {
-      CLOG(INFO, "stdout") << "Could not reach the ET server: "
-                           << socketEndpoint.name() << ":"
-                           << socketEndpoint.port() << endl;
+      reportUnreachable(socketEndpoint, clientSocket);
       exit(1);
     }
 

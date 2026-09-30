@@ -243,12 +243,11 @@ const int INITIAL_PAYLOAD_TIMEOUT_DURATION = 600;
 #endif
 
 /**
- * @brief Normalizes platform-specific errno values (translates Win32 WSA
- * errors).
+ * @brief Translates a socket error code (e.g. from WSAGetLastError() or
+ * SO_ERROR) into the equivalent errno value. Identity on non-Windows.
  */
-inline int GetErrno() {
+inline int TranslateSocketError(int retval) {
 #ifdef WIN32
-  auto retval = WSAGetLastError();
   if (retval >= 10000) {
     // Do some translation
     switch (retval) {
@@ -325,7 +324,17 @@ inline int GetErrno() {
         return retval;
     }
   }
+#endif
   return retval;
+}
+
+/**
+ * @brief Normalizes platform-specific errno values (translates Win32 WSA
+ * errors).
+ */
+inline int GetErrno() {
+#ifdef WIN32
+  return TranslateSocketError(WSAGetLastError());
 #else
   return errno;
 #endif
