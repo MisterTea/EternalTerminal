@@ -582,13 +582,19 @@ add_library(
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
   src/terminal/TelemetryService.cpp
+  src/terminal/TerminalClientMain.hpp
+  src/terminal/TerminalClientMain.cpp
+  src/terminal/TerminalMain.hpp
+  src/terminal/TerminalMain.cpp
+  src/terminal/TerminalServerMain.hpp
+  src/terminal/TerminalServerMain.cpp
   ${TERMINAL_PLATFORM_SRCS}
   ${ETERMINAL_SRCS}
   ${ETERMINAL_HDRS})
 add_dependencies(TerminalCommon generated-code et-lib)
 decorate_target(TerminalCommon)
 
-add_executable(et src/terminal/TerminalClientMain.cpp)
+add_executable(et src/terminal/TerminalClientMainEntry.cpp)
 target_link_libraries(
   et
   LINK_PUBLIC
@@ -705,7 +711,7 @@ target_link_libraries(
 decorate_target(htmd)
 
 if(WIN32)
-  add_executable(etserver src/terminal/TerminalServerMain.cpp)
+  add_executable(etserver src/terminal/TerminalServerMainEntry.cpp)
   target_link_libraries(
     etserver
     LINK_PUBLIC
@@ -719,7 +725,7 @@ if(WIN32)
   add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
 
-  add_executable(etterminal src/terminal/TerminalMain.cpp)
+  add_executable(etterminal src/terminal/TerminalMainEntry.cpp)
   target_link_libraries(
     etterminal
     LINK_PUBLIC
@@ -828,7 +834,7 @@ if(WIN32)
   endif()
 
 else(WIN32)
-  add_executable(etserver src/terminal/TerminalServerMain.cpp)
+  add_executable(etserver src/terminal/TerminalServerMainEntry.cpp)
   target_link_libraries(
     etserver
     LINK_PUBLIC
@@ -844,7 +850,7 @@ else(WIN32)
   add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
 
-  add_executable(etterminal src/terminal/TerminalMain.cpp)
+  add_executable(etterminal src/terminal/TerminalMainEntry.cpp)
   target_link_libraries(
     etterminal
     LINK_PUBLIC

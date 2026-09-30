@@ -9,7 +9,7 @@ ignore:
   - "src/base/*Windows.cpp"
   - "src/htm/*Windows.cpp"
   - "src/terminal/PseudoUserTerminal.hpp"
-  - "src/terminal/*Main.cpp"
+  - "src/terminal/*MainEntry.cpp"
   - "src/base/Headers.hpp"
   - "src/base/TcpSocketHandler*"
   - "src/base/SubprocessToString*"

@@ -29,7 +29,8 @@ UserTerminalHandler::UserTerminalHandler(
   try {
     registerWithRouter();
   } catch (const std::runtime_error& re) {
-    STFATAL << "Error connecting to router: " << re.what();
+    throw std::runtime_error(string("Error connecting to router: ") +
+                             re.what());
   }
 }
 

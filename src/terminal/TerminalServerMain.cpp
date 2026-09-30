@@ -1,3 +1,5 @@
+#include "TerminalServerMain.hpp"
+
 #include <cxxopts.hpp>
 #include <limits>
 
@@ -7,13 +9,30 @@
 #include "TerminalServer.hpp"
 #include "WinsockContext.hpp"
 
-using namespace et;
 namespace google {}
 namespace gflags {}
 using namespace google;
 using namespace gflags;
 
-int main(int argc, char** argv) {
+namespace et {
+namespace {
+int parseConfigInt(const string& key, const char* value) {
+  try {
+    size_t consumed = 0;
+    int parsed = stoi(value, &consumed);
+    if (consumed == strlen(value)) {
+      return parsed;
+    }
+  } catch (const std::logic_error&) {
+  }
+  throw std::runtime_error("Invalid integer for " + key + " in config file: '" +
+                           value + "'");
+}
+}  // namespace
+
+int TerminalServerMain(
+    int argc, char** argv,
+    const std::function<void(TerminalServer&)>& onServerReady) {
   WinsockContext winsockContext;
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -26,6 +45,7 @@ int main(int argc, char** argv) {
 
   cxxopts::Options options("etserver",
                            "Remote shell for the busy and impatient");
+  int exitCode = 0;
   try {
     // Parse command line arguments
     options.allow_unrecognised_options();
@@ -69,11 +89,11 @@ int main(int argc, char** argv) {
 
     if (result.count("help")) {
       CLOG(INFO, "stdout") << options.help({}) << endl;
-      exit(0);
+      return 0;
     }
     if (result.count("version")) {
       CLOG(INFO, "stdout") << "et version " << ET_VERSION << endl;
-      exit(0);
+      return 0;
     }
 
     el::Loggers::setVerboseLevel(result["verbose"].as<int>());
@@ -104,7 +124,7 @@ int main(int argc, char** argv) {
         if (!result.count("port")) {
           const char* portString = ini.GetValue("Networking", "port", NULL);
           if (portString) {
-            port = stoi(portString);
+            port = parseConfigInt("[Networking] port", portString);
           }
         }
 
@@ -117,14 +137,15 @@ int main(int argc, char** argv) {
 
         const char* backlogString = ini.GetValue("Networking", "backlog", NULL);
         if (backlogString) {
-          listenBacklog = stoi(backlogString);
+          listenBacklog = parseConfigInt("[Networking] backlog", backlogString);
         }
 
         if (!result.count("disconnect-timeout")) {
           const char* timeoutString =
               ini.GetValue("Networking", "disconnect_timeout", NULL);
           if (timeoutString) {
-            disconnectTimeoutMinutes = stoi(timeoutString);
+            disconnectTimeoutMinutes = parseConfigInt(
+                "[Networking] disconnect_timeout", timeoutString);
           }
         }
 
@@ -164,7 +185,7 @@ int main(int argc, char** argv) {
           logDirectory = string(logdir);
         }
       } else {
-        STFATAL << "Invalid config file: " << cfgfilename;
+        throw std::runtime_error("Invalid config file: " + cfgfilename);
       }
     }
 
@@ -178,11 +199,11 @@ int main(int argc, char** argv) {
     }
 
     if (disconnectTimeoutMinutes < 0) {
-      STFATAL << "--disconnect-timeout must be a non-negative number of "
-                 "minutes";
+      throw std::runtime_error(
+          "--disconnect-timeout must be a non-negative number of minutes");
     }
     if (disconnectTimeoutMinutes > std::numeric_limits<int>::max() / 60) {
-      STFATAL << "--disconnect-timeout is too large";
+      throw std::runtime_error("--disconnect-timeout is too large");
     }
 
     if (result.count("port")) {
@@ -241,14 +262,25 @@ int main(int argc, char** argv) {
     TerminalServer terminalServer(tcpSocketHandler, serverEndpoint,
                                   pipeSocketHandler, routerFifo);
     terminalServer.setDisconnectTimeoutSeconds(disconnectTimeoutMinutes * 60);
+    if (onServerReady) {
+      onServerReady(terminalServer);
+    }
     terminalServer.run();
 
   } catch (cxxopts::exceptions::exception& oe) {
     CLOG(INFO, "stdout") << "Exception: " << oe.what() << "\n" << endl;
     CLOG(INFO, "stdout") << options.help({}) << endl;
-    exit(1);
+    exitCode = 1;
+  } catch (const std::exception& error) {
+    CLOG(INFO, "stdout") << "Exception: " << error.what() << endl;
+    exitCode = 1;
+  } catch (...) {
+    CLOG(INFO, "stdout") << "Unknown exception" << endl;
+    exitCode = 1;
   }
 
   // Uninstall log rotation callback
   el::Helpers::uninstallPreRollOutCallback();
+  return exitCode;
 }
+}  // namespace et
