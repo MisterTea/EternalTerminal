@@ -12,6 +12,7 @@
 #include "ControlConsole.hpp"
 #include "ControlListener.hpp"
 #include "ControlPaths.hpp"
+#include "RawSocketUtils.hpp"
 #include "TestHeaders.hpp"
 
 using namespace et;
