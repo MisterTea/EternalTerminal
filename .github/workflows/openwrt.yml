@@ -113,6 +113,7 @@ jobs:
               test -x /usr/bin/et
               test -x /usr/bin/etserver
               test -x /usr/bin/etterminal
+              test -x /usr/bin/et1
               test -x /etc/init.d/etserver
               echo "Verifying et help output..."
               /usr/bin/et --help || true

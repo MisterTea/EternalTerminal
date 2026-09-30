@@ -36,6 +36,14 @@ class Et1ScriptTest(unittest.TestCase):
         self.assertIn("scripts/et1.cmd", cmake)
         self.assertGreaterEqual(cmake.count('DESTINATION "bin"'), 2)
 
+    def test_openwrt_package_installs_et1_with_client_binaries(self):
+        makefile = (ROOT / "openwrt" / "Makefile").read_text()
+        for binary in ("et", "etserver", "etterminal", "et1"):
+            self.assertIn(
+                f"$(INSTALL_BIN) $(PKG_INSTALL_DIR)/usr/bin/{binary} $(1)/usr/bin/",
+                makefile,
+            )
+
     def test_et_client_declares_disconnect_timeout_option(self):
         """Catch the silent no-op where et1 passes a flag et never registers."""
         main = (ROOT / "src" / "terminal" / "TerminalClientMain.cpp").read_text()
