@@ -72,6 +72,14 @@ class AgentSessionBindReplies {
 };
 
 /**
+ * @brief Resolves the agent socket ssh authenticates with from `ssh -G`
+ * output, following ssh's IdentityAgent rules (`none`, `SSH_AUTH_SOCK`,
+ * `$VAR`, path; unset falls back to `$SSH_AUTH_SOCK`).
+ * @return Socket path, or empty when ssh would use no agent.
+ */
+string sshIdentityAgentFromConfigDump(const string& sshConfigDump);
+
+/**
  * @brief Agent proxy handed to the bootstrap ssh as its IdentityAgent.
  *
  * Relays every request to the real agent and records the session-bind ssh

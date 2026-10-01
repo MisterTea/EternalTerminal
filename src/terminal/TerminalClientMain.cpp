@@ -1488,6 +1488,7 @@ int TerminalClientMain(int argc, char** argv,
     sshSetupHandler.setBootstrapOverrides(
         bootstrapPort.set, bootstrapPort.port, muxParse.ssh.identityFiles,
         muxParse.ssh.cipherSet ? muxParse.ssh.cipher : "");
+    sshSetupHandler.setCaptureAgentSessionBinds(forwardAgent);
     pair<string, string> idpasskeypair;
     try {
       idpasskeypair = sshSetupHandler.SetupSsh(
@@ -1537,7 +1538,8 @@ int TerminalClientMain(int argc, char** argv,
           return sessionName.empty() || updateSessionTitle(sessionName, title);
         },
         disconnectTimeoutMinutes, muxParse.ssh.noRemoteCommand,
-        sshConfigOptions.exit_on_forward_failure);
+        sshConfigOptions.exit_on_forward_failure,
+        sshSetupHandler.agentSessionBinds());
 
 #ifndef WIN32
     if (backgroundWriteFd >= 0) {
