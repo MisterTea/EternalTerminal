@@ -176,7 +176,7 @@ TerminalClient::TerminalClient(
     bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
     std::function<bool(const string&)> _sessionTitleUpdate,
     optional<int> disconnectTimeoutMinutes, bool noShell,
-    bool exitOnForwardFailure)
+    bool exitOnForwardFailure, const vector<string>& sshAgentSessionBinds)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -281,10 +281,12 @@ TerminalClient::TerminalClient(
       string authSock = resolveAuthSock(/*requireAuthSock=*/true);
       if (authSock.length()) {
         PortForwardSourceRequest pfsr;
-        pfsr.mutable_destination()->set_name(
-            refreshAgentProxyPath(id, authSock));
+        const string proxyPath = refreshAgentProxyPath(id, authSock);
+        pfsr.mutable_destination()->set_name(proxyPath);
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
+        portForwardHandler->setSshAgentSessionBinds(proxyPath,
+                                                    sshAgentSessionBinds);
         agentProxyEnabled = true;
         agentClientId = id;
         agentIdentityAgent = identityAgent;
