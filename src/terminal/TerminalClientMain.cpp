@@ -423,8 +423,10 @@ int TerminalClientMain(int argc, char** argv,
   string sessionName = "";
   bool sessionEndedByServer = false;
 
-  // Override easylogging handler for sigint
+  // Override easylogging handler for sigint. Both handlers exit() so atexit
+  // cleanup (e.g. the temporary ssh-agent proxy) runs.
   ::signal(SIGINT, et::InterruptSignalHandler);
+  ::signal(SIGTERM, et::TerminateSignalHandler);
 
   Options sshConfigOptions = {
       NULL,  // username
