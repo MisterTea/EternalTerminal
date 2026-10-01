@@ -1,6 +1,7 @@
 #include "SshSetupHandler.hpp"
 
 #include "HostParsing.hpp"
+#include "SshAgentSessionBind.hpp"
 
 namespace et {
 namespace {
@@ -106,6 +107,69 @@ string genCommand(const string& passkey, const string& id,
   return ssh_script_prefix + command;
 }
 
+string SshSetupHandler::runSsh(vector<string> sshArgs,
+                               const string& remoteCommand, const string& hop,
+                               optional<string>* agentSessionBind) {
+#ifndef WIN32
+  unique_ptr<SshAgentSessionBindRecorder> recorder;
+  if (agentSessionBind) {
+    // Ask ssh which agent it would authenticate with (config, Match blocks,
+    // -o and token expansion included) so the recorder relays to that agent.
+    // -T: without a remote command ssh would want a pty and, with stdin on
+    // /dev/null, warn "Pseudo-terminal will not be allocated" on the terminal.
+    vector<string> queryArgs = {"-G", "-T"};
+    queryArgs.insert(queryArgs.end(), sshArgs.begin(), sshArgs.end());
+    string sshConfig;
+    try {
+      sshConfig =
+          subprocessUtils_->SubprocessToStringInteractive("ssh", queryArgs);
+    } catch (const std::exception& err) {
+      LOG(WARNING) << "ssh -G failed: " << err.what();
+    }
+    if (sshConfig.empty()) {
+      LOG(WARNING) << "ssh -G failed; not recording ssh agent session binding "
+                      "for "
+                   << hop;
+    } else {
+      try {
+        recorder = make_unique<SshAgentSessionBindRecorder>(
+            sshIdentityAgentFromConfigDump(sshConfig));
+        // ssh keeps the first value given for an option, so these override
+        // config and --ssh-option. ControlMaster=no stops a persisting master
+        // from inheriting the temporary proxy; existing masters are still
+        // used (and then no binding is made).
+        sshArgs.insert(sshArgs.begin(),
+                       {"-oIdentityAgent=" + recorder->socketPath(),
+                        "-oControlMaster=no"});
+      } catch (const std::runtime_error& err) {
+        LOG(WARNING) << "Not recording ssh agent session binding for " << hop
+                     << ": " << err.what();
+      }
+    }
+  }
+#endif
+  sshArgs.push_back(remoteCommand);
+  string output =
+      subprocessUtils_->SubprocessToStringInteractive("ssh", sshArgs);
+
+#ifndef WIN32
+  if (recorder) {
+    *agentSessionBind = recorder->lastForwardedBind();
+    if (*agentSessionBind) {
+      LOG(INFO)
+          << "Recorded ssh agent session binding for " << hop << " host key "
+          << sessionBindHostKeyFingerprint(**agentSessionBind).value_or("?");
+    } else {
+      LOG(WARNING) << "ssh made no agent session binding for " << hop
+                   << " (it needs OpenSSH 8.9+ and a new connection rather "
+                      "than an existing ControlMaster); forwarded agent "
+                      "connections will not be bound to this hop";
+    }
+  }
+#endif
+  return output;
+}
+
 pair<string, string> SshSetupHandler::SetupSsh(
     const string& user, const string& host, const string& host_alias, int port,
     const string& jumphost, const string& jServerFifo, bool kill, int vlevel,
@@ -156,14 +220,16 @@ pair<string, string> SshSetupHandler::SetupSsh(
     ssh_args.push_back("-o" + arg);
   }
 
-  ssh_args.push_back(SSH_SCRIPT_DST);
+  agentSessionBinds_.clear();
+  optional<string> destinationBind;
+  optional<string> jumphostBind;
 
   VLOG(1) << "Trying ssh connection to " << SSH_USER_PREFIX + host_alias
           << endl;
   string sshBuffer;
   try {
-    sshBuffer =
-        subprocessUtils_->SubprocessToStringInteractive("ssh", ssh_args);
+    sshBuffer = runSsh(ssh_args, SSH_SCRIPT_DST, "destination",
+                       captureAgentSessionBinds_ ? &destinationBind : nullptr);
   } catch (const std::exception&) {
     failSshSetup(
         "Error starting ET process through ssh, please make sure your ssh "
@@ -240,12 +306,12 @@ pair<string, string> SshSetupHandler::SetupSsh(
     // ssh_options configure the destination. Jump-specific options are
     // resolved independently from the jumphost's SSH configuration.
     jump_ssh_args.push_back(jumphostDest);
-    jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
 
     string sshLinkBuffer;
     try {
       sshLinkBuffer =
-          subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
+          runSsh(jump_ssh_args, SSH_SCRIPT_JUMP, "jumphost",
+                 captureAgentSessionBinds_ ? &jumphostBind : nullptr);
     } catch (const std::exception&) {
       failSshSetup("etserver jumpclient failed to start");
     }
@@ -261,6 +327,15 @@ pair<string, string> SshSetupHandler::SetupSsh(
     }
     id = jumpCredentials->first;
     passkey = jumpCredentials->second;
+  }
+
+  // The jumphost's etserver decrypts and re-encrypts ET traffic, so it is the
+  // first hop that can use the forwarded agent.
+  if (jumphostBind) {
+    agentSessionBinds_.push_back(*jumphostBind);
+  }
+  if (destinationBind) {
+    agentSessionBinds_.push_back(*destinationBind);
   }
 
   if (id.length() == 0 || passkey.length() == 0) {

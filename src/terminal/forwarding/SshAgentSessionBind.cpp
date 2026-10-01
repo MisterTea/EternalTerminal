@@ -217,6 +217,33 @@ bool AgentSessionBindReplies::consume(const string& data, string* forward) {
   return true;
 }
 
+string sshIdentityAgentFromConfigDump(const string& sshConfigDump) {
+  const string key = "identityagent ";
+  optional<string> configured;
+  istringstream lines(sshConfigDump);
+  string line;
+  while (getline(lines, line)) {
+    if (line.compare(0, key.size(), key) == 0) {
+      configured = line.substr(key.size());
+      if (!configured->empty() && configured->back() == '\r') {
+        configured->pop_back();
+      }
+      break;
+    }
+  }
+  const char* env = nullptr;
+  if (!configured || *configured == "SSH_AUTH_SOCK") {
+    env = getenv("SSH_AUTH_SOCK");
+  } else if (*configured == "none") {
+    return "";
+  } else if (configured->front() == '$') {
+    env = getenv(configured->c_str() + 1);
+  } else {
+    return *configured;
+  }
+  return env ? string(env) : string();
+}
+
 #ifndef WIN32
 SshAgentSessionBindRecorder::SshAgentSessionBindRecorder(
     const string& upstreamAgentPath)
