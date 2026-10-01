@@ -1,5 +1,11 @@
 #include "LogHandler.hpp"
 
+#ifdef WIN32
+#include <io.h>
+#endif
+
+#include <climits>
+
 INITIALIZE_EASYLOGGINGPP
 
 namespace et {
@@ -104,14 +110,114 @@ string LogHandler::createLogFile(const string& path, const string& filename) {
   return fullFname;
 }
 
+namespace {
+// stderr as it was before stderrToFile freopen'd it onto the log. SSH auth
+// banners are written here so a Tailscale login URL stays on the terminal.
+int preservedUserStderr = -1;
+
+int stderrNo() {
+#ifdef WIN32
+  return _fileno(stderr);
+#else
+  return ::fileno(stderr);
+#endif
+}
+
+int duplicateFd(int fd) {
+#ifdef WIN32
+  return _dup(fd);
+#else
+  return ::dup(fd);
+#endif
+}
+
+void closeFd(int fd) {
+#ifdef WIN32
+  _close(fd);
+#else
+  ::close(fd);
+#endif
+}
+
+void setCloexec(int fd) {
+#ifdef WIN32
+  intptr_t osHandle = _get_osfhandle(fd);
+  if (osHandle != -1) {
+    SetHandleInformation(reinterpret_cast<HANDLE>(osHandle),
+                         HANDLE_FLAG_INHERIT, 0);
+  }
+#else
+  ::fcntl(fd, F_SETFD, FD_CLOEXEC);
+#endif
+}
+
+void writeBestEffort(int fd, const char* data, size_t len) {
+  if (fd < 0 || data == nullptr || len == 0) {
+    return;
+  }
+  const char* cursor = data;
+  size_t remaining = len;
+  while (remaining > 0) {
+#ifdef WIN32
+    const unsigned int chunk = remaining > static_cast<size_t>(INT_MAX)
+                                   ? static_cast<unsigned int>(INT_MAX)
+                                   : static_cast<unsigned int>(remaining);
+    const int written = _write(fd, cursor, chunk);
+#else
+    const ssize_t written = ::write(fd, cursor, remaining);
+#endif
+    if (written < 0) {
+      if (errno == EINTR) {
+        continue;
+      }
+      return;
+    }
+    if (written == 0) {
+      return;
+    }
+    cursor += written;
+    remaining -= static_cast<size_t>(written);
+  }
+}
+}  // namespace
+
 void LogHandler::stderrToFile(const string& path,
                               const string& stderrFilename) {
+  // Keep a copy of the terminal stderr. freopen below replaces fd 2 with the
+  // log file, which is why SSH banners were invisible without --logtostdout.
+  if (preservedUserStderr < 0) {
+    const int saved = duplicateFd(stderrNo());
+    if (saved >= 0) {
+      setCloexec(saved);
+      preservedUserStderr = saved;
+    }
+  }
   string fullFname = createLogFile(path, stderrFilename);
   FILE* stderr_stream = freopen(fullFname.c_str(), "w", stderr);
   if (!stderr_stream) {
     STFATAL << "Invalid filename " << stderrFilename;
   }
   setvbuf(stderr_stream, NULL, _IOLBF, BUFSIZ);  // set to line buffering
+}
+
+bool LogHandler::forwardSubprocessStderr(const char* data, size_t len) {
+  if (preservedUserStderr < 0) {
+    return false;
+  }
+  writeBestEffort(preservedUserStderr, data, len);
+  const int current = stderrNo();
+  if (current != preservedUserStderr) {
+    writeBestEffort(current, data, len);
+  }
+  return true;
+}
+
+void LogHandler::releasePreservedUserStderr() {
+  if (preservedUserStderr < 0) {
+    return;
+  }
+  closeFd(preservedUserStderr);
+  preservedUserStderr = -1;
 }
 
 }  // namespace et

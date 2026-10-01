@@ -1,3 +1,4 @@
+#include "LogHandler.hpp"
 #include "SubprocessUtils.hpp"
 
 namespace et {
@@ -142,9 +143,12 @@ string SubprocessUtils::SubprocessToStringInteractive(
         return;
       }
       if (isStderr) {
-        if (parentStderr != NULL && parentStderr != INVALID_HANDLE_VALUE) {
-          DWORD written = 0;
-          WriteFile(parentStderr, chBuf, dwRead, &written, NULL);
+        if (!LogHandler::forwardSubprocessStderr(chBuf,
+                                                 static_cast<size_t>(dwRead))) {
+          if (parentStderr != NULL && parentStderr != INVALID_HANDLE_VALUE) {
+            DWORD written = 0;
+            WriteFile(parentStderr, chBuf, dwRead, &written, NULL);
+          }
         }
       } else {
         childOutput += string((const char*)chBuf, (size_t)dwRead);
