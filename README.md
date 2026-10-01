@@ -276,6 +276,21 @@ command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
 disable both user and system SSH configuration entirely. The two options are
 mutually exclusive.
 
+### SSH agent forwarding
+
+`et --forward-ssh-agent` (or `ForwardAgent yes` in your SSH config) forwards your ssh-agent to the server. `--ssh-socket` picks a different agent to forward.
+
+ET supports OpenSSH agent session binding (OpenSSH 8.9+), so keys added with destination constraints (`ssh-add -h`) are handled as they are with `ssh -A`. The agent treats each forwarded connection as coming from the ET server. With a jumphost, the jumphost is the first hop, because its etserver relays the session:
+
+```bash
+ssh-add -h dev -h 'dev>github.com' ~/.ssh/id_ed25519   # usable on dev, and from dev to github.com
+et --forward-ssh-agent dev
+```
+
+For `et --jumphost jump dev`, the same key needs `-h jump -h 'jump>dev' -h 'dev>github.com'`.
+
+To capture the binding, et gives the ssh it uses for the handshake a temporary proxy in front of your agent. The proxy is passed as `IdentityAgent`, with `ControlMaster=no` so a persistent ssh master never keeps a path that no longer exists (an existing master is still reused). If ssh makes no binding (OpenSSH older than 8.9, or an existing ControlMaster connection), et logs a warning and forwarded connections stay unbound, as before. The agent then treats the first ssh run on the server as if it came straight from your machine, so a key limited to `-h X` can log in to `X` from the server, and keys constrained as `-h 'server>X'` are refused.
+
 ## Building from Source
 
 ### macOS

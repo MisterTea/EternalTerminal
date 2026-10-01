@@ -48,6 +48,21 @@ class SshSetupHandler {
     cipher_ = std::move(cipher);
   }
 
+  /**
+   * @brief When enabled, SetupSsh records the OpenSSH agent session binding
+   * each bootstrap ssh makes so forwarded agent connections can be bound to
+   * the same hosts (see SshAgentSessionBind.hpp).
+   */
+  void setCaptureAgentSessionBinds(bool capture) {
+    captureAgentSessionBinds_ = capture;
+  }
+
+  /**
+   * @brief Session-bind requests recorded by the last SetupSsh, in hop order
+   * (jumphost first, then destination).
+   */
+  const vector<string>& agentSessionBinds() const { return agentSessionBinds_; }
+
   /** Returns SSH login output with the ET handshake credential removed. */
   static string ExtractLoginOutput(const string& sshOutput);
 
@@ -65,6 +80,14 @@ class SshSetupHandler {
   static bool IsSshConfigPathSafeForProxyJump(const string& path);
 
  private:
+  /**
+   * @brief Runs ssh with @p sshArgs followed by @p remoteCommand and returns
+   * its stdout. A non-null @p agentSessionBind receives the binding recorded
+   * for @p hop ("destination" or "jumphost", used in logs).
+   */
+  string runSsh(vector<string> sshArgs, const string& remoteCommand,
+                const string& hop, optional<string>* agentSessionBind);
+
   void appendBootstrapArgs(std::vector<std::string>* sshArgs,
                            bool includeSshPort) const {
     if (includeSshPort && sshPortSet_) {
@@ -88,6 +111,8 @@ class SshSetupHandler {
   int sshPort_ = 22;
   std::vector<std::string> identityFiles_;
   std::string cipher_;
+  bool captureAgentSessionBinds_ = false;
+  vector<string> agentSessionBinds_;
 };
 }  // namespace et
 #endif  // __ET_SSH_SETUP_HANDLER__

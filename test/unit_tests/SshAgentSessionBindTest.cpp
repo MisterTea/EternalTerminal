@@ -7,6 +7,7 @@
 #include "PipeSocketHandler.hpp"
 #include "PortForwardHandler.hpp"
 #include "SshAgentSessionBind.hpp"
+#include "SshSetupHandler.hpp"
 #include "TcpSocketHandler.hpp"
 #include "TestHeaders.hpp"
 
@@ -248,7 +249,68 @@ string agentOutput(PortForwardHandler* handler, size_t minBytes,
   }
   return output;
 }
+
+/**
+ * Plays ssh for SshSetupHandler: `ssh -G` reports no agent, and each real ssh
+ * run binds the agent it was handed via -oIdentityAgent to the host keys in
+ * `bindsFor(args)`, in order (ProxyJump helpers bind before the final hop).
+ */
+class BindingSshSubprocess : public SubprocessUtils {
+ public:
+  explicit BindingSshSubprocess(
+      function<vector<string>(const vector<string>&)> _bindsFor)
+      : bindsFor(std::move(_bindsFor)) {}
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    if (args[0] == "-G") {
+      return "user test\nidentityagent none\n";
+    }
+    const string prefix = "-oIdentityAgent=";
+    string agentPath;
+    for (const auto& arg : args) {
+      if (arg.compare(0, prefix.size(), prefix) == 0) {
+        agentPath = arg.substr(prefix.size());
+      }
+    }
+    REQUIRE_FALSE(agentPath.empty());
+    for (const auto& hostKey : bindsFor(args)) {
+      int fd = connectUnix(agentPath);
+      // No upstream agent: the recorder still answers, with a failure.
+      REQUIRE(agentRoundTrip(fd, sessionBind(hostKey, false)) ==
+              string(1, SSH_AGENT_FAILURE));
+      ::close(fd);
+    }
+    return "IDPASSKEY:" + genRandomAlphaNum(16) + "/" + genRandomAlphaNum(32);
+  }
+
+  function<vector<string>(const vector<string>&)> bindsFor;
+};
 #endif
+
+/** ssh whose `-G` query fails, either empty or by throwing. */
+class FailingConfigQuerySsh : public SubprocessUtils {
+ public:
+  explicit FailingConfigQuerySsh(bool _throwOnQuery)
+      : throwOnQuery(_throwOnQuery) {}
+
+  string SubprocessToStringInteractive(const string& command,
+                                       const vector<string>& args) override {
+    REQUIRE(command == "ssh");
+    if (args[0] == "-G") {
+      if (throwOnQuery) {
+        throw std::runtime_error("ssh -G failed");
+      }
+      return "";
+    }
+    bootstrapArgs = args;
+    return "IDPASSKEY:" + genRandomAlphaNum(16) + "/" + genRandomAlphaNum(32);
+  }
+
+  bool throwOnQuery;
+  vector<string> bootstrapArgs;
+};
 }  // namespace
 
 TEST_CASE("forwardedSessionBind marks ssh's own binding as forwarded",
@@ -321,6 +383,43 @@ TEST_CASE("AgentSessionBindReplies drops only the bind replies",
     string out;
     CHECK_FALSE(replies.consume(u32(0) + "x", &out));
   }
+}
+
+TEST_CASE("sshIdentityAgentFromConfigDump follows ssh IdentityAgent rules",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("setenv/unsetenv");
+#else
+  const char* originalAuthSock = getenv("SSH_AUTH_SOCK");
+  optional<string> savedAuthSock =
+      originalAuthSock ? optional<string>(originalAuthSock) : nullopt;
+  setenv("SSH_AUTH_SOCK", "/tmp/env-agent.sock", 1);
+  setenv("ET_TEST_AGENT", "/tmp/var-agent.sock", 1);
+  unsetenv("ET_TEST_UNSET_AGENT");
+
+  CHECK(sshIdentityAgentFromConfigDump("user me\nport 22\n") ==
+        "/tmp/env-agent.sock");
+  CHECK(sshIdentityAgentFromConfigDump("identityagent SSH_AUTH_SOCK\n") ==
+        "/tmp/env-agent.sock");
+  CHECK(sshIdentityAgentFromConfigDump("identityagent none\n") == "");
+  CHECK(sshIdentityAgentFromConfigDump("identityagent $ET_TEST_AGENT\n") ==
+        "/tmp/var-agent.sock");
+  CHECK(sshIdentityAgentFromConfigDump(
+            "identityagent $ET_TEST_UNSET_AGENT\n") == "");
+  CHECK(sshIdentityAgentFromConfigDump(
+            "port 22\nidentityagent /home/me/.1password/agent.sock\n") ==
+        "/home/me/.1password/agent.sock");
+  CHECK(sshIdentityAgentFromConfigDump("identityagent /tmp/crlf.sock\r\n") ==
+        "/tmp/crlf.sock");
+
+  unsetenv("SSH_AUTH_SOCK");
+  CHECK(sshIdentityAgentFromConfigDump("user me\n") == "");
+
+  unsetenv("ET_TEST_AGENT");
+  if (savedAuthSock) {
+    setenv("SSH_AUTH_SOCK", savedAuthSock->c_str(), 1);
+  }
+#endif
 }
 
 TEST_CASE("SshAgentSessionBindRecorder relays to the agent and records binds",
@@ -641,4 +740,66 @@ TEST_CASE("Bind replies are not forwarded even when they arrive alone",
   handler.update(&requests, &data);
   REQUIRE(data.size() == 1);
   CHECK(data[0].buffer() == clientReply);
+}
+
+TEST_CASE("SshSetupHandler records agent bindings in hop order",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("The agent proxy is not built on Windows");
+#else
+  auto ssh = make_shared<BindingSshSubprocess>([](const vector<string>& args) {
+    bool viaJumphost = std::find(args.begin(), args.end(), "-J") != args.end();
+    // ssh -J runs a ProxyJump helper that binds the jumphost before the
+    // destination; the direct jumphost ssh binds only the jumphost.
+    return viaJumphost ? vector<string>{"jump-key", "dest-key"}
+                       : vector<string>{"jump-key"};
+  });
+  SshSetupHandler handler(ssh);
+  handler.setCaptureAgentSessionBinds(true);
+
+  handler.SetupSsh("user", "dest", "dest", 2022, "jumphost", "", false, 0, "",
+                   "", {});
+
+  CHECK(handler.agentSessionBinds() ==
+        vector<string>{sessionBind("jump-key", true),
+                       sessionBind("dest-key", true)});
+#endif
+}
+
+TEST_CASE("SshSetupHandler without an ssh binding records none",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("The agent proxy is not built on Windows");
+#else
+  // Older OpenSSH, or a connection reusing an existing ControlMaster.
+  auto ssh = make_shared<BindingSshSubprocess>(
+      [](const vector<string>&) { return vector<string>{}; });
+  SshSetupHandler handler(ssh);
+  handler.setCaptureAgentSessionBinds(true);
+
+  auto credentials = handler.SetupSsh("user", "dest", "dest", 2022, "", "",
+                                      false, 0, "", "", {});
+
+  CHECK(credentials.first.size() == 16);
+  CHECK(handler.agentSessionBinds().empty());
+#endif
+}
+
+TEST_CASE("SshSetupHandler logs in normally when ssh -G fails",
+          "[SshAgentSessionBind]") {
+  bool throwOnQuery = false;
+  SECTION("ssh -G prints nothing") {}
+  SECTION("ssh -G cannot run") { throwOnQuery = true; }
+  auto ssh = make_shared<FailingConfigQuerySsh>(throwOnQuery);
+  SshSetupHandler handler(ssh);
+  handler.setCaptureAgentSessionBinds(true);
+
+  auto credentials = handler.SetupSsh("user", "dest", "dest", 2022, "", "",
+                                      false, 0, "", "", {});
+
+  CHECK(credentials.first.size() == 16);
+  CHECK(handler.agentSessionBinds().empty());
+  CHECK(std::none_of(
+      ssh->bootstrapArgs.begin(), ssh->bootstrapArgs.end(),
+      [](const string& arg) { return arg.rfind("-oIdentityAgent=", 0) == 0; }));
 }
