@@ -29,9 +29,10 @@ class SubprocessUtils {
 
   /**
    * @brief Runs a command with arguments, capturing stdout and streaming
-   * stderr live to the parent stderr (for SSH banners) without mixing
-   * credential-bearing stdout into the terminal. The child stdin is
-   * /dev/null so a bootstrap ssh cannot consume the caller's stdin.
+   * stderr live. SSH banners go to the terminal stderr saved before a log
+   * redirect, and to the current stderr so the log still records them,
+   * without mixing credential-bearing stdout into the terminal. The child
+   * stdin is /dev/null so a bootstrap ssh cannot consume the caller's stdin.
    */
   virtual string SubprocessToStringInteractive(const string& command,
                                                const vector<string>& args);

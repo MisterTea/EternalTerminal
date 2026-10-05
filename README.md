@@ -276,6 +276,47 @@ command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
 disable both user and system SSH configuration entirely. The two options are
 mutually exclusive.
 
+### VS Code and Cursor (Remote-SSH)
+
+ET can stand in for `ssh` as the transport for VS Code's and Cursor's
+Remote-SSH extensions, so a remote window rides out laptop sleep and network
+changes instead of prompting you to reload. Both ends need a recent ET: the
+client must include
+[#874](https://github.com/MisterTea/EternalTerminal/pull/874), and the server's
+`etserver` and `etterminal` must support `et -T` (the 7.0.0 packages do not).
+`ssh hostname` must already work without a password prompt (use a key).
+
+Point the editor at `et1`, which is installed next to `et`. It runs
+`et --close-on-hangup --disconnect-timeout=10080 "$@"`: the session is kept on
+the server through a week-long disconnect (the value is in minutes) and ended
+when the editor closes the connection. Remote-SSH only accepts a path to a
+single executable, so if you need more `et` options (for example `--port` for
+an etserver not on the default port), copy `et1` and add them there.
+
+For VS Code, add to `settings.json` (use the output of `command -v et1` as the
+path):
+
+```json
+{
+  "remote.SSH.path": "/usr/local/bin/et1",
+  "remote.SSH.useLocalServer": false,
+  "remote.SSH.reconnectionGraceTime": 604800
+}
+```
+
+- `remote.SSH.useLocalServer: false` is required. In the default local-server
+  mode, VS Code kills the transport process a few seconds after it stops
+  responding, which throws away the ET client that would have reconnected.
+- `remote.SSH.reconnectionGraceTime` (seconds) is how long the VS Code server
+  on the remote keeps your window's state while disconnected. The default is
+  three hours. It only takes effect when that server starts, so run
+  "Remote-SSH: Kill VS Code Server on Host..." after changing it.
+
+For Cursor, set `remote.SSH.path` to `et1` as well. Cursor's Remote-SSH
+extension has no local-server mode or grace-time setting; its closest
+equivalent is `remote.SSH.serverShutdownTimeout` (seconds, default 300), which
+controls how long the Cursor server stays up after the last client disconnects.
+
 ## Programmatic control (etctl)
 
 Normally `et` drives a terminal for a human. `et --ctl` instead backgrounds a
