@@ -109,7 +109,15 @@ endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-project(EternalTCP VERSION 7.0.0 LANGUAGES C CXX)
+# vcpkg reads vcpkg.json before CMake runs, so that file owns the version.
+file(READ "${CMAKE_SOURCE_DIR}/vcpkg.json" _vcpkg_manifest)
+string(REGEX MATCH "\"version-string\"[ \t]*:[ \t]*\"([^\"]+)\"" _vcpkg_version_match "${_vcpkg_manifest}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "Could not read version-string from vcpkg.json")
+endif()
+set(ET_VCPKG_VERSION "${CMAKE_MATCH_1}")
+
+project(EternalTCP VERSION ${ET_VCPKG_VERSION} LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
@@ -380,13 +388,23 @@ IF(USE_SENTRY)
   list(INSERT CORE_LIBRARIES 0 sentry::sentry)
 ENDIF()
 
+macro(ET_WARNINGS_AS_ERRORS TARGET_NAME)
+  if(MSVC)
+    target_compile_options(${TARGET_NAME} PRIVATE /WX)
+  else()
+    target_compile_options(${TARGET_NAME} PRIVATE -Werror)
+  endif()
+endmacro()
+
 macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
   target_precompile_headers(${TARGET_NAME} PUBLIC "src/base/Headers.hpp")
+  et_warnings_as_errors(${TARGET_NAME})
 endmacro()
 
 macro(DECORATE_FUZZER TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
+  et_warnings_as_errors(${TARGET_NAME})
 
   if(FUZZING)
     # ASAN must also be enabled to build fuzzers.
@@ -405,19 +423,13 @@ macro(DECORATE_FUZZER TARGET_NAME)
   endif()
 endmacro()
 
-include_directories(
+# Third-party headers stay system includes so their warnings are not errors.
+include_directories(SYSTEM
   ${EXTERNAL_DIR}/easyloggingpp/src
   ${EXTERNAL_DIR}/PlatformFolders
-  ${EXTERNAL_DIR}/ThreadPool
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
-  src/base
-  src/terminal
-  src/terminal/forwarding
-  src/htm
   ${PROTOBUF_INCLUDE_DIRS}
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}
   ${CURSES_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
@@ -426,9 +438,17 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${SIMPLEINI_INCLUDE_DIRS}
 )
+include_directories(
+  src/base
+  src/terminal
+  src/terminal/forwarding
+  src/htm
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 if(NOT ANDROID)
-  include_directories(${EXTERNAL_DIR}/UniversalStacktrace/ust)
+  include_directories(SYSTEM ${EXTERNAL_DIR}/UniversalStacktrace/ust)
 endif()
 
 if(WIN32)
@@ -764,6 +784,7 @@ if(WIN32)
     add_executable(
       et-conpty-output-helper
       test/helpers/ConPtyOutputHelper.cpp)
+    et_warnings_as_errors(et-conpty-output-helper)
 
     # Same test set as Unix (see the else(WIN32) branch below): every test is
     # expected to compile and pass on Windows. Platform-impossible cases
@@ -798,6 +819,7 @@ if(WIN32)
       ADD_TAGS_AS_LABELS
       PROPERTIES TIMEOUT 600)
     add_sanitizers(et-test)
+    et_warnings_as_errors(et-test)
     find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
     add_custom_target(
       windows-coverage
@@ -1060,6 +1082,7 @@ else(WIN32)
     # Windows Terminal interactive e2e (requires unlocked desktop):
     #   py ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_e2e.py --wt wt.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     add_sanitizers(et-test)
+    et_warnings_as_errors(et-test)
     if(TARGET test)
       add_dependencies(test et-test)
     endif()

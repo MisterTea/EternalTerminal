@@ -20,7 +20,7 @@ class PipeSocketHandler : public UnixSocketHandler {
   /**
    * @brief Connects to a pipe identified by the endpoint name.
    */
-  virtual int connect(const SocketEndpoint& endpoint);
+  virtual int connect(const SocketEndpoint& endpoint) override;
   /**
    * @brief Connects to a UNIX socket after dropping to @p uid/@p gid.
    *
@@ -30,7 +30,7 @@ class PipeSocketHandler : public UnixSocketHandler {
   /**
    * @brief Creates a listening UNIX socket and stores it internally.
    */
-  virtual set<int> listen(const SocketEndpoint& endpoint);
+  virtual set<int> listen(const SocketEndpoint& endpoint) override;
   /**
    * @brief Creates a listening UNIX socket after dropping to @p uid/@p gid.
    *
@@ -40,15 +40,15 @@ class PipeSocketHandler : public UnixSocketHandler {
   /**
    * @brief Returns the listening fds for a previously registered pipe.
    */
-  virtual set<int> getEndpointFds(const SocketEndpoint& endpoint);
+  virtual set<int> getEndpointFds(const SocketEndpoint& endpoint) override;
   /**
    * @brief Stops listening on the specified pipe and closes its fd.
    */
-  virtual void stopListening(const SocketEndpoint& endpoint);
+  virtual void stopListening(const SocketEndpoint& endpoint) override;
   /** @brief Closes a connection and removes its client socket path, if any. */
   void close(int fd) override;
 
-  virtual void minimizeKernelBuffering(int fd);
+  virtual void minimizeKernelBuffering(int fd) override;
 
  protected:
   /**

@@ -38,10 +38,10 @@ class ControlConsole : public Console {
   // --- Console interface (called by TerminalClient::run on its main thread)
   // ---
   std::optional<TerminalInfo> getTerminalInfo() override;
-  virtual void setup() {}
-  virtual void teardown() {}
-  virtual int getFd();
-  virtual void write(const string& s);
+  virtual void setup() override {}
+  virtual void teardown() override {}
+  virtual int getFd() override;
+  virtual void write(const string& s) override;
   size_t writeSome(const string& s) override;
 
   // --- Control surface (called by the control listener thread) ---

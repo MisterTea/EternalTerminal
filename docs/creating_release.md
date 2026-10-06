@@ -1,6 +1,6 @@
 # Instructions to creating a new ET Release
 
-1. Increment the project(...) version in CMakeLists.txt and push to master.
+1. Increment `version-string` in vcpkg.json (CMake reads it as the project version) and push to master.
 2. Switch to the release branch
 3. Pull in the latest changes: `git merge master`
 4. Run `git submodule update --recursive --init` to ensure that the submodules are updated to the latest master/release commit.

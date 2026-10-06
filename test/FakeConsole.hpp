@@ -48,7 +48,7 @@ class FakeConsole : public Console {
     *serverClientFd = fd;
   }
 
-  virtual void setup() {
+  virtual void setup() override {
     fakeTerminalInfo.set_row(1);
     fakeTerminalInfo.set_column(1);
     fakeTerminalInfo.set_width(8);
@@ -82,7 +82,7 @@ class FakeConsole : public Console {
     LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
   }
 
-  virtual void teardown() {
+  virtual void teardown() override {
     int localClientServerFd;
     int localServerClientFd;
     {
@@ -102,7 +102,7 @@ class FakeConsole : public Console {
 #endif
   }
 
-  virtual std::optional<TerminalInfo> getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() override {
     lock_guard<recursive_mutex> lock(_mutex);
     getTerminalInfoCount++;
     if (!terminalInfoAvailable) {
@@ -124,7 +124,7 @@ class FakeConsole : public Console {
     }
   }
 
-  virtual int getFd() {
+  virtual int getFd() override {
     lock_guard<recursive_mutex> lock(_mutex);
     return clientServerFd;
   }

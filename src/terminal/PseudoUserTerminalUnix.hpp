@@ -41,7 +41,7 @@ class PseudoUserTerminal : public UserTerminal {
     return "-" + shell.substr(slash == string::npos ? 0 : slash + 1);
   }
 
-  virtual int setup(int routerFd) {
+  virtual int setup(int routerFd) override {
     pid = forkpty(&masterFd, NULL, NULL, NULL);
     switch (pid) {
       case -1:
@@ -83,7 +83,7 @@ class PseudoUserTerminal : public UserTerminal {
   /**
    * @brief Executes the login shell after setting up the PTY child process.
    */
-  virtual void runTerminal() {
+  virtual void runTerminal() override {
     passwd* pwd = getpwuid(getuid());
     chdir(pwd->pw_dir);
     const char* shellEnv = ::getenv("SHELL");
@@ -124,7 +124,7 @@ class PseudoUserTerminal : public UserTerminal {
   }
 
   /** @brief Removes any temporary PTY bookkeeping (utempter). */
-  virtual void cleanup() {
+  virtual void cleanup() override {
 #ifdef WITH_UTEMPTER
     utempter_remove_record(masterFd);
 #endif
@@ -136,7 +136,7 @@ class PseudoUserTerminal : public UserTerminal {
    * caller and again by the normal exit path, so a second call returns the
    * status cached from the first instead of waiting on an already-reaped pid.
    */
-  virtual int handleSessionEnd() {
+  virtual int handleSessionEnd() override {
     if (getPid() <= 0 || childReaped) {
       return exitStatus;
     }
@@ -184,7 +184,7 @@ class PseudoUserTerminal : public UserTerminal {
 #endif
   }
 
-  virtual void terminate() {
+  virtual void terminate() override {
     const pid_t childPid = getPid();
     if (childPid <= 0 || childReaped) {
       return;
@@ -246,13 +246,13 @@ class PseudoUserTerminal : public UserTerminal {
   /**
    * @brief Applies terminal resize changes via `ioctl(TIOCSWINSZ)`.
    */
-  virtual void setInfo(const winsize& tmpwin) {
+  virtual void setInfo(const winsize& tmpwin) override {
     ioctl(masterFd, TIOCSWINSZ, &tmpwin);
   }
 
   pid_t getPid() { return pid; }
 
-  virtual int getFd() { return masterFd; }
+  virtual int getFd() override { return masterFd; }
 
  protected:
   /**
