@@ -85,7 +85,9 @@ class PseudoUserTerminal : public UserTerminal {
    */
   virtual void runTerminal() override {
     passwd* pwd = getpwuid(getuid());
-    chdir(pwd->pw_dir);
+    if (chdir(pwd->pw_dir) != 0) {
+      VLOG(1) << "Could not change to home directory " << pwd->pw_dir;
+    }
     const char* shellEnv = ::getenv("SHELL");
     string terminal = (shellEnv && *shellEnv)
                           ? string(shellEnv)
