@@ -93,7 +93,8 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
     rpc(path, CTL_WRITE, "ls\r");
     // Drain the injected input off the pipe so it doesn't linger.
     char buf[16];
-    ::read(console->getFd(), buf, sizeof(buf));
+    const ssize_t drained = ::read(console->getFd(), buf, sizeof(buf));
+    REQUIRE(drained > 0);
     console->write("file1 file2\n");
 
     auto [op, payload] = rpc(path, CTL_SNIFF, control_proto::encodeCursor(0));
