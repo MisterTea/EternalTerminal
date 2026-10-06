@@ -317,6 +317,13 @@ extension has no local-server mode or grace-time setting; its closest
 equivalent is `remote.SSH.serverShutdownTimeout` (seconds, default 300), which
 controls how long the Cursor server stays up after the last client disconnects.
 
+### Third-party Android client
+
+[Mobile SSH](https://mobile-ssh.github.io/) is a third-party Android SSH client
+with optional [Eternal Terminal transport](https://mobile-ssh.github.io/docs/terminal/#eternal-terminal-et).
+It is available on [Google Play](https://play.google.com/store/apps/details?id=io.github.mobile_ssh).
+ET connections require `etserver` on the remote host.
+
 ## Programmatic control (etctl)
 
 Normally `et` drives a terminal for a human. `et --ctl` instead backgrounds a
