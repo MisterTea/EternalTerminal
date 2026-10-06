@@ -63,7 +63,10 @@ void HtmClient::run() {
       char buf[32];
       int n = snprintf(buf, sizeof(buf), "%d\n", static_cast<int>(::getpid()));
       if (n > 0) {
-        ::write(pidFd, buf, static_cast<size_t>(n));
+        const ssize_t written = ::write(pidFd, buf, static_cast<size_t>(n));
+        if (written != static_cast<ssize_t>(n)) {
+          VLOG(1) << "Could not record htm client pid";
+        }
       }
       ::close(pidFd);
     }
@@ -153,7 +156,10 @@ void HtmClient::run() {
     }
     flushFd(STDOUT_FILENO, &stdoutQueue);
     const char st[] = {'\x1b', '\\'};
-    ::write(STDOUT_FILENO, st, 2);
+    const ssize_t wroteSt = ::write(STDOUT_FILENO, st, 2);
+    if (wroteSt != 2) {
+      VLOG(1) << "Could not write HTM ST sequence";
+    }
     // Real PTY clients must not unwind: close(2) of the AF_UNIX peer and
     // easylogging atexit can block. Unit tests use pipes (isatty false).
     if (::isatty(STDIN_FILENO) && ::isatty(STDOUT_FILENO)) {

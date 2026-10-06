@@ -160,7 +160,10 @@ void writeHtmExitSequence() {
   if (flags >= 0) {
     fcntl(STDOUT_FILENO, F_SETFL, flags | O_NONBLOCK);
   }
-  ::write(STDOUT_FILENO, st, strlen(st));
+  const ssize_t wroteSt = ::write(STDOUT_FILENO, st, strlen(st));
+  if (wroteSt < 0) {
+    VLOG(1) << "Could not write HTM exit sequence";
+  }
 }
 
 void term(int) {

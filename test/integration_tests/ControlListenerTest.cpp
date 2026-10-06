@@ -127,8 +127,7 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
     TerminalInfo ti;
     ti.set_row(40);
     ti.set_column(120);
-    string payload;
-    ti.SerializeToString(&payload);
+    string payload = protoToString(ti);
     auto [op, resp] = rpc(path, CTL_RESIZE, payload);
     REQUIRE(op == CTL_OK);
     auto info = console->getTerminalInfo();
