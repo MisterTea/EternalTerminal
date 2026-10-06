@@ -537,6 +537,12 @@ add_library(
 )
 add_dependencies(et-lib generated-code)
 decorate_target(et-lib)
+# Vendored sources ship in et-lib. Their diagnostics are not ours, so they
+# must not fail the build under -Werror / /WX.
+set_source_files_properties(
+  ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.cc
+  ${EXTERNAL_DIR}/PlatformFolders/sago/platform_folders.cpp
+  PROPERTIES COMPILE_OPTIONS "$<IF:$<CXX_COMPILER_ID:MSVC>,/WX-,-Wno-error>")
 
 if(WIN32)
   set(TERMINAL_PLATFORM_SRCS

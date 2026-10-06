@@ -41,8 +41,8 @@ class ThreadPool {
  public:
   ThreadPool(size_t);
   template <class F, class... Args>
-  auto enqueue(F&& f, Args&&... args)
-      -> std::future<std::invoke_result_t<F, Args...>>;
+  auto enqueue(F&& f,
+               Args&&... args) -> std::future<std::invoke_result_t<F, Args...>>;
   ~ThreadPool();
 
  private:
