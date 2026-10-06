@@ -18,7 +18,9 @@ int DaemonCreator::createSessionLeader() {
     return -1;
   }
 
-  chdir("/");
+  if (chdir("/") != 0) {
+    return -1;
+  }
 
   const int nullFd = open("/dev/null", O_RDWR);
   if (nullFd != -1) {

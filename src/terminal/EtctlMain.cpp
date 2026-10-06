@@ -878,8 +878,7 @@ int cmdResize(const string& name, int rows, int cols) {
   ti.set_column(cols);
   ti.set_width(0);
   ti.set_height(0);
-  string payload;
-  ti.SerializeToString(&payload);
+  string payload = protoToString(ti);
   uint8_t op = 0;
   string resp;
   if (!oneShot(name, CTL_RESIZE, payload, &op, &resp)) {
@@ -1130,8 +1129,8 @@ int cmdAttach(const string& name, bool readOnly, int64_t startCursor,
         ti.set_column(ws.ws_col);
         ti.set_width(ws.ws_xpixel);
         ti.set_height(ws.ws_ypixel);
-        string rzPayload, rzResp;
-        ti.SerializeToString(&rzPayload);
+        string rzPayload = protoToString(ti);
+        string rzResp;
         uint8_t rzOp = 0;
         oneShot(name, CTL_RESIZE, rzPayload, &rzOp, &rzResp, /*quiet=*/true);
       }
