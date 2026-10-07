@@ -56,6 +56,13 @@ class PortForwardHandler {
    * socket. */
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
+  /**
+   * @brief Sends @p binds (OpenSSH session-bind requests) on every new
+   * destination connection to the ssh-agent at @p agentSocketPath before
+   * relaying forwarded data.
+   */
+  void setSshAgentSessionBinds(const string& agentSocketPath,
+                               const vector<string>& binds);
 
   /**
    * @brief Stops listening for a previously created source forward.
@@ -87,6 +94,10 @@ class PortForwardHandler {
   uid_t sessionUid;
   /** @brief Session gid for UNIX connect/listen; (gid_t)-1 disables drop. */
   gid_t sessionGid;
+  /** @brief Forwarded ssh-agent socket that receives session bindings. */
+  string sshAgentSocketPath;
+  /** @brief Session-bind requests replayed on new agent connections. */
+  vector<string> sshAgentSessionBinds;
   /** @brief Active destination handlers keyed by socket id. */
   unordered_map<int, unique_ptr<ForwardDestinationHandler>> destinationHandlers;
 

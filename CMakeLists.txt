@@ -568,6 +568,8 @@ add_library(
   src/terminal/forwarding/ForwardSourceHandler.cpp
   src/terminal/forwarding/ForwardDestinationHandler.hpp
   src/terminal/forwarding/ForwardDestinationHandler.cpp
+  src/terminal/forwarding/SshAgentSessionBind.hpp
+  src/terminal/forwarding/SshAgentSessionBind.cpp
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
   src/terminal/JumphostPending.hpp
