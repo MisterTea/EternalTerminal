@@ -66,13 +66,19 @@ bool htmdRunning() {
 void killHtmd() {
   string cmd =
       string("pkill -x -U ") + to_string(selfUid()) + " htmd >/dev/null 2>&1";
-  system(cmd.c_str());
+  // pkill returns non-zero when nothing matches, which is the desired state.
+  // system() itself returns -1 only when the shell could not be started.
+  if (::system(cmd.c_str()) == -1) {
+    FAIL("Could not run pkill for htmd");
+  }
   waitUntil([]() { return !htmdRunning(); }, 3000);
 }
 void killHtmClients() {
   string cmd =
       string("pkill -x -U ") + to_string(selfUid()) + " htm >/dev/null 2>&1";
-  system(cmd.c_str());
+  if (::system(cmd.c_str()) == -1) {
+    FAIL("Could not run pkill for htm");
+  }
 }
 
 class ControlPty {

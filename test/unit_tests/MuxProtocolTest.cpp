@@ -104,7 +104,10 @@ TEST_CASE("Second mux client opens session and forward on the master",
     char buf[64];
     ssize_t n = ::read(inFd, buf, sizeof(buf));
     if (n > 0) {
-      (void)::write(outFd, buf, static_cast<size_t>(n));
+      const ssize_t written = ::write(outFd, buf, static_cast<size_t>(n));
+      if (written < 0 && errno != EINTR) {
+        return 1;
+      }
     }
     (void)errFd;
     return 0;
@@ -173,7 +176,12 @@ TEST_CASE("mux NEW_SESSION blocks until EXIT_MESSAGE past peek timeout",
     // observable.
     testSleepMicros(3000000);
     char buf[8];
-    (void)::read(inFd, buf, sizeof(buf));
+    const ssize_t nread = ::read(inFd, buf, sizeof(buf));
+    if (nread < 0 && errno != EINTR && errno != EAGAIN &&
+        errno != EWOULDBLOCK) {
+      handlerFinished.store(true);
+      return 42;
+    }
     handlerFinished.store(true);
     return 42;
   });

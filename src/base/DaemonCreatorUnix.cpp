@@ -1,7 +1,38 @@
 #include "DaemonCreator.hpp"
 
 namespace et {
-int DaemonCreator::createSessionLeader() { return ::daemon(0, 0); }
+int DaemonCreator::createSessionLeader() {
+  // daemon(3) has been deprecated on macOS since 10.5. This matches
+  // daemon(0, 0): the parent exits, and the child is a session leader whose
+  // working directory is / and whose standard streams are /dev/null.
+  switch (fork()) {
+    case -1:
+      return -1;
+    case 0:
+      break;
+    default:
+      _exit(0);
+  }
+
+  if (setsid() == -1) {
+    return -1;
+  }
+
+  if (chdir("/") != 0) {
+    return -1;
+  }
+
+  const int nullFd = open("/dev/null", O_RDWR);
+  if (nullFd != -1) {
+    dup2(nullFd, STDIN_FILENO);
+    dup2(nullFd, STDOUT_FILENO);
+    dup2(nullFd, STDERR_FILENO);
+    if (nullFd > STDERR_FILENO) {
+      close(nullFd);
+    }
+  }
+  return 0;
+}
 
 int DaemonCreator::create(bool parentExit, string childPidFile) {
   pid_t pid;

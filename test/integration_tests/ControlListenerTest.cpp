@@ -93,7 +93,8 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
     rpc(path, CTL_WRITE, "ls\r");
     // Drain the injected input off the pipe so it doesn't linger.
     char buf[16];
-    ::read(console->getFd(), buf, sizeof(buf));
+    const ssize_t drained = ::read(console->getFd(), buf, sizeof(buf));
+    REQUIRE(drained > 0);
     console->write("file1 file2\n");
 
     auto [op, payload] = rpc(path, CTL_SNIFF, control_proto::encodeCursor(0));
@@ -127,8 +128,7 @@ TEST_CASE("ControlListenerEndToEnd", "[ControlListener]") {
     TerminalInfo ti;
     ti.set_row(40);
     ti.set_column(120);
-    string payload;
-    ti.SerializeToString(&payload);
+    string payload = protoToString(ti);
     auto [op, resp] = rpc(path, CTL_RESIZE, payload);
     REQUIRE(op == CTL_OK);
     auto info = console->getTerminalInfo();

@@ -86,11 +86,11 @@ void TerminalHandler::start(const string& cwd, int cols, int rows) {
             << "Not able to fork a terminal because getpwuid returns null";
       }
       if (!cwd.empty()) {
-        if (chdir(cwd.c_str()) != 0 && pwd->pw_dir) {
-          chdir(pwd->pw_dir);
+        if (chdir(cwd.c_str()) != 0 && pwd->pw_dir && chdir(pwd->pw_dir) != 0) {
+          LOG(INFO) << "Could not change to home directory " << pwd->pw_dir;
         }
-      } else if (pwd->pw_dir) {
-        chdir(pwd->pw_dir);
+      } else if (pwd->pw_dir && chdir(pwd->pw_dir) != 0) {
+        LOG(INFO) << "Could not change to home directory " << pwd->pw_dir;
       }
       const char* shellEnv = ::getenv("SHELL");
       string terminal =

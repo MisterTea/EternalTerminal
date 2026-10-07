@@ -73,8 +73,8 @@ class PipeUserTerminal : public UserTerminal {
         }
 
         passwd* pwd = getpwuid(getuid());
-        if (pwd && pwd->pw_dir) {
-          chdir(pwd->pw_dir);
+        if (pwd && pwd->pw_dir && chdir(pwd->pw_dir) != 0) {
+          VLOG(1) << "Could not change to home directory " << pwd->pw_dir;
         }
         setenv("ET_VERSION", ET_VERSION, 1);
         signal(SIGCHLD, SIG_DFL);

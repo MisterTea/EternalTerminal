@@ -213,7 +213,7 @@ void driveFish(const std::function<void(const string& name)>& body) {
   const string cfgDir = home + "/.config/fish";
   {
     const string cmd = "mkdir -p '" + cfgDir + "'";
-    (void)::system(cmd.c_str());
+    REQUIRE(::system(cmd.c_str()) == 0);
   }
   const string cfg = cfgDir + "/config.fish";
   int fd = ::open(cfg.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);

@@ -458,9 +458,9 @@ class FileBackedConsole : public Console {
 
   virtual ~FileBackedConsole() {}
 
-  virtual void setup() {}
+  virtual void setup() override {}
 
-  virtual void teardown() {
+  virtual void teardown() override {
     if (fd >= 0) {
 #ifdef WIN32
       _close(fd);
@@ -473,7 +473,7 @@ class FileBackedConsole : public Console {
     test::removeTempDir(directory);
   }
 
-  virtual std::optional<TerminalInfo> getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() override {
     TerminalInfo ti;
     ti.set_row(24);
     ti.set_column(80);
@@ -482,7 +482,7 @@ class FileBackedConsole : public Console {
     return ti;
   }
 
-  virtual int getFd() { return fd; }
+  virtual int getFd() override { return fd; }
 
   void write(const string& data) override {
 #ifdef WIN32

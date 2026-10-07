@@ -194,7 +194,7 @@ jobs:
                 zip
     steps:
       - name: Restore Gentoo package cache
-        if: matrix.distro == 'gentoo'
+        if: matrix.distro == 'gentoo' && !env.ACT
         uses: actions/cache@v5
         with:
           path: |
@@ -243,6 +243,7 @@ jobs:
           submodules: recursive
 
       - name: Restore FreeBSD packages
+        if: ${{ !env.ACT }}
         uses: actions/cache@v5
         with:
           path: |
@@ -340,6 +341,7 @@ jobs:
           submodules: recursive
 
       - name: Restore OpenWrt SDK cache
+        if: ${{ !env.ACT }}
         uses: actions/cache@v5
         with:
           path: .openwrt-cache
