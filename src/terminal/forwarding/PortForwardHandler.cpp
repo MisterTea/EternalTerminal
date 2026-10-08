@@ -8,6 +8,21 @@
 namespace et {
 namespace {
 
+#ifdef WIN32
+bool pathsEqual(const string& a, const string& b) {
+  string na = a, nb = b;
+  for (char& c : na) {
+    if (c == '\\') c = '/';
+  }
+  for (char& c : nb) {
+    if (c == '\\') c = '/';
+  }
+  return na == nb;
+}
+#else
+inline bool pathsEqual(const string& a, const string& b) { return a == b; }
+#endif
+
 bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
   if (a.has_port() != b.has_port()) {
     return false;
@@ -17,7 +32,7 @@ bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
   }
   string aName = a.has_name() ? a.name() : "";
   string bName = b.has_name() ? b.name() : "";
-  return aName == bName;
+  return pathsEqual(aName, bName);
 }
 
 bool sourceRequestsEqual(const PortForwardSourceRequest& a,
@@ -259,7 +274,7 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
   bool bindAgent = !isTcp && !sshAgentSessionBinds.empty() &&
-                   pfdr.destination().name() == sshAgentSocketPath;
+                   pathsEqual(pfdr.destination().name(), sshAgentSocketPath);
   if (fd == -1) {
     pfdresponse.set_error(strerror(GetErrno()));
   } else if (bindAgent &&

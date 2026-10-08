@@ -16,12 +16,20 @@
 
 namespace et {
 string refreshAgentProxyPath(const string& id, const string& authSock) {
+#ifdef WIN32
+  string normalizedAuthSock = authSock;
+  for (char& c : normalizedAuthSock) {
+    if (c == '\\') {
+      c = '/';
+    }
+  }
+#endif
   const fs::path directory = fs::path(GetTempDirectory()) / ("et-agent-" + id);
   std::error_code error;
   fs::create_directories(directory, error);
   if (error) {
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to create SSH agent proxy directory: " +
                         error.message());
@@ -41,7 +49,7 @@ string refreshAgentProxyPath(const string& id, const string& authSock) {
   if (error) {
     fs::remove(proxyTmp, error);
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to refresh SSH agent proxy: " +
                         error.message());
@@ -59,7 +67,7 @@ string refreshAgentProxyPath(const string& id, const string& authSock) {
   if (error) {
     fs::remove(proxyTmp, error);
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to refresh SSH agent proxy: " +
                         error.message());

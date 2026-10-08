@@ -6,6 +6,7 @@
 
 #include "PipeSocketHandler.hpp"
 #include "PortForwardHandler.hpp"
+#include "RawSocketUtils.hpp"
 #include "SshAgentSessionBind.hpp"
 #include "TcpSocketHandler.hpp"
 #include "TestHeaders.hpp"
@@ -74,25 +75,35 @@ class ScriptedSocketHandler : public SocketHandler {
   vector<int> closed;
 };
 
-#ifndef WIN32
 // Agent messages here are a few bytes, so one send() moves a whole frame.
 bool sendFrame(int fd, const string& body) {
   string framed = frame(body);
+#ifdef WIN32
+  return ::send(fd, framed.data(), static_cast<int>(framed.size()), 0) ==
+         static_cast<int>(framed.size());
+#else
   return ::send(fd, framed.data(), framed.size(), MSG_NOSIGNAL) ==
          ssize_t(framed.size());
+#endif
 }
 
 // Test sockets get a receive timeout, so a missing peer cannot hang a test.
 void setReceiveTimeout(int fd) {
+#ifdef WIN32
+  DWORD timeout = 10000;
+  setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO,
+             reinterpret_cast<const char*>(&timeout), sizeof(timeout));
+#else
   timeval timeout = {10, 0};
   setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &timeout, sizeof(timeout));
+#endif
 }
 
 bool readExact(int fd, char* buf, size_t count) {
   size_t pos = 0;
   ssize_t n = 1;
   while (pos < count && n > 0) {
-    n = ::read(fd, buf + pos, count - pos);
+    n = RawSocketUtils::readSome(fd, buf + pos, count - pos);
     pos += std::max<ssize_t>(n, 0);
   }
   return pos == count;
@@ -112,22 +123,29 @@ bool readFrame(int fd, string* body) {
 /** Listening Unix socket in a fresh temporary directory, removed on exit. */
 struct UnixListener {
   UnixListener() {
-    char dirTemplate[] = "/tmp/et_fake_agent_XXXXXX";
-    REQUIRE(mkdtemp(dirTemplate) != nullptr);
-    dir = dirTemplate;
+    dir = et::test::makeTempDir("et_fake_agent");
     path = dir + "/agent.sock";
+    if (path.size() >= sizeof(sockaddr_un{}.sun_path)) {
+      et::test::removeTempDir(dir);
+      dir.clear();
+      path = "et_agent_" + genRandomAlphaNum(8) + ".sock";
+    }
+    RawSocketUtils::unlinkSocketPath(path);
     fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+    REQUIRE(fd >= 0);
     sockaddr_un addr = {};
     addr.sun_family = AF_UNIX;
     strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
-    REQUIRE(::bind(fd, (sockaddr*)&addr, sizeof(addr)) == 0);
+    REQUIRE(::bind(fd, (sockaddr*)&addr, unixAddressLength(addr)) == 0);
     REQUIRE(::listen(fd, 4) == 0);
   }
 
   ~UnixListener() {
-    ::close(fd);
-    ::unlink(path.c_str());
-    ::rmdir(dir.c_str());
+    RawSocketUtils::closeSocket(fd);
+    RawSocketUtils::unlinkSocketPath(path);
+    if (!dir.empty()) {
+      et::test::removeTempDir(dir);
+    }
   }
 
   string dir;
@@ -166,6 +184,9 @@ class FakeAgent {
   void serve() {
     while (waitReadable(listener.fd)) {
       int fd = ::accept(listener.fd, nullptr, nullptr);
+      if (fd < 0) {
+        continue;
+      }
       setReceiveTimeout(fd);
       string request;
       while (waitReadable(fd) && readFrame(fd, &request)) {
@@ -175,17 +196,26 @@ class FakeAgent {
         }
         sendFrame(fd, reply(request));
       }
-      ::close(fd);
+      RawSocketUtils::closeSocket(fd);
     }
   }
 
   // Waits until fd is readable, giving up promptly once the test is done.
   bool waitReadable(int fd) {
     while (!stopping) {
+#ifdef WIN32
+      WSAPOLLFD pfd = {};
+      pfd.fd = static_cast<SOCKET>(fd);
+      pfd.events = POLLRDNORM | POLLRDBAND;
+      if (::WSAPoll(&pfd, 1, 50) > 0) {
+        return true;
+      }
+#else
       pollfd pfd = {fd, POLLIN, 0};
       if (::poll(&pfd, 1, 50) > 0) {
         return true;
       }
+#endif
     }
     return false;
   }
@@ -230,7 +260,6 @@ string agentOutput(PortForwardHandler* handler, size_t minBytes,
   }
   return output;
 }
-#endif
 }  // namespace
 
 TEST_CASE("AgentSessionBindReplies drops only the bind replies",
@@ -271,9 +300,6 @@ TEST_CASE("AgentSessionBindReplies drops only the bind replies",
 
 TEST_CASE("Forwarded agent connections are bound before data flows",
           "[SshAgentSessionBind]") {
-#ifdef WIN32
-  SKIP("Unix-domain ssh-agent sockets");
-#else
   vector<string> binds = {sessionBind("jump-key", true),
                           sessionBind("dest-key", true)};
   auto pipeHandler = make_shared<PipeSocketHandler>();
@@ -346,7 +372,6 @@ TEST_CASE("Forwarded agent connections are bound before data flows",
     std::this_thread::sleep_for(std::chrono::milliseconds(100));
     CHECK(otherSocket.received().empty());
   }
-#endif
 }
 
 TEST_CASE("Agent bindings that cannot be sent fail the forwarded connection",
