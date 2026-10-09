@@ -1677,13 +1677,19 @@ static int ssh_config_parse_line(const char* targethost,
                 std::regex_replace(pattern, std::regex(R"(\.)"), R"(\.)"),
                 std::regex(R"(\*)"), ".*"));
             std::error_code ec;
+            std::vector<fs::path> matches;
             for (fs::directory_iterator it(dir.empty() ? "." : dir, ec), end;
                  !ec && it != end; it.increment(ec)) {
               if (std::regex_match(it->path().filename().string(),
                                    pattern_regex)) {
-                local_parse_file(targethost, options,
-                                 it->path().string().c_str(), parsing, seen);
+                matches.push_back(it->path());
               }
+            }
+            // Match OpenSSH's sorted glob(3) order; first-seen keywords win.
+            std::sort(matches.begin(), matches.end());
+            for (const auto& match : matches) {
+              local_parse_file(targethost, options, match.string().c_str(),
+                               parsing, seen);
             }
           } else {
             local_parse_file(targethost, options, resolved.c_str(), parsing,
