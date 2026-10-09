@@ -149,4 +149,32 @@ void WriteToStdStream(int stdFd, const char* buf, size_t count) {
     offset += written;
   }
 }
+
+bool ConsoleKeyEventHasInput(const KEY_EVENT_RECORD& key) {
+  if (!key.bKeyDown) {
+    return false;
+  }
+  if (key.uChar.UnicodeChar != 0) {
+    return true;
+  }
+  if ((key.dwControlKeyState & (LEFT_CTRL_PRESSED | RIGHT_CTRL_PRESSED)) == 0) {
+    return false;
+  }
+  // VkKeyScanW: low byte is the virtual key that produces the character, high
+  // byte the modifiers it needs (1 Shift, 2 Ctrl, 4 Alt), -1 if no key
+  // produces it. Ctrl is the chord modifier, so only Shift and Alt have to
+  // agree.
+  const bool shiftHeld = (key.dwControlKeyState & SHIFT_PRESSED) != 0;
+  const bool altHeld =
+      (key.dwControlKeyState & (LEFT_ALT_PRESSED | RIGHT_ALT_PRESSED)) != 0;
+  for (const WCHAR c : {L'@', L' ', L'2', L'`'}) {
+    const SHORT scan = VkKeyScanW(c);
+    if (scan != -1 && LOBYTE(scan) == key.wVirtualKeyCode &&
+        ((HIBYTE(scan) & 1) != 0) == shiftHeld &&
+        ((HIBYTE(scan) & 4) != 0) == altHeld) {
+      return true;
+    }
+  }
+  return false;
+}
 }  // namespace et

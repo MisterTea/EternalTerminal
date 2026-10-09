@@ -21,8 +21,8 @@ ConsoleInputStatus readConsoleKeys(HANDLE handle, string* out) {
   std::wstring wide;
   for (DWORD i = 0; i < count; i++) {
     const INPUT_RECORD& record = records[i];
-    if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown ||
-        record.Event.KeyEvent.uChar.UnicodeChar == 0) {
+    if (record.EventType != KEY_EVENT ||
+        !ConsoleKeyEventHasInput(record.Event.KeyEvent)) {
       continue;
     }
     const WORD repeat = std::max<WORD>(1, record.Event.KeyEvent.wRepeatCount);

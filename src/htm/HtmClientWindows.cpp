@@ -67,8 +67,7 @@ void HtmClient::run() {
           return;
         }
         if (recordsRead != 1 || record.EventType != KEY_EVENT ||
-            !record.Event.KeyEvent.bKeyDown ||
-            record.Event.KeyEvent.uChar.UnicodeChar == 0) {
+            !ConsoleKeyEventHasInput(record.Event.KeyEvent)) {
           continue;
         }
         const wchar_t wide = record.Event.KeyEvent.uChar.UnicodeChar;
