@@ -1,4 +1,5 @@
 #include "Console.hpp"
+#include "ConsoleKeyEventWindows.hpp"
 #include "PlatformUtils.hpp"
 #include "StdioConsole.hpp"
 
@@ -21,12 +22,17 @@ ConsoleInputStatus readConsoleKeys(HANDLE handle, string* out) {
   std::wstring wide;
   for (DWORD i = 0; i < count; i++) {
     const INPUT_RECORD& record = records[i];
-    if (record.EventType != KEY_EVENT || !record.Event.KeyEvent.bKeyDown ||
-        record.Event.KeyEvent.uChar.UnicodeChar == 0) {
+    if (record.EventType != KEY_EVENT) {
       continue;
     }
-    const WORD repeat = std::max<WORD>(1, record.Event.KeyEvent.wRepeatCount);
-    wide.append(repeat, record.Event.KeyEvent.uChar.UnicodeChar);
+    const KEY_EVENT_RECORD& key = record.Event.KeyEvent;
+    if (!consoleKeyEventHasInput({key.bKeyDown != 0, key.wVirtualKeyCode,
+                                  key.uChar.UnicodeChar,
+                                  key.dwControlKeyState})) {
+      continue;
+    }
+    const WORD repeat = std::max<WORD>(1, key.wRepeatCount);
+    wide.append(repeat, key.uChar.UnicodeChar);
   }
   if (wide.empty()) {
     return ConsoleInputStatus::NONE;
