@@ -1,6 +1,5 @@
 #include <algorithm>
 
-#include "ConsoleKeyEventWindows.hpp"
 #include "ControlMode.hpp"
 #include "HtmClient.hpp"
 #include "PlatformUtils.hpp"
@@ -67,16 +66,11 @@ void HtmClient::run() {
           inputClosed->store(true);
           return;
         }
-        if (recordsRead != 1 || record.EventType != KEY_EVENT) {
+        if (recordsRead != 1 || record.EventType != KEY_EVENT ||
+            !ConsoleKeyEventHasInput(record.Event.KeyEvent)) {
           continue;
         }
-        const KEY_EVENT_RECORD& key = record.Event.KeyEvent;
-        if (!consoleKeyEventHasInput({key.bKeyDown != 0, key.wVirtualKeyCode,
-                                      key.uChar.UnicodeChar,
-                                      key.dwControlKeyState})) {
-          continue;
-        }
-        const wchar_t wide = key.uChar.UnicodeChar;
+        const wchar_t wide = record.Event.KeyEvent.uChar.UnicodeChar;
         n = WideCharToMultiByte(CP_UTF8, 0, &wide, 1, input, sizeof(input),
                                 NULL, NULL);
       } else {
