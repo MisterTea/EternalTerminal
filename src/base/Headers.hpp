@@ -446,11 +446,19 @@ inline int replaceAll(std::string& str, const std::string& from,
   return retval;
 }
 
+// A peer sent a packet that decrypted but has an unexpected type or an
+// unparsable payload.
+class MalformedPacketError : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
+
 template <typename T>
 inline T stringToProto(const string& s) {
   T t;
   if (!t.ParseFromString(s)) {
-    STFATAL << "Error parsing string to proto: " << s.length() << " " << s;
+    // Payloads come from peers; let the connection's handler reject them.
+    throw MalformedPacketError("Error parsing " + string(t.GetTypeName()));
   }
   return t;
 }

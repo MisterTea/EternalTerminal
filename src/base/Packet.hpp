@@ -44,7 +44,9 @@ class Packet {
       encrypted = false;
       payload = cryptoHandler->decrypt(payload);
     } else {
-      STFATAL << "Tried to decrypt a packet that wasn't encrypted";
+      // Peer-controlled framing: sever this connection, not the process.
+      throw std::runtime_error(
+          "Received an unencrypted packet on an encrypted connection");
     }
   }
 

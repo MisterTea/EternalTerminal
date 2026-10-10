@@ -788,8 +788,8 @@ void TerminalServer::handleConnection(
       std::this_thread::sleep_for(std::chrono::seconds(1));
     }
     if (packet.getHeader() != EtPacketType::INITIAL_PAYLOAD) {
-      STFATAL << "Invalid header: expecting INITIAL_PAYLOAD but got "
-              << packet.getHeader();
+      throw std::runtime_error("Expected INITIAL_PAYLOAD but got header " +
+                               to_string(int(packet.getHeader())));
     }
     InitialPayload payload = stringToProto<InitialPayload>(packet.getPayload());
     userInfo = terminalRouter->tryGetInfoForConnection(serverClientState);

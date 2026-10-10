@@ -304,4 +304,21 @@ TEST_CASE("TerminalClient in-process reconnect retargets SSH agent proxy",
   std::error_code ec;
   fs::remove_all(sockDir, ec);
 }
+
+TEST_CASE("TerminalClient reconnects after an unknown server packet type",
+          "[TerminalClient]") {
+  AgentProxySession session;
+  session.startClient(/*forwardSshAgent=*/false, /*resumeSavedSession=*/false);
+
+  // The packet type is outside the MAC, so this is what a relabeled packet
+  // looks like to the client.
+  auto serverSide = session.server->tryGetClientConnection(session.id);
+  REQUIRE(serverSide != nullptr);
+  serverSide->writePacket(Packet(uint8_t(200), ""));
+
+  session.fakeUserTerminal->simulateTerminalResponse("after");
+  requireEventually([&]() { return session.console->hasTerminalData(); }, 30,
+                    "terminal output after the unknown packet");
+  REQUIRE(session.console->getTerminalData(5) == "after");
+}
 #endif

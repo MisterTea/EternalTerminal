@@ -196,6 +196,24 @@ class RecoverableConnection : public Connection {
 
   void closeSocketAndMaybeReconnect() override { closeSocket(); }
 };
+
+// Session framing as written by BackedWriter: a 4-byte big-endian length,
+// then the serialized packet.
+void writeSessionFrame(const shared_ptr<SocketHandler>& handler, int fd,
+                       const Packet& packet) {
+  const string body = packet.serialize();
+  const uint32_t length = htonl(uint32_t(body.size()));
+  handler->writeAllOrThrow(fd, (const char*)&length, sizeof(length), false);
+  handler->writeAllOrThrow(fd, body.data(), body.size(), false);
+}
+
+Packet readSessionFrame(const shared_ptr<SocketHandler>& handler, int fd) {
+  uint32_t length = 0;
+  handler->readAll(fd, (char*)&length, sizeof(length), false);
+  string body(ntohl(length), '\0');
+  handler->readAll(fd, &body[0], body.size(), false);
+  return Packet(body);
+}
 }  // namespace
 }  // namespace et
 
@@ -233,6 +251,48 @@ TEST_CASE("TerminalClient throws after failed initial connection attempts",
       Catch::Matchers::ContainsSubstring(
           "Could not make initial connection to"));
   REQUIRE(handler->connectCalls == 3);
+}
+
+TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
+          "[TerminalClient]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+  handler->queueConnectFd(fds[0]);
+  const string key = "0123456789abcdef0123456789abcdef";
+
+  // An authenticated server whose first session packet has the wrong type,
+  // as an on-path attacker can produce by relabeling INITIAL_RESPONSE.
+  std::thread server([&]() {
+    handler->readProto<ConnectRequest>(fds[1], true);
+    ConnectResponse challenge;
+    challenge.set_authchallenge(
+        CryptoHandler::randomBytes(CryptoHandler::AUTH_CHALLENGE_BYTES));
+    handler->writeProto(fds[1], challenge, true);
+    handler->readProto<ConnectAuth>(fds[1], true);
+    ConnectResponse response;
+    response.set_status(NEW_CLIENT);
+    response.set_resetproof(CryptoHandler::resetDecisionProof(
+        key, "client-id", PROTOCOL_VERSION, challenge.authchallenge(),
+        NEW_CLIENT, false, ""));
+    handler->writeProto(fds[1], response, true);
+
+    readSessionFrame(handler, fds[1]);  // INITIAL_PAYLOAD
+    Packet relabeled(TerminalPacketType::TERMINAL_BUFFER, "");
+    relabeled.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
+    writeSessionFrame(handler, fds[1], relabeled);
+  });
+
+  REQUIRE_THROWS_WITH(
+      [&]() {
+        TerminalClient client(handler, handler, SocketEndpoint(), "client-id",
+                              key, nullptr, false, "", "", false, "",
+                              MAX_CLIENT_KEEP_ALIVE_DURATION,
+                              vector<pair<string, string>>());
+      }(),
+      Catch::Matchers::ContainsSubstring("Missing initial response"));
+  server.join();
+  handler->close(fds[1]);
 }
 
 TEST_CASE("ClientConnection completes handshake over socketpair",
