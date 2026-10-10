@@ -106,7 +106,8 @@ CryptoHandler::CryptoHandler(const string& _key, unsigned char nonceMSB)
     STFATAL << "libsodium init failed";
   }
   if (_key.length() != crypto_secretbox_KEYBYTES) {
-    STFATAL << "Invalid key length";
+    // Peer-supplied keys reach here; fail the connection, not the process.
+    throw std::runtime_error("Invalid key length");
   }
   memcpy(baseKey, &_key[0], _key.length());
   memcpy(key, &_key[0], _key.length());

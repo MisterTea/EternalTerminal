@@ -128,6 +128,16 @@ class InspectableUserTerminalRouter : public UserTerminalRouter {
   }
 };
 
+// Session passkeys must be exactly crypto_secretbox_KEYBYTES bytes.
+string key32(const string& seed) {
+  string key = seed;
+  while (key.size() < crypto_secretbox_KEYBYTES) {
+    key += seed;
+  }
+  key.resize(crypto_secretbox_KEYBYTES);
+  return key;
+}
+
 int registerFakeTerminal(shared_ptr<PipeSocketHandler> socketHandler,
                          UserTerminalRouter& router,
                          const SocketEndpoint& routerEndpoint, const string& id,
@@ -166,13 +176,13 @@ TEST_CASE("UserTerminalRouter tracks ptyactive registrations",
 
   IdKeyPair accepted;
   int fdA = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                 "term-a", "key-a", false, &accepted);
+                                 "term-a", key32("key-a"), false, &accepted);
   REQUIRE(accepted.id == "term-a");
-  REQUIRE(accepted.key == "key-a");
+  REQUIRE(accepted.key == key32("key-a"));
   REQUIRE_FALSE(router.isPtyActive("term-a"));
 
   int fdB = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                 "term-b", "key-b", true, &accepted);
+                                 "term-b", key32("key-b"), true, &accepted);
   REQUIRE(accepted.id == "term-b");
   REQUIRE(router.isPtyActive("term-b"));
 
@@ -193,20 +203,23 @@ TEST_CASE("UserTerminalRouter replaces dead registrations only",
   InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
 
   IdKeyPair accepted;
-  int fdOwner = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                     "term", "owner-key", true, &accepted);
+  int fdOwner =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
   REQUIRE(accepted.id == "term");
-  REQUIRE(accepted.key == "owner-key");
+  REQUIRE(accepted.key == key32("owner-key"));
   const int supersededRouterFd = router.terminalFd("term");
 
-  int fdDup = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                   "term", "attacker-key", true, &accepted);
+  int fdDup =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("attacker-key"), true, &accepted);
   REQUIRE(accepted.id == "");
   REQUIRE(router.isPtyActive("term"));
   socketHandler->close(fdDup);
 
-  int fdSameKey = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                       "term", "owner-key", true, &accepted);
+  int fdSameKey =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
   REQUIRE(accepted.id.empty());
   REQUIRE(router.terminalFd("term") == supersededRouterFd);
   socketHandler->close(fdSameKey);
@@ -220,9 +233,9 @@ TEST_CASE("UserTerminalRouter replaces dead registrations only",
   CHECK(socketHandler->closeCount(supersededRouterFd) == 0);
   socketHandler->close(fdWrongKey);
   int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                   "term", "owner-key", true, &accepted);
+                                   "term", key32("owner-key"), true, &accepted);
   REQUIRE(accepted.id == "term");
-  REQUIRE(accepted.key == "owner-key");
+  REQUIRE(accepted.key == key32("owner-key"));
   REQUIRE(router.isPtyActive("term"));
   REQUIRE(socketHandler->closeCount(supersededRouterFd) == 1);
 
@@ -242,8 +255,9 @@ TEST_CASE("UserTerminalRouter removeTerminal frees the id",
   InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
 
   IdKeyPair accepted;
-  int fdOwner = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                     "term", "owner-key", true, &accepted);
+  int fdOwner =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
   REQUIRE(accepted.id == "term");
 
   const int routerFd = router.terminalFd("term");
@@ -259,11 +273,46 @@ TEST_CASE("UserTerminalRouter removeTerminal frees the id",
   REQUIRE(socketHandler->closeCount(routerFd) == 1);
 
   int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,
-                                   "term", "owner-key", true, &accepted);
+                                   "term", key32("owner-key"), true, &accepted);
   REQUIRE(accepted.id == "term");
 
   socketHandler->close(fdOwner);
   socketHandler->close(fdNew);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter rejects registrations with invalid credentials",
+          "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  IdKeyPair accepted;
+  int fdShort =
+      registerFakeTerminal(socketHandler, router, routerEndpoint,
+                           "short-key-term", "short", true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+  REQUIRE_FALSE(router.isPtyActive("short-key-term"));
+  socketHandler->close(fdShort);
+
+  int fdEmpty = registerFakeTerminal(socketHandler, router, routerEndpoint, "",
+                                     key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE_FALSE(router.isPtyActive(""));
+  socketHandler->close(fdEmpty);
+
+  // A valid registration still succeeds afterwards.
+  int fdOk =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "ok-term",
+                           key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id == "ok-term");
+  socketHandler->close(fdOk);
   testEndpoint.cleanup(socketHandler);
 }
 #endif
