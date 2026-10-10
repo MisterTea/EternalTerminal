@@ -306,7 +306,7 @@ jobs:
             /home/runner/work/EternalTerminal/EternalTerminal/
 
       - name: Start FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc  # v1.5.9
         with:
           arch: ${{ env.ACT && 'aarch64' || '' }}
           usesh: true

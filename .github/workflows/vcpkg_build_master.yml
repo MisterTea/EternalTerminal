@@ -86,14 +86,14 @@ jobs:
           submodules: recursive
 
       - name: Set up GCC (Ubuntu)
-        uses: egor-tensin/setup-gcc@v1
+        uses: egor-tensin/setup-gcc@eaa888eb19115a521fa72b65cd94fe1f25bbcaac  # v1.3
         with:
           version: ${{ matrix.gcc }}
           platform: x64
         if: matrix.os == 'ubuntu-latest'
 
       # Initialize MSVC before fingerprinting its version and enabling sccache.
-      - uses: ilammy/msvc-dev-cmd@v1
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
         if: matrix.os == 'windows-latest'
       - name: Restore project compiler cache
         uses: ./.github/actions/ccache
