@@ -63,7 +63,15 @@ int ForwardSourceHandler::acceptFixed(const set<int>* readyFds) {
       LOG(INFO) << "Tunnel " << source << " -> " << destination
                 << " socket created with fd " << fd;
       if (socksDynamic) {
-        socksPending[fd] = SocksHandshake();
+        if (socksPending.size() >= MAX_PENDING_SOCKS) {
+          LOG(WARNING) << "SOCKS pending set full; closing fd " << fd;
+          socketHandler->close(fd);
+        } else {
+          SocksHandshake handshake;
+          handshake.deadline =
+              std::chrono::steady_clock::now() + SOCKS_HANDSHAKE_TIMEOUT;
+          socksPending[fd] = std::move(handshake);
+        }
       } else if (parkUnassignedFd(fd)) {
         return fd;
       }
@@ -74,8 +82,14 @@ int ForwardSourceHandler::acceptFixed(const set<int>* readyFds) {
 
 void ForwardSourceHandler::advanceSocksHandshakes(const set<int>* readyFds) {
   vector<int> toClose;
+  const auto now = std::chrono::steady_clock::now();
   for (auto& it : socksPending) {
     int fd = it.first;
+    if (!it.second.complete && now >= it.second.deadline) {
+      LOG(WARNING) << "SOCKS handshake timed out on fd " << fd;
+      toClose.push_back(fd);
+      continue;
+    }
     bool mayHaveData = readyFds == nullptr || readyFds->count(fd) != 0 ||
                        !it.second.input.empty() || socketHandler->hasData(fd);
     if (!mayHaveData) {

@@ -21,6 +21,10 @@ class ForwardSourceHandler {
   /** @brief A parked fd whose destination response never arrives is closed
    * after this deadline, releasing its descriptor. */
   static constexpr std::chrono::seconds UNASSIGNED_FD_TIMEOUT{30};
+  /** @brief Pending SOCKS handshakes beyond this are closed on accept. */
+  static constexpr size_t MAX_PENDING_SOCKS = 64;
+  /** @brief A SOCKS handshake not completed within this is closed. */
+  static constexpr std::chrono::seconds SOCKS_HANDSHAKE_TIMEOUT{30};
   /**
    * @brief Creates source/destination handlers used for local port forwarding.
    * @param alreadyListening If true, skip listen(); caller already registered
@@ -93,6 +97,15 @@ class ForwardSourceHandler {
   void expireForTest(int fd) {
     unassignedFdDeadlines[fd] =
         std::chrono::steady_clock::now() - std::chrono::seconds(1);
+  }
+
+  /** @brief Test hook: force SOCKS handshake `fd` past its deadline. */
+  void reapForTest(int fd) {
+    auto it = socksPending.find(fd);
+    if (it != socksPending.end()) {
+      it->second.deadline =
+          std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    }
   }
 
   inline SocketEndpoint getDestination() { return destination; }
