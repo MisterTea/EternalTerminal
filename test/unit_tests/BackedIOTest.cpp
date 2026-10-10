@@ -512,3 +512,67 @@ TEST_CASE("SocketHandler readProto enforces max length before allocating",
   handler.close(fds[0]);
   handler.close(fds[1]);
 }
+
+namespace {
+void enqueueFramedLength(const shared_ptr<InMemorySocketHandler>& handler,
+                         int fd, int64_t declaredLength) {
+  const uint32_t networkLength = htonl((uint32_t)declaredLength);
+  handler->enqueue(fd, string(reinterpret_cast<const char*>(&networkLength),
+                              sizeof(networkLength)));
+}
+}  // namespace
+
+TEST_CASE("BackedReader severs connection on out-of-bounds framed length",
+          "[BackedIO]") {
+  const string key = "12345678901234567890123456789012";
+  const int64_t oversize = SocketHandler::DEFAULT_MAX_PROTO_LENGTH + 1;
+  // 0 and 1 are smaller than a serialized Packet header; -1 is the sign
+  // extension of 0xFFFFFFFF; oversize exceeds the framing ceiling.
+  for (int64_t declared : {int64_t{0}, int64_t{1}, int64_t{-1}, oversize}) {
+    auto handler = make_shared<InMemorySocketHandler>();
+    const int fd = handler->createChannel();
+    BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+    enqueueFramedLength(handler, fd, declared);
+
+    Packet packet;
+    REQUIRE(reader.read(&packet) == -1);
+    REQUIRE(GetErrno() == EPIPE);
+  }
+}
+
+TEST_CASE("Packet constructor rejects input shorter than its header",
+          "[BackedIO]") {
+  REQUIRE_THROWS_AS(Packet(string()), std::runtime_error);
+  REQUIRE_THROWS_AS(Packet(string("x")), std::runtime_error);
+
+  const string ok("\x00\x05hello", 7);
+  Packet parsed(ok);
+  REQUIRE_FALSE(parsed.isEncrypted());
+  REQUIRE(parsed.getHeader() == 5);
+  REQUIRE(parsed.getPayload() == "hello");
+}
+
+TEST_CASE("CryptoHandler decrypt rejects ciphertext shorter than the MAC",
+          "[BackedIO][CryptoHandler]") {
+  CryptoHandler crypto("12345678901234567890123456789012", 0);
+  REQUIRE_THROWS_AS(crypto.decrypt(string(4, 'x')), std::runtime_error);
+}
+
+TEST_CASE("BackedReader surfaces short ciphertext as a connection error",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const string key = "12345678901234567890123456789012";
+  const int fd = handler->createChannel();
+  BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+
+  // A frame claiming 16 bytes whose encrypted flag is set but whose body is
+  // shorter than the secretbox MAC must throw the runtime_error the
+  // per-connection handlers already catch, not abort the process.
+  enqueueFramedLength(handler, fd, 16);
+  string shortCiphertext(16, 'A');
+  shortCiphertext[0] = 1;  // encrypted flag
+  handler->enqueue(fd, shortCiphertext);
+
+  Packet packet;
+  REQUIRE_THROWS_AS(reader.read(&packet), std::runtime_error);
+}

@@ -192,6 +192,9 @@ string CryptoHandler::encrypt(const string& buffer) {
 }
 
 string CryptoHandler::decrypt(const string& buffer) {
+  if (buffer.length() < crypto_secretbox_MACBYTES) {
+    throw std::runtime_error("Ciphertext shorter than the authentication tag");
+  }
   lock_guard<std::mutex> guard(cryptoMutex);
   incrementNonce();
   string retval(buffer.length() - crypto_secretbox_MACBYTES, '\0');

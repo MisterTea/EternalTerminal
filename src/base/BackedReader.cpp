@@ -65,11 +65,20 @@ int BackedReader::read(Packet* packet) {
     return 0;
   }
   int messageLength = getPartialMessageLength();
+  // Reject impossible or oversized lengths before allocating. EPIPE severs
+  // only this socket, so the session can reconnect.
+  if (messageLength < Packet::HEADER_SIZE ||
+      messageLength > SocketHandler::DEFAULT_MAX_PROTO_LENGTH) {
+    LOG(ERROR) << "Rejecting out-of-bounds framed length: " << messageLength;
+    SetErrno(EPIPE);
+    return -1;
+  }
   VLOG(2) << "Reading message of length: " << messageLength;
   int messageRemainder = messageLength - (partialMessage.length() - 4);
   if (messageRemainder) {
     VLOG(2) << "bytes remaining: " << messageRemainder;
-    string s(messageRemainder, '\0');
+    // Allocate per read, not for the whole declared length.
+    string s(std::min(messageRemainder, 64 * 1024), '\0');
     ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
     if (bytesRead == 0) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
