@@ -315,4 +315,51 @@ TEST_CASE("UserTerminalRouter rejects registrations with invalid credentials",
   socketHandler->close(fdOk);
   testEndpoint.cleanup(socketHandler);
 }
+
+TEST_CASE("UserTerminalRouter rejects malformed registration packets",
+          "[UserTerminalRouter]") {
+  // Each malformed packet must cost only the offending connection.
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  // Zero-length packet: an 8-byte zero length prefix.
+  int fdZero = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdZero >= 0);
+  const int64_t zero = 0;
+  socketHandler->writeAllOrThrow(fdZero, &zero, sizeof(zero), false);
+  IdKeyPair accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // Wrong packet header: valid framing, header is not TERMINAL_USER_INFO.
+  int fdHeader = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdHeader >= 0);
+  socketHandler->writePacket(
+      fdHeader, Packet(TerminalPacketType::TERMINAL_CLOSE, "junk"));
+  accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // TERMINAL_USER_INFO-framed packet whose payload is not valid protobuf
+  // ("junk" = field 13, wire type 2, length 117 with 2 bytes remaining).
+  int fdProto = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdProto >= 0);
+  socketHandler->writePacket(
+      fdProto, Packet(TerminalPacketType::TERMINAL_USER_INFO, "junk"));
+  accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // The router still accepts a valid registration afterwards.
+  int fdOk =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "still-alive",
+                           key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id == "still-alive");
+  socketHandler->close(fdOk);
+  testEndpoint.cleanup(socketHandler);
+}
 #endif

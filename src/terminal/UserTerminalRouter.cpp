@@ -33,10 +33,15 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
   try {
     Packet packet;
     if (!socketHandler->readPacket(terminalFd, &packet)) {
-      STFATAL << "Missing user info packet";
+      LOG(ERROR) << "Empty router registration packet";
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
     }
     if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
-      STFATAL << "Got an invalid packet header: " << int(packet.getHeader());
+      LOG(ERROR) << "Got an invalid packet header from router peer: "
+                 << int(packet.getHeader());
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
