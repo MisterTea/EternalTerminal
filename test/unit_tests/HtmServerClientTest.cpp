@@ -624,3 +624,58 @@ TEST_CASE("HtmClient exits on detach-client while htmd stays up",
   close(stdoutPipe[0]);
 }
 #endif
+
+#ifndef WIN32
+TEST_CASE("HtmServer pane dump is owner-only and resists symlink preemption",
+          "[Htm][HtmServer]") {
+  const string dir = test::makeTempDir("htm_panedump_test");
+  const string dumpPath = dir + "/htm.panes";
+
+  struct stat st;
+  SECTION("created owner-only under a permissive umask") {
+    const mode_t oldMask = umask(022);
+    const bool written = HtmServer::writePaneDumpFile(dumpPath, "PANE-BODY");
+    umask(oldMask);
+    REQUIRE(written);
+    REQUIRE(stat(dumpPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    REQUIRE(st.st_uid == getuid());
+    ::remove(dumpPath.c_str());
+  }
+
+  SECTION("a foreign symlink at the tmp name is not followed") {
+    const string decoy = dir + "/decoy";
+    const string marker = string(64, 'V');
+    {
+      const int fd = ::open(decoy.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+      REQUIRE(fd >= 0);
+      REQUIRE(::write(fd, marker.data(), marker.size()) ==
+              (ssize_t)marker.size());
+      ::close(fd);
+    }
+    REQUIRE(symlink(decoy.c_str(), (dumpPath + ".tmp").c_str()) == 0);
+
+    REQUIRE_FALSE(HtmServer::writePaneDumpFile(dumpPath, "PANE-BODY"));
+
+    // The decoy must be untouched and nothing published.
+    REQUIRE(stat(decoy.c_str(), &st) == 0);
+    REQUIRE(st.st_size == (off_t)marker.size());
+    REQUIRE(stat(dumpPath.c_str(), &st) == -1);
+    unlink((dumpPath + ".tmp").c_str());
+    unlink(decoy.c_str());
+  }
+
+  SECTION("a stale regular file of our own is replaced safely") {
+    const int fd =
+        ::open((dumpPath + ".tmp").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    REQUIRE(fd >= 0);
+    ::close(fd);
+    REQUIRE(HtmServer::writePaneDumpFile(dumpPath, "SECOND"));
+    REQUIRE(stat(dumpPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    ::remove(dumpPath.c_str());
+  }
+
+  test::removeTempDir(dir);
+}
+#endif  // !WIN32

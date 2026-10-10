@@ -45,6 +45,15 @@ bool ConsoleKeyEventHasInput(const KEY_EVENT_RECORD& key);
  * @return false if the kernel cannot report them.
  */
 bool GetPeerCredentials(int fd, uid_t* uid, gid_t* gid);
+
+/**
+ * @brief Creates @p path for writing with mode 0600, never following a
+ * symlink or opening another user's file. A stale regular file owned by this
+ * user is replaced once.
+ *
+ * @return the descriptor, or -1 with errno set.
+ */
+int CreatePrivateFile(const string& path);
 #endif
 }  // namespace et
 

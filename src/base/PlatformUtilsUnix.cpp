@@ -52,4 +52,16 @@ bool GetPeerCredentials(int fd, uid_t* uid, gid_t* gid) {
   return ::getpeereid(fd, uid, gid) == 0;
 #endif
 }
+
+int CreatePrivateFile(const string& path) {
+  const int flags = O_WRONLY | O_CREAT | O_EXCL | O_NOFOLLOW | O_CLOEXEC;
+  int fd = ::open(path.c_str(), flags, 0600);
+  struct stat st;
+  if (fd < 0 && errno == EEXIST && ::lstat(path.c_str(), &st) == 0 &&
+      S_ISREG(st.st_mode) && st.st_uid == ::geteuid() &&
+      ::unlink(path.c_str()) == 0) {
+    fd = ::open(path.c_str(), flags, 0600);
+  }
+  return fd;
+}
 }  // namespace et

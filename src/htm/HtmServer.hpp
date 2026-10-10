@@ -17,6 +17,9 @@ class HtmServer : public IpcPairServer {
   void run();
   void requestStop() { running.store(false); }
   void requestPaneDump() { paneDumpRequested.store(true); }
+
+  /** @brief The hardened pane-dump writer, exposed for tests. */
+  static bool writePaneDumpFile(const string& path, const string& body);
   static string getPipeName();
   static string getPaneDumpPath();
   /** @brief Returns the per-user event used for graceful Windows restarts. */
