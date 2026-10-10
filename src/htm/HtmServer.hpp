@@ -20,6 +20,15 @@ class HtmServer : public IpcPairServer {
 
   /** @brief The hardened pane-dump writer, exposed for tests. */
   static bool writePaneDumpFile(const string& path, const string& body);
+
+#ifndef WIN32
+  /**
+   * @brief Returns the pid in the htm client pid file at `path` only if the
+   * file is our own regular file and names a live `htm` process of ours.
+   * Exposed for tests.
+   */
+  static optional<pid_t> readVerifiedClientPid(const string& path);
+#endif
   static string getPipeName();
   static string getPaneDumpPath();
   /** @brief Returns the per-user event used for graceful Windows restarts. */
