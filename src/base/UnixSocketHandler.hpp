@@ -31,6 +31,9 @@ class UnixSocketHandler : public SocketHandler {
    * server (EAGAIN/EWOULDBLOCK, ECONNABORTED, EINTR).
    */
   static bool isTransientAcceptError(int err);
+  /** @brief True when accept(2) failed because descriptors or kernel memory
+   * ran out (EMFILE/ENFILE/ENOMEM/ENOBUFS), which a peer can provoke. */
+  static bool isResourceExhausted(int err);
   /** @brief Closes the descriptor and removes it from the tracked set. */
   virtual void close(int fd);
   /** @brief Returns all actively tracked sockets. */

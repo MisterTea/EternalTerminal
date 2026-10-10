@@ -7,6 +7,7 @@
  * hold a server-wide lock across blocking socket I/O.
  */
 
+#include <array>
 #include <chrono>
 #include <future>
 #include <thread>
@@ -228,4 +229,35 @@ TEST_CASE("A second reconnect is refused while one is in flight",
       second[1], true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH));
   // The live session is untouched: only the refused socket was closed.
   REQUIRE(server.clientConnectionExists(clientId));
+}
+
+TEST_CASE("acceptNewConnection refuses connections past the pending cap",
+          "[AcceptStarvation]") {
+  // Fill every pending-handshake slot with a silent connection; the next
+  // connection must be closed on arrival.
+  auto handler = std::make_shared<SocketPairHandler>();
+  SocketEndpoint endpoint;
+  endpoint.set_name("server");
+  TestServerConnection server(handler, endpoint);
+
+  std::vector<std::array<int, 2>> silentPairs(
+      ServerConnection::MAX_PENDING_HANDSHAKES);
+  for (auto& pr : silentPairs) {
+    REQUIRE(createTestSocketPair(pr.data()) == 0);
+    REQUIRE(server.acceptNewConnection(pr[0]));
+  }
+
+  int extraPair[2];
+  REQUIRE(createTestSocketPair(extraPair) == 0);
+  REQUIRE_FALSE(server.acceptNewConnection(extraPair[0]));
+  char probe = 'x';
+  REQUIRE(handler->hasData(extraPair[1]));
+  REQUIRE(handler->read(extraPair[1], &probe, 1) == 0);  // closed by server
+
+  // Release the parked handlers.
+  for (auto& pr : silentPairs) {
+    ::close(pr[1]);
+  }
+  ::close(extraPair[1]);
+  server.shutdown();
 }

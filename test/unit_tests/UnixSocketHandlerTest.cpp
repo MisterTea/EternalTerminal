@@ -164,6 +164,13 @@ TEST_CASE("AcceptTransientErrorClassification", "[UnixSocketHandler]") {
   REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(EINVAL));
   REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(ENOTSOCK));
   REQUIRE_FALSE(UnixSocketHandler::isTransientAcceptError(EFAULT));
+
+  // Exhaustion a peer can provoke is retried too; logic errors are not.
+  REQUIRE(UnixSocketHandler::isResourceExhausted(EMFILE));
+  REQUIRE(UnixSocketHandler::isResourceExhausted(ENFILE));
+  REQUIRE(UnixSocketHandler::isResourceExhausted(ENOMEM));
+  REQUIRE(UnixSocketHandler::isResourceExhausted(ENOBUFS));
+  REQUIRE_FALSE(UnixSocketHandler::isResourceExhausted(EBADF));
 }
 
 TEST_CASE("AcceptDoesNotAbortWhenNoPendingConnection", "[UnixSocketHandler]") {

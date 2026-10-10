@@ -283,6 +283,8 @@ inline int TranslateSocketError(int retval) {
         return ENETRESET;
       case WSAENOBUFS:
         return ENOBUFS;
+      case WSAEMFILE:
+        return EMFILE;
       case WSAEISCONN:
         return EISCONN;
       case WSAENOTCONN:

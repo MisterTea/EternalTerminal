@@ -21,8 +21,19 @@ bool ServerConnection::acceptNewConnection(int fd) {
   }
   VLOG(1) << "SERVER: got client socket fd: " << clientSocketFd;
   lock_guard<std::recursive_mutex> guard(classMutex);
-  clientHandlerThreadPool->enqueue(
-      [this, clientSocketFd]() { this->clientHandler(clientSocketFd); });
+  // Unauthenticated peers can hold handshakes open; bound the descriptors
+  // they retain.
+  if (pendingHandshakes >= MAX_PENDING_HANDSHAKES) {
+    LOG_EVERY_N(100, WARNING) << "Too many pending handshakes; refusing";
+    socketHandler->close(clientSocketFd);
+    return false;
+  }
+  ++pendingHandshakes;
+  clientHandlerThreadPool->enqueue([this, clientSocketFd]() {
+    this->clientHandler(clientSocketFd);
+    lock_guard<std::recursive_mutex> g(classMutex);
+    --pendingHandshakes;
+  });
   return true;
 }
 
