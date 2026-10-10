@@ -126,6 +126,11 @@ class InspectableUserTerminalRouter : public UserTerminalRouter {
     lock_guard<recursive_mutex> guard(routerMutex);
     return idInfoMap.at(id).fd();
   }
+
+  pair<int64_t, int64_t> registeredUidGid(const string& id) {
+    lock_guard<recursive_mutex> guard(routerMutex);
+    return {idInfoMap.at(id).uid(), idInfoMap.at(id).gid()};
+  }
 };
 
 // Session passkeys must be exactly crypto_secretbox_KEYBYTES bytes.
@@ -360,6 +365,41 @@ TEST_CASE("UserTerminalRouter rejects malformed registration packets",
                            key32("valid-key"), true, &accepted);
   REQUIRE(accepted.id == "still-alive");
   socketHandler->close(fdOk);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE(
+    "UserTerminalRouter overrides self-asserted uid/gid with peer "
+    "credentials",
+    "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  // Assert ids other than our own; the router must store the real ones.
+  int terminalFd = socketHandler->connect(routerEndpoint);
+  REQUIRE(terminalFd >= 0);
+  TerminalUserInfo tui;
+  tui.set_id("forged-uid-term");
+  tui.set_passkey(key32("valid-key"));
+  tui.set_uid(getuid() == 0 ? 1 : 0);
+  tui.set_gid(getgid() == 0 ? 1 : 0);
+  tui.set_ptyactive(true);
+  socketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+
+  IdKeyPair accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id == "forged-uid-term");
+  const auto [storedUid, storedGid] =
+      router.registeredUidGid("forged-uid-term");
+  REQUIRE(storedUid == static_cast<int64_t>(getuid()));
+  REQUIRE(storedGid == static_cast<int64_t>(getgid()));
+
+  socketHandler->close(terminalFd);
   testEndpoint.cleanup(socketHandler);
 }
 #endif

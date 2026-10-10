@@ -36,6 +36,16 @@ void WriteToStdStream(int stdFd, const char* buf, size_t count);
  */
 bool ConsoleKeyEventHasInput(const KEY_EVENT_RECORD& key);
 #endif
+
+#ifndef WIN32
+/**
+ * @brief Reads the effective uid and gid of the process at the other end of
+ * the connected Unix-domain socket @p fd, as recorded by the kernel.
+ *
+ * @return false if the kernel cannot report them.
+ */
+bool GetPeerCredentials(int fd, uid_t* uid, gid_t* gid);
+#endif
 }  // namespace et
 
 #endif  // __ET_PLATFORM_UTILS__

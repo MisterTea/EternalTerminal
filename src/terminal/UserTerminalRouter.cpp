@@ -1,6 +1,7 @@
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
+#include "PlatformUtils.hpp"
 
 namespace et {
 UserTerminalRouter::UserTerminalRouter(
@@ -45,6 +46,19 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
+#ifndef WIN32
+    // The uid/gid select the identity for privileged socket operations
+    // (UserSocketOps), so take them from the kernel, not the peer.
+    uid_t peerUid;
+    gid_t peerGid;
+    if (!GetPeerCredentials(terminalFd, &peerUid, &peerGid)) {
+      LOG(ERROR) << "Failed to read router peer credentials";
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
+    }
+    tui.set_uid(static_cast<int64_t>(peerUid));
+    tui.set_gid(static_cast<int64_t>(peerGid));
+#endif
     if (tui.id().empty() || tui.passkey().size() != crypto_secretbox_KEYBYTES) {
       // The router socket is world-connectable, so registration input is
       // untrusted; a malformed credential must be dropped here rather than

@@ -37,4 +37,19 @@ optional<string> GetAccountUsername() {
 void WriteToStdStream(int stdFd, const char* buf, size_t count) {
   RawSocketUtils::writeAll(stdFd, buf, count);
 }
+
+bool GetPeerCredentials(int fd, uid_t* uid, gid_t* gid) {
+#ifdef __linux__
+  struct ucred cred;
+  socklen_t len = sizeof(cred);
+  if (::getsockopt(fd, SOL_SOCKET, SO_PEERCRED, &cred, &len) != 0) {
+    return false;
+  }
+  *uid = cred.uid;
+  *gid = cred.gid;
+  return true;
+#else
+  return ::getpeereid(fd, uid, gid) == 0;
+#endif
+}
 }  // namespace et
