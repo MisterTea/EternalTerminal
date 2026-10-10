@@ -80,8 +80,9 @@ void LogHandler::setupLogFiles(el::Configurations* defaultConf,
 
 void LogHandler::rolloutHandler(const char* filename, std::size_t size) {
   // SHOULD NOT LOG ANYTHING HERE BECAUSE LOG FILE IS CLOSED!
-  // REMOVE OLD LOG
-  remove(filename);
+  // Keep the file: easylogging reopens the name with truncation, emptying
+  // the same inode. Unlinking it would let another user plant a symlink in
+  // the shared directory before that reopen.
 }
 
 void LogHandler::setupStdoutLogger() {
