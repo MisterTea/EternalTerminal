@@ -1,8 +1,8 @@
 #include "ClientConnection.hpp"
 
 namespace et {
-const string ClientConnection::LEGACY_SERVER_REATTACH_ERROR =
-    "Server does not support session reattach; upgrade etserver";
+const string ClientConnection::UNAUTHENTICATED_SERVER_ERROR =
+    "Server did not authenticate the connection; upgrade etserver";
 
 ClientConnection::ClientConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
@@ -111,7 +111,7 @@ bool ClientConnection::connect() {
     if (newFd != -1) {
       socketHandler->close(newFd);
     }
-    if (err.what() == LEGACY_SERVER_REATTACH_ERROR) {
+    if (err.what() == UNAUTHENTICATED_SERVER_ERROR) {
       throw;
     }
   }
@@ -163,14 +163,12 @@ void ClientConnection::connectHandshake(int fd, et::ConnectResponse* response,
       socketHandler->readProto<et::ConnectResponse>(
           fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
   if (!challengeOrResponse.has_authchallenge()) {
-    // Legacy handshake for peers without the challenge capability. Remove at
-    // the next PROTOCOL_VERSION bump. A reattaching client must not accept an
-    // unchallenged success: it carries no proof of the passkey, and it would
-    // restart the session's key at nonce zero, reusing keystream from the
-    // session's first connection.
-    if (resetIntent && (challengeOrResponse.status() == NEW_CLIENT ||
-                        challengeOrResponse.status() == RETURNING_CLIENT)) {
-      throw std::runtime_error(LEGACY_SERVER_REATTACH_ERROR);
+    // Servers send refusals without a challenge. A success without one is
+    // unauthenticated, and accepting it restarts this key's nonces at zero,
+    // reusing keystream from the session's first connection.
+    if (challengeOrResponse.status() == NEW_CLIENT ||
+        challengeOrResponse.status() == RETURNING_CLIENT) {
+      throw std::runtime_error(UNAUTHENTICATED_SERVER_ERROR);
     }
     *response = challengeOrResponse;
     response->clear_resetrequired();

@@ -69,6 +69,20 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         return;
       }
     }
+    if (!request.supportschallenge()) {
+      // The client id travels in the clear, so a peer that cannot prove the
+      // passkey must not connect. Released protocol-6 clients predate the
+      // challenge and read only this single response.
+      LOG(INFO) << "Rejecting client without challenge support";
+      et::ConnectResponse response;
+      response.set_status(INVALID_KEY);
+      response.set_error(
+          "Client authentication required; upgrade et to a version with the "
+          "challenge handshake");
+      socketHandler->writeProto(clientSocketFd, response, true);
+      socketHandler->close(clientSocketFd);
+      return;
+    }
     clientId = request.clientid();
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;
@@ -91,15 +105,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
           removedClientIds.find(clientId) != removedClientIds.end();
     }
 
-    // Legacy handshake for peers without the challenge capability. Remove at
-    // the next PROTOCOL_VERSION bump.
-    const bool legacyPeer = !request.supportschallenge();
     bool authenticated = false;
     string authChallenge;
-    const bool resetIntent = !legacyPeer && request.resetintent();
+    const bool resetIntent = request.resetintent();
     if (clientKeyExistsNow) {
       authenticated =
-          legacyPeer ||
           authenticateClient(clientSocketFd, clientId, clientKey,
                              request.version(), resetIntent, &authChallenge);
     }
@@ -129,8 +139,7 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       errorStream << "Client is not registered";
       response.set_error(errorStream.str());
       // Right after a restart, terminals may not have re-registered yet.
-      if (!legacyPeer && !clientWasRemoved &&
-          time(NULL) - startTime_ < recoveryGraceSeconds) {
+      if (!clientWasRemoved && time(NULL) - startTime_ < recoveryGraceSeconds) {
         LOG(INFO) << "Within the recovery grace window; asking client "
                   << clientId << " to retry.";
         response.set_status(RETRY_LATER);
@@ -151,31 +160,17 @@ void ServerConnection::clientHandler(int clientSocketFd) {
       // A known key with no connection is either a new session or a terminal
       // that re-registered after an etserver restart.
       const bool resume = shouldResumeAsReturning(clientId);
-      if (legacyPeer && resume) {
-        // Legacy peers can't reset; answer as a pre-restart-recovery server.
-        LOG(INFO) << "Legacy client " << clientId
-                  << " cannot resume after restart";
-        et::ConnectResponse response;
-        response.set_status(INVALID_KEY);
-        response.set_error("Client is not registered");
-        socketHandler->writeProto(clientSocketFd, response, true);
-        // The partial connection owns clientSocketFd and closes it.
-        destroyPartialConnection(clientId);
-        return;
-      }
       const string resetSalt =
           resume ? CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES)
                  : string();
       const ConnectStatus status = resume ? RETURNING_CLIENT : NEW_CLIENT;
       et::ConnectResponse response;
       response.set_status(status);
-      if (!legacyPeer) {
-        response.set_resetrequired(resume);
-        response.set_resetsalt(resetSalt);
-        response.set_resetproof(CryptoHandler::resetDecisionProof(
-            clientKey, clientId, PROTOCOL_VERSION, authChallenge, status,
-            resume, resetSalt));
-      }
+      response.set_resetrequired(resume);
+      response.set_resetsalt(resetSalt);
+      response.set_resetproof(CryptoHandler::resetDecisionProof(
+          clientKey, clientId, PROTOCOL_VERSION, authChallenge, status, resume,
+          resetSalt));
       socketHandler->writeProto(clientSocketFd, response, true);
 
       if (resume) {
@@ -210,13 +205,11 @@ void ServerConnection::clientHandler(int clientSocketFd) {
               : string();
       et::ConnectResponse response;
       response.set_status(RETURNING_CLIENT);
-      if (!legacyPeer) {
-        response.set_resetrequired(resetIntent);
-        response.set_resetsalt(resetSalt);
-        response.set_resetproof(CryptoHandler::resetDecisionProof(
-            clientKey, clientId, PROTOCOL_VERSION, authChallenge,
-            RETURNING_CLIENT, resetIntent, resetSalt));
-      }
+      response.set_resetrequired(resetIntent);
+      response.set_resetsalt(resetSalt);
+      response.set_resetproof(CryptoHandler::resetDecisionProof(
+          clientKey, clientId, PROTOCOL_VERSION, authChallenge,
+          RETURNING_CLIENT, resetIntent, resetSalt));
       socketHandler->writeProto(clientSocketFd, response, true);
 
       // Deliberately not under classMutex: recover() blocks on socket I/O for

@@ -14,7 +14,8 @@ message ConnectRequest {
   optional int32 version = 2;
   optional bool resetIntent = 3 [default = false];
   // Set by clients that implement the authChallenge/ConnectAuth exchange.
-  // Servers answer requests without it using the protocol-6 handshake.
+  // Servers refuse requests without it. The flag goes away at the next
+  // PROTOCOL_VERSION bump.
   optional bool supportsChallenge = 4 [default = false];
 }
 

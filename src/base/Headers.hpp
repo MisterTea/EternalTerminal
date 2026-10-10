@@ -204,9 +204,9 @@ inline int setenv(const char* name, const char* value, int overwrite) {
 
 using namespace std;
 
-// The ET protocol version supported by this binary. The legacy handshake path
-// in ServerConnection and ClientConnection exists only for protocol-6 peers;
-// remove it when this is next bumped.
+// The ET protocol version supported by this binary. ConnectRequest's
+// supportsChallenge flag exists only for protocol-6 peers; remove it when this
+// is next bumped.
 static const int PROTOCOL_VERSION = 6;
 
 // --kill rides in TERMINAL_INFO so older peers ignore it instead of aborting.
