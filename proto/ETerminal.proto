@@ -59,6 +59,7 @@ message PortForwardSourceResponse {
 
 message PortForwardDestinationRequest {
   optional SocketEndpoint destination = 1;
+  // Opaque request token, echoed in clientfd; not a peer OS descriptor.
   optional int32 fd = 2;
 }
 

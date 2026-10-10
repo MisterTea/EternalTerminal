@@ -52,6 +52,18 @@ PortForwardHandler::~PortForwardHandler() {
   }
 }
 
+void PortForwardHandler::prunePendingDestinations() {
+  for (auto it = pendingDestinations.begin();
+       it != pendingDestinations.end();) {
+    const auto handler = it->second.handler.lock();
+    if (!handler || !handler->hasUnassignedFd(it->second.fd)) {
+      it = pendingDestinations.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
+
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
                                 vector<PortForwardData>* dataToSend,
                                 const set<int>* readyFds) {
@@ -60,12 +72,19 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
     if (it->update(dataToSend, readyFds)) {
       ++forwardFdsGeneration;
     }
+  }
+  // Prune after expiry and before accepts can recycle an expired fd.
+  prunePendingDestinations();
+  for (auto& it : sourceHandlers) {
     SocketEndpoint destination;
     int fd = it->listen(&destination, readyFds);
     if (fd >= 0) {
+      const int requestId = nextDestinationRequest;
+      nextDestinationRequest = requestId == INT32_MAX ? 1 : requestId + 1;
+      pendingDestinations[requestId] = PendingDestination{it, fd};
       PortForwardDestinationRequest pfr;
       *(pfr.mutable_destination()) = destination;
-      pfr.set_fd(fd);
+      pfr.set_fd(requestId);
       requests->push_back(pfr);
     }
   }
@@ -324,19 +343,42 @@ void PortForwardHandler::handlePacket(const Packet& packet,
     case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
       PortForwardDestinationResponse pfdr =
           stringToProto<PortForwardDestinationResponse>(packet.getPayload());
+      const auto pending = pendingDestinations.find(pfdr.clientfd());
+      const auto sourceHandler = pending == pendingDestinations.end()
+                                     ? nullptr
+                                     : pending->second.handler.lock();
+      const int sourceFd =
+          pending == pendingDestinations.end() ? -1 : pending->second.fd;
+      if (pending != pendingDestinations.end()) {
+        pendingDestinations.erase(pending);
+      }
+      if (!sourceHandler || !sourceHandler->hasUnassignedFd(sourceFd)) {
+        // The source expired or was removed. Close any destination the peer
+        // opened rather than attach it to a reused fd.
+        LOG(INFO) << "Ignoring stale destination response " << pfdr.clientfd();
+        if (!pfdr.has_error() && pfdr.has_socketid() && connection) {
+          PortForwardData closed;
+          closed.set_socketid(pfdr.socketid());
+          closed.set_sourcetodestination(true);
+          closed.set_closed(true);
+          connection->writePacket(Packet(TerminalPacketType::PORT_FORWARD_DATA,
+                                         protoToString(closed)));
+        }
+        break;
+      }
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
         for (auto& handler : sourceHandlers) {
-          handler->finishSocksConnect(pfdr.clientfd(), false);
+          handler->finishSocksConnect(sourceFd, false);
         }
-        closeSourceFd(pfdr.clientfd());
+        closeSourceFd(sourceFd);
       } else {
         LOG(INFO) << "Received socket/fd map from server: " << pfdr.socketid()
                   << " " << pfdr.clientfd();
-        addSourceSocketId(pfdr.socketid(), pfdr.clientfd());
+        addSourceSocketId(pfdr.socketid(), sourceFd);
         for (auto& handler : sourceHandlers) {
-          handler->finishSocksConnect(pfdr.clientfd(), true);
+          handler->finishSocksConnect(sourceFd, true);
         }
       }
       break;

@@ -606,8 +606,8 @@ TEST_CASE("PortForwardHandler handlePacket PORT_FORWARD_DESTINATION_RESPONSE",
 
   // The socket should be mapped now, verify by sending data
   handler.sendDataToSourceOnSocket(456, "test");
-  REQUIRE(networkHandler->writes.count(clientFd) == 1);
-  CHECK(networkHandler->writes[clientFd][0] == "test");
+  REQUIRE(networkHandler->writes.count(123) == 1);
+  CHECK(networkHandler->writes[123][0] == "test");
 }
 
 TEST_CASE(
@@ -655,7 +655,7 @@ TEST_CASE(
   // The client fd should be closed
   CHECK(std::find(networkHandler->closedFds.begin(),
                   networkHandler->closedFds.end(),
-                  clientFd) != networkHandler->closedFds.end());
+                  123) != networkHandler->closedFds.end());
 }
 
 TEST_CASE("PortForwardHandler closeSourceFd", "[PortForwardHandler]") {
@@ -685,15 +685,14 @@ TEST_CASE("PortForwardHandler closeSourceFd", "[PortForwardHandler]") {
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  int clientFd = requests[0].fd();
 
   // Close the source fd
-  handler.closeSourceFd(clientFd);
+  handler.closeSourceFd(123);
 
   // Verify it was closed
   CHECK(std::find(networkHandler->closedFds.begin(),
                   networkHandler->closedFds.end(),
-                  clientFd) != networkHandler->closedFds.end());
+                  123) != networkHandler->closedFds.end());
 }
 
 TEST_CASE("PortForwardHandler addSourceSocketId", "[PortForwardHandler]") {
@@ -723,15 +722,14 @@ TEST_CASE("PortForwardHandler addSourceSocketId", "[PortForwardHandler]") {
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  int clientFd = requests[0].fd();
 
   // Add socket ID mapping
-  handler.addSourceSocketId(456, clientFd);
+  handler.addSourceSocketId(456, 123);
 
   // Verify we can send data to it
   handler.sendDataToSourceOnSocket(456, "test");
-  REQUIRE(networkHandler->writes.count(clientFd) == 1);
-  CHECK(networkHandler->writes[clientFd][0] == "test");
+  REQUIRE(networkHandler->writes.count(123) == 1);
+  CHECK(networkHandler->writes[123][0] == "test");
 }
 
 TEST_CASE("PortForwardHandler closeSourceSocketId", "[PortForwardHandler]") {
@@ -761,8 +759,7 @@ TEST_CASE("PortForwardHandler closeSourceSocketId", "[PortForwardHandler]") {
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  int clientFd = requests[0].fd();
-  handler.addSourceSocketId(456, clientFd);
+  handler.addSourceSocketId(456, 123);
 
   // Close by socket ID
   handler.closeSourceSocketId(456);
@@ -770,7 +767,7 @@ TEST_CASE("PortForwardHandler closeSourceSocketId", "[PortForwardHandler]") {
   // Verify it was closed
   CHECK(std::find(networkHandler->closedFds.begin(),
                   networkHandler->closedFds.end(),
-                  clientFd) != networkHandler->closedFds.end());
+                  123) != networkHandler->closedFds.end());
 }
 
 TEST_CASE("PortForwardHandler getForwardFds with no handlers",
@@ -890,15 +887,14 @@ TEST_CASE("PortForwardHandler sendDataToSourceOnSocket",
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  int clientFd = requests[0].fd();
-  handler.addSourceSocketId(456, clientFd);
+  handler.addSourceSocketId(456, 123);
 
   // Send data
   handler.sendDataToSourceOnSocket(456, "hello world");
 
   // Verify data was written
-  REQUIRE(networkHandler->writes.count(clientFd) == 1);
-  CHECK(networkHandler->writes[clientFd][0] == "hello world");
+  REQUIRE(networkHandler->writes.count(123) == 1);
+  CHECK(networkHandler->writes[123][0] == "hello world");
 }
 
 TEST_CASE("PortForwardHandler removeSource stops listening",
@@ -1016,14 +1012,14 @@ TEST_CASE("PortForwardHandler SOCKS -D chooses destination after connect",
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  CHECK(requests[0].fd() == 200);
+  CHECK(requests[0].fd() > 0);
   CHECK(requests[0].destination().name() == "10.0.0.2");
   CHECK(requests[0].destination().port() == 443);
   REQUIRE(networkHandler->writes.count(200) == 1);
   CHECK(networkHandler->writes[200][0] == string("\x05\x00", 2));
 
   PortForwardDestinationResponse ok;
-  ok.set_clientfd(200);
+  ok.set_clientfd(requests[0].fd());
   ok.set_socketid(7);
   handler.handlePacket(
       Packet(uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
@@ -1075,12 +1071,12 @@ TEST_CASE(
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  CHECK(requests[0].fd() == 210);
+  CHECK(requests[0].fd() > 0);
   CHECK(requests[0].destination().name() == "10.0.0.3");
   CHECK(requests[0].destination().port() == 8443);
 
   PortForwardDestinationResponse ok;
-  ok.set_clientfd(210);
+  ok.set_clientfd(requests[0].fd());
   ok.set_socketid(9);
   handler.handlePacket(
       Packet(uint8_t(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE),
@@ -1128,10 +1124,10 @@ TEST_CASE("PortForwardHandler SOCKS concurrent channels",
   CHECK(requests[1].destination().name() == "db.internal");
   CHECK(requests[1].destination().port() == 5432);
 
-  handler.addSourceSocketId(11, requests[0].fd());
-  handler.addSourceSocketId(22, requests[1].fd());
-  networkHandler->queueRead(requests[0].fd(), 4, "one!");
-  networkHandler->queueRead(requests[1].fd(), 4, "two!");
+  handler.addSourceSocketId(11, 201);
+  handler.addSourceSocketId(22, 202);
+  networkHandler->queueRead(201, 4, "one!");
+  networkHandler->queueRead(202, 4, "two!");
 
   dataToSend.clear();
   handler.update(&requests, &dataToSend);
@@ -1151,8 +1147,8 @@ TEST_CASE("PortForwardHandler SOCKS concurrent channels",
 
   handler.sendDataToSourceOnSocket(11, "A");
   handler.sendDataToSourceOnSocket(22, "B");
-  CHECK(networkHandler->writes[requests[0].fd()].back() == "A");
-  CHECK(networkHandler->writes[requests[1].fd()].back() == "B");
+  CHECK(networkHandler->writes[201].back() == "A");
+  CHECK(networkHandler->writes[202].back() == "B");
 }
 
 TEST_CASE("PortForwardHandler SOCKS unix destination via domain",
@@ -1208,7 +1204,7 @@ TEST_CASE("PortForwardHandler -W stdio byte forward without shell",
   handler.update(&requests, &dataToSend);
 
   REQUIRE(requests.size() == 1);
-  CHECK(requests[0].fd() == inPipe[0]);
+  CHECK(requests[0].fd() > 0);
   CHECK(requests[0].destination().name() == "127.0.0.1");
   CHECK(requests[0].destination().port() == 9);
 
@@ -1254,3 +1250,83 @@ TEST_CASE("PortForwardHandler -W stdio byte forward without shell",
   close(outPipe[1]);
 }
 #endif
+
+TEST_CASE("Late forwarding responses cannot attach a recycled descriptor",
+          "[PortForwardHandler]") {
+  class InspectableForwardHandler : public PortForwardHandler {
+   public:
+    using PortForwardHandler::PortForwardHandler;
+    void expire(int fd) { sourceHandlers.at(0)->expireForTest(fd); }
+  };
+  auto network = make_shared<FakePortForwardSocketHandler>();
+  auto pipe = make_shared<FakePortForwardSocketHandler>();
+  InspectableForwardHandler handler(network, pipe);
+  auto connection = make_shared<FakeConnection>();
+  PortForwardSourceRequest source;
+  source.mutable_source()->set_port(8081);
+  source.mutable_destination()->set_port(9091);
+  REQUIRE_FALSE(handler.createSource(source, nullptr, -1, -1).has_error());
+  const int listener = *network->getEndpointFds(source.source()).begin();
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> data;
+  network->queueAccept(listener, 123);
+  handler.update(&requests, &data);
+  REQUIRE(requests.size() == 1);
+  const int oldToken = requests.back().fd();
+  handler.expire(123);
+  network->queueAccept(listener, 123);
+  handler.update(&requests, &data);
+  REQUIRE(requests.size() == 2);
+  REQUIRE(requests.back().fd() != oldToken);
+  PortForwardDestinationResponse late;
+  late.set_clientfd(oldToken);
+  late.set_socketid(44);
+  handler.handlePacket(
+      Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE,
+             protoToString(late)),
+      connection);
+  handler.sendDataToSourceOnSocket(44, "wrong");
+  REQUIRE(network->writes.count(123) == 0);
+  REQUIRE(connection->sentPackets.size() == 1);
+  PortForwardDestinationResponse good;
+  good.set_clientfd(requests.back().fd());
+  good.set_socketid(45);
+  handler.handlePacket(
+      Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE,
+             protoToString(good)),
+      connection);
+  handler.sendDataToSourceOnSocket(45, "right");
+  REQUIRE(network->writes.at(123).back() == "right");
+}
+
+TEST_CASE("Late forwarding responses close destinations after source removal",
+          "[PortForwardHandler]") {
+  auto network = make_shared<FakePortForwardSocketHandler>();
+  auto pipe = make_shared<FakePortForwardSocketHandler>();
+  PortForwardHandler handler(network, pipe);
+  auto connection = make_shared<FakeConnection>();
+  PortForwardSourceRequest source;
+  source.mutable_source()->set_port(8081);
+  source.mutable_destination()->set_port(9091);
+  REQUIRE_FALSE(handler.createSource(source, nullptr, -1, -1).has_error());
+  const int listener = *network->getEndpointFds(source.source()).begin();
+  network->queueAccept(listener, 123);
+  vector<PortForwardDestinationRequest> requests;
+  vector<PortForwardData> data;
+  handler.update(&requests, &data);
+  REQUIRE(requests.size() == 1);
+  REQUIRE(handler.removeSource(source));
+  PortForwardDestinationResponse late;
+  late.set_clientfd(requests.front().fd());
+  late.set_socketid(44);
+  handler.handlePacket(
+      Packet(TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE,
+             protoToString(late)),
+      connection);
+  REQUIRE(connection->sentPackets.size() == 1);
+  PortForwardData closed;
+  REQUIRE(closed.ParseFromString(connection->sentPackets.front().getPayload()));
+  CHECK(closed.socketid() == 44);
+  CHECK(closed.sourcetodestination());
+  CHECK(closed.closed());
+}
