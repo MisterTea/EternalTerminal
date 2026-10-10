@@ -17,27 +17,93 @@ UserTerminalRouter::UserTerminalRouter(
 #endif
 }
 
+std::optional<set<int>> UserTerminalRouter::pendingRegistrationFds(
+    uint64_t& generation) const {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  if (generation == pendingFdsGeneration) {
+    return std::nullopt;
+  }
+  generation = pendingFdsGeneration;
+  set<int> fds;
+  for (const auto& entry : pendingRegistrations) {
+    fds.insert(entry.first);
+  }
+  return fds;
+}
+
 IdKeyPair UserTerminalRouter::acceptNewConnection() {
   lock_guard<recursive_mutex> guard(routerMutex);
-  LOG(INFO) << "Listening to id/key FIFO";
-  const int terminalFd = socketHandler->accept(serverFd);
-  if (terminalFd < 0) {
-    if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
-      FATAL_FAIL(-1);  // STFATAL with the error
+  const int accepted = socketHandler->accept(serverFd);
+  if (accepted >= 0) {
+    if (pendingRegistrations.size() >= MAX_PENDING_REGISTRATIONS) {
+      LOG(WARNING) << "Too many pending router registrations; refusing";
+      socketHandler->close(accepted);
     } else {
-      return IdKeyPair({"", ""});  // Nothing to accept this time
+      pendingRegistrations.emplace(accepted, PendingRegistration{});
+      ++pendingFdsGeneration;
     }
   }
-
-  LOG(INFO) << "Connected";
-
-  try {
-    Packet packet;
-    if (!socketHandler->readPacket(terminalFd, &packet)) {
-      LOG(ERROR) << "Empty router registration packet";
-      socketHandler->close(terminalFd);
-      return IdKeyPair({"", ""});
+  for (auto it = pendingRegistrations.begin();
+       it != pendingRegistrations.end();) {
+    const int fd = it->first;
+    auto& pending = it->second;
+    bool failed = std::chrono::steady_clock::now() - pending.started >=
+                  REGISTRATION_TIMEOUT;
+    while (!failed && socketHandler->hasData(fd)) {
+      const size_t target =
+          pending.length < 0
+              ? sizeof(int64_t)
+              : sizeof(int64_t) + static_cast<size_t>(pending.length);
+      char buffer[MAX_REGISTRATION_LENGTH];
+      const auto n =
+          socketHandler->read(fd, buffer, target - pending.bytes.size());
+      const int error = GetErrno();
+      if (n < 0 &&
+          (error == EAGAIN || error == EWOULDBLOCK || error == EINTR)) {
+        break;
+      }
+      if (n <= 0) {
+        failed = true;
+        break;
+      }
+      pending.bytes.append(buffer, static_cast<size_t>(n));
+      if (pending.length < 0 && pending.bytes.size() == sizeof(int64_t)) {
+        memcpy(&pending.length, pending.bytes.data(), sizeof(int64_t));
+        if (pending.length < Packet::HEADER_SIZE ||
+            pending.length > MAX_REGISTRATION_LENGTH) {
+          failed = true;
+          break;
+        }
+      }
+      if (pending.length >= 0 &&
+          pending.bytes.size() ==
+              sizeof(int64_t) + static_cast<size_t>(pending.length)) {
+        Packet packet(pending.bytes.substr(sizeof(int64_t)));
+        it = pendingRegistrations.erase(it);
+        ++pendingFdsGeneration;
+        auto result = registerTerminal(fd, packet);
+        if (!result.id.empty()) {
+          return result;
+        }
+        // registerTerminal closed the rejected fd.
+        failed = false;
+        break;
+      }
     }
+    if (failed) {
+      socketHandler->close(fd);
+      it = pendingRegistrations.erase(it);
+      ++pendingFdsGeneration;
+    } else if (it != pendingRegistrations.end() && it->first == fd) {
+      ++it;
+    }
+  }
+  return IdKeyPair({"", ""});
+}
+
+IdKeyPair UserTerminalRouter::registerTerminal(int terminalFd,
+                                               const Packet& packet) {
+  try {
     if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
       LOG(ERROR) << "Got an invalid packet header from router peer: "
                  << int(packet.getHeader());
@@ -191,6 +257,11 @@ void UserTerminalRouter::shutdown() {
     socketHandler->close(it.second.fd());
   }
   idInfoMap.clear();
+  for (const auto& entry : pendingRegistrations) {
+    socketHandler->close(entry.first);
+  }
+  pendingRegistrations.clear();
+  ++pendingFdsGeneration;
   if (serverFd >= 0) {
     // The socket handler doesn't track listen fds.
     ::close(serverFd);
