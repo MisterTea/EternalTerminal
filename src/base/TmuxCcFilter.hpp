@@ -77,32 +77,29 @@ inline bool tmuxCcStartsAtLineBoundary(const string& data) {
 inline TmuxCcFilterResult filterTmuxCc(const string& data,
                                        bool inControlMode = false,
                                        bool discarding = true) {
+  TmuxCcFilterResult result;
+  size_t start = 0;
   if (!data.empty() && inControlMode && !tmuxCcStartsAtLineBoundary(data)) {
     // A %output / %extended-output line was already partly sent. Cutting it
     // leaves a non-`%` fragment as the next line; iTerm2 treats that as an
     // unrecognized command and tears down tmux mode. Finish this line, then
-    // filter complete messages as usual.
-    size_t newline = data.find('\n');
-    if (newline == string::npos) {
-      TmuxCcFilterResult result;
-      result.kept = data;
-      return result;
+    // filter complete messages as usual. Loop rather than recurse per line:
+    // the server controls how many lines the backlog holds.
+    while (start < data.size() && data[start] != '%' && data[start] != '\n') {
+      const size_t newline = data.find('\n', start);
+      if (newline == string::npos) {
+        // No line boundary yet: keep the whole remainder.
+        result.kept.append(data, start, string::npos);
+        return result;
+      }
+      result.kept.append(data, start, newline + 1 - start);
+      start = newline + 1;
     }
-    TmuxCcFilterResult rest =
-        filterTmuxCc(data.substr(newline + 1), true, discarding);
-    TmuxCcFilterResult result;
-    result.kept.assign(data, 0, newline + 1);
-    result.kept += rest.kept;
-    result.droppable = rest.droppable;
-    result.dropped = rest.dropped;
-    result.skipUntilNewline = rest.skipUntilNewline;
-    return result;
   }
 
-  TmuxCcFilterResult result;
   bool inBeginBlock = false;
-  size_t lineStart = 0;
-  for (size_t i = 0; i < data.size(); ++i) {
+  size_t lineStart = start;
+  for (size_t i = start; i < data.size(); ++i) {
     if (data[i] != '\n') {
       continue;
     }

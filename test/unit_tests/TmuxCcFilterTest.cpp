@@ -378,3 +378,35 @@ TEST_CASE(
   REQUIRE(out.find("Broadcast") == string::npos);
   REQUIRE(filter.apply("prompt$ ls\n") == "prompt$ ls\n");
 }
+
+TEST_CASE("filterTmuxCc handles a huge mid-line backlog without recursion",
+          "[TmuxCcFilter]") {
+  // The server controls the backlog; a mid-line prelude used to recurse once
+  // per line and exhaust the stack.
+  const size_t lines = 200000;
+  string backlog;
+  backlog.reserve(lines * 2);
+  backlog += "x";  // Start mid-line so the prelude path is exercised.
+  for (size_t i = 0; i < lines; ++i) {
+    backlog += "y\n";
+  }
+  const TmuxCcFilterResult result = filterTmuxCc(backlog, true, true);
+  REQUIRE(result.kept.size() == backlog.size());
+  REQUIRE(result.dropped == 0);
+}
+
+TEST_CASE("filterTmuxCc keeps a multi-line prelude through the next boundary",
+          "[TmuxCcFilter]") {
+  // Several non-'%' lines precede the boundary; each is kept exactly once.
+  const string data = "aa\nbb\n%exit\n";
+  const TmuxCcFilterResult result = filterTmuxCc(data, true, true);
+  REQUIRE(result.kept == data);
+  REQUIRE(result.droppable.empty());
+  REQUIRE(result.dropped == 0);
+
+  const string data2 = "aa\nbb\n\n%foo\n";
+  const TmuxCcFilterResult result2 = filterTmuxCc(data2, true, true);
+  REQUIRE(result2.kept == data2);
+  REQUIRE(result2.droppable.empty());
+  REQUIRE(result2.dropped == 0);
+}
