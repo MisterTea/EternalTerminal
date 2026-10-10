@@ -116,6 +116,12 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
   disconnectedBytes = 0;
+  // Trim as a connected write would, so a quick reconnect and disconnect
+  // cannot stack another disconnect buffer on an untrimmed backup.
+  while (backupSize > MAX_BACKUP_BYTES) {
+    backupSize -= backupBuffer.back().length();
+    backupBuffer.pop_back();
+  }
 }
 
 void BackedWriter::reset(const string& salt) {

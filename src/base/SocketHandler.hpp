@@ -73,6 +73,9 @@ class SocketHandler {
 
   /** @brief Default max length for length-prefixed protobuf reads (128 MiB). */
   static constexpr int64_t DEFAULT_MAX_PROTO_LENGTH = 128 * 1024 * 1024;
+  /** @brief Max length for a recovery CatchupBuffer, which can exceed the
+   * default (see the static_assert in Connection.cpp). */
+  static constexpr int64_t MAX_CATCHUP_PROTO_LENGTH = 144 * 1024 * 1024;
   /**
    * @brief Max length for pre-authentication / handshake protos (4 KiB).
    *
@@ -121,12 +124,17 @@ class SocketHandler {
    */
   template <typename T>
   inline void writeProto(int fd, const T& t, bool timeout) {
+    writeProto(fd, t, timeout, DEFAULT_MAX_PROTO_LENGTH);
+  }
+
+  template <typename T>
+  inline void writeProto(int fd, const T& t, bool timeout, int64_t maxLength) {
     string s;
     if (!t.SerializeToString(&s)) {
       STFATAL << "Serialization of " << t.GetTypeName() << " failed!";
     }
     int64_t length = s.length();
-    if (length < 0 || length > 128 * 1024 * 1024) {
+    if (length < 0 || length > maxLength) {
       STFATAL << "Invalid proto length: " << length << " For proto "
               << t.GetTypeName();
     }

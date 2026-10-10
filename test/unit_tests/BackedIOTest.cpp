@@ -361,13 +361,15 @@ TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
           BackedWriter::DISCONNECT_BUFFER_BYTES / (1024 * 1024) - 1);
   REQUIRE(!writer->hasBufferCapacity(2 * 1024 * 1024));
 
-  // Reviving on a new socket resets the disconnect accounting.
+  // Reviving on a new socket resets the disconnect accounting and trims the
+  // backup, dropping the oldest packets.
   const int newFd = handler->createChannel();
   writer->revive(newFd);
   REQUIRE(writer->hasBufferCapacity(1024));
   writer->invalidateSocket();
   REQUIRE(writer->write(Packet(1, chunk)) ==
           BackedWriterWriteState::BUFFERED_ONLY);
+  REQUIRE_THROWS_AS(writer->recover(0), std::runtime_error);
 
   handler->close(fd);
 }
