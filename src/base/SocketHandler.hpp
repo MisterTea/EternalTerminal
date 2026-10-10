@@ -57,6 +57,9 @@ class SocketHandler {
    */
   void readAll(int fd, void* buf, size_t count, int idleTimeoutSec,
                int absoluteTimeoutSec);
+  /** @brief Reads a framed body incrementally, allocating only as bytes
+   * arrive, with one absolute deadline for the entire body. */
+  string readSizedString(int fd, size_t length, bool timeout);
   /**
    * @brief Attempts to write the full buffer and returns -1 on timeout/failure.
    * @return Total bytes written or -1 when the socket deadlocks.
@@ -106,8 +109,7 @@ class SocketHandler {
     if (length == 0) {
       return t;
     }
-    string s(length, '\0');
-    readAll(fd, &s[0], length, timeout);
+    string s = readSizedString(fd, static_cast<size_t>(length), timeout);
     if (!t.ParseFromString(s)) {
       throw std::runtime_error("Invalid proto");
     }

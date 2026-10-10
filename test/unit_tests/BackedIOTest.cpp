@@ -513,6 +513,24 @@ TEST_CASE("SocketHandler readProto enforces max length before allocating",
   handler.close(fds[1]);
 }
 
+TEST_CASE("SocketHandler readProto reassembles bodies across read chunks",
+          "[SocketHandler]") {
+  FdSocketHandler handler;
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+
+  et::CatchupBuffer sent;
+  sent.add_buffer(string(200 * 1024, 'x'));
+  std::thread writer([&]() { handler.writeProto(fds[1], sent, true); });
+  const auto received = handler.readProto<et::CatchupBuffer>(fds[0], true);
+  writer.join();
+  REQUIRE(received.buffer_size() == 1);
+  REQUIRE(received.buffer(0) == sent.buffer(0));
+
+  handler.close(fds[0]);
+  handler.close(fds[1]);
+}
+
 namespace {
 void enqueueFramedLength(const shared_ptr<InMemorySocketHandler>& handler,
                          int fd, int64_t declaredLength) {
