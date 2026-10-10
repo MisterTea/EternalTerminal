@@ -449,7 +449,7 @@ string readAllStdin() {
 }
 
 // --- OSC 133 semantic-prompt support -------------------------------------
-// The pure OSC-133 parsing (regexes + extractOsc133) lives in Osc133.hpp so it
+// The pure OSC-133 parsing (scanners + extractOsc133) lives in Osc133.hpp so it
 // can be unit-tested without a pty; the detection cache and probe below add the
 // stateful, I/O-bound half that only makes sense against a live session.
 
@@ -1258,7 +1258,7 @@ string probeRead(const string& name, const string& framed,
   auto until = std::chrono::steady_clock::now();
   return readScroll(name, start, timeoutSec, [&](const string& acc, bool) {
     const auto now = std::chrono::steady_clock::now();
-    if (!sawD && std::regex_search(acc, kOsc133D)) {
+    if (!sawD && osc133ContainsMark(acc, 'D')) {
       sawD = true;  // read a beat past D for the next prompt's paste toggle
       until = now + std::chrono::milliseconds(400);
     }
@@ -1317,7 +1317,7 @@ RunProfile detectFraming(const string& name, double timeoutSec) {
     if (std::regex_search(acc, std::regex("ETCTL_EC=[0-9]*[\r\n]"))) {
       prof.usesStatusVar = std::regex_search(acc, std::regex("ETCTL_EC=[0-9]"));
       prof.bracket = acc.find("\x1b[?2004") != string::npos;
-      prof.oscRead = std::regex_search(acc, kOsc133D);
+      prof.oscRead = osc133ContainsMark(acc, 'D');
       return prof;
     }
   }
@@ -1335,7 +1335,7 @@ RunProfile detectFraming(const string& name, double timeoutSec) {
                                sentinel, timeoutSec);
   prof.usesStatusVar = std::regex_search(acc, std::regex(sentinel + "=[0-9]"));
   prof.bracket = acc.find("\x1b[?2004") != string::npos;
-  prof.oscRead = std::regex_search(acc, kOsc133D);
+  prof.oscRead = osc133ContainsMark(acc, 'D');
   return prof;
 }
 
@@ -1598,8 +1598,7 @@ int runCommand(const string& name, const string& command, double timeoutSec,
       if (oscRead) {
         // Either mark proves the line was accepted: C is emitted by preexec the
         // instant it runs, D by precmd when it finishes.
-        if (std::regex_search(acc, kOsc133C) ||
-            std::regex_search(acc, kOsc133D))
+        if (osc133ContainsMark(acc, 'C') || osc133ContainsMark(acc, 'D'))
           accepted = true;
       } else if (std::regex_search(acc, execStartRe)) {
         // kBracketMark has no C mark, but the executed start marker proves the

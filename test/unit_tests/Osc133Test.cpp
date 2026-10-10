@@ -4,6 +4,8 @@
 // are distilled from real captures of the official iTerm2 shell integrations
 // running under a pty (bash, zsh, tcsh, fish, xonsh), so a regression here maps
 // to a concrete stream one of those shells actually emits.
+#include <chrono>
+
 #include "Osc133.hpp"
 #include "TestHeaders.hpp"
 
@@ -240,4 +242,66 @@ TEST_CASE("extractOsc133 ignores orphan done-marks from the previous prompt",
     REQUIRE(body == "hi\r\n");
     REQUIRE(code == 0);
   }
+}
+
+TEST_CASE("extractOsc133 stays fast on attack-shaped marks", "[Osc133]") {
+  std::string body;
+  int code = -999;
+  const auto begin = std::chrono::steady_clock::now();
+
+  // Unterminated D plus a long digit run: the old regex form backtracked
+  // quadratically and libc++ aborted the match with regex_error at ~2 KiB.
+  const std::string abortShape = C_BEL + "\x1b]133;D;" + std::string(8192, '1');
+  REQUIRE_FALSE(extractOsc133(abortShape, &body, &code));
+
+  // Real SGR units around a single glyph: quadratic in the old EOL-dance
+  // regex (a failing-match shape that never throws).
+  const std::string sgr = "\x1b[1m";
+  std::string sgrWall;
+  sgrWall.reserve(2048 * sgr.size());
+  for (size_t i = 0; i < 2048; ++i) {
+    sgrWall += sgr;
+  }
+  const std::string burnShape =
+      C_BEL + "out\r\n" + sgrWall + "X" + sgrWall + "    \rZ\x1b]133;D;0\x07";
+  REQUIRE(extractOsc133(burnShape, &body, &code));
+
+  const auto elapsed = std::chrono::steady_clock::now() - begin;
+  REQUIRE(elapsed < std::chrono::seconds(5));
+}
+
+TEST_CASE("OSC parsing preserves malformed tails and bounds numeric statuses",
+          "[Osc133]") {
+  string body;
+  int code;
+  for (const string& output :
+       {string("hello\r"), string("hello\r "), string("hello\n \r")}) {
+    REQUIRE(extractOsc133(C_BEL + output + dBel(0), &body, &code));
+    REQUIRE(body == output);
+  }
+  REQUIRE(extractOsc133(C_BEL + "out\x1b]133;D;" + string(8192, '9') + "\x07",
+                        &body, &code));
+  REQUIRE(body == "out");
+  REQUIRE(code == -1);
+}
+
+TEST_CASE(
+    "OSC prep trimming is linear across adjacent marks and reset parameters",
+    "[Osc133]") {
+  const auto start = std::chrono::steady_clock::now();
+  string prep;
+  for (int i = 0; i < 20000; ++i) prep += "\x1b]1337;x\x07";
+  string body = prep + "real output" + prep;
+  trimPromptPrep(&body);
+  REQUIRE(body == "real output");
+  body = "\x1b[" + string(8192, '0') + "X";
+  const string original = body;
+  trimPromptPrep(&body);
+  REQUIRE(body == original);
+  string dances;
+  for (int i = 0; i < 100000; ++i) dances += "x \r";
+  body = "\x1b]7;" + dances;
+  trimPromptPrep(&body);
+  REQUIRE(body == "\x1b]7;");
+  REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
 }

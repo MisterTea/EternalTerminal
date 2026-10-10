@@ -1,9 +1,9 @@
 #ifndef __ET_OSC133_HPP__
 #define __ET_OSC133_HPP__
 
-#include <cstdlib>
-#include <regex>
+#include <climits>
 #include <string>
+#include <vector>
 
 // --- OSC 133 semantic-prompt support -------------------------------------
 // A shell with FinalTerm/iTerm2 shell integration brackets each command with
@@ -19,12 +19,131 @@ namespace et {
 // The command marks. C = "output starts here", D = "command done" with an
 // optional numeric exit code. Integrations vary the payload -- iTerm2's
 // fish/xonsh append ";aid=<id>", C may carry ";<CR>" or ";cmdline_url=..." --
-// so [^\x07\x1b]* absorbs whatever trails the essential part, and either a BEL
-// (\a) or an ST (ESC \) terminates (shells differ). kOsc133D's group 2 is the
-// exit code when present.
-inline const std::regex kOsc133C("\x1b\\]133;C[^\x07\x1b]*(\x07|\x1b\\\\)");
-inline const std::regex kOsc133D(
-    "\x1b\\]133;D(;([0-9]+))?[^\x07\x1b]*(\x07|\x1b\\\\)");
+// so trailing annotations are skipped, and either a BEL (\a) or an ST (ESC \)
+// terminates (shells differ). The remote host controls this text, so scan it
+// linearly rather than with a backtracking regex. On success, *pos is the
+// mark's first byte, *end the byte after its terminator, and *code the D
+// mark's exit status (-1 when absent or for C marks).
+inline bool osc133FindMark(const std::string& s, size_t from, char mark,
+                           size_t* pos, size_t* end, int* code) {
+  for (size_t i = s.find('\x1b', from); i != std::string::npos;
+       i = s.find('\x1b', i + 1)) {
+    if (s.size() - i < 7 || s.compare(i, 6, "\x1b]133;") != 0 ||
+        s[i + 6] != mark) {
+      continue;
+    }
+    size_t p = i + 7;
+    int parsedCode = -1;
+    if (mark == 'D' && p < s.size() && s[p] == ';') {
+      size_t q = p + 1;
+      int value = 0;
+      bool overflow = false;
+      while (q < s.size() && s[q] >= '0' && s[q] <= '9') {
+        const int digit = s[q] - '0';
+        if (value > (INT_MAX - digit) / 10) {
+          overflow = true;
+        } else if (!overflow) {
+          value = value * 10 + digit;
+        }
+        ++q;
+      }
+      if (q > p + 1 && !overflow) {
+        parsedCode = value;
+      }
+      p = q;
+    }
+    // One pass for the terminator: BEL, or ST (ESC \). Another ESC first
+    // means this mark is still unterminated; skip to that ESC.
+    for (size_t t = p; t < s.size(); ++t) {
+      if (s[t] == '\x07' ||
+          (s[t] == '\x1b' && t + 1 < s.size() && s[t + 1] == '\\')) {
+        *pos = i;
+        *end = t + (s[t] == '\x07' ? 1 : 2);
+        *code = parsedCode;
+        return true;
+      }
+      if (s[t] == '\x1b') {
+        break;
+      }
+    }
+  }
+  return false;
+}
+
+// Return the start of an SGR ending at `end`, or `end` if absent.
+inline size_t osc133SgrStart(const std::string& s, size_t begin, size_t end) {
+  if (end <= begin || s[end - 1] != 'm') return end;
+  size_t p = end - 1;
+  while (p > begin && ((s[p - 1] >= '0' && s[p - 1] <= '9') || s[p - 1] == ';'))
+    --p;
+  if (p < begin + 2 || s[p - 1] != '[' || s[p - 2] != '\x1b') return end;
+  return p - 2;
+}
+
+// Recognize exactly SGR* glyph SGR* space-pad CR (space? CR)*.
+inline size_t osc133EolDanceStart(const std::string& s, size_t begin,
+                                  size_t end) {
+  size_t p = end;
+  if (p <= begin || s[p - 1] != '\r') return end;
+  do {
+    --p;
+    if (p >= begin + 2 && s[p - 1] == ' ' && s[p - 2] == '\r') --p;
+  } while (p > begin && s[p - 1] == '\r');
+  const size_t padEnd = p;
+  while (p > begin && s[p - 1] == ' ') --p;
+  if (p == padEnd) return end;
+  size_t next;
+  while ((next = osc133SgrStart(s, begin, p)) < p) p = next;
+  if (p == begin || s[p - 1] == '\x1b' || s[p - 1] == '\r' ||
+      s[p - 1] == '\n' || s[p - 1] == ' ')
+    return end;
+  --p;
+  while ((next = osc133SgrStart(s, begin, p)) < p) p = next;
+  return p;
+}
+
+// Return the end of an eligible prep sequence at `begin`, or `begin`.
+inline size_t osc133PrepEnd(const std::string& s, size_t begin, size_t end,
+                            bool leading) {
+  if (begin >= end) return begin;
+  if (leading && s[begin] == '\r') {
+    size_t p = begin + 1;
+    while (p < end && s[p] == '\r') ++p;
+    return p;
+  }
+  if (s[begin] != '\x1b' || end - begin < 2) return begin;
+  if (end - begin >= 8 && s.compare(begin, 7, "\x1b[?2004") == 0 &&
+      (s[begin + 7] == 'h' || s[begin + 7] == 'l'))
+    return begin + 8;
+  if (leading && s[begin + 1] == '[') {
+    size_t p = begin + 2;
+    while (p < end && (s[p] == '0' || s[p] == ';')) ++p;
+    if (p < end && s[p] == 'm') return p + 1;
+    return begin;
+  }
+  if (s[begin + 1] != ']') return begin;
+  size_t p = begin + 2;
+  if (end - p >= 5 && s.compare(p, 5, "1337;") == 0)
+    p += 5;
+  else if (end - p >= 2 && s.compare(p, 2, "7;") == 0)
+    p += 2;
+  else if (end - p >= 5 && s.compare(p, 4, "133;") == 0 && s[p + 4] >= 'A' &&
+           s[p + 4] <= 'D')
+    p += 5;
+  else if (leading && end - p >= 2 && s[p] >= '0' && s[p] <= '2' &&
+           s[p + 1] == ';')
+    p += 2;
+  else
+    return begin;
+  while (p < end) {
+    if (s[p] == '\x07') return p + 1;
+    if (s[p] == '\x1b') {
+      return p + 1 < end && s[p + 1] == '\\' ? p + 2 : begin;
+    }
+    ++p;
+  }
+  return begin;
+}
 
 // A command's real output is bracketed by C..D, but shells splice prompt-prep
 // sequences into that range as they tear down and set up the prompt. Observed
@@ -42,43 +161,49 @@ inline const std::regex kOsc133D(
 // A non-reset SGR (real color, e.g. "\e[31m") is never eligible, so colored
 // command output is preserved verbatim.
 inline void trimPromptPrep(std::string* body) {
-  static const std::regex lead[] = {
-      std::regex("^\x1b\\]1337;[^\x07\x1b]*(\x07|\x1b\\\\)"),
-      std::regex("^\x1b\\]7;[^\x07\x1b]*(\x07|\x1b\\\\)"),
-      std::regex("^\x1b\\]133;[ABCD][^\x07\x1b]*(\x07|\x1b\\\\)"),
-      std::regex("^\x1b\\[\\?2004[hl]"),
-      std::regex("^\x1b\\][012];[^\x07\x1b]*(\x07|\x1b\\\\)"),  // window title
-      std::regex(
-          "^\x1b\\[0*(;0*)*m"),  // SGR reset (empty/all-zero params only)
-      std::regex("^\r+"),
-  };
-  static const std::regex tail[] = {
-      std::regex("\x1b\\]1337;[^\x07\x1b]*(\x07|\x1b\\\\)$"),
-      std::regex("\x1b\\]7;[^\x07\x1b]*(\x07|\x1b\\\\)$"),
-      std::regex("\x1b\\]133;[ABCD][^\x07\x1b]*(\x07|\x1b\\\\)$"),
-      std::regex("\x1b\\[\\?2004[hl]$"),
-      // zsh/fish EOL-mark dance: SGR* glyph SGR* space-pad CR (space CR)*.
-      std::regex(
-          "(\x1b\\[[0-9;]*m)*[^\x1b\r\n ](\x1b\\[[0-9;]*m)* +\r( ?\r)*$"),
-  };
-  bool changed = true;
-  while (changed) {
-    changed = false;
-    for (const std::regex& re : lead) {
-      std::string t = std::regex_replace(*body, re, "");
-      if (t.size() != body->size()) {
-        *body = std::move(t);
-        changed = true;
-      }
-    }
-    for (const std::regex& re : tail) {
-      std::string t = std::regex_replace(*body, re, "");
-      if (t.size() != body->size()) {
-        *body = std::move(t);
-        changed = true;
-      }
-    }
+  // Move indices rather than erasing, and visit each ESC once, so stripping
+  // many adjacent marks stays linear.
+  size_t begin = 0, end = body->size();
+  size_t next;
+  while ((next = osc133PrepEnd(*body, begin, end, true)) > begin) begin = next;
+  std::vector<size_t> escs;
+  for (size_t i = body->find('\x1b', begin); i < end;
+       i = body->find('\x1b', i + 1)) {
+    escs.push_back(i);
   }
+  size_t cachedEsc = std::string::npos, cachedPrepEnd = 0;
+  while (end > begin) {
+    while (!escs.empty() && escs.back() >= end) escs.pop_back();
+    size_t esc = escs.empty() ? std::string::npos : escs.back();
+    // A trailing ST's ESC does not start the sequence.
+    if (esc != std::string::npos && esc + 2 == end &&
+        (*body)[end - 1] == '\\') {
+      esc = escs.size() >= 2 ? escs[escs.size() - 2] : std::string::npos;
+    }
+    if (esc != std::string::npos) {
+      // A sequence's end does not change as `end` shrinks, only whether it
+      // still reaches `end`.
+      if (esc != cachedEsc) {
+        cachedEsc = esc;
+        cachedPrepEnd = osc133PrepEnd(*body, esc, end, false);
+      }
+      if (cachedPrepEnd == end) {
+        end = esc;
+        continue;
+      }
+    }
+    next = osc133EolDanceStart(*body, begin, end);
+    if (next == end) break;
+    end = next;
+  }
+  *body = body->substr(begin, end - begin);
+}
+
+// True if `acc` contains a terminated mark of the given kind.
+inline bool osc133ContainsMark(const std::string& acc, char mark) {
+  size_t pos = 0, end = 0;
+  int code = 0;
+  return osc133FindMark(acc, 0, mark, &pos, &end, &code);
 }
 
 // Pull a command's output and exit code out of an OSC-133-framed stream. `acc`
@@ -104,29 +229,26 @@ inline void trimPromptPrep(std::string* body) {
 // status, or -1 if D carried none.
 inline bool extractOsc133(const std::string& acc, std::string* body,
                           int* code) {
-  const std::sregex_iterator kEnd;
-  std::smatch cm;
-  if (!std::regex_search(acc, cm, kOsc133C)) return false;  // not started yet
-  const size_t firstC = (size_t)cm.position(0);
+  size_t cPos = 0, cEnd = 0;
+  int ignored = 0;
+  if (!osc133FindMark(acc, 0, 'C', &cPos, &cEnd, &ignored)) {
+    return false;  // not started yet
+  }
+  const size_t firstC = cPos;
 
   // First D at or after the first C: this command's done-mark.
-  auto dIt =
-      std::sregex_iterator(acc.begin() + (long)firstC, acc.end(), kOsc133D);
-  if (dIt == kEnd) return false;  // not finished yet
-  const std::smatch& dm = *dIt;
-  const size_t dPos = firstC + (size_t)dm.position(0);
-
-  // Last C before that D.
-  size_t bodyStart = std::string::npos;
-  for (auto it = std::sregex_iterator(acc.begin(), acc.begin() + (long)dPos,
-                                      kOsc133C);
-       it != kEnd; ++it) {
-    bodyStart = (size_t)it->position(0) + it->length(0);
+  size_t dPos = 0, dEnd = 0;
+  if (!osc133FindMark(acc, firstC, 'D', &dPos, &dEnd, code)) {
+    return false;  // not finished yet
   }
-  if (bodyStart == std::string::npos)
-    return false;  // unreachable: firstC < dPos
 
-  *code = dm[2].matched ? atoi(dm[2].str().c_str()) : -1;
+  // Last C before that D; the body starts after its terminator.
+  size_t bodyStart = cEnd;
+  while (osc133FindMark(acc, cEnd, 'C', &cPos, &cEnd, &ignored) &&
+         cPos < dPos) {
+    bodyStart = cEnd;
+  }
+
   *body = acc.substr(bodyStart, dPos - bodyStart);
   trimPromptPrep(body);
   return true;
