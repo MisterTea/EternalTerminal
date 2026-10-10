@@ -26,6 +26,11 @@ class HtmClient : public IpcPairClient {
  * wrapping shell after ``htm`` exits (``/bin/sh -c 'htm; exec $SHELL'``).
  * Unix only. */
 void drainHtmStdin();
+
+/** @brief Records this process's pid in the htm client pid file at `path`,
+ * which sits at a predictable name in the shared temp directory, so it is
+ * created with CreatePrivateFile. Unix only; exposed for tests. */
+bool writeHtmClientPidFile(const string& path);
 }  // namespace et
 
 #endif  // __HTM_CLIENT_H__

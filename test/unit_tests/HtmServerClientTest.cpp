@@ -678,4 +678,56 @@ TEST_CASE("HtmServer pane dump is owner-only and resists symlink preemption",
 
   test::removeTempDir(dir);
 }
+
+TEST_CASE("htm client pid file does not follow planted links",
+          "[Htm][HtmClient]") {
+  const string dir = test::makeTempDir("htm_pidfile_test");
+  const string pidPath = dir + "/htm.client.pid";
+
+  SECTION("writes the pid owner-only") {
+    REQUIRE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(pidPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    char buf[32] = {0};
+    const int fd = ::open(pidPath.c_str(), O_RDONLY);
+    REQUIRE(fd >= 0);
+    REQUIRE(::read(fd, buf, sizeof(buf) - 1) > 0);
+    ::close(fd);
+    REQUIRE(string(buf).find(to_string(getpid())) != string::npos);
+    ::remove(pidPath.c_str());
+  }
+
+  SECTION("replaces our own stale regular file") {
+    const int fd = ::open(pidPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    REQUIRE(fd >= 0);
+    ::close(fd);
+    REQUIRE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(pidPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    ::remove(pidPath.c_str());
+  }
+
+  SECTION("does not follow a planted symlink") {
+    const string decoy = dir + "/decoy";
+    const string marker = string(32, 'D');
+    {
+      const int fd = ::open(decoy.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+      REQUIRE(fd >= 0);
+      REQUIRE(::write(fd, marker.data(), marker.size()) ==
+              (ssize_t)marker.size());
+      ::close(fd);
+    }
+    REQUIRE(symlink(decoy.c_str(), pidPath.c_str()) == 0);
+    REQUIRE_FALSE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(decoy.c_str(), &st) == 0);
+    REQUIRE(st.st_size == (off_t)marker.size());
+    unlink(pidPath.c_str());
+    unlink(decoy.c_str());
+  }
+
+  test::removeTempDir(dir);
+}
 #endif  // !WIN32
