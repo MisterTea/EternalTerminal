@@ -31,6 +31,11 @@ class DaemonCreator {
    */
   static int create(bool terminateParent, string childPidFile);
 
+#ifndef WIN32
+  /** @brief Records a Unix daemon's pid, or throws on failure. */
+  static void writePidFile(const string& path, int processId);
+#endif
+
   /** @brief Returned from `create()` when still running inside the original
    * parent. */
   static const int PARENT = 1;
