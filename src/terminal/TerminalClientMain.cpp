@@ -897,8 +897,7 @@ int TerminalClientMain(int argc, char** argv,
     }
 #endif
 
-    TelemetryService::create(result["telemetry"].as<bool>(),
-                             tmpDir + "/.sentry-native-et", "Client");
+    TelemetryService::create(result["telemetry"].as<bool>(), "", "Client");
 
     if (result.count("kill")) {
       const optional<SessionInfo> session =

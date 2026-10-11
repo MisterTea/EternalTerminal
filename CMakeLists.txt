@@ -471,6 +471,7 @@ else()
   endif()
   set(BASE_PLATFORM_SRCS
     src/base/DaemonCreatorUnix.cpp
+    src/base/SecureFileUnix.cpp
     ${BASE_FD_POLLER_SRC}
     src/base/PipeSocketHandlerUnix.cpp
     src/base/PlatformUtilsUnix.cpp

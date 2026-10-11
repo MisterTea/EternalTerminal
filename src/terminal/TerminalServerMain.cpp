@@ -240,8 +240,7 @@ int TerminalServerMain(
     // Install log rotation callback
     el::Helpers::installPreRollOutCallback(LogHandler::rolloutHandler);
 
-    TelemetryService::create(
-        enableTelemetry, logDirectory + "/.sentry-native-etserver", "Server");
+    TelemetryService::create(enableTelemetry, "", "Server");
 
     serverFifo.createDirectoriesIfRequired();
 

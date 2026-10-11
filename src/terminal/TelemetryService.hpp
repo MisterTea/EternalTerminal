@@ -15,6 +15,8 @@ namespace et {
  */
 class TelemetryService {
  public:
+  // An empty databasePath selects private per-user cache storage for Sentry.
+  // Unix storage failures disable telemetry without preventing a session.
   TelemetryService(const bool _allow, const string& databasePath,
                    const string& environment);
 
@@ -50,6 +52,10 @@ class TelemetryService {
   }
 
  protected:
+  // Exercise real storage and SDK initialization without uploading events.
+  TelemetryService(bool allow, const string& databasePath,
+                   const string& environment, bool sendEvents);
+
   /** @brief Singleton instance returned by `get()`. */
   static shared_ptr<TelemetryService> telemetryServiceInstance;
   /** @brief Indicates whether telemetry payloads are permitted. */
