@@ -207,7 +207,7 @@ using namespace std;
 // The ET protocol version supported by this binary. ConnectRequest's
 // supportsChallenge flag exists only for protocol-6 peers; remove it when this
 // is next bumped.
-static const int PROTOCOL_VERSION = 6;
+static const int PROTOCOL_VERSION = 7;
 
 // --kill rides in TERMINAL_INFO so older peers ignore it instead of aborting.
 static const int SESSION_KILL_COMMAND_VERSION = 1;

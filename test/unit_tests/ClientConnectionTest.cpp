@@ -261,8 +261,7 @@ TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
   handler->queueConnectFd(fds[0]);
   const string key = "0123456789abcdef0123456789abcdef";
 
-  // An authenticated server whose first session packet has the wrong type,
-  // as an on-path attacker can produce by relabeling INITIAL_RESPONSE.
+  // An authenticated server whose first session packet has the wrong type.
   std::thread server([&]() {
     handler->readProto<ConnectRequest>(fds[1], true);
     ConnectResponse challenge;
@@ -278,9 +277,9 @@ TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
     handler->writeProto(fds[1], response, true);
 
     readSessionFrame(handler, fds[1]);  // INITIAL_PAYLOAD
-    Packet relabeled(TerminalPacketType::TERMINAL_BUFFER, "");
-    relabeled.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
-    writeSessionFrame(handler, fds[1], relabeled);
+    Packet wrongType(TerminalPacketType::TERMINAL_BUFFER, "");
+    wrongType.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
+    writeSessionFrame(handler, fds[1], wrongType);
   });
 
   REQUIRE_THROWS_WITH(
@@ -419,9 +418,12 @@ TEST_CASE("ClientConnection refuses an unchallenged response on reattach",
     const string newInput = "secret typed after reattaching to the session";
     conn.writePacket(Packet(TerminalPacketType::TERMINAL_BUFFER, newInput));
     const Packet observed = readSessionFrame(handler, fds[1]);
-    CHECK(xorHex(observed.getPayload().substr(crypto_secretbox_MACBYTES),
-                 originalClientPacket.getPayload().substr(
-                     crypto_secretbox_MACBYTES)) !=
+    const auto ciphertext = [](const Packet& packet) {
+      const string sealed = packet.getPayload();
+      return sealed.substr(
+          0, sealed.size() - crypto_aead_xchacha20poly1305_ietf_ABYTES);
+    };
+    CHECK(xorHex(ciphertext(observed), ciphertext(originalClientPacket)) !=
           xorHex(newInput, originalInput));
   }
   conn.shutdown();

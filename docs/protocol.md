@@ -106,6 +106,10 @@ The challenge is a capability within protocol 6, not a version bump. The server 
 
 The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](../proto/ETerminal.proto#L71-L78)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](../proto/ETerminal.proto#L80-L82)).  If there's an error during connect, the InitialResponse will contain an error string.
 
+### Session packets
+
+After the handshake, each packet is a 4-byte big-endian length, an encrypted flag byte, a packet type byte, and the payload encrypted with XChaCha20-Poly1305. The type byte travels in the clear as associated data, so the MAC covers it and a relabeled packet fails to decrypt. Each direction uses a counter nonce that the peers never send. The receiver advances its counter only for an authentic packet; after a rejected one it reconnects, and recovery resends the genuine packet.
+
 ## Reconnection
 
 ```mermaid
