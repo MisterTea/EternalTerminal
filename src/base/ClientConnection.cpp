@@ -2,7 +2,7 @@
 
 namespace et {
 const string ClientConnection::UNAUTHENTICATED_SERVER_ERROR =
-    "Server did not authenticate the connection; upgrade etserver";
+    "Server did not authenticate the connection";
 
 ClientConnection::ClientConnection(
     std::shared_ptr<SocketHandler> _socketHandler,
@@ -143,7 +143,6 @@ void ClientConnection::connectHandshake(int fd, et::ConnectResponse* response,
   request.set_clientid(id);
   request.set_version(PROTOCOL_VERSION);
   request.set_resetintent(resetIntent);
-  request.set_supportschallenge(true);
   socketHandler->writeProto(fd, request, true);
 
   // A restarting server can accept into its backlog and never answer.

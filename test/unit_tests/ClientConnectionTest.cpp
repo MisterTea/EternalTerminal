@@ -123,7 +123,6 @@ ConnectResponse authenticateKnownClient(
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fd, request, true);
 
   const ConnectResponse challenge = handler->readProto<ConnectResponse>(
@@ -309,7 +308,6 @@ TEST_CASE("ClientConnection completes handshake over socketpair",
     auto request = handler->readProto<ConnectRequest>(fds[1], true);
     REQUIRE(request.clientid() == "client-id");
     REQUIRE(request.version() == PROTOCOL_VERSION);
-    REQUIRE(request.supportschallenge());
 
     ConnectResponse challenge;
     challenge.set_authchallenge(
@@ -622,7 +620,6 @@ TEST_CASE("ServerConnection accepts queued clients", "[ServerConnection]") {
   ConnectRequest request;
   request.set_clientid("unknown-client");
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(pair[0], request, true);
   handler->queueAcceptFd(pair[1]);
   REQUIRE(server.acceptNewConnection(123));
@@ -646,7 +643,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   ConnectRequest missingKeyRequest;
   missingKeyRequest.set_clientid("missing");
   missingKeyRequest.set_version(PROTOCOL_VERSION);
-  missingKeyRequest.set_supportschallenge(true);
   handler->writeProto(firstPair[0], missingKeyRequest, true);
   server.clientHandler(firstPair[1]);
   auto missingKeyResponse =
@@ -671,7 +667,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   ConnectRequest oldVersionRequest;
   oldVersionRequest.set_clientid("client-one");
   oldVersionRequest.set_version(PROTOCOL_VERSION - 1);
-  oldVersionRequest.set_supportschallenge(true);
   handler->writeProto(versionPair[0], oldVersionRequest, true);
   server.clientHandler(versionPair[1]);
   auto versionResponse =
@@ -707,35 +702,6 @@ TEST_CASE("ServerConnection responds to known and unknown clients",
   server.shutdown();
 }
 
-TEST_CASE("ServerConnection refuses peers without challenge support",
-          "[ServerConnection]") {
-  // The client id travels in the clear, so knowing it must not be enough.
-  auto handler = make_shared<SocketPairHandler>();
-  SocketEndpoint endpoint;
-  endpoint.set_name("server");
-  endpoint.set_port(0);
-  RecordingServerConnection server(handler, endpoint);
-  server.addClientKey("peer", "0123456789abcdef0123456789abcdef");
-
-  int fds[2];
-  REQUIRE(createTestSocketPair(fds) == 0);
-  ConnectRequest request;
-  request.set_clientid("peer");
-  request.set_version(PROTOCOL_VERSION);
-  handler->writeProto(fds[0], request, true);
-  server.clientHandler(fds[1]);
-
-  auto response = handler->readProto<ConnectResponse>(fds[0], true);
-  REQUIRE(response.status() == INVALID_KEY);
-  REQUIRE_FALSE(response.has_authchallenge());
-  REQUIRE(response.error().find("upgrade") != string::npos);
-  REQUIRE_FALSE(server.newClientCalled);
-  REQUIRE_FALSE(server.clientConnectionExists("peer"));
-
-  server.shutdown();
-  handler->close(fds[0]);
-}
-
 TEST_CASE("ServerConnection rejects removed clients during recovery grace",
           "[ServerConnection]") {
   auto handler = make_shared<SocketPairHandler>();
@@ -752,7 +718,6 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   ConnectRequest endedRequest;
   endedRequest.set_clientid("ended");
   endedRequest.set_version(PROTOCOL_VERSION);
-  endedRequest.set_supportschallenge(true);
   handler->writeProto(endedPair[0], endedRequest, true);
   server.clientHandler(endedPair[1]);
   auto endedResponse = handler->readProto<ConnectResponse>(endedPair[0], true);
@@ -765,7 +730,6 @@ TEST_CASE("ServerConnection rejects removed clients during recovery grace",
   ConnectRequest unknownRequest;
   unknownRequest.set_clientid("unknown");
   unknownRequest.set_version(PROTOCOL_VERSION);
-  unknownRequest.set_supportschallenge(true);
   handler->writeProto(unknownPair[0], unknownRequest, true);
   server.clientHandler(unknownPair[1]);
   auto unknownResponse =
@@ -861,7 +825,6 @@ TEST_CASE("ServerConnection rejects known ids without proof before reset",
   ConnectRequest request;
   request.set_clientid("live-term");
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fds[0], request, true);
 
   std::thread serverThread([&]() { server.clientHandler(fds[1]); });
@@ -905,7 +868,6 @@ TEST_CASE("ServerConnection rejects a proof replayed for an old challenge",
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fds[0], request, true);
   auto challenge = handler->readProto<ConnectResponse>(fds[0], true);
   REQUIRE(challenge.has_authchallenge());

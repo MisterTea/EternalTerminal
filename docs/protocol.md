@@ -67,12 +67,9 @@ sequenceDiagram
     participant etserver
     participant etterminal
     
-    et->>etserver: ConnectRequest (client id, version, supportsChallenge)
+    et->>etserver: ConnectRequest (client id, version)
     alt protocol version mismatch
         etserver->>et: ConnectResponse (MISMATCHED_PROTOCOL)
-        etserver-->>et: Close connection
-    else no supportsChallenge
-        etserver->>et: ConnectResponse (INVALID_KEY, upgrade error)
         etserver-->>et: Close connection
     else unknown client id
         etserver->>et: ConnectResponse (INVALID_KEY or RETRY_LATER)
@@ -96,13 +93,9 @@ sequenceDiagram
 
 After the terminal launches, **et** connects to the **etserver** over the EternalTerminal port (defaults to 2022), and sends a [ConnectRequest](../proto/ET.proto#L12-L19) message containing the **client-id** and protocol version.  Since encryption is client-specific, this client-id is sent unencrypted.
 
-The server answers a version mismatch with `MISMATCHED_PROTOCOL` and closes the socket, and an unknown **client-id** with `INVALID_KEY` (or `RETRY_LATER` during the recovery grace period after an etserver restart). A request without `supportsChallenge` gets `INVALID_KEY` with an error asking the user to upgrade. Every registered client is first sent a [ConnectResponse](../proto/ET.proto#L29-L41) carrying a fresh `authChallenge`. The client answers with [ConnectAuth](../proto/ET.proto#L43-L46), a keyed proof over the client id, protocol version, and challenge. If the proof checks out, the server sends the final `NEW_CLIENT` or `RETURNING_CLIENT` response and creates or resumes the ServerClientConnection, which holds the BackedReader and BackedWriter used for EternalTCP buffering. A bad proof gets `INVALID_KEY`.
+The server answers a version mismatch with `MISMATCHED_PROTOCOL` and closes the socket, and an unknown **client-id** with `INVALID_KEY` (or `RETRY_LATER` during the recovery grace period after an etserver restart). Every registered client is first sent a [ConnectResponse](../proto/ET.proto#L29-L41) carrying a fresh `authChallenge`. The client answers with [ConnectAuth](../proto/ET.proto#L43-L46), a keyed proof over the client id, protocol version, and challenge. If the proof checks out, the server sends the final `NEW_CLIENT` or `RETURNING_CLIENT` response and creates or resumes the ServerClientConnection, which holds the BackedReader and BackedWriter used for EternalTCP buffering. A bad proof gets `INVALID_KEY`.
 
-The final response carries `resetProof`, a keyed proof over the challenge, `status`, `resetRequired`, and `resetSalt`, so it cannot be replayed into another handshake.
-
-### Legacy handshake
-
-The challenge is a capability within protocol 6, not a version bump. The server refuses requests without `supportsChallenge`: the id travels in the clear, so a peer that omits the flag is indistinguishable from an attacker who observed the id. Older protocol-6 clients read that single `INVALID_KEY` response and show its upgrade error; pair client and server upgrades. Clients likewise accept a response without an `authChallenge` only as a refusal. A `NEW_CLIENT` or `RETURNING_CLIENT` without one is unauthenticated, and accepting it would restart the passkey's nonces at zero, so the client fails with "Server did not authenticate the connection; upgrade etserver". The `supportsChallenge` wire flag goes away at the next `PROTOCOL_VERSION` bump.
+The final response carries `resetProof`, a keyed proof over the challenge, `status`, `resetRequired`, and `resetSalt`, so it cannot be replayed into another handshake. Refusals carry no challenge, and the client accepts a response without an `authChallenge` only as a refusal. A `NEW_CLIENT` or `RETURNING_CLIENT` without one is unauthenticated, and accepting it would restart the passkey's nonces at zero, so the client fails with "Server did not authenticate the connection".
 
 The client then sends an `INITIAL_PAYLOAD` (with an [InitialPayload](../proto/ETerminal.proto#L71-L78)), which contains port forwarding information or the jumphost flag, to which the server responds with an `INITIAL_RESPONSE` ([InitialResponse](../proto/ETerminal.proto#L80-L82)).  If there's an error during connect, the InitialResponse will contain an error string.
 

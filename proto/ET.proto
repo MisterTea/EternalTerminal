@@ -13,10 +13,10 @@ message ConnectRequest {
   optional string clientId = 1;
   optional int32 version = 2;
   optional bool resetIntent = 3 [default = false];
-  // Set by clients that implement the authChallenge/ConnectAuth exchange.
-  // Servers refuse requests without it. The flag goes away at the next
-  // PROTOCOL_VERSION bump.
-  optional bool supportsChallenge = 4 [default = false];
+  // supportsChallenge marked protocol-6 clients that implemented the
+  // authChallenge/ConnectAuth exchange, which protocol 7 requires.
+  reserved 4;
+  reserved "supportsChallenge";
 }
 
 enum ConnectStatus {

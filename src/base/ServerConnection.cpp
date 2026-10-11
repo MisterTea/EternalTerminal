@@ -69,20 +69,6 @@ void ServerConnection::clientHandler(int clientSocketFd) {
         return;
       }
     }
-    if (!request.supportschallenge()) {
-      // The client id travels in the clear, so a peer that cannot prove the
-      // passkey must not connect. Released protocol-6 clients predate the
-      // challenge and read only this single response.
-      LOG(INFO) << "Rejecting client without challenge support";
-      et::ConnectResponse response;
-      response.set_status(INVALID_KEY);
-      response.set_error(
-          "Client authentication required; upgrade et to a version with the "
-          "challenge handshake");
-      socketHandler->writeProto(clientSocketFd, response, true);
-      socketHandler->close(clientSocketFd);
-      return;
-    }
     clientId = request.clientid();
     shared_ptr<ServerClientConnection> serverClientState = NULL;
     bool clientKeyExistsNow;

@@ -70,7 +70,6 @@ void writeConnectRequest(const shared_ptr<SocketHandler>& handler, int fd,
   ConnectRequest request;
   request.set_clientid(clientId);
   request.set_version(PROTOCOL_VERSION);
-  request.set_supportschallenge(true);
   handler->writeProto(fd, request, true);
 }
 

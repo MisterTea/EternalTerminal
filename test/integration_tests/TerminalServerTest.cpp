@@ -723,7 +723,6 @@ int rawChallengeHandshake(const shared_ptr<SocketHandler>& handler,
     et::ConnectRequest request;
     request.set_clientid(id);
     request.set_version(PROTOCOL_VERSION);
-    request.set_supportschallenge(true);
     handler->writeProto(fd, request, true);
 
     et::ConnectResponse challenge;
