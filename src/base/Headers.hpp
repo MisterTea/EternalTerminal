@@ -446,8 +446,8 @@ inline int replaceAll(std::string& str, const std::string& from,
   return retval;
 }
 
-// A peer sent a packet that decrypted but has an unexpected type or an
-// unparsable payload.
+// A peer sent a packet that fails authentication, has an unexpected type, or
+// has an unparsable payload.
 class MalformedPacketError : public std::runtime_error {
  public:
   using std::runtime_error::runtime_error;

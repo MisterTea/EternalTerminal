@@ -194,15 +194,21 @@ string CryptoHandler::encrypt(const string& buffer) {
 
 string CryptoHandler::decrypt(const string& buffer) {
   if (buffer.length() < crypto_secretbox_MACBYTES) {
-    throw std::runtime_error("Ciphertext shorter than the authentication tag");
+    throw MalformedPacketError(
+        "Ciphertext shorter than the authentication tag");
   }
   lock_guard<std::mutex> guard(cryptoMutex);
+  // Advance the nonce only for an authentic packet, so a rejected one leaves
+  // this side in step with the sender for the retransmission.
+  unsigned char savedNonce[crypto_secretbox_NONCEBYTES];
+  memcpy(savedNonce, nonce, sizeof(nonce));
   incrementNonce();
   string retval(buffer.length() - crypto_secretbox_MACBYTES, '\0');
   if (crypto_secretbox_open_easy((unsigned char*)&retval[0],
                                  (const unsigned char*)buffer.c_str(),
                                  buffer.length(), nonce, key) == -1) {
-    throw std::runtime_error("Decrypt failed. Possible key mismatch?");
+    memcpy(nonce, savedNonce, sizeof(nonce));
+    throw MalformedPacketError("Decrypt failed. Possible key mismatch?");
   }
   return retval;
 }

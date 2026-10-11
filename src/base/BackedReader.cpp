@@ -32,10 +32,19 @@ int BackedReader::read(Packet* packet) {
 
   if (localBuffer.size() > 0) {
     VLOG(1) << "Reading from local buffer";
-    *packet = Packet(localBuffer.front());
+    try {
+      Packet next(localBuffer.front());
+      next.decrypt(cryptoHandler);
+      *packet = next;
+    } catch (const MalformedPacketError&) {
+      // revive() counted these entries as received. Uncount them so the next
+      // recovery asks the peer to resend them.
+      sequenceNumber -= localBuffer.size();
+      localBuffer.clear();
+      throw;
+    }
     localBuffer.pop_front();
     VLOG(1) << "New local buffer size: " << localBuffer.size();
-    packet->decrypt(cryptoHandler);
     return 1;
   }
 

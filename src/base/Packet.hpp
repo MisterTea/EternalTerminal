@@ -28,7 +28,7 @@ class Packet {
    */
   explicit Packet(const string& serializedPacket) {
     if (serializedPacket.size() < HEADER_SIZE) {
-      throw std::runtime_error("Serialized packet shorter than its header");
+      throw MalformedPacketError("Serialized packet shorter than its header");
     }
     encrypted = serializedPacket[0];
     header = serializedPacket[1];
@@ -45,7 +45,7 @@ class Packet {
       payload = cryptoHandler->decrypt(payload);
     } else {
       // Peer-controlled framing: sever this connection, not the process.
-      throw std::runtime_error(
+      throw MalformedPacketError(
           "Received an unencrypted packet on an encrypted connection");
     }
   }
