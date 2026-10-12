@@ -16,12 +16,20 @@
 
 namespace et {
 string refreshAgentProxyPath(const string& id, const string& authSock) {
+#ifdef WIN32
+  string normalizedAuthSock = authSock;
+  for (char& c : normalizedAuthSock) {
+    if (c == '\\') {
+      c = '/';
+    }
+  }
+#endif
   const fs::path directory = fs::path(GetTempDirectory()) / ("et-agent-" + id);
   std::error_code error;
   fs::create_directories(directory, error);
   if (error) {
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to create SSH agent proxy directory: " +
                         error.message());
@@ -41,7 +49,7 @@ string refreshAgentProxyPath(const string& id, const string& authSock) {
   if (error) {
     fs::remove(proxyTmp, error);
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to refresh SSH agent proxy: " +
                         error.message());
@@ -59,7 +67,7 @@ string refreshAgentProxyPath(const string& id, const string& authSock) {
   if (error) {
     fs::remove(proxyTmp, error);
 #ifdef WIN32
-    return authSock;
+    return normalizedAuthSock;
 #else
     throw runtime_error("Unable to refresh SSH agent proxy: " +
                         error.message());
@@ -176,7 +184,7 @@ TerminalClient::TerminalClient(
     bool _resumeSavedSession, std::function<bool()> _sessionHeartbeat,
     std::function<bool(const string&)> _sessionTitleUpdate,
     optional<int> disconnectTimeoutMinutes, bool noShell,
-    bool exitOnForwardFailure)
+    bool exitOnForwardFailure, const vector<string>& sshAgentSessionBinds)
     : console(_console),
       shuttingDown(false),
       keepaliveDuration(_keepaliveDuration),
@@ -281,10 +289,12 @@ TerminalClient::TerminalClient(
       string authSock = resolveAuthSock(/*requireAuthSock=*/true);
       if (authSock.length()) {
         PortForwardSourceRequest pfsr;
-        pfsr.mutable_destination()->set_name(
-            refreshAgentProxyPath(id, authSock));
+        const string proxyPath = refreshAgentProxyPath(id, authSock);
+        pfsr.mutable_destination()->set_name(proxyPath);
         pfsr.set_environmentvariable("SSH_AUTH_SOCK");
         *(payload.add_reversetunnels()) = pfsr;
+        portForwardHandler->setSshAgentSessionBinds(proxyPath,
+                                                    sshAgentSessionBinds);
         agentProxyEnabled = true;
         agentClientId = id;
         agentIdentityAgent = identityAgent;

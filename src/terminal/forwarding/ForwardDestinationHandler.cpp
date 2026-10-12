@@ -2,8 +2,12 @@
 
 namespace et {
 ForwardDestinationHandler::ForwardDestinationHandler(
-    shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId)
-    : socketHandler(_socketHandler), fd(_fd), socketId(_socketId) {}
+    shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
+    unique_ptr<AgentSessionBindReplies> _bindReplies)
+    : socketHandler(_socketHandler),
+      fd(_fd),
+      socketId(_socketId),
+      bindReplies(std::move(_bindReplies)) {}
 
 ForwardDestinationHandler::~ForwardDestinationHandler() { close(); }
 
@@ -60,9 +64,25 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval,
       VLOG(1) << "Got close reading socket " << socketId;
       pwd.set_closed(true);
     } else {
-      VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
-      pwd.set_buffer(string(buf, bytesRead));
       bytesThisUpdate += bytesRead;
+      string data;
+      if (!bindReplies) {
+        data.assign(buf, bytesRead);
+      } else if (!bindReplies->consume(string(buf, bytesRead), &data)) {
+        // Already logged; the stream cannot be resynchronized.
+        pwd.set_error("invalid ssh agent reply to session binding");
+        readErrno = EPROTO;
+        bytesRead = -1;
+      }
+      if (bytesRead > 0 && data.empty()) {
+        // Only bind replies so far.
+        continue;
+      }
+      if (bytesRead > 0) {
+        VLOG(1) << "Reading " << data.length() << " bytes from socket "
+                << socketId;
+        pwd.set_buffer(data);
+      }
     }
     retval->push_back(pwd);
     if (bytesRead < 1) {

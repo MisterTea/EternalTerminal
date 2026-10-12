@@ -3,9 +3,25 @@
 #include <cstdint>
 
 #include "PipeSocketHandler.hpp"
+#include "SshAgentSessionBind.hpp"
 
 namespace et {
 namespace {
+
+#ifdef WIN32
+bool pathsEqual(const string& a, const string& b) {
+  string na = a, nb = b;
+  for (char& c : na) {
+    if (c == '\\') c = '/';
+  }
+  for (char& c : nb) {
+    if (c == '\\') c = '/';
+  }
+  return na == nb;
+}
+#else
+inline bool pathsEqual(const string& a, const string& b) { return a == b; }
+#endif
 
 bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
   if (a.has_port() != b.has_port()) {
@@ -16,7 +32,7 @@ bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
   }
   string aName = a.has_name() ? a.name() : "";
   string bName = b.has_name() ? b.name() : "";
-  return aName == bName;
+  return pathsEqual(aName, bName);
 }
 
 bool sourceRequestsEqual(const PortForwardSourceRequest& a,
@@ -212,6 +228,13 @@ PortForwardSourceResponse PortForwardHandler::createStdioForward(
   }
 }
 
+void PortForwardHandler::setSshAgentSessionBinds(const string& agentSocketPath,
+                                                 const vector<string>& binds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  sshAgentSocketPath = agentSocketPath;
+  sshAgentSessionBinds = binds;
+}
+
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
   lock_guard<recursive_mutex> guard(handlerMutex);
@@ -250,8 +273,15 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
+  bool bindAgent = !isTcp && !sshAgentSessionBinds.empty() &&
+                   pathsEqual(pfdr.destination().name(), sshAgentSocketPath);
   if (fd == -1) {
     pfdresponse.set_error(strerror(GetErrno()));
+  } else if (bindAgent &&
+             !sendAgentSessionBinds(pipeSocketHandler.get(), fd,
+                                    sshAgentSocketPath, sshAgentSessionBinds)) {
+    pipeSocketHandler->close(fd);
+    pfdresponse.set_error("could not send ssh agent session binding");
   } else {
     int socketId = rand();
     int attempts = 0;
@@ -266,7 +296,10 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     if (!pfdresponse.has_error()) {
       LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
       destinationHandlers[socketId] = make_unique<ForwardDestinationHandler>(
-          isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId);
+          isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId,
+          bindAgent ? make_unique<AgentSessionBindReplies>(
+                          sshAgentSessionBinds.size(), sshAgentSocketPath)
+                    : nullptr);
       pfdresponse.set_socketid(socketId);
       ++forwardFdsGeneration;
     }

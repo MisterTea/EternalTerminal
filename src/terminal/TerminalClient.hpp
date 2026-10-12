@@ -38,6 +38,8 @@ class TerminalClient {
   /**
    * @brief Configures the client with the required sockets, console, and
    * tunnels.
+   * @param sshAgentSessionBinds OpenSSH session-bind requests (from
+   * SshSetupHandler) sent on each forwarded ssh-agent connection.
    */
   TerminalClient(std::shared_ptr<SocketHandler> _socketHandler,
                  std::shared_ptr<SocketHandler> _pipeSocketHandler,
@@ -54,7 +56,8 @@ class TerminalClient {
                  std::function<bool()> _sessionHeartbeat = {},
                  std::function<bool(const string&)> _sessionTitleUpdate = {},
                  optional<int> disconnectTimeoutMinutes = nullopt,
-                 bool noShell = false, bool exitOnForwardFailure = false);
+                 bool noShell = false, bool exitOnForwardFailure = false,
+                 const vector<string>& sshAgentSessionBinds = {});
   /** @brief Tears down the client, closing sockets and stopping background
    * threads. */
   virtual ~TerminalClient();

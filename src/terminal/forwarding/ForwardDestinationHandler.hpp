@@ -4,6 +4,7 @@
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
+#include "SshAgentSessionBind.hpp"
 
 namespace et {
 /**
@@ -13,9 +14,13 @@ class ForwardDestinationHandler {
  public:
   static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
   /** @brief Binds the handler to a destination fd so data can be sent
-   * downstream. */
-  ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
-                            int _socketId);
+   * downstream.
+   * @param _bindReplies Set when session binds were sent on @p _fd; their
+   * replies are dropped instead of forwarded.
+   */
+  ForwardDestinationHandler(
+      shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
+      unique_ptr<AgentSessionBindReplies> _bindReplies = nullptr);
   ~ForwardDestinationHandler();
 
   ForwardDestinationHandler(const ForwardDestinationHandler&) = delete;
@@ -48,6 +53,8 @@ class ForwardDestinationHandler {
   int socketId;
   /** @brief True after the source half-closed its write direction. */
   bool writeShutdown = false;
+  /** @brief Pending ssh-agent replies to session binds, if any. */
+  unique_ptr<AgentSessionBindReplies> bindReplies;
 };
 }  // namespace et
 
