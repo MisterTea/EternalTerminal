@@ -13,6 +13,11 @@ class TestTelemetryService : public TelemetryService {
     return logBuffer.size();
   }
 
+  string firstBufferedTelemetryId() {
+    lock_guard<recursive_mutex> guard(logMutex);
+    return logBuffer.at(0).at("TelemetryId");
+  }
+
   bool isShuttingDown() {
     lock_guard<recursive_mutex> guard(logMutex);
     return shuttingDown;
@@ -34,6 +39,10 @@ TEST_CASE("TelemetryService disabled logging and shutdown",
     telemetry.logToSentry(level, "message");
   }
   REQUIRE(telemetry.bufferedLogs() == levels.size());
+  // Disabled telemetry never generates a UUID, but buffered logging must not
+  // read uninitialized memory when it formats the identifier.
+  CHECK(telemetry.firstBufferedTelemetryId() ==
+        "00000000-0000-0000-0000-000000000000");
 
   telemetry.shutdown();
   REQUIRE(telemetry.isShuttingDown());

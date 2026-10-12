@@ -67,7 +67,7 @@ class TelemetryService {
   /** @brief Background thread that flushes telemetry asynchronously. */
   unique_ptr<thread> logSendingThread;
   /** @brief Unique identifier emitted with every telemetry batch. */
-  sole::uuid telemetryId;
+  sole::uuid telemetryId{};
 };
 
 }  // namespace et
