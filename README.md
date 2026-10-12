@@ -201,6 +201,29 @@ port), edit `/etc/et.cfg`. On NixOS, set `services.eternalTerminal.settings`
 instead so the generated `/etc/et.cfg` stays in sync with your system
 configuration.
 
+## Telemetry
+
+Telemetry is on by default in the `et` client, and in `etserver` when its
+configuration sets `telemetry = true`, as the supplied `et.cfg` does. Each
+process with telemetry enabled sends:
+
+- the text of every Error and Fatal log message, with its source file and
+  line, to Datadog
+- Fatal log messages and crash reports to Sentry, in builds that include
+  Sentry
+
+Every report carries the ET version and a random ID that is generated once
+per user account and stored in `et/telemetry.ini` under the user's
+configuration directory (`~/.config` on Linux), so reports from the same
+user can be linked.
+
+To turn telemetry off, do any of the following:
+
+- Pass `--telemetry=false` to `et`.
+- Set `telemetry = false` in `/etc/et.cfg` for `etserver`.
+- Set `ET_NO_TELEMETRY=1` in the environment of `et` or `etserver`.
+- Build with `cmake -DDISABLE_TELEMETRY=ON`.
+
 ## Using
 
 ET uses ssh for handshaking and encryption, so you must be able to ssh into the machine from the client. Make sure that you can `ssh user@hostname`.
