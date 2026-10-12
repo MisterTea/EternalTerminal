@@ -667,3 +667,262 @@ TEST_CASE("Bind replies are not forwarded even when they arrive alone",
   REQUIRE(data.size() == 1);
   CHECK(data[0].buffer() == clientReply);
 }
+#ifdef WIN32
+namespace {
+// A real named-pipe agent exercises the transport used by Win32 OpenSSH.
+// Every test wait is bounded, and cancellation drains overlapped operations.
+struct TestPipeHandle {
+  explicit TestPipeHandle(HANDLE handle) : handle(handle) {}
+  ~TestPipeHandle() {
+    if (handle != INVALID_HANDLE_VALUE && handle != nullptr)
+      CloseHandle(handle);
+  }
+  HANDLE handle;
+};
+
+bool pipeTransfer(HANDLE pipe, char* data, size_t size, bool writing,
+                  const std::atomic<bool>* stopping = nullptr) {
+  size_t pos = 0;
+  while (pos < size) {
+    TestPipeHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+    OVERLAPPED op = {};
+    op.hEvent = event.handle;
+    DWORD count = 0;
+    BOOL ok = writing ? WriteFile(pipe, data + pos,
+                                  static_cast<DWORD>(size - pos), nullptr, &op)
+                      : ReadFile(pipe, data + pos,
+                                 static_cast<DWORD>(size - pos), nullptr, &op);
+    if (!ok) {
+      if (GetLastError() != ERROR_IO_PENDING) return false;
+      auto deadline =
+          std::chrono::steady_clock::now() + std::chrono::seconds(10);
+      while (WaitForSingleObject(event.handle, 50) == WAIT_TIMEOUT &&
+             !(stopping && *stopping) &&
+             std::chrono::steady_clock::now() < deadline) {
+      }
+      if (!GetOverlappedResult(pipe, &op, &count, FALSE)) {
+        CancelIoEx(pipe, &op);
+        GetOverlappedResult(pipe, &op, &count, TRUE);
+        return false;
+      }
+    }
+    if (ok && !GetOverlappedResult(pipe, &op, &count, FALSE)) return false;
+    if (!count) return false;
+    pos += count;
+  }
+  return true;
+}
+
+bool pipeFrame(HANDLE pipe, string* body, bool writing,
+               const std::atomic<bool>* stopping = nullptr) {
+  if (writing) {
+    string bytes = frame(*body);
+    return pipeTransfer(pipe, bytes.data(), bytes.size(), true, stopping);
+  }
+  char length[4];
+  if (!pipeTransfer(pipe, length, 4, false, stopping)) return false;
+  uint32_t size = (uint32_t(uint8_t(length[0])) << 24) |
+                  (uint32_t(uint8_t(length[1])) << 16) |
+                  (uint32_t(uint8_t(length[2])) << 8) | uint8_t(length[3]);
+  if (!size || size > SSH_AGENT_MAX_MESSAGE_LENGTH) return false;
+  body->assign(size, '\0');
+  return pipeTransfer(pipe, body->data(), size, false, stopping);
+}
+
+HANDLE connectAgentPipe(const string& path) {
+  HANDLE pipe =
+      CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                  OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+  REQUIRE(pipe != INVALID_HANDLE_VALUE);
+  return pipe;
+}
+
+string pipeRoundTrip(HANDLE pipe, string request) {
+  REQUIRE(pipeFrame(pipe, &request, true));
+  string reply;
+  REQUIRE(pipeFrame(pipe, &reply, false));
+  return reply;
+}
+
+class FakePipeAgent {
+ public:
+  explicit FakePipeAgent(function<string(const string&)> reply)
+      : path("\\\\.\\pipe\\et-test-agent-" + genRandomAlphaNum(24)),
+        pipe(CreateNamedPipeA(
+            path.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096,
+            4096, 0, nullptr)),
+        reply(std::move(reply)) {
+    REQUIRE(pipe.handle != INVALID_HANDLE_VALUE);
+    worker = std::thread([this] { serve(); });
+  }
+  ~FakePipeAgent() {
+    stopping = true;
+    worker.join();
+  }
+  const string path;
+
+ private:
+  void serve() {
+    while (!stopping) {
+      TestPipeHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+      OVERLAPPED op = {};
+      op.hEvent = event.handle;
+      BOOL connected = ConnectNamedPipe(pipe.handle, &op);
+      DWORD error = connected ? ERROR_SUCCESS : GetLastError();
+      if (!connected && error != ERROR_PIPE_CONNECTED) {
+        if (error != ERROR_IO_PENDING) return;
+        while (!stopping &&
+               WaitForSingleObject(event.handle, 50) == WAIT_TIMEOUT) {
+        }
+        DWORD count = 0;
+        if (!GetOverlappedResult(pipe.handle, &op, &count, FALSE)) {
+          CancelIoEx(pipe.handle, &op);
+          GetOverlappedResult(pipe.handle, &op, &count, TRUE);
+          return;
+        }
+      }
+      string request;
+      while (!stopping && pipeFrame(pipe.handle, &request, false, &stopping)) {
+        string response = reply(request);
+        if (!pipeFrame(pipe.handle, &response, true, &stopping)) break;
+      }
+      DisconnectNamedPipe(pipe.handle);
+    }
+  }
+  TestPipeHandle pipe;
+  function<string(const string&)> reply;
+  std::atomic<bool> stopping{false};
+  std::thread worker;
+};
+}  // namespace
+
+TEST_CASE("Windows agent recorder relays named pipes and records the last bind",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string& request) {
+    return string(1, SSH_AGENT_SUCCESS) + request;
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  CHECK_FALSE(recorder.lastForwardedBind());
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  for (const string& host : {string("jump-key"), string("dest-key")}) {
+    string bind = sessionBind(host, false);
+    CHECK(pipeRoundTrip(client.handle, bind) ==
+          string(1, SSH_AGENT_SUCCESS) + bind);
+  }
+  CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+  CHECK(pipeRoundTrip(client.handle, identities) ==
+        string(1, SSH_AGENT_SUCCESS) + identities);
+
+  string messages = frame(identities) + frame(identities);
+  REQUIRE(pipeTransfer(client.handle, messages.data(), 2, true));
+  REQUIRE(pipeTransfer(client.handle, messages.data() + 2, messages.size() - 2,
+                       true));
+  string reply;
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) + identities);
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) + identities);
+}
+
+TEST_CASE("Windows agent recorder fails requests without a usable agent",
+          "[SshAgentSessionBind]") {
+  string upstream;
+  SECTION("No agent") { upstream = ""; }
+  SECTION("Missing agent") {
+    upstream = "\\\\.\\pipe\\et-missing-" + genRandomAlphaNum(24);
+  }
+  string path;
+  {
+    SshAgentSessionBindRecorder recorder(upstream);
+    path = recorder.socketPath();
+    TestPipeHandle client(connectAgentPipe(path));
+    CHECK(pipeRoundTrip(client.handle, sessionBind("dest-key", false)) ==
+          string(1, SSH_AGENT_FAILURE));
+    CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  }
+  CHECK(WaitNamedPipeA(path.c_str(), 0) == FALSE);
+}
+
+TEST_CASE("Windows agent recorder rejects malformed frames",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string&) { return string(); });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  SECTION("Malformed request") {
+    string zero = u32(0);
+    REQUIRE(pipeTransfer(client.handle, zero.data(), zero.size(), true));
+  }
+  SECTION("Malformed upstream reply") {
+    string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+    REQUIRE(pipeFrame(client.handle, &identities, true));
+  }
+  string reply;
+  CHECK_FALSE(pipeFrame(client.handle, &reply, false));
+}
+
+TEST_CASE("Windows agent recorder cancels pending requests and idle clients",
+          "[SshAgentSessionBind]") {
+  std::promise<void> received, release;
+  auto released = release.get_future().share();
+  auto requestReceived = received.get_future();
+  FakePipeAgent agent([&received, released](const string&) {
+    received.set_value();
+    released.wait();
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  std::unique_ptr<std::promise<void>, void (*)(std::promise<void>*)>
+      releaseAgent(&release,
+                   [](std::promise<void>* value) { value->set_value(); });
+  auto recorder = make_unique<SshAgentSessionBindRecorder>(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder->socketPath()));
+  // The accept worker creates the next instance before processing this request.
+  string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+  REQUIRE(pipeFrame(client.handle, &identities, true));
+  REQUIRE(requestReceived.wait_for(std::chrono::seconds(10)) ==
+          std::future_status::ready);
+  TestPipeHandle idle(connectAgentPipe(recorder->socketPath()));
+  auto start = std::chrono::steady_clock::now();
+  recorder.reset();
+  CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+  string reply;
+  CHECK_FALSE(pipeFrame(client.handle, &reply, false));
+  CHECK_FALSE(pipeFrame(idle.handle, &reply, false));
+}
+
+TEST_CASE("Windows agent recorder keeps waiting for slow confirmations",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string&) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5500));
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  CHECK(
+      pipeRoundTrip(client.handle, string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+      string(1, SSH_AGENT_SUCCESS));
+}
+#endif
+
+#ifdef WIN32
+TEST_CASE("Windows agent recorder waits for a busy upstream pipe",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent(successReply);
+  auto occupied = make_unique<TestPipeHandle>(connectAgentPipe(agent.path));
+  CHECK(pipeRoundTrip(occupied->handle,
+                      string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+        string(1, SSH_AGENT_SUCCESS));
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  string bind = sessionBind("dest-key", false);
+  REQUIRE(pipeFrame(client.handle, &bind, true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  CHECK_FALSE(recorder.lastForwardedBind());
+  occupied.reset();
+  string reply;
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS));
+  CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+}
+#endif

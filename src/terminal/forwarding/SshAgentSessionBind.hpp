@@ -71,17 +71,18 @@ class AgentSessionBindReplies {
   string pending_;
 };
 
-#ifndef WIN32
 /**
  * @brief Agent proxy handed to the bootstrap ssh as its IdentityAgent.
  *
  * Relays every request to the real agent and records the session-bind ssh
- * sends after it has verified the server's host key.
+ * sends after it has verified the server's host key. Uses a private Unix
+ * socket on Unix and a current-user-only named pipe on Windows.
  */
 class SshAgentSessionBindRecorder {
  public:
   /**
-   * @param upstreamAgentPath Agent to relay to; empty means ssh had no agent,
+   * @param upstreamAgentPath Unix socket or Windows named pipe to relay to;
+   * empty means ssh had no agent,
    * so every request is answered with SSH_AGENT_FAILURE.
    * @throws std::runtime_error when the listening socket cannot be created.
    */
@@ -104,6 +105,10 @@ class SshAgentSessionBindRecorder {
   optional<string> lastForwardedBind();
 
  private:
+#ifdef WIN32
+  struct WindowsImpl;
+  std::unique_ptr<WindowsImpl> windows_;
+#else
   struct Client {
     int fd;
     int upstreamFd;
@@ -117,16 +122,20 @@ class SshAgentSessionBindRecorder {
   bool readExact(int fd, char* buf, size_t count, bool* warnedSlow);
   int connectUpstream();
 
-  string upstreamAgentPath_;
-  string directory_;
+#endif
   string socketPath_;
+  string upstreamAgentPath_;
+#ifndef WIN32
+  string directory_;
   int listenFd_ = -1;
   int stopPipe_[2] = {-1, -1};
+#endif
   std::mutex mutex_;
   optional<string> lastForwardedBind_;
+#ifndef WIN32
   std::thread worker_;
-};
 #endif
+};
 
 }  // namespace et
 
