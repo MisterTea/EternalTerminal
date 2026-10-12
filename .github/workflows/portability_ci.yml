@@ -199,6 +199,34 @@ jobs:
                 unzip \
                 zip
     steps:
+      # Minimal distro images need Git before checkout can fetch submodules.
+      # Bootstrap only checkout tools here so Gentoo can still restore its
+      # package cache before installing the full build dependencies.
+      - name: Install checkout tools
+        shell: sh
+        run: |
+          case '${{ matrix.distro }}' in
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+              ;;
+            fedora|rocky-linux)
+              dnf install -y git ca-certificates
+              ;;
+            gentoo)
+              if [ ! -f /var/db/repos/gentoo/profiles/repo_name ]; then
+                emerge-webrsync
+              fi
+              emerge --jobs=2 dev-vcs/git
+              ;;
+            archlinux)
+              pacman -Syu --disable-sandbox --noconfirm --needed git ca-certificates
+              ;;
+            opensuse)
+              zypper --non-interactive install --no-recommends git ca-certificates
+              ;;
+          esac
+
       - uses: actions/checkout@v4
         with:
           submodules: recursive
