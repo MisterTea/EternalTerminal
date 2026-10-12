@@ -284,9 +284,9 @@ jobs:
           path: |
             .ci-cache/pkg
             .ci-cache/ccache
-          key: freebsd-build-v2-${{ github.sha }}
+          key: freebsd-build-v3-${{ github.sha }}
           restore-keys: |
-            freebsd-build-v2-
+            freebsd-build-v3-
 
       - name: Install act QEMU dependencies
         if: ${{ env.ACT }}
@@ -306,7 +306,7 @@ jobs:
             /home/runner/work/EternalTerminal/EternalTerminal/
 
       - name: Start FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc  # v1.5.9
         with:
           arch: ${{ env.ACT && 'aarch64' || '' }}
           usesh: true
@@ -338,11 +338,13 @@ jobs:
           # with new timestamps even when their contents are unchanged.
           export CCACHE_SLOPPINESS=pch_defines,time_macros
 
+          # The ccache package is 3.7, which returns stale Clang PCHs from
+          # direct-mode hits after a precompiled header changes.
           pkg install -y \
             autoconf \
             automake \
             ca_root_nss \
-            ccache \
+            ccache4 \
             cmake \
             curl \
             git \

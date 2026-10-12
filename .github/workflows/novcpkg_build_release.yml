@@ -69,7 +69,7 @@ jobs:
           submodules: recursive
 
       - name: Set up GCC (Ubuntu)
-        uses: egor-tensin/setup-gcc@v1
+        uses: egor-tensin/setup-gcc@eaa888eb19115a521fa72b65cd94fe1f25bbcaac  # v1.3
         with:
           version: ${{ matrix.gcc }}
           platform: x64

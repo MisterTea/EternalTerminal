@@ -257,9 +257,18 @@ jobs:
 
           debian_mirror="http://deb.debian.org/debian"
 
+          # Succeeds if the binfmt_misc entry is enabled with the F flag.
+          binfmt_ready() {
+            awk '$1 == "enabled" { enabled = 1 }
+                 $1 == "flags:" && $2 ~ /F/ { fixed = 1 }
+                 END { exit !(enabled && fixed) }' "$1"
+          }
+
           register_qemu_binfmt() {
             local arch="$1"
             local qemu_target=""
+            local magic mask
+            local registry_entry
 
             case "${arch}" in
               amd64)
@@ -288,20 +297,45 @@ jobs:
             mountpoint -q /proc/sys/fs/binfmt_misc ||
               mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
 
-            if [[ -e "/proc/sys/fs/binfmt_misc/qemu-${qemu_target}" ]]; then
-              return 0
+            registry_entry="/proc/sys/fs/binfmt_misc/qemu-${qemu_target}"
+            if [[ -e "${registry_entry}" ]]; then
+              if binfmt_ready "${registry_entry}"; then
+                return 0
+              fi
+              # Disabled or non-F entries cannot execute inside the chroot.
+              echo -1 > "${registry_entry}"
             fi
 
-            curl --fail --silent --show-error --location \
-              https://raw.githubusercontent.com/qemu/qemu/master/scripts/qemu-binfmt-conf.sh \
-              --output /tmp/qemu-binfmt-conf.sh
-            chmod +x /tmp/qemu-binfmt-conf.sh
-
-            /tmp/qemu-binfmt-conf.sh \
-              --qemu-path /usr/bin \
-              --qemu-suffix=-static \
-              --persistent yes \
-              "${qemu_target}"
+            # Register directly rather than running a fetched script in this
+            # privileged, key-holding job. Debian's qemu-user-static ships
+            # only systemd binfmt.d entries, which nothing applies here.
+            # Values match qemu-binfmt-conf.sh; F lets chroots use the host
+            # interpreter.
+            case "${qemu_target}" in
+              x86_64)
+                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00'
+                mask='\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              arm)
+                magic='\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00'
+                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              aarch64)
+                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00'
+                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              *)
+                echo "ERROR: no binfmt magic recorded for ${qemu_target}; add it" >&2
+                exit 1
+                ;;
+            esac
+            printf ':qemu-%s:M::%s:%s:/usr/bin/qemu-%s-static:F:\n' \
+              "${qemu_target}" "${magic}" "${mask}" "${qemu_target}" \
+              > /proc/sys/fs/binfmt_misc/register
+            if ! binfmt_ready "${registry_entry}"; then
+              echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
+              exit 1
+            fi
           }
 
           for distro in "${debian_suites[@]}"; do
