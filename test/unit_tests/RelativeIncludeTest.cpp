@@ -47,6 +47,31 @@ TEST_CASE("Relative Include parses nested configs and skips missing wildcards",
   fs::remove_all(tempDir);
 }
 
+TEST_CASE("Wildcard Include parses matches in sorted order", "[SSHConfig]") {
+  const fs::path tempDir = fs::temp_directory_path() /
+                           ("et_test_ssh_include_glob_" + sole::uuid4().str());
+  fs::remove_all(tempDir);
+  fs::create_directories(tempDir / "conf.d");
+
+  const fs::path mainConfig = tempDir / "config";
+  std::ofstream(mainConfig) << "Include conf.d/*\n";
+  // Reverse-sorted creation, so a creation-order walk also picks the wrong
+  // file.
+  for (const char* name :
+       {"zz", "b", "a-file", "0_generated", "00_x", "000", "00-first"}) {
+    std::ofstream(tempDir / "conf.d" / name)
+        << "Host testhost\n    HostName " << name << "\n";
+  }
+
+  Options opts = {};
+  ssh_options_set(&opts, SSH_OPTIONS_HOST, "testhost");
+  REQUIRE(parse_ssh_config_file("testhost", &opts, mainConfig.string()) == 0);
+  REQUIRE(string(opts.host) == "00-first");
+
+  freeOptionsFields(&opts);
+  fs::remove_all(tempDir);
+}
+
 TEST_CASE("OpenSSH -o session options update resolved config",
           "[OpenSshLocalQueries]") {
   Options opts = {};
