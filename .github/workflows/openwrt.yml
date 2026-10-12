@@ -13,6 +13,11 @@ permissions:
   contents: read
   actions: write
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   openwrt:
     name: build-and-test-openwrt
@@ -24,7 +29,7 @@ jobs:
           submodules: recursive
 
       - name: Restore OpenWrt SDK cache
-        uses: actions/cache@v5
+        uses: ./.github/actions/shared-cache
         with:
           path: .openwrt-cache
           key: openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-${{ github.sha }}

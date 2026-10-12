@@ -134,7 +134,16 @@ set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF)
 # Required packages
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
+# sanitizers-cmake otherwise only warns and continues without instrumentation.
+set(ET_MSAN_REQUESTED "${SANITIZE_MEMORY}")
+if(ET_MSAN_REQUESTED AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+    NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  message(FATAL_ERROR "MemorySanitizer requires Clang on Linux; this configuration would run without MSan")
+endif()
 find_package(Sanitizers REQUIRED)
+if(ET_MSAN_REQUESTED AND (NOT SANITIZE_MEMORY OR NOT MSan_Clang_FLAGS))
+  message(FATAL_ERROR "MemorySanitizer was requested but its compiler flags are unavailable")
+endif()
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)

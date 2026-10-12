@@ -11,10 +11,16 @@ permissions:
   contents: read
   actions: write
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   linux_distros:
     name: build-${{ matrix.distro }}
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     container:
       image: ${{ matrix.container }}
       options: --privileged
@@ -193,9 +199,41 @@ jobs:
                 unzip \
                 zip
     steps:
+      # Minimal distro images need Git before checkout can fetch submodules.
+      # Bootstrap only checkout tools here so Gentoo can still restore its
+      # package cache before installing the full build dependencies.
+      - name: Install checkout tools
+        shell: sh
+        run: |
+          case '${{ matrix.distro }}' in
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+              ;;
+            fedora|rocky-linux)
+              dnf install -y git ca-certificates
+              ;;
+            gentoo)
+              if [ ! -f /var/db/repos/gentoo/profiles/repo_name ]; then
+                emerge-webrsync
+              fi
+              emerge --jobs=2 dev-vcs/git
+              ;;
+            archlinux)
+              pacman -Syu --disable-sandbox --noconfirm --needed git ca-certificates
+              ;;
+            opensuse)
+              zypper --non-interactive install --no-recommends git ca-certificates
+              ;;
+          esac
+
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
       - name: Restore Gentoo package cache
         if: matrix.distro == 'gentoo' && !env.ACT
-        uses: actions/cache@v5
+        uses: ./.github/actions/shared-cache
         with:
           path: |
             /var/cache/distfiles
@@ -208,10 +246,6 @@ jobs:
       - name: Install dependencies
         shell: bash
         run: ${{ matrix.install }}
-
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
 
       - name: Restore dependency compiler cache
         uses: ./.github/actions/ccache
@@ -230,11 +264,12 @@ jobs:
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
-          ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
+          ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --timeout 300 --output-on-failure
 
   freebsd:
     name: build-freebsd
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
     steps:
@@ -244,7 +279,7 @@ jobs:
 
       - name: Restore FreeBSD packages
         if: ${{ !env.ACT }}
-        uses: actions/cache@v5
+        uses: ./.github/actions/shared-cache
         with:
           path: |
             .ci-cache/pkg
@@ -325,120 +360,9 @@ jobs:
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
           export SHELL=/bin/sh
           ctest_status=0
-          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure || ctest_status=$?
+          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --timeout 300 --output-on-failure || ctest_status=$?
           # vmactions copies the workspace back after this script. The
           # RelWithDebInfo tree is several gigabytes and that rsync fails
           # after a green test run.
           rm -rf "$(pwd)/build"
           exit "${ctest_status}"
-
-  openwrt:
-    name: build-openwrt
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-        with:
-          submodules: recursive
-
-      - name: Restore OpenWrt SDK cache
-        if: ${{ !env.ACT }}
-        uses: actions/cache@v5
-        with:
-          path: .openwrt-cache
-          key: openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-${{ github.sha }}
-          restore-keys: |
-            openwrt-sdk-x86-64-23.05.5-${{ hashFiles('openwrt/**') }}-
-            openwrt-sdk-x86-64-23.05.5-
-
-      - name: Build OpenWrt package with SDK
-        shell: bash
-        run: |
-          mkdir -p bin/openwrt .openwrt-cache && chmod 777 bin/openwrt .openwrt-cache
-          docker run --rm \
-            --platform linux/amd64 \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            -v "${GITHUB_WORKSPACE}/.openwrt-cache:/owrt-cache" \
-            openwrt/sdk:x86-64-23.05.5 \
-            bash -c '
-              set -euo pipefail
-              sdk_root=$(pwd)
-              mkdir -p /owrt-cache/dl /owrt-cache/feeds /owrt-cache/build_dir
-              adopt_cache() {
-                local name="$1"
-                if [ -n "$(ls -A "/owrt-cache/${name}" 2>/dev/null || true)" ]; then
-                  rm -rf "${sdk_root}/${name}"
-                  ln -s "/owrt-cache/${name}" "${sdk_root}/${name}"
-                fi
-              }
-              persist_cache() {
-                local name="$1"
-                if [ ! -L "${sdk_root}/${name}" ] && [ -d "${sdk_root}/${name}" ]; then
-                  mkdir -p "/owrt-cache/${name}"
-                  cp -a "${sdk_root}/${name}/." "/owrt-cache/${name}/"
-                fi
-              }
-              adopt_cache dl
-              adopt_cache feeds
-              adopt_cache build_dir
-              sed \
-                -e "s,https://git.openwrt.org/feed/,https://github.com/openwrt/," \
-                -e "s,https://git.openwrt.org/openwrt/,https://github.com/openwrt/," \
-                -e "s,https://git.openwrt.org/project/,https://github.com/openwrt/," \
-                feeds.conf.default > feeds.conf
-              ./scripts/feeds update base packages
-              ./scripts/feeds install libsodium protobuf zlib libopenssl libunwind
-              rm -rf package/eternalterminal
-              cp -r /workspace/openwrt package/eternalterminal
-              make defconfig
-              echo "CONFIG_PACKAGE_eternalterminal=y" >> .config
-              make defconfig
-              parallel_level="${CI_PARALLEL_LEVEL:-$(nproc)}"
-              make package/eternalterminal/compile V=s -j"${parallel_level}" ET_SRC_DIR=/workspace
-              mkdir -p /workspace/bin/openwrt
-              find bin -name "eternalterminal*.ipk" -exec cp -v {} /workspace/bin/openwrt/ \;
-              persist_cache dl
-              persist_cache feeds
-              persist_cache build_dir
-            '
-
-      - name: Test OpenWrt package in target rootfs
-        shell: bash
-        run: |
-          docker run --rm \
-            --platform linux/amd64 \
-            -v "${GITHUB_WORKSPACE}:/workspace" \
-            openwrt/rootfs:x86-64-23.05.5 \
-            sh -c '
-              set -eu
-              mkdir -p /var/lock
-              opkg update
-              opkg install libsodium protobuf libopenssl zlib libstdcpp libunwind8 python3
-              ipk=$(find /workspace/bin/openwrt -name "eternalterminal*.ipk" | head -n 1)
-              if [ -z "$ipk" ]; then
-                echo "Error: No eternalterminal IPK found in /workspace/bin/openwrt"
-                exit 1
-              fi
-              echo "Installing $ipk..."
-              opkg install "$ipk"
-              echo "Verifying installed files..."
-              test -x /usr/bin/et
-              test -x /usr/bin/etserver
-              test -x /usr/bin/etterminal
-              test -x /usr/bin/et1
-              test -x /etc/init.d/etserver
-              echo "Verifying et help output..."
-              /usr/bin/et --help || true
-              echo "Verifying etserver help output..."
-              /usr/bin/etserver --help || true
-              if [ -x /usr/bin/et-test ]; then
-                echo "Running unit tests with et-test..."
-                /usr/bin/et-test "~[.ghostty]"
-              fi
-              if [ -x /usr/bin/htm ] && [ -x /usr/bin/htmd ]; then
-                echo "Running htm e2e tests..."
-                python3 /workspace/test/system_tests/htm_pty_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
-                python3 /workspace/test/system_tests/htm_features_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
-                python3 /workspace/test/system_tests/htm_stress_e2e.py --htm /usr/bin/htm --htmd /usr/bin/htmd
-              fi
-              echo "OpenWrt package verified successfully!"
-            '

@@ -1,5 +1,5 @@
-name: ccache
-description: Restore a compiler cache for jobs that build bundled dependencies
+name: compiler cache
+description: Restore shared project compilation results from master
 inputs:
   key:
     description: Stable prefix for this OS, compiler, and build flavor
@@ -7,23 +7,52 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Restore ccache
-      # actions/cache needs Node, which act's distro containers do not have.
-      if: ${{ !env.ACT }}
-      uses: actions/cache@v5
+    - name: Install MSVC compiler cache
+      if: runner.os == 'Windows'
+      uses: Mozilla-Actions/sccache-action@7d986dd989559c6ecdb630a3fd2557667be217ad # v0.0.9
+      with:
+        version: v0.18.0
+    - name: Restore project compilation results
+      uses: ./.github/actions/shared-cache
       with:
         path: ${{ github.workspace }}/.ccache
-        key: ccache-v2-${{ inputs.key }}-${{ github.sha }}
+        key: ccache-v3-${{ inputs.key }}-${{ runner.arch }}-${{ github.sha }}
         restore-keys: |
+          ccache-v3-${{ inputs.key }}-${{ runner.arch }}-
           ccache-v2-${{ inputs.key }}-
-    - name: Export ccache environment
+    - name: Export compiler cache environment
       shell: bash
       run: |
         mkdir -p "${GITHUB_WORKSPACE}/.ccache"
-        {
-          echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache"
-          echo "CCACHE_MAXSIZE=500M"
-          echo "CCACHE_COMPRESS=true"
-          echo "CCACHE_COMPILERCHECK=content"
-          echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
-        } >> "$GITHUB_ENV"
+        if [[ -n "${ACT:-}" ]]; then
+          default_parallel=14
+        elif [[ "${RUNNER_OS}" == "Linux" ]]; then
+          default_parallel=$(nproc)
+        else
+          default_parallel=2
+        fi
+        echo "CI_PARALLEL_LEVEL=${CI_PARALLEL_LEVEL:-${default_parallel}}" >> "$GITHUB_ENV"
+        if [[ "${RUNNER_OS}" == "Windows" ]]; then
+          {
+            echo "SCCACHE_DIR=${GITHUB_WORKSPACE}/.ccache"
+            echo "SCCACHE_CACHE_SIZE=500M"
+            echo "CMAKE_C_COMPILER_LAUNCHER=sccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=sccache"
+          } >> "$GITHUB_ENV"
+        else
+          command -v ccache
+          {
+            echo "CCACHE_DIR=${GITHUB_WORKSPACE}/.ccache"
+            echo "CCACHE_BASEDIR=${GITHUB_WORKSPACE}"
+            echo "CCACHE_MAXSIZE=500M"
+            echo "CCACHE_COMPRESS=true"
+            echo "CCACHE_COMPILERCHECK=content"
+            echo "CCACHE_SLOPPINESS=pch_defines,time_macros,include_file_mtime,include_file_ctime"
+            echo "CMAKE_C_COMPILER_LAUNCHER=ccache"
+            echo "CMAKE_CXX_COMPILER_LAUNCHER=ccache"
+          } >> "$GITHUB_ENV"
+          if "${CXX:-c++}" --version | grep -i 'clang' >/dev/null; then
+            # Stable Clang PCH contents allow ccache to reuse compile results.
+            echo "CXXFLAGS=${CXXFLAGS:-} -Xclang -fno-pch-timestamp" >> "$GITHUB_ENV"
+          fi
+        fi
