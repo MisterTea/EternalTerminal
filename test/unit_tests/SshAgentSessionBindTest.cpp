@@ -120,6 +120,24 @@ bool readFrame(int fd, string* body) {
   return ok && readExact(fd, &(*body)[0], body->size());
 }
 
+int connectUnix(const string& path) {
+  int fd = ::socket(AF_UNIX, SOCK_STREAM, 0);
+  sockaddr_un addr = {};
+  addr.sun_family = AF_UNIX;
+  strncpy(addr.sun_path, path.c_str(), sizeof(addr.sun_path) - 1);
+  REQUIRE(::connect(fd, (sockaddr*)&addr, sizeof(addr)) == 0);
+  setReceiveTimeout(fd);
+  return fd;
+}
+
+// Sends `request` to an agent socket and returns the reply body.
+string agentRoundTrip(int fd, const string& request) {
+  string reply;
+  REQUIRE(sendFrame(fd, request));
+  REQUIRE(readFrame(fd, &reply));
+  return reply;
+}
+
 /** Listening Unix socket in a fresh temporary directory, removed on exit. */
 struct UnixListener {
   UnixListener() {
@@ -262,6 +280,42 @@ string agentOutput(PortForwardHandler* handler, size_t minBytes,
 }
 }  // namespace
 
+TEST_CASE("forwardedSessionBind marks ssh's own binding as forwarded",
+          "[SshAgentSessionBind]") {
+  auto forwarded = forwardedSessionBind(sessionBind("host-key", false));
+  REQUIRE(forwarded);
+  REQUIRE(*forwarded == sessionBind("host-key", true));
+}
+
+TEST_CASE("forwardedSessionBind rejects other agent messages",
+          "[SshAgentSessionBind]") {
+  string bind = sessionBind("host-key", false);
+  CHECK_FALSE(forwardedSessionBind(sessionBind("host-key", true)));
+  CHECK_FALSE(forwardedSessionBind(string(1, SSH_AGENTC_REQUEST_IDENTITIES)));
+  CHECK_FALSE(forwardedSessionBind(""));
+  CHECK_FALSE(forwardedSessionBind(bind.substr(0, bind.size() - 1)));
+  CHECK_FALSE(forwardedSessionBind(bind + "x"));
+  CHECK_FALSE(forwardedSessionBind(string(1, char(27)) + sshString("query") +
+                                   sshString("x")));
+  CHECK_FALSE(forwardedSessionBind(sessionBind("", false)));
+  // Too short for a length prefix, and a string running past the message.
+  CHECK_FALSE(forwardedSessionBind(string(1, char(27)) + "ab"));
+  CHECK_FALSE(
+      forwardedSessionBind(string(1, char(27)) + u32(100) + "session-bind"));
+}
+
+TEST_CASE("sessionBindHostKeyFingerprint matches ssh-keygen",
+          "[SshAgentSessionBind]") {
+  string hostKey;
+  REQUIRE(Base64::Decode(
+      "AAAAC3NzaC1lZDI1NTE5AAAAID4NdJ9B1LOS7+li7shEB10b9lQEjdsbe2oNQEW8fZP7",
+      &hostKey));
+  CHECK(sessionBindHostKeyFingerprint(sessionBind(hostKey, true)) ==
+        "SHA256:1Z8TElQaniPWrBI8ZeIOaUH5BDBpeoK85Bt65Kr7ppY");
+  CHECK_FALSE(
+      sessionBindHostKeyFingerprint(string(1, SSH_AGENTC_REQUEST_IDENTITIES)));
+}
+
 TEST_CASE("AgentSessionBindReplies drops only the bind replies",
           "[SshAgentSessionBind]") {
   string bindReplies =
@@ -296,6 +350,187 @@ TEST_CASE("AgentSessionBindReplies drops only the bind replies",
     string out;
     CHECK_FALSE(replies.consume(u32(0) + "x", &out));
   }
+}
+
+TEST_CASE("SshAgentSessionBindRecorder relays to the agent and records binds",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  FakeAgent agent([](const string& request) {
+    if (request[0] == SSH_AGENTC_REQUEST_IDENTITIES) {
+      return string(1, SSH_AGENT_IDENTITIES_ANSWER) + u32(0);
+    }
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  CHECK_FALSE(recorder.lastForwardedBind());
+
+  // A ProxyJump helper binds first; ssh binds the destination last.
+  int jumpFd = connectUnix(recorder.socketPath());
+  CHECK(agentRoundTrip(jumpFd, sessionBind("jump-key", false)) ==
+        string(1, SSH_AGENT_SUCCESS));
+  // The fake agent serves one connection at a time.
+  ::close(jumpFd);
+  int fd = connectUnix(recorder.socketPath());
+  CHECK(agentRoundTrip(fd, sessionBind("dest-key", false)) ==
+        string(1, SSH_AGENT_SUCCESS));
+  CHECK(agentRoundTrip(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+        string(1, SSH_AGENT_IDENTITIES_ANSWER) + u32(0));
+
+  ::close(fd);
+
+  REQUIRE(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  // ssh's own binding reaches the real agent unchanged.
+  auto received = agent.received();
+  REQUIRE(received.size() == 3);
+  CHECK(received[0] == sessionBind("jump-key", false));
+  CHECK(received[1] == sessionBind("dest-key", false));
+#endif
+}
+
+TEST_CASE("SshAgentSessionBindRecorder without a usable agent fails requests",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  string upstream;
+  SECTION("No agent") { upstream = ""; }
+  SECTION("Agent socket missing") { upstream = "/nonexistent/et/agent.sock"; }
+  SECTION("Agent path too long") { upstream = "/tmp/" + string(200, 'a'); }
+
+  string socketPath;
+  {
+    SshAgentSessionBindRecorder recorder(upstream);
+    socketPath = recorder.socketPath();
+    int fd = connectUnix(socketPath);
+    CHECK(agentRoundTrip(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+          string(1, SSH_AGENT_FAILURE));
+    CHECK(agentRoundTrip(fd, sessionBind("dest-key", false)) ==
+          string(1, SSH_AGENT_FAILURE));
+    ::close(fd);
+    CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  }
+  CHECK_FALSE(fs::exists(fs::path(socketPath).parent_path()));
+#endif
+}
+
+TEST_CASE("SshAgentSessionBindRecorder handles split and pipelined requests",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  // Echoes each request so replies can be matched to requests.
+  FakeAgent agent([](const string& request) {
+    return string(1, SSH_AGENT_SUCCESS) + request;
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  int fd = connectUnix(recorder.socketPath());
+
+  string bind = frame(sessionBind("dest-key", false));
+  string identities = frame(string(1, SSH_AGENTC_REQUEST_IDENTITIES));
+  // A header and part of a body, then the rest together with a second
+  // request.
+  REQUIRE(::send(fd, bind.data(), 6, MSG_NOSIGNAL) == 6);
+  std::this_thread::sleep_for(std::chrono::milliseconds(50));
+  string rest = bind.substr(6) + identities;
+  REQUIRE(::send(fd, rest.data(), rest.size(), MSG_NOSIGNAL) ==
+          ssize_t(rest.size()));
+
+  string reply;
+  REQUIRE(readFrame(fd, &reply));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) + sessionBind("dest-key", false));
+  REQUIRE(readFrame(fd, &reply));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) +
+                     string(1, SSH_AGENTC_REQUEST_IDENTITIES));
+  CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  ::close(fd);
+#endif
+}
+
+TEST_CASE("SshAgentSessionBindRecorder drops connections it cannot serve",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  string reply;
+  SECTION("Malformed request length") {
+    SshAgentSessionBindRecorder recorder("");
+    int fd = connectUnix(recorder.socketPath());
+    string zeroLength = u32(0);
+    REQUIRE(::send(fd, zeroLength.data(), 4, MSG_NOSIGNAL) == 4);
+    CHECK_FALSE(readFrame(fd, &reply));
+    ::close(fd);
+  }
+
+  SECTION("Malformed agent reply") {
+    // An empty body goes out as a zero-length frame.
+    FakeAgent agent([](const string&) { return string(); });
+    SshAgentSessionBindRecorder recorder(agent.path);
+    int fd = connectUnix(recorder.socketPath());
+    REQUIRE(sendFrame(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)));
+    CHECK_FALSE(readFrame(fd, &reply));
+    ::close(fd);
+  }
+
+  SECTION("Agent closes without replying") {
+    UnixListener upstream;
+    SshAgentSessionBindRecorder recorder(upstream.path);
+    int fd = connectUnix(recorder.socketPath());
+    // The recorder connects to the agent when it accepts the client.
+    int agentFd = ::accept(upstream.fd, nullptr, nullptr);
+    setReceiveTimeout(agentFd);
+    REQUIRE(sendFrame(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)));
+    string request;
+    REQUIRE(readFrame(agentFd, &request));
+    ::close(agentFd);
+    CHECK_FALSE(readFrame(fd, &reply));
+    ::close(fd);
+  }
+#endif
+}
+
+TEST_CASE("SshAgentSessionBindRecorder shuts down while a request is pending",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  UnixListener upstream;  // Accepts nothing, so requests never get a reply.
+  auto recorder = make_unique<SshAgentSessionBindRecorder>(upstream.path);
+  int idle = connectUnix(recorder->socketPath());
+  int fd = connectUnix(recorder->socketPath());
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  REQUIRE(sendFrame(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+
+  auto start = std::chrono::steady_clock::now();
+  recorder.reset();
+  CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+  // Both the waiting and the idle client are disconnected.
+  string reply;
+  CHECK_FALSE(readFrame(fd, &reply));
+  CHECK_FALSE(readFrame(idle, &reply));
+  ::close(fd);
+  ::close(idle);
+#endif
+}
+
+TEST_CASE("SshAgentSessionBindRecorder keeps waiting for a slow agent",
+          "[SshAgentSessionBind]") {
+#ifdef WIN32
+  SKIP("Unix-domain ssh-agent sockets");
+#else
+  // Slower than the 5 s warning, as when the agent asks to confirm a key.
+  FakeAgent agent([](const string&) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5500));
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  int fd = connectUnix(recorder.socketPath());
+  CHECK(agentRoundTrip(fd, string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+        string(1, SSH_AGENT_SUCCESS));
+  ::close(fd);
+#endif
 }
 
 TEST_CASE("Forwarded agent connections are bound before data flows",
@@ -432,3 +667,262 @@ TEST_CASE("Bind replies are not forwarded even when they arrive alone",
   REQUIRE(data.size() == 1);
   CHECK(data[0].buffer() == clientReply);
 }
+#ifdef WIN32
+namespace {
+// A real named-pipe agent exercises the transport used by Win32 OpenSSH.
+// Every test wait is bounded, and cancellation drains overlapped operations.
+struct TestPipeHandle {
+  explicit TestPipeHandle(HANDLE handle) : handle(handle) {}
+  ~TestPipeHandle() {
+    if (handle != INVALID_HANDLE_VALUE && handle != nullptr)
+      CloseHandle(handle);
+  }
+  HANDLE handle;
+};
+
+bool pipeTransfer(HANDLE pipe, char* data, size_t size, bool writing,
+                  const std::atomic<bool>* stopping = nullptr) {
+  size_t pos = 0;
+  while (pos < size) {
+    TestPipeHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+    OVERLAPPED op = {};
+    op.hEvent = event.handle;
+    DWORD count = 0;
+    BOOL ok = writing ? WriteFile(pipe, data + pos,
+                                  static_cast<DWORD>(size - pos), nullptr, &op)
+                      : ReadFile(pipe, data + pos,
+                                 static_cast<DWORD>(size - pos), nullptr, &op);
+    if (!ok) {
+      if (GetLastError() != ERROR_IO_PENDING) return false;
+      auto deadline =
+          std::chrono::steady_clock::now() + std::chrono::seconds(10);
+      while (WaitForSingleObject(event.handle, 50) == WAIT_TIMEOUT &&
+             !(stopping && *stopping) &&
+             std::chrono::steady_clock::now() < deadline) {
+      }
+      if (!GetOverlappedResult(pipe, &op, &count, FALSE)) {
+        CancelIoEx(pipe, &op);
+        GetOverlappedResult(pipe, &op, &count, TRUE);
+        return false;
+      }
+    }
+    if (ok && !GetOverlappedResult(pipe, &op, &count, FALSE)) return false;
+    if (!count) return false;
+    pos += count;
+  }
+  return true;
+}
+
+bool pipeFrame(HANDLE pipe, string* body, bool writing,
+               const std::atomic<bool>* stopping = nullptr) {
+  if (writing) {
+    string bytes = frame(*body);
+    return pipeTransfer(pipe, bytes.data(), bytes.size(), true, stopping);
+  }
+  char length[4];
+  if (!pipeTransfer(pipe, length, 4, false, stopping)) return false;
+  uint32_t size = (uint32_t(uint8_t(length[0])) << 24) |
+                  (uint32_t(uint8_t(length[1])) << 16) |
+                  (uint32_t(uint8_t(length[2])) << 8) | uint8_t(length[3]);
+  if (!size || size > SSH_AGENT_MAX_MESSAGE_LENGTH) return false;
+  body->assign(size, '\0');
+  return pipeTransfer(pipe, body->data(), size, false, stopping);
+}
+
+HANDLE connectAgentPipe(const string& path) {
+  HANDLE pipe =
+      CreateFileA(path.c_str(), GENERIC_READ | GENERIC_WRITE, 0, nullptr,
+                  OPEN_EXISTING, FILE_FLAG_OVERLAPPED, nullptr);
+  REQUIRE(pipe != INVALID_HANDLE_VALUE);
+  return pipe;
+}
+
+string pipeRoundTrip(HANDLE pipe, string request) {
+  REQUIRE(pipeFrame(pipe, &request, true));
+  string reply;
+  REQUIRE(pipeFrame(pipe, &reply, false));
+  return reply;
+}
+
+class FakePipeAgent {
+ public:
+  explicit FakePipeAgent(function<string(const string&)> reply)
+      : path("\\\\.\\pipe\\et-test-agent-" + genRandomAlphaNum(24)),
+        pipe(CreateNamedPipeA(
+            path.c_str(), PIPE_ACCESS_DUPLEX | FILE_FLAG_OVERLAPPED,
+            PIPE_TYPE_BYTE | PIPE_WAIT | PIPE_REJECT_REMOTE_CLIENTS, 1, 4096,
+            4096, 0, nullptr)),
+        reply(std::move(reply)) {
+    REQUIRE(pipe.handle != INVALID_HANDLE_VALUE);
+    worker = std::thread([this] { serve(); });
+  }
+  ~FakePipeAgent() {
+    stopping = true;
+    worker.join();
+  }
+  const string path;
+
+ private:
+  void serve() {
+    while (!stopping) {
+      TestPipeHandle event(CreateEventA(nullptr, TRUE, FALSE, nullptr));
+      OVERLAPPED op = {};
+      op.hEvent = event.handle;
+      BOOL connected = ConnectNamedPipe(pipe.handle, &op);
+      DWORD error = connected ? ERROR_SUCCESS : GetLastError();
+      if (!connected && error != ERROR_PIPE_CONNECTED) {
+        if (error != ERROR_IO_PENDING) return;
+        while (!stopping &&
+               WaitForSingleObject(event.handle, 50) == WAIT_TIMEOUT) {
+        }
+        DWORD count = 0;
+        if (!GetOverlappedResult(pipe.handle, &op, &count, FALSE)) {
+          CancelIoEx(pipe.handle, &op);
+          GetOverlappedResult(pipe.handle, &op, &count, TRUE);
+          return;
+        }
+      }
+      string request;
+      while (!stopping && pipeFrame(pipe.handle, &request, false, &stopping)) {
+        string response = reply(request);
+        if (!pipeFrame(pipe.handle, &response, true, &stopping)) break;
+      }
+      DisconnectNamedPipe(pipe.handle);
+    }
+  }
+  TestPipeHandle pipe;
+  function<string(const string&)> reply;
+  std::atomic<bool> stopping{false};
+  std::thread worker;
+};
+}  // namespace
+
+TEST_CASE("Windows agent recorder relays named pipes and records the last bind",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string& request) {
+    return string(1, SSH_AGENT_SUCCESS) + request;
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  CHECK_FALSE(recorder.lastForwardedBind());
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  for (const string& host : {string("jump-key"), string("dest-key")}) {
+    string bind = sessionBind(host, false);
+    CHECK(pipeRoundTrip(client.handle, bind) ==
+          string(1, SSH_AGENT_SUCCESS) + bind);
+  }
+  CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+  CHECK(pipeRoundTrip(client.handle, identities) ==
+        string(1, SSH_AGENT_SUCCESS) + identities);
+
+  string messages = frame(identities) + frame(identities);
+  REQUIRE(pipeTransfer(client.handle, messages.data(), 2, true));
+  REQUIRE(pipeTransfer(client.handle, messages.data() + 2, messages.size() - 2,
+                       true));
+  string reply;
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) + identities);
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS) + identities);
+}
+
+TEST_CASE("Windows agent recorder fails requests without a usable agent",
+          "[SshAgentSessionBind]") {
+  string upstream;
+  SECTION("No agent") { upstream = ""; }
+  SECTION("Missing agent") {
+    upstream = "\\\\.\\pipe\\et-missing-" + genRandomAlphaNum(24);
+  }
+  string path;
+  {
+    SshAgentSessionBindRecorder recorder(upstream);
+    path = recorder.socketPath();
+    TestPipeHandle client(connectAgentPipe(path));
+    CHECK(pipeRoundTrip(client.handle, sessionBind("dest-key", false)) ==
+          string(1, SSH_AGENT_FAILURE));
+    CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+  }
+  CHECK(WaitNamedPipeA(path.c_str(), 0) == FALSE);
+}
+
+TEST_CASE("Windows agent recorder rejects malformed frames",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string&) { return string(); });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  SECTION("Malformed request") {
+    string zero = u32(0);
+    REQUIRE(pipeTransfer(client.handle, zero.data(), zero.size(), true));
+  }
+  SECTION("Malformed upstream reply") {
+    string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+    REQUIRE(pipeFrame(client.handle, &identities, true));
+  }
+  string reply;
+  CHECK_FALSE(pipeFrame(client.handle, &reply, false));
+}
+
+TEST_CASE("Windows agent recorder cancels pending requests and idle clients",
+          "[SshAgentSessionBind]") {
+  std::promise<void> received, release;
+  auto released = release.get_future().share();
+  auto requestReceived = received.get_future();
+  FakePipeAgent agent([&received, released](const string&) {
+    received.set_value();
+    released.wait();
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  std::unique_ptr<std::promise<void>, void (*)(std::promise<void>*)>
+      releaseAgent(&release,
+                   [](std::promise<void>* value) { value->set_value(); });
+  auto recorder = make_unique<SshAgentSessionBindRecorder>(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder->socketPath()));
+  // The accept worker creates the next instance before processing this request.
+  string identities(1, SSH_AGENTC_REQUEST_IDENTITIES);
+  REQUIRE(pipeFrame(client.handle, &identities, true));
+  REQUIRE(requestReceived.wait_for(std::chrono::seconds(10)) ==
+          std::future_status::ready);
+  TestPipeHandle idle(connectAgentPipe(recorder->socketPath()));
+  auto start = std::chrono::steady_clock::now();
+  recorder.reset();
+  CHECK(std::chrono::steady_clock::now() - start < std::chrono::seconds(5));
+  string reply;
+  CHECK_FALSE(pipeFrame(client.handle, &reply, false));
+  CHECK_FALSE(pipeFrame(idle.handle, &reply, false));
+}
+
+TEST_CASE("Windows agent recorder keeps waiting for slow confirmations",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent([](const string&) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(5500));
+    return string(1, SSH_AGENT_SUCCESS);
+  });
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  CHECK(
+      pipeRoundTrip(client.handle, string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+      string(1, SSH_AGENT_SUCCESS));
+}
+#endif
+
+#ifdef WIN32
+TEST_CASE("Windows agent recorder waits for a busy upstream pipe",
+          "[SshAgentSessionBind]") {
+  FakePipeAgent agent(successReply);
+  auto occupied = make_unique<TestPipeHandle>(connectAgentPipe(agent.path));
+  CHECK(pipeRoundTrip(occupied->handle,
+                      string(1, SSH_AGENTC_REQUEST_IDENTITIES)) ==
+        string(1, SSH_AGENT_SUCCESS));
+  SshAgentSessionBindRecorder recorder(agent.path);
+  TestPipeHandle client(connectAgentPipe(recorder.socketPath()));
+  string bind = sessionBind("dest-key", false);
+  REQUIRE(pipeFrame(client.handle, &bind, true));
+  std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  CHECK_FALSE(recorder.lastForwardedBind());
+  occupied.reset();
+  string reply;
+  REQUIRE(pipeFrame(client.handle, &reply, false));
+  CHECK(reply == string(1, SSH_AGENT_SUCCESS));
+  CHECK(recorder.lastForwardedBind() == sessionBind("dest-key", true));
+}
+#endif

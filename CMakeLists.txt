@@ -556,6 +556,7 @@ set_source_files_properties(
 
 if(WIN32)
   set(TERMINAL_PLATFORM_SRCS
+    src/terminal/forwarding/SshAgentSessionBindWindows.cpp
     src/terminal/ConsoleWindows.cpp
     src/terminal/PseudoTerminalConsoleWindows.cpp
     src/terminal/ServerFifoPathWindows.cpp
@@ -632,6 +633,10 @@ add_library(
   ${ETERMINAL_HDRS})
 add_dependencies(TerminalCommon generated-code et-lib)
 decorate_target(TerminalCommon)
+
+if(WIN32)
+  target_link_libraries(TerminalCommon PUBLIC advapi32)
+endif()
 
 add_executable(et src/terminal/TerminalClientMainEntry.cpp)
 target_link_libraries(
