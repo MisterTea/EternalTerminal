@@ -1,3 +1,4 @@
+#include "SecureFileUnix.hpp"
 #include "ServerFifoPath.hpp"
 
 namespace et {
@@ -13,8 +14,8 @@ namespace et {
  * - Do not query environment variables.
  * - Do not create directories or change file permissions.
  *
- * For all users, this takes a fail-fast approach, where instead of correcting
- * issues it will crash or error out.
+ * Unsafe ownership, links, or writable ancestors cause an error. A safe
+ * user-owned fifo directory is restricted to 0700.
  */
 
 namespace {
@@ -44,7 +45,7 @@ string GetHome() {
   string homeStr(home);
   CHECK(IsAbsolutePath(homeStr))
       << "Unexpected relative path for $HOME environment variable: " << homeStr;
-  return homeStr;
+  return fs::path(homeStr).lexically_normal().string();
 }
 
 /**
@@ -61,27 +62,13 @@ ValueWithDefault GetXdgRuntimeDir() {
   // > it should consider the path invalid and ignore it
   if (const char* dataHome = getenv("XDG_RUNTIME_DIR")) {
     if (IsAbsolutePath(dataHome)) {
-      return ValueWithDefault{dataHome, /*isDefault*/ false};
+      return ValueWithDefault{fs::path(dataHome).lexically_normal().string(),
+                              /*isDefault*/ false};
     }
   }
 
   return ValueWithDefault{GetHome() + string("/.local/share"),
                           /*isDefault*/ true};
-}
-
-void TryCreateDirectory(string dir, mode_t mode) {
-  // Reset umask to 0 while creating subdirs, and restore after.
-  const mode_t oldMode = ::umask(0);
-
-  if (::mkdir(dir.c_str(), mode) == -1) {
-    // Permit EEXIST if the directory already exists.
-    CHECK_EQ(errno, EEXIST)
-        << "Unexpected result creating " << dir << ": " << strerror(errno);
-  }
-
-  CHECK_EQ(::umask(oldMode), 0)
-      << "Unexpected result when restoring umask, which should return the "
-         "previous overridden value (0).";
 }
 
 }  // namespace
@@ -99,51 +86,13 @@ void ServerFifoPath::createDirectoriesIfRequired() {
     return;
   }
 
-  const auto xdgRuntimeDir = GetXdgRuntimeDir();
-  if (xdgRuntimeDir.isDefault) {
-    // Only create directories if the default path is returned.
-    //
-    // Create subdirectories for ~/.local/share. These may already be created
-    // with different permissions on different machines, so also create an
-    // etserver subdir to enforce 0700 permissions.
-    const string homeDir = GetHome();
-    TryCreateDirectory(homeDir + "/.local", 0755);
-    TryCreateDirectory(homeDir + "/.local/share", 0755);
+  // Validating only etserver's mode misses replacement through a writable
+  // parent. Walk all ancestors without following user-planted links.
+  const auto runtime = GetXdgRuntimeDir();
+  if (!runtime.isDefault && !fs::is_directory(runtime.value)) {
+    throw std::runtime_error("XDG_RUNTIME_DIR must already exist");
   }
-
-  const string etserverDir = xdgRuntimeDir.value + "/etserver";
-
-  // First try creating the directory. TryCreateDirectory will ignore error if
-  // the directory already exists.
-  TryCreateDirectory(etserverDir, 0700);
-
-  struct stat etserverStat;
-  const int statResult = ::stat(etserverDir.c_str(), &etserverStat);
-  if (statResult != 0) {
-    LOG(FATAL) << "Failed to create server fifo directory: " << etserverDir
-               << "\n"
-               << "Error: " << strerror(errno);
-  }
-
-  // Directory exists, verify that it has the appropriate permissions.
-  if (etserverStat.st_uid != ::geteuid()) {
-    LOG(FATAL) << "Server fifo directory must be owned by the current "
-                  "user: "
-               << etserverDir << "\n"
-               << "Expected euid=" << ::geteuid()
-               << ", actual=" << etserverStat.st_uid;
-  }
-
-  if (!S_ISDIR(etserverStat.st_mode)) {
-    LOG(FATAL) << "Server fifo directory must be a directory: " << etserverDir;
-  }
-
-  // Fail if the folder has write permissions to group or other.
-  if ((etserverStat.st_mode & (S_IWGRP | S_IWOTH)) != 0) {
-    LOG(FATAL) << "Server fifo directory must not provide write access to "
-                  "group/other: "
-               << etserverDir;
-  }
+  private_storage::ensureDirectory(runtime.value + "/etserver");
 }
 
 string ServerFifoPath::getPathForCreation() {

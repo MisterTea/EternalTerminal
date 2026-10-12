@@ -53,7 +53,7 @@ class ServerFifoPath {
    * Based on the current uid, create the directory structure required to store
    * the fifo once it is created.  If XDG_DATA_HOME is not set and the processes
    * user cannot access /var/run, this will ensure that $HOME/.local/share
-   * exists.
+   * exists. Throws if a directory on the path is unsafe.
    */
   void createDirectoriesIfRequired();
 

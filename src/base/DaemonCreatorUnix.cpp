@@ -1,6 +1,11 @@
 #include "DaemonCreator.hpp"
+#include "SecureFileUnix.hpp"
 
 namespace et {
+void DaemonCreator::writePidFile(const string& path, int processId) {
+  private_storage::replaceFile(path, to_string(processId) + "\n");
+}
+
 int DaemonCreator::createSessionLeader() {
   // daemon(3) has been deprecated on macOS since 10.5. This matches
   // daemon(0, 0): the parent exits, and the child is a session leader whose
@@ -68,22 +73,7 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
 
   /* Child process, write pid file */
   if (childPidFile != "") {
-    int pidFilehandle = open(childPidFile.c_str(), O_RDWR | O_CREAT, 0600);
-    if (pidFilehandle == -1) {
-      STFATAL << "Error opening pidfile for writing: " << childPidFile;
-    }
-
-    // Max pid length for x86_64 is 2^22 ~ 4000000
-    std::stringstream pid_ss;
-    pid_ss << getpid() << "\n";
-    std::string pid_str = pid_ss.str();
-    ssize_t bytesWritten =
-        write(pidFilehandle, pid_str.c_str(), pid_str.length());
-    FATAL_FAIL(bytesWritten);
-    if (static_cast<size_t>(bytesWritten) != pid_str.length()) {
-      STFATAL << "Error writing pidfile: " << childPidFile;
-    }
-    FATAL_FAIL(close(pidFilehandle));
+    writePidFile(childPidFile, getpid());
   }
 
   /* Change the working directory to the root directory */

@@ -235,10 +235,10 @@ TEST_CASE("Creation", "[ServerFifoPath]") {
   }
 
   const string localDir = homeDir + "/.local";
-  const mode_t localDirMode = 0777;  // Create with different permissions so
+  const mode_t localDirMode = 0750;  // Create with different permissions so
                                      // we can check that this hasn't changed.
   const string shareDir = homeDir + "/.local/share";
-  const mode_t shareDirMode = 0770;  // Another non-default mode.
+  const mode_t shareDirMode = 0710;  // Another non-default, non-writable mode.
   const string etserverDir = homeDir + "/.local/share/etserver";
 
   SECTION(".local already exists") {
