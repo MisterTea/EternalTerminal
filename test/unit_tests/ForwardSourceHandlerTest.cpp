@@ -568,3 +568,105 @@ TEST_CASE("ForwardSourceHandler closeSocket closes and removes socket",
   REQUIRE(socketHandler->closedFds.size() == 1);
   REQUIRE(socketHandler->closedFds[0] == 42);
 }
+
+TEST_CASE("ForwardSourceHandler caps and expires parked unassigned fds",
+          "[ForwardSourceHandler]") {
+  // Reverse-tunnel sources park accepted fds until the remote peer answers
+  // the destination request; a withholding peer must not exhaust the
+  // process's descriptors.
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(12345);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(54321);
+
+  SECTION("accepts beyond the cap are closed on arrival") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination);
+
+    for (size_t i = 0; i < ForwardSourceHandler::MAX_UNASSIGNED_FDS; ++i) {
+      socketHandler->enqueueAccept(static_cast<int>(1000 + i));
+      REQUIRE(handler.listen() >= 0);
+    }
+    REQUIRE(socketHandler->closedFds.empty());
+
+    socketHandler->enqueueAccept(9999);
+    REQUIRE(handler.listen() == -1);
+    REQUIRE(socketHandler->closedFds.size() == 1);
+    REQUIRE(socketHandler->closedFds[0] == 9999);
+  }
+
+  SECTION("parked fds are closed after the response timeout") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination);
+
+    socketHandler->enqueueAccept(1001);
+    REQUIRE(handler.listen() == 1001);
+    REQUIRE(handler.hasUnassignedFd(1001));
+
+    // update() with no fds ready must not expire a fresh fd.
+    std::vector<PortForwardData> data;
+    handler.update(&data);
+    REQUIRE(handler.hasUnassignedFd(1001));
+    REQUIRE(socketHandler->closedFds.empty());
+
+    // Inject an expired deadline, then verify the next update() reclaims
+    // the fd (the peer never sent its destination response).
+    handler.expireForTest(1001);
+    handler.update(&data);
+    REQUIRE_FALSE(handler.hasUnassignedFd(1001));
+    REQUIRE(socketHandler->closedFds.size() == 1);
+    REQUIRE(socketHandler->closedFds[0] == 1001);
+  }
+}
+
+TEST_CASE("ForwardSourceHandler caps and reaps stalled SOCKS handshakes",
+          "[ForwardSourceHandler]") {
+  // A peer that never completes the SOCKS handshake must not pin fds.
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(12346);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(54322);
+
+  SECTION("accepts beyond the pending cap are closed on arrival") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination,
+                                 /*alreadyListening=*/false,
+                                 /*socksDynamic=*/true);
+
+    for (size_t i = 0; i < ForwardSourceHandler::MAX_PENDING_SOCKS; ++i) {
+      socketHandler->enqueueAccept(static_cast<int>(2000 + i));
+      SocketEndpoint sockDest;
+      handler.listen(&sockDest);
+    }
+    REQUIRE(socketHandler->closedFds.empty());
+
+    socketHandler->enqueueAccept(4242);
+    SocketEndpoint sockDest;
+    handler.listen(&sockDest);
+    REQUIRE(socketHandler->closedFds == vector<int>{4242});
+  }
+
+  SECTION("stalled handshakes are closed after the deadline") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination,
+                                 /*alreadyListening=*/false,
+                                 /*socksDynamic=*/true);
+
+    socketHandler->enqueueAccept(2001);
+    SocketEndpoint sockDest;
+    handler.listen(&sockDest);
+
+    // listen() advances handshakes, so it applies the expired deadline.
+    handler.reapForTest(2001);
+    handler.listen(&sockDest);
+    REQUIRE(socketHandler->closedFds == vector<int>{2001});
+  }
+}

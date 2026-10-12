@@ -63,9 +63,16 @@ int ForwardSourceHandler::acceptFixed(const set<int>* readyFds) {
       LOG(INFO) << "Tunnel " << source << " -> " << destination
                 << " socket created with fd " << fd;
       if (socksDynamic) {
-        socksPending[fd] = SocksHandshake();
-      } else {
-        unassignedFds.insert(fd);
+        if (socksPending.size() >= MAX_PENDING_SOCKS) {
+          LOG(WARNING) << "SOCKS pending set full; closing fd " << fd;
+          socketHandler->close(fd);
+        } else {
+          SocksHandshake handshake;
+          handshake.deadline =
+              std::chrono::steady_clock::now() + SOCKS_HANDSHAKE_TIMEOUT;
+          socksPending[fd] = std::move(handshake);
+        }
+      } else if (parkUnassignedFd(fd)) {
         return fd;
       }
     }
@@ -75,8 +82,14 @@ int ForwardSourceHandler::acceptFixed(const set<int>* readyFds) {
 
 void ForwardSourceHandler::advanceSocksHandshakes(const set<int>* readyFds) {
   vector<int> toClose;
+  const auto now = std::chrono::steady_clock::now();
   for (auto& it : socksPending) {
     int fd = it.first;
+    if (!it.second.complete && now >= it.second.deadline) {
+      LOG(WARNING) << "SOCKS handshake timed out on fd " << fd;
+      toClose.push_back(fd);
+      continue;
+    }
     bool mayHaveData = readyFds == nullptr || readyFds->count(fd) != 0 ||
                        !it.second.input.empty() || socketHandler->hasData(fd);
     if (!mayHaveData) {
@@ -144,9 +157,13 @@ int ForwardSourceHandler::takeCompletedSocks(SocketEndpoint* destinationOut,
       }
       LOG(INFO) << "SOCKS tunnel " << source << " -> " << it->second.destination
                 << " ready on fd " << fd;
-      socksAwaitingReply[fd] = {it->second.version, it->second.earlyData};
-      unassignedFds.insert(fd);
+      SocksAwaitingReply awaiting{it->second.version,
+                                  std::move(it->second.earlyData)};
       socksPending.erase(it);
+      if (!parkUnassignedFd(fd)) {
+        return -1;
+      }
+      socksAwaitingReply[fd] = std::move(awaiting);
       return fd;
     }
   }
@@ -160,7 +177,9 @@ int ForwardSourceHandler::listen(SocketEndpoint* destinationOut,
       return -1;
     }
     stdioRequestPending = false;
-    unassignedFds.insert(stdioReadFd);
+    if (!parkUnassignedFd(stdioReadFd)) {
+      return -1;
+    }
     if (destinationOut) {
       *destinationOut = destination;
     }
@@ -186,8 +205,45 @@ int ForwardSourceHandler::listen(SocketEndpoint* destinationOut,
   return fd;
 }
 
+bool ForwardSourceHandler::parkUnassignedFd(int fd) {
+  if (unassignedFds.size() >= MAX_UNASSIGNED_FDS) {
+    LOG(WARNING) << "Too many fds awaiting destination responses; closing fd "
+                 << fd;
+    if (closeOwnedFds) {
+      socketHandler->close(fd);
+    }
+    return false;
+  }
+  unassignedFds.insert(fd);
+  unassignedFdDeadlines[fd] =
+      std::chrono::steady_clock::now() + UNASSIGNED_FD_TIMEOUT;
+  return true;
+}
+
+void ForwardSourceHandler::expireUnassignedFds() {
+  const auto now = std::chrono::steady_clock::now();
+  for (auto it = unassignedFdDeadlines.begin();
+       it != unassignedFdDeadlines.end();) {
+    if (it->second > now) {
+      ++it;
+      continue;
+    }
+    const int fd = it->first;
+    LOG(WARNING) << "Closing unassigned fd " << fd
+                 << " (destination response timed out)";
+    if (closeOwnedFds) {
+      socketHandler->close(fd);
+    }
+    unassignedFds.erase(fd);
+    socksAwaitingReply.erase(fd);
+    it = unassignedFdDeadlines.erase(it);
+  }
+}
+
 bool ForwardSourceHandler::update(vector<PortForwardData>* data,
                                   const set<int>* readyFds) {
+  // The remote peer decides whether destination responses ever arrive.
+  expireUnassignedFds();
   if (socksDynamic) {
     advanceSocksHandshakes(readyFds);
   }
@@ -304,6 +360,7 @@ void ForwardSourceHandler::closeUnassignedFd(int fd) {
     socketHandler->close(fd);
   }
   unassignedFds.erase(fd);
+  unassignedFdDeadlines.erase(fd);
   socksAwaitingReply.erase(fd);
 }
 
@@ -315,6 +372,7 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
   }
   LOG(INFO) << "Adding socket: " << socketId << " " << sourceFd;
   unassignedFds.erase(sourceFd);
+  unassignedFdDeadlines.erase(sourceFd);
   socketFdMap[socketId] = sourceFd;
   if (stdioMode) {
     socketWriteFdMap[socketId] = stdioWriteFd;

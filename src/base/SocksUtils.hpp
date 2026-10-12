@@ -1,6 +1,8 @@
 #ifndef __ET_SOCKS_UTILS__
 #define __ET_SOCKS_UTILS__
 
+#include <chrono>
+
 #include "Headers.hpp"
 #include "TunnelUtils.hpp"
 
@@ -27,6 +29,8 @@ struct SocksHandshake {
   bool complete = false;
   /** @brief 4 or 5 once CONNECT parsing finishes. */
   int version = 0;
+  /** @brief Monotonic deadline for completing this handshake. */
+  std::chrono::steady_clock::time_point deadline;
   /**
    * @brief Application bytes that arrived after the CONNECT request, either
    * pipelined in the same buffer or read while still awaiting

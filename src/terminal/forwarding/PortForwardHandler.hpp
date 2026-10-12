@@ -106,6 +106,16 @@ class PortForwardHandler {
   /** @brief Maps control socket IDs to their source handlers for routing data.
    */
   unordered_map<int, shared_ptr<ForwardSourceHandler>> socketIdSourceHandlerMap;
+  struct PendingDestination {
+    std::weak_ptr<ForwardSourceHandler> handler;
+    int fd;
+  };
+  // Destination requests carry these tokens in the wire fd/clientfd fields,
+  // so a late response cannot reach a reused descriptor number. Expiry
+  // bounds each token's lifetime far below the wrap period.
+  unordered_map<int, PendingDestination> pendingDestinations;
+  int nextDestinationRequest = 1;
+  void prunePendingDestinations();
   /** @brief Bumped by every site that opens or closes a descriptor exposed by
    * `getForwardFds`: a recycled fd number yields an identical set, so this is
    * a poller's only signal that it must re-register. */

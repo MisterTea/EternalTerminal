@@ -1,6 +1,8 @@
 #ifndef __FORWARD_SOURCE_HANDLER_H__
 #define __FORWARD_SOURCE_HANDLER_H__
 
+#include <chrono>
+
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
 #include "SocksUtils.hpp"
@@ -13,6 +15,16 @@ namespace et {
 class ForwardSourceHandler {
  public:
   static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
+  /** @brief Accepted fds awaiting a destination response beyond this are
+   * closed on arrival. */
+  static constexpr size_t MAX_UNASSIGNED_FDS = 128;
+  /** @brief A parked fd whose destination response never arrives is closed
+   * after this deadline, releasing its descriptor. */
+  static constexpr std::chrono::seconds UNASSIGNED_FD_TIMEOUT{30};
+  /** @brief Pending SOCKS handshakes beyond this are closed on accept. */
+  static constexpr size_t MAX_PENDING_SOCKS = 64;
+  /** @brief A SOCKS handshake not completed within this is closed. */
+  static constexpr std::chrono::seconds SOCKS_HANDSHAKE_TIMEOUT{30};
   /**
    * @brief Creates source/destination handlers used for local port forwarding.
    * @param alreadyListening If true, skip listen(); caller already registered
@@ -81,6 +93,21 @@ class ForwardSourceHandler {
 
   void getActiveFds(set<int>* fds);
 
+  /** @brief Test hook: force `fd`'s park deadline into the past. */
+  void expireForTest(int fd) {
+    unassignedFdDeadlines[fd] =
+        std::chrono::steady_clock::now() - std::chrono::seconds(1);
+  }
+
+  /** @brief Test hook: force SOCKS handshake `fd` past its deadline. */
+  void reapForTest(int fd) {
+    auto it = socksPending.find(fd);
+    if (it != socksPending.end()) {
+      it->second.deadline =
+          std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    }
+  }
+
   inline SocketEndpoint getDestination() { return destination; }
   inline SocketEndpoint getSource() { return source; }
 
@@ -115,6 +142,14 @@ class ForwardSourceHandler {
   int stdioWriteFd = -1;
   /** @brief Sockets that are awaiting assignment from the control stream. */
   unordered_set<int> unassignedFds;
+  /** @brief Park deadline for each fd in unassignedFds. */
+  unordered_map<int, std::chrono::steady_clock::time_point>
+      unassignedFdDeadlines;
+  /** @brief Parks `fd` awaiting a destination response, or closes it and
+   * returns false when the cap is reached. */
+  bool parkUnassignedFd(int fd);
+  /** @brief Closes parked fds whose destination response timed out. */
+  void expireUnassignedFds();
   /** @brief Maps logical socket IDs to their accepted file descriptors. */
   unordered_map<int, int> socketFdMap;
   /** @brief Optional separate write fd when different from the read fd (-W). */
