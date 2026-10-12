@@ -1,5 +1,10 @@
 name: clang-format Check
 on: [pull_request]
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   formatting-check:
     name: Formatting Check

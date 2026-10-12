@@ -1,0 +1,17 @@
+{
+  "name": "et-msan-dependencies",
+  "version-string": "7.0.0",
+  "dependencies": [
+    "zlib",
+    "openssl",
+    "protobuf",
+    "libsodium",
+    "nlohmann-json",
+    "simpleini",
+    "platform-folders",
+    "cpp-httplib",
+    "cxxopts",
+    "catch2",
+    "libutempter"
+  ]
+}

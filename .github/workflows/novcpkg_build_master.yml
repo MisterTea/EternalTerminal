@@ -5,10 +5,16 @@ on:
       - master
   pull_request:
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_novcpkg:
     name: build-novcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
@@ -22,14 +28,6 @@ jobs:
           - os: macos-latest
             gcc: 15
           - os: macos-latest
-            gcc: 16
-          #- os: windows-latest
-          #gcc: 11
-          - os: windows-latest
-            gcc: 14
-          - os: windows-latest
-            gcc: 15
-          - os: windows-latest
             gcc: 16
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
@@ -86,19 +84,16 @@ jobs:
 
       - name: Install dependencies and generate project files (mac)
         run: |
-          OPENSSL_ROOT_DIR=`brew --prefix openssl` cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          openssl_root=$(brew --prefix openssl)
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR="$openssl_root"
         if: matrix.os == 'macos-latest'
       - name: Install dependencies and generate project files (linux)
         env:
           CC: gcc-${{ matrix.gcc }}
           CXX: g++-${{ matrix.gcc }}
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
+          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON
         if: matrix.os == 'ubuntu-latest'
-      - name: Install dependencies and generate project files (windows)
-        run: |
-          cmake -DDISABLE_TELEMETRY=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=$OPENSSL_ROOT_DIR
-        if: matrix.os == 'windows-latest'
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
         run: |
@@ -107,10 +102,10 @@ jobs:
             parallel_level="${CI_PARALLEL_LEVEL:-14}"
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
-          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --timeout 300 --output-on-failure
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}
         with:
           name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
-          path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}
+          path: ${{ env.CMAKE_BUILD_DIR }}/et

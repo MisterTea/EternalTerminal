@@ -80,3 +80,14 @@ GTAGS
 # Python
 __pycache__/
 *.py[cod]
+
+# CI compiler/dependency caches and instrumented MSan artifacts.
+/.ccache/
+/.ci-vcpkg/
+/.vcpkg-binary-cache/
+/.msan-libcxx/
+/.msan-runtime-build/
+/.msan-ports/
+/.msan-smoke/
+/.msan-compiler-version
+/build-msan/

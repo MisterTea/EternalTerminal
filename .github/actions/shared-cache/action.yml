@@ -1,0 +1,35 @@
+name: shared master cache
+description: Refresh caches on master and restore them in pull requests
+inputs:
+  path:
+    description: Files to cache
+    required: true
+  key:
+    description: Exact cache key
+    required: true
+  restore-keys:
+    description: Compatible fallback key prefixes
+    default: ''
+outputs:
+  cache-hit:
+    description: Whether an exact cache was restored
+    value: ${{ steps.master.outputs.cache-hit || steps.restore.outputs.cache-hit }}
+runs:
+  using: composite
+  steps:
+    - name: Restore shared cache
+      if: ${{ !env.ACT && (github.event_name != 'push' || github.ref != 'refs/heads/master') }}
+      id: restore
+      uses: actions/cache/restore@v5
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}
+    - name: Refresh master cache
+      if: ${{ !env.ACT && github.event_name == 'push' && github.ref == 'refs/heads/master' }}
+      id: master
+      uses: actions/cache@v5
+      with:
+        path: ${{ inputs.path }}
+        key: ${{ inputs.key }}
+        restore-keys: ${{ inputs.restore-keys }}

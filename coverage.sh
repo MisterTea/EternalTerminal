@@ -49,9 +49,9 @@ if [[ "${SKIP_BUILD}" != "1" ]]; then
     ${CMAKE_C_COMPILER_LAUNCHER:+-DCMAKE_C_COMPILER_LAUNCHER="$CMAKE_C_COMPILER_LAUNCHER"} \
     ${CMAKE_CXX_COMPILER_LAUNCHER:+-DCMAKE_CXX_COMPILER_LAUNCHER="$CMAKE_CXX_COMPILER_LAUNCHER"}
   find . -name "*.gcda" -delete
-  ninja
-  jobs=$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)
-  ctest --parallel "${jobs}" --output-on-failure
+  jobs=${CI_PARALLEL_LEVEL:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 2)}
+  ninja -j "${jobs}"
+  ctest --parallel "${jobs}" --timeout 300 --output-on-failure
   popd
 fi
 

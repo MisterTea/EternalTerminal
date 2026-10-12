@@ -1,0 +1,9 @@
+{
+  "name": "libutempter",
+  "version": "1.2.1",
+  "description": "MSan-instrumented utmp client library, using Ubuntu's existing privileged helper",
+  "homepage": "https://github.com/altlinux/libutempter",
+  "license": "LGPL-2.1-or-later",
+  "supports": "linux",
+  "dependencies": [{ "name": "vcpkg-cmake", "host": true }]
+}

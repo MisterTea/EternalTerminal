@@ -5,10 +5,16 @@ on:
       - master
   pull_request:
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_vcpkg:
     name: build-vcpkg-${{ matrix.os }}-${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
@@ -55,6 +61,7 @@ jobs:
                 libutempter-dev \
                 build-essential \
                 ninja-build \
+                ccache \
                 libcurl4-openssl-dev \
                 curl \
                 zip \
@@ -71,7 +78,7 @@ jobs:
         run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake automake autoconf autoconf-archive libtool
+        run: brew update && brew install ccache ninja cmake automake autoconf autoconf-archive libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
@@ -85,16 +92,18 @@ jobs:
           platform: x64
         if: matrix.os == 'ubuntu-latest'
 
-      # Cache the manifest install tree and vcpkg's binary package cache.
-      # Caching the vcpkg submodule tree does not skip port builds: those
-      # artifacts live in the CMake build directory and the binary cache.
-      - name: Restore vcpkg installed packages
-        uses: actions/cache@v5
+      # Initialize MSVC before fingerprinting its version and enabling sccache.
+      - uses: ilammy/msvc-dev-cmd@v1
+        if: matrix.os == 'windows-latest'
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed
-            ${{ github.workspace }}/.vcpkg-binary-cache
-          key: et-vcpkg-installed-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.git/modules/external/vcpkg/HEAD') }}-${{ matrix.os }}-${{ matrix.gcc }}
+          key: vcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+        with:
+          compiler: ${{ runner.os == 'Linux' && format('g++-{0}', matrix.gcc) || 'c++' }}
 
       # VCPKG_DEFAULT_BINARY_CACHE must be an existing directory even on
       # cache miss; vcpkg rejects a missing path before binary sources apply.
@@ -104,8 +113,6 @@ jobs:
         shell: bash
         run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
 
-      - uses: ilammy/msvc-dev-cmd@v1
-        if: matrix.os == 'windows-latest'
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files (linux)
         env:
@@ -122,7 +129,8 @@ jobs:
 
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          # Embedded debug info makes MSVC compile results reusable by sccache.
+          cmake -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'windows-latest'
 
       # Build the whole project with Ninja (which is spawn by CMake).
@@ -134,7 +142,7 @@ jobs:
             parallel_level="${CI_PARALLEL_LEVEL:-14}"
           fi
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
-          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --output-on-failure
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --timeout 300 --output-on-failure
 
       - name: Build (Windows)
         if: matrix.os == 'windows-latest'
@@ -142,7 +150,7 @@ jobs:
         run: |
           $parallelLevel = if ($env:CI_PARALLEL_LEVEL) { $env:CI_PARALLEL_LEVEL } else { "2" }
           cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel"
-          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --output-on-failure
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --timeout 300 --output-on-failure
 
       - uses: actions/upload-artifact@v6
         if: ${{ !env.ACT }}
