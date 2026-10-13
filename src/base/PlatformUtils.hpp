@@ -36,6 +36,25 @@ void WriteToStdStream(int stdFd, const char* buf, size_t count);
  */
 bool ConsoleKeyEventHasInput(const KEY_EVENT_RECORD& key);
 #endif
+
+#ifndef WIN32
+/**
+ * @brief Reads the effective uid and gid of the process at the other end of
+ * the connected Unix-domain socket @p fd, as recorded by the kernel.
+ *
+ * @return false if the kernel cannot report them.
+ */
+bool GetPeerCredentials(int fd, uid_t* uid, gid_t* gid);
+
+/**
+ * @brief Creates @p path for writing with mode 0600, never following a
+ * symlink or opening another user's file. A stale regular file owned by this
+ * user is replaced once.
+ *
+ * @return the descriptor, or -1 with errno set.
+ */
+int CreatePrivateFile(const string& path);
+#endif
 }  // namespace et
 
 #endif  // __ET_PLATFORM_UTILS__

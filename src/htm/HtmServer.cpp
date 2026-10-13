@@ -1,6 +1,7 @@
 #include "HtmServer.hpp"
 
 #include "ControlCommands.hpp"
+#include "PlatformUtils.hpp"
 
 namespace et {
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
@@ -164,21 +165,41 @@ void HtmServer::writePaneDumpIfRequested() {
   if (!paneDumpRequested.exchange(false)) {
     return;
   }
-  const string path = getPaneDumpPath();
+  writePaneDumpFile(getPaneDumpPath(), state.dumpAllPanesText());
+}
+
+bool HtmServer::writePaneDumpFile(const string& path, const string& body) {
   const string tmp = path + ".tmp";
+#ifdef WIN32
   FILE* fp = fopen(tmp.c_str(), "w");
-  if (!fp) {
-    LOG(WARNING) << "pane dump fopen failed: " << tmp;
-    return;
+#else
+  // The dump holds pane contents at a predictable path in the shared temp
+  // directory, so create it owner-only without following planted links.
+  const int fd = CreatePrivateFile(tmp);
+  FILE* fp = fd >= 0 ? fdopen(fd, "w") : nullptr;
+  if (fd >= 0 && !fp) {
+    ::close(fd);
+    ::remove(tmp.c_str());
   }
-  string body = state.dumpAllPanesText();
-  fwrite(body.data(), 1, body.size(), fp);
-  fclose(fp);
+#endif
+  if (!fp) {
+    LOG(WARNING) << "pane dump open failed: " << tmp;
+    return false;
+  }
+  const bool written = fwrite(body.data(), 1, body.size(), fp) == body.size();
+  if (fclose(fp) != 0 || !written) {
+    LOG(WARNING) << "pane dump write failed: " << tmp;
+    ::remove(tmp.c_str());
+    return false;
+  }
   std::error_code renameError;
   fs::rename(tmp, path, renameError);
   if (renameError) {
     LOG(WARNING) << "pane dump rename failed: " << renameError.message();
+    ::remove(tmp.c_str());
+    return false;
   }
+  return true;
 }
 
 string HtmServer::getShutdownEventName() {

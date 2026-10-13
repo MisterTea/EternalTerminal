@@ -120,6 +120,7 @@ void TerminalServer::run() {
   coreFds.insert(terminalRouter->getServerFd());
   FdPoller poller;
   poller.setFds(coreFds);
+  uint64_t pendingFdsGeneration = 0;
 
   if (TelemetryService::exists()) {
     TelemetryService::get()->logToDatadog("Server started", el::Level::Info,
@@ -133,18 +134,23 @@ void TerminalServer::run() {
         break;
       }
     }
+    if (const auto pending =
+            terminalRouter->pendingRegistrationFds(pendingFdsGeneration)) {
+      set<int> watched = coreFds;
+      watched.insert(pending->begin(), pending->end());
+      // Refresh after retirements too: an accept can recycle a closed fd
+      // before the poller has seen its removal.
+      poller.setFds(watched, {}, *pending);
+    }
     set<int> readyFds = poller.wait(100).readable;
     expireUnclaimedResumes(std::chrono::steady_clock::now());
-    if (readyFds.empty()) {
-      continue;
-    }
-
     for (int i : serverPortFds) {
       if (readyFds.count(i) != 0) {
         acceptNewConnection(i);
       }
     }
-    if (readyFds.count(terminalRouter->getServerFd()) != 0) {
+    {
+      // Pending registrations advance even when the listener has no new peers.
       auto idKeyPair = terminalRouter->acceptNewConnection();
       if (idKeyPair.id.length()) {
         addClientKey(idKeyPair.id, idKeyPair.key);

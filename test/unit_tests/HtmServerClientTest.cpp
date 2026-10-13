@@ -1,4 +1,10 @@
 #include <fcntl.h>
+#ifdef __linux__
+#include <sys/prctl.h>
+#endif
+#ifndef WIN32
+#include <sys/wait.h>
+#endif
 
 #include <atomic>
 #include <thread>
@@ -624,3 +630,174 @@ TEST_CASE("HtmClient exits on detach-client while htmd stays up",
   close(stdoutPipe[0]);
 }
 #endif
+
+#ifndef WIN32
+TEST_CASE("HtmServer pane dump is owner-only and resists symlink preemption",
+          "[Htm][HtmServer]") {
+  const string dir = test::makeTempDir("htm_panedump_test");
+  const string dumpPath = dir + "/htm.panes";
+
+  struct stat st;
+  SECTION("created owner-only under a permissive umask") {
+    const mode_t oldMask = umask(022);
+    const bool written = HtmServer::writePaneDumpFile(dumpPath, "PANE-BODY");
+    umask(oldMask);
+    REQUIRE(written);
+    REQUIRE(stat(dumpPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    REQUIRE(st.st_uid == getuid());
+    ::remove(dumpPath.c_str());
+  }
+
+  SECTION("a foreign symlink at the tmp name is not followed") {
+    const string decoy = dir + "/decoy";
+    const string marker = string(64, 'V');
+    {
+      const int fd = ::open(decoy.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+      REQUIRE(fd >= 0);
+      REQUIRE(::write(fd, marker.data(), marker.size()) ==
+              (ssize_t)marker.size());
+      ::close(fd);
+    }
+    REQUIRE(symlink(decoy.c_str(), (dumpPath + ".tmp").c_str()) == 0);
+
+    REQUIRE_FALSE(HtmServer::writePaneDumpFile(dumpPath, "PANE-BODY"));
+
+    // The decoy must be untouched and nothing published.
+    REQUIRE(stat(decoy.c_str(), &st) == 0);
+    REQUIRE(st.st_size == (off_t)marker.size());
+    REQUIRE(stat(dumpPath.c_str(), &st) == -1);
+    unlink((dumpPath + ".tmp").c_str());
+    unlink(decoy.c_str());
+  }
+
+  SECTION("a stale regular file of our own is replaced safely") {
+    const int fd =
+        ::open((dumpPath + ".tmp").c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    REQUIRE(fd >= 0);
+    ::close(fd);
+    REQUIRE(HtmServer::writePaneDumpFile(dumpPath, "SECOND"));
+    REQUIRE(stat(dumpPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    ::remove(dumpPath.c_str());
+  }
+
+  test::removeTempDir(dir);
+}
+
+TEST_CASE("htm client pid file does not follow planted links",
+          "[Htm][HtmClient]") {
+  const string dir = test::makeTempDir("htm_pidfile_test");
+  const string pidPath = dir + "/htm.client.pid";
+
+  SECTION("writes the pid owner-only") {
+    REQUIRE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(pidPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    char buf[32] = {0};
+    const int fd = ::open(pidPath.c_str(), O_RDONLY);
+    REQUIRE(fd >= 0);
+    REQUIRE(::read(fd, buf, sizeof(buf) - 1) > 0);
+    ::close(fd);
+    REQUIRE(string(buf).find(to_string(getpid())) != string::npos);
+    ::remove(pidPath.c_str());
+  }
+
+  SECTION("replaces our own stale regular file") {
+    const int fd = ::open(pidPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+    REQUIRE(fd >= 0);
+    ::close(fd);
+    REQUIRE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(pidPath.c_str(), &st) == 0);
+    REQUIRE((st.st_mode & 077) == 0);
+    ::remove(pidPath.c_str());
+  }
+
+  SECTION("does not follow a planted symlink") {
+    const string decoy = dir + "/decoy";
+    const string marker = string(32, 'D');
+    {
+      const int fd = ::open(decoy.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+      REQUIRE(fd >= 0);
+      REQUIRE(::write(fd, marker.data(), marker.size()) ==
+              (ssize_t)marker.size());
+      ::close(fd);
+    }
+    REQUIRE(symlink(decoy.c_str(), pidPath.c_str()) == 0);
+    REQUIRE_FALSE(writeHtmClientPidFile(pidPath));
+    struct stat st;
+    REQUIRE(stat(decoy.c_str(), &st) == 0);
+    REQUIRE(st.st_size == (off_t)marker.size());
+    unlink(pidPath.c_str());
+    unlink(decoy.c_str());
+  }
+
+  test::removeTempDir(dir);
+}
+
+#if defined(__APPLE__) || defined(__linux__)
+namespace {
+// Forks a child that pauses until killed; on Linux it renames itself `name`.
+pid_t spawnNamedChild(const char* name) {
+  int ready[2];
+  REQUIRE(::pipe(ready) == 0);
+  const pid_t child = ::fork();
+  REQUIRE(child >= 0);
+  if (child == 0) {
+    ::close(ready[0]);
+#ifdef __linux__
+    ::prctl(PR_SET_NAME, name, 0, 0, 0);
+#else
+    (void)name;
+#endif
+    const char started = 1;
+    if (::write(ready[1], &started, 1) != 1) ::_exit(127);
+    for (;;) ::pause();
+  }
+  ::close(ready[1]);
+  char started = 0;
+  REQUIRE(::read(ready[0], &started, 1) == 1);
+  ::close(ready[0]);
+  return child;
+}
+
+void writePidFile(const string& path, pid_t pid) {
+  const int fd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
+  REQUIRE(fd >= 0);
+  const string text = to_string(pid) + "\n";
+  REQUIRE(::write(fd, text.data(), text.size()) == (ssize_t)text.size());
+  ::close(fd);
+}
+}  // namespace
+
+TEST_CASE("HtmServer trusts only pid files naming its own htm client",
+          "[Htm][HtmServer]") {
+  const string dir = test::makeTempDir("htm_pidverify_test");
+  const string pidPath = dir + "/htm.client.pid";
+
+  SECTION("a live process not named htm is rejected") {
+    const pid_t child = spawnNamedChild("not-htm");
+    writePidFile(pidPath, child);
+    REQUIRE_FALSE(HtmServer::readVerifiedClientPid(pidPath).has_value());
+    ::kill(child, SIGKILL);
+    ::waitpid(child, nullptr, 0);
+  }
+
+#ifdef __linux__
+  SECTION("a live htm process is accepted") {
+    const pid_t child = spawnNamedChild("htm");
+    writePidFile(pidPath, child);
+    REQUIRE(HtmServer::readVerifiedClientPid(pidPath) == child);
+    ::kill(child, SIGKILL);
+    ::waitpid(child, nullptr, 0);
+  }
+#endif
+
+  ::remove(pidPath.c_str());
+  test::removeTempDir(dir);
+}
+#endif
+
+#endif  // !WIN32

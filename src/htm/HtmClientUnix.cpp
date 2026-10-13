@@ -54,21 +54,29 @@ class NonBlockingFd {
 };
 }  // namespace
 
+bool writeHtmClientPidFile(const string& path) {
+  const int pidFd = CreatePrivateFile(path);
+  if (pidFd < 0) {
+    return false;
+  }
+  char buf[32];
+  const int n =
+      snprintf(buf, sizeof(buf), "%d\n", static_cast<int>(::getpid()));
+  const bool written =
+      n > 0 && ::write(pidFd, buf, static_cast<size_t>(n)) == n;
+  if (::close(pidFd) != 0 || !written) {
+    ::unlink(path.c_str());
+    return false;
+  }
+  return true;
+}
+
 void HtmClient::run() {
   writeDcs();
   {
     string path = GetTempDirectory() + "htm." + GetHtmIpcUser() + ".client.pid";
-    int pidFd = ::open(path.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0600);
-    if (pidFd >= 0) {
-      char buf[32];
-      int n = snprintf(buf, sizeof(buf), "%d\n", static_cast<int>(::getpid()));
-      if (n > 0) {
-        const ssize_t written = ::write(pidFd, buf, static_cast<size_t>(n));
-        if (written != static_cast<ssize_t>(n)) {
-          VLOG(1) << "Could not record htm client pid";
-        }
-      }
-      ::close(pidFd);
+    if (!writeHtmClientPidFile(path)) {
+      VLOG(1) << "Could not record htm client pid";
     }
   }
   const int BUF_SIZE = 1024;

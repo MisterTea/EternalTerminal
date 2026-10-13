@@ -115,6 +115,16 @@ int UnixSocketHandler::accept(int sockFd) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
+  if (client_sock < 0 && isResourceExhausted(acceptErrno)) {
+    // The connection stays queued until descriptors free up, so the listener
+    // remains readable; pause briefly rather than spin or abort. Sleep
+    // without globalMutex, which session I/O needs.
+    LOG_EVERY_N(100, ERROR) << "Accept deferred: " << strerror(acceptErrno);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    SetErrno(acceptErrno);
+    return -1;
+  }
+
   lock_guard<std::recursive_mutex> guard(globalMutex);
   if (client_sock >= 0) {
     VLOG(3) << "Socket " << sockFd
@@ -134,6 +144,10 @@ int UnixSocketHandler::accept(int sockFd) {
 
   SetErrno(acceptErrno);
   return -1;
+}
+
+bool UnixSocketHandler::isResourceExhausted(int err) {
+  return err == EMFILE || err == ENFILE || err == ENOMEM || err == ENOBUFS;
 }
 
 bool UnixSocketHandler::isTransientAcceptError(int err) {
