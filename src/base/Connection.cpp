@@ -1,5 +1,14 @@
 #include "Connection.hpp"
 
+// A catchup holds up to 64 MiB of connected history plus 64 MiB of
+// disconnected output. Each entry is at least 18 bytes (packet header plus
+// MAC); protobuf framing adds at most 2 bytes per 18 bytes of entry.
+static_assert((et::BackedWriter::MAX_BACKUP_BYTES +
+               et::BackedWriter::DISCONNECT_BUFFER_BYTES) *
+                      20 / 18 <=
+                  et::SocketHandler::MAX_CATCHUP_PROTO_LENGTH,
+              "MAX_CATCHUP_PROTO_LENGTH cannot hold full recovery buffers");
+
 namespace et {
 Connection::Connection(shared_ptr<SocketHandler> _socketHandler,
                        const string& _id, const string& _key)
@@ -180,13 +189,15 @@ bool Connection::recover(int newSocketFd, bool readPeerCatchupFirst,
 
     et::CatchupBuffer catchupBuffer;
     if (readPeerCatchupFirst) {
-      catchupBuffer =
-          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
-      socketHandler->writeProto(newSocketFd, localCatchup, true);
+      catchupBuffer = socketHandler->readProto<et::CatchupBuffer>(
+          newSocketFd, true, SocketHandler::MAX_CATCHUP_PROTO_LENGTH);
+      socketHandler->writeProto(newSocketFd, localCatchup, true,
+                                SocketHandler::MAX_CATCHUP_PROTO_LENGTH);
     } else {
-      socketHandler->writeProto(newSocketFd, localCatchup, true);
-      catchupBuffer =
-          socketHandler->readProto<et::CatchupBuffer>(newSocketFd, true);
+      socketHandler->writeProto(newSocketFd, localCatchup, true,
+                                SocketHandler::MAX_CATCHUP_PROTO_LENGTH);
+      catchupBuffer = socketHandler->readProto<et::CatchupBuffer>(
+          newSocketFd, true, SocketHandler::MAX_CATCHUP_PROTO_LENGTH);
     }
 
     socketFd = newSocketFd;
@@ -230,7 +241,15 @@ bool Connection::read(Packet* packet) {
     return false;
   }
 
-  ssize_t messagesRead = reader->read(packet);
+  ssize_t messagesRead;
+  try {
+    messagesRead = reader->read(packet);
+  } catch (const MalformedPacketError& ex) {
+    // The reader has not counted the packet, so recovery resends it.
+    LOG(WARNING) << "Reconnecting after a rejected packet: " << ex.what();
+    closeSocketAndMaybeReconnect();
+    return false;
+  }
   auto localErrno = GetErrno();
   if (messagesRead == -1) {
     if (isSkippableError(localErrno)) {

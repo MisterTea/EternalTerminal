@@ -355,8 +355,7 @@ TerminalClient::TerminalClient(
               if (connection->readPacket(&initialResponsePacket)) {
                 if (initialResponsePacket.getHeader() !=
                     EtPacketType::INITIAL_RESPONSE) {
-                  CLOG(INFO, "stdout") << "Error: Missing initial response\n";
-                  STFATAL << "Missing initial response!";
+                  throw MalformedPacketError("Missing initial response");
                 }
                 auto initialResponse = stringToProto<InitialResponse>(
                     initialResponsePacket.getPayload());
@@ -660,7 +659,8 @@ int TerminalClient::run(const string& command, const bool noexit) {
               break;
             }
             default:
-              STFATAL << "Unknown packet type: " << int(packetType);
+              throw MalformedPacketError("Unknown packet type: " +
+                                         to_string(int(packetType)));
           }
         }
       }
@@ -766,6 +766,14 @@ int TerminalClient::run(const string& command, const bool noexit) {
         }
         sessionTitleUpdateTime = now + 2;
       }
+    } catch (const MalformedPacketError& ex) {
+      // The packet type is not covered by the MAC, so an on-path attacker can
+      // produce these. The reader is already past the packet, so reconnecting
+      // resumes the session after it instead of ending the session.
+      LOG(WARNING) << "Reconnecting after malformed server packet: "
+                   << ex.what();
+      connection->closeSocketAndMaybeReconnect();
+      waitingOnKeepalive = false;
     } catch (const runtime_error& re) {
       STERROR << "Error: " << re.what();
       CLOG(INFO, "stdout") << "Connection closing because of error: "
@@ -1103,6 +1111,11 @@ void TerminalClient::serviceIdleUntil(const function<bool()>& keepGoing) {
             Packet(TerminalPacketType::PORT_FORWARD_DATA, protoToString(pwd)));
         keepaliveTime = time(NULL) + keepaliveDuration;
       }
+    } catch (const MalformedPacketError& ex) {
+      LOG(WARNING) << "Reconnecting after malformed server packet: "
+                   << ex.what();
+      connection->closeSocketAndMaybeReconnect();
+      waitingOnKeepalive = false;
     } catch (const runtime_error& re) {
       LOG(WARNING) << "ControlPersist service error: " << re.what();
       lock_guard<mutex> guard(passengerMutex);

@@ -40,6 +40,16 @@ IdKeyPair UserTerminalRouter::acceptNewConnection() {
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
+    if (tui.id().empty() || tui.passkey().size() != crypto_secretbox_KEYBYTES) {
+      // The router socket is world-connectable, so registration input is
+      // untrusted; a malformed credential must be dropped here rather than
+      // aborting the daemon later when the key reaches the crypto layer.
+      LOG(ERROR) << "Rejecting terminal registration with invalid "
+                    "id/passkey length: "
+                 << tui.id().size() << "/" << tui.passkey().size();
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
+    }
 
     const bool inserted =
         idInfoMap.insert(std::make_pair(tui.id(), tui)).second;

@@ -24,7 +24,8 @@ class ClientConnection : public Connection {
 
   virtual ~ClientConnection();
 
-  // Thrown by connect() when a server without challenge support can't reattach.
+  // Thrown by connect() when a reattach succeeds without a challenge, as from a
+  // server without challenge support.
   static const string LEGACY_SERVER_REATTACH_ERROR;
 
   /**

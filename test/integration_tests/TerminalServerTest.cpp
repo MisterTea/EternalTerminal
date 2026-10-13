@@ -705,4 +705,139 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture,
   sshSetupHandler->shutdownHandler();
 }
 
+namespace {
+// Performs the challenge handshake against the shared in-process server and
+// returns the connected fd. Retries briefly because a freshly registered
+// terminal may not have reached the server's key store yet.
+int rawChallengeHandshake(const shared_ptr<SocketHandler>& handler,
+                          const SocketEndpoint& serverEndpoint,
+                          const string& id, const string& passkey) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const int fd = handler->connect(serverEndpoint);
+    if (fd < 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    et::ConnectRequest request;
+    request.set_clientid(id);
+    request.set_version(PROTOCOL_VERSION);
+    request.set_supportschallenge(true);
+    handler->writeProto(fd, request, true);
+
+    et::ConnectResponse challenge;
+    try {
+      challenge = handler->readProto<et::ConnectResponse>(
+          fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    } catch (const std::runtime_error&) {
+      handler->close(fd);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    if (challenge.authchallenge().empty()) {
+      // Not registered yet (RETRY_LATER/INVALID_KEY): retry. Note that an
+      // unset status field reads as the first declared enum value
+      // (NEW_CLIENT), so only the challenge's presence distinguishes the
+      // challenge leg of the handshake.
+      handler->close(fd);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    et::ConnectAuth auth;
+    auth.set_proof(CryptoHandler::connectionProof(passkey, id, PROTOCOL_VERSION,
+                                                  challenge.authchallenge(),
+                                                  /*resetIntent=*/false));
+    handler->writeProto(fd, auth, true);
+    et::ConnectResponse final = handler->readProto<et::ConnectResponse>(
+        fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(final.status() == NEW_CLIENT);
+    return fd;
+  }
+  throw std::runtime_error("raw handshake could not complete in time");
+}
+
+// Sends one BackedReader-framed session packet with the client's nonce
+// direction, optionally encrypted.
+void sendRawSessionPacket(const shared_ptr<SocketHandler>& handler, int fd,
+                          const string& passkey, uint8_t header,
+                          const string& payload, bool encrypt) {
+  auto crypto = make_shared<CryptoHandler>(passkey, CLIENT_SERVER_NONCE_MSB);
+  Packet packet(header, payload);
+  if (encrypt) {
+    packet.encrypt(crypto);
+  }
+  const string serialized = packet.serialize();
+  const uint32_t networkLength = htonl((uint32_t)serialized.size());
+  handler->writeAllOrReturn(fd, &networkLength, sizeof(networkLength));
+  handler->writeAllOrReturn(fd, serialized.data(), serialized.size());
+}
+
+// Waits for the server to close `fd`, discarding anything it sends first.
+bool waitForServerClose(const shared_ptr<SocketHandler>& handler, int fd) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (!handler->hasData(fd)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
+    char buf[256];
+    if (handler->read(fd, buf, sizeof(buf)) <= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerSurvivesMalformedPackets",
+                 "[ServerSurvivesMalformedPackets][integration]") {
+  // Each variant must sever only the offending connection; the server runs
+  // in this process, so an abort would kill the test.
+  struct Variant {
+    const char* name;
+    uint8_t header;
+    string payload;
+    bool encrypt;
+  };
+  const vector<Variant> variants = {
+      // Wrong first packet header (not INITIAL_PAYLOAD).
+      {"wrong-header", TerminalPacketType::KEEP_ALIVE, "", true},
+      // INITIAL_PAYLOAD whose body is not valid protobuf (wire type 7).
+      {"garbage-protobuf", EtPacketType::INITIAL_PAYLOAD, "\x0f", true},
+      // Session packet with the encrypted flag clear.
+      {"unencrypted-flag", TerminalPacketType::TERMINAL_BUFFER, "aaaa", false},
+  };
+
+  for (const auto& variant : variants) {
+    sshSetupHandler->addFakeUserTerminal(
+        "localhost", 2022,
+        make_shared<FakeUserTerminal>(make_shared<PipeSocketHandler>()));
+    auto [id, passkey] = sshSetupHandler->SetupSsh(
+        "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+    auto handler = make_shared<PipeSocketHandler>();
+    const int fd = rawChallengeHandshake(handler, serverEndpoint, id, passkey);
+
+    sendRawSessionPacket(handler, fd, passkey, variant.header, variant.payload,
+                         variant.encrypt);
+    INFO(variant.name);
+    REQUIRE(waitForServerClose(handler, fd));
+    handler->close(fd);
+
+    // The shared server must still accept and authenticate new sessions.
+    sshSetupHandler->addFakeUserTerminal(
+        "localhost", 2022,
+        make_shared<FakeUserTerminal>(make_shared<PipeSocketHandler>()));
+    auto [id2, passkey2] = sshSetupHandler->SetupSsh(
+        "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+    auto handler2 = make_shared<PipeSocketHandler>();
+    const int fd2 =
+        rawChallengeHandshake(handler2, serverEndpoint, id2, passkey2);
+    handler2->close(fd2);
+  }
+
+  sshSetupHandler->shutdownHandler();
+}
+
 }  // namespace et

@@ -196,6 +196,24 @@ class RecoverableConnection : public Connection {
 
   void closeSocketAndMaybeReconnect() override { closeSocket(); }
 };
+
+// Session framing as written by BackedWriter: a 4-byte big-endian length,
+// then the serialized packet.
+void writeSessionFrame(const shared_ptr<SocketHandler>& handler, int fd,
+                       const Packet& packet) {
+  const string body = packet.serialize();
+  const uint32_t length = htonl(uint32_t(body.size()));
+  handler->writeAllOrThrow(fd, (const char*)&length, sizeof(length), false);
+  handler->writeAllOrThrow(fd, body.data(), body.size(), false);
+}
+
+Packet readSessionFrame(const shared_ptr<SocketHandler>& handler, int fd) {
+  uint32_t length = 0;
+  handler->readAll(fd, (char*)&length, sizeof(length), false);
+  string body(ntohl(length), '\0');
+  handler->readAll(fd, &body[0], body.size(), false);
+  return Packet(body);
+}
 }  // namespace
 }  // namespace et
 
@@ -233,6 +251,48 @@ TEST_CASE("TerminalClient throws after failed initial connection attempts",
       Catch::Matchers::ContainsSubstring(
           "Could not make initial connection to"));
   REQUIRE(handler->connectCalls == 3);
+}
+
+TEST_CASE("TerminalClient rejects a setup reply that is not INITIAL_RESPONSE",
+          "[TerminalClient]") {
+  auto handler = make_shared<SocketPairHandler>();
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+  handler->queueConnectFd(fds[0]);
+  const string key = "0123456789abcdef0123456789abcdef";
+
+  // An authenticated server whose first session packet has the wrong type,
+  // as an on-path attacker can produce by relabeling INITIAL_RESPONSE.
+  std::thread server([&]() {
+    handler->readProto<ConnectRequest>(fds[1], true);
+    ConnectResponse challenge;
+    challenge.set_authchallenge(
+        CryptoHandler::randomBytes(CryptoHandler::AUTH_CHALLENGE_BYTES));
+    handler->writeProto(fds[1], challenge, true);
+    handler->readProto<ConnectAuth>(fds[1], true);
+    ConnectResponse response;
+    response.set_status(NEW_CLIENT);
+    response.set_resetproof(CryptoHandler::resetDecisionProof(
+        key, "client-id", PROTOCOL_VERSION, challenge.authchallenge(),
+        NEW_CLIENT, false, ""));
+    handler->writeProto(fds[1], response, true);
+
+    readSessionFrame(handler, fds[1]);  // INITIAL_PAYLOAD
+    Packet relabeled(TerminalPacketType::TERMINAL_BUFFER, "");
+    relabeled.encrypt(make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
+    writeSessionFrame(handler, fds[1], relabeled);
+  });
+
+  REQUIRE_THROWS_WITH(
+      [&]() {
+        TerminalClient client(handler, handler, SocketEndpoint(), "client-id",
+                              key, nullptr, false, "", "", false, "",
+                              MAX_CLIENT_KEEP_ALIVE_DURATION,
+                              vector<pair<string, string>>());
+      }(),
+      Catch::Matchers::ContainsSubstring("Missing initial response"));
+  server.join();
+  handler->close(fds[1]);
 }
 
 TEST_CASE("ClientConnection completes handshake over socketpair",
@@ -325,35 +385,112 @@ TEST_CASE("ClientConnection accepts a legacy server's unchallenged status",
 
 TEST_CASE("ClientConnection refuses to reattach through a legacy server",
           "[ClientConnection]") {
+  for (const ConnectStatus status : {NEW_CLIENT, RETURNING_CLIENT}) {
+    CAPTURE(status);
+    auto handler = make_shared<SocketPairHandler>();
+    int fds[2];
+    REQUIRE(createTestSocketPair(fds) == 0);
+    handler->queueConnectFd(fds[0]);
+
+    const string key = "12345678901234567890123456789012";
+    ClientConnection conn(handler, SocketEndpoint(), "client-id", key,
+                          /*_resetIntent=*/true);
+
+    std::thread server([&]() {
+      auto request = handler->readProto<ConnectRequest>(fds[1], true);
+      REQUIRE(request.resetintent());
+      ConnectResponse response;
+      response.set_status(status);
+      response.set_resetrequired(true);
+      response.set_resetsalt(
+          CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES));
+      handler->writeProto(fds[1], response, true);
+    });
+
+    REQUIRE_THROWS_WITH(conn.connect(),
+                        ClientConnection::LEGACY_SERVER_REATTACH_ERROR);
+    server.join();
+    REQUIRE_FALSE(conn.wasRecovered());
+    char unexpected = 0;
+    REQUIRE(::recv(fds[1], &unexpected, 1, 0) == 0);
+
+    conn.shutdown();
+    handler->close(fds[1]);
+  }
+}
+
+namespace {
+// Hex of a XOR b, truncated to the shorter input.
+string xorHex(const string& a, const string& b) {
+  static const char digits[] = "0123456789abcdef";
+  string out;
+  for (size_t i = 0; i < std::min(a.size(), b.size()); ++i) {
+    const unsigned char c = (unsigned char)(a[i] ^ b[i]);
+    out += digits[c >> 4];
+    out += digits[c & 0xf];
+  }
+  return out;
+}
+}  // namespace
+
+TEST_CASE("ClientConnection does not reuse keystream for a forged reattach",
+          "[ClientConnection]") {
+  const string key = "12345678901234567890123456789012";
+
+  // Traffic from the session's first connection, which ran under the base
+  // key from nonce zero. An on-path attacker recorded it.
+  const string originalInput = "original keystrokes typed at first connect";
+  Packet originalClientPacket(TerminalPacketType::TERMINAL_BUFFER,
+                              originalInput);
+  originalClientPacket.encrypt(
+      make_shared<CryptoHandler>(key, CLIENT_SERVER_NONCE_MSB));
+  Packet originalServerPacket(EtPacketType::INITIAL_RESPONSE, "");
+  originalServerPacket.encrypt(
+      make_shared<CryptoHandler>(key, SERVER_CLIENT_NONCE_MSB));
+
   auto handler = make_shared<SocketPairHandler>();
   int fds[2];
   REQUIRE(createTestSocketPair(fds) == 0);
   handler->queueConnectFd(fds[0]);
-
-  const string key = "12345678901234567890123456789012";
   ClientConnection conn(handler, SocketEndpoint(), "client-id", key,
                         /*_resetIntent=*/true);
 
-  std::thread server([&]() {
-    auto request = handler->readProto<ConnectRequest>(fds[1], true);
-    REQUIRE(request.resetintent());
+  // The attacker answers the reattach with a bare NEW_CLIENT, which needs no
+  // knowledge of the key.
+  std::thread attacker([&]() {
+    handler->readProto<ConnectRequest>(fds[1], true);
     ConnectResponse response;
-    response.set_status(RETURNING_CLIENT);
-    response.set_resetrequired(true);
-    response.set_resetsalt(
-        CryptoHandler::randomBytes(CryptoHandler::EPOCH_SALT_BYTES));
+    response.set_status(NEW_CLIENT);
     handler->writeProto(fds[1], response, true);
   });
+  bool connected = false;
+  try {
+    connected = conn.connect();
+  } catch (const std::runtime_error& err) {
+    REQUIRE(string(err.what()) ==
+            ClientConnection::LEGACY_SERVER_REATTACH_ERROR);
+  }
+  attacker.join();
 
-  REQUIRE_THROWS_WITH(conn.connect(),
-                      ClientConnection::LEGACY_SERVER_REATTACH_ERROR);
-  server.join();
-  REQUIRE_FALSE(conn.wasRecovered());
-  char unexpected = 0;
-  REQUIRE(::recv(fds[1], &unexpected, 1, 0) == 0);
+  if (connected) {
+    // Without the key, the attacker replays the recorded server packet and
+    // XORs the client's new ciphertext with the recorded one. Equal
+    // keystreams cancel, leaving the XOR of the two plaintexts.
+    writeSessionFrame(handler, fds[1], originalServerPacket);
+    Packet replayed;
+    CHECK_FALSE(conn.readPacket(&replayed));
 
+    const string newInput = "secret typed after reattaching to the session";
+    conn.writePacket(Packet(TerminalPacketType::TERMINAL_BUFFER, newInput));
+    const Packet observed = readSessionFrame(handler, fds[1]);
+    CHECK(xorHex(observed.getPayload().substr(crypto_secretbox_MACBYTES),
+                 originalClientPacket.getPayload().substr(
+                     crypto_secretbox_MACBYTES)) !=
+          xorHex(newInput, originalInput));
+  }
   conn.shutdown();
   handler->close(fds[1]);
+  REQUIRE_FALSE(connected);
 }
 
 TEST_CASE(

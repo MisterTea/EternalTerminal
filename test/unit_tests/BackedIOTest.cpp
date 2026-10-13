@@ -361,13 +361,15 @@ TEST_CASE("BackedWriter buffers when disconnected until limit", "[BackedIO]") {
           BackedWriter::DISCONNECT_BUFFER_BYTES / (1024 * 1024) - 1);
   REQUIRE(!writer->hasBufferCapacity(2 * 1024 * 1024));
 
-  // Reviving on a new socket resets the disconnect accounting.
+  // Reviving on a new socket resets the disconnect accounting and trims the
+  // backup, dropping the oldest packets.
   const int newFd = handler->createChannel();
   writer->revive(newFd);
   REQUIRE(writer->hasBufferCapacity(1024));
   writer->invalidateSocket();
   REQUIRE(writer->write(Packet(1, chunk)) ==
           BackedWriterWriteState::BUFFERED_ONLY);
+  REQUIRE_THROWS_AS(writer->recover(0), std::runtime_error);
 
   handler->close(fd);
 }
@@ -511,4 +513,162 @@ TEST_CASE("SocketHandler readProto enforces max length before allocating",
 
   handler.close(fds[0]);
   handler.close(fds[1]);
+}
+
+TEST_CASE("SocketHandler readProto reassembles bodies across read chunks",
+          "[SocketHandler]") {
+  FdSocketHandler handler;
+  int fds[2];
+  REQUIRE(createTestSocketPair(fds) == 0);
+
+  et::CatchupBuffer sent;
+  sent.add_buffer(string(200 * 1024, 'x'));
+  std::thread writer([&]() { handler.writeProto(fds[1], sent, true); });
+  const auto received = handler.readProto<et::CatchupBuffer>(fds[0], true);
+  writer.join();
+  REQUIRE(received.buffer_size() == 1);
+  REQUIRE(received.buffer(0) == sent.buffer(0));
+
+  handler.close(fds[0]);
+  handler.close(fds[1]);
+}
+
+namespace {
+void enqueueFramedLength(const shared_ptr<InMemorySocketHandler>& handler,
+                         int fd, int64_t declaredLength) {
+  const uint32_t networkLength = htonl((uint32_t)declaredLength);
+  handler->enqueue(fd, string(reinterpret_cast<const char*>(&networkLength),
+                              sizeof(networkLength)));
+}
+}  // namespace
+
+TEST_CASE("BackedReader severs connection on out-of-bounds framed length",
+          "[BackedIO]") {
+  const string key = "12345678901234567890123456789012";
+  const int64_t oversize = SocketHandler::DEFAULT_MAX_PROTO_LENGTH + 1;
+  // 0 and 1 are smaller than a serialized Packet header; -1 is the sign
+  // extension of 0xFFFFFFFF; oversize exceeds the framing ceiling.
+  for (int64_t declared : {int64_t{0}, int64_t{1}, int64_t{-1}, oversize}) {
+    auto handler = make_shared<InMemorySocketHandler>();
+    const int fd = handler->createChannel();
+    BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+    enqueueFramedLength(handler, fd, declared);
+
+    Packet packet;
+    REQUIRE(reader.read(&packet) == -1);
+    REQUIRE(GetErrno() == EPIPE);
+  }
+}
+
+TEST_CASE("Packet constructor rejects input shorter than its header",
+          "[BackedIO]") {
+  REQUIRE_THROWS_AS(Packet(string()), std::runtime_error);
+  REQUIRE_THROWS_AS(Packet(string("x")), std::runtime_error);
+
+  const string ok("\x00\x05hello", 7);
+  Packet parsed(ok);
+  REQUIRE_FALSE(parsed.isEncrypted());
+  REQUIRE(parsed.getHeader() == 5);
+  REQUIRE(parsed.getPayload() == "hello");
+}
+
+TEST_CASE("CryptoHandler decrypt rejects ciphertext shorter than the MAC",
+          "[BackedIO][CryptoHandler]") {
+  CryptoHandler crypto("12345678901234567890123456789012", 0);
+  REQUIRE_THROWS_AS(crypto.decrypt(string(4, 'x')), std::runtime_error);
+}
+
+TEST_CASE("BackedReader surfaces short ciphertext as a connection error",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const string key = "12345678901234567890123456789012";
+  const int fd = handler->createChannel();
+  BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+
+  // A frame claiming 16 bytes whose encrypted flag is set but whose body is
+  // shorter than the secretbox MAC must throw the runtime_error the
+  // per-connection handlers already catch, not abort the process.
+  enqueueFramedLength(handler, fd, 16);
+  string shortCiphertext(16, 'A');
+  shortCiphertext[0] = 1;  // encrypted flag
+  handler->enqueue(fd, shortCiphertext);
+
+  Packet packet;
+  REQUIRE_THROWS_AS(reader.read(&packet), std::runtime_error);
+}
+
+TEST_CASE("CryptoHandler keeps its nonce after rejecting a ciphertext",
+          "[BackedIO][CryptoHandler]") {
+  const string key = "12345678901234567890123456789012";
+  CryptoHandler sender(key, 0);
+  CryptoHandler receiver(key, 0);
+  const string first = sender.encrypt("first");
+  const string second = sender.encrypt("second");
+
+  string tampered = first;
+  tampered.back() ^= 1;
+  REQUIRE_THROWS_AS(receiver.decrypt(tampered), MalformedPacketError);
+  REQUIRE(receiver.decrypt(first) == "first");
+  REQUIRE(receiver.decrypt(second) == "second");
+}
+
+TEST_CASE("Connection reconnects after a tampered packet and recovers it",
+          "[Connection]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const int fd = handler->createChannel();
+  const string key = "12345678901234567890123456789012";
+  auto sender = make_shared<CryptoHandler>(key, 0);
+  auto reader = make_shared<BackedReader>(
+      handler, make_shared<CryptoHandler>(key, 0), fd);
+  auto writer = make_shared<BackedWriter>(
+      handler, make_shared<CryptoHandler>(key, 1), fd);
+  TestConnection conn(handler, reader, writer, fd, key);
+
+  Packet genuine(55, "keystrokes");
+  genuine.encrypt(sender);
+  string tampered = genuine.serialize();
+  tampered.back() ^= 1;
+  enqueueFramedLength(handler, fd, tampered.size());
+  handler->enqueue(fd, tampered);
+
+  Packet out;
+  REQUIRE_FALSE(conn.read(&out));
+  REQUIRE(conn.isDisconnected());
+  REQUIRE(reader->getSequenceNumber() == 0);
+
+  // Recovery asks for everything after sequence 0 and gets the genuine packet.
+  reader->revive(fd, {genuine.serialize()});
+  REQUIRE(reader->read(&out) == 1);
+  REQUIRE(out.getPayload() == "keystrokes");
+  REQUIRE(reader->getSequenceNumber() == 1);
+
+  conn.shutdown();
+}
+
+TEST_CASE("BackedReader uncounts catchup after rejecting an entry",
+          "[BackedIO]") {
+  auto handler = make_shared<InMemorySocketHandler>();
+  const int fd = handler->createChannel();
+  const string key = "12345678901234567890123456789012";
+  auto sender = make_shared<CryptoHandler>(key, 0);
+  BackedReader reader(handler, make_shared<CryptoHandler>(key, 0), fd);
+
+  Packet first(1, "first");
+  first.encrypt(sender);
+  Packet second(2, "second");
+  second.encrypt(sender);
+  string tampered = first.serialize();
+  tampered.back() ^= 1;
+
+  reader.revive(fd, {tampered, second.serialize()});
+  Packet out;
+  REQUIRE_THROWS_AS(reader.read(&out), MalformedPacketError);
+  REQUIRE(reader.getSequenceNumber() == 0);
+
+  reader.revive(fd, {first.serialize(), second.serialize()});
+  REQUIRE(reader.read(&out) == 1);
+  REQUIRE(out.getPayload() == "first");
+  REQUIRE(reader.read(&out) == 1);
+  REQUIRE(out.getPayload() == "second");
+  REQUIRE(reader.getSequenceNumber() == 2);
 }

@@ -240,6 +240,17 @@ void UserTerminalHandler::finishSession() {
 
 void UserTerminalHandler::run() {
   while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return;
+      }
+    }
+    // readPacket blocks until a full packet arrives; poll so shutdown works.
+    if (!socketHandler->hasData(routerFd)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
     Packet termInitPacket;
     try {
       if (!socketHandler->readPacket(routerFd, &termInitPacket)) {

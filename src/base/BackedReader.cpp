@@ -32,10 +32,19 @@ int BackedReader::read(Packet* packet) {
 
   if (localBuffer.size() > 0) {
     VLOG(1) << "Reading from local buffer";
-    *packet = Packet(localBuffer.front());
+    try {
+      Packet next(localBuffer.front());
+      next.decrypt(cryptoHandler);
+      *packet = next;
+    } catch (const MalformedPacketError&) {
+      // revive() counted these entries as received. Uncount them so the next
+      // recovery asks the peer to resend them.
+      sequenceNumber -= localBuffer.size();
+      localBuffer.clear();
+      throw;
+    }
     localBuffer.pop_front();
     VLOG(1) << "New local buffer size: " << localBuffer.size();
-    packet->decrypt(cryptoHandler);
     return 1;
   }
 
@@ -65,11 +74,20 @@ int BackedReader::read(Packet* packet) {
     return 0;
   }
   int messageLength = getPartialMessageLength();
+  // Reject impossible or oversized lengths before allocating. EPIPE severs
+  // only this socket, so the session can reconnect.
+  if (messageLength < Packet::HEADER_SIZE ||
+      messageLength > SocketHandler::DEFAULT_MAX_PROTO_LENGTH) {
+    LOG(ERROR) << "Rejecting out-of-bounds framed length: " << messageLength;
+    SetErrno(EPIPE);
+    return -1;
+  }
   VLOG(2) << "Reading message of length: " << messageLength;
   int messageRemainder = messageLength - (partialMessage.length() - 4);
   if (messageRemainder) {
     VLOG(2) << "bytes remaining: " << messageRemainder;
-    string s(messageRemainder, '\0');
+    // Allocate per read, not for the whole declared length.
+    string s(std::min(messageRemainder, 64 * 1024), '\0');
     ssize_t bytesRead = socketHandler->read(socketFd, &s[0], s.length());
     if (bytesRead == 0) {
       // Connection is closed.  Instead of closing the socket, set EPIPE.
