@@ -767,9 +767,9 @@ int TerminalClient::run(const string& command, const bool noexit) {
         sessionTitleUpdateTime = now + 2;
       }
     } catch (const MalformedPacketError& ex) {
-      // The packet type is not covered by the MAC, so an on-path attacker can
-      // produce these. The reader is already past the packet, so reconnecting
-      // resumes the session after it instead of ending the session.
+      // Only the authenticated server can send these, for example a newer one
+      // with a packet type this client lacks. The reader is already past the
+      // packet, so reconnecting skips it instead of ending the session.
       LOG(WARNING) << "Reconnecting after malformed server packet: "
                    << ex.what();
       connection->closeSocketAndMaybeReconnect();
