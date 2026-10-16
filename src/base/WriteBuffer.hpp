@@ -34,7 +34,6 @@ class WriteBuffer {
       : totalBytes(0),
         writeOffset(0),
         skipUntilNewline(false),
-        seenControlMode(false),
         controlPrefixBytes(0),
         controlPromoted(false) {}
 
@@ -71,6 +70,11 @@ class WriteBuffer {
    * next newline are discarded so the rest of that line cannot reappear.
    */
   void enqueue(const string& data) {
+    // Track the PTY stream, including bytes this call will discard, so a
+    // token or DCS split across reads still arms or disarms control mode.
+    if (!data.empty()) {
+      controlMode.observe(data);
+    }
     string remaining = data;
     if (skipUntilNewline) {
       size_t newline = remaining.find('\n');
@@ -82,9 +86,6 @@ class WriteBuffer {
     }
     if (remaining.empty()) {
       return;
-    }
-    if (remaining[0] == '%' || remaining.find("\n%") != string::npos) {
-      seenControlMode = true;
     }
     pending.push_back(remaining);
     totalBytes += remaining.size();
@@ -145,7 +146,7 @@ class WriteBuffer {
     totalBytes = 0;
     writeOffset = 0;
     skipUntilNewline = false;
-    seenControlMode = false;
+    controlMode.reset();
     controlPrefixBytes = 0;
     controlPromoted = false;
     return dropped;
@@ -171,7 +172,7 @@ class WriteBuffer {
       }
     }
     bool wasSkipping = skipUntilNewline;
-    TmuxCcFilterResult result = filterTmuxCc(data, seenControlMode);
+    TmuxCcFilterResult result = filterTmuxCc(data, controlMode.active());
     // drainDiscardReadableBytes may re-filter the resync newline while the
     // rest of the dropped `%output` line is still arriving. enqueue() is
     // the only path that should clear skipUntilNewline (when it sees `\n`).
@@ -199,7 +200,7 @@ class WriteBuffer {
    * still sitting in this buffer.
    */
   void promoteControlLines() {
-    if (!seenControlMode || controlPromoted || pending.empty()) {
+    if (!controlMode.active() || controlPromoted || pending.empty()) {
       return;
     }
     string data;
@@ -213,7 +214,7 @@ class WriteBuffer {
         data.append(chunk);
       }
     }
-    TmuxCcFilterResult result = filterTmuxCc(data, seenControlMode, false);
+    TmuxCcFilterResult result = filterTmuxCc(data, controlMode.active(), false);
     pending.clear();
     writeOffset = 0;
     totalBytes = 0;
@@ -233,8 +234,11 @@ class WriteBuffer {
   /** @brief Bytes of promoted control data still at the front of the queue. */
   size_t controlBytesAtFront() const { return controlPrefixBytes; }
 
-  /** @brief True after `%output` / `%extended-output` has been seen. */
-  bool inControlMode() const { return seenControlMode; }
+  /**
+   * @brief True after a tmux -CC DCS introducer or a known control token.
+   * Cleared by `%exit`, ST, or clear().
+   */
+  bool inControlMode() const { return controlMode.active(); }
 
   /**
    * @brief If the queue is at least FLUSH_THRESHOLD, drop droppable bytes.
@@ -255,7 +259,7 @@ class WriteBuffer {
   size_t totalBytes;
   size_t writeOffset;
   bool skipUntilNewline;
-  bool seenControlMode;
+  TmuxCcControlModeTracker controlMode;
   size_t controlPrefixBytes;
   bool controlPromoted;
 };
