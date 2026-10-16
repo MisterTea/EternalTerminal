@@ -52,6 +52,18 @@ TEST_CASE("JumphostPending Ctrl+C leaves the prompt packet next",
   REQUIRE(tb.buffer() == "PROMPT");
 }
 
+TEST_CASE("JumphostPending flush drops plain lines that start with %",
+          "[JumphostPending][TmuxCc]") {
+  JumphostPending pending;
+  string body;
+  while (body.size() < WriteBuffer::FLUSH_THRESHOLD) {
+    body += "PID USER\n%Cpu(s):  3.0 us\nload ok\n";
+  }
+  pending.enqueue(terminalOutputPacket(body));
+  REQUIRE(pending.flushTerminalBuffersIfLarge() == body.size());
+  REQUIRE(pending.terminalOutputBytes() == 0);
+}
+
 TEST_CASE("JumphostPending flush keeps tmux -CC control lines",
           "[JumphostPending][TmuxCc]") {
   JumphostPending pending;

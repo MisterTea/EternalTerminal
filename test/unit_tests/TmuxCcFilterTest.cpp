@@ -3,6 +3,83 @@
 
 using namespace et;
 
+TEST_CASE("tmux control tokens are a sorted exact set", "[TmuxCcFilter]") {
+  size_t count = 0;
+  const char* const* tokens = tmuxCcControlTokenList(&count);
+  REQUIRE(count > 0);
+  for (size_t i = 1; i < count; ++i) {
+    REQUIRE(std::strcmp(tokens[i - 1], tokens[i]) < 0);
+  }
+  REQUIRE(tmuxCcIsControlToken("%begin"));
+  REQUIRE(tmuxCcIsControlToken("%end"));
+  REQUIRE(tmuxCcIsControlToken("%error"));
+  REQUIRE(tmuxCcIsControlToken("%exit"));
+  REQUIRE(tmuxCcIsControlToken("%output"));
+  REQUIRE(tmuxCcIsControlToken("%extended-output"));
+  REQUIRE(tmuxCcIsControlToken("%layout-change"));
+  REQUIRE(tmuxCcIsControlToken("%session-changed"));
+  REQUIRE(tmuxCcIsControlToken("%sessions-changed"));
+  REQUIRE(tmuxCcIsControlToken("%paste-buffer-deleted"));
+  REQUIRE(tmuxCcIsControlToken("%unlinked-window-renamed"));
+  REQUIRE_FALSE(tmuxCcIsControlToken("%"));
+  REQUIRE_FALSE(tmuxCcIsControlToken("%Cpu(s):"));
+  REQUIRE_FALSE(tmuxCcIsControlToken("%MEM"));
+  REQUIRE_FALSE(tmuxCcIsControlToken("%layout"));
+  REQUIRE(tmuxCcIsControlTokenPrefix("%"));
+  REQUIRE(tmuxCcIsControlTokenPrefix("%lay"));
+  REQUIRE(tmuxCcIsControlTokenPrefix("%output"));
+  REQUIRE_FALSE(tmuxCcIsControlTokenPrefix("%Cpu"));
+  REQUIRE_FALSE(tmuxCcIsControlTokenPrefix(""));
+}
+
+TEST_CASE("filterTmuxCc drops plain lines that start with %",
+          "[TmuxCcFilter]") {
+  const string tty =
+      "PID USER\n%Cpu(s):  3.0 us\nload ok\n%MEM 41.2\nnext line\n";
+  TmuxCcFilterResult result = filterTmuxCc(tty, false);
+  REQUIRE(result.kept.empty());
+  REQUIRE(result.dropped == tty.size());
+
+  // In control mode the leading partial line is finished, then '%' lines
+  // are kept and plain lines are droppable.
+  TmuxCcFilterResult inCc = filterTmuxCc(tty, true);
+  REQUIRE(inCc.kept == "PID USER\n%Cpu(s):  3.0 us\n%MEM 41.2\n");
+  REQUIRE(inCc.droppable == "load ok\nnext line\n");
+}
+
+TEST_CASE("control mode tracks DCS, real tokens, and %exit", "[TmuxCcFilter]") {
+  SECTION("plain % lines do not arm") {
+    TmuxCcControlModeTracker tracker;
+    tracker.observe("PID USER\n%Cpu(s):  3.0 us\n% ");
+    REQUIRE_FALSE(tracker.active());
+    // A real token glued onto the previous line is not at a line boundary.
+    tracker.observe("%layout-change @1 x\n");
+    REQUIRE_FALSE(tracker.active());
+  }
+
+  SECTION("a notification split across reads arms, and %exit disarms") {
+    TmuxCcControlModeTracker tracker;
+    tracker.observe("%lay");
+    REQUIRE_FALSE(tracker.active());
+    tracker.observe("out-change @1 vis\n");
+    REQUIRE(tracker.active());
+    tracker.observe("%exit\n");
+    REQUIRE_FALSE(tracker.active());
+  }
+
+  SECTION("DCS and ST may split across reads") {
+    TmuxCcControlModeTracker tracker;
+    tracker.observe("\033P10");
+    REQUIRE_FALSE(tracker.active());
+    tracker.observe("00p%begin 1 0 0\n");
+    REQUIRE(tracker.active());
+    tracker.observe("\033");
+    REQUIRE(tracker.active());
+    tracker.observe("\\prompt\n%Cpu(s): 1\n");
+    REQUIRE_FALSE(tracker.active());
+  }
+}
+
 TEST_CASE("filterTmuxCc drops TTY floods", "[TmuxCcFilter]") {
   TmuxCcFilterResult result = filterTmuxCc(string(100, 'A') + "\nmore");
   REQUIRE(result.kept.empty());

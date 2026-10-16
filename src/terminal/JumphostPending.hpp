@@ -29,25 +29,24 @@ class JumphostPending {
 
   void enqueue(const Packet& packet) {
     Packet toEnqueue = packet;
-    if (skipUntilNewline &&
-        toEnqueue.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
-      string body = terminalBufferBody(toEnqueue);
-      size_t newline = body.find('\n');
-      if (newline == string::npos) {
-        return;
-      }
-      skipUntilNewline = false;
-      body = body.substr(newline + 1);
-      if (body.empty()) {
-        return;
-      }
-      toEnqueue = terminalBufferPacket(body);
-    }
     if (toEnqueue.getHeader() == TerminalPacketType::TERMINAL_BUFFER) {
       string body = terminalBufferBody(toEnqueue);
-      if (!body.empty() &&
-          (body[0] == '%' || body.find("\n%") != string::npos)) {
-        seenControlMode = true;
+      // Observe the full chunk, including bytes skipped below, so a control
+      // token split across packets is still recognized.
+      if (!body.empty()) {
+        controlMode.observe(body);
+      }
+      if (skipUntilNewline) {
+        size_t newline = body.find('\n');
+        if (newline == string::npos) {
+          return;
+        }
+        skipUntilNewline = false;
+        body = body.substr(newline + 1);
+        if (body.empty()) {
+          return;
+        }
+        toEnqueue = terminalBufferPacket(body);
       }
     }
     packets.push_back(toEnqueue);
@@ -78,7 +77,7 @@ class JumphostPending {
     }
 
     bool wasSkipping = skipUntilNewline;
-    TmuxCcFilterResult result = filterTmuxCc(concat, seenControlMode);
+    TmuxCcFilterResult result = filterTmuxCc(concat, controlMode.active());
     skipUntilNewline = result.skipUntilNewline || wasSkipping;
 
     for (auto it = packets.begin(); it != packets.end();) {
@@ -186,12 +185,16 @@ class JumphostPending {
     }
     string body = terminalBufferBody(packets.front());
     string token = tmuxCcFirstToken(body);
-    return token.empty() || tmuxCcIsDroppableOutputToken(token) ||
-           (!token.empty() && token[0] != '%');
+    if (token.empty() || tmuxCcIsDroppableOutputToken(token) ||
+        token[0] != '%') {
+      return true;
+    }
+    // A plain line that happens to start with '%' is terminal output.
+    return !controlMode.active() && !tmuxCcIsControlToken(token);
   }
 
   void promoteControlPackets() {
-    if (!seenControlMode || packets.empty()) {
+    if (!controlMode.active() || packets.empty()) {
       return;
     }
     string concat;
@@ -203,7 +206,8 @@ class JumphostPending {
         nonTerminal.push_back(packet);
       }
     }
-    TmuxCcFilterResult result = filterTmuxCc(concat, seenControlMode, false);
+    TmuxCcFilterResult result =
+        filterTmuxCc(concat, controlMode.active(), false);
     packets.clear();
     bytes = 0;
     terminalBufferBytes = 0;
@@ -233,7 +237,7 @@ class JumphostPending {
   size_t bytes = 0;
   size_t terminalBufferBytes = 0;
   bool skipUntilNewline = false;
-  bool seenControlMode = false;
+  TmuxCcControlModeTracker controlMode;
 };
 
 }  // namespace et
