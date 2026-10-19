@@ -1,8 +1,8 @@
 /**
  * Regression tests for public security notices under security_notices/.
  *
- * ANT-2026-VAMER5RC reconnect passkey proof is intentionally not covered: that
- * requires a PROTOCOL_VERSION bump / wire-format change.
+ * ANT-2026-VAMER5RC reconnect passkey proof is covered by the ServerConnection
+ * tests in ClientConnectionTest.cpp.
  */
 
 #ifndef WIN32
@@ -269,7 +269,6 @@ TEST_CASE(
 
 // ---------------------------------------------------------------------------
 // ANT-2026-VAMER5RC — pre-auth recover crash / force-disconnect
-// (passkey-before-recover omitted: needs PROTOCOL_VERSION bump)
 // ---------------------------------------------------------------------------
 
 TEST_CASE(

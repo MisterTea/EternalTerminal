@@ -24,9 +24,8 @@ class ClientConnection : public Connection {
 
   virtual ~ClientConnection();
 
-  // Thrown by connect() when a reattach succeeds without a challenge, as from a
-  // server without challenge support.
-  static const string LEGACY_SERVER_REATTACH_ERROR;
+  // Thrown by connect() when a server accepts the client without a challenge.
+  static const string UNAUTHENTICATED_SERVER_ERROR;
 
   /**
    * @brief Attempts to establish and authenticate a connection to the server.
