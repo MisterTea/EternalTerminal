@@ -2,6 +2,7 @@
 #define __ET_TMUX_CC_FILTER__
 
 #include <cctype>
+#include <cstring>
 
 #include "Headers.hpp"
 
@@ -49,6 +50,81 @@ inline bool tmuxCcIsDroppableOutputToken(const string& token) {
   return token == "%output" || token == "%extended-output";
 }
 
+// tmux -CC introducer (ESC P 1000 p) and its string terminator (ST).
+inline constexpr char kTmuxCcDcs[] = "\033P1000p";
+inline constexpr size_t kTmuxCcDcsLen = sizeof(kTmuxCcDcs) - 1;
+inline constexpr char kTmuxCcSt[] = "\033\\";
+inline constexpr size_t kTmuxCcStLen = sizeof(kTmuxCcSt) - 1;
+
+/**
+ * @brief Response and notification names tmux writes at the start of a line.
+ *
+ * Sourced from tmux control.c / control-notify.c (guards, pane output, and
+ * the asynchronous notifications). A line that merely starts with '%'
+ * (`%Cpu(s)`, a csh `%` prompt) is not in this set.
+ */
+inline const char* const* tmuxCcControlTokenList(size_t* count) {
+  static const char* kTokens[] = {
+      "%begin",
+      "%client-detached",
+      "%client-session-changed",
+      "%continue",
+      "%end",
+      "%error",
+      "%exit",
+      "%extended-output",
+      "%layout-change",
+      "%output",
+      "%pane-mode-changed",
+      "%paste-buffer-changed",
+      "%paste-buffer-deleted",
+      "%pause",
+      "%session-changed",
+      "%session-renamed",
+      "%session-window-changed",
+      "%sessions-changed",
+      "%subscription-changed",
+      "%unlinked-window-add",
+      "%unlinked-window-close",
+      "%unlinked-window-renamed",
+      "%window-add",
+      "%window-close",
+      "%window-pane-changed",
+      "%window-renamed",
+  };
+  *count = sizeof(kTokens) / sizeof(kTokens[0]);
+  return kTokens;
+}
+
+inline bool tmuxCcTokenLess(const char* a, const char* b) {
+  return std::strcmp(a, b) < 0;
+}
+
+inline bool tmuxCcIsControlToken(const string& token) {
+  if (token.empty() || token[0] != '%') {
+    return false;
+  }
+  size_t count = 0;
+  const char* const* tokens = tmuxCcControlTokenList(&count);
+  return std::binary_search(tokens, tokens + count, token.c_str(),
+                            tmuxCcTokenLess);
+}
+
+/** @brief True if some control token equals @p prefix or begins with it. */
+inline bool tmuxCcIsControlTokenPrefix(const string& prefix) {
+  if (prefix.empty() || prefix[0] != '%') {
+    return false;
+  }
+  size_t count = 0;
+  const char* const* tokens = tmuxCcControlTokenList(&count);
+  const char* const* it =
+      std::lower_bound(tokens, tokens + count, prefix.c_str(), tmuxCcTokenLess);
+  if (it == tokens + count) {
+    return false;
+  }
+  return std::strncmp(*it, prefix.c_str(), prefix.size()) == 0;
+}
+
 inline bool tmuxCcShouldKeepLine(const string& line, bool* inBeginBlock,
                                  bool inControlMode) {
   string token = tmuxCcFirstToken(line);
@@ -67,7 +143,12 @@ inline bool tmuxCcShouldKeepLine(const string& line, bool* inBeginBlock,
     // filter pass cannot swallow the line terminator the client needs.
     return inControlMode;
   }
-  return token[0] == '%' && !tmuxCcIsDroppableOutputToken(token);
+  if (token[0] != '%' || tmuxCcIsDroppableOutputToken(token)) {
+    return false;
+  }
+  // Outside control mode only a real notification is control data. top's
+  // `%Cpu(s)` and similar lines are ordinary terminal output.
+  return inControlMode || tmuxCcIsControlToken(token);
 }
 
 inline bool tmuxCcStartsAtLineBoundary(const string& data) {
@@ -134,7 +215,10 @@ inline TmuxCcFilterResult filterTmuxCc(const string& data,
       result.skipUntilNewline = true;
     }
   } else if (!token.empty() && token[0] == '%') {
-    keep = true;
+    // Keep a split notification (`%lay` + `out-change`) so the next chunk
+    // can finish it. A finished non-notification (`%Cpu(s):`) is TTY.
+    keep = inControlMode || tmuxCcIsControlToken(token) ||
+           tmuxCcIsControlTokenPrefix(token);
   }
   if (keep) {
     result.kept.append(tail);
@@ -144,6 +228,134 @@ inline TmuxCcFilterResult filterTmuxCc(const string& data,
   }
   return result;
 }
+
+inline bool tmuxCcDcsAt(const string& data, size_t pos) {
+  return pos + kTmuxCcDcsLen <= data.size() &&
+         data.compare(pos, kTmuxCcDcsLen, kTmuxCcDcs, kTmuxCcDcsLen) == 0;
+}
+
+inline bool tmuxCcStAt(const string& data, size_t pos) {
+  return pos + kTmuxCcStLen <= data.size() &&
+         data.compare(pos, kTmuxCcStLen, kTmuxCcSt, kTmuxCcStLen) == 0;
+}
+
+/**
+ * @brief Latches tmux -CC handling for a terminal byte stream.
+ *
+ * Arm only on an unambiguous signal: the DCS introducer tmux writes when
+ * `-CC` starts, or a known control token at a line boundary. Any other
+ * '%' (top, csh's `%` prompt, progress lines) leaves the stream in plain
+ * terminal mode so later drains do not reorder it. `%exit` or ST disarms
+ * the latch, so a shell after `tmux -CC` is plain output again.
+ *
+ * Chunks may split a token or the 7-byte DCS. State here is the PTY
+ * stream, not the unsent buffer: bytes already written to the client
+ * still count toward the next line.
+ */
+class TmuxCcControlModeTracker {
+ public:
+  void observe(const string& chunk) {
+    if (chunk.empty()) {
+      return;
+    }
+    bool lineStart = atLineStart_;
+    string carry = lineStart ? string() : continuedToken_;
+    size_t i = 0;
+    if (!dcsTail_.empty()) {
+      const size_t tailUse = dcsTail_.size();
+      const size_t headUse = std::min(chunk.size(), kTmuxCcDcsLen - 1);
+      const string junction = dcsTail_ + chunk.substr(0, headUse);
+      const size_t at = junction.find(kTmuxCcDcs);
+      if (at != string::npos && at < tailUse) {
+        const size_t skip = (at + kTmuxCcDcsLen) - tailUse;
+        if (skip <= chunk.size()) {
+          active_ = true;
+          i = skip;
+          lineStart = true;
+          carry.clear();
+        }
+      }
+    }
+    if (active_ && i == 0 && !dcsTail_.empty() && chunk[0] == '\\' &&
+        dcsTail_.back() == '\033') {
+      active_ = false;
+      i = 1;
+      lineStart = false;
+      carry.clear();
+    }
+    while (i < chunk.size()) {
+      if (tmuxCcDcsAt(chunk, i)) {
+        active_ = true;
+        i += kTmuxCcDcsLen;
+        lineStart = true;
+        carry.clear();
+        continue;
+      }
+      if (active_ && tmuxCcStAt(chunk, i)) {
+        active_ = false;
+        i += kTmuxCcStLen;
+        lineStart = false;
+        carry.clear();
+        continue;
+      }
+      if (chunk[i] == '\n') {
+        lineStart = true;
+        carry.clear();
+        ++i;
+        continue;
+      }
+      if (!lineStart && carry.empty()) {
+        ++i;
+        continue;
+      }
+      if (lineStart) {
+        carry.clear();
+        lineStart = false;
+      }
+      const size_t start = i;
+      while (i < chunk.size() && chunk[i] != '\n' && chunk[i] != ' ' &&
+             chunk[i] != '\t' && chunk[i] != '\r' && !tmuxCcDcsAt(chunk, i) &&
+             !(active_ && tmuxCcStAt(chunk, i))) {
+        ++i;
+      }
+      carry.append(chunk, start, i - start);
+      const bool delimited = i != chunk.size();
+      if (delimited && tmuxCcIsControlToken(carry)) {
+        // `%exit` is the control-mode goodbye. Other tokens arm it.
+        active_ = carry != "%exit";
+      }
+      if (delimited || !tmuxCcIsControlTokenPrefix(carry)) {
+        carry.clear();
+      }
+    }
+    atLineStart_ = lineStart;
+    continuedToken_ = lineStart ? string() : carry;
+    if (chunk.size() >= kTmuxCcDcsLen - 1) {
+      dcsTail_.assign(chunk, chunk.size() - (kTmuxCcDcsLen - 1),
+                      kTmuxCcDcsLen - 1);
+    } else {
+      dcsTail_ += chunk;
+      if (dcsTail_.size() > kTmuxCcDcsLen - 1) {
+        dcsTail_.erase(0, dcsTail_.size() - (kTmuxCcDcsLen - 1));
+      }
+    }
+  }
+
+  bool active() const { return active_; }
+
+  void reset() {
+    active_ = false;
+    atLineStart_ = true;
+    continuedToken_.clear();
+    dcsTail_.clear();
+  }
+
+ private:
+  bool active_ = false;
+  bool atLineStart_ = true;
+  string continuedToken_;
+  string dcsTail_;
+};
 
 /**
  * @brief True for a tmux key name that requests an interrupt (Ctrl+C/Z/\).

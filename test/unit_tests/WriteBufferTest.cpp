@@ -212,6 +212,87 @@ TEST_CASE("WriteBuffer concatenates the rest of a partly-sent CC line",
                                      "@4\n");
 }
 
+namespace {
+string drainWriteBuffer(WriteBuffer* buffer) {
+  string out;
+  size_t count = 0;
+  while (const char* data = buffer->peekData(&count)) {
+    if (count == 0) {
+      break;
+    }
+    out.append(data, count);
+    buffer->consume(count);
+  }
+  return out;
+}
+}  // namespace
+
+TEST_CASE("WriteBuffer plain % lines stay in order and out of control mode",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  // top, a csh prompt, and a progress line. None of these is tmux -CC.
+  const string tty =
+      "PID USER\n%Cpu(s):  3.0 us\nload ok\n%MEM 41.2\nnext line\n% ";
+  buffer.enqueue(tty);
+  REQUIRE_FALSE(buffer.inControlMode());
+  buffer.promoteControlLines();
+  REQUIRE(drainWriteBuffer(&buffer) == tty);
+
+  buffer.enqueue("hello");
+  buffer.enqueue("%Cpu(s):  1.0 us\n");
+  REQUIRE_FALSE(buffer.inControlMode());
+  buffer.promoteControlLines();
+  REQUIRE(drainWriteBuffer(&buffer) == "hello%Cpu(s):  1.0 us\n");
+}
+
+TEST_CASE("WriteBuffer flush drops a top-like flood that starts lines with %",
+          "[WriteBuffer][TmuxCc]") {
+  WriteBuffer buffer;
+  string chunk;
+  while (chunk.size() < WriteBuffer::FLUSH_THRESHOLD) {
+    chunk += "PID USER\n%Cpu(s):  3.0 us\nload ok\n";
+  }
+  buffer.enqueue(chunk);
+  REQUIRE_FALSE(buffer.inControlMode());
+  REQUIRE(buffer.flushIfLarge() == chunk.size());
+  REQUIRE(buffer.size() == 0);
+}
+
+TEST_CASE("WriteBuffer arms control mode on DCS or a real notification",
+          "[WriteBuffer][TmuxCc]") {
+  SECTION("DCS introducer, including one split across reads") {
+    WriteBuffer buffer;
+    buffer.enqueue("prompt\n\033P10");
+    REQUIRE_FALSE(buffer.inControlMode());
+    buffer.enqueue("00p%begin 1 1 0\n%end 1 1 0\n");
+    REQUIRE(buffer.inControlMode());
+  }
+
+  SECTION("known token split across reads still promotes") {
+    WriteBuffer buffer;
+    buffer.enqueue("%lay");
+    REQUIRE_FALSE(buffer.inControlMode());
+    buffer.enqueue("out-change @1 vis\n%output %0 z\n");
+    REQUIRE(buffer.inControlMode());
+    buffer.promoteControlLines();
+    REQUIRE(buffer.controlBytesAtFront() ==
+            string("%layout-change @1 vis\n").size());
+    REQUIRE(drainWriteBuffer(&buffer) ==
+            "%layout-change @1 vis\n%output %0 z\n");
+  }
+
+  SECTION("%exit and ST return later shell output to plain mode") {
+    WriteBuffer buffer;
+    buffer.enqueue("%output %0 hi\n%exit\n\033\\");
+    REQUIRE_FALSE(buffer.inControlMode());
+    const string tty = "PID USER\n%Cpu(s):  3.0 us\nload ok\n";
+    buffer.enqueue(tty);
+    REQUIRE_FALSE(buffer.inControlMode());
+    buffer.promoteControlLines();
+    REQUIRE(drainWriteBuffer(&buffer) == "%output %0 hi\n%exit\n\033\\" + tty);
+  }
+}
+
 TEST_CASE("WriteBuffer promoteControlLines sends notifications before output",
           "[WriteBuffer][TmuxCc]") {
   WriteBuffer buffer;
