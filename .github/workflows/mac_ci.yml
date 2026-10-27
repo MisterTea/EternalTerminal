@@ -6,14 +6,22 @@ on:
       - master
   pull_request:
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   ubsan:
     runs-on: macos-latest
+    timeout-minutes: 90
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
     steps:
       - uses: actions/checkout@v4
       - name: Setup
@@ -21,180 +29,129 @@ jobs:
         run: |
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
+          brew install ccache cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
-          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
-          # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
+          key: sanitize-${{ runner.os }}-${{ github.job }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Test with ubsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
-          rm -Rf build
 
   asan:
     runs-on: macos-latest
+    timeout-minutes: 90
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
     steps:
       - uses: actions/checkout@v4
       - name: Setup
         shell: bash
         run: |
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install ccache cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
-          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
-          # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
+          key: sanitize-${{ runner.os }}-${{ github.job }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Test with asan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
-          rm -Rf build
-
-  msan:
-    runs-on: macos-latest
-    env:
-      # Indicates the CMake build directory where project files and binaries are being produced.
-      CMAKE_BUILD_DIR: ${{ github.workspace }}/build
-      # Indicates the location of the vcpkg as a Git submodule of the project repository.
-      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
-    steps:
-      - uses: actions/checkout@v4
-      - name: Setup
-        shell: bash
-        run: |
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
-          git submodule sync --recursive
-          git submodule update --init --force --recursive
-          mkdir -p ~/.ssh/
-          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
-
-      # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
-        with:
-          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
-          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
-          # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
-
-      - name: Test with msan
-        run: |
-          mkdir -p build
-          pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
-          popd
-          rm -Rf build
 
   tsan:
     runs-on: macos-latest
+    timeout-minutes: 90
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
     steps:
       - uses: actions/checkout@v4
       - name: Setup
         shell: bash
         run: |
-          auth_header="$(git config --local --get http.https://github.com/.extraheader)"
           git submodule sync --recursive
           git submodule update --init --force --recursive
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
-          brew install cmake ninja; brew install protobuf libsodium automake autoconf libtool
+          brew install ccache cmake ninja; brew install protobuf libsodium automake autoconf autoconf-archive libtool
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
-          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
-          # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-osx-1
+          key: sanitize-${{ runner.os }}-${{ github.job }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Test with tsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          cmake --build . --parallel "${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
-          rm -Rf build

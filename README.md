@@ -174,12 +174,55 @@ Verify that the server is installed correctly by checking the service status: `s
 
 You are ready to start using ET!
 
+### Installed programs
+
+An Eternal Terminal installation may provide these executables:
+
+- `et` is the command-line client. It uses SSH to authenticate and start the
+  remote session, then maintains the reconnectable ET connection.
+- `etserver` is the system service that accepts ET client connections and
+  routes them to the correct user's session. Its default TCP port is 2022.
+- `etterminal` is an internal server-side helper launched through SSH. Normal
+  users do not invoke it directly.
+- `htm` is the foreground client for HTM, the bundled terminal multiplexer.
+  It speaks tmux control mode so compatible terminal emulators can show native
+  windows, tabs, and splits.
+- `htmd` is the per-user HTM daemon. It owns persistent multiplexer sessions
+  and is started automatically by `htm` when needed.
+
+For the protocol-level relationship between `et`, `etserver`, and
+`etterminal`, see [the protocol documentation](docs/protocol.md). For HTM, see
+[the HTM design documentation](docs/htm-design.md).
+
 ## Configuring
 
 If you'd like to modify the server settings (e.g. to change the listening
 port), edit `/etc/et.cfg`. On NixOS, set `services.eternalTerminal.settings`
 instead so the generated `/etc/et.cfg` stays in sync with your system
 configuration.
+
+## Telemetry
+
+Telemetry is on by default in the `et` client, and in `etserver` when its
+configuration sets `telemetry = true`, as the supplied `et.cfg` does. Each
+process with telemetry enabled sends:
+
+- the text of every Error and Fatal log message, with its source file and
+  line, to Datadog
+- Fatal log messages and crash reports to Sentry, in builds that include
+  Sentry
+
+Every report carries the ET version and a random ID that is generated once
+per user account and stored in `et/telemetry.ini` under the user's
+configuration directory (`~/.config` on Linux), so reports from the same
+user can be linked.
+
+To turn telemetry off, do any of the following:
+
+- Pass `--telemetry=false` to `et`.
+- Set `telemetry = false` in `/etc/et.cfg` for `etserver`.
+- Set `ET_NO_TELEMETRY=1` in the environment of `et` or `etserver`.
+- Build with `cmake -DDISABLE_TELEMETRY=ON`.
 
 ## Using
 
@@ -195,6 +238,23 @@ et hostname (etserver running on default port 2022, username is the same as curr
 et user@hostname:8000 (etserver running on port 8000, different user)
 ```
 
+### Saved sessions
+
+On macOS and Linux, `et` saves each direct session's reattachment credentials
+in `~/.et/sessions` (owner-only, plaintext), so after a client crash or reboot
+you can return to a remote shell that is still running. Sessions get a
+generated `YYYYMMDD-xxxx` name unless you pick one; `--attach` and `--kill`
+accept a name or a unique substring of the name or terminal title. Port
+forwards, agent forwarding, and jumphosts are not restored on attach.
+
+```bash
+et --name work hostname   # start (or reattach to) a named session
+et --list                 # list saved sessions without contacting servers
+et --attach work          # reattach after the client restarted
+et --kill work            # end the remote session and remove its record
+et --no-persist hostname  # do not write credentials to disk
+```
+
 You can specify a jumphost and the port et is running on jumphost using `--jumphost` and `--jport`. If no `--jport` is given, et will try to connect to default port 2022.
 
 ```bash
@@ -202,7 +262,7 @@ et hostname -jumphost jump_hostname (etserver running on port 2022 on both hostn
 et hostname:8888 --jumphost jump_hostname --jport 9999
 ```
 
-Additional arguments that et accepts are port forwarding pairs with option `-t "18000:8000, 18001-18003:8001-8003"`, a command to run immediately after the connection is setup through `-c`.
+Additional arguments that et accepts are port forwarding pairs with `--tunnel "18000:8000, 18001-18003:8001-8003"` (or OpenSSH-style `-L`), and a command to run immediately after the connection is set up through `--command` or as a positional command after the host. Short flags match OpenSSH: `-p` is the sshd port, `--port` is the etserver port, and `-t` requests a pty.
 
 Starting from the latest release, et supports parsing both user-specific and system-wide SSH config files.
 The config file is required when your sshd on server/jumphost is listening on a port which is not 22.
@@ -226,6 +286,132 @@ With the ssh config file set as above, you can simply call et with
 et dev (etserver running on port 2022 on both hostname and jumphost)
 et dev:8000 -jport 9000 (etserver running on port 9000 on jumphost)
 ```
+
+To isolate ET from ambient SSH configuration, pass an absolute path with
+`--ssh-config`. ET reads only that file for its own destination and jumphost
+lookup and passes the same file to every SSH process it starts, including the
+implicit ProxyJump connection. The file must be readable, regular, and not a
+symbolic link. The path must be absolute (`/path` on Unix; `C:\path`,
+`C:/path`, or a UNC path on Windows) and may contain only ASCII letters, digits,
+`/`, `.`, `_`, and `-` (plus `:` and `\` on Windows). Spaces are not allowed:
+OpenSSH does not quote this path when constructing its implicit ProxyJump
+command. Pass `--ssh-config none` or the equivalent `--no-ssh-config` to
+disable both user and system SSH configuration entirely. The two options are
+mutually exclusive.
+
+### SSH agent forwarding
+
+`et --forward-ssh-agent` (or `ForwardAgent yes` in your SSH config) forwards your ssh-agent to the server. `--ssh-socket` picks a different agent to forward.
+
+ET supports OpenSSH agent session binding (OpenSSH 8.9+), so keys added with destination constraints (`ssh-add -h`) are handled as they are with `ssh -A`. The agent treats each forwarded connection as coming from the ET server. With a jumphost, the jumphost is the first hop, because its etserver relays the session:
+
+```bash
+ssh-add -h dev -h 'dev>github.com' ~/.ssh/id_ed25519   # usable on dev, and from dev to github.com
+et --forward-ssh-agent dev
+```
+
+For `et --jumphost jump dev`, the same key needs `-h jump -h 'jump>dev' -h 'dev>github.com'`.
+
+To capture the binding, et gives the ssh it uses for the handshake a temporary proxy in front of your agent. The proxy is passed as `IdentityAgent`, with `ControlMaster=no` so a persistent ssh master never keeps a path that no longer exists (an existing master is still reused). If ssh makes no binding (OpenSSH older than 8.9, or an existing ControlMaster connection), et logs a warning and forwarded connections stay unbound, as before. The agent then treats the first ssh run on the server as if it came straight from your machine, so a key limited to `-h X` can log in to `X` from the server, and keys constrained as `-h 'server>X'` are refused.
+
+### VS Code and Cursor (Remote-SSH)
+
+ET can stand in for `ssh` as the transport for VS Code's and Cursor's
+Remote-SSH extensions, so a remote window rides out laptop sleep and network
+changes instead of prompting you to reload. Both ends need a recent ET: the
+client must include
+[#874](https://github.com/MisterTea/EternalTerminal/pull/874), and the server's
+`etserver` and `etterminal` must support `et -T` (the 7.0.0 packages do not).
+`ssh hostname` must already work without a password prompt (use a key).
+
+Point the editor at `et1`, which is installed next to `et`. It runs
+`et --close-on-hangup --disconnect-timeout=10080 "$@"`: the session is kept on
+the server through a week-long disconnect (the value is in minutes) and ended
+when the editor closes the connection. Remote-SSH only accepts a path to a
+single executable, so if you need more `et` options (for example `--port` for
+an etserver not on the default port), copy `et1` and add them there.
+
+For VS Code, add to `settings.json` (use the output of `command -v et1` as the
+path):
+
+```json
+{
+  "remote.SSH.path": "/usr/local/bin/et1",
+  "remote.SSH.useLocalServer": false,
+  "remote.SSH.reconnectionGraceTime": 604800
+}
+```
+
+- `remote.SSH.useLocalServer: false` is required. In the default local-server
+  mode, VS Code kills the transport process a few seconds after it stops
+  responding, which throws away the ET client that would have reconnected.
+- `remote.SSH.reconnectionGraceTime` (seconds) is how long the VS Code server
+  on the remote keeps your window's state while disconnected. The default is
+  three hours. It only takes effect when that server starts, so run
+  "Remote-SSH: Kill VS Code Server on Host..." after changing it.
+
+For Cursor, set `remote.SSH.path` to `et1` as well. Cursor's Remote-SSH
+extension has no local-server mode or grace-time setting; its closest
+equivalent is `remote.SSH.serverShutdownTimeout` (seconds, default 300), which
+controls how long the Cursor server stays up after the last client disconnects.
+
+## Programmatic control (etctl)
+
+Normally `et` drives a terminal for a human. `et --ctl` instead backgrounds a
+session with no local terminal and serves it on a per-user unix socket, and the
+companion `etctl` command drives that session by name from a script or program.
+You get a command's clean output and real exit code, instead of scraping a
+rendered screen.
+
+```bash
+et --ctl --name main user@hostname   # background a named session (idempotent via: etctl open main user@hostname)
+etctl run    main 'uname -a'         # run a command; captured output + the real exit code
+etctl read   main                    # retained output (non-destructive; --cursor N to resume)
+etctl expect main 'Password:'        # wait for a prompt
+etctl writeln main --secret          # answer it without echoing the password
+etctl key     main eof               # send Ctrl-D to end the session cleanly
+```
+
+`etctl open` is an idempotent wrapper over `et --ctl`. HOST comes first, and
+any further `et` arguments follow it, so
+`etctl open main user@hostname --command '<cmd>'` runs a startup command on
+connect (for example, to drop into a bare, prompt-free shell for cleaner
+capture). The session's remote shell is stamped with `ETCTL_SESSION=<name>`, so a
+process can tell which named control session it is running under. The socket
+lives at `~/.et/control/<name>.sock` (`0700` dir, `0600` socket, owning-uid
+only), beside the session's saved record in `~/.et/sessions/<name>`.
+
+### How `run` frames a command
+
+`run` has to know where a command's output starts and ends and what it exited
+with, and it has to inject the command safely (a multi-line body must run as one
+command, and quotes/braces/`!`/parse errors must not desync the frame or hang on
+a continuation prompt). It picks the cleanest of three framings for the far-side
+prompt, detected once per session and cached (`~/.et/control/<name>.framing`):
+
+- **Bracketed paste + OSC 133** (the default when the prompt has FinalTerm/iTerm2
+  shell integration *and* a bracketed-paste-aware line editor -- the official
+  bash, zsh, fish, and xonsh integrations all qualify). The bare command is sent
+  inside bracketed paste, so the **real command shows in the scrollback** with no
+  wrapper and no injected markers, and the output boundaries + exit code come
+  straight from the prompt's own OSC 133 `C`/`D` marks.
+- **Eval here-doc + OSC 133** (a prompt with OSC 133 but no bracketed paste, e.g.
+  tcsh). The body is wrapped in `eval "$(cat <<'BODY' ... )"` -- so it is handed
+  to the shell as data, immune to its own syntax -- and boundaries come from OSC
+  133. No echo markers, but the wrapper is visible.
+- **Eval here-doc + echo markers** (the universal fallback for a shell with no
+  OSC 133, e.g. dash). The eval is bracketed by `echo <mark> ... <mark>:$?`.
+
+`run` also trims the prompt-prep sequences a shell splices around the output (a
+zsh/fish end-of-line mark, iTerm2's `OSC 1337` context report, a title,
+bracketed-paste toggles) so the captured output is the command's alone, and it
+disables history expansion on the control session (a script-driven session has no
+use for interactive `!`). Force a framing with `--framing=osc133` (bracketed
+paste) or `--framing=mark` (echo markers); the default is `--framing=auto`.
+
+Run `etctl` with no arguments for the full verb list, `etctl <verb> --help` for
+any verb's options, and `etctl --version` for the version. `--ctl` is not
+available on Windows.
 
 ## Building from Source
 
@@ -350,6 +536,29 @@ Builder Dockerfiles are located at [deployment/](deployment/). Supported OSes: C
 ## Reporting issues
 
 If you have any problems with installation or usage, please [file an issue on GitHub](https://github.com/MisterTea/EternalTerminal/issues).
+
+## Server/Client Overview
+
+Eternal Terminal uses three binaries:
+
+- **`et`** (client): Runs on the user's machine (client). Connects to a remote server over SSH to launch the terminal session, then connects to `etserver` on port 2022 for the persistent session.
+- **`etterminal`** (server-side user process): Runs on the server as the user (launched by `et` via SSH). Hosts the terminal session and connects to `etserver` via a FIFO to register the session.
+- **`etserver`** (server daemon): Runs permanently on the server (usually as root/system service). Listens on TCP port 2022 (default) and manages connections between `et` clients and `etterminal` sessions.
+
+**Which machines need each part:**
+- Client machine: needs `et`.
+- Server machine: needs `etserver` (service/demon) and `etterminal` (installed for users; launched by `et` over SSH).
+
+**Port:** By default `etserver` listens on TCP 2022 (configured in `/etc/et.cfg` via the `Networking.port` setting).
+
+**Service setup:** After installation, start/enable `etserver` via systemd (`systemctl enable --now et`) or launchd (macOS), or run `./etserver` for testing.
+
+## Protocol and design documentation
+
+- [Eternal Terminal protocol](docs/protocol.md)
+- [HTM and tmux control mode](docs/htm-terminal-protocol.md)
+- [`htm` to `htmd` IPC protocol](docs/htm-ipc-protocol.md)
+- [HTM design and architecture](docs/htm-design.md)
 
 ## Developers
 

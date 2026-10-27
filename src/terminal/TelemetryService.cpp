@@ -2,12 +2,71 @@
 
 #include "JsonLib.hpp"
 #include "SimpleIni.h"
+#ifndef WIN32
+#include "SecureFileUnix.hpp"
+#endif
 
 #if defined(USE_SENTRY)
 #include "sentry.h"
 #endif
 
 namespace et {
+#ifndef NO_TELEMETRY
+namespace {
+sole::uuid loadTelemetryId() {
+  const fs::path dir = fs::path(sago::getConfigHome()) / "et";
+  const fs::path path = dir / "telemetry.ini";
+  CSimpleIniA ini(true, false, false);
+  bool created = false;
+#ifndef WIN32
+  private_storage::ensureDirectory(dir);
+  auto contents = private_storage::readFile(path, 64 * 1024);
+  if (!contents) {
+    ini.SetValue("Sentry", "Id", sole::uuid4().str().c_str());
+    string serialized;
+    if (ini.Save(serialized) < 0) {
+      throw std::runtime_error("Could not serialize telemetry configuration");
+    }
+    // A concurrent initializer can win creation. Always read and validate the
+    // published file rather than following a planted link or replacing it.
+    created = private_storage::createFile(path, serialized);
+    contents = private_storage::readFile(path, 64 * 1024);
+  }
+  ini.Reset();
+  if (!contents || ini.LoadData(*contents) < 0) {
+    throw std::runtime_error("Could not read telemetry configuration");
+  }
+#else
+  fs::create_directories(dir);
+  if (fs::exists(path)) {
+    if (ini.LoadFile(path.string().c_str()) < 0) {
+      throw std::runtime_error("Could not read telemetry configuration");
+    }
+  } else {
+    ini.SetValue("Sentry", "Id", sole::uuid4().str().c_str());
+    if (ini.SaveFile(path.string().c_str()) < 0) {
+      throw std::runtime_error("Could not write telemetry configuration");
+    }
+    created = true;
+  }
+#endif
+  const char* id = ini.GetValue("Sentry", "Id", nullptr);
+  if (id == nullptr) {
+    throw std::runtime_error("Missing telemetry identifier");
+  }
+  if (created) {
+    CLOG(INFO, "stdout")
+        << "Eternal Terminal collects crashes and errors in order to help us "
+           "improve your experience.\nThe data collected is anonymous.\nYou "
+           "can opt-out of telemetry by setting the environment variable "
+           "ET_NO_TELEMETRY to any non-empty value."
+        << endl;
+  }
+  return sole::rebuild(id);
+}
+}  // namespace
+#endif
+
 #ifdef USE_SENTRY
 inline sentry_level_e logLevelToSentry(el::Level l) {
   switch (l) {
@@ -87,6 +146,10 @@ void shutdownTelemetry() {
 TelemetryService::TelemetryService(const bool _allow,
                                    const string& databasePath,
                                    const string& _environment)
+    : TelemetryService(_allow, databasePath, _environment, true) {}
+
+TelemetryService::TelemetryService(bool _allow, const string& databasePath,
+                                   const string& _environment, bool sendEvents)
     : allowed(_allow),
       environment(_environment),
       logHttpClient(new httplib::Client(
@@ -101,38 +164,33 @@ TelemetryService::TelemetryService(const bool _allow,
     allowed = false;
   }
   if (allowed) {
-    auto telemetryConfigPath = sago::getConfigHome() + "/et/telemetry.ini";
-    telemetryId = sole::uuid4();
-    if (fs::exists(telemetryConfigPath)) {
-      // Load the config file
-      CSimpleIniA ini(true, false, false);
-      SI_Error rc = ini.LoadFile(telemetryConfigPath.c_str());
-      if (rc == 0) {
-        const char* telemetryIdString = ini.GetValue("Sentry", "Id", NULL);
-        if (telemetryIdString) {
-          telemetryId = sole::rebuild(telemetryIdString);
-        } else {
-          STFATAL << "Invalid telemetry config";
-        }
-      } else {
-        STFATAL << "Invalid config file: " << telemetryConfigPath;
+    string safeDatabasePath;
+    try {
+      telemetryId = loadTelemetryId();
+#ifdef USE_SENTRY
+      // Crash data is distinct from telemetry.ini. Never reuse the old shared
+      // /tmp/.sentry-native-* directories, including when run as root.
+      const fs::path selectedDatabasePath =
+          databasePath.empty()
+              ? (fs::path(sago::getCacheDir()) / "et" /
+                 (environment == "Server" ? "sentry-server" : "sentry-client"))
+              : fs::path(databasePath);
+      safeDatabasePath =
+          fs::absolute(selectedDatabasePath).lexically_normal().string();
+#ifndef WIN32
+      if (databasePath.empty()) {
+        private_storage::ensureDirectory(
+            fs::path(safeDatabasePath).parent_path());
       }
-    } else {
-      // Ensure directory exists
-      fs::create_directories(sago::getConfigHome() + "/et");
-
-      // Create ini
-      CSimpleIniA ini(true, false, false);
-      ini.SetValue("Sentry", "Id", telemetryId.str().c_str());
-      ini.SaveFile(telemetryConfigPath.c_str());
-
-      // Let user know about telemetry
-      CLOG(INFO, "stdout")
-          << "Eternal Terminal collects crashes and errors in order to help us "
-             "improve your experience.\nThe data collected is anonymous.\nYou "
-             "can opt-out of telemetry by setting the environment variable "
-             "ET_NO_TELEMETRY to any non-empty value."
-          << endl;
+      private_storage::ensureDirectory(safeDatabasePath);
+#else
+      fs::create_directories(safeDatabasePath);
+#endif
+#endif
+    } catch (const std::exception& e) {
+      allowed = false;
+      CLOG(WARNING, "stdout") << "Disabling telemetry: " << e.what();
+      return;
     }
 
 #ifdef USE_SENTRY
@@ -140,9 +198,7 @@ TelemetryService::TelemetryService(const bool _allow,
     sentry_options_t* options = sentry_options_new();
     logHttpClient->set_compress(true);
 
-    // this is an example. for real usage, make sure to set this explicitly to
-    // an app specific cache location.
-    sentry_options_set_database_path(options, databasePath.c_str());
+    sentry_options_set_database_path(options, safeDatabasePath.c_str());
     sentry_options_set_dsn(
         options,
         "https://46412bae7f0244d5abf84e17fdaf71d2@o496602.ingest.sentry.io/"
@@ -150,14 +206,23 @@ TelemetryService::TelemetryService(const bool _allow,
     sentry_options_set_symbolize_stacktraces(options, true);
     sentry_options_set_release(options, "EternalTerminal@" ET_VERSION);
     sentry_options_set_environment(options, environment.c_str());
+    if (!sendEvents) sentry_options_set_transport(options, nullptr);
 
     sentry_init(options);
 
-    auto sentryShutdownHandler = [](int i) { shutdownTelemetry(); };
     sentry_value_t user = sentry_value_new_object();
     sentry_value_set_by_key(user, "id",
                             sentry_value_new_string(telemetryId.str().c_str()));
     sentry_set_user(user);
+    auto sentryShutdownHandler = [](int i) {
+      // For synchronous faults (SIGSEGV, SIGILL, SIGFPE, SIGABRT),
+      // shutdownTelemetry() is unsafe: it joins threads and takes
+      // locks. Just reset to default and re-raise so the process
+      // terminates with the correct signal (and a core dump) rather
+      // than re-executing the faulting instruction indefinitely.
+      signal(i, SIG_DFL);
+      raise(i);
+    };
 
     vector<int> signalsToCatch = {
 #ifdef SIGILL
@@ -195,6 +260,7 @@ TelemetryService::TelemetryService(const bool _allow,
     });
 #endif
 #endif
+    if (!sendEvents) return;
     atexit([] { shutdownTelemetry(); });
 
     el::Helpers::installLogDispatchCallback<TelemetryDispatcher>(
@@ -291,7 +357,7 @@ void TelemetryService::shutdown() {
     shuttingDown = true;
   }
 #ifdef USE_SENTRY
-  sentry_shutdown();
+  if (allowed) sentry_close();
 #endif
   if (logSendingThread) {
     logSendingThread->join();

@@ -1,7 +1,7 @@
-#ifndef WIN32
 #include "UserTerminalRouter.hpp"
 
 #include "ETerminal.pb.h"
+#include "PlatformUtils.hpp"
 
 namespace et {
 UserTerminalRouter::UserTerminalRouter(
@@ -9,43 +9,161 @@ UserTerminalRouter::UserTerminalRouter(
     const SocketEndpoint& _routerEndpoint)
     : socketHandler(_socketHandler) {
   serverFd = *(socketHandler->listen(_routerEndpoint).begin());
+#ifndef WIN32
   FATAL_FAIL(::chown(_routerEndpoint.name().c_str(), getuid(), getgid()));
   FATAL_FAIL(::chmod(_routerEndpoint.name().c_str(),
                      S_IRUSR | S_IWUSR | S_IXUSR | S_IRGRP | S_IWGRP | S_IXGRP |
                          S_IROTH | S_IWOTH | S_IXOTH));
+#endif
+}
+
+std::optional<set<int>> UserTerminalRouter::pendingRegistrationFds(
+    uint64_t& generation) const {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  if (generation == pendingFdsGeneration) {
+    return std::nullopt;
+  }
+  generation = pendingFdsGeneration;
+  set<int> fds;
+  for (const auto& entry : pendingRegistrations) {
+    fds.insert(entry.first);
+  }
+  return fds;
 }
 
 IdKeyPair UserTerminalRouter::acceptNewConnection() {
   lock_guard<recursive_mutex> guard(routerMutex);
-  LOG(INFO) << "Listening to id/key FIFO";
-  const int terminalFd = socketHandler->accept(serverFd);
-  if (terminalFd < 0) {
-    if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
-      FATAL_FAIL(-1);  // STFATAL with the error
+  const int accepted = socketHandler->accept(serverFd);
+  if (accepted >= 0) {
+    if (pendingRegistrations.size() >= MAX_PENDING_REGISTRATIONS) {
+      LOG(WARNING) << "Too many pending router registrations; refusing";
+      socketHandler->close(accepted);
     } else {
-      return IdKeyPair({"", ""});  // Nothing to accept this time
+      pendingRegistrations.emplace(accepted, PendingRegistration{});
+      ++pendingFdsGeneration;
     }
   }
-
-  LOG(INFO) << "Connected";
-
-  try {
-    Packet packet;
-    if (!socketHandler->readPacket(terminalFd, &packet)) {
-      STFATAL << "Missing user info packet";
+  for (auto it = pendingRegistrations.begin();
+       it != pendingRegistrations.end();) {
+    const int fd = it->first;
+    auto& pending = it->second;
+    bool failed = std::chrono::steady_clock::now() - pending.started >=
+                  REGISTRATION_TIMEOUT;
+    while (!failed && socketHandler->hasData(fd)) {
+      const size_t target =
+          pending.length < 0
+              ? sizeof(int64_t)
+              : sizeof(int64_t) + static_cast<size_t>(pending.length);
+      char buffer[MAX_REGISTRATION_LENGTH];
+      const auto n =
+          socketHandler->read(fd, buffer, target - pending.bytes.size());
+      const int error = GetErrno();
+      if (n < 0 &&
+          (error == EAGAIN || error == EWOULDBLOCK || error == EINTR)) {
+        break;
+      }
+      if (n <= 0) {
+        failed = true;
+        break;
+      }
+      pending.bytes.append(buffer, static_cast<size_t>(n));
+      if (pending.length < 0 && pending.bytes.size() == sizeof(int64_t)) {
+        memcpy(&pending.length, pending.bytes.data(), sizeof(int64_t));
+        if (pending.length < Packet::HEADER_SIZE ||
+            pending.length > MAX_REGISTRATION_LENGTH) {
+          failed = true;
+          break;
+        }
+      }
+      if (pending.length >= 0 &&
+          pending.bytes.size() ==
+              sizeof(int64_t) + static_cast<size_t>(pending.length)) {
+        Packet packet(pending.bytes.substr(sizeof(int64_t)));
+        it = pendingRegistrations.erase(it);
+        ++pendingFdsGeneration;
+        auto result = registerTerminal(fd, packet);
+        if (!result.id.empty()) {
+          return result;
+        }
+        // registerTerminal closed the rejected fd.
+        failed = false;
+        break;
+      }
     }
+    if (failed) {
+      socketHandler->close(fd);
+      it = pendingRegistrations.erase(it);
+      ++pendingFdsGeneration;
+    } else if (it != pendingRegistrations.end() && it->first == fd) {
+      ++it;
+    }
+  }
+  return IdKeyPair({"", ""});
+}
+
+IdKeyPair UserTerminalRouter::registerTerminal(int terminalFd,
+                                               const Packet& packet) {
+  try {
     if (packet.getHeader() != TerminalPacketType::TERMINAL_USER_INFO) {
-      STFATAL << "Got an invalid packet header: " << int(packet.getHeader());
+      LOG(ERROR) << "Got an invalid packet header from router peer: "
+                 << int(packet.getHeader());
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
     }
     TerminalUserInfo tui = stringToProto<TerminalUserInfo>(packet.getPayload());
     tui.set_fd(terminalFd);
+#ifndef WIN32
+    // The uid/gid select the identity for privileged socket operations
+    // (UserSocketOps), so take them from the kernel, not the peer.
+    uid_t peerUid;
+    gid_t peerGid;
+    if (!GetPeerCredentials(terminalFd, &peerUid, &peerGid)) {
+      LOG(ERROR) << "Failed to read router peer credentials";
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
+    }
+    tui.set_uid(static_cast<int64_t>(peerUid));
+    tui.set_gid(static_cast<int64_t>(peerGid));
+#endif
+    if (tui.id().empty() || tui.passkey().size() != crypto_secretbox_KEYBYTES) {
+      // The router socket is world-connectable, so registration input is
+      // untrusted; a malformed credential must be dropped here rather than
+      // aborting the daemon later when the key reaches the crypto layer.
+      LOG(ERROR) << "Rejecting terminal registration with invalid "
+                    "id/passkey length: "
+                 << tui.id().size() << "/" << tui.passkey().size();
+      socketHandler->close(terminalFd);
+      return IdKeyPair({"", ""});
+    }
 
     const bool inserted =
         idInfoMap.insert(std::make_pair(tui.id(), tui)).second;
     if (!inserted) {
-      LOG(ERROR) << "Rejecting duplicate terminal connection for " << tui.id();
-      socketHandler->close(terminalFd);
-      return IdKeyPair({"", ""});
+      const string& existingKey = idInfoMap.at(tui.id()).passkey();
+      const string& incomingKey = tui.passkey();
+      if (existingKey.size() != incomingKey.size() ||
+          sodium_memcmp(existingKey.data(), incomingKey.data(),
+                        existingKey.size()) != 0) {
+        LOG(ERROR)
+            << "Rejecting terminal replacement with mismatched credentials";
+        socketHandler->close(terminalFd);
+        return IdKeyPair({"", ""});
+      }
+      // Replace a registration whose pipe is dead; a live owner wins.
+      // MSG_PEEK tests for EOF without consuming terminal data.
+      char peek;
+      const int alive = recv(idInfoMap.at(tui.id()).fd(), &peek, 1, MSG_PEEK);
+      if (alive == 0) {
+        LOG(INFO) << "Replacing dead terminal registration for " << tui.id();
+        socketHandler->close(idInfoMap.at(tui.id()).fd());
+        idInfoMap.erase(tui.id());
+        idInfoMap.insert(std::make_pair(tui.id(), tui));
+      } else {
+        LOG(ERROR) << "Rejecting duplicate terminal connection for "
+                   << tui.id();
+        socketHandler->close(terminalFd);
+        return IdKeyPair({"", ""});
+      }
     }
 
     return IdKeyPair({tui.id(), tui.passkey()});
@@ -64,7 +182,7 @@ std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
   lock_guard<recursive_mutex> guard(routerMutex);
   auto it = idInfoMap.find(serverClientState->getId());
   if (it == idInfoMap.end()) {
-    STFATAL << " Tried to read from an id that no longer exists";
+    return std::nullopt;
   }
 
   // While both the id and passkey are randomly generated, do an extra
@@ -78,5 +196,77 @@ std::optional<TerminalUserInfo> UserTerminalRouter::tryGetInfoForConnection(
   return it->second;
 }
 
+void UserTerminalRouter::removeConnection(const TerminalUserInfo& userInfo) {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  auto it = idInfoMap.find(userInfo.id());
+  if (it == idInfoMap.end() || it->second.fd() != userInfo.fd() ||
+      it->second.passkey() != userInfo.passkey()) {
+    return;
+  }
+  socketHandler->close(it->second.fd());
+  idInfoMap.erase(it);
+}
+
+bool UserTerminalRouter::isPtyActive(const string& id) {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  auto it = idInfoMap.find(id);
+  return it != idInfoMap.end() && it->second.ptyactive();
+}
+
+bool UserTerminalRouter::isCurrentRegistration(const string& id,
+                                               int terminalFd) const {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  const auto it = idInfoMap.find(id);
+  return it != idInfoMap.end() && it->second.fd() == terminalFd;
+}
+
+bool UserTerminalRouter::removeTerminal(const string& id, int terminalFd) {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  auto it = idInfoMap.find(id);
+  if (it == idInfoMap.end() || it->second.fd() != terminalFd) {
+    return false;
+  }
+  socketHandler->close(terminalFd);
+  idInfoMap.erase(it);
+  return true;
+}
+
+bool UserTerminalRouter::closeTerminal(const string& id) {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  auto it = idInfoMap.find(id);
+  if (it == idInfoMap.end()) {
+    return false;
+  }
+  const int terminalFd = it->second.fd();
+  try {
+    char c = TERMINAL_CLOSE;
+    socketHandler->writeAllOrThrow(terminalFd, &c, sizeof(char), false);
+  } catch (const std::runtime_error& ex) {
+    LOG(INFO) << "Failed to send TERMINAL_CLOSE to terminal: " << ex.what();
+  }
+  socketHandler->close(terminalFd);
+  idInfoMap.erase(it);
+  return true;
+}
+
+void UserTerminalRouter::shutdown() {
+  lock_guard<recursive_mutex> guard(routerMutex);
+  LOG(INFO) << "Router shutdown: closing " << idInfoMap.size()
+            << " terminal pipes";
+  for (auto& it : idInfoMap) {
+    socketHandler->close(it.second.fd());
+  }
+  idInfoMap.clear();
+  for (const auto& entry : pendingRegistrations) {
+    socketHandler->close(entry.first);
+  }
+  pendingRegistrations.clear();
+  ++pendingFdsGeneration;
+  if (serverFd >= 0) {
+    // The socket handler doesn't track listen fds.
+    ::close(serverFd);
+    serverFd = -1;
+  }
+}
+
 }  // namespace et
-#endif

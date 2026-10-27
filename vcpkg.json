@@ -1,6 +1,6 @@
 {
   "name": "eternal-terminal",
-  "version-string": "7.0.0",
+  "version-string": "7.1.0",
   "dependencies": [
     "zlib",
     "openssl",

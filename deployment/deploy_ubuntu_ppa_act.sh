@@ -8,6 +8,7 @@ workflow="${repo_root}/.github/workflows/deploy_ubuntu_ppa.yml"
 release_tag="${RELEASE_TAG:-}"
 deployment_ref="${DEPLOYMENT_REF:-deployment}"
 ppa="${PPA:-ppa:jgmath2000/et}"
+simulate_upload="${SIMULATE_UPLOAD:-true}"
 gpg_key_id="${GPG_KEY_ID:-}"
 gpg_passphrase_file="${GPG_PASSPHRASE_FILE:-${HOME}/.gnupg/pphrase}"
 
@@ -70,6 +71,7 @@ cmd=(
   --secret GPG_PASSPHRASE
   --input "deployment_ref=${deployment_ref}"
   --input "ppa=${ppa}"
+  --input "simulate_upload=${simulate_upload}"
 )
 
 if [[ -n "${release_tag}" ]]; then

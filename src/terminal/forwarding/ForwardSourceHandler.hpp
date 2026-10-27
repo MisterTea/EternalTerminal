@@ -1,8 +1,11 @@
 #ifndef __FORWARD_SOURCE_HANDLER_H__
 #define __FORWARD_SOURCE_HANDLER_H__
 
+#include <chrono>
+
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
+#include "SocksUtils.hpp"
 
 namespace et {
 /**
@@ -11,21 +14,58 @@ namespace et {
  */
 class ForwardSourceHandler {
  public:
-  /** @brief Creates source/destination handlers used for local port forwarding.
+  static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
+  /** @brief Accepted fds awaiting a destination response beyond this are
+   * closed on arrival. */
+  static constexpr size_t MAX_UNASSIGNED_FDS = 128;
+  /** @brief A parked fd whose destination response never arrives is closed
+   * after this deadline, releasing its descriptor. */
+  static constexpr std::chrono::seconds UNASSIGNED_FD_TIMEOUT{30};
+  /** @brief Pending SOCKS handshakes beyond this are closed on accept. */
+  static constexpr size_t MAX_PENDING_SOCKS = 64;
+  /** @brief A SOCKS handshake not completed within this is closed. */
+  static constexpr std::chrono::seconds SOCKS_HANDSHAKE_TIMEOUT{30};
+  /**
+   * @brief Creates source/destination handlers used for local port forwarding.
+   * @param alreadyListening If true, skip listen(); caller already registered
+   * the source endpoint (e.g. via listenAsUser).
+   * @param socksDynamic If true, destination is chosen per-connection via a
+   * SOCKS4/SOCKS5 handshake after accept (ssh -D).
    */
   ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
                        const SocketEndpoint& _source,
-                       const SocketEndpoint& _destination);
+                       const SocketEndpoint& _destination,
+                       bool alreadyListening = false,
+                       bool socksDynamic = false);
+
+  /**
+   * @brief Bridges an already-open read/write pair (e.g. stdio for -W) to a
+   * fixed remote destination without listening.
+   * @param closeFds If false, destruction leaves the fds open (stdin/stdout).
+   */
+  ForwardSourceHandler(shared_ptr<SocketHandler> _socketHandler,
+                       const SocketEndpoint& _destination, int readFd,
+                       int writeFd, bool closeFds);
 
   ~ForwardSourceHandler();
 
-  /** @brief Starts listening on the source endpoint and returns the server fd.
-   */
-  int listen();
+  ForwardSourceHandler(const ForwardSourceHandler&) = delete;
+  ForwardSourceHandler& operator=(const ForwardSourceHandler&) = delete;
 
-  /** @brief Polls all active sockets and stages `PortForwardData` for
-   * destinations. */
-  void update(vector<PortForwardData>* data);
+  /**
+   * @brief Accepts one pending connection (or completes one SOCKS/stdio
+   * handshake) and returns its fd, or -1 if none. When non-null,
+   * `destinationOut` receives the remote endpoint for this connection.
+   * Accepts only on endpoints named in `readyFds`; `nullptr` tries every one.
+   */
+  int listen(SocketEndpoint* destinationOut = nullptr,
+             const set<int>* readyFds = nullptr);
+
+  /** @brief Reads the sockets named in `readyFds` (all of them when `nullptr`)
+   * and stages `PortForwardData` for destinations.
+   * @return true if any socket was closed and dropped. */
+  bool update(vector<PortForwardData>* data,
+              const set<int>* readyFds = nullptr);
 
   /** @brief Returns true if an accepted socket is pending assignment. */
   bool hasUnassignedFd(int fd);
@@ -36,6 +76,15 @@ class ForwardSourceHandler {
   /** @brief Maps a socketId (from the control channel) to a pending fd. */
   void addSocket(int socketId, int sourceFd);
 
+  /**
+   * @brief Writes the SOCKS CONNECT reply for `fd` after the remote
+   * destination accepts or fails. No-op when `fd` is not a SOCKS client.
+   */
+  void finishSocksConnect(int fd, bool success);
+
+  /** @brief True while a `-W` bridge can still receive destination bytes. */
+  bool stdioBridgeOpen() const;
+
   /** @brief Closes the socket mapped to `socketId`. */
   void closeSocket(int socketId);
 
@@ -44,19 +93,77 @@ class ForwardSourceHandler {
 
   void getActiveFds(set<int>* fds);
 
+  /** @brief Test hook: force `fd`'s park deadline into the past. */
+  void expireForTest(int fd) {
+    unassignedFdDeadlines[fd] =
+        std::chrono::steady_clock::now() - std::chrono::seconds(1);
+  }
+
+  /** @brief Test hook: force SOCKS handshake `fd` past its deadline. */
+  void reapForTest(int fd) {
+    auto it = socksPending.find(fd);
+    if (it != socksPending.end()) {
+      it->second.deadline =
+          std::chrono::steady_clock::now() - std::chrono::seconds(1);
+    }
+  }
+
   inline SocketEndpoint getDestination() { return destination; }
+  inline SocketEndpoint getSource() { return source; }
+
+  /** @brief True when this handler bridges stdio (-W) rather than a listener.
+   */
+  bool isStdioForward() const { return stdioMode; }
 
  protected:
+  int acceptFixed(const set<int>* readyFds);
+  int takeCompletedSocks(SocketEndpoint* destinationOut,
+                         const set<int>* readyFds);
+  void advanceSocksHandshakes(const set<int>* readyFds);
+
   /** @brief Socket helper used to accept connections on the source endpoint. */
   shared_ptr<SocketHandler> socketHandler;
   /** @brief Local endpoint clients connect to for port forwarding. */
   SocketEndpoint source;
   /** @brief Remote destination endpoint that receives forwarded data. */
   SocketEndpoint destination;
+  /** @brief When true, parse SOCKS to choose destination after accept. */
+  bool socksDynamic = false;
+  /** @brief When true, bridge a provided read/write fd pair (no listen). */
+  bool stdioMode = false;
+  /** @brief When false, do not close read/write fds in the destructor. */
+  bool closeOwnedFds = true;
+  /** @brief True until the stdio bridge has emitted its destination request. */
+  bool stdioRequestPending = false;
+  /** @brief Stdin hit EOF; stop reading but keep stdout until the remote
+   * closes. */
+  bool stdioReadClosed = false;
+  int stdioReadFd = -1;
+  int stdioWriteFd = -1;
   /** @brief Sockets that are awaiting assignment from the control stream. */
   unordered_set<int> unassignedFds;
+  /** @brief Park deadline for each fd in unassignedFds. */
+  unordered_map<int, std::chrono::steady_clock::time_point>
+      unassignedFdDeadlines;
+  /** @brief Parks `fd` awaiting a destination response, or closes it and
+   * returns false when the cap is reached. */
+  bool parkUnassignedFd(int fd);
+  /** @brief Closes parked fds whose destination response timed out. */
+  void expireUnassignedFds();
   /** @brief Maps logical socket IDs to their accepted file descriptors. */
   unordered_map<int, int> socketFdMap;
+  /** @brief Optional separate write fd when different from the read fd (-W). */
+  unordered_map<int, int> socketWriteFdMap;
+  /** @brief In-progress SOCKS handshakes keyed by accepted client fd. */
+  unordered_map<int, SocksHandshake> socksPending;
+  struct SocksAwaitingReply {
+    int version = 0;
+    string earlyData;
+  };
+  /** @brief Completed handshakes waiting for the destination response. */
+  unordered_map<int, SocksAwaitingReply> socksAwaitingReply;
+  /** @brief Application bytes that arrived with the CONNECT request. */
+  unordered_map<int, string> socksEarlyPayload;
 };
 }  // namespace et
 

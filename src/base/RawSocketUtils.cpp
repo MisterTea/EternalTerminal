@@ -11,11 +11,7 @@ void RawSocketUtils::writeAll(int fd, const char* buf, size_t count) {
 
   size_t bytesWritten = 0;
   do {
-#ifdef WIN32
-    int rc = ::send(fd, buf + bytesWritten, count - bytesWritten, 0);
-#else
-    int rc = ::write(fd, buf + bytesWritten, count - bytesWritten);
-#endif
+    const ssize_t rc = writeSome(fd, buf + bytesWritten, count - bytesWritten);
     if (rc < 0) {
       auto localErrno = GetErrno();
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
@@ -46,11 +42,7 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     if (!waitOnSocketData(fd)) {
       continue;
     }
-#ifdef WIN32
-    int rc = ::recv(fd, buf + bytesRead, count - bytesRead, 0);
-#else
-    int rc = ::read(fd, buf + bytesRead, count - bytesRead);
-#endif
+    const ssize_t rc = readSome(fd, buf + bytesRead, count - bytesRead);
     if (rc < 0) {
       auto localErrno = GetErrno();
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
@@ -66,4 +58,5 @@ void RawSocketUtils::readAll(int fd, char* buf, size_t count) {
     bytesRead += rc;
   } while (bytesRead != count);
 }
+
 }  // namespace et

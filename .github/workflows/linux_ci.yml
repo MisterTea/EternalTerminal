@@ -6,18 +6,26 @@ on:
       - master
   pull_request:
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   linux_ci:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
-        sanitize: [ubsan, asan, tsan, msan]
+        sanitize: [ubsan, asan, tsan]
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2222
     steps:
       - uses: actions/checkout@v4
@@ -27,7 +35,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -38,67 +46,63 @@ jobs:
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
           ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
-          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
 
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
       # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          # The first path is where vcpkg generates artifacts while consuming the vcpkg.json manifest file.
-          # The second path is the location of vcpkg (it contains the vcpkg executable and data files).
-          # The other paths starting with '!' are exclusions: they contain temporary files generated during the build of the installed packages.
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-${{ matrix.sanitize }}-1
+          key: sanitize-${{ runner.os }}-${{ matrix.sanitize }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build with ubsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
         if: matrix.sanitize == 'ubsan'
 
       - name: Build with asan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_ADDRESS=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
         if: matrix.sanitize == 'asan'
 
-      - name: Build with msan
-        run: |
-          mkdir -p build
-          pushd build
-          cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_MEMORY=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
-          popd
-        if: matrix.sanitize == 'msan'
-
       - name: Build with tsan
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_THREAD=ON -DSANITIZE_LINK_STATIC=ON ../
-          make -j`nproc`
-          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression" ctest --parallel
+          make -j"${parallel_level}"
+          TSAN_OPTIONS="suppressions=../test/test_tsan.suppression:die_after_fork=0:report_thread_leaks=0" ctest --parallel "${parallel_level}" --timeout 300 --output-on-failure
           popd
         if: matrix.sanitize == 'tsan'
 
@@ -109,11 +113,74 @@ jobs:
             sudo pkill -x sshd || true
           fi
 
+  linux_msan:
+    name: linux_ci (msan)
+    runs-on: ubuntu-24.04
+    timeout-minutes: 120
+    env:
+      CMAKE_BUILD_DIR: ${{ github.workspace }}/build-msan
+      VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
+      SSH_PORT: 2222
+      CC: clang-18
+      CXX: clang++-18
+    steps:
+      - uses: actions/checkout@v4
+      - name: Setup
+        shell: bash
+        run: |
+          mkdir -p ~/.ssh/
+          echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
+          sudo apt-get -o Acquire::ForceIPv4=true update
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ clang-18 llvm-18 lld-18 libtool libtool-bin autoconf autoconf-archive automake
+
+          echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
+
+          # UST auto-selects libunwind when its header is installed. Its raw
+          # assembly register context is not MSan-instrumented; use glibc's
+          # intercepted backtrace implementation on this isolated runner.
+          sudo apt-get remove -y libunwind-dev
+
+          sudo mkdir -p /run/sshd
+          sudo /usr/sbin/sshd -p "${SSH_PORT}"
+
+          ssh-keygen -t rsa -f ~/.ssh/id_rsa -P "" -N ""
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
+          cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
+          ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
+
+          git submodule sync --recursive
+          git submodule update --init --force --recursive
+
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          key: msan-${{ runner.os }}-clang18
+      - name: Prepare instrumented C++ runtime
+        uses: ./.github/actions/setup-msan
+      - name: Restore instrumented dependency archives
+        uses: ./.github/actions/vcpkg-cache
+        with:
+          compiler: clang++-18
+          flavor: msan
+      - name: Build and test with real MemorySanitizer
+        run: bash .github/ci/msan/build-and-test.sh
+      - name: Stop sshd for act
+        if: ${{ always() }}
+        run: |
+          if [[ -n "${ACT:-}" ]]; then
+            sudo pkill -x sshd || true
+          fi
+
   linux_jumphost_system_test:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2223
     steps:
       - uses: actions/checkout@v4
@@ -123,7 +190,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -134,33 +201,46 @@ jobs:
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
           ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
-          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
 
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+          key: sanitize-${{ runner.os }}-${{ github.job }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build for jumphost system test
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          cmake --build . --target et etserver etterminal --parallel `nproc`
+          cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
       - name: Connect with jumphost
         run: ./test/system_tests/connect_with_jumphost.sh
+
+      - name: Named sessions survive client death
+        run: ./test/system_tests/named_sessions.sh
+
+      - name: Sessions survive etserver restart
+        run: ./test/system_tests/router_restart.sh
+
+      - name: Setup failures exit cleanly
+        run: ./test/system_tests/setup_failures.sh
 
       - name: Stop sshd for act
         if: ${{ always() }}
@@ -171,9 +251,12 @@ jobs:
 
   linux_backwards_compatibility:
     runs-on: ubuntu-22.04
+    timeout-minutes: 90
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
       SSH_PORT: 2224
     steps:
       - uses: actions/checkout@v4
@@ -183,7 +266,7 @@ jobs:
           mkdir -p ~/.ssh/
           echo -e "Host github.com\n\tStrictHostKeyChecking no\n" >> ~/.ssh/config
           sudo apt-get -o Acquire::ForceIPv4=true update
-          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf
+          sudo DEBIAN_FRONTEND=noninteractive ACCEPT_EULA=Y apt-get -o Acquire::ForceIPv4=true install -y curl zip unzip tar libssl-dev libcurl4-openssl-dev libunwind-dev git cmake ninja-build ccache gdb protobuf-compiler libsodium-dev libgflags-dev libprotobuf-dev libutempter-dev g++ libtool libtool-bin autoconf autoconf-archive automake
 
           echo -e "Host localhost 127.0.0.1 ::1\n  Port ${SSH_PORT}\n\n" >> ~/.ssh/config
 
@@ -194,29 +277,33 @@ jobs:
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/authorized_keys
           cat ~/.ssh/id_rsa.pub >> ~/.ssh/known_hosts
           ssh -vvvvvvv -o "StrictHostKeyChecking no" -o 'PreferredAuthentications=publickey' localhost "echo foobar" # Fails if we can't ssh into localhost without a password
-          if [[ -z "${ACT}" ]]; then auth_header="$(git config --local --get http.https://github.com/.extraheader)"; fi
 
           git submodule sync --recursive
           git submodule update --init --force --recursive
 
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          path: |
-            ${{ env.CMAKE_BUILD_DIR }}/vcpkg_installed/
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-linux-ubsan-1
+          key: sanitize-${{ runner.os }}-${{ github.job }}
+
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+
+      - name: Ensure vcpkg binary cache directory
+        shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
+
 
       - name: Build for backwards compatibility system test
         run: |
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
           mkdir -p build
           pushd build
           cmake -DDISABLE_TELEMETRY=ON -DSANITIZE_UNDEFINED=ON ../
-          cmake --build . --target et etserver etterminal --parallel `nproc`
+          cmake --build . --target et etserver etterminal --parallel "${parallel_level}"
           popd
 
       - name: Backwards compatibility with et-v7.0.0

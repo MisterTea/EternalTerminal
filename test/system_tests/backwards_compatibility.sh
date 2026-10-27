@@ -73,25 +73,6 @@ fi
 
 git -C "$OLD_ROOT" fetch --tags "$ROOT"
 git -C "$OLD_ROOT" checkout --force "$OLD_COMMIT"
-git -C "$OLD_ROOT" apply --unidiff-zero <<'PATCH'
-diff --git a/src/base/DaemonCreator.cpp b/src/base/DaemonCreator.cpp
-index 20bdea530..f34a526db 100644
---- a/src/base/DaemonCreator.cpp
-+++ b/src/base/DaemonCreator.cpp
-@@ -50,2 +50,7 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
--    write(pidFilehandle, pid_str.c_str(), pid_str.length());
--    close(pidFilehandle);
-+    ssize_t bytesWritten =
-+        write(pidFilehandle, pid_str.c_str(), pid_str.length());
-+    FATAL_FAIL(bytesWritten);
-+    if (static_cast<size_t>(bytesWritten) != pid_str.length()) {
-+      STFATAL << "Error writing pidfile: " << childPidFile;
-+    }
-+    FATAL_FAIL(close(pidFilehandle));
-@@ -56 +61 @@ int DaemonCreator::create(bool parentExit, string childPidFile) {
--  chdir("/");
-+  FATAL_FAIL(chdir("/"));
-PATCH
 
 rm -rf "$OLD_BUILD"
 mkdir -p "$OLD_BUILD"
@@ -122,14 +103,14 @@ OLD_SERVER_PID=$!
 sleep 3
 
 run_and_expect "compat new to old" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
   localhost:9920
 
 run_and_expect "compat new to old ipv6 full" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 full'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
@@ -138,7 +119,7 @@ run_and_expect "compat new to old ipv6 full" \
   0:0:0:0:0:0:0:1
 
 run_and_expect "compat new to old ipv6 full host port" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 full host port'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 full host port'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \
@@ -146,7 +127,7 @@ run_and_expect "compat new to old ipv6 full host port" \
   0:0:0:0:0:0:0:1:9920
 
 run_and_expect "compat new to old ipv6 abbreviated" \
-  "$CURRENT_BUILD/et" -c "echo 'compat new to old ipv6 abbreviated'" \
+  "$CURRENT_BUILD/et" --command "echo 'compat new to old ipv6 abbreviated'" \
   --serverfifo="$OLD_FIFO" \
   --terminal-path "$OLD_BUILD/etterminal" \
   --logtostdout \

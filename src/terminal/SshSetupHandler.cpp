@@ -1,9 +1,91 @@
 #include "SshSetupHandler.hpp"
 
 #include "HostParsing.hpp"
+#include "SshAgentSessionBind.hpp"
 
 namespace et {
+namespace {
+
+bool isAlphaNumeric(const string& value) {
+  return !value.empty() &&
+         all_of(value.begin(), value.end(), [](unsigned char character) {
+           return (character >= '0' && character <= '9') ||
+                  (character >= 'A' && character <= 'Z') ||
+                  (character >= 'a' && character <= 'z');
+         });
+}
+
+optional<pair<string, string>> parseIdPasskey(const string& output) {
+  const string marker = "IDPASSKEY:";
+  const size_t idLength = 16;
+  const size_t payloadLength = idLength + 1 + 32;
+  const size_t markerIndex = output.find(marker);
+  if (markerIndex == string::npos) {
+    return nullopt;
+  }
+
+  const size_t payloadIndex = markerIndex + marker.length();
+  if (output.length() - payloadIndex < payloadLength) {
+    return nullopt;
+  }
+
+  const string payload = output.substr(payloadIndex, payloadLength);
+  if (payload[idLength] != '/') {
+    return nullopt;
+  }
+  const size_t suffixIndex = payloadIndex + payloadLength;
+  if (suffixIndex < output.length() &&
+      string(" \t\n\r").find(output[suffixIndex]) == string::npos) {
+    return nullopt;
+  }
+
+  const string id = payload.substr(0, idLength);
+  const string passkey = payload.substr(idLength + 1);
+  if (!isAlphaNumeric(id) || !isAlphaNumeric(passkey)) {
+    return nullopt;
+  }
+
+  return make_pair(id, passkey);
+}
+
+[[noreturn]] void failSshSetup(const string& message) {
+  // The ssh command and server output can both contain an id/passkey pair.
+  CLOG(INFO, "stdout") << message << endl;
+  throw runtime_error(message);
+}
+
+}  // namespace
+
 const string SshSetupHandler::ETTERMINAL_BIN = "etterminal";
+
+namespace {
+/** @brief Characters OpenSSH can splice into an unquoted ProxyJump -F path. */
+bool isSshConfigPathCharSafeForProxyJump(unsigned char c) {
+  if ((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+      (c >= '0' && c <= '9') || c == '/' || c == '.' || c == '_' || c == '-') {
+    return true;
+  }
+#ifdef WIN32
+  // Native Windows paths need a drive colon and backslash; those are not
+  // Bourne metacharacters, and Unix clients never pass Windows paths.
+  return c == ':' || c == '\\';
+#else
+  return false;
+#endif
+}
+}  // namespace
+
+bool SshSetupHandler::IsSshConfigPathSafeForProxyJump(const string& path) {
+  if (!std::filesystem::path(path).is_absolute()) {
+    return false;
+  }
+  for (unsigned char c : path) {
+    if (!isSshConfigPathCharSafeForProxyJump(c)) {
+      return false;
+    }
+  }
+  return true;
+}
 
 string genCommand(const string& passkey, const string& id,
                   const string& clientTerm, const string& user, bool kill,
@@ -23,6 +105,69 @@ string genCommand(const string& passkey, const string& id,
   }
 
   return ssh_script_prefix + command;
+}
+
+string SshSetupHandler::runSsh(vector<string> sshArgs,
+                               const string& remoteCommand, const string& hop,
+                               optional<string>* agentSessionBind) {
+#ifndef WIN32
+  unique_ptr<SshAgentSessionBindRecorder> recorder;
+  if (agentSessionBind) {
+    // Ask ssh which agent it would authenticate with (config, Match blocks,
+    // -o and token expansion included) so the recorder relays to that agent.
+    // -T: without a remote command ssh would want a pty and, with stdin on
+    // /dev/null, warn "Pseudo-terminal will not be allocated" on the terminal.
+    vector<string> queryArgs = {"-G", "-T"};
+    queryArgs.insert(queryArgs.end(), sshArgs.begin(), sshArgs.end());
+    string sshConfig;
+    try {
+      sshConfig =
+          subprocessUtils_->SubprocessToStringInteractive("ssh", queryArgs);
+    } catch (const std::exception& err) {
+      LOG(WARNING) << "ssh -G failed: " << err.what();
+    }
+    if (sshConfig.empty()) {
+      LOG(WARNING) << "ssh -G failed; not recording ssh agent session binding "
+                      "for "
+                   << hop;
+    } else {
+      try {
+        recorder = make_unique<SshAgentSessionBindRecorder>(
+            sshIdentityAgentFromConfigDump(sshConfig));
+        // ssh keeps the first value given for an option, so these override
+        // config and --ssh-option. ControlMaster=no stops a persisting master
+        // from inheriting the temporary proxy; existing masters are still
+        // used (and then no binding is made).
+        sshArgs.insert(sshArgs.begin(),
+                       {"-oIdentityAgent=" + recorder->socketPath(),
+                        "-oControlMaster=no"});
+      } catch (const std::runtime_error& err) {
+        LOG(WARNING) << "Not recording ssh agent session binding for " << hop
+                     << ": " << err.what();
+      }
+    }
+  }
+#endif
+  sshArgs.push_back(remoteCommand);
+  string output =
+      subprocessUtils_->SubprocessToStringInteractive("ssh", sshArgs);
+
+#ifndef WIN32
+  if (recorder) {
+    *agentSessionBind = recorder->lastForwardedBind();
+    if (*agentSessionBind) {
+      LOG(INFO)
+          << "Recorded ssh agent session binding for " << hop << " host key "
+          << sessionBindHostKeyFingerprint(**agentSessionBind).value_or("?");
+    } else {
+      LOG(WARNING) << "ssh made no agent session binding for " << hop
+                   << " (it needs OpenSSH 8.9+ and a new connection rather "
+                      "than an existing ControlMaster); forwarded agent "
+                      "connections will not be bound to this hop";
+    }
+  }
+#endif
+  return output;
 }
 
 pair<string, string> SshSetupHandler::SetupSsh(
@@ -56,12 +201,18 @@ pair<string, string> SshSetupHandler::SetupSsh(
   }
 
   std::vector<std::string> ssh_args;
-  if (!jumphost.empty()) {
-    ssh_args = {
-        "-J",
-        jumphost,
-    };
+  if (!sshConfigPath_.empty()) {
+    // An explicit `-F` suppresses OpenSSH's user and system configuration.
+    // OpenSSH also propagates it to the implicit proxy command created by
+    // `-J`, so the explicit jumphost uses the same selected policy.
+    ssh_args.push_back("-F");
+    ssh_args.push_back(sshConfigPath_);
   }
+  if (!jumphost.empty()) {
+    ssh_args.push_back("-J");
+    ssh_args.push_back(jumphost);
+  }
+  appendBootstrapArgs(&ssh_args, true);
 
   ssh_args.push_back(SSH_USER_PREFIX + host_alias);
 
@@ -69,47 +220,47 @@ pair<string, string> SshSetupHandler::SetupSsh(
     ssh_args.push_back("-o" + arg);
   }
 
-  ssh_args.push_back(SSH_SCRIPT_DST);
+  agentSessionBinds_.clear();
+  optional<string> destinationBind;
+  optional<string> jumphostBind;
 
-  std::string ssh_concat;
-  for (const auto& piece : ssh_args) ssh_concat += piece + " ";
-  VLOG(1) << "Trying ssh with args: " << ssh_concat << endl;
-  auto sshBuffer =
-      subprocessUtils_->SubprocessToStringInteractive("ssh", ssh_args);
-
+  VLOG(1) << "Trying ssh connection to " << SSH_USER_PREFIX + host_alias
+          << endl;
+  string sshBuffer;
   try {
-    if (sshBuffer.length() <= 0) {
-      // Ssh failed
-      CLOG(INFO, "stdout")
-          << "Error starting ET process through ssh, please make sure your "
-             "ssh works first"
-          << endl;
-      throw std::runtime_error(
-          "Error starting ET process through ssh, please make sure your ssh "
-          "works first");
-    }
-    auto passKeyIndex = sshBuffer.find(string("IDPASSKEY:"));
-    if (passKeyIndex == string::npos) {
-      // Returned value not contain "IDPASSKEY:"
-      CLOG(INFO, "stdout")
-          << "Error in authentication with etserver: " << sshBuffer
-          << ", please make sure you don't print anything in server's "
-             ".bashrc/.zshrc"
-          << endl;
-      throw std::runtime_error(
-          "Error in authentication with etserver, please make sure you don't "
-          "print anything in server's .bashrc/.zshrc. Server output: " +
-          sshBuffer);
-    }
-    auto idpasskey = sshBuffer.substr(passKeyIndex + 10, 16 + 1 + 32);
-    auto idpasskey_splited = split(idpasskey, '/');
-    id = idpasskey_splited[0];
-    passkey = idpasskey_splited[1];
-    LOG(INFO) << "etserver started";
-  } catch (const runtime_error& err) {
-    CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
-                         << endl;
+    sshBuffer = runSsh(ssh_args, SSH_SCRIPT_DST, "destination",
+                       captureAgentSessionBinds_ ? &destinationBind : nullptr);
+  } catch (const std::exception&) {
+    failSshSetup(
+        "Error starting ET process through ssh, please make sure your ssh "
+        "works first");
   }
+
+  if (sshBuffer.empty()) {
+    failSshSetup(
+        "Error starting ET process through ssh, please make sure your ssh "
+        "works first");
+  }
+
+  const auto serverCredentials = parseIdPasskey(sshBuffer);
+  if (!serverCredentials) {
+    failSshSetup(
+        "Error in authentication with etserver, please make sure you don't "
+        "print anything in server's .bashrc/.zshrc and that etserver returns "
+        "a valid IDPASSKEY response");
+  }
+  id = serverCredentials->first;
+  passkey = serverCredentials->second;
+  if (displayLoginOutput_) {
+    const string loginOutput = ExtractLoginOutput(sshBuffer);
+    if (!loginOutput.empty()) {
+      CLOG(INFO, "stdout") << loginOutput;
+      if (loginOutput.back() != '\n') {
+        CLOG(INFO, "stdout") << endl;
+      }
+    }
+  }
+  LOG(INFO) << "etserver started";
 
   // start jumpclient daemon on jumphost.
   if (!jumphost.empty()) {
@@ -141,35 +292,50 @@ pair<string, string> SshSetupHandler::SetupSsh(
                               : parsedJump.user + "@" + jumphostAddr;
 
     std::vector<std::string> jump_ssh_args;
+    if (!sshConfigPath_.empty()) {
+      jump_ssh_args.push_back("-F");
+      jump_ssh_args.push_back(sshConfigPath_);
+    }
     if (!parsedJump.portSuffix.empty()) {
       // portSuffix includes the colon, e.g. ":22"
       jump_ssh_args.push_back("-p");
       jump_ssh_args.push_back(parsedJump.portSuffix.substr(1));
     }
-    for (const auto& opt : ssh_options) {
-      jump_ssh_args.push_back("-o" + opt);
-    }
+    // Destination `-p` is the sshd port of the final host, not the jumphost.
+    appendBootstrapArgs(&jump_ssh_args, false);
+    // ssh_options configure the destination. Jump-specific options are
+    // resolved independently from the jumphost's SSH configuration.
     jump_ssh_args.push_back(jumphostDest);
-    jump_ssh_args.push_back(SSH_SCRIPT_JUMP);
 
-    string sshLinkBuffer =
-        subprocessUtils_->SubprocessToStringInteractive("ssh", jump_ssh_args);
+    string sshLinkBuffer;
+    try {
+      sshLinkBuffer =
+          runSsh(jump_ssh_args, SSH_SCRIPT_JUMP, "jumphost",
+                 captureAgentSessionBinds_ ? &jumphostBind : nullptr);
+    } catch (const std::exception&) {
+      failSshSetup("etserver jumpclient failed to start");
+    }
     if (sshLinkBuffer.length() <= 0) {
       // At this point "ssh -J jumphost dst" already works.
-      CLOG(INFO, "stdout") << "etserver jumpclient failed to start" << endl;
-      throw std::runtime_error("etserver jumpclient failed to start");
+      failSshSetup("etserver jumpclient failed to start");
     }
-    try {
-      auto idpasskey = split(sshLinkBuffer, ':')[1];
-      idpasskey.erase(idpasskey.find_last_not_of(" \n\r\t") + 1);
-      idpasskey = idpasskey.substr(0, 16 + 1 + 32);
-      auto idpasskey_splited = split(idpasskey, '/');
-      id = idpasskey_splited[0];
-      passkey = idpasskey_splited[1];
-    } catch (const runtime_error& err) {
-      CLOG(INFO, "stdout") << "Error initializing connection" << err.what()
-                           << endl;
+    const auto jumpCredentials = parseIdPasskey(sshLinkBuffer);
+    if (!jumpCredentials) {
+      failSshSetup(
+          "Error initializing connection: etserver jumpclient returned an "
+          "invalid IDPASSKEY response");
     }
+    id = jumpCredentials->first;
+    passkey = jumpCredentials->second;
+  }
+
+  // The jumphost's etserver decrypts and re-encrypts ET traffic, so it is the
+  // first hop that can use the forwarded agent.
+  if (jumphostBind) {
+    agentSessionBinds_.push_back(*jumphostBind);
+  }
+  if (destinationBind) {
+    agentSessionBinds_.push_back(*destinationBind);
   }
 
   if (id.length() == 0 || passkey.length() == 0) {
@@ -177,5 +343,30 @@ pair<string, string> SshSetupHandler::SetupSsh(
             << passkey.length();
   }
   return {id, passkey};
+}
+
+string SshSetupHandler::ExtractLoginOutput(const string& sshOutput) {
+  const string marker = "IDPASSKEY:";
+  const auto markerPosition = sshOutput.find(marker);
+  if (markerPosition == string::npos) {
+    return sshOutput;
+  }
+
+  constexpr size_t credentialLength = 16 + 1 + 32;
+  const size_t credentialEnd =
+      min(sshOutput.size(), markerPosition + marker.size() + credentialLength);
+  string output = sshOutput.substr(0, markerPosition);
+  string suffix = sshOutput.substr(credentialEnd);
+
+  // etterminal prints the credential on its own line. Remove that line break,
+  // while preserving all actual login output around it.
+  if (!suffix.empty() && suffix.front() == '\r') {
+    suffix.erase(0, 1);
+  }
+  if (!suffix.empty() && suffix.front() == '\n') {
+    suffix.erase(0, 1);
+  }
+  output += suffix;
+  return output;
 }
 }  // namespace et

@@ -1,0 +1,21 @@
+name: MSan C++ runtime
+description: Build and validate pinned instrumented libc++ and libc++abi
+runs:
+  using: composite
+  steps:
+    - name: Fingerprint MSan compiler
+      shell: bash
+      run: |
+        clang++-18 --version > .msan-compiler-version
+        echo "MSAN_LIBCXX_ROOT=${GITHUB_WORKSPACE}/.msan-libcxx" >> "$GITHUB_ENV"
+    - name: Restore instrumented runtime
+      uses: ./.github/actions/shared-cache
+      with:
+        path: ${{ github.workspace }}/.msan-libcxx
+        key: msan-libcxx-v1-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('.msan-compiler-version', '.github/ci/msan/build-libcxx.sh') }}
+    - name: Build instrumented runtime
+      shell: bash
+      run: bash .github/ci/msan/build-libcxx.sh
+    - name: Verify real MSan instrumentation
+      shell: bash
+      run: bash .github/ci/msan/check-runtime.sh

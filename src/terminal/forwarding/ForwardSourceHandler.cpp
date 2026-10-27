@@ -3,45 +3,298 @@
 namespace et {
 ForwardSourceHandler::ForwardSourceHandler(
     shared_ptr<SocketHandler> _socketHandler, const SocketEndpoint& _source,
-    const SocketEndpoint& _destination)
+    const SocketEndpoint& _destination, bool alreadyListening,
+    bool socksDynamic)
     : socketHandler(_socketHandler),
       source(_source),
-      destination(_destination) {
-  socketHandler->listen(source);
+      destination(_destination),
+      socksDynamic(socksDynamic) {
+  if (!alreadyListening) {
+    socketHandler->listen(source);
+  }
 }
+
+ForwardSourceHandler::ForwardSourceHandler(
+    shared_ptr<SocketHandler> _socketHandler,
+    const SocketEndpoint& _destination, int readFd, int writeFd, bool closeFds)
+    : socketHandler(_socketHandler),
+      destination(_destination),
+      stdioMode(true),
+      closeOwnedFds(closeFds),
+      stdioRequestPending(true),
+      stdioReadFd(readFd),
+      stdioWriteFd(writeFd) {}
 
 ForwardSourceHandler::~ForwardSourceHandler() {
-  socketHandler->stopListening(source);
+  for (const auto& socket : socketFdMap) {
+    int readFd = socket.second;
+    int writeFd = readFd;
+    auto writeIt = socketWriteFdMap.find(socket.first);
+    if (writeIt != socketWriteFdMap.end()) {
+      writeFd = writeIt->second;
+    }
+    if (closeOwnedFds) {
+      socketHandler->close(readFd);
+      if (writeFd != readFd && writeFd >= 0) {
+        socketHandler->close(writeFd);
+      }
+    }
+  }
+  for (int fd : unassignedFds) {
+    if (closeOwnedFds) {
+      socketHandler->close(fd);
+    }
+  }
+  for (const auto& pending : socksPending) {
+    socketHandler->close(pending.first);
+  }
+  if (!stdioMode) {
+    socketHandler->stopListening(source);
+  }
 }
 
-int ForwardSourceHandler::listen() {
-  // TODO: Replace with select
+int ForwardSourceHandler::acceptFixed(const set<int>* readyFds) {
   for (int i : socketHandler->getEndpointFds(source)) {
+    if (readyFds != nullptr && readyFds->count(i) == 0) {
+      continue;
+    }
     int fd = socketHandler->accept(i);
     if (fd > -1) {
       LOG(INFO) << "Tunnel " << source << " -> " << destination
                 << " socket created with fd " << fd;
-      unassignedFds.insert(fd);
+      if (socksDynamic) {
+        if (socksPending.size() >= MAX_PENDING_SOCKS) {
+          LOG(WARNING) << "SOCKS pending set full; closing fd " << fd;
+          socketHandler->close(fd);
+        } else {
+          SocksHandshake handshake;
+          handshake.deadline =
+              std::chrono::steady_clock::now() + SOCKS_HANDSHAKE_TIMEOUT;
+          socksPending[fd] = std::move(handshake);
+        }
+      } else if (parkUnassignedFd(fd)) {
+        return fd;
+      }
+    }
+  }
+  return -1;
+}
+
+void ForwardSourceHandler::advanceSocksHandshakes(const set<int>* readyFds) {
+  vector<int> toClose;
+  const auto now = std::chrono::steady_clock::now();
+  for (auto& it : socksPending) {
+    int fd = it.first;
+    if (!it.second.complete && now >= it.second.deadline) {
+      LOG(WARNING) << "SOCKS handshake timed out on fd " << fd;
+      toClose.push_back(fd);
+      continue;
+    }
+    bool mayHaveData = readyFds == nullptr || readyFds->count(fd) != 0 ||
+                       !it.second.input.empty() || socketHandler->hasData(fd);
+    if (!mayHaveData) {
+      continue;
+    }
+    while (socketHandler->hasData(fd) || !it.second.input.empty()) {
+      if (!it.second.input.empty() && !socketHandler->hasData(fd)) {
+        auto status = feedSocksHandshake(&it.second);
+        if (!it.second.reply.empty()) {
+          socketHandler->writeAllOrReturn(fd, it.second.reply.data(),
+                                          it.second.reply.size());
+          it.second.reply.clear();
+        }
+        if (status == SocksParseStatus::Error) {
+          LOG(WARNING) << "SOCKS handshake failed on fd " << fd << ": "
+                       << it.second.error;
+          toClose.push_back(fd);
+        }
+        break;
+      }
+      char buf[512];
+      int bytesRead = socketHandler->read(fd, buf, sizeof(buf));
+      auto readErrno = GetErrno();
+      if (bytesRead == -1 &&
+          (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
+        break;
+      }
+      if (bytesRead <= 0) {
+        LOG(INFO) << "SOCKS client closed during handshake on fd " << fd;
+        toClose.push_back(fd);
+        break;
+      }
+      it.second.input.append(buf, bytesRead);
+      auto status = feedSocksHandshake(&it.second);
+      if (!it.second.reply.empty()) {
+        socketHandler->writeAllOrReturn(fd, it.second.reply.data(),
+                                        it.second.reply.size());
+        it.second.reply.clear();
+      }
+      if (status == SocksParseStatus::Error) {
+        LOG(WARNING) << "SOCKS handshake failed on fd " << fd << ": "
+                     << it.second.error;
+        toClose.push_back(fd);
+        break;
+      }
+      if (status == SocksParseStatus::Complete) {
+        break;
+      }
+    }
+  }
+  for (int fd : toClose) {
+    socketHandler->close(fd);
+    socksPending.erase(fd);
+  }
+}
+
+int ForwardSourceHandler::takeCompletedSocks(SocketEndpoint* destinationOut,
+                                             const set<int>* readyFds) {
+  advanceSocksHandshakes(readyFds);
+  for (auto it = socksPending.begin(); it != socksPending.end(); ++it) {
+    if (it->second.complete) {
+      int fd = it->first;
+      if (destinationOut) {
+        *destinationOut = it->second.destination;
+      }
+      LOG(INFO) << "SOCKS tunnel " << source << " -> " << it->second.destination
+                << " ready on fd " << fd;
+      SocksAwaitingReply awaiting{it->second.version,
+                                  std::move(it->second.earlyData)};
+      socksPending.erase(it);
+      if (!parkUnassignedFd(fd)) {
+        return -1;
+      }
+      socksAwaitingReply[fd] = std::move(awaiting);
       return fd;
     }
   }
   return -1;
 }
 
-void ForwardSourceHandler::update(vector<PortForwardData>* data) {
+int ForwardSourceHandler::listen(SocketEndpoint* destinationOut,
+                                 const set<int>* readyFds) {
+  if (stdioMode) {
+    if (!stdioRequestPending) {
+      return -1;
+    }
+    stdioRequestPending = false;
+    if (!parkUnassignedFd(stdioReadFd)) {
+      return -1;
+    }
+    if (destinationOut) {
+      *destinationOut = destination;
+    }
+    LOG(INFO) << "Stdio forward ready -> " << destination << " readFd "
+              << stdioReadFd << " writeFd " << stdioWriteFd;
+    return stdioReadFd;
+  }
+
+  if (socksDynamic) {
+    int ready = takeCompletedSocks(destinationOut, readyFds);
+    if (ready >= 0) {
+      return ready;
+    }
+    // Accept new clients into the SOCKS pending map.
+    acceptFixed(readyFds);
+    return takeCompletedSocks(destinationOut, readyFds);
+  }
+
+  int fd = acceptFixed(readyFds);
+  if (fd >= 0 && destinationOut) {
+    *destinationOut = destination;
+  }
+  return fd;
+}
+
+bool ForwardSourceHandler::parkUnassignedFd(int fd) {
+  if (unassignedFds.size() >= MAX_UNASSIGNED_FDS) {
+    LOG(WARNING) << "Too many fds awaiting destination responses; closing fd "
+                 << fd;
+    if (closeOwnedFds) {
+      socketHandler->close(fd);
+    }
+    return false;
+  }
+  unassignedFds.insert(fd);
+  unassignedFdDeadlines[fd] =
+      std::chrono::steady_clock::now() + UNASSIGNED_FD_TIMEOUT;
+  return true;
+}
+
+void ForwardSourceHandler::expireUnassignedFds() {
+  const auto now = std::chrono::steady_clock::now();
+  for (auto it = unassignedFdDeadlines.begin();
+       it != unassignedFdDeadlines.end();) {
+    if (it->second > now) {
+      ++it;
+      continue;
+    }
+    const int fd = it->first;
+    LOG(WARNING) << "Closing unassigned fd " << fd
+                 << " (destination response timed out)";
+    if (closeOwnedFds) {
+      socketHandler->close(fd);
+    }
+    unassignedFds.erase(fd);
+    socksAwaitingReply.erase(fd);
+    it = unassignedFdDeadlines.erase(it);
+  }
+}
+
+bool ForwardSourceHandler::update(vector<PortForwardData>* data,
+                                  const set<int>* readyFds) {
+  // The remote peer decides whether destination responses ever arrive.
+  expireUnassignedFds();
+  if (socksDynamic) {
+    advanceSocksHandshakes(readyFds);
+  }
+
   vector<int> socketsToRemove;
+  size_t bytesThisUpdate = 0;
 
   for (auto& it : socketFdMap) {
     int socketId = it.first;
     int fd = it.second;
 
-    while (socketHandler->hasData(fd)) {
-      char buf[1024];
-      int bytesRead = socketHandler->read(fd, buf, 1024);
-      auto readErrno = GetErrno();
+    auto early = socksEarlyPayload.find(socketId);
+    if (early != socksEarlyPayload.end() && !early->second.empty()) {
+      PortForwardData pwd;
+      pwd.set_socketid(socketId);
+      pwd.set_sourcetodestination(true);
+      pwd.set_buffer(early->second);
+      data->push_back(pwd);
+      socksEarlyPayload.erase(early);
+    }
+
+    if (stdioMode && stdioReadClosed) {
+      continue;
+    }
+    if (readyFds != nullptr && readyFds->count(fd) == 0) {
+      continue;
+    }
+
+    while (bytesThisUpdate < MAX_BYTES_PER_UPDATE) {
+      if (!stdioMode && !socketHandler->hasData(fd)) {
+        break;
+      }
+
+      char buf[16 * 1024];
+      int bytesRead = -1;
+      int readErrno = 0;
+      if (stdioMode) {
+#ifndef WIN32
+        bytesRead = ::read(fd, buf, sizeof(buf));
+        readErrno = errno;
+        SetErrno(readErrno);
+#else
+        bytesRead = socketHandler->read(fd, buf, sizeof(buf));
+        readErrno = GetErrno();
+#endif
+      } else {
+        bytesRead = socketHandler->read(fd, buf, sizeof(buf));
+        readErrno = GetErrno();
+      }
       if (bytesRead == -1 &&
           (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
-        // Bail for now
         break;
       }
       PortForwardData pwd;
@@ -53,22 +306,45 @@ void ForwardSourceHandler::update(vector<PortForwardData>* data) {
         pwd.set_error(strerror(readErrno));
       } else if (bytesRead == 0) {
         VLOG(1) << "Got close reading socket " << socketId;
-        pwd.set_closed(true);
+        if (stdioMode) {
+          // Half-close stdin. Keep stdout until the remote side closes.
+          pwd.set_closed(true);
+          pwd.set_half_close(true);
+          stdioReadClosed = true;
+        } else {
+          pwd.set_closed(true);
+        }
       } else {
         VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
         pwd.set_buffer(string(buf, bytesRead));
+        bytesThisUpdate += bytesRead;
       }
       data->push_back(pwd);
       if (bytesRead < 1) {
-        socketHandler->close(fd);
+        if (stdioMode && bytesRead == 0) {
+          break;
+        }
+        if (closeOwnedFds) {
+          socketHandler->close(fd);
+          auto writeIt = socketWriteFdMap.find(socketId);
+          if (writeIt != socketWriteFdMap.end() && writeIt->second != fd) {
+            socketHandler->close(writeIt->second);
+          }
+        }
         socketsToRemove.push_back(socketId);
+        break;
+      }
+      if (stdioMode) {
+        // Outer poll drives stdio readiness; one chunk per wake is enough.
         break;
       }
     }
   }
   for (auto& it : socketsToRemove) {
     socketFdMap.erase(it);
+    socketWriteFdMap.erase(it);
   }
+  return !socketsToRemove.empty();
 }
 
 bool ForwardSourceHandler::hasUnassignedFd(int fd) {
@@ -80,8 +356,12 @@ void ForwardSourceHandler::closeUnassignedFd(int fd) {
     STERROR << "Tried to close an unassigned fd that doesn't exist";
     return;
   }
-  socketHandler->close(fd);
+  if (closeOwnedFds) {
+    socketHandler->close(fd);
+  }
   unassignedFds.erase(fd);
+  unassignedFdDeadlines.erase(fd);
+  socksAwaitingReply.erase(fd);
 }
 
 void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
@@ -92,18 +372,52 @@ void ForwardSourceHandler::addSocket(int socketId, int sourceFd) {
   }
   LOG(INFO) << "Adding socket: " << socketId << " " << sourceFd;
   unassignedFds.erase(sourceFd);
+  unassignedFdDeadlines.erase(sourceFd);
   socketFdMap[socketId] = sourceFd;
+  if (stdioMode) {
+    socketWriteFdMap[socketId] = stdioWriteFd;
+  }
+  auto awaiting = socksAwaitingReply.find(sourceFd);
+  if (awaiting != socksAwaitingReply.end() &&
+      !awaiting->second.earlyData.empty()) {
+    socksEarlyPayload[socketId] = std::move(awaiting->second.earlyData);
+  }
+}
+
+void ForwardSourceHandler::finishSocksConnect(int fd, bool success) {
+  auto it = socksAwaitingReply.find(fd);
+  if (it == socksAwaitingReply.end()) {
+    return;
+  }
+  string reply = socksConnectReply(it->second.version, success);
+  socketHandler->writeAllOrReturn(fd, reply.data(), reply.size());
+  socksAwaitingReply.erase(it);
+}
+
+bool ForwardSourceHandler::stdioBridgeOpen() const {
+  if (!stdioMode) {
+    return false;
+  }
+  return stdioRequestPending || !unassignedFds.empty() || !socketFdMap.empty();
 }
 
 void ForwardSourceHandler::getActiveFds(set<int>* fds) {
+  if (stdioMode) {
+    if (!stdioReadClosed &&
+        (stdioRequestPending || unassignedFds.count(stdioReadFd) ||
+         !socketFdMap.empty())) {
+      fds->insert(stdioReadFd);
+    }
+    return;
+  }
   for (int fd : socketHandler->getEndpointFds(source)) {
     fds->insert(fd);
   }
+  for (const auto& pending : socksPending) {
+    fds->insert(pending.first);
+  }
   for (auto& it : socketFdMap) {
     fds->insert(it.second);
-  }
-  for (int fd : unassignedFds) {
-    fds->insert(fd);
   }
 }
 
@@ -114,9 +428,32 @@ void ForwardSourceHandler::sendDataOnSocket(int socketId, const string& data) {
   }
 
   int fd = socketFdMap[socketId];
+  auto writeIt = socketWriteFdMap.find(socketId);
+  if (writeIt != socketWriteFdMap.end()) {
+    fd = writeIt->second;
+  }
   const char* buf = data.c_str();
   int count = data.length();
-  socketHandler->writeAllOrReturn(fd, buf, count);
+  if (stdioMode) {
+#ifdef WIN32
+    socketHandler->writeAllOrReturn(fd, buf, count);
+#else
+    size_t written = 0;
+    while (written < static_cast<size_t>(count)) {
+      ssize_t w = ::write(fd, buf + written, count - written);
+      if (w < 0) {
+        if (errno == EINTR) {
+          continue;
+        }
+        LOG(WARNING) << "Stdio forward write failed: " << strerror(errno);
+        return;
+      }
+      written += static_cast<size_t>(w);
+    }
+#endif
+  } else {
+    socketHandler->writeAllOrReturn(fd, buf, count);
+  }
 }
 
 void ForwardSourceHandler::closeSocket(int socketId) {
@@ -124,8 +461,15 @@ void ForwardSourceHandler::closeSocket(int socketId) {
   if (it == socketFdMap.end()) {
     LOG(WARNING) << "Tried to remove a socket that no longer exists!";
   } else {
-    socketHandler->close(it->second);
+    if (closeOwnedFds) {
+      socketHandler->close(it->second);
+      auto writeIt = socketWriteFdMap.find(socketId);
+      if (writeIt != socketWriteFdMap.end() && writeIt->second != it->second) {
+        socketHandler->close(writeIt->second);
+      }
+    }
     socketFdMap.erase(it);
+    socketWriteFdMap.erase(socketId);
   }
 }
 }  // namespace et

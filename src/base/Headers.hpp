@@ -43,6 +43,22 @@ inline int close(int fd) { return ::closesocket(fd); }
 #ifdef WIN32
 using uid_t = int;
 using gid_t = int;
+#define SHUT_RD SD_RECEIVE
+#define SHUT_WR SD_SEND
+#define SHUT_RDWR SD_BOTH
+// Windows has no symlink-following open(); there is nothing to refuse.
+#define O_NOFOLLOW 0
+// Winsock never raises SIGPIPE.
+#define MSG_NOSIGNAL 0
+// Portable terminal-size payload used by UserTerminal implementations. Unix
+// provides this through <sys/ioctl.h>; Windows consumers translate it to
+// CONSOLE_SCREEN_BUFFER_INFO or ConPTY dimensions.
+struct winsize {
+  unsigned short ws_row;
+  unsigned short ws_col;
+  unsigned short ws_xpixel;
+  unsigned short ws_ypixel;
+};
 #else
 #include <arpa/inet.h>
 #include <grp.h>
@@ -50,6 +66,7 @@ using gid_t = int;
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <paths.h>
+#include <poll.h>
 #include <pthread.h>
 #include <pwd.h>
 #include <resolv.h>
@@ -76,6 +93,7 @@ using gid_t = int;
 #include <algorithm>
 #include <array>
 #include <atomic>
+#include <cctype>
 #include <ctime>
 #include <deque>
 #include <exception>
@@ -146,6 +164,12 @@ namespace fs = boost::filesystem
 #define popen _popen
 #define pclose _pclose
 
+#ifndef STDIN_FILENO
+#define STDIN_FILENO 0
+#define STDOUT_FILENO 1
+#define STDERR_FILENO 2
+#endif
+
 /* ssize_t is not defined on Windows */
 #ifndef ssize_t
 #if defined(_WIN64)
@@ -161,12 +185,33 @@ typedef int ssize_t;
 #define ssize_t SSIZE_T
 #endif
 
+inline struct tm* localtime_r(const time_t* timer, struct tm* result) {
+  return localtime_s(result, timer) == 0 ? result : nullptr;
+}
+
+// Updates both the CRT table (getenv) and the Win32 block that CreateProcess
+// children inherit.
+inline int setenv(const char* name, const char* value, int overwrite) {
+  if (!overwrite && getenv(name) != nullptr) {
+    return 0;
+  }
+  if (_putenv_s(name, value) != 0) {
+    return -1;
+  }
+  return SetEnvironmentVariableA(name, value) ? 0 : -1;
+}
 #endif
 
 using namespace std;
 
-// The ET protocol version supported by this binary
+// The ET protocol version supported by this binary. The legacy handshake path
+// in ServerConnection and ClientConnection exists only for protocol-6 peers;
+// remove it when this is next bumped.
 static const int PROTOCOL_VERSION = 6;
+
+// --kill rides in TERMINAL_INFO so older peers ignore it instead of aborting.
+static const int SESSION_KILL_COMMAND_VERSION = 1;
+const string SESSION_KILL_ACK = "ET_SESSION_KILLED_V1";
 
 // Nonces for CryptoHandler
 static const unsigned char CLIENT_SERVER_NONCE_MSB = 0;
@@ -182,6 +227,11 @@ const int MAX_CLIENT_KEEP_ALIVE_DURATION = 5;
 // allow enough time.
 const int SERVER_KEEP_ALIVE_DURATION = 11;
 
+// A client sends its initial payload immediately after the handshake. If it
+// never arrives, no terminal was ever started, so the handler thread gives up
+// rather than waiting for a client that is not coming back.
+const int INITIAL_PAYLOAD_TIMEOUT_DURATION = 600;
+
 #if defined(__ANDROID__)
 #define STFATAL LOG(FATAL) << "No Stack Trace on Android" << endl
 
@@ -189,16 +239,15 @@ const int SERVER_KEEP_ALIVE_DURATION = 11;
 #else
 #define STFATAL LOG(FATAL) << "Stack Trace: " << endl << ust::generate()
 
-#define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate()
+#define STERROR LOG(ERROR) << "Stack Trace: " << endl << ust::generate_raw()
 #endif
 
 /**
- * @brief Normalizes platform-specific errno values (translates Win32 WSA
- * errors).
+ * @brief Translates a socket error code (e.g. from WSAGetLastError() or
+ * SO_ERROR) into the equivalent errno value. Identity on non-Windows.
  */
-inline int GetErrno() {
+inline int TranslateSocketError(int retval) {
 #ifdef WIN32
-  auto retval = WSAGetLastError();
   if (retval >= 10000) {
     // Do some translation
     switch (retval) {
@@ -214,11 +263,80 @@ inline int GetErrno() {
         return ECONNRESET;
       case WSAECONNABORTED:
         return ECONNABORTED;
+      case WSAECONNREFUSED:
+        return ECONNREFUSED;
+      case WSAETIMEDOUT:
+        return ETIMEDOUT;
+      case WSAEINTR:
+        return EINTR;
+      case WSAEINVAL:
+        return EINVAL;
+      case WSAEACCES:
+        return EACCES;
+      case WSAEADDRNOTAVAIL:
+        return EADDRNOTAVAIL;
+      case WSAENETDOWN:
+        return ENETDOWN;
+      case WSAENETUNREACH:
+        return ENETUNREACH;
+      case WSAENETRESET:
+        return ENETRESET;
+      case WSAENOBUFS:
+        return ENOBUFS;
+      case WSAEMFILE:
+        return EMFILE;
+      case WSAEISCONN:
+        return EISCONN;
+      case WSAENOTCONN:
+        return ENOTCONN;
+      case WSAENAMETOOLONG:
+        return ENAMETOOLONG;
+      case WSAEAFNOSUPPORT:
+        return EAFNOSUPPORT;
+      case WSAEALREADY:
+        return EALREADY;
+      case WSAEDESTADDRREQ:
+        return EDESTADDRREQ;
+      case WSAEMSGSIZE:
+        return EMSGSIZE;
+      case WSAEPROTOTYPE:
+        return EPROTOTYPE;
+      case WSAENOPROTOOPT:
+        return ENOPROTOOPT;
+      case WSAEPROTONOSUPPORT:
+        return EPROTONOSUPPORT;
+      case WSAESOCKTNOSUPPORT:
+        return ENOTSUP;
+      case WSAEOPNOTSUPP:
+        return EOPNOTSUPP;
+      case WSAEPFNOSUPPORT:
+        return EAFNOSUPPORT;
+      case WSAEBADF:
+        return EBADF;
+      case WSAEFAULT:
+        return EFAULT;
+      case WSAELOOP:
+        return ELOOP;
+      case WSAEHOSTDOWN:
+        return EHOSTUNREACH;
+      case WSAEHOSTUNREACH:
+        return EHOSTUNREACH;
       default:
-        STFATAL << "Unmapped WSA error: " << retval;
+        LOG(WARNING) << "Unmapped WSA error: " << retval;
+        return retval;
     }
   }
+#endif
   return retval;
+}
+
+/**
+ * @brief Normalizes platform-specific errno values (translates Win32 WSA
+ * errors).
+ */
+inline int GetErrno() {
+#ifdef WIN32
+  return TranslateSocketError(WSAGetLastError());
 #else
   return errno;
 #endif
@@ -330,11 +448,19 @@ inline int replaceAll(std::string& str, const std::string& from,
   return retval;
 }
 
+// A peer sent a packet that fails authentication, has an unexpected type, or
+// has an unparsable payload.
+class MalformedPacketError : public std::runtime_error {
+ public:
+  using std::runtime_error::runtime_error;
+};
+
 template <typename T>
 inline T stringToProto(const string& s) {
   T t;
   if (!t.ParseFromString(s)) {
-    STFATAL << "Error parsing string to proto: " << s.length() << " " << s;
+    // Payloads come from peers; let the connection's handler reject them.
+    throw MalformedPacketError("Error parsing " + string(t.GetTypeName()));
   }
   return t;
 }
@@ -351,52 +477,119 @@ inline string protoToString(const T& t) {
 /**
  * Wait on a fd to have data available.
  *
- * @return true if the fd has data, or false if the timeout (of 1 second) is
- *   reached or if the call is interrupted by a syscall.
+ * @return true if the fd is readable, or has hung up, errored, or become
+ *   invalid, so the caller's read reports the condition; false if the timeout
+ *   is reached or the call is interrupted by a syscall.
  */
-inline bool waitOnSocketData(int fd) {
-  fd_set fdset;
-  FD_ZERO(&fdset);
-  FD_SET(fd, &fdset);
-  timeval tv;
-  tv.tv_sec = 1;
-  tv.tv_usec = 0;
-  VLOG(4) << "Before selecting sockFd";
-  const int selectResult = select(fd + 1, &fdset, NULL, NULL, &tv);
-  if (selectResult < 0) {
-    if (errno == EINTR) {
+inline bool waitOnSocketData(int fd, int64_t sec = 1, int64_t usec = 0) {
+#ifdef WIN32
+  // WSAPoll (rather than select) so there is no FD_SETSIZE ceiling and an
+  // invalid socket surfaces as POLLNVAL, matching poll() below.
+  WSAPOLLFD pollFd = {};
+  pollFd.fd = static_cast<SOCKET>(fd);
+  pollFd.events = POLLRDNORM | POLLRDBAND;
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  VLOG(4) << "Before polling sockFd";
+  const int pollResult = ::WSAPoll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
+    const int err = WSAGetLastError();
+    if (err == WSAEINTR) {
       // Interrupted by the signal, the caller will retry.
       return false;
+    }
+    if (err == WSAENOTSOCK || err == WSAEINVAL) {
+      // Invalid socket: surface it like poll() reports POLLNVAL so the
+      // caller's read observes the condition instead of hanging.
+      return true;
+    }
+    FATAL_FAIL(pollResult);
+  }
+  return pollResult > 0 &&
+         (pollFd.revents &
+          (POLLRDNORM | POLLRDBAND | POLLHUP | POLLERR | POLLNVAL)) != 0;
+#else
+  struct pollfd pollFd = {fd, POLLIN, 0};
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  const int pollResult = poll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
+    if (errno == EINTR) {
+      return false;
     } else {
-      FATAL_FAIL(selectResult);
+      FATAL_FAIL(pollResult);
     }
   }
-  return FD_ISSET(fd, &fdset);
+  return pollResult > 0 &&
+         (pollFd.revents & (POLLIN | POLLERR | POLLHUP | POLLNVAL)) != 0;
+#endif
 }
 
 /**
  * Check whether a fd would accept a write right now without blocking.
  *
- * @return true if the fd is writable, or false if its buffer is full or the
- *   check is interrupted by a syscall.
+ * @return true if the fd is writable, or false if its buffer is full, the fd
+ *   was closed under us, or the check is interrupted by a syscall.
  */
-inline bool isSocketWritable(int fd) {
-  fd_set fdset;
-  FD_ZERO(&fdset);
-  FD_SET(fd, &fdset);
-  timeval tv;
-  tv.tv_sec = 0;
-  tv.tv_usec = 0;
-  const int selectResult = select(fd + 1, NULL, &fdset, NULL, &tv);
-  if (selectResult < 0) {
+inline bool isSocketWritable(int fd, int64_t sec = 0, int64_t usec = 0) {
+#ifdef WIN32
+  WSAPOLLFD pollFd = {};
+  pollFd.fd = static_cast<SOCKET>(fd);
+  pollFd.events = POLLWRNORM;
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  const int pollResult = ::WSAPoll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
+    const int err = WSAGetLastError();
+    if (err == WSAEINTR || err == WSAENOTSOCK || err == WSAEINVAL) {
+      // EINTR: interrupted by a signal. ENOTSOCK/EINVAL: the fd was closed
+      // under us (e.g. client disconnected). Returning false is safe:
+      // callers use this as a non-blocking "can I write more?" poll.
+      return false;
+    }
+    FATAL_FAIL(pollResult);
+  }
+  // POLLNVAL is deliberately excluded: an fd closed under us reports "not
+  // writable" here, matching the poll() branch below.
+  return pollResult > 0 &&
+         (pollFd.revents & (POLLWRNORM | POLLWRBAND | POLLHUP | POLLERR)) != 0;
+#else
+  struct pollfd pollFd = {fd, POLLOUT, 0};
+  const int timeoutMs = static_cast<int>(sec * 1000 + usec / 1000);
+  const int pollResult = poll(&pollFd, 1, timeoutMs);
+  if (pollResult < 0) {
     if (errno == EINTR) {
-      // Interrupted by the signal, the caller will retry.
       return false;
     } else {
-      FATAL_FAIL(selectResult);
+      FATAL_FAIL(pollResult);
     }
   }
-  return FD_ISSET(fd, &fdset);
+  // POLLNVAL is deliberately excluded: an fd closed under us reports "not
+  // writable" here, matching the EBADF handling in the select() branch.
+  return pollResult > 0 &&
+         (pollFd.revents & (POLLOUT | POLLERR | POLLHUP)) != 0;
+#endif
+}
+
+/**
+ * @brief Toggles blocking mode on a socket.
+ * @return false on failure, with GetErrno() set.
+ */
+inline bool setSocketBlocking(int fd, bool blocking) {
+#ifdef WIN32
+  u_long nonBlocking = blocking ? 0 : 1;
+  return ::ioctlsocket(fd, FIONBIO, &nonBlocking) == 0;
+#else
+  int flags = ::fcntl(fd, F_GETFL, 0);
+  if (flags < 0) {
+    return false;
+  }
+  flags = blocking ? (flags & ~O_NONBLOCK) : (flags | O_NONBLOCK);
+  return ::fcntl(fd, F_SETFL, flags) == 0;
+#endif
+}
+
+/** @brief Length of a pathname AF_UNIX address, including the trailing NUL. */
+inline socklen_t unixAddressLength(const sockaddr_un& address) {
+  return static_cast<socklen_t>(offsetof(sockaddr_un, sun_path) +
+                                strlen(address.sun_path) + 1);
 }
 
 inline string genRandomAlphaNum(int len) {
@@ -413,17 +606,28 @@ inline string genRandomAlphaNum(int len) {
   return s;
 }
 
-inline string GetTempDirectory() {
+/** @brief OS temporary directory, with a trailing separator. */
+string GetTempDirectory();
+
+/** @brief Per-user token used in HTM IPC socket names (uid on Unix, username
+ * on Windows). */
+inline string GetHtmIpcUser() {
 #ifdef WIN32
-  WCHAR buf[65536];
-  int retval = GetTempPath(65536, buf);
-  int a = 0;
-  std::wstring_convert<std::codecvt_utf8_utf16<wchar_t> > converter;
-  std::string tmpDir = converter.to_bytes(wstring(buf, retval));
+  char name[256];
+  DWORD size = static_cast<DWORD>(sizeof(name));
+  if (!GetUserNameA(name, &size) || size == 0) {
+    return "user";
+  }
+  string s(name);
+  for (char& c : s) {
+    if (!isalnum(static_cast<unsigned char>(c)) && c != '_' && c != '-') {
+      c = '_';
+    }
+  }
+  return s.empty() ? string("user") : s;
 #else
-  string tmpDir = _PATH_TMP;
+  return to_string(getuid());
 #endif
-  return tmpDir;
 }
 
 inline void HandleTerminate() {

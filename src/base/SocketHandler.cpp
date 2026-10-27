@@ -3,17 +3,63 @@
 #include "base64.h"
 
 namespace et {
-#define SOCKET_DATA_TRANSFER_TIMEOUT (30)
+#define SOCKET_DATA_TRANSFER_TIMEOUT (SocketHandler::SOCKET_IDLE_TIMEOUT_SEC)
 
 void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
-  time_t startTime = time(NULL);
-  size_t pos = 0;
-  while (pos < count) {
-    if (!waitOnSocketData(fd)) {
-      time_t currentTime = time(NULL);
-      if (timeout && currentTime > startTime + SOCKET_DATA_TRANSFER_TIMEOUT) {
+  if (timeout) {
+    readAll(fd, buf, count, SOCKET_IDLE_TIMEOUT_SEC,
+            SOCKET_ABSOLUTE_TIMEOUT_SEC);
+  } else {
+    readAll(fd, buf, count, 0, 0);
+  }
+}
+
+string SocketHandler::readSizedString(int fd, size_t length, bool timeout) {
+  string result;
+  std::chrono::steady_clock::time_point deadline;
+  if (timeout) {
+    deadline = std::chrono::steady_clock::now() +
+               std::chrono::seconds(SOCKET_ABSOLUTE_TIMEOUT_SEC);
+  }
+  while (result.size() < length) {
+    int remainingSeconds = 0;
+    if (timeout) {
+      const auto remaining = deadline - std::chrono::steady_clock::now();
+      if (remaining <= std::chrono::steady_clock::duration::zero()) {
         throw std::runtime_error("Socket Timeout");
       }
+      remainingSeconds =
+          static_cast<int>(
+              std::chrono::duration_cast<std::chrono::seconds>(remaining)
+                  .count()) +
+          1;
+    }
+    const size_t offset = result.size();
+    const size_t count = std::min<size_t>(64 * 1024, length - offset);
+    // Grow only as bytes arrive; never reserve the declared length.
+    result.resize(offset + count);
+    readAll(fd, result.data() + offset, count,
+            timeout ? SOCKET_IDLE_TIMEOUT_SEC : 0, remainingSeconds);
+  }
+  return result;
+}
+
+void SocketHandler::readAll(int fd, void* buf, size_t count, int idleTimeoutSec,
+                            int absoluteTimeoutSec) {
+  time_t absoluteStartTime = time(NULL);
+  time_t idleStartTime = absoluteStartTime;
+  size_t pos = 0;
+  while (pos < count) {
+    // Enforce deadlines on every iteration so a slow trickle that keeps the
+    // idle timer reset cannot hold the read open past the absolute limit.
+    time_t currentTime = time(NULL);
+    if ((idleTimeoutSec > 0 && currentTime > idleStartTime + idleTimeoutSec) ||
+        (absoluteTimeoutSec > 0 &&
+         currentTime > absoluteStartTime + absoluteTimeoutSec)) {
+      throw std::runtime_error("Socket Timeout");
+    }
+
+    if (!waitOnSocketData(fd)) {
       continue;
     }
 
@@ -36,7 +82,8 @@ void SocketHandler::readAll(int fd, void* buf, size_t count, bool timeout) {
       }
     } else {
       pos += bytesRead;
-      startTime = time(NULL);
+      // Only the idle timer resets on progress; absolute deadline does not.
+      idleStartTime = time(NULL);
     }
   }
 }

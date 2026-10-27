@@ -5,15 +5,21 @@ on:
       - master
   pull_request:
 
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
+
 jobs:
   build_vcpkg:
     name: build-vcpkg-${{ matrix.os }}-${{ matrix.gcc }}
     runs-on: ${{ matrix.os }}
+    timeout-minutes: 90
     strategy:
       fail-fast: true
       matrix:
         os: [ubuntu-latest, macos-latest, windows-latest]
-        gcc: [11, 12, 13]
+        gcc: [13, 14, 15, 16]
         include:
           - os: windows-latest
             extension: .exe
@@ -21,26 +27,32 @@ jobs:
           #- os: macos-latest # Allow one gcc variant for mac/windows, since they don't use gcc
           #gcc: 11
           - os: macos-latest
-            gcc: 12
+            gcc: 14
           - os: macos-latest
-            gcc: 13
+            gcc: 15
+          - os: macos-latest
+            gcc: 16
           #- os: windows-latest
           #gcc: 11
           - os: windows-latest
-            gcc: 12
+            gcc: 14
           - os: windows-latest
-            gcc: 13
+            gcc: 15
+          - os: windows-latest
+            gcc: 16
     env:
       # Indicates the CMake build directory where project files and binaries are being produced.
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
       # Indicates the location of the vcpkg as a Git submodule of the project repository.
       VCPKG_ROOT: ${{ github.workspace }}/external/vcpkg
+      VCPKG_DEFAULT_BINARY_CACHE: ${{ github.workspace }}/.vcpkg-binary-cache
+      VCPKG_BINARY_SOURCES: clear;files,${{ github.workspace }}/.vcpkg-binary-cache,readwrite
 
     steps:
       - name: Install Dependencies (Linux)
         run: |
           sudo apt-get update && \
-            sudo apt-get install --no-install-recommends \
+            sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
                 libboost-dev \
                 libsodium-dev \
                 libprotobuf-dev \
@@ -49,6 +61,7 @@ jobs:
                 libutempter-dev \
                 build-essential \
                 ninja-build \
+                ccache \
                 libcurl4-openssl-dev \
                 curl \
                 zip \
@@ -56,13 +69,16 @@ jobs:
                 tar \
                 cmake \
                 libutempter-dev \
-                libunwind-dev
+                libunwind-dev \
+                autoconf \
+                autoconf-archive \
+                automake
         if: matrix.os == 'ubuntu-latest'
       - name: Install Dependencies (Windows)
         run: choco install -y ninja
         if: matrix.os == 'windows-latest'
       - name: Install Dependencies (macOS)
-        run: brew update && brew install ninja cmake automake autoconf libtool
+        run: brew update && brew install ccache ninja cmake automake autoconf autoconf-archive libtool
         if: matrix.os == 'macos-latest'
 
       - uses: actions/checkout@v4
@@ -70,33 +86,33 @@ jobs:
           submodules: recursive
 
       - name: Set up GCC (Ubuntu)
-        uses: egor-tensin/setup-gcc@v1
+        uses: egor-tensin/setup-gcc@eaa888eb19115a521fa72b65cd94fe1f25bbcaac  # v1.3
         with:
           version: ${{ matrix.gcc }}
           platform: x64
         if: matrix.os == 'ubuntu-latest'
 
-      # Restore both vcpkg and its artifacts from the GitHub cache service.
-      - name: Restore vcpkg and its artifacts.
-        uses: actions/cache@v5
+      # Initialize MSVC before fingerprinting its version and enabling sccache.
+      - uses: ilammy/msvc-dev-cmd@0b201ec74fa43914dc39ae48a89fd1d8cb592756  # v1.13.0
+        if: matrix.os == 'windows-latest'
+      - name: Restore project compiler cache
+        uses: ./.github/actions/ccache
         with:
-          path: |
-            ${{ env.VCPKG_ROOT }}
-            !${{ env.VCPKG_ROOT }}/buildtrees
-            !${{ env.VCPKG_ROOT }}/packages
-            !${{ env.VCPKG_ROOT }}/downloads
-          # The key is composed in a way that it gets properly invalidated: this must happen whenever vcpkg's Git commit id changes, or the list of packages changes. In this case a cache miss must happen and a new entry with a new key with be pushed to GitHub the cache service.
-          # The key includes: hash of the vcpkg.json file, the hash of the vcpkg Git commit id, and the used vcpkg's triplet. The vcpkg's commit id would suffice, but computing an hash out it does not harm.
-          # Note: given a key, the cache content is immutable. If a cache entry has been created improperly, in order the recreate the right content the key must be changed as well, and it must be brand new (i.e. not existing already).
-          key: |
-            et-vcpkg-${{ hashFiles( 'vcpkg.json' ) }}-${{ hashFiles( '.git/modules/external/vcpkg/HEAD' )}}-${{ matrix.os }}-${{ matrix.gcc }}-master-1
+          key: vcpkg-${{ matrix.os }}-gcc${{ matrix.gcc }}
 
-      - name: Show content of workspace after cache has been restored
-        run: find $RUNNER_WORKSPACE
+      - name: Restore shared dependency archives
+        uses: ./.github/actions/vcpkg-cache
+        with:
+          compiler: ${{ runner.os == 'Linux' && format('g++-{0}', matrix.gcc) || 'c++' }}
+
+      # VCPKG_DEFAULT_BINARY_CACHE must be an existing directory even on
+      # cache miss; vcpkg rejects a missing path before binary sources apply.
+      # Use bash so mkdir -p is idempotent on windows-latest too (pwsh mkdir
+      # is New-Item and fails when the path already exists after a cache hit).
+      - name: Ensure vcpkg binary cache directory
         shell: bash
+        run: mkdir -p "${{ github.workspace }}/.vcpkg-binary-cache"
 
-      # On Windows runners, let's ensure to have the Developer Command Prompt environment setup correctly. As used here the Developer Command Prompt created is targeting x64 and using the default the Windows SDK.
-      - uses: ilammy/msvc-dev-cmd@v1
       # Run CMake to generate Ninja project files, using the vcpkg's toolchain file to resolve and install the dependencies as specified in vcpkg.json.
       - name: Install dependencies and generate project files (linux)
         env:
@@ -113,16 +129,31 @@ jobs:
 
       - name: Install dependencies and generate project files (windows)
         run: |
-          cmake -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          # Embedded debug info makes MSVC compile results reusable by sccache.
+          cmake -DCMAKE_POLICY_DEFAULT_CMP0141=NEW -DCMAKE_MSVC_DEBUG_INFORMATION_FORMAT=Embedded -DDISABLE_TELEMETRY=ON -S "${{ github.workspace }}" -B "${{ env.CMAKE_BUILD_DIR }}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
         if: matrix.os == 'windows-latest'
 
       # Build the whole project with Ninja (which is spawn by CMake).
       - name: Build
+        if: matrix.os != 'windows-latest'
         run: |
-          cmake --build "${{ env.CMAKE_BUILD_DIR }}"
-          ctest --parallel
+          parallel_level="${CI_PARALLEL_LEVEL:-2}"
+          if [[ -n "${ACT:-}" ]]; then
+            parallel_level="${CI_PARALLEL_LEVEL:-14}"
+          fi
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}"
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "${parallel_level}" --timeout 300 --output-on-failure
+
+      - name: Build (Windows)
+        if: matrix.os == 'windows-latest'
+        shell: pwsh
+        run: |
+          $parallelLevel = if ($env:CI_PARALLEL_LEVEL) { $env:CI_PARALLEL_LEVEL } else { "2" }
+          cmake --build "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel"
+          ctest --test-dir "${{ env.CMAKE_BUILD_DIR }}" --parallel "$parallelLevel" --timeout 300 --output-on-failure
 
       - uses: actions/upload-artifact@v6
+        if: ${{ !env.ACT }}
         with:
           name: et-client-${{matrix.os}}-gcc${{matrix.gcc}}
           path: ${{ env.CMAKE_BUILD_DIR }}/et${{matrix.extension}}

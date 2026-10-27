@@ -4,6 +4,7 @@
 #include "ETerminal.pb.h"
 #include "Headers.hpp"
 #include "SocketHandler.hpp"
+#include "SshAgentSessionBind.hpp"
 
 namespace et {
 /**
@@ -11,15 +12,31 @@ namespace et {
  */
 class ForwardDestinationHandler {
  public:
+  static constexpr size_t MAX_BYTES_PER_UPDATE = 64 * 1024;
   /** @brief Binds the handler to a destination fd so data can be sent
-   * downstream. */
-  ForwardDestinationHandler(shared_ptr<SocketHandler> _socketHandler, int _fd,
-                            int _socketId);
+   * downstream.
+   * @param _bindReplies Set when session binds were sent on @p _fd; their
+   * replies are dropped instead of forwarded.
+   */
+  ForwardDestinationHandler(
+      shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
+      unique_ptr<AgentSessionBindReplies> _bindReplies = nullptr);
+  ~ForwardDestinationHandler();
+
+  ForwardDestinationHandler(const ForwardDestinationHandler&) = delete;
+  ForwardDestinationHandler& operator=(const ForwardDestinationHandler&) =
+      delete;
+
   /** @brief Sends bytes that need to travel to the destination socket. */
   void write(const string& s);
 
-  /** @brief Polls for incoming data to send back to the source. */
-  void update(vector<PortForwardData>* retval);
+  /** @brief Stops writes while leaving the socket readable. */
+  void shutdownWrite();
+
+  /** @brief Polls for incoming data to send back to the source. Does nothing
+   * unless `readyFds` names this handler's fd; `nullptr` always polls. */
+  void update(vector<PortForwardData>* retval,
+              const set<int>* readyFds = nullptr);
 
   /** @brief Closes the destination socket and marks the handler inactive. */
   void close();
@@ -34,6 +51,10 @@ class ForwardDestinationHandler {
   int fd;
   /** @brief Logical identifier supplied over the control channel. */
   int socketId;
+  /** @brief True after the source half-closed its write direction. */
+  bool writeShutdown = false;
+  /** @brief Pending ssh-agent replies to session binds, if any. */
+  unique_ptr<AgentSessionBindReplies> bindReplies;
 };
 }  // namespace et
 

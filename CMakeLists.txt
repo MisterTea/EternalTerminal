@@ -109,7 +109,15 @@ endif()
 
 message(STATUS "VCPKG TRIPLET: ${VCPKG_TARGET_TRIPLET}")
 
-project(EternalTCP VERSION 7.0.0 LANGUAGES C CXX)
+# vcpkg reads vcpkg.json before CMake runs, so that file owns the version.
+file(READ "${CMAKE_SOURCE_DIR}/vcpkg.json" _vcpkg_manifest)
+string(REGEX MATCH "\"version-string\"[ \t]*:[ \t]*\"([^\"]+)\"" _vcpkg_version_match "${_vcpkg_manifest}")
+if(NOT CMAKE_MATCH_1)
+  message(FATAL_ERROR "Could not read version-string from vcpkg.json")
+endif()
+set(ET_VCPKG_VERSION "${CMAKE_MATCH_1}")
+
+project(EternalTCP VERSION ${ET_VCPKG_VERSION} LANGUAGES C CXX)
 
 include(CMakeFindDependencyMacro)
 
@@ -126,11 +134,26 @@ set(HTTPLIB_USE_ZSTD_IF_AVAILABLE OFF)
 # Required packages
 find_package(ZLIB REQUIRED)
 find_package(OpenSSL REQUIRED)
+# sanitizers-cmake otherwise only warns and continues without instrumentation.
+set(ET_MSAN_REQUESTED "${SANITIZE_MEMORY}")
+if(ET_MSAN_REQUESTED AND (NOT CMAKE_SYSTEM_NAME STREQUAL "Linux" OR
+    NOT CMAKE_CXX_COMPILER_ID STREQUAL "Clang"))
+  message(FATAL_ERROR "MemorySanitizer requires Clang on Linux; this configuration would run without MSan")
+endif()
 find_package(Sanitizers REQUIRED)
+if(ET_MSAN_REQUESTED AND (NOT SANITIZE_MEMORY OR NOT MSan_Clang_FLAGS))
+  message(FATAL_ERROR "MemorySanitizer was requested but its compiler flags are unavailable")
+endif()
 find_package(Threads REQUIRED)
 find_package(sodium REQUIRED)
 find_package(Protobuf REQUIRED)
-find_package(Unwind)
+include(CheckIncludeFile)
+check_include_file("execinfo.h" HAVE_EXECINFO_H)
+if(NOT HAVE_EXECINFO_H AND NOT WIN32 AND NOT ANDROID)
+  find_package(Unwind REQUIRED)
+else()
+  find_package(Unwind)
+endif()
 
 if(DISABLE_VCPKG)
   if(BUILD_TESTING)
@@ -154,7 +177,7 @@ else()
   find_package(httplib CONFIG REQUIRED)
   find_package(cxxopts CONFIG REQUIRED)
   find_package(nlohmann_json CONFIG REQUIRED)
-  find_path(SIMPLEINI_INCLUDE_DIRS "ConvertUTF.c")
+  find_path(SIMPLEINI_INCLUDE_DIRS "SimpleIni.h")
 endif()
 
 # Optional packages
@@ -166,6 +189,11 @@ endif()
 
 if(MSVC)
   set(CMAKE_MSVC_RUNTIME_LIBRARY "MultiThreaded$<$<CONFIG:Debug>:Debug>")
+  # Compile translation units concurrently in Visual Studio and MSBuild builds.
+  add_compile_options($<$<COMPILE_LANGUAGE:CXX>:/MP> $<$<COMPILE_LANGUAGE:CXX>:/EHsc>)
+  # The bundled ThreadPool submodule still uses std::result_of, which the
+  # MSVC standard library hides in C++20 unless compatibility is requested.
+  add_compile_definitions(_HAS_DEPRECATED_RESULT_OF=1)
 endif()
 
 # Using FreeBSD?
@@ -229,12 +257,13 @@ set(CMAKE_CXX_FLAGS
 )
 
 IF(WIN32)
-  SET(CMAKE_CXX_FLAGS "-DSODIUM_STATIC")
+  SET(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -DSODIUM_STATIC")
 ENDIF(WIN32)
 
 if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage")
-  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage")
+  # CODE_COVERAGE define lets forked children flush gcov before _exit.
+  set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -g --coverage -DCODE_COVERAGE")
+  set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g --coverage -DCODE_COVERAGE")
 endif(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
 
 if(DISABLE_CRASH_LOG)
@@ -248,9 +277,15 @@ if(UNIX)
   set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -g -ggdb3")
 endif()
 
-# Enable C++-17
-set(CMAKE_CXX_STANDARD 17)
+# Enable C++20
+set(CMAKE_CXX_STANDARD 20)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
+
+if(APPLE OR FREEBSD)
+  # The bundled ThreadPool submodule still uses std::result_of. libc++ hides that
+  # C++17 type trait in C++20 unless this compatibility switch is enabled.
+  add_compile_definitions(_LIBCPP_ENABLE_CXX20_REMOVED_TYPE_TRAITS)
+endif()
 
 # Enable compile commands export for vscode
 add_definitions(-DCMAKE_EXPORT_COMPILE_COMMANDS=ON)
@@ -262,6 +297,16 @@ if(WIN32)
 endif()
 
 set(PROTOBUF_LIBS protobuf::libprotobuf)
+
+if(NOT TARGET protobuf::protoc)
+  if(Protobuf_PROTOC_EXECUTABLE)
+    add_executable(protobuf::protoc IMPORTED)
+    set_target_properties(protobuf::protoc PROPERTIES IMPORTED_LOCATION "${Protobuf_PROTOC_EXECUTABLE}")
+  elseif(PROTOBUF_PROTOC_EXECUTABLE)
+    add_executable(protobuf::protoc IMPORTED)
+    set_target_properties(protobuf::protoc PROPERTIES IMPORTED_LOCATION "${PROTOBUF_PROTOC_EXECUTABLE}")
+  endif()
+endif()
 
 if(Protobuf_VERSION VERSION_GREATER_EQUAL 4)
   find_package(absl REQUIRED)
@@ -290,6 +335,10 @@ if(NOT Boost_FOUND)
 endif()
 
 IF(NOT APPLE AND NOT WIN32)
+  # Hardening: prevent executable stack (fixes RPM/ELF check for Issue #677)
+  set(CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,-z,noexecstack")
+  set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-z,noexecstack")
+
   if(CMAKE_INSTALL_PREFIX_INITIALIZED_TO_DEFAULT)
     SET(CMAKE_INSTALL_PREFIX "/usr" CACHE PATH "Install prefix" FORCE)
   endif()
@@ -314,7 +363,9 @@ elseif(WIN32)
   set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB Ws2_32 Shlwapi
     dbghelp)
 elseif(APPLE)
-  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv)
+  find_library(SECURITY_FRAMEWORK Security REQUIRED)
+  set(CORE_LIBRARIES OpenSSL::SSL ZLIB::ZLIB util resolv
+    ${SECURITY_FRAMEWORK})
 else()
   set(CORE_LIBRARIES
     httplib::httplib
@@ -326,8 +377,16 @@ else()
     util
     resolv
     atomic
-    stdc++fs
   )
+  # stdc++fs was a separate library for <filesystem> in GCC 8 and earlier.
+  # Starting with GCC 9, filesystem support is part of libstdc++ proper, and
+  # the separate -lstdc++fs was removed entirely in GCC 15.
+  # Only link it if the compiler still ships it.
+  include(CheckLibraryExists)
+  check_library_exists(stdc++fs "" "" HAVE_STDCXXFS)
+  if(HAVE_STDCXXFS)
+    list(APPEND CORE_LIBRARIES stdc++fs)
+  endif()
 endif()
 
 IF(Unwind_FOUND)
@@ -338,13 +397,23 @@ IF(USE_SENTRY)
   list(INSERT CORE_LIBRARIES 0 sentry::sentry)
 ENDIF()
 
+macro(ET_WARNINGS_AS_ERRORS TARGET_NAME)
+  if(MSVC)
+    target_compile_options(${TARGET_NAME} PRIVATE /WX)
+  else()
+    target_compile_options(${TARGET_NAME} PRIVATE -Werror)
+  endif()
+endmacro()
+
 macro(DECORATE_TARGET TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
   target_precompile_headers(${TARGET_NAME} PUBLIC "src/base/Headers.hpp")
+  et_warnings_as_errors(${TARGET_NAME})
 endmacro()
 
 macro(DECORATE_FUZZER TARGET_NAME)
   add_sanitizers(${TARGET_NAME})
+  et_warnings_as_errors(${TARGET_NAME})
 
   if(FUZZING)
     # ASAN must also be enabled to build fuzzers.
@@ -363,19 +432,13 @@ macro(DECORATE_FUZZER TARGET_NAME)
   endif()
 endmacro()
 
-include_directories(
+# Third-party headers stay system includes so their warnings are not errors.
+include_directories(SYSTEM
   ${EXTERNAL_DIR}/easyloggingpp/src
   ${EXTERNAL_DIR}/PlatformFolders
-  ${EXTERNAL_DIR}/ThreadPool
   ${EXTERNAL_DIR}/sole
   ${EXTERNAL_DIR}/base64
-  src/base
-  src/terminal
-  src/terminal/forwarding
-  src/htm
   ${PROTOBUF_INCLUDE_DIRS}
-  ${CMAKE_CURRENT_BINARY_DIR}
-  ${CMAKE_CURRENT_SOURCE_DIR}
   ${CURSES_INCLUDE_DIR}
   ${sodium_INCLUDE_DIR}
   ${SELINUX_INCLUDE_DIR}
@@ -384,9 +447,49 @@ include_directories(
   ${OPENSSL_INCLUDE_DIR}
   ${SIMPLEINI_INCLUDE_DIRS}
 )
+include_directories(
+  src/base
+  src/terminal
+  src/terminal/forwarding
+  src/htm
+  ${CMAKE_CURRENT_BINARY_DIR}
+  ${CMAKE_CURRENT_SOURCE_DIR}
+)
 
 if(NOT ANDROID)
-  include_directories(${EXTERNAL_DIR}/UniversalStacktrace/ust)
+  include_directories(SYSTEM ${EXTERNAL_DIR}/UniversalStacktrace/ust)
+endif()
+
+if(WIN32)
+  set(BASE_PLATFORM_SRCS
+    src/base/DaemonCreatorWindows.cpp
+    src/base/FdPollerWindows.cpp
+    src/base/PipeSocketHandlerWindows.cpp
+    src/base/PlatformUtilsWindows.cpp
+    src/base/RawSocketUtilsWindows.cpp
+    src/base/UnixSocketHandlerWindows.cpp
+    src/base/TcpSocketHandlerWindows.cpp
+    src/base/PollSetWindows.cpp
+    src/base/SubprocessUtilsWindows.cpp
+    src/base/UserSocketOpsWindows.cpp)
+else()
+  if(CMAKE_SYSTEM_NAME MATCHES "Linux|Android")
+    set(BASE_FD_POLLER_SRC src/base/FdPollerLinux.cpp)
+  else()
+    set(BASE_FD_POLLER_SRC src/base/FdPollerKqueue.cpp)
+  endif()
+  set(BASE_PLATFORM_SRCS
+    src/base/DaemonCreatorUnix.cpp
+    src/base/SecureFileUnix.cpp
+    ${BASE_FD_POLLER_SRC}
+    src/base/PipeSocketHandlerUnix.cpp
+    src/base/PlatformUtilsUnix.cpp
+    src/base/RawSocketUtilsUnix.cpp
+    src/base/UnixSocketHandlerUnix.cpp
+    src/base/TcpSocketHandlerUnix.cpp
+    src/base/PollSetUnix.cpp
+    src/base/SubprocessUtilsUnix.cpp
+    src/base/UserSocketOpsUnix.cpp)
 endif()
 
 add_library(
@@ -406,6 +509,8 @@ add_library(
   src/base/Connection.cpp
   src/base/CryptoHandler.hpp
   src/base/CryptoHandler.cpp
+  src/base/FdPoller.hpp
+  src/base/FdPoller.cpp
   src/base/ServerClientConnection.hpp
   src/base/ServerClientConnection.cpp
   src/base/ServerConnection.hpp
@@ -414,6 +519,10 @@ add_library(
   src/base/SocketHandler.cpp
   src/base/PipeSocketHandler.hpp
   src/base/PipeSocketHandler.cpp
+  src/base/PlatformUtils.hpp
+  src/base/PollSet.hpp
+  src/base/PollSet.cpp
+  src/base/UserSocketOps.hpp
   src/base/TcpSocketHandler.hpp
   src/base/TcpSocketHandler.cpp
   src/base/UnixSocketHandler.hpp
@@ -421,20 +530,46 @@ add_library(
   src/base/LogHandler.hpp
   src/base/LogHandler.cpp
   src/base/DaemonCreator.hpp
-  src/base/DaemonCreator.cpp
   src/base/RawSocketUtils.hpp
   src/base/RawSocketUtils.cpp
   src/base/WinsockContext.hpp
   src/base/SubprocessUtils.hpp
-  src/base/SubprocessUtils.cpp
   src/base/TunnelUtils.hpp
   src/base/TunnelUtils.cpp
+  src/base/SocksUtils.hpp
+  src/base/SocksUtils.cpp
+  src/base/WriteBuffer.hpp
+  src/base/TmuxCcFilter.hpp
+  ${BASE_PLATFORM_SRCS}
 
   ${ET_HDRS}
   ${ET_SRCS}
 )
 add_dependencies(et-lib generated-code)
 decorate_target(et-lib)
+# Vendored sources ship in et-lib. Their diagnostics are not ours, so they
+# must not fail the build under -Werror / /WX.
+set_source_files_properties(
+  ${EXTERNAL_DIR}/easyloggingpp/src/easylogging++.cc
+  ${EXTERNAL_DIR}/PlatformFolders/sago/platform_folders.cpp
+  PROPERTIES COMPILE_OPTIONS "$<IF:$<CXX_COMPILER_ID:MSVC>,/WX-,-Wno-error>")
+
+if(WIN32)
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/forwarding/SshAgentSessionBindWindows.cpp
+    src/terminal/ConsoleWindows.cpp
+    src/terminal/PseudoTerminalConsoleWindows.cpp
+    src/terminal/ServerFifoPathWindows.cpp
+    src/terminal/SessionStoreWindows.cpp
+    src/terminal/UserTerminalHandlerWindows.cpp)
+else()
+  set(TERMINAL_PLATFORM_SRCS
+    src/terminal/ConsoleUnix.cpp
+    src/terminal/PseudoTerminalConsoleUnix.cpp
+    src/terminal/ServerFifoPathUnix.cpp
+    src/terminal/SessionStoreUnix.cpp
+    src/terminal/UserTerminalHandlerUnix.cpp)
+endif()
 
 add_library(
   TerminalCommon STATIC
@@ -444,28 +579,66 @@ add_library(
   src/terminal/forwarding/ForwardSourceHandler.cpp
   src/terminal/forwarding/ForwardDestinationHandler.hpp
   src/terminal/forwarding/ForwardDestinationHandler.cpp
+  src/terminal/forwarding/SshAgentSessionBind.hpp
+  src/terminal/forwarding/SshAgentSessionBind.cpp
   src/terminal/TerminalServer.hpp
   src/terminal/TerminalServer.cpp
+  src/terminal/JumphostPending.hpp
+  src/terminal/TerminalInterruptDrain.hpp
   src/terminal/UserTerminalRouter.hpp
   src/terminal/UserTerminalRouter.cpp
+  src/terminal/BinaryStdioConsole.hpp
+  src/terminal/Console.hpp
+  src/terminal/PseudoTerminalConsole.hpp
+  src/terminal/StdioConsole.hpp
   src/terminal/TerminalClient.hpp
   src/terminal/TerminalClient.cpp
+  src/terminal/MuxProtocol.hpp
+  src/terminal/MuxProtocol.cpp
+  src/terminal/MuxMaster.hpp
+  src/terminal/MuxMaster.cpp
+  src/terminal/MuxClient.hpp
+  src/terminal/MuxClient.cpp
+  src/terminal/TitleParser.hpp
+  src/terminal/TitleParser.cpp
+  src/terminal/ControlConsole.hpp
+  src/terminal/ControlConsole.cpp
+  src/terminal/ControlListener.hpp
+  src/terminal/ControlListener.cpp
+  src/terminal/ControlProtocol.hpp
+  src/terminal/ControlPaths.hpp
+  src/terminal/RunGuard.hpp
+  src/terminal/SessionScrollback.hpp
+  src/terminal/SessionTombstone.hpp
+  src/terminal/SessionTranscript.hpp
   src/terminal/ServerFifoPath.hpp
-  src/terminal/ServerFifoPath.cpp
   src/terminal/SshSetupHandler.hpp
   src/terminal/SshSetupHandler.cpp
   src/terminal/UserTerminalHandler.hpp
-  src/terminal/UserTerminalHandler.cpp
+  src/terminal/SessionStore.hpp
+  src/terminal/SessionStore.cpp
+  src/terminal/SessionStorePlatform.hpp
   src/terminal/UserJumphostHandler.hpp
   src/terminal/UserJumphostHandler.cpp
   src/terminal/TelemetryService.hpp
   src/terminal/TelemetryService.cpp
+  src/terminal/TerminalClientMain.hpp
+  src/terminal/TerminalClientMain.cpp
+  src/terminal/TerminalMain.hpp
+  src/terminal/TerminalMain.cpp
+  src/terminal/TerminalServerMain.hpp
+  src/terminal/TerminalServerMain.cpp
+  ${TERMINAL_PLATFORM_SRCS}
   ${ETERMINAL_SRCS}
   ${ETERMINAL_HDRS})
 add_dependencies(TerminalCommon generated-code et-lib)
 decorate_target(TerminalCommon)
 
-add_executable(et src/terminal/TerminalClientMain.cpp)
+if(WIN32)
+  target_link_libraries(TerminalCommon PUBLIC advapi32)
+endif()
+
+add_executable(et src/terminal/TerminalClientMainEntry.cpp)
 target_link_libraries(
   et
   LINK_PUBLIC
@@ -480,16 +653,234 @@ target_link_libraries(
 add_dependencies(et generated-code et-lib)
 decorate_target(et)
 
+# Neovim's C99 libvterm (MIT), used for capture-pane / list-panes screen state.
+# Windows ConPTY already emits VT; this library consumes that stream on all OSes.
+add_library(libvterm STATIC
+  ${EXTERNAL_DIR}/libvterm/src/encoding.c
+  ${EXTERNAL_DIR}/libvterm/src/keyboard.c
+  ${EXTERNAL_DIR}/libvterm/src/mouse.c
+  ${EXTERNAL_DIR}/libvterm/src/parser.c
+  ${EXTERNAL_DIR}/libvterm/src/pen.c
+  ${EXTERNAL_DIR}/libvterm/src/screen.c
+  ${EXTERNAL_DIR}/libvterm/src/state.c
+  ${EXTERNAL_DIR}/libvterm/src/unicode.c
+  ${EXTERNAL_DIR}/libvterm/src/vterm.c
+)
+set_target_properties(libvterm PROPERTIES
+  C_STANDARD 11
+  C_STANDARD_REQUIRED ON
+)
+target_include_directories(libvterm PUBLIC
+  ${EXTERNAL_DIR}/libvterm/include
+)
+target_include_directories(libvterm PRIVATE
+  ${EXTERNAL_DIR}/libvterm/src
+)
+if(MSVC)
+  target_compile_options(libvterm PRIVATE /W0)
+else()
+  target_compile_options(libvterm PRIVATE -w)
+endif()
+if(CODE_COVERAGE AND CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+  # Vendored C is stripped from reports; skip instrumentation so gcov .gcda
+  # files from libvterm do not serialize parallel ctest.
+  target_compile_options(libvterm PRIVATE -fno-profile-arcs -fno-test-coverage)
+endif()
+
 if(WIN32)
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientWindows.cpp
+    src/htm/HtmServerWindows.cpp
+    src/htm/TerminalHandlerWindows.cpp)
+else()
+  set(HTM_PLATFORM_SRCS
+    src/htm/HtmClientUnix.cpp
+    src/htm/HtmServerUnix.cpp
+    src/htm/TerminalHandlerUnix.cpp)
+endif()
+
+add_library(
+  HtmCommon STATIC
+  ${HTM_PLATFORM_SRCS}
+  src/htm/TerminalHandler.cpp
+  src/htm/MultiplexerState.cpp
+  src/htm/IpcPairClient.cpp
+  src/htm/IpcPairEndpoint.cpp
+  src/htm/IpcPairServer.cpp
+  src/htm/HtmClient.cpp
+  src/htm/HtmServer.cpp
+  src/htm/ControlMode.cpp
+  src/htm/ControlCommands.cpp
+  src/htm/PaneScreen.cpp
+)
+add_dependencies(HtmCommon generated-code et-lib)
+target_link_libraries(HtmCommon PUBLIC libvterm)
+decorate_target(HtmCommon)
+
+if(WIN32)
+  set(HTM_CLIENT_PLATFORM_SRC src/htm/HtmClientPlatformWindows.cpp)
+else()
+  set(HTM_CLIENT_PLATFORM_SRC src/htm/HtmClientPlatformUnix.cpp)
+endif()
+add_executable(htm src/htm/HtmClientMain.cpp ${HTM_CLIENT_PLATFORM_SRC})
+target_link_libraries(
+  htm
+  LINK_PUBLIC
+  HtmCommon
+  TerminalCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${CORE_LIBRARIES})
+add_dependencies(htm generated-code et-lib TerminalCommon)
+decorate_target(htm)
+
+add_executable(htmd src/htm/HtmServerMain.cpp)
+target_link_libraries(
+  htmd
+  LINK_PUBLIC
+  HtmCommon
+  et-lib
+  ${CMAKE_THREAD_LIBS_INIT}
+  ${PROTOBUF_LIBS}
+  ${sodium_LIBRARY_RELEASE}
+  ${SELINUX_LIBRARIES}
+  ${UTEMPTER_LIBRARIES}
+  ${Boost_LIBRARIES}
+  ${CORE_LIBRARIES})
+decorate_target(htmd)
+
+if(WIN32)
+  add_executable(etserver src/terminal/TerminalServerMainEntry.cpp)
+  target_link_libraries(
+    etserver
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etserver generated-code et-lib)
+  decorate_target(etserver)
+
+  add_executable(etterminal src/terminal/TerminalMainEntry.cpp)
+  target_link_libraries(
+    etterminal
+    LINK_PUBLIC
+    TerminalCommon
+    et-lib
+    ${CMAKE_THREAD_LIBS_INIT}
+    ${PROTOBUF_LIBS}
+    ${sodium_LIBRARY_RELEASE}
+    ${Boost_LIBRARIES}
+    ${CORE_LIBRARIES})
+  add_dependencies(etterminal generated-code et-lib)
+  decorate_target(etterminal)
+
   install(
-    TARGETS et
+    TARGETS et htm htmd etserver etterminal
+    DESTINATION "bin"
+    COMPONENT client)
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
     DESTINATION "bin"
     COMPONENT client)
   set(CPACK_COMPONENTS_ALL client)
   set(CPACK_COMPONENT_CLIENT_DISPLAY_NAME "Eternal Terminal Client")
 
+  include(CTest)
+  if(BUILD_TESTING)
+    enable_testing()
+    include(Catch)
+
+    file(GLOB WINDOWS_TEST_SRCS CONFIGURE_DEPENDS
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/*Test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/integration_tests/*Test.cpp
+      ${CMAKE_CURRENT_SOURCE_DIR}/test/unit_tests/*Test.cpp)
+
+    add_executable(
+      et-conpty-output-helper
+      test/helpers/ConPtyOutputHelper.cpp)
+    et_warnings_as_errors(et-conpty-output-helper)
+
+    # Same test set as Unix (see the else(WIN32) branch below): every test is
+    # expected to compile and pass on Windows. Platform-impossible cases
+    # SKIP at runtime with a reason instead of being excluded here.
+    add_executable(et-test ${WINDOWS_TEST_SRCS} test/Main.cpp)
+    target_include_directories(
+      et-test PRIVATE test test/integration_tests test/unit_tests)
+    add_dependencies(
+      et-test
+      generated-code
+      TerminalCommon
+      et-lib
+      HtmCommon
+      et-conpty-output-helper)
+    target_link_libraries(
+      et-test
+      PRIVATE
+      TerminalCommon
+      HtmCommon
+      et-lib
+      Catch2::Catch2WithMain
+      ${CMAKE_THREAD_LIBS_INIT}
+      ${PROTOBUF_LIBS}
+      ${sodium_LIBRARY_RELEASE}
+      ${Boost_LIBRARIES}
+      ${CORE_LIBRARIES})
+    catch_discover_tests(
+      et-test
+      TEST_SPEC "~[.ghostty]"
+      TEST_PREFIX "et-test."
+      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+      ADD_TAGS_AS_LABELS
+      PROPERTIES TIMEOUT 600)
+    add_sanitizers(et-test)
+    et_warnings_as_errors(et-test)
+    find_program(POWERSHELL_EXECUTABLE NAMES pwsh powershell REQUIRED)
+    add_custom_target(
+      windows-coverage
+      COMMAND
+        ${POWERSHELL_EXECUTABLE} -NoProfile -ExecutionPolicy Bypass -File
+        ${CMAKE_SOURCE_DIR}/coverage-windows.ps1
+        -BuildDirectory ${CMAKE_BINARY_DIR}
+      WORKING_DIRECTORY ${CMAKE_SOURCE_DIR}
+      USES_TERMINAL
+      COMMENT "Running Windows tests with native Visual Studio coverage")
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND)
+      add_test(
+        NAME windows_terminal_htm_headless_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_headless_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+          --iterations 1
+      )
+      set_tests_properties(
+        windows_terminal_htm_headless_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 120
+          LABELS "e2e;htm;system;windows"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
+    if(TARGET test)
+      add_dependencies(test et-test)
+    endif()
+  endif()
+
 else(WIN32)
-  add_executable(etserver src/terminal/TerminalServerMain.cpp)
+  add_executable(etserver src/terminal/TerminalServerMainEntry.cpp)
   target_link_libraries(
     etserver
     LINK_PUBLIC
@@ -505,7 +896,7 @@ else(WIN32)
   add_dependencies(etserver generated-code et-lib)
   decorate_target(etserver)
 
-  add_executable(etterminal src/terminal/TerminalMain.cpp)
+  add_executable(etterminal src/terminal/TerminalMainEntry.cpp)
   target_link_libraries(
     etterminal
     LINK_PUBLIC
@@ -521,24 +912,11 @@ else(WIN32)
   add_dependencies(etterminal generated-code et-lib)
   decorate_target(etterminal)
 
-  add_library(
-    HtmCommon STATIC
-    src/htm/TerminalHandler.cpp
-    src/htm/MultiplexerState.cpp
-    src/htm/IpcPairClient.cpp
-    src/htm/IpcPairEndpoint.cpp
-    src/htm/IpcPairServer.cpp
-    src/htm/HtmClient.cpp
-    src/htm/HtmServer.cpp
-  )
-  add_dependencies(HtmCommon generated-code et-lib)
-  decorate_target(HtmCommon)
-
-  add_executable(htm src/htm/HtmClientMain.cpp)
+  add_executable(etctl src/terminal/EtctlMain.cpp)
   target_link_libraries(
-    htm
+    etctl
     LINK_PUBLIC
-    HtmCommon
+    TerminalCommon
     et-lib
     ${CMAKE_THREAD_LIBS_INIT}
     ${PROTOBUF_LIBS}
@@ -547,22 +925,8 @@ else(WIN32)
     ${UTEMPTER_LIBRARIES}
     ${Boost_LIBRARIES}
     ${CORE_LIBRARIES})
-  decorate_target(htm)
-
-  add_executable(htmd src/htm/HtmServerMain.cpp)
-  target_link_libraries(
-    htmd
-    LINK_PUBLIC
-    HtmCommon
-    et-lib
-    ${CMAKE_THREAD_LIBS_INIT}
-    ${PROTOBUF_LIBS}
-    ${sodium_LIBRARY_RELEASE}
-    ${SELINUX_LIBRARIES}
-    ${UTEMPTER_LIBRARIES}
-    ${Boost_LIBRARIES}
-    ${CORE_LIBRARIES})
-  decorate_target(htmd)
+  add_dependencies(etctl generated-code et-lib)
+  decorate_target(etctl)
 
   include(CTest)
 
@@ -582,11 +946,12 @@ else(WIN32)
       test/unit_tests
     )
 
-    add_dependencies(et-test generated-code TerminalCommon et-lib)
+    add_dependencies(et-test generated-code TerminalCommon et-lib HtmCommon)
     target_link_libraries(
       et-test
       LINK_PUBLIC
       TerminalCommon
+      HtmCommon
       et-lib
       Catch2::Catch2WithMain
       ${CMAKE_THREAD_LIBS_INIT}
@@ -596,14 +961,151 @@ else(WIN32)
       ${UTEMPTER_LIBRARIES}
       ${Boost_LIBRARIES}
       ${CORE_LIBRARIES})
-    catch_discover_tests(
-      et-test
-      TEST_PREFIX "et-test."
-      WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
-      ADD_TAGS_AS_LABELS
-      PROPERTIES TIMEOUT 300
-    )
+    # iTerm2 / Ghostty / Hyper / WezTerm / Windows Terminal e2e stay opt-in
+    # until those terminals speak tmux -CC against htm. Default ctest and
+    # `./et-test` skip them. Run with:
+    # Shared suites: layout, stress, corners, affinities, control-plane
+    # (`--suite all`). Defaults for each emulator driver are `--suite all`.
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator ghostty --suite all
+    #   python3 test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
+    #   python3 test/system_tests/iterm2_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/hyper_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/wezterm_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/ghostty_htm_e2e.py --htm ./htm --htmd ./htmd
+    #   python3 test/system_tests/hyper_htm_affinities_e2e.py --htm ./htm --htmd ./htmd
+    #   py test/system_tests/windows_terminal_htm_e2e.py --wt wtd.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
+    if(NOT CMAKE_CROSSCOMPILING)
+      catch_discover_tests(
+        et-test
+        TEST_SPEC "~[.ghostty]"
+        TEST_PREFIX "et-test."
+        WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+        ADD_TAGS_AS_LABELS
+        # RouterRestartTest runs full client/server/terminal stacks.
+        PROPERTIES TIMEOUT 900
+      )
+    else()
+      add_test(NAME et-test COMMAND et-test "~[.ghostty]")
+    endif()
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_Interpreter_FOUND AND CMAKE_SYSTEM_NAME STREQUAL "Linux")
+      add_test(
+        NAME rpm_elf_noexecstack
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/rpm_elf_noexecstack_check.py
+          $<TARGET_FILE:et>
+          $<TARGET_FILE:etserver>
+          $<TARGET_FILE:etterminal>
+          $<TARGET_FILE:htm>
+          $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(rpm_elf_noexecstack PROPERTIES LABELS "security;packaging")
+    endif()
+    if(Python3_Interpreter_FOUND AND NOT WIN32)
+      add_test(
+        NAME htm_pty_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_pty_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        htm_pty_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 120
+          LABELS "e2e;htm;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME et_wall_tmux_cc_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_wall_tmux_cc_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_wall_tmux_cc_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;et;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME htm_features_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_features_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        htm_features_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 90
+          LABELS "e2e;htm;system;features"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME htm_stress_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/htm_stress_e2e.py
+          --htm $<TARGET_FILE:htm>
+          --htmd $<TARGET_FILE:htmd>
+      )
+      set_tests_properties(
+        htm_stress_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 180
+          LABELS "e2e;htm;system;stress"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+      add_test(
+        NAME et_background_process_e2e
+        COMMAND
+          ${Python3_EXECUTABLE}
+          ${CMAKE_SOURCE_DIR}/test/system_tests/et_background_process_e2e.py
+          --et $<TARGET_FILE:et>
+          --etserver $<TARGET_FILE:etserver>
+          --etterminal $<TARGET_FILE:etterminal>
+      )
+      set_tests_properties(
+        et_background_process_e2e
+        PROPERTIES
+          SKIP_RETURN_CODE 77
+          TIMEOUT 60
+          LABELS "e2e;et;system"
+          WORKING_DIRECTORY ${CMAKE_CURRENT_BINARY_DIR}
+          RUN_SERIAL TRUE
+      )
+    endif()
+    # GUI e2e is not registered with CTest. Suites (layout, stress) are shared;
+    # each emulator is a driver. Run:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/htm_gui_e2e.py --emulator wezterm --suite all
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_htm_stress_e2e.py
+    # Autonomous macOS iTerm2 visual tests for tmux / tmux -CC Ctrl+C:
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/iterm2_tmux_ctrlc_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/hyper_htm_stress_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_e2e.py
+    #   python3 ${CMAKE_SOURCE_DIR}/test/system_tests/wezterm_htm_stress_e2e.py
+    # Windows Terminal interactive e2e (requires unlocked desktop):
+    #   py ${CMAKE_SOURCE_DIR}/test/system_tests/windows_terminal_htm_e2e.py --wt wt.exe --htm build/Release/htm.exe --htmd build/Release/htmd.exe
     add_sanitizers(et-test)
+    et_warnings_as_errors(et-test)
     if(TARGET test)
       add_dependencies(test et-test)
     endif()
@@ -650,7 +1152,7 @@ else(WIN32)
   endif(BUILD_TESTING AND FUZZING)
 
   install(
-    TARGETS etserver etterminal et htm htmd
+    TARGETS etserver etterminal et etctl htm htmd
     PERMISSIONS
     OWNER_EXECUTE
     OWNER_WRITE
@@ -660,6 +1162,17 @@ else(WIN32)
     WORLD_EXECUTE
     WORLD_READ
     DESTINATION "bin")
+  install(
+    PROGRAMS scripts/et1 scripts/et1.cmd
+    DESTINATION "bin"
+    PERMISSIONS
+    OWNER_EXECUTE
+    OWNER_WRITE
+    OWNER_READ
+    GROUP_EXECUTE
+    GROUP_READ
+    WORLD_EXECUTE
+    WORLD_READ)
 
   if(INSTALL_BASH_COMPLETION)
     find_package(BashCompletion QUIET)
@@ -706,6 +1219,15 @@ SET(CPACK_INSTALLED_DIRECTORIES "${CMAKE_SOURCE_DIR}/systemctl;/lib/systemd/syst
 SET(CPACK_DEBIAN_PACKAGE_MAINTAINER "Unmaintained")
 SET(CPACK_DEBIAN_PACKAGE_DEPENDS "libprotobuf-dev, libc6 (>= 2.34), libgcc-s1 (>= 3.3.1), libstdc++6 (>= 12), libutempter0 (>= 1.1.5)")
 SET(CPACK_DEBIAN_PACKAGE_SUGGESTS "systemd")
+
+if(BUILD_TESTING)
+  find_package(Python3 COMPONENTS Interpreter)
+  if(Python3_Interpreter_FOUND)
+    add_test(
+      NAME et1_script
+      COMMAND ${Python3_EXECUTABLE} ${CMAKE_SOURCE_DIR}/test/et1_script_test.py)
+  endif()
+endif()
 
 # This must always be last!
 include(CPack)

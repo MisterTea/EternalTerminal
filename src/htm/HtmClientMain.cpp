@@ -1,32 +1,42 @@
 #include <cxxopts.hpp>
 
+#include "ControlMode.hpp"
 #include "DaemonCreator.hpp"
 #include "HtmClient.hpp"
+#include "HtmClientPlatform.hpp"
 #include "HtmServer.hpp"
 #include "IpcPairClient.hpp"
 #include "LogHandler.hpp"
 #include "MultiplexerState.hpp"
 #include "PipeSocketHandler.hpp"
+#include "PseudoTerminalConsole.hpp"
 #include "RawSocketUtils.hpp"
 #include "SubprocessUtils.hpp"
+#include "WinsockContext.hpp"
 
 using namespace et;
 
-termios terminal_backup;
+namespace {
+unique_ptr<PseudoTerminalConsole> gConsole;
 
-void term(int signum) {
-  char buf[] = {
-      0x1b, 0x5b, '$', '$', '$', 'q',
-  };
-  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
-  fflush(stdout);
-  tcsetattr(0, TCSANOW, &terminal_backup);
-  exit(1);
+void restoreTerminal() {
+  if (gConsole) {
+    gConsole->teardown();
+  }
 }
+}  // namespace
 
 int main(int argc, char** argv) {
   GOOGLE_PROTOBUF_VERIFY_VERSION;
   srand(1);
+  WinsockContext winsockContext;
+  {
+    std::error_code cwdError;
+    const fs::path cwd = fs::current_path(cwdError);
+    if (!cwdError) {
+      setenv("HTM_INITIAL_CWD", cwd.string().c_str(), 1);
+    }
+  }
   // Parse command line arguments
   cxxopts::Options options("htm", "Headless terminal multiplexer");
   options.allow_unrecognised_options();
@@ -46,18 +56,10 @@ int main(int argc, char** argv) {
   setvbuf(stdin, NULL, _IONBF, 0);   // turn off buffering
   setvbuf(stdout, NULL, _IONBF, 0);  // turn off buffering
 
-  // Turn on raw terminal mode
-  termios terminal_local;
-  tcgetattr(0, &terminal_local);
-  memcpy(&terminal_backup, &terminal_local, sizeof(struct termios));
-  cfmakeraw(&terminal_local);
-  tcsetattr(0, TCSANOW, &terminal_local);
+  gConsole.reset(new PseudoTerminalConsole());
+  gConsole->setup();
 
-  // Catch sigterm and send exit control code
-  struct sigaction action;
-  memset(&action, 0, sizeof(struct sigaction));
-  action.sa_handler = term;
-  sigaction(SIGTERM, &action, NULL);
+  htm_client_platform::installTerminationHandlers(restoreTerminal);
 
   // Setup easylogging configurations
   el::Configurations defaultConf = LogHandler::setupLogHandler(&argc, &argv);
@@ -73,43 +75,18 @@ int main(int argc, char** argv) {
   // Override easylogging handler for sigint
   ::signal(SIGINT, et::InterruptSignalHandler);
 
-  uid_t myuid = getuid();
-  if (result.count("x")) {
-    LOG(INFO) << "Killing previous htmd";
-    // Kill previous htm daemon
-    string command =
-        string("pkill -x -U ") + to_string(myuid) + string(" htmd");
-    system(command.c_str());
-  }
+  htm_client_platform::ensureDaemon(result.count("x") > 0);
 
-  // Check if daemon exists
-  string command = string("pgrep -x -U ") + to_string(myuid) + string(" htmd");
-  string pgrepOutput = SystemToStr(command.c_str());
-
-  if (pgrepOutput.length() == 0) {
-    // Fork to create the daemon
-    int result = DaemonCreator::create(false, "");
-    if (result == DaemonCreator::CHILD) {
-      // This means we are the daemon
-      exit(system("htmd"));
-    }
-  }
-
-  // This means we are the client to the daemon
-  std::this_thread::sleep_for(std::chrono::microseconds(
-      10 * 1000));  // Sleep for 10ms to let the daemon come alive
   shared_ptr<SocketHandler> socketHandler(new PipeSocketHandler());
   SocketEndpoint pipeEndpoint;
   pipeEndpoint.set_name(HtmServer::getPipeName());
-  HtmClient htmClient(socketHandler, pipeEndpoint);
-  htmClient.run();
+  try {
+    auto* htmClient = new HtmClient(socketHandler, pipeEndpoint);
+    htmClient->run();
+  } catch (const std::exception& ex) {
+    LOG(ERROR) << "htm client exiting: " << ex.what();
+    return htm_client_platform::finishClient(1, restoreTerminal);
+  }
 
-  char buf[] = {
-      0x1b, 0x5b, '$', '$', '$', 'q',
-  };
-  RawSocketUtils::writeAll(STDOUT_FILENO, buf, sizeof(buf));
-  fflush(stdout);
-  tcsetattr(0, TCSANOW, &terminal_backup);
-
-  return 0;
+  return htm_client_platform::finishClient(0, restoreTerminal);
 }

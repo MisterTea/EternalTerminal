@@ -37,6 +37,23 @@ class LogHandler {
    */
   static void setupStdoutLogger();
 
+  /**
+   * @brief Writes subprocess stderr onto the terminal captured before stderr
+   * was redirected into a log file, and onto the current stderr so the log
+   * keeps a copy.
+   * @return false when stderr has not been redirected, so the caller writes
+   * to the current stderr itself.
+   */
+  static bool forwardSubprocessStderr(const char* data, size_t len);
+
+  /**
+   * @brief Closes the terminal stderr saved for forwardSubprocessStderr.
+   *
+   * Tests restore the process stderr and call this so later cases do not
+   * write banners at a closed descriptor.
+   */
+  static void releasePreservedUserStderr();
+
  private:
   /**
    * @brief Redirects stderr to a file created in the specified directory.

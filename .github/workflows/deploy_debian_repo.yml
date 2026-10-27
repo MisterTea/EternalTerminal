@@ -29,8 +29,8 @@ on:
         required: true
         type: boolean
         default: true
-      quiet_cowbuilder:
-        description: "Redirect cowbuilder logs to files unless a cowbuilder command fails."
+      quiet_sbuild:
+        description: "Redirect sbuild logs to files unless a package build command fails."
         required: true
         type: boolean
         default: false
@@ -42,10 +42,17 @@ on:
 permissions:
   contents: read
 
+defaults:
+  run:
+    shell: bash
+
 jobs:
   deploy_debian_repo:
     name: deploy-debian-repo
     runs-on: ubuntu-latest
+    container:
+      image: debian:stable
+      options: --privileged
     timeout-minutes: 360
     env:
       DEBFULLNAME: Jason Gauci
@@ -55,21 +62,20 @@ jobs:
       DEBIAN_SUITES: ${{ inputs.debian_suites }}
       DEB_BUILD_JOBS: ${{ inputs.deb_build_jobs }}
       INPUT_RELEASE_TAG: ${{ inputs.release_tag }}
-      QUIET_COWBUILDER: ${{ inputs.quiet_cowbuilder }}
+      QUIET_SBUILD: ${{ inputs.quiet_sbuild }}
       PUSH_CHANGES: ${{ inputs.push_changes }}
       VERBOSE_BUILD: ${{ inputs.verbose_build }}
     steps:
       - name: Install build and publishing dependencies
         run: |
-          sudo apt-get update
-          sudo DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
+          apt-get update
+          DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends \
             aptly \
             arch-test \
             binfmt-support \
             build-essential \
             ca-certificates \
             cmake \
-            cowbuilder \
             curl \
             debhelper \
             debian-archive-keyring \
@@ -77,6 +83,8 @@ jobs:
             devscripts \
             distro-info \
             git \
+            gnupg \
+            iproute2 \
             jq \
             libcurl4-openssl-dev \
             libprotobuf-dev \
@@ -85,17 +93,84 @@ jobs:
             libtool \
             libunwind-dev \
             libutempter-dev \
+            mmdebstrap \
             ninja-build \
             openssh-client \
             protobuf-compiler \
             python3 \
             qemu-user-static \
             rsync \
-            ubuntu-dev-tools \
-            wget
+            sbuild \
+            uidmap \
+            wget \
+            zstd
 
-          sudo update-binfmts --enable || true
-          echo "PBUILDERSATISFYDEPENDSCMD=/usr/lib/pbuilder/pbuilder-satisfydepends-apt" > "${HOME}/.pbuilderrc"
+          update-binfmts --enable || true
+          [[ -e /dev/console ]] || mknod -m 600 /dev/console c 5 1 || true
+          install -d "${HOME}/.cache/sbuild" "${HOME}/.config/sbuild"
+
+          if ! awk -F: '$1 == "root" { found = 1 } END { exit !found }' /etc/subuid; then
+            echo "root:100000:65536" >> /etc/subuid
+          fi
+          if ! awk -F: '$1 == "root" { found = 1 } END { exit !found }' /etc/subgid; then
+            echo "root:100000:65536" >> /etc/subgid
+          fi
+
+          cat > "${HOME}/.config/sbuild/config.pl" <<'EOF'
+          $chroot_mode = "unshare";
+          $run_lintian = 0;
+          1;
+          EOF
+
+      - name: Import GPG signing key
+        env:
+          GPG_PRIVATE_KEY: ${{ secrets.GPG_PRIVATE_KEY }}
+          GPG_PASSPHRASE: ${{ secrets.GPG_PASSPHRASE }}
+        run: |
+          if [[ -z "${GPG_PRIVATE_KEY}" ]]; then
+            echo "Missing required secret GPG_PRIVATE_KEY" >&2
+            exit 1
+          fi
+          if [[ -z "${GPG_PASSPHRASE}" ]]; then
+            echo "Missing required secret GPG_PASSPHRASE" >&2
+            exit 1
+          fi
+
+          install -d -m 700 "${HOME}/.gnupg"
+          {
+            echo "use-agent"
+            echo "pinentry-mode loopback"
+          } > "${HOME}/.gnupg/gpg.conf"
+          echo "allow-loopback-pinentry" > "${HOME}/.gnupg/gpg-agent.conf"
+          gpgconf --kill gpg-agent || true
+
+          printf '%s\n' "${GPG_PRIVATE_KEY}" | gpg --batch --import
+          key_fingerprint="$(gpg --batch --list-secret-keys --with-colons | awk -F: '$1 == "fpr" { print $10; exit }')"
+          if [[ -z "${key_fingerprint}" ]]; then
+            echo "No GPG secret key was imported" >&2
+            exit 1
+          fi
+
+          passphrase_file="${RUNNER_TEMP}/gpg-passphrase"
+          printf '%s' "${GPG_PASSPHRASE}" > "${passphrase_file}"
+          chmod 600 "${passphrase_file}"
+
+          printf 'apt repository signing smoke test\n' > "${RUNNER_TEMP}/gpg-smoke-test"
+          gpg --batch --yes --pinentry-mode loopback \
+            --passphrase-file "${passphrase_file}" \
+            --local-user "${key_fingerprint}" \
+            --detach-sign --armor \
+            --output "${RUNNER_TEMP}/gpg-smoke-test.asc" \
+            "${RUNNER_TEMP}/gpg-smoke-test"
+
+          public_key_file="${RUNNER_TEMP}/et.gpg"
+          gpg --batch --yes --output "${public_key_file}" --export "${key_fingerprint}"
+
+          {
+            echo "GPG_KEY_ID=${key_fingerprint}"
+            echo "GPG_PASSPHRASE_FILE=${passphrase_file}"
+            echo "GPG_PUBLIC_KEY_FILE=${public_key_file}"
+          } >> "${GITHUB_ENV}"
 
       - name: Resolve release
         run: |
@@ -134,16 +209,16 @@ jobs:
         run: |
           debbuildopts="-j${DEB_BUILD_JOBS}"
 
-          run_cowbuilder() {
+          run_logged() {
             local log_file="$1"
             shift
 
-            if [[ "${QUIET_COWBUILDER}" == "true" ]]; then
-              echo "Running cowbuilder command; full log: ${log_file}"
+            if [[ "${QUIET_SBUILD}" == "true" ]]; then
+              echo "Running command; full log: ${log_file}"
               if ! "$@" >"${log_file}" 2>&1; then
-                echo "cowbuilder command failed; matching error lines:" >&2
+                echo "Command failed; matching error lines:" >&2
                 awk 'tolower($0) ~ /(error:|fatal:|failed|killed|undefined reference|cannot|no such file|returned exit status)/ { print }' "${log_file}" >&2 || true
-                echo "cowbuilder command failed; last 200 log lines:" >&2
+                echo "Command failed; last 400 log lines:" >&2
                 tail -n 400 "${log_file}" >&2 || true
                 return 1
               fi
@@ -180,6 +255,89 @@ jobs:
             exit 1
           fi
 
+          debian_mirror="http://deb.debian.org/debian"
+
+          # Succeeds if the binfmt_misc entry is enabled with the F flag.
+          binfmt_ready() {
+            awk '$1 == "enabled" { enabled = 1 }
+                 $1 == "flags:" && $2 ~ /F/ { fixed = 1 }
+                 END { exit !(enabled && fixed) }' "$1"
+          }
+
+          register_qemu_binfmt() {
+            local arch="$1"
+            local qemu_target=""
+            local magic mask
+            local registry_entry
+
+            case "${arch}" in
+              amd64)
+                qemu_target="x86_64"
+                ;;
+              arm64)
+                qemu_target="aarch64"
+                ;;
+              armel|armhf)
+                qemu_target="arm"
+                ;;
+              *)
+                return 0
+                ;;
+            esac
+
+            if [[ "$(dpkg --print-architecture)" == "${arch}" ]]; then
+              return 0
+            fi
+
+            if [[ ! -x "/usr/bin/qemu-${qemu_target}-static" ]]; then
+              echo "Missing qemu-${qemu_target}-static for ${arch}" >&2
+              exit 1
+            fi
+
+            mountpoint -q /proc/sys/fs/binfmt_misc ||
+              mount -t binfmt_misc binfmt_misc /proc/sys/fs/binfmt_misc
+
+            registry_entry="/proc/sys/fs/binfmt_misc/qemu-${qemu_target}"
+            if [[ -e "${registry_entry}" ]]; then
+              if binfmt_ready "${registry_entry}"; then
+                return 0
+              fi
+              # Disabled or non-F entries cannot execute inside the chroot.
+              echo -1 > "${registry_entry}"
+            fi
+
+            # Register directly rather than running a fetched script in this
+            # privileged, key-holding job. Debian's qemu-user-static ships
+            # only systemd binfmt.d entries, which nothing applies here.
+            # Values match qemu-binfmt-conf.sh; F lets chroots use the host
+            # interpreter.
+            case "${qemu_target}" in
+              x86_64)
+                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x3e\x00'
+                mask='\xff\xff\xff\xff\xff\xfe\xfe\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              arm)
+                magic='\x7f\x45\x4c\x46\x01\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\x28\x00'
+                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              aarch64)
+                magic='\x7f\x45\x4c\x46\x02\x01\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x02\x00\xb7\x00'
+                mask='\xff\xff\xff\xff\xff\xff\xff\x00\xff\xff\xff\xff\xff\xff\xff\xff\xfe\xff\xff\xff'
+                ;;
+              *)
+                echo "ERROR: no binfmt magic recorded for ${qemu_target}; add it" >&2
+                exit 1
+                ;;
+            esac
+            printf ':qemu-%s:M::%s:%s:/usr/bin/qemu-%s-static:F:\n' \
+              "${qemu_target}" "${magic}" "${mask}" "${qemu_target}" \
+              > /proc/sys/fs/binfmt_misc/register
+            if ! binfmt_ready "${registry_entry}"; then
+              echo "ERROR: qemu-${qemu_target} binfmt entry is not enabled with F" >&2
+              exit 1
+            fi
+          }
+
           for distro in "${debian_suites[@]}"; do
             rm -rf EternalTerminal
             mkdir EternalTerminal
@@ -201,37 +359,65 @@ jobs:
             popd
 
             for arch in "${debian_arches[@]}"; do
-              cow_dir="${HOME}/pbuilder/${distro}-${arch}.cow"
-              result_dir="${HOME}/pbuilder/${distro}-${arch}_result"
+              register_qemu_binfmt "${arch}"
 
-              if [[ ! -d "${cow_dir}" ]]; then
-                run_cowbuilder "cowbuilder-${distro}-${arch}-create.log" \
-                  cowbuilder-dist "${distro}" "${arch}" create --debootstrapopts --variant=buildd
+              chroot_tarball="${HOME}/.cache/sbuild/${distro}-${arch}-sbuild.tar"
+              chroot_dir="${HOME}/sbuild-chroots/${distro}-${arch}"
+              result_dir="${PWD}/sbuild-results/${distro}-${arch}"
+
+              if [[ ! -f "${chroot_tarball}" ]]; then
+                rm -rf "${chroot_dir}"
+                mkdir -p "$(dirname "${chroot_tarball}")" "$(dirname "${chroot_dir}")"
+                run_logged "mmdebstrap-${distro}-${arch}.log" \
+                  mmdebstrap \
+                    --mode=root \
+                    --variant=buildd \
+                    --architectures="${arch}" \
+                    --include=fakeroot,build-essential \
+                    --components=main,contrib,non-free,non-free-firmware \
+                    --format=tar \
+                    "${distro}" \
+                    "${chroot_tarball}" \
+                    "${debian_mirror}"
               fi
 
-              run_cowbuilder "cowbuilder-${distro}-${arch}-update.log" \
-                cowbuilder-dist "${distro}" "${arch}" update
-              run_cowbuilder "cowbuilder-${distro}-${arch}-build.log" \
-                cowbuilder-dist "${distro}" "${arch}" build \
-                --debbuildopts "${debbuildopts}" \
-                ./*.dsc
+              rm -rf "${result_dir}"
+              mkdir -p "${result_dir}"
+              if ! run_logged "sbuild-${distro}-${arch}.log" \
+                  sbuild \
+                  --chroot-mode=unshare \
+                  --chroot="${chroot_tarball}" \
+                  --dist="${distro}" \
+                  --arch="${arch}" \
+                  --build-dir="${result_dir}" \
+                  --no-run-lintian \
+                  --no-run-autopkgtest \
+                  --debbuildopts "${debbuildopts}" \
+                  ./*.dsc; then
+                shopt -s nullglob
+                build_logs=("${result_dir}"/*.build)
+                shopt -u nullglob
+                if [[ "${#build_logs[@]}" -gt 0 ]]; then
+                  echo "sbuild failed; build log tail follows:" >&2
+                  for build_log in "${build_logs[@]}"; do
+                    echo "==> ${build_log} <==" >&2
+                    tail -n 400 "${build_log}" >&2 || true
+                  done
+                fi
+                exit 1
+              fi
 
               mkdir -p "debian-packages/${distro}-${arch}"
-              result_dirs=("${result_dir}" "${HOME}/pbuilder/${distro}_result")
               package_files=()
-              for candidate_result_dir in "${result_dirs[@]}"; do
-                if [[ -d "${candidate_result_dir}" ]]; then
-                  shopt -s nullglob
-                  package_files+=("${candidate_result_dir}"/*.deb)
-                  cp -a "${candidate_result_dir}"/*.buildinfo "debian-packages/${distro}-${arch}/" || true
-                  cp -a "${candidate_result_dir}"/*.changes "debian-packages/${distro}-${arch}/" || true
-                  shopt -u nullglob
-                fi
-              done
+              shopt -s nullglob
+              package_files+=("${result_dir}"/*.deb)
+              cp -a "${result_dir}"/*.buildinfo "debian-packages/${distro}-${arch}/" || true
+              cp -a "${result_dir}"/*.changes "debian-packages/${distro}-${arch}/" || true
+              shopt -u nullglob
 
               if [[ "${#package_files[@]}" -eq 0 ]]; then
-                echo "No Debian packages found in expected result directories:" >&2
-                printf '  %s\n' "${result_dirs[@]}" >&2
+                echo "No Debian packages found in expected result directory:" >&2
+                printf '  %s\n' "${result_dir}" >&2
                 exit 1
               fi
 
@@ -241,7 +427,11 @@ jobs:
             aptly repo create -distribution="${distro}" -component=main "et-${distro}" || true
             aptly repo add -force-replace=true "et-${distro}" debian-packages/"${distro}"-*/*.deb
             aptly publish drop "${distro}" || true
-            aptly publish repo -skip-signing "et-${distro}"
+            aptly publish repo \
+              -batch=true \
+              -gpg-key="${GPG_KEY_ID}" \
+              -passphrase-file="${GPG_PASSPHRASE_FILE}" \
+              "et-${distro}"
           done
 
       - name: Upload built Debian packages
@@ -271,7 +461,22 @@ jobs:
           install -d -m 700 "${HOME}/.ssh"
           printf '%s\n' "${DEBIAN_REPO_SSH_PRIVATE_KEY}" > "${HOME}/.ssh/id_ed25519"
           chmod 600 "${HOME}/.ssh/id_ed25519"
-          ssh-keyscan github.com >> "${HOME}/.ssh/known_hosts"
+          ssh-keyscan -t rsa,ecdsa,ed25519 github.com > "${HOME}/.ssh/known_hosts"
+          if [[ ! -s "${HOME}/.ssh/known_hosts" ]]; then
+            echo "Failed to populate SSH known_hosts for github.com" >&2
+            exit 1
+          fi
+          chmod 600 "${HOME}/.ssh/known_hosts"
+          cat > "${HOME}/.ssh/config" <<EOF
+          Host github.com
+            HostName github.com
+            IdentityFile ${HOME}/.ssh/id_ed25519
+            UserKnownHostsFile ${HOME}/.ssh/known_hosts
+            StrictHostKeyChecking yes
+          EOF
+          chmod 600 "${HOME}/.ssh/config"
+
+          echo "GIT_SSH_COMMAND=ssh -F ${HOME}/.ssh/config" >> "${GITHUB_ENV}"
 
           git config --global user.name "Jason Gauci"
           git config --global user.email "jgmath2000@gmail.com"
@@ -282,14 +487,15 @@ jobs:
           git clone "${DEBIAN_REPO}" debian-et
           mkdir -p debian-et/debian-source
           rsync -raz --delete ~/.aptly/public/ debian-et/debian-source/
+          cp "${GPG_PUBLIC_KEY_FILE}" debian-et/et.gpg
 
           pushd debian-et
-          if git diff --quiet -- debian-source; then
+          if git diff --quiet -- debian-source et.gpg; then
             echo "Debian repository is already up to date"
             exit 0
           fi
 
-          git add debian-source
+          git add debian-source et.gpg
           git commit -m "Update Debian packages for ${RELEASE_TAG}"
           git push origin HEAD
           popd

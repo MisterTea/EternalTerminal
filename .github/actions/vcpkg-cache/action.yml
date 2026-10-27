@@ -1,0 +1,33 @@
+name: vcpkg binary cache
+description: Share ABI-checked dependency archives from master without duplicating PR install trees
+inputs:
+  compiler:
+    description: C++ compiler command used for this job
+    default: c++
+  flavor:
+    description: Keep instrumented dependencies separate from ordinary builds
+    default: standard
+runs:
+  using: composite
+  steps:
+    - name: Fingerprint dependency toolchain
+      shell: bash
+      env:
+        CI_CACHE_COMPILER: ${{ inputs.compiler }}
+      run: |
+        mkdir -p .ci-vcpkg .vcpkg-binary-cache
+        git -C external/vcpkg rev-parse HEAD > .ci-vcpkg/revision.txt
+        if [[ "${RUNNER_OS}" == "Windows" ]]; then
+          cl > .ci-vcpkg/compiler.txt 2>&1 || true
+        else
+          "${CI_CACHE_COMPILER}" --version > .ci-vcpkg/compiler.txt
+        fi
+        printf '\nCFLAGS=%s\nCXXFLAGS=%s\nLDFLAGS=%s\n' "${CFLAGS:-}" "${CXXFLAGS:-}" "${LDFLAGS:-}" >> .ci-vcpkg/compiler.txt
+    # vcpkg validates the ABI of every restored package before using it.
+    - name: Restore dependency archives
+      uses: ./.github/actions/shared-cache
+      with:
+        path: ${{ github.workspace }}/.vcpkg-binary-cache
+        key: vcpkg-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.flavor }}-${{ hashFiles('.ci-vcpkg/compiler.txt') }}-${{ hashFiles('vcpkg.json') }}-${{ hashFiles('.ci-vcpkg/revision.txt') }}-${{ inputs.flavor == 'msan' && hashFiles('.github/ci/msan/**') || 'standard' }}
+        restore-keys: |
+          vcpkg-v3-${{ runner.os }}-${{ runner.arch }}-${{ inputs.flavor }}-${{ hashFiles('.ci-vcpkg/compiler.txt') }}-

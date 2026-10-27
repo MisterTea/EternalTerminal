@@ -9,13 +9,23 @@ on:
 
 permissions:
   contents: read
+  actions: write
+
+# Keep only the latest commit of each PR; push runs remain independent.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.event.pull_request.number || github.run_id }}
+  cancel-in-progress: ${{ github.event_name == 'pull_request' }}
 
 jobs:
   linux_distros:
     name: build-${{ matrix.distro }}
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     container:
       image: ${{ matrix.container }}
+      options: --privileged
+    env:
+      SHELL: /bin/bash
     strategy:
       fail-fast: true
       max-parallel: 1
@@ -31,6 +41,7 @@ jobs:
                 build-essential \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 debhelper \
                 git \
@@ -43,6 +54,7 @@ jobs:
                 libutempter-dev \
                 ninja-build \
                 pkg-config \
+                procps \
                 protobuf-compiler \
                 tar \
                 unzip \
@@ -54,6 +66,7 @@ jobs:
                 @development-tools \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 gcc \
                 gcc-c++ \
@@ -67,9 +80,69 @@ jobs:
                 pkgconf-pkg-config \
                 protobuf-compiler \
                 protobuf-devel \
+                procps-ng \
                 tar \
                 unzip \
                 zip
+          - distro: rocky-linux
+            container: rockylinux:9
+            install: |
+              dnf install -y dnf-plugins-core epel-release
+              dnf config-manager --set-enabled crb
+              dnf install -y \
+                autoconf \
+                automake \
+                boost-devel \
+                ca-certificates \
+                cmake \
+                ccache \
+                curl-devel \
+                gcc \
+                gcc-c++ \
+                git \
+                gflags-devel \
+                libatomic \
+                libsodium-devel \
+                libtool \
+                libunwind-devel \
+                libutempter-devel \
+                ninja-build \
+                openssl-devel \
+                pkgconf-pkg-config \
+                procps-ng \
+                protobuf-compiler \
+                protobuf-devel \
+                tar \
+                unzip \
+                zip
+          - distro: gentoo
+            container: gentoo/stage3:latest
+            install: |
+              mkdir -p /etc/portage /var/cache/binpkgs /var/cache/distfiles
+              if [ -f /etc/portage/make.conf ]; then
+                printf '%s\n' 'FEATURES="${FEATURES} buildpkg"' 'EMERGE_DEFAULT_OPTS="${EMERGE_DEFAULT_OPTS} --usepkg=y"' >> /etc/portage/make.conf
+              fi
+              if [ ! -f /var/db/repos/gentoo/profiles/repo_name ]; then
+                emerge-webrsync
+              fi
+              emerge --jobs=2 \
+                dev-build/autoconf \
+                dev-build/automake \
+                dev-build/cmake \
+                dev-util/ccache \
+                dev-build/libtool \
+                dev-build/ninja \
+                dev-libs/boost \
+                dev-libs/libsodium \
+                dev-libs/openssl \
+                dev-libs/protobuf \
+                dev-libs/userspace-rcu \
+                dev-util/pkgconf \
+                dev-vcs/git \
+                net-misc/curl \
+                sys-libs/libunwind \
+                sys-libs/libutempter \
+                sys-process/procps
           - distro: archlinux
             container: archlinux:latest
             install: |
@@ -79,6 +152,7 @@ jobs:
                 base-devel \
                 ca-certificates \
                 cmake \
+                ccache \
                 curl \
                 git \
                 jq \
@@ -92,23 +166,97 @@ jobs:
                 openssl \
                 pkgconf \
                 protobuf \
+                procps-ng \
+                tar \
+                unzip \
+                zip
+          - distro: opensuse
+            container: opensuse/tumbleweed:latest
+            install: |
+              zypper --non-interactive install --no-recommends \
+                autoconf \
+                automake \
+                binutils \
+                ca-certificates \
+                cmake \
+                ccache \
+                curl \
+                gcc \
+                gcc-c++ \
+                git \
+                gzip \
+                libcurl-devel \
+                libopenssl-devel \
+                libsodium-devel \
+                libtool \
+                libunwind-devel \
+                ninja \
+                pkgconf \
+                procps \
+                protobuf-devel \
+                /usr/bin/python3 \
                 tar \
                 unzip \
                 zip
     steps:
-      - name: Install dependencies
-        shell: bash
-        run: ${{ matrix.install }}
+      # Minimal distro images need Git before checkout can fetch submodules.
+      # Bootstrap only checkout tools here so Gentoo can still restore its
+      # package cache before installing the full build dependencies.
+      - name: Install checkout tools
+        shell: sh
+        run: |
+          case '${{ matrix.distro }}' in
+            debian)
+              apt-get update
+              DEBIAN_FRONTEND=noninteractive apt-get install -y --no-install-recommends git ca-certificates
+              ;;
+            fedora|rocky-linux)
+              dnf install -y git ca-certificates
+              ;;
+            gentoo)
+              if [ ! -f /var/db/repos/gentoo/profiles/repo_name ]; then
+                emerge-webrsync
+              fi
+              emerge --jobs=2 dev-vcs/git
+              ;;
+            archlinux)
+              pacman -Syu --disable-sandbox --noconfirm --needed git ca-certificates
+              ;;
+            opensuse)
+              zypper --non-interactive install --no-recommends git ca-certificates
+              ;;
+          esac
 
       - uses: actions/checkout@v4
         with:
           submodules: recursive
 
+      - name: Restore Gentoo package cache
+        if: matrix.distro == 'gentoo' && !env.ACT
+        uses: ./.github/actions/shared-cache
+        with:
+          path: |
+            /var/cache/distfiles
+            /var/cache/binpkgs
+            /var/db/repos/gentoo
+          key: gentoo-packages-${{ github.sha }}
+          restore-keys: |
+            gentoo-packages-
+
+      - name: Install dependencies
+        shell: bash
+        run: ${{ matrix.install }}
+
+      - name: Restore dependency compiler cache
+        uses: ./.github/actions/ccache
+        with:
+          key: portability-${{ matrix.distro }}
+
       - name: Generate project files
         shell: bash
         run: |
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -S "${GITHUB_WORKSPACE}" -B "${cmake_build_dir}" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
 
       - name: Build and test
         shell: bash
@@ -116,17 +264,29 @@ jobs:
           cmake_build_dir="${GITHUB_WORKSPACE}/build"
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "${cmake_build_dir}" --parallel "${parallel_level}"
-          ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --output-on-failure
+          ctest --test-dir "${cmake_build_dir}" --parallel "${parallel_level}" --timeout 300 --output-on-failure
 
   freebsd:
     name: build-freebsd
     runs-on: ubuntu-latest
+    timeout-minutes: 120
     env:
       CMAKE_BUILD_DIR: ${{ github.workspace }}/build
     steps:
       - uses: actions/checkout@v4
         with:
           submodules: recursive
+
+      - name: Restore FreeBSD packages
+        if: ${{ !env.ACT }}
+        uses: ./.github/actions/shared-cache
+        with:
+          path: |
+            .ci-cache/pkg
+            .ci-cache/ccache
+          key: freebsd-build-v3-${{ github.sha }}
+          restore-keys: |
+            freebsd-build-v3-
 
       - name: Install act QEMU dependencies
         if: ${{ env.ACT }}
@@ -139,10 +299,16 @@ jobs:
             rsync
           sudo rm -rf /root/work
           sudo ln -s "${GITHUB_WORKSPACE}" /root/work
+          sudo mkdir -p /home/runner/work/EternalTerminal
+          sudo rsync -a --delete \
+            --exclude build \
+            "${GITHUB_WORKSPACE}/" \
+            /home/runner/work/EternalTerminal/EternalTerminal/
 
       - name: Start FreeBSD VM
-        uses: vmactions/freebsd-vm@v1
+        uses: vmactions/freebsd-vm@c46abacb49f09938ca4e1702d15d836285d694cc  # v1.5.9
         with:
+          arch: ${{ env.ACT && 'aarch64' || '' }}
           usesh: true
 
       - name: Expose FreeBSD shell for act
@@ -156,14 +322,29 @@ jobs:
         run: |
           if [ -f /root/work/CMakeLists.txt ]; then
             cd /root/work
+          elif [ -f /home/runner/work/EternalTerminal/EternalTerminal/CMakeLists.txt ]; then
+            cd /home/runner/work/EternalTerminal/EternalTerminal
           else
             cd "${GITHUB_WORKSPACE}"
           fi
 
+          mkdir -p "$(pwd)/.ci-cache/pkg" "$(pwd)/.ci-cache/ccache"
+          export PKG_CACHEDIR="$(pwd)/.ci-cache/pkg"
+          export CCACHE_DIR="$(pwd)/.ci-cache/ccache"
+          export CCACHE_MAXSIZE=500M
+          export CCACHE_COMPRESS=true
+          # Clang PCH caching requires both this sloppiness setting and
+          # -fno-pch-timestamp below: CMake regenerates the wrapper files
+          # with new timestamps even when their contents are unchanged.
+          export CCACHE_SLOPPINESS=pch_defines,time_macros
+
+          # The ccache package is 3.7, which returns stale Clang PCHs from
+          # direct-mode hits after a precompiled header changes.
           pkg install -y \
             autoconf \
             automake \
             ca_root_nss \
+            ccache4 \
             cmake \
             curl \
             git \
@@ -176,7 +357,14 @@ jobs:
             unzip \
             zip
 
-          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
+          cmake -DDISABLE_TELEMETRY=ON -DDISABLE_VCPKG=ON -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_FLAGS="-Xclang -fno-pch-timestamp" -DOPENSSL_ROOT_DIR=/usr/local -DCMAKE_PREFIX_PATH=/usr/local -S "$(pwd)" -B "$(pwd)/build" -GNinja -DCMAKE_BUILD_TYPE=RelWithDebInfo
           parallel_level="${CI_PARALLEL_LEVEL:-4}"
           cmake --build "$(pwd)/build" --parallel "${parallel_level}"
-          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --output-on-failure
+          export SHELL=/bin/sh
+          ctest_status=0
+          ctest --test-dir "$(pwd)/build" --parallel "${parallel_level}" --timeout 300 --output-on-failure || ctest_status=$?
+          # vmactions copies the workspace back after this script. The
+          # RelWithDebInfo tree is several gigabytes and that rsync fails
+          # after a green test run.
+          rm -rf "$(pwd)/build"
+          exit "${ctest_status}"

@@ -1,4 +1,3 @@
-#ifndef WIN32
 #include "UserJumphostHandler.hpp"
 
 #include "ETerminal.pb.h"
@@ -26,8 +25,13 @@ void UserJumphostHandler::run() {
   TerminalUserInfo tui;
   tui.set_id(id);
   tui.set_passkey(passkey);
+#ifdef WIN32
+  tui.set_uid(0);
+  tui.set_gid(0);
+#else
   tui.set_uid(getuid());
   tui.set_gid(getgid());
+#endif
 
   try {
     routerSocketHandler->writePacket(
@@ -50,6 +54,7 @@ void UserJumphostHandler::run() {
     payload = stringToProto<InitialPayload>(initPacket.getPayload());
     break;
   }
+  routerSocketHandler->minimizeKernelBuffering(routerFd);
   // Turn off jumphost
   if (!payload.jumphost()) {
     STFATAL << "Jumphost should be set by the initial client";
@@ -60,19 +65,29 @@ void UserJumphostHandler::run() {
       jumpClientSocketHandler, dstSocketEndpoint, id, passkey));
 
   int connectFailCount = 0;
+  bool connected = false;
+  bool payloadSent = false;
   while (true) {
     try {
       bool fail = true;
-      if (jumpclient->connect()) {
-        jumpclient->writePacket(
-            Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+      // Same rule as TerminalClient: retry connect() only after it fails, and
+      // keep waiting on a socket whose INITIAL_RESPONSE has not arrived.
+      if (!connected) {
+        connected = jumpclient->connect();
+      }
+      if (connected) {
+        if (!payloadSent) {
+          jumpclient->writePacket(
+              Packet(EtPacketType::INITIAL_PAYLOAD, protoToString(payload)));
+          payloadSent = true;
+        }
         fd_set rfd;
         timeval tv;
         for (int a = 0; a < 3; a++) {
           FD_ZERO(&rfd);
           int clientFd = jumpclient->getSocketFd();
           if (clientFd < 0) {
-            sleep(1);
+            std::this_thread::sleep_for(std::chrono::seconds(1));
             continue;
           }
           FD_SET(clientFd, &rfd);
@@ -107,6 +122,7 @@ void UserJumphostHandler::run() {
         if (connectFailCount == 3) {
           throw std::runtime_error("Connect Timeout");
         }
+        continue;
       }
     } catch (const runtime_error& err) {
       LOG(INFO) << "Could not make initial connection to dst server";
@@ -164,7 +180,7 @@ void UserJumphostHandler::run() {
             jumpclient->closeSocketAndMaybeReconnect();
           }
           LOG(INFO) << "Reconnecting, sleep for 3s...";
-          sleep(3);
+          std::this_thread::sleep_for(std::chrono::seconds(3));
           continue;
         } else {
           Packet p;
@@ -203,7 +219,6 @@ void UserJumphostHandler::run() {
     }
   }
   LOG(INFO) << "Jumpclient shutdown";
-  close(routerFd);
+  routerSocketHandler->close(routerFd);
 }
 }  // namespace et
-#endif

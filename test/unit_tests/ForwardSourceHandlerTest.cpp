@@ -134,6 +134,53 @@ TEST_CASE("ForwardSourceHandler stops listening on destruction",
   REQUIRE(socketHandler->stopListeningCalls[0].port() == source.port());
 }
 
+TEST_CASE("ForwardSourceHandler closes remaining sockets on destruction",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+  socketHandler->enqueueAccept(43);
+
+  {
+    ForwardSourceHandler handler(socketHandler, SocketEndpoint(),
+                                 SocketEndpoint());
+    handler.addSocket(123, handler.listen());
+    REQUIRE(handler.listen() == 43);
+    CHECK(socketHandler->closedFds.empty());
+  }
+
+  std::sort(socketHandler->closedFds.begin(), socketHandler->closedFds.end());
+  CHECK(socketHandler->closedFds == std::vector<int>{42, 43});
+  CHECK(socketHandler->stopListeningCalls.size() == 1);
+}
+
+TEST_CASE("ForwardSourceHandler does not close released sockets twice",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  {
+    ForwardSourceHandler handler(socketHandler, SocketEndpoint(),
+                                 SocketEndpoint());
+    int fd = handler.listen();
+    SECTION("Pending socket") { handler.closeUnassignedFd(fd); }
+    SECTION("Assigned socket") {
+      handler.addSocket(123, fd);
+      handler.closeSocket(123);
+    }
+    SECTION("Peer EOF") {
+      handler.addSocket(123, fd);
+      socketHandler->enqueueHasData(true);
+      socketHandler->enqueueRead(0);
+      std::vector<PortForwardData> data;
+      handler.update(&data);
+    }
+  }
+
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
 TEST_CASE("ForwardSourceHandler listen accepts new connections",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
@@ -339,6 +386,89 @@ TEST_CASE("ForwardSourceHandler update ignores transient EAGAIN reads",
   REQUIRE(socketHandler->closedFds.empty());
 }
 
+TEST_CASE("ForwardSourceHandler update yields after a bounded data batch",
+          "[ForwardSourceHandler][issue298]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  int fd = handler.listen();
+  handler.addSocket(123, fd);
+
+  const string chunk(16 * 1024, 'x');
+  for (int i = 0; i < 5; ++i) {
+    socketHandler->enqueueHasData(true);
+    socketHandler->enqueueRead(chunk.size(), chunk);
+  }
+
+  std::vector<PortForwardData> data;
+  handler.update(&data);
+
+  REQUIRE(data.size() == 4);
+  REQUIRE(socketHandler->performedReads.size() == 4);
+}
+
+TEST_CASE("ForwardSourceHandler update reads only ready fds",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  int fd = handler.listen();
+  handler.addSocket(123, fd);
+  socketHandler->enqueueHasData(true);
+  socketHandler->enqueueRead(4, "data");
+  socketHandler->enqueueHasData(false);
+
+  std::vector<PortForwardData> data;
+  set<int> readyFds;
+  handler.update(&data, &readyFds);
+  CHECK(data.empty());
+
+  readyFds.insert(fd);
+  handler.update(&data, &readyFds);
+  REQUIRE(data.size() == 1);
+  CHECK(data[0].buffer() == "data");
+}
+
+TEST_CASE("ForwardSourceHandler listens only on ready fds",
+          "[ForwardSourceHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  socketHandler->setEndpointFds({100});
+  socketHandler->enqueueAccept(42);
+
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(8080);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(9090);
+  ForwardSourceHandler handler(socketHandler, source, destination);
+
+  set<int> readyFds;
+  CHECK(handler.listen(nullptr, &readyFds) == -1);
+  CHECK(socketHandler->acceptCallFds.empty());
+
+  readyFds.insert(100);
+  CHECK(handler.listen(nullptr, &readyFds) == 42);
+}
+
 TEST_CASE("ForwardSourceHandler sendDataOnSocket writes to socket",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
@@ -362,7 +492,7 @@ TEST_CASE("ForwardSourceHandler sendDataOnSocket writes to socket",
   REQUIRE(socketHandler->writes[0] == "test data");
 }
 
-TEST_CASE("ForwardSourceHandler getActiveFds returns all fd types",
+TEST_CASE("ForwardSourceHandler getActiveFds excludes unassigned fds",
           "[ForwardSourceHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
   socketHandler->setEndpointFds({100, 101});
@@ -377,25 +507,22 @@ TEST_CASE("ForwardSourceHandler getActiveFds returns all fd types",
   destination.set_port(9090);
   ForwardSourceHandler handler(socketHandler, source, destination);
 
-  // Accept two connections: assign one, leave other unassigned
-  int fd1 = handler.listen();
-  REQUIRE(fd1 == 42);
-  int fd2 = handler.listen();
-  REQUIRE(fd2 == 43);
+  int assignedFd = handler.listen();
+  REQUIRE(assignedFd == 42);
+  int unassignedFd = handler.listen();
+  REQUIRE(unassignedFd == 43);
 
-  handler.addSocket(123, fd1);  // fd1 (42) moves to socketFdMap
+  handler.addSocket(123, assignedFd);
 
-  // fd2 (43) remains in unassignedFds
+  REQUIRE(handler.hasUnassignedFd(unassignedFd));
   set<int> fds;
   handler.getActiveFds(&fds);
 
-  // Should contain: endpoint fds (100, 101), socketFdMap fd (42),
-  // unassigned fd (43)
   CHECK(fds.count(100) == 1);
   CHECK(fds.count(101) == 1);
-  CHECK(fds.count(42) == 1);
-  CHECK(fds.count(43) == 1);
-  CHECK(fds.size() == 4);
+  CHECK(fds.count(assignedFd) == 1);
+  CHECK(fds.count(unassignedFd) == 0);
+  CHECK(fds.size() == 3);
 }
 
 TEST_CASE("ForwardSourceHandler getActiveFds with no sockets",
@@ -440,4 +567,106 @@ TEST_CASE("ForwardSourceHandler closeSocket closes and removes socket",
 
   REQUIRE(socketHandler->closedFds.size() == 1);
   REQUIRE(socketHandler->closedFds[0] == 42);
+}
+
+TEST_CASE("ForwardSourceHandler caps and expires parked unassigned fds",
+          "[ForwardSourceHandler]") {
+  // Reverse-tunnel sources park accepted fds until the remote peer answers
+  // the destination request; a withholding peer must not exhaust the
+  // process's descriptors.
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(12345);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(54321);
+
+  SECTION("accepts beyond the cap are closed on arrival") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination);
+
+    for (size_t i = 0; i < ForwardSourceHandler::MAX_UNASSIGNED_FDS; ++i) {
+      socketHandler->enqueueAccept(static_cast<int>(1000 + i));
+      REQUIRE(handler.listen() >= 0);
+    }
+    REQUIRE(socketHandler->closedFds.empty());
+
+    socketHandler->enqueueAccept(9999);
+    REQUIRE(handler.listen() == -1);
+    REQUIRE(socketHandler->closedFds.size() == 1);
+    REQUIRE(socketHandler->closedFds[0] == 9999);
+  }
+
+  SECTION("parked fds are closed after the response timeout") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination);
+
+    socketHandler->enqueueAccept(1001);
+    REQUIRE(handler.listen() == 1001);
+    REQUIRE(handler.hasUnassignedFd(1001));
+
+    // update() with no fds ready must not expire a fresh fd.
+    std::vector<PortForwardData> data;
+    handler.update(&data);
+    REQUIRE(handler.hasUnassignedFd(1001));
+    REQUIRE(socketHandler->closedFds.empty());
+
+    // Inject an expired deadline, then verify the next update() reclaims
+    // the fd (the peer never sent its destination response).
+    handler.expireForTest(1001);
+    handler.update(&data);
+    REQUIRE_FALSE(handler.hasUnassignedFd(1001));
+    REQUIRE(socketHandler->closedFds.size() == 1);
+    REQUIRE(socketHandler->closedFds[0] == 1001);
+  }
+}
+
+TEST_CASE("ForwardSourceHandler caps and reaps stalled SOCKS handshakes",
+          "[ForwardSourceHandler]") {
+  // A peer that never completes the SOCKS handshake must not pin fds.
+  SocketEndpoint source;
+  source.set_name("localhost");
+  source.set_port(12346);
+  SocketEndpoint destination;
+  destination.set_name("remote");
+  destination.set_port(54322);
+
+  SECTION("accepts beyond the pending cap are closed on arrival") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination,
+                                 /*alreadyListening=*/false,
+                                 /*socksDynamic=*/true);
+
+    for (size_t i = 0; i < ForwardSourceHandler::MAX_PENDING_SOCKS; ++i) {
+      socketHandler->enqueueAccept(static_cast<int>(2000 + i));
+      SocketEndpoint sockDest;
+      handler.listen(&sockDest);
+    }
+    REQUIRE(socketHandler->closedFds.empty());
+
+    socketHandler->enqueueAccept(4242);
+    SocketEndpoint sockDest;
+    handler.listen(&sockDest);
+    REQUIRE(socketHandler->closedFds == vector<int>{4242});
+  }
+
+  SECTION("stalled handshakes are closed after the deadline") {
+    auto socketHandler = std::make_shared<MockSocketHandler>();
+    socketHandler->setEndpointFds({100});
+    ForwardSourceHandler handler(socketHandler, source, destination,
+                                 /*alreadyListening=*/false,
+                                 /*socksDynamic=*/true);
+
+    socketHandler->enqueueAccept(2001);
+    SocketEndpoint sockDest;
+    handler.listen(&sockDest);
+
+    // listen() advances handshakes, so it applies the expired deadline.
+    handler.reapForTest(2001);
+    handler.listen(&sockDest);
+    REQUIRE(socketHandler->closedFds == vector<int>{2001});
+  }
 }

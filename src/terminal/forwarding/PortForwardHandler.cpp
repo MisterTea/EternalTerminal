@@ -1,31 +1,117 @@
 #include "PortForwardHandler.hpp"
 
+#include <cstdint>
+
+#include "PipeSocketHandler.hpp"
+#include "SshAgentSessionBind.hpp"
+
 namespace et {
+namespace {
+
+#ifdef WIN32
+bool pathsEqual(const string& a, const string& b) {
+  string na = a, nb = b;
+  for (char& c : na) {
+    if (c == '\\') c = '/';
+  }
+  for (char& c : nb) {
+    if (c == '\\') c = '/';
+  }
+  return na == nb;
+}
+#else
+inline bool pathsEqual(const string& a, const string& b) { return a == b; }
+#endif
+
+bool endpointsEqual(const SocketEndpoint& a, const SocketEndpoint& b) {
+  if (a.has_port() != b.has_port()) {
+    return false;
+  }
+  if (a.has_port() && a.port() != b.port()) {
+    return false;
+  }
+  string aName = a.has_name() ? a.name() : "";
+  string bName = b.has_name() ? b.name() : "";
+  return pathsEqual(aName, bName);
+}
+
+bool sourceRequestsEqual(const PortForwardSourceRequest& a,
+                         const SocketEndpoint& source,
+                         const SocketEndpoint& destination) {
+  if (!a.has_source() || !a.has_destination()) {
+    return false;
+  }
+  return endpointsEqual(a.source(), source) &&
+         endpointsEqual(a.destination(), destination);
+}
+
+}  // namespace
+
 PortForwardHandler::PortForwardHandler(
     shared_ptr<SocketHandler> _networkSocketHandler,
-    shared_ptr<SocketHandler> _pipeSocketHandler)
+    shared_ptr<SocketHandler> _pipeSocketHandler, uid_t userid, gid_t groupid)
     : networkSocketHandler(_networkSocketHandler),
-      pipeSocketHandler(_pipeSocketHandler) {}
+      pipeSocketHandler(_pipeSocketHandler),
+      sessionUid(userid),
+      sessionGid(groupid) {}
+
+PortForwardHandler::~PortForwardHandler() {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  socketIdSourceHandlerMap.clear();
+  sourceHandlers.clear();
+  for (const auto& directory : temporaryDirectories) {
+    try {
+      fs::remove(directory);
+    } catch (const fs::filesystem_error& ex) {
+      LOG(WARNING) << "Could not remove forwarding directory: " << ex.what();
+    }
+  }
+}
+
+void PortForwardHandler::prunePendingDestinations() {
+  for (auto it = pendingDestinations.begin();
+       it != pendingDestinations.end();) {
+    const auto handler = it->second.handler.lock();
+    if (!handler || !handler->hasUnassignedFd(it->second.fd)) {
+      it = pendingDestinations.erase(it);
+    } else {
+      ++it;
+    }
+  }
+}
 
 void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
-                                vector<PortForwardData>* dataToSend) {
+                                vector<PortForwardData>* dataToSend,
+                                const set<int>* readyFds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
-    it->update(dataToSend);
-    int fd = it->listen();
+    if (it->update(dataToSend, readyFds)) {
+      ++forwardFdsGeneration;
+    }
+  }
+  // Prune after expiry and before accepts can recycle an expired fd.
+  prunePendingDestinations();
+  for (auto& it : sourceHandlers) {
+    SocketEndpoint destination;
+    int fd = it->listen(&destination, readyFds);
     if (fd >= 0) {
+      const int requestId = nextDestinationRequest;
+      nextDestinationRequest = requestId == INT32_MAX ? 1 : requestId + 1;
+      pendingDestinations[requestId] = PendingDestination{it, fd};
       PortForwardDestinationRequest pfr;
-      *(pfr.mutable_destination()) = it->getDestination();
-      pfr.set_fd(fd);
+      *(pfr.mutable_destination()) = destination;
+      pfr.set_fd(requestId);
       requests->push_back(pfr);
     }
   }
 
   for (auto& it : destinationHandlers) {
-    it.second->update(dataToSend);
+    it.second->update(dataToSend, readyFds);
     if (it.second->getFd() == -1) {
       // Kill the handler and don't update the rest: we'll pick
       // them up later
       destinationHandlers.erase(it.first);
+      ++forwardFdsGeneration;
       break;
     }
   }
@@ -34,6 +120,7 @@ void PortForwardHandler::update(vector<PortForwardDestinationRequest>* requests,
 PortForwardSourceResponse PortForwardHandler::createSource(
     const PortForwardSourceRequest& pfsr, string* sourceName, uid_t userid,
     gid_t groupid) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   try {
     if (pfsr.has_source() && sourceName) {
       throw runtime_error(
@@ -55,6 +142,7 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       string sourceDirectory = mktemp(&sourcePattern[0]);
       FATAL_FAIL(mkdir(&sourceDirectory[0]));
 #endif
+      temporaryDirectories.push_back(sourceDirectory);
       string sourcePath = string(sourceDirectory) + "/sock";
 
       source.set_name(sourcePath);
@@ -73,17 +161,27 @@ PortForwardSourceResponse PortForwardHandler::createSource(
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           networkSocketHandler, source, pfsr.destination()));
       sourceHandlers.push_back(handler);
+      ++forwardFdsGeneration;
       return PortForwardSourceResponse();
     } else {
+      // Perform unlink/bind/listen as the session user so a client-chosen path
+      // cannot delete or chown root-owned files.
+      auto concretePipe =
+          dynamic_pointer_cast<PipeSocketHandler>(pipeSocketHandler);
+      if (concretePipe && userid != static_cast<uid_t>(-1) &&
+          groupid != static_cast<gid_t>(-1)) {
+        concretePipe->listenAsUser(source, userid, groupid);
+        auto handler =
+            shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+                pipeSocketHandler, source, pfsr.destination(), true));
+        sourceHandlers.push_back(handler);
+        ++forwardFdsGeneration;
+        return PortForwardSourceResponse();
+      }
       auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
           pipeSocketHandler, source, pfsr.destination()));
-#ifndef WIN32
-      if (userid >= 0 && groupid >= 0) {
-        FATAL_FAIL(::chmod(source.name().c_str(), S_IRUSR | S_IWUSR | S_IXUSR));
-        FATAL_FAIL(::chown(source.name().c_str(), userid, groupid));
-      }
-#endif
       sourceHandlers.push_back(handler);
+      ++forwardFdsGeneration;
       return PortForwardSourceResponse();
     }
   } catch (const std::runtime_error& ex) {
@@ -93,31 +191,116 @@ PortForwardSourceResponse PortForwardHandler::createSource(
   }
 }
 
+bool PortForwardHandler::removeSource(const PortForwardSourceRequest& pfsr) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  for (auto it = sourceHandlers.begin(); it != sourceHandlers.end(); ++it) {
+    if (!sourceRequestsEqual(pfsr, (*it)->getSource(),
+                             (*it)->getDestination())) {
+      continue;
+    }
+    // Drop socket-id mappings that pointed at this source.
+    for (auto mapIt = socketIdSourceHandlerMap.begin();
+         mapIt != socketIdSourceHandlerMap.end();) {
+      if (mapIt->second == *it) {
+        mapIt = socketIdSourceHandlerMap.erase(mapIt);
+      } else {
+        ++mapIt;
+      }
+    }
+    sourceHandlers.erase(it);
+    ++forwardFdsGeneration;
+    return true;
+  }
+  return false;
+}
+
+PortForwardSourceResponse PortForwardHandler::createSocksSource(
+    const SocketEndpoint& source) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  try {
+    SocketEndpoint unusedDestination;
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, source, unusedDestination, false, true));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
+  }
+}
+
+PortForwardSourceResponse PortForwardHandler::createStdioForward(
+    const SocketEndpoint& destination, int readFd, int writeFd, bool closeFds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  try {
+    auto handler = shared_ptr<ForwardSourceHandler>(new ForwardSourceHandler(
+        networkSocketHandler, destination, readFd, writeFd, closeFds));
+    sourceHandlers.push_back(handler);
+    ++forwardFdsGeneration;
+    return PortForwardSourceResponse();
+  } catch (const std::runtime_error& ex) {
+    PortForwardSourceResponse response;
+    response.set_error(ex.what());
+    return response;
+  }
+}
+
+void PortForwardHandler::setSshAgentSessionBinds(const string& agentSocketPath,
+                                                 const vector<string>& binds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
+  sshAgentSocketPath = agentSocketPath;
+  sshAgentSessionBinds = binds;
+}
+
 PortForwardDestinationResponse PortForwardHandler::createDestination(
     const PortForwardDestinationRequest& pfdr) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   int fd = -1;
   bool isTcp = pfdr.destination().has_port();
   if (pfdr.destination().has_port()) {
-    // Try ipv6 first
-    SocketEndpoint ipv6Localhost;
-    ipv6Localhost.set_name("::1");
-    ipv6Localhost.set_port(pfdr.destination().port());
+    if (pfdr.destination().has_name() && !pfdr.destination().name().empty()) {
+      fd = networkSocketHandler->connect(pfdr.destination());
+    } else {
+      // Try ipv6 first
+      SocketEndpoint ipv6Localhost;
+      ipv6Localhost.set_name("::1");
+      ipv6Localhost.set_port(pfdr.destination().port());
 
-    fd = networkSocketHandler->connect(ipv6Localhost);
-    if (fd == -1) {
-      SocketEndpoint ipv4Localhost;
-      ipv4Localhost.set_name("127.0.0.1");
-      ipv4Localhost.set_port(pfdr.destination().port());
-      // Try ipv4 next
-      fd = networkSocketHandler->connect(ipv4Localhost);
+      fd = networkSocketHandler->connect(ipv6Localhost);
+      if (fd == -1) {
+        SocketEndpoint ipv4Localhost;
+        ipv4Localhost.set_name("127.0.0.1");
+        ipv4Localhost.set_port(pfdr.destination().port());
+        // Try ipv4 next
+        fd = networkSocketHandler->connect(ipv4Localhost);
+      }
     }
   } else {
-    fd = pipeSocketHandler->connect(pfdr.destination());
+    // Connect as the session user so root etserver cannot open privileged
+    // sockets (e.g. docker.sock) on behalf of an unprivileged client.
+    auto concretePipe =
+        dynamic_pointer_cast<PipeSocketHandler>(pipeSocketHandler);
+    if (concretePipe && sessionUid != static_cast<uid_t>(-1) &&
+        sessionGid != static_cast<gid_t>(-1)) {
+      fd = concretePipe->connectAsUser(pfdr.destination(), sessionUid,
+                                       sessionGid);
+    } else {
+      fd = pipeSocketHandler->connect(pfdr.destination());
+    }
   }
   PortForwardDestinationResponse pfdresponse;
   pfdresponse.set_clientfd(pfdr.fd());
+  bool bindAgent = !isTcp && !sshAgentSessionBinds.empty() &&
+                   pathsEqual(pfdr.destination().name(), sshAgentSocketPath);
   if (fd == -1) {
     pfdresponse.set_error(strerror(GetErrno()));
+  } else if (bindAgent &&
+             !sendAgentSessionBinds(pipeSocketHandler.get(), fd,
+                                    sshAgentSocketPath, sshAgentSessionBinds)) {
+    pipeSocketHandler->close(fd);
+    pfdresponse.set_error("could not send ssh agent session binding");
   } else {
     int socketId = rand();
     int attempts = 0;
@@ -131,10 +314,13 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
     }
     if (!pfdresponse.has_error()) {
       LOG(INFO) << "Created socket/fd pair: " << socketId << ' ' << fd;
-      destinationHandlers[socketId] =
-          shared_ptr<ForwardDestinationHandler>(new ForwardDestinationHandler(
-              isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId));
+      destinationHandlers[socketId] = make_unique<ForwardDestinationHandler>(
+          isTcp ? networkSocketHandler : pipeSocketHandler, fd, socketId,
+          bindAgent ? make_unique<AgentSessionBindReplies>(
+                          sshAgentSessionBinds.size(), sshAgentSocketPath)
+                    : nullptr);
       pfdresponse.set_socketid(socketId);
+      ++forwardFdsGeneration;
     }
   }
   return pfdresponse;
@@ -142,6 +328,7 @@ PortForwardDestinationResponse PortForwardHandler::createDestination(
 
 void PortForwardHandler::handlePacket(const Packet& packet,
                                       shared_ptr<Connection> connection) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   switch (TerminalPacketType(packet.getHeader())) {
     case TerminalPacketType::PORT_FORWARD_DATA: {
       PortForwardData pwd = stringToProto<PortForwardData>(packet.getPayload());
@@ -151,31 +338,26 @@ void PortForwardHandler::handlePacket(const Packet& packet,
         if (it == destinationHandlers.end()) {
           LOG(WARNING) << "Got data for a socket id that has already closed: "
                        << pwd.socketid();
+        } else if (pwd.half_close()) {
+          LOG(INFO) << "Port forward socket write-shutdown: " << pwd.socketid();
+          it->second->shutdownWrite();
+        } else if (pwd.has_closed() || pwd.has_error()) {
+          LOG(INFO) << "Port forward socket "
+                    << (pwd.has_closed() ? "closed: " : "errored: ")
+                    << pwd.socketid();
+          destinationHandlers.erase(it);
+          ++forwardFdsGeneration;
         } else {
-          if (pwd.has_closed()) {
-            LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-            it->second->close();
-            destinationHandlers.erase(it);
-          } else if (pwd.has_error()) {
-            // TODO: Probably need to do something better here
-            LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-            it->second->close();
-            destinationHandlers.erase(it);
-          } else {
-            it->second->write(pwd.buffer());
-          }
+          it->second->write(pwd.buffer());
         }
+      } else if (pwd.has_closed() || pwd.has_error()) {
+        LOG(INFO) << "Port forward socket "
+                  << (pwd.has_closed() ? "closed: " : "errored: ")
+                  << pwd.socketid();
+        closeSourceSocketId(pwd.socketid());
       } else {
-        if (pwd.has_closed()) {
-          LOG(INFO) << "Port forward socket closed: " << pwd.socketid();
-          closeSourceSocketId(pwd.socketid());
-        } else if (pwd.has_error()) {
-          LOG(INFO) << "Port forward socket errored: " << pwd.socketid();
-          closeSourceSocketId(pwd.socketid());
-        } else {
-          VLOG(1) << "Got data for source socket: " << pwd.socketid();
-          sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
-        }
+        VLOG(1) << "Got data for source socket: " << pwd.socketid();
+        sendDataToSourceOnSocket(pwd.socketid(), pwd.buffer());
       }
       break;
     }
@@ -194,14 +376,43 @@ void PortForwardHandler::handlePacket(const Packet& packet,
     case TerminalPacketType::PORT_FORWARD_DESTINATION_RESPONSE: {
       PortForwardDestinationResponse pfdr =
           stringToProto<PortForwardDestinationResponse>(packet.getPayload());
+      const auto pending = pendingDestinations.find(pfdr.clientfd());
+      const auto sourceHandler = pending == pendingDestinations.end()
+                                     ? nullptr
+                                     : pending->second.handler.lock();
+      const int sourceFd =
+          pending == pendingDestinations.end() ? -1 : pending->second.fd;
+      if (pending != pendingDestinations.end()) {
+        pendingDestinations.erase(pending);
+      }
+      if (!sourceHandler || !sourceHandler->hasUnassignedFd(sourceFd)) {
+        // The source expired or was removed. Close any destination the peer
+        // opened rather than attach it to a reused fd.
+        LOG(INFO) << "Ignoring stale destination response " << pfdr.clientfd();
+        if (!pfdr.has_error() && pfdr.has_socketid() && connection) {
+          PortForwardData closed;
+          closed.set_socketid(pfdr.socketid());
+          closed.set_sourcetodestination(true);
+          closed.set_closed(true);
+          connection->writePacket(Packet(TerminalPacketType::PORT_FORWARD_DATA,
+                                         protoToString(closed)));
+        }
+        break;
+      }
       if (pfdr.has_error()) {
         LOG(INFO) << "Could not connect to server through tunnel: "
                   << pfdr.error();
-        closeSourceFd(pfdr.clientfd());
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(sourceFd, false);
+        }
+        closeSourceFd(sourceFd);
       } else {
         LOG(INFO) << "Received socket/fd map from server: " << pfdr.socketid()
                   << " " << pfdr.clientfd();
-        addSourceSocketId(pfdr.socketid(), pfdr.clientfd());
+        addSourceSocketId(pfdr.socketid(), sourceFd);
+        for (auto& handler : sourceHandlers) {
+          handler->finishSocksConnect(sourceFd, true);
+        }
       }
       break;
     }
@@ -212,6 +423,7 @@ void PortForwardHandler::handlePacket(const Packet& packet,
 }
 
 void PortForwardHandler::closeSourceFd(int fd) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->hasUnassignedFd(fd)) {
       it->closeUnassignedFd(fd);
@@ -224,10 +436,12 @@ void PortForwardHandler::closeSourceFd(int fd) {
 }
 
 void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& it : sourceHandlers) {
     if (it->hasUnassignedFd(sourceFd)) {
       it->addSocket(socketId, sourceFd);
       socketIdSourceHandlerMap[socketId] = it;
+      ++forwardFdsGeneration;
       return;
     }
   }
@@ -237,6 +451,7 @@ void PortForwardHandler::addSourceSocketId(int socketId, int sourceFd) {
 }
 
 void PortForwardHandler::closeSourceSocketId(int socketId) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
     STERROR << "Tried to close a socket id that doesn't exist";
@@ -244,9 +459,11 @@ void PortForwardHandler::closeSourceSocketId(int socketId) {
   }
   it->second->closeSocket(socketId);
   socketIdSourceHandlerMap.erase(socketId);
+  ++forwardFdsGeneration;
 }
 
 void PortForwardHandler::getForwardFds(set<int>* fds) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   for (auto& handler : sourceHandlers) {
     handler->getActiveFds(fds);
   }
@@ -258,8 +475,18 @@ void PortForwardHandler::getForwardFds(set<int>* fds) {
   }
 }
 
+bool PortForwardHandler::hasActiveStdioForward() const {
+  for (const auto& handler : sourceHandlers) {
+    if (handler->stdioBridgeOpen()) {
+      return true;
+    }
+  }
+  return false;
+}
+
 void PortForwardHandler::sendDataToSourceOnSocket(int socketId,
                                                   const string& data) {
+  lock_guard<recursive_mutex> guard(handlerMutex);
   auto it = socketIdSourceHandlerMap.find(socketId);
   if (it == socketIdSourceHandlerMap.end()) {
     STERROR << "Tried to send data on a socket id that doesn't exist: "

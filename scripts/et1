@@ -1,0 +1,4 @@
+#!/bin/sh
+# Cursor remote-SSH stand-in. Close the remote session on client hangup, and
+# drop it if the client stays disconnected for more than one week.
+exec et --close-on-hangup --disconnect-timeout=10080 "$@"

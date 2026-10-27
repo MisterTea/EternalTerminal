@@ -1,3 +1,9 @@
+et (7.1.0-##DISTRO##1) ##DISTRO##; urgency=medium
+
+* https://github.com/MisterTea/EternalTerminal/releases/tag/et-v7.1.0
+
+-- Jason Gauci <jgmath2000@gmail.com>  Tue, 27 Oct 2026 13:26:00 -0500
+
 et (7.0.0-##DISTRO##1) ##DISTRO##; urgency=medium
 
 * https://github.com/MisterTea/EternalTerminal/releases/tag/et-v7.0.0

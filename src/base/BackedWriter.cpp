@@ -1,5 +1,7 @@
 #include "BackedWriter.hpp"
 
+#include <cstdint>
+
 namespace et {
 BackedWriter::BackedWriter(std::shared_ptr<SocketHandler> socketHandler_,
                            std::shared_ptr<CryptoHandler> cryptoHandler_,
@@ -89,7 +91,9 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 
   int64_t messagesToRecover = sequenceNumber - lastValidSequenceNumber;
   if (messagesToRecover < 0) {
-    STFATAL << "Something went really wrong, client is ahead of server";
+    // Attacker-controlled sequence numbers must not abort the process.
+    throw std::runtime_error(
+        "Invalid recovery sequence: client is ahead of server");
   }
   if (messagesToRecover == 0) {
     return vector<std::string>();
@@ -112,5 +116,19 @@ vector<std::string> BackedWriter::recover(int64_t lastValidSequenceNumber) {
 void BackedWriter::revive(int newSocketFd) {
   socketFd = newSocketFd;
   disconnectedBytes = 0;
+  // Trim as a connected write would, so a quick reconnect and disconnect
+  // cannot stack another disconnect buffer on an untrimmed backup.
+  while (backupSize > MAX_BACKUP_BYTES) {
+    backupSize -= backupBuffer.back().length();
+    backupBuffer.pop_back();
+  }
+}
+
+void BackedWriter::reset(const string& salt) {
+  backupBuffer.clear();
+  backupSize = 0;
+  disconnectedBytes = 0;
+  sequenceNumber = 0;
+  cryptoHandler->rekey(salt);
 }
 }  // namespace et

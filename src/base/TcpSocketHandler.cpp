@@ -1,10 +1,25 @@
 #include "TcpSocketHandler.hpp"
 
+#include "RawSocketUtils.hpp"
+
 namespace et {
-TcpSocketHandler::TcpSocketHandler() {}
+TcpSocketHandler::TcpSocketHandler(int _listenBacklog)
+    : listenBacklog(_listenBacklog > 0 ? _listenBacklog
+                                       : DEFAULT_LISTEN_BACKLOG) {
+  if (_listenBacklog <= 0) {
+    LOG(WARNING) << "Ignoring listen backlog " << _listenBacklog << ", using "
+                 << DEFAULT_LISTEN_BACKLOG;
+  }
+}
+
+string TcpSocketHandler::getLastConnectError() {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
+  return lastConnectError;
+}
 
 int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   lock_guard<std::recursive_mutex> guard(globalMutex);
+  lastConnectError.clear();
   int sockFd = -1;
   addrinfo* results = NULL;
   addrinfo* p = NULL;
@@ -20,14 +35,15 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
   std::string portname = std::to_string(endpoint.port());
   std::string hostname = endpoint.name();
 
-#ifndef WIN32
-  // (re)initialize the DNS system
-  ::res_init();
-#endif
+  refreshResolver();
   int rc = getaddrinfo(hostname.c_str(), portname.c_str(), &hints, &results);
 
+  if (rc != 0) {
+    lastConnectError = string("Could not resolve hostname ") + hostname + ": " +
+                       addressError(rc);
+  }
   if (rc == EAI_NONAME) {
-    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << gai_strerror(rc);
+    VLOG_EVERY_N(1, 10) << "Cannot resolve hostname: " << addressError(rc);
     if (results) {
       freeaddrinfo(results);
     }
@@ -36,7 +52,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
 
   if (rc != 0) {
     LOG(INFO) << "Error getting address info for " << endpoint << ": " << rc
-              << " (" << gai_strerror(rc) << ")";
+              << " (" << addressError(rc) << ")";
     if (results) {
       freeaddrinfo(results);
     }
@@ -58,6 +74,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
     if (::connect(sockFd, p->ai_addr, p->ai_addrlen) == -1 &&
         GetErrno() != EINPROGRESS && GetErrno() != EWOULDBLOCK) {
       auto localErrno = GetErrno();
+      lastConnectError = strerror(localErrno);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -66,30 +83,18 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
                   << strerror(localErrno);
       }
       setBlocking(sockFd, true);
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
       sockFd = -1;
       continue;
     }
-    fd_set fdset;
-    FD_ZERO(&fdset);
-    FD_SET(sockFd, &fdset);
-    timeval tv;
-    tv.tv_sec = 3; /* 3 second timeout */
-    tv.tv_usec = 0;
-    VLOG(4) << "Before selecting sockFd";
-    select(sockFd + 1, NULL, &fdset, NULL, &tv);
-
-    if (FD_ISSET(sockFd, &fdset)) {
-      VLOG(4) << "sockFd " << sockFd << " is selected";
+    if (isSocketWritable(sockFd, 3)) {
+      VLOG(4) << "sockFd " << sockFd << " is writable";
       int so_error;
       socklen_t len = sizeof so_error;
 
       FATAL_FAIL(
           ::getsockopt(sockFd, SOL_SOCKET, SO_ERROR, (char*)&so_error, &len));
+      so_error = TranslateSocketError(so_error);
 
       if (so_error == 0) {
         if (p->ai_canonname) {
@@ -103,6 +108,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
         setBlocking(sockFd, true);
         break;  // if we get here, we must have connected successfully
       } else {
+        lastConnectError = strerror(so_error);
         if (p->ai_canonname) {
           LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                     << so_error << " " << strerror(so_error);
@@ -111,16 +117,13 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
                     << " " << strerror(so_error);
         }
         setBlocking(sockFd, true);
-#ifdef _MSC_VER
-        FATAL_FAIL(::closesocket(sockFd));
-#else
-        FATAL_FAIL(::close(sockFd));
-#endif
+        FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
         sockFd = -1;
         continue;
       }
     } else {
       auto localErrno = GetErrno();
+      lastConnectError = strerror(ETIMEDOUT);
       if (p->ai_canonname) {
         LOG(INFO) << "Error connecting with " << p->ai_canonname << ": "
                   << localErrno << " " << strerror(localErrno);
@@ -128,11 +131,7 @@ int TcpSocketHandler::connect(const SocketEndpoint& endpoint) {
         LOG(INFO) << "Error connecting to " << endpoint << ": " << localErrno
                   << " " << strerror(localErrno);
       }
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
       sockFd = -1;
       continue;
     }
@@ -156,7 +155,7 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
     STFATAL << "Tried to listen twice on the same port";
   }
 
-  addrinfo hints, *servinfo, *p;
+  addrinfo hints, *servinfo = NULL, *p;
   int rc;
 
   memset(&hints, 0, sizeof hints);
@@ -172,8 +171,10 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
 
   if ((rc = getaddrinfo(bindIp, portname.c_str(), &hints, &servinfo)) != 0) {
     STERROR << "Error getting address info for " << port << ": " << rc << " ("
-            << gai_strerror(rc) << ")";
-    exit(1);
+            << addressError(rc) << ")";
+    throw std::runtime_error(
+        std::string("Failed to resolve address for port ") +
+        std::to_string(port));
   }
 
   set<int> serverSockets;
@@ -203,8 +204,14 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       // interfaces.  We will create another socket object for IPV4
       // if it doesn't already exist.
       int flag = 1;
-      FATAL_FAIL(setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
-                            sizeof(int)));
+      if (setsockopt(sockFd, IPPROTO_IPV6, IPV6_V6ONLY, (char*)&flag,
+                     sizeof(int)) == -1) {
+        auto localErrno = GetErrno();
+        LOG(INFO) << "Unable to configure IPv6 listener: " << localErrno << " "
+                  << strerror(localErrno) << " (continuing)";
+        RawSocketUtils::closeSocket(sockFd);
+        continue;
+      }
     }
 
     if (::bind(sockFd, p->ai_addr, p->ai_addrlen) == -1) {
@@ -220,30 +227,37 @@ set<int> TcpSocketHandler::listen(const SocketEndpoint& endpoint) {
       oss << "Error binding port " << port << ": " << localErrno << " "
           << strerror(localErrno);
       string s = oss.str();
-#ifdef _MSC_VER
-      FATAL_FAIL(::closesocket(sockFd));
-#else
-      FATAL_FAIL(::close(sockFd));
-#endif
-      throw std::runtime_error(s.c_str());
+      FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
+      LOG(INFO) << s << " (continuing for other families)";
+      continue;
     }
 
     // Listen
-    FATAL_FAIL(::listen(sockFd, 32));
+    if (::listen(sockFd, listenBacklog) == -1) {
+      auto localErrno = GetErrno();
+      LOG(INFO) << "Unable to listen on family " << p->ai_family << ": "
+                << localErrno << " " << strerror(localErrno) << " (continuing)";
+      RawSocketUtils::closeSocket(sockFd);
+      continue;
+    }
     LOG(INFO) << "Listening on "
               << inet_ntoa(((sockaddr_in*)p->ai_addr)->sin_addr) << ":" << port
               << "/" << p->ai_family << "/" << p->ai_socktype << "/"
-              << p->ai_protocol;
+              << p->ai_protocol << " with backlog " << listenBacklog;
 
     // if we get here, we must have connected successfully
     serverSockets.insert(sockFd);
   }
 
   if (serverSockets.empty()) {
-    STFATAL << "Could not bind to any interface!";
+    if (servinfo) freeaddrinfo(servinfo);
+    throw std::runtime_error(
+        std::string("Could not bind to any interface for port ") +
+        std::to_string(port));
   }
 
   portServerSockets[port] = serverSockets;
+  freeaddrinfo(servinfo);
   return serverSockets;
 }
 
@@ -268,11 +282,7 @@ void TcpSocketHandler::stopListening(const SocketEndpoint& endpoint) {
   }
   auto& serverSockets = it->second;
   for (int sockFd : serverSockets) {
-#ifdef _MSC_VER
-    FATAL_FAIL(::closesocket(sockFd));
-#else
-    FATAL_FAIL(::close(sockFd));
-#endif
+    FATAL_FAIL(RawSocketUtils::closeSocket(sockFd));
   }
   portServerSockets.erase(it);
 }
@@ -285,12 +295,17 @@ void TcpSocketHandler::initSocket(int fd) {
         setsockopt(fd, IPPROTO_TCP, TCP_NODELAY, (char*)&flag, sizeof(int)));
   }
   {
-    // Set linger if possible
+    // Linger is disabled deliberately. With l_onoff=1, closing a socket that
+    // still has unacknowledged data blocks in ::close() for the full l_linger
+    // seconds -- and UnixSocketHandler::close() calls it while holding the
+    // process-wide globalMutex, so one connection tearing down freezes every
+    // thread in etserver, terminal sessions included.
     struct linger so_linger;
-    so_linger.l_onoff = 1;
+    so_linger.l_onoff = 0;
     so_linger.l_linger = 5;
     FATAL_FAIL_UNLESS_EINVAL(setsockopt(
         fd, SOL_SOCKET, SO_LINGER, (const char*)&so_linger, sizeof so_linger));
   }
 }
+
 }  // namespace et

@@ -1,0 +1,305 @@
+#include "HtmTestHelpers.hpp"
+#include "MultiplexerState.hpp"
+#include "TestHeaders.hpp"
+
+using namespace et;
+using namespace et::htmtest;
+
+TEST_CASE("MultiplexerState starts with one session, window, and pane",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  REQUIRE(mux.numPanes() == 1);
+  REQUIRE(mux.activeSessionId() != 0);
+  REQUIRE(mux.activeWindowId() == 0);
+  REQUIRE(mux.activePaneId() == 0);
+  string layout = mux.dumpLayout(mux.activeWindowId(), false);
+  REQUIRE(layout.find("x") != string::npos);
+  mux.resizePaneDir(mux.activePaneId(), 'L', 1);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState dumpAllPanesText lists the first pane",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+  REQUIRE(dump.find("pane %") != string::npos);
+  REQUIRE(dump.find("window @") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState dumpAllPanesText parses @affinities groups",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t sid = mux.activeSessionId();
+  mux.setUserOption(' ', sid, "@affinities", "2,1,pty-guid;style=fs 4");
+  string dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[4]]") != string::npos);
+
+  string encoded = "a_312c322033";  // hex of "1,2 3"
+  mux.setUserOption(' ', sid, "@affinities", encoded);
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312C322033");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: [[1,2],[3]]") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_312");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+
+  mux.setUserOption(' ', sid, "@affinities", "a_30zz");
+  dump = mux.dumpAllPanesText();
+  REQUIRE(dump.find("# affinities: []") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState listPanes treats 0 as a real window id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p0 = mux.activePaneId();
+  uint32_t p1 = mux.splitWindow(p0, false, "");
+  REQUIRE(mux.activeWindowId() == 0);
+  string fromWindow = mux.listPanes("#{pane_id}", 0);
+  REQUIRE(fromWindow.find("%" + to_string(p0)) != string::npos);
+  REQUIRE(fromWindow.find("%" + to_string(p1)) != string::npos);
+  string fromPane = mux.listPanes("#{pane_id}", p1);
+  REQUIRE(fromPane.find("%" + to_string(p1)) != string::npos);
+  string fallback = mux.listPanes("#{pane_id}", 99);
+  REQUIRE(fallback.find("%" + to_string(p0)) != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState displayFormat treats 0 as a real id",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(), 0,
+                            MultiplexerState::kUnspecifiedId) == "@0");
+  REQUIRE(mux.displayFormat("#{pane_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId, 0) == "%0");
+  REQUIRE(mux.displayFormat("#{window_id}", mux.activeSessionId(),
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "@0");
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState split separators and edge resize match tmux",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  mux.setClientSize(80, 24);
+  uint32_t left = mux.activePaneId();
+  uint32_t right = mux.splitWindow(left, false, "");
+  string before = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                                mux.activeWindowId());
+  REQUIRE(before.find("%" + to_string(left) + " 40 24") != string::npos);
+  REQUIRE(before.find("%" + to_string(right) + " 39 24") != string::npos);
+  REQUIRE(mux.dumpLayout(mux.activeWindowId(), false) ==
+          "8205,80x24,0,0{40x24,0,0,0,39x24,41,0,1}");
+
+  mux.resizePaneDir(right, 'R', 3);
+  string after = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                               mux.activeWindowId());
+  REQUIRE(after.find("%" + to_string(left) + " 43 24") != string::npos);
+  REQUIRE(after.find("%" + to_string(right) + " 36 24") != string::npos);
+  REQUIRE(mux.dumpLayout(mux.activeWindowId(), false) ==
+          "9fa5,80x24,0,0{43x24,0,0,0,36x24,44,0,1}");
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState absolute resize-pane on splits matches tmux",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  mux.setClientSize(124, 40);
+  uint32_t left = mux.activePaneId();
+  uint32_t right = mux.splitWindow(left, false, "");
+  // Odd content width (123 = 124 - separator): default remainder is on the
+  // left. Ghostty then sends absolute -x/-y for each follower; tmux honors
+  // those, and so must we.
+  mux.resizePaneAbsolute(left, 61, 40);
+  mux.resizePaneAbsolute(right, 62, 40);
+  string panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                               mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 61 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 62 40") != string::npos);
+
+  mux.resizePaneAbsolute(left, 70, 40);
+  panes = mux.listPanes("#{pane_id} #{pane_width} #{pane_height}",
+                        mux.activeWindowId());
+  REQUIRE(panes.find("%" + to_string(left) + " 70 40") != string::npos);
+  REQUIRE(panes.find("%" + to_string(right) + " 53 40") != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState splits, nested splits, windows, and close",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t pane1 = mux.activePaneId();
+  uint32_t pane2 = mux.splitWindow(pane1, true, "");
+  REQUIRE(mux.numPanes() == 2);
+  uint32_t pane3 = mux.splitWindow(pane1, true, "");
+  REQUIRE(mux.numPanes() == 3);
+  uint32_t pane4 = mux.splitWindow(pane2, false, "");
+  REQUIRE(mux.numPanes() == 4);
+  string layout = mux.dumpLayout(mux.activeWindowId(), false);
+  REQUIRE(layout.find("{") != string::npos);
+  REQUIRE(layout.find("[") != string::npos);
+
+  uint32_t win2 = mux.newWindow("two", "");
+  REQUIRE(mux.hasWindow(win2));
+  mux.selectWindow(win2);
+  REQUIRE(mux.activeWindowId() == win2);
+
+  mux.closePane(pane4);
+  mux.closePane(pane3);
+  mux.closePane(pane2);
+  mux.closeWindow(win2);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState sessions rename attach and list",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t extra = mux.newSession("other");
+  REQUIRE(mux.hasSession(extra));
+  mux.renameSession(extra, "renamed");
+  mux.attachSession(extra);
+  REQUIRE(mux.activeSessionId() == extra);
+  string listed = mux.listSessions("#{session_id} #{session_name}");
+  REQUIRE(listed.find("renamed") != string::npos);
+  mux.closeSession(extra);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState zoom and capture", "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t pane = mux.activePaneId();
+  uint32_t split = mux.splitWindow(pane, false, "");
+  mux.zoomToggle(split);
+  string visible = mux.dumpLayout(mux.activeWindowId(), true);
+  REQUIRE(visible.find(to_string(split)) != string::npos);
+  mux.zoomToggle(split);
+#ifdef WIN32
+  mux.sendKeys(split, "echo MUX_ECHO_99\r\n");
+#else
+  mux.sendKeys(split, "printf 'MUX_ECHO_99\\n'\n");
+#endif
+  bool captured = waitUntil(
+      [&]() {
+        mux.pollOutput();
+        if (!mux.hasPane(split)) {
+          return false;
+        }
+        return mux.capturePane(split, false, false, -2000, -1, true, true)
+                   .find("MUX_ECHO_99") != string::npos;
+      },
+      8000);
+#ifdef WIN32
+  if (!captured) {
+    SKIP(
+        "The Windows ConPTY host did not capture command output on this "
+        "Windows build");
+  }
+#endif
+  REQUIRE(captured);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState swap-pane exchanges layout order",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t p2 = mux.splitWindow(p1, false, "");
+  string before = mux.listPanes("#{pane_id}", mux.activeWindowId());
+  REQUIRE(before.find("%" + to_string(p1)) < before.find("%" + to_string(p2)));
+  mux.swapPanes(p1, p2);
+  string after = mux.listPanes("#{pane_id}", mux.activeWindowId());
+  REQUIRE(after.find("%" + to_string(p2)) < after.find("%" + to_string(p1)));
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState move-pane join break and unlink",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t w1 = mux.activeWindowId();
+  uint32_t p2 = mux.splitWindow(p1, true, "");
+  uint32_t w2 = mux.newWindow("two", "");
+  uint32_t p3 = mux.activePaneId();
+  mux.movePane(p2, p3, false, false);
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  REQUIRE(mux.hasPane(p3));
+  REQUIRE(mux.hasWindow(w1));
+  mux.selectWindow(w1);
+  REQUIRE(mux.activePaneId() == p1);
+  string destLayout = mux.dumpLayout(w2, false);
+  REQUIRE(destLayout.find("," + to_string(p2)) != string::npos);
+  REQUIRE(destLayout.find("," + to_string(p3)) != string::npos);
+  REQUIRE(mux.dumpLayout(w1, false).find("," + to_string(p2)) == string::npos);
+
+  uint32_t broken = mux.breakPane(p2);
+  REQUIRE(broken != w2);
+  REQUIRE(mux.hasWindow(broken));
+  REQUIRE(mux.dumpLayout(broken, false).find("," + to_string(p2)) !=
+          string::npos);
+  REQUIRE(mux.dumpLayout(w2, false).find("," + to_string(p2)) == string::npos);
+
+  mux.closeWindow(broken);
+  REQUIRE(!mux.hasWindow(broken));
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState move last pane closes the source window",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t p1 = mux.activePaneId();
+  uint32_t w1 = mux.activeWindowId();
+  uint32_t w2 = mux.newWindow("two", "");
+  uint32_t p2 = mux.activePaneId();
+  mux.movePane(p1, p2, true, true);
+  REQUIRE(!mux.hasWindow(w1));
+  REQUIRE(mux.hasPane(p1));
+  REQUIRE(mux.hasPane(p2));
+  string layout = mux.dumpLayout(w2, false);
+  REQUIRE(layout.find("," + to_string(p1)) != string::npos);
+  REQUIRE(layout.find("," + to_string(p2)) != string::npos);
+  mux.stopAll();
+}
+
+TEST_CASE("MultiplexerState user options persist on session and pane",
+          "[Htm][MultiplexerState]") {
+  skipIfThreadSanitizer();
+  MultiplexerState mux;
+  uint32_t sid = mux.activeSessionId();
+  uint32_t pane = mux.activePaneId();
+  mux.setUserOption(' ', sid, "@iterm2_id", "guid-1");
+  REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id") == "guid-1");
+  REQUIRE(mux.displayFormat("#{@iterm2_id}", sid,
+                            MultiplexerState::kUnspecifiedId,
+                            MultiplexerState::kUnspecifiedId) == "guid-1");
+  mux.setUserOption('p', pane, "@uservars", "a=b");
+  REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b");
+  mux.setUserOption('p', pane, "@uservars", ",c=d", true);
+  REQUIRE(mux.getUserOption('p', pane, "@uservars") == "a=b,c=d");
+  mux.unsetUserOption(' ', sid, "@iterm2_id");
+  REQUIRE(mux.getUserOption(' ', sid, "@iterm2_id").empty());
+  mux.setUserOption(' ', sid, "status", "off");
+  REQUIRE(mux.getUserOption(' ', sid, "status").empty());
+  mux.stopAll();
+}

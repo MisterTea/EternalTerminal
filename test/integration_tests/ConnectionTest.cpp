@@ -1,3 +1,6 @@
+#include <atomic>
+#include <chrono>
+
 #include "ClientConnection.hpp"
 #include "Connection.hpp"
 #include "FlakySocketHandler.hpp"
@@ -60,7 +63,7 @@ class Collector {
         lock_guard<std::recursive_mutex> guard(collectorMutex);
         done = true;
       }
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
       if (lastSecond <= time(NULL) - 5) {
         lock_guard<std::recursive_mutex> guard(collectorMutex);
         lastSecond = time(NULL);
@@ -97,7 +100,7 @@ class Collector {
 
   string read() {
     while (!hasData()) {
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
     }
     return pop();
   }
@@ -130,7 +133,7 @@ void listenFn(bool* stopListening, int serverFd,
     if (serverConnection->getSocketHandler()->hasData(serverFd)) {
       serverConnection->acceptNewConnection(serverFd);
     }
-    ::usleep(10 * 1000);
+    testSleepMicros(10 * 1000);
   }
 }
 
@@ -161,7 +164,7 @@ void readWriteTest(const string& clientId,
                    SocketEndpoint endpoint) {
   serverConnection->addClientKey(clientId, CRYPTO_KEY);
   // Wait for server to spin up
-  ::usleep(1000 * 1000);
+  testSleepMicros(1000 * 1000);
 
   shared_ptr<ClientConnection> clientConnection(new ClientConnection(
       clientSocketHandler, endpoint, clientId, CRYPTO_KEY));
@@ -171,7 +174,7 @@ void readWriteTest(const string& clientId,
         break;
       }
       LOG(INFO) << "Connection failed, retrying...";
-      ::usleep(1000 * 1000);
+      testSleepMicros(1000 * 1000);
     } catch (const std::runtime_error& ex) {
       STFATAL << "Error connecting to server: " << ex.what();
     }
@@ -185,7 +188,7 @@ void readWriteTest(const string& clientId,
         break;
       }
     }
-    ::usleep(1000 * 1000);
+    testSleepMicros(1000 * 1000);
   }
   shared_ptr<ServerClientConnection> serverClientConnection;
   {
@@ -250,10 +253,48 @@ void multiReadWriteTest(shared_ptr<SocketHandler> clientSocketHandler,
         },
         new_id);
     futures.push_back(std::move(f));
-    ::usleep((500 + rand() % 1000) * 1000);
+    testSleepMicros((500 + rand() % 1000) * 1000);
   }
   for (auto& f : futures) {
     f.get();
+  }
+}
+
+bool readWithDeadline(shared_ptr<Collector> collector, int seconds,
+                      string* result) {
+  time_t deadline = time(NULL) + seconds;
+  while (time(NULL) <= deadline) {
+    if (collector->hasData()) {
+      *result = collector->pop();
+      return true;
+    }
+    testSleepMicros(10 * 1000);
+  }
+  return false;
+}
+
+shared_ptr<ServerClientConnection> waitForServerClient(const string& clientId,
+                                                       int seconds) {
+  time_t deadline = time(NULL) + seconds;
+  while (time(NULL) <= deadline) {
+    {
+      lock_guard<mutex> lock(serverClientConnectionMutex);
+      auto it = serverClientConnections.find(clientId);
+      if (it != serverClientConnections.end()) {
+        return it->second;
+      }
+    }
+    testSleepMicros(10 * 1000);
+  }
+  return nullptr;
+}
+
+// connect() overwrites socketFd without closing the previous one. Drop those
+// leftovers so a failed assertion still reaches Catch instead of the harness
+// aborting on a dangling fd.
+void closeLeftoverClientSockets(shared_ptr<FlakySocketHandler> handler) {
+  for (int fd : handler->getActiveSockets()) {
+    handler->close(fd);
   }
 }
 
@@ -262,7 +303,7 @@ bool waitForPeerClose(shared_ptr<SocketHandler> socketHandler, int fd) {
   char byte;
   while (time(NULL) <= startTime + 5) {
     if (!socketHandler->hasData(fd)) {
-      ::usleep(10 * 1000);
+      testSleepMicros(10 * 1000);
       continue;
     }
 
@@ -309,9 +350,13 @@ void runConnectionTestCase(bool flaky,
 
   el::Helpers::setThreadName("Main");
 
+#ifdef WIN32
+  ctx.pipePath = "et_connection_test_" + genRandomAlphaNum(12) + ".ipc";
+#else
   string tmpPath = GetTempDirectory() + string("et_test_XXXXXXXX");
   ctx.pipeDirectory = string(mkdtemp(&tmpPath[0]));
   ctx.pipePath = string(ctx.pipeDirectory) + "/pipe";
+#endif
   ctx.endpoint = SocketEndpoint();
   ctx.endpoint.set_name(ctx.pipePath);
 
@@ -339,8 +384,10 @@ void runConnectionTestCase(bool flaky,
   serverClientConnections.clear();
   ctx.serverConnection->shutdown();
   ctx.serverConnection.reset();
-  FATAL_FAIL(::remove(ctx.pipePath.c_str()));
+  removeOrMissing(ctx.pipePath);
+#ifndef WIN32
   FATAL_FAIL(::remove(ctx.pipeDirectory.c_str()));
+#endif
 
   auto v = ctx.serverSocketHandler->getActiveSockets();
   if (!v.empty()) {
@@ -398,5 +445,202 @@ TEST_CASE("ConnectionTest_InvalidClient", "[ConnectionTest][integration]") {
 
     lock_guard<mutex> lock(serverClientConnectionMutex);
     REQUIRE(serverClientConnections.empty());
+  });
+}
+
+// https://github.com/MisterTea/EternalTerminal/issues/862
+// A second connect() on the same ClientConnection is what TerminalClient would
+// do if it retried after a slow INITIAL_RESPONSE. The server already has the
+// session, answers RETURNING_CLIENT, and runs recoverClient(). connect()
+// accepts that status but does not recover: it installs a fresh reader and
+// writer at sequence 0. The packet written afterwards (the resent
+// INITIAL_PAYLOAD) never arrives.
+TEST_CASE("ConnectionTest_ConnectRetryAfterNewClient",
+          "[ConnectionTest][integration]") {
+  string clientReceived;
+  string serverReceived;
+  string failure;
+  runConnectionTestCase(false, [&](ConnectionTestContext& ctx) {
+    const string clientId = "1234567890123456";
+    shared_ptr<ClientConnection> clientConnection;
+    shared_ptr<Collector> serverCollector;
+    shared_ptr<Collector> clientCollector;
+    auto finish = [&]() {
+      if (clientCollector) {
+        clientCollector->finish();
+        clientCollector.reset();
+      }
+      if (clientConnection) {
+        clientConnection->shutdown();
+        clientConnection->waitReconnect();
+        clientConnection.reset();
+      }
+      ctx.serverConnection->removeClient(clientId);
+      if (serverCollector) {
+        serverCollector->join();
+        serverCollector.reset();
+      }
+      closeLeftoverClientSockets(ctx.clientSocketHandler);
+    };
+
+    ctx.serverConnection->addClientKey(clientId, CRYPTO_KEY);
+    clientConnection.reset(new ClientConnection(
+        ctx.clientSocketHandler, ctx.endpoint, clientId, CRYPTO_KEY));
+    if (!clientConnection->connect()) {
+      failure = "initial connect() failed";
+      finish();
+      return;
+    }
+    clientConnection->writePacket(Packet(HEADER_DATA, "first"));
+
+    shared_ptr<ServerClientConnection> serverClientConnection =
+        waitForServerClient(clientId, 5);
+    if (!serverClientConnection) {
+      failure = "server did not accept the client";
+      finish();
+      return;
+    }
+    serverCollector.reset(new Collector(
+        std::static_pointer_cast<Connection>(serverClientConnection),
+        "Server"));
+    serverCollector->start();
+    string received;
+    if (!readWithDeadline(serverCollector, 5, &received) ||
+        received != "first") {
+      failure = "server did not receive the first packet: '" + received + "'";
+      finish();
+      return;
+    }
+
+    // The retry, followed by the resend TerminalClient does after it.
+    if (!clientConnection->connect()) {
+      failure = "retry connect() failed";
+      finish();
+      return;
+    }
+    clientConnection->writePacket(Packet(HEADER_DATA, "second"));
+    serverCollector->write("reply");
+
+    clientCollector.reset(new Collector(
+        std::static_pointer_cast<Connection>(clientConnection), "Client"));
+    clientCollector->start();
+
+    bool clientGotReply = readWithDeadline(clientCollector, 10, &received);
+    clientReceived = clientGotReply ? received : "";
+    bool serverGotSecond = readWithDeadline(serverCollector, 10, &received);
+    serverReceived = serverGotSecond ? received : "";
+
+    finish();
+  });
+
+  INFO("clientReceived='" << clientReceived << "' serverReceived='"
+                          << serverReceived << "'");
+  REQUIRE(failure.empty());
+  REQUIRE(clientReceived == "reply");
+  REQUIRE(serverReceived == "second");
+}
+
+// Both sides queue more catchup than the socket buffers hold while the
+// connection is down, then the client reconnects. recover() must still finish:
+// if each side writes its whole CatchupBuffer before reading the peer's, both
+// block in write until the socket timeout and every retry does the same.
+TEST_CASE("ConnectionTest_RecoverLargeCatchupBothWays",
+          "[ConnectionTest][integration]") {
+  runConnectionTestCase(false, [](ConnectionTestContext& ctx) {
+    const string clientId = "1234567890123456";
+    ctx.serverConnection->addClientKey(clientId, CRYPTO_KEY);
+
+    shared_ptr<ClientConnection> clientConnection(new ClientConnection(
+        ctx.clientSocketHandler, ctx.endpoint, clientId, CRYPTO_KEY));
+    while (!clientConnection->connect()) {
+      testSleepMicros(100 * 1000);
+    }
+
+    shared_ptr<ServerClientConnection> serverClientConnection;
+    while (!serverClientConnection) {
+      {
+        lock_guard<mutex> lock(serverClientConnectionMutex);
+        auto it = serverClientConnections.find(clientId);
+        if (it != serverClientConnections.end()) {
+          serverClientConnection = it->second;
+        }
+      }
+      testSleepMicros(10 * 1000);
+    }
+
+    // Drop the link on both sides without starting a reconnect yet.
+    clientConnection->closeSocket();
+    serverClientConnection->closeSocket();
+
+    // 4 MiB per direction, far more than a socket buffer holds. Large packets
+    // keep the count low, since Collector reads one packet per poll.
+    const int NUM_MESSAGES = 256;
+    const int MESSAGE_SIZE = 16 * 1024;
+    string clientData(NUM_MESSAGES * MESSAGE_SIZE, '\0');
+    string serverData(NUM_MESSAGES * MESSAGE_SIZE, '\0');
+    for (size_t a = 0; a < clientData.size(); a++) {
+      clientData[a] = rand() % 26 + 'A';
+      serverData[a] = rand() % 26 + 'a';
+    }
+    for (int a = 0; a < NUM_MESSAGES; a++) {
+      clientConnection->writePacket(Packet(
+          HEADER_DATA, clientData.substr(a * MESSAGE_SIZE, MESSAGE_SIZE)));
+      serverClientConnection->writePacket(Packet(
+          HEADER_DATA, serverData.substr(a * MESSAGE_SIZE, MESSAGE_SIZE)));
+    }
+
+    clientConnection->closeSocketAndMaybeReconnect();
+
+    // Well under SOCKET_IDLE_TIMEOUT_SEC, so a stalled recover cannot pass by
+    // timing out and retrying.
+    time_t deadline = time(NULL) + 15;
+    bool recovered = false;
+    while (time(NULL) <= deadline) {
+      if (clientConnection->getSocketFd() >= 0 &&
+          serverClientConnection->getSocketFd() >= 0) {
+        recovered = true;
+        break;
+      }
+      testSleepMicros(10 * 1000);
+    }
+    if (!recovered) {
+      // Fail without throwing: a REQUIRE here would skip the harness teardown
+      // and abort the whole test binary on the unjoined listen thread.
+      FAIL_CHECK("recover did not complete within the deadline");
+      clientConnection->shutdown();
+      serverClientConnection->shutdown();
+      clientConnection.reset();
+      ctx.serverConnection->removeClient(clientId);
+      return;
+    }
+
+    shared_ptr<Collector> serverCollector(new Collector(
+        std::static_pointer_cast<Connection>(serverClientConnection),
+        "Server"));
+    serverCollector->start();
+    shared_ptr<Collector> clientCollector(new Collector(
+        std::static_pointer_cast<Connection>(clientConnection), "Client"));
+    clientCollector->start();
+
+    string receivedByServer;
+    string receivedByClient;
+    for (int a = 0; a < NUM_MESSAGES; a++) {
+      receivedByServer.append(serverCollector->read());
+      receivedByClient.append(clientCollector->read());
+    }
+    {
+      // CHECK, not REQUIRE: a throw here would skip the teardown below.
+      lock_guard<recursive_mutex> lock(testMutex);
+      CHECK(receivedByServer == clientData);
+      CHECK(receivedByClient == serverData);
+    }
+
+    clientCollector->finish();
+    clientCollector.reset();
+    clientConnection.reset();
+
+    ctx.serverConnection->removeClient(clientId);
+    serverCollector->join();
+    serverCollector.reset();
   });
 }

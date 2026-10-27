@@ -10,14 +10,26 @@ namespace et {
  */
 class TcpSocketHandler : public UnixSocketHandler {
  public:
-  TcpSocketHandler();
+  /**
+   * @brief Default depth of the kernel accept queue for listening sockets.
+   *
+   * The queue only drains as fast as the accept loop runs, so it has to absorb
+   * a burst of clients reconnecting at once.
+   */
+  static constexpr int DEFAULT_LISTEN_BACKLOG = 128;
+
+  explicit TcpSocketHandler(int _listenBacklog = DEFAULT_LISTEN_BACKLOG);
   virtual ~TcpSocketHandler() {}
+
+  /** @brief Accept queue depth this handler passes to listen(). */
+  int getListenBacklog() const { return listenBacklog; }
 
   /**
    * @brief Resolves the hostname/port and connects non-blockingly to the
    * server.
    */
   virtual int connect(const SocketEndpoint& endpoint);
+  virtual string getLastConnectError();
   /**
    * @brief Binds and listens on all IP addresses for the given port.
    */
@@ -31,15 +43,25 @@ class TcpSocketHandler : public UnixSocketHandler {
    */
   virtual void stopListening(const SocketEndpoint& endpoint);
 
+  virtual void minimizeKernelBuffering(int fd);
+
  protected:
   /** @brief Tracks all listening sockets created per TCP port. */
   map<int, set<int>> portServerSockets;
+  /** @brief Depth of the kernel accept queue, see DEFAULT_LISTEN_BACKLOG. */
+  int listenBacklog;
+  /** @brief Reason the last connect() failed; guarded by globalMutex. */
+  string lastConnectError;
 
   /**
    * @brief Performs additional TCP-specific socket configuration
    * (NODELAY/linger).
    */
   virtual void initSocket(int fd);
+
+ private:
+  static void refreshResolver();
+  static const char* addressError(int error);
 };
 }  // namespace et
 

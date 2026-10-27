@@ -1,0 +1,181 @@
+{
+  "aff-after-first-window": [
+    [
+      0
+    ]
+  ],
+  "aff-after-reattach": [
+    [
+      0,
+      1,
+      3
+    ],
+    [
+      2,
+      4
+    ]
+  ],
+  "aff-after-second-os-window": [
+    [
+      0,
+      1
+    ],
+    [
+      2
+    ]
+  ],
+  "aff-after-tab-on-a": [
+    [
+      0,
+      1
+    ]
+  ],
+  "aff-after-tab-on-b": [
+    [
+      0,
+      1,
+      3
+    ],
+    [
+      2,
+      4
+    ]
+  ],
+  "aff-after-tab-on-older-a": [
+    [
+      0,
+      1,
+      3
+    ],
+    [
+      2
+    ]
+  ],
+  "after-alternate-screen": [
+    [
+      0
+    ]
+  ],
+  "after-attach": [
+    [
+      0
+    ]
+  ],
+  "after-detach-reattach": [
+    [
+      0
+    ]
+  ],
+  "after-kill-pane": [
+    [
+      0
+    ]
+  ],
+  "after-kill-window": [
+    [
+      0,
+      1
+    ]
+  ],
+  "after-kill-writer-pane": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-kill-writer-window": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-native-resize": [
+    [
+      0
+    ]
+  ],
+  "after-new-window": [
+    [
+      0,
+      1
+    ]
+  ],
+  "after-replace-window": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-root": [
+    [
+      0
+    ]
+  ],
+  "after-scrollback": [
+    [
+      0
+    ]
+  ],
+  "after-split": [
+    [
+      0
+    ]
+  ],
+  "after-split-again": [
+    [
+      0
+    ]
+  ],
+  "after-split-echo": [
+    [
+      0
+    ]
+  ],
+  "after-third-window": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-title-sleep": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-unicode": [
+    [
+      0
+    ]
+  ],
+  "after-writer-detach-reattach": [
+    [
+      0
+    ]
+  ],
+  "after-writer-pane": [
+    [
+      0,
+      1,
+      2
+    ]
+  ],
+  "after-writer-window": [
+    [
+      0,
+      1,
+      2,
+      3
+    ]
+  ],
+  "before-writer-detach": [
+    [
+      0
+    ]
+  ]
+}

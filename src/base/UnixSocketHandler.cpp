@@ -1,24 +1,15 @@
 #include "UnixSocketHandler.hpp"
 
+#include <cstdint>
+
+#include "RawSocketUtils.hpp"
+
 namespace et {
 UnixSocketHandler::UnixSocketHandler() {}
 
 bool UnixSocketHandler::waitForData(int fd, int64_t sec, int64_t usec) {
-  fd_set input;
-  FD_ZERO(&input);
-  FD_SET(fd, &input);
-  struct timeval timeout;
-  timeout.tv_sec = sec;
-  timeout.tv_usec = usec;
-  int n = select(fd + 1, &input, NULL, NULL, &timeout);
-  if (n == -1) {
-    // Select timed out or failed.
-    VLOG(4) << "socket select timeout";
+  if (!et::waitOnSocketData(fd, sec, usec)) {
     return false;
-  } else if (n == 0)
-    return false;
-  if (!FD_ISSET(fd, &input)) {
-    STFATAL << "FD_ISSET is false but we should have data by now.";
   }
   VLOG(4) << "socket " << fd << " has data";
   return true;
@@ -30,24 +21,24 @@ ssize_t UnixSocketHandler::read(int fd, void* buf, size_t count) {
   if (fd <= 0) {
     STFATAL << "Tried to read from an invalid socket: " << fd;
   }
-  map<int, shared_ptr<recursive_mutex>>::iterator it;
+  // Copy the per-fd mutex under globalMutex. Holding only an iterator across
+  // waitForData races with close() erasing the map entry (TSan UAF on Linux).
+  shared_ptr<recursive_mutex> sockMutex;
   {
     lock_guard<std::recursive_mutex> guard(globalMutex);
-    it = activeSocketMutexes.find(fd);
+    auto it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to read from a socket that has been closed: " << fd;
       SetErrno(EPIPE);
       return -1;
     }
+    sockMutex = it->second;
   }
   waitForData(fd, 5, 0);
-  lock_guard<recursive_mutex> guard(*(it->second));
+  lock_guard<recursive_mutex> guard(*sockMutex);
   VLOG(4) << "Unixsocket handler read from fd: " << fd;
-#ifdef WIN32
-  ssize_t readBytes = ::recv(fd, (char*)buf, count, 0);
-#else
-  ssize_t readBytes = ::read(fd, buf, count);
-#endif
+  ssize_t readBytes =
+      RawSocketUtils::readSome(fd, static_cast<char*>(buf), count);
   auto localErrno = GetErrno();
   if (readBytes < 0 && localErrno != EAGAIN && localErrno != EWOULDBLOCK) {
     LOG(WARNING) << "Error reading: " << localErrno << " "
@@ -62,48 +53,40 @@ ssize_t UnixSocketHandler::write(int fd, const void* buf, size_t count) {
   if (fd <= 0) {
     STFATAL << "Tried to write to an invalid socket: " << fd;
   }
-  map<int, shared_ptr<recursive_mutex>>::iterator it;
+  shared_ptr<recursive_mutex> sockMutex;
   {
     lock_guard<std::recursive_mutex> guard(globalMutex);
-    it = activeSocketMutexes.find(fd);
+    auto it = activeSocketMutexes.find(fd);
     if (it == activeSocketMutexes.end()) {
       LOG(INFO) << "Tried to write to a socket that has been closed: " << fd;
       SetErrno(EPIPE);
       return -1;
     }
+    sockMutex = it->second;
   }
   // Try to write for around 5 seconds before giving up
   time_t startTime = time(NULL);
-  int bytesWritten = 0;
-  while (bytesWritten < int(count)) {
-    lock_guard<recursive_mutex> guard(*(it->second));
-    int w;
-#ifdef WIN32
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten, 0);
-#else
-#ifdef MSG_NOSIGNAL
-    w = ::send(fd, ((const char*)buf) + bytesWritten, count - bytesWritten,
-               MSG_NOSIGNAL);
-#else
-    w = ::write(fd, ((const char*)buf) + bytesWritten, count - bytesWritten);
-#endif
-#endif
+  ssize_t bytesWritten = 0;
+  while (static_cast<size_t>(bytesWritten) < count) {
+    lock_guard<recursive_mutex> guard(*sockMutex);
+    const ssize_t w = writeSocketSome(
+        fd, static_cast<const char*>(buf) + bytesWritten, count - bytesWritten);
     auto localErrno = GetErrno();
     if (w < 0) {
       if (localErrno == EAGAIN || localErrno == EWOULDBLOCK) {
         std::this_thread::sleep_for(std::chrono::milliseconds(1));
         if (time(NULL) > startTime + 5) {
           // Give up
-          return -1;
+          return bytesWritten > 0 ? bytesWritten : -1;
         }
       } else {
-        return -1;
+        return bytesWritten > 0 ? bytesWritten : -1;
       }
     } else {
       bytesWritten += w;
     }
   }
-  return count;
+  return bytesWritten;
 }
 
 void UnixSocketHandler::addToActiveSockets(int fd) {
@@ -132,6 +115,16 @@ int UnixSocketHandler::accept(int sockFd) {
     std::this_thread::sleep_for(std::chrono::milliseconds(1));
   }
 
+  if (client_sock < 0 && isResourceExhausted(acceptErrno)) {
+    // The connection stays queued until descriptors free up, so the listener
+    // remains readable; pause briefly rather than spin or abort. Sleep
+    // without globalMutex, which session I/O needs.
+    LOG_EVERY_N(100, ERROR) << "Accept deferred: " << strerror(acceptErrno);
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+    SetErrno(acceptErrno);
+    return -1;
+  }
+
   lock_guard<std::recursive_mutex> guard(globalMutex);
   if (client_sock >= 0) {
     VLOG(3) << "Socket " << sockFd
@@ -151,6 +144,10 @@ int UnixSocketHandler::accept(int sockFd) {
 
   SetErrno(acceptErrno);
   return -1;
+}
+
+bool UnixSocketHandler::isResourceExhausted(int err) {
+  return err == EMFILE || err == ENFILE || err == ENOMEM || err == ENOBUFS;
 }
 
 bool UnixSocketHandler::isTransientAcceptError(int err) {
@@ -180,34 +177,17 @@ void UnixSocketHandler::close(int fd) {
   auto m = it->second;
   lock_guard<std::recursive_mutex> guard(*m);
   VLOG(1) << "Closing connection: " << fd;
-  setBlocking(fd, true);
-#ifdef _MSC_VER
-  FATAL_FAIL_UNLESS_ZERO(::closesocket(fd));
-#else
-#ifdef __FreeBSD__
-  FATAL_FAIL_UNLESS_EAGAIN(::close(fd));
-#else
-  FATAL_FAIL(::close(fd));
-#endif
-#endif
+  RawSocketUtils::closeSocket(fd);
   activeSocketMutexes.erase(it);
 }
 
 vector<int> UnixSocketHandler::getActiveSockets() {
+  lock_guard<std::recursive_mutex> guard(globalMutex);
   vector<int> fds;
   for (auto it : activeSocketMutexes) {
     fds.push_back(it.first);
   }
   return fds;
-}
-
-void UnixSocketHandler::initSocket(int fd) {
-#if !defined(WIN32)
-  // ignore SIGPIPE globally
-  ::signal(SIGPIPE, SIG_IGN);
-#endif
-  // Also set the accept socket as non-blocking
-  setBlocking(fd, false);
 }
 
 void UnixSocketHandler::initServerSocket(int fd) {
@@ -221,26 +201,8 @@ void UnixSocketHandler::initServerSocket(int fd) {
 }
 
 void UnixSocketHandler::setBlocking(int sockFd, bool blocking) {
-#ifdef WIN32
-  {
-    u_long iMode = u_long(!blocking);
-    auto result = ioctlsocket(sockFd, FIONBIO, &iMode);
-    if (result != NO_ERROR) {
-      STFATAL << result;
-    }
+  if (!setSocketBlocking(sockFd, blocking)) {
+    FATAL_FAIL(-1);
   }
-#else
-  {
-    int opts;
-    opts = fcntl(sockFd, F_GETFL);
-    FATAL_FAIL(opts);
-    if (blocking) {
-      opts &= (~O_NONBLOCK);
-    } else {
-      opts |= O_NONBLOCK;
-    }
-    FATAL_FAIL(fcntl(sockFd, F_SETFL, opts));
-  }
-#endif
 }
 }  // namespace et

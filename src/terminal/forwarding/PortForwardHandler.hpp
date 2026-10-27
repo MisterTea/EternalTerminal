@@ -14,22 +14,61 @@ namespace et {
  */
 class PortForwardHandler {
  public:
-  /** @brief Constructs forwarding helpers for network and router sockets. */
+  /**
+   * @brief Constructs forwarding helpers for network and router sockets.
+   * @param userid Session uid used for privilege-dropped UNIX socket ops
+   *        ((uid_t)-1 to disable).
+   * @param groupid Session gid used with @p userid.
+   */
   explicit PortForwardHandler(shared_ptr<SocketHandler> _networkSocketHandler,
-                              shared_ptr<SocketHandler> _pipeSocketHandler);
-  /** @brief Polls all handlers for new destination/data and sends
-   * `PortForwardData`. */
+                              shared_ptr<SocketHandler> _pipeSocketHandler,
+                              uid_t userid = static_cast<uid_t>(-1),
+                              gid_t groupid = static_cast<gid_t>(-1));
+  ~PortForwardHandler();
+
+  PortForwardHandler(const PortForwardHandler&) = delete;
+  PortForwardHandler& operator=(const PortForwardHandler&) = delete;
+
+  /** @brief Polls handlers and collects destination requests and
+   * `PortForwardData` for the caller to send. Touches only the descriptors
+   * named in `readyFds`; `nullptr` polls every one. */
   void update(vector<PortForwardDestinationRequest>* requests,
-              vector<PortForwardData>* dataToSend);
+              vector<PortForwardData>* dataToSend,
+              const set<int>* readyFds = nullptr);
   /** @brief Handles control packets arriving over the SSH connection. */
   void handlePacket(const Packet& packet, shared_ptr<Connection> connection);
   PortForwardSourceResponse createSource(const PortForwardSourceRequest& pfsr,
                                          string* sourceName, uid_t userid,
                                          gid_t groupid);
+  /**
+   * @brief Listens for SOCKS clients on `source` and opens destinations chosen
+   * after each handshake (ssh -D).
+   */
+  PortForwardSourceResponse createSocksSource(const SocketEndpoint& source);
+  /**
+   * @brief Bridges `readFd`/`writeFd` (typically stdin/stdout) to a remote
+   * destination chosen at connect time (ssh -W). Does not start a shell.
+   */
+  PortForwardSourceResponse createStdioForward(
+      const SocketEndpoint& destination, int readFd, int writeFd,
+      bool closeFds = false);
   /** @brief Creates a remote destination handler that forwards data to a user's
    * socket. */
   PortForwardDestinationResponse createDestination(
       const PortForwardDestinationRequest& pfdr);
+  /**
+   * @brief Sends @p binds (OpenSSH session-bind requests) on every new
+   * destination connection to the ssh-agent at @p agentSocketPath before
+   * relaying forwarded data.
+   */
+  void setSshAgentSessionBinds(const string& agentSocketPath,
+                               const vector<string>& binds);
+
+  /**
+   * @brief Stops listening for a previously created source forward.
+   * @return true when a matching source handler was removed.
+   */
+  bool removeSource(const PortForwardSourceRequest& pfsr);
 
   /** @brief Tears down the source socket associated with `fd`. */
   void closeSourceFd(int fd);
@@ -42,20 +81,51 @@ class PortForwardHandler {
    * socket. */
   void sendDataToSourceOnSocket(int socketId, const string& data);
   void getForwardFds(set<int>* fds);
+  uint64_t getForwardFdsGeneration() const { return forwardFdsGeneration; }
+  /** @brief True while a `-W` stdio bridge still has an active local fd. */
+  bool hasActiveStdioForward() const;
 
  protected:
   /** @brief Handler used for the SSH/network-facing sockets. */
   shared_ptr<SocketHandler> networkSocketHandler;
   /** @brief Handler used for the router/pipe-facing sockets. */
   shared_ptr<SocketHandler> pipeSocketHandler;
+  /** @brief Session uid for UNIX connect/listen; (uid_t)-1 disables drop. */
+  uid_t sessionUid;
+  /** @brief Session gid for UNIX connect/listen; (gid_t)-1 disables drop. */
+  gid_t sessionGid;
+  /** @brief Forwarded ssh-agent socket that receives session bindings. */
+  string sshAgentSocketPath;
+  /** @brief Session-bind requests replayed on new agent connections. */
+  vector<string> sshAgentSessionBinds;
   /** @brief Active destination handlers keyed by socket id. */
-  unordered_map<int, shared_ptr<ForwardDestinationHandler>> destinationHandlers;
+  unordered_map<int, unique_ptr<ForwardDestinationHandler>> destinationHandlers;
 
   /** @brief Handlers for the listening port forward sources. */
   vector<shared_ptr<ForwardSourceHandler>> sourceHandlers;
   /** @brief Maps control socket IDs to their source handlers for routing data.
    */
   unordered_map<int, shared_ptr<ForwardSourceHandler>> socketIdSourceHandlerMap;
+  struct PendingDestination {
+    std::weak_ptr<ForwardSourceHandler> handler;
+    int fd;
+  };
+  // Destination requests carry these tokens in the wire fd/clientfd fields,
+  // so a late response cannot reach a reused descriptor number. Expiry
+  // bounds each token's lifetime far below the wrap period.
+  unordered_map<int, PendingDestination> pendingDestinations;
+  int nextDestinationRequest = 1;
+  void prunePendingDestinations();
+  /** @brief Bumped by every site that opens or closes a descriptor exposed by
+   * `getForwardFds`: a recycled fd number yields an identical set, so this is
+   * a poller's only signal that it must re-register. */
+  uint64_t forwardFdsGeneration = 0;
+  vector<string> temporaryDirectories;
+  /**
+   * @brief Serializes createSource/update/handlePacket/removeSource against
+   * concurrent mux client threads and the TerminalClient event loop.
+   */
+  mutable recursive_mutex handlerMutex;
 };
 }  // namespace et
 

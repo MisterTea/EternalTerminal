@@ -47,11 +47,22 @@ class Connection {
   inline shared_ptr<BackedWriter> getWriter() { return writer; }
 
   /** @brief File descriptor of the currently connected socket or -1. */
-  int getSocketFd() { return socketFd; }
+  int getSocketFd() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return socketFd;
+  }
 
   inline shared_ptr<SocketHandler> getSocketHandler() { return socketHandler; }
 
-  inline bool isDisconnected() { return socketFd == -1; }
+  /** @brief Holds the socket lifecycle stable while registering readiness. */
+  unique_lock<recursive_mutex> lockSocket() {
+    return unique_lock<recursive_mutex>(connectionMutex);
+  }
+
+  inline bool isDisconnected() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return socketFd == -1;
+  }
 
   /**
    * @brief Returns true when writePacket() of `bytes` more will not block:
@@ -67,7 +78,10 @@ class Connection {
 
   inline string getId() { return id; }
 
-  inline bool hasData() { return reader->hasData(); }
+  inline bool hasData() {
+    lock_guard<std::recursive_mutex> guard(connectionMutex);
+    return reader && reader->hasData();
+  }
 
   /**
    * @brief Closes the socket and invalidates the reader/writer.
@@ -84,6 +98,14 @@ class Connection {
    */
   void shutdown();
 
+  /**
+   * @brief Marks a still-disconnected session shutting down.
+   * Returns false when a reconnect has already installed a live socket, or
+   * when shutdown has already started. Holds `connectionMutex` across the
+   * check and the flag update.
+   */
+  bool claimDisconnectedExpiry();
+
   inline bool isShuttingDown() {
     lock_guard<std::recursive_mutex> guard(connectionMutex);
     return shuttingDown;
@@ -92,10 +114,19 @@ class Connection {
  protected:
   /**
    * @brief Exchanges sequence headers and catchup buffers with a peer.
+   * @param readPeerCatchupFirst Read the peer's CatchupBuffer before sending
+   * ours. Exactly one side must do this: when both send first, catchup larger
+   * than the socket buffers leaves both blocked in write until the socket
+   * timeout. The client reads first and the server sends first, so an updated
+   * client also recovers against servers that predate this parameter. Reset
+   * recovery ignores this flag and exchanges empty catchup buffers.
+   * @param forceReset Both sides drop sequence history and rekey from
+   * resetSalt. Used when a fresh process resumes a live session.
    * @return true if recovery succeeds and the new socket is owned by this
    * object.
    */
-  bool recover(int newSocketFd);
+  bool recover(int newSocketFd, bool readPeerCatchupFirst,
+               bool forceReset = false, const string& resetSalt = string());
 
   /** @brief Socket API used by all derived connection types. */
   shared_ptr<SocketHandler> socketHandler;

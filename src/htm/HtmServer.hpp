@@ -1,36 +1,69 @@
 #ifndef __HTM_SERVER_H__
 #define __HTM_SERVER_H__
 
+#include "ControlMode.hpp"
 #include "Headers.hpp"
 #include "IpcPairServer.hpp"
 #include "MultiplexerState.hpp"
 
 namespace et {
 /**
- * @brief Server side of the HTM IPC pair that drives the terminal multiplexer.
- *
- * Receives UI commands, drives the multiplexer state, and streams pane output
- * back to the HTM client via Base64-encoded packets.
+ * @brief Control-mode server that multiplexes panes and speaks tmux -CC.
  */
 class HtmServer : public IpcPairServer {
  public:
   HtmServer(shared_ptr<SocketHandler> _socketHandler,
             const SocketEndpoint& endpoint);
-  /** @brief Main loop that accepts connections and dispatches HTM events. */
   void run();
-  /** @brief Returns the default pipe path used by the local HTM server. */
+  void requestStop() { running.store(false); }
+  void requestPaneDump() { paneDumpRequested.store(true); }
+
+  /** @brief The hardened pane-dump writer, exposed for tests. */
+  static bool writePaneDumpFile(const string& path, const string& body);
+
+#ifndef WIN32
+  /**
+   * @brief Returns the pid in the htm client pid file at `path` only if the
+   * file is our own regular file and names a live `htm` process of ours.
+   * Exposed for tests.
+   */
+  static optional<pid_t> readVerifiedClientPid(const string& path);
+#endif
   static string getPipeName();
-  /** @brief Sends the current multiplexer state after a reconnect. */
+  static string getPaneDumpPath();
+  /** @brief Returns the per-user event used for graceful Windows restarts. */
+  static string getShutdownEventName();
+  /** @brief Returns the per-user event that requests a pane-text dump. */
+  static string getPaneDumpEventName();
   virtual void recover();
-  /** @brief Writes an informational debug string to the connected client. */
-  void sendDebug(const string& msg);
 
  protected:
-  /** @brief State keeps track of panes/tabs/splits and terminal buffers. */
+  void handleClientData();
+  void processLine(const string& line);
+  void writePaneDumpIfRequested();
+  /** @brief Sends %exit, drops the client, and makes sure its process ends. */
+  void endControlSession();
+
+  /**
+   * @brief Returns the pid of the process on the other end of @p fd, or -1
+   * where the OS cannot report it.
+   */
+  static int64_t controlClientPid(int fd);
+  /**
+   * @brief Waits for the detached htm client (and any stale ones) to exit,
+   * killing them if they stay wedged.
+   *
+   * Implemented in HtmServerUnix.cpp and HtmServerWindows.cpp.
+   */
+  static void reapControlClient(int64_t peer);
+
   MultiplexerState state;
-  /** @brief Termination flag that exits `run()` when false. */
-  bool running;
+  ControlWriter writer;
+  string lineBuf;
+  bool skipLfAfterCr;
+  std::atomic<bool> running;
+  std::atomic<bool> paneDumpRequested;
 };
 }  // namespace et
 
-#endif  // __HTM_SERVER_H__
+#endif

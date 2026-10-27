@@ -1,11 +1,13 @@
 #include "RawSocketUtils.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 
 using namespace et;
+using namespace et::test;
 
 TEST_CASE("RawSocketUtils writeAll writes all data", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   const string payload = "test data for writeAll";
   std::thread writer([&]() {
@@ -23,7 +25,7 @@ TEST_CASE("RawSocketUtils writeAll writes all data", "[RawSocketUtils]") {
 
 TEST_CASE("RawSocketUtils readAll reads all data", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   const string payload = "test data for readAll";
   std::thread writer([&]() {
@@ -43,10 +45,22 @@ TEST_CASE("RawSocketUtils readAll reads all data", "[RawSocketUtils]") {
 TEST_CASE("RawSocketUtils writeAll throws on closed socket",
           "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   // Close the read end so writes will fail with EPIPE
+#ifdef WIN32
+  linger resetOnClose = {1, 0};
+  REQUIRE(::setsockopt(fds[0], SOL_SOCKET, SO_LINGER,
+                       reinterpret_cast<const char*>(&resetOnClose),
+                       sizeof(resetOnClose)) == 0);
+#endif
   ::close(fds[0]);
+#ifdef WIN32
+  // Observe the peer's reset before asserting that a subsequent send fails.
+  // Winsock may otherwise accept one small buffered send after peer closure.
+  char ignored = 0;
+  REQUIRE(::recv(fds[1], &ignored, 1, 0) == SOCKET_ERROR);
+#endif
 
   const string payload = "test data";
 
@@ -65,7 +79,7 @@ TEST_CASE("RawSocketUtils writeAll throws on closed socket",
 TEST_CASE("RawSocketUtils readAll throws on closed socket",
           "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   // Close write end immediately
   ::close(fds[1]);
@@ -78,7 +92,7 @@ TEST_CASE("RawSocketUtils readAll throws on closed socket",
 
 TEST_CASE("RawSocketUtils readAll throws on early close", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   std::thread writer([&]() {
     const string partial = "partial";
@@ -111,7 +125,7 @@ TEST_CASE("RawSocketUtils readAll throws on early close", "[RawSocketUtils]") {
 
 TEST_CASE("RawSocketUtils readAll handles empty buffer", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   char buffer[1];
   RawSocketUtils::readAll(fds[0], buffer, 0);
@@ -123,7 +137,7 @@ TEST_CASE("RawSocketUtils readAll handles empty buffer", "[RawSocketUtils]") {
 
 TEST_CASE("RawSocketUtils writeAll with large data", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   // Create large payload (bigger than typical pipe buffer)
   const size_t size = 1024 * 1024;  // 1MB
@@ -144,7 +158,7 @@ TEST_CASE("RawSocketUtils writeAll with large data", "[RawSocketUtils]") {
 
 TEST_CASE("RawSocketUtils readAll with large data", "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   // Create large payload
   const size_t size = 512 * 1024;  // 512KB
@@ -181,7 +195,7 @@ TEST_CASE("RawSocketUtils readAll with invalid fd", "[RawSocketUtils]") {
 TEST_CASE("RawSocketUtils roundtrip with multiple messages",
           "[RawSocketUtils]") {
   int fds[2];
-  REQUIRE(::pipe(fds) == 0);
+  REQUIRE(createTestSocketPair(fds) == 0);
 
   std::thread writer([&]() {
     const vector<string> messages = {"msg1", "message2", "m3"};

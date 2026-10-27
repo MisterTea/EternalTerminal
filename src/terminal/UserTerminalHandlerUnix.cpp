@@ -1,0 +1,539 @@
+#include <cstdint>
+
+#include "ETerminal.pb.h"
+#include "PipeUserTerminal.hpp"
+#include "RawSocketUtils.hpp"
+#include "ServerConnection.hpp"
+#include "ServerFifoPath.hpp"
+#include "UserTerminalHandler.hpp"
+#include "UserTerminalRouter.hpp"
+
+namespace et {
+UserTerminalHandler::UserTerminalHandler(
+    shared_ptr<SocketHandler> _socketHandler, shared_ptr<UserTerminal> _term,
+    bool _noratelimit, const optional<SocketEndpoint> routerEndpoint,
+    const string& idPasskey)
+    : socketHandler(_socketHandler),
+      term(_term),
+      noratelimit(_noratelimit),
+      shuttingDown(false),
+      pipeMode(false),
+      routerEndpoint(routerEndpoint),
+      ptyActive(false),
+      hadReverseTunnels(false),
+      disconnectTimeoutSeconds(std::nullopt) {
+  auto idpasskey_splited = split(idPasskey, '/');
+  id = idpasskey_splited[0];
+  passkey = idpasskey_splited[1];
+
+  try {
+    registerWithRouter();
+  } catch (const std::runtime_error& re) {
+    throw std::runtime_error(string("Error connecting to router: ") +
+                             re.what());
+  }
+}
+
+void UserTerminalHandler::forwardOutputToRouter(const char* data, size_t length,
+                                                bool isStderr) {
+  if (length == 0) {
+    return;
+  }
+  string filtered;
+  const char* outData = data;
+  size_t outLength = length;
+  // Pipe mode is a raw command channel. Stderr is not the tmux -CC stream.
+  if (!pipeMode && !isStderr) {
+    filtered = controlOutputFilter_.apply(string(data, length));
+    if (filtered.empty()) {
+      return;
+    }
+    outData = filtered.data();
+    outLength = filtered.size();
+  }
+  TerminalBuffer tb;
+  tb.set_buffer(string(outData, outLength));
+  if (isStderr) {
+    tb.set_is_stderr(true);
+  }
+  socketHandler->writePacket(
+      routerFd, Packet(TerminalPacketType::TERMINAL_BUFFER, protoToString(tb)));
+}
+
+void UserTerminalHandler::finishSession() {
+  const int exitCode = term->handleSessionEnd();
+  TerminalExitStatus tes;
+  tes.set_exitcode(exitCode);
+  try {
+    socketHandler->writePacket(
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_EXIT_STATUS, protoToString(tes)));
+  } catch (const std::exception& ex) {
+    LOG(INFO) << "Failed to send terminal exit status: " << ex.what();
+  }
+}
+
+void UserTerminalHandler::drainBufferedTerminalOutput(int masterFd,
+                                                      int stderrFd) {
+  const int drainBufSize = 16 * 1024;
+  char b[16 * 1024];
+  auto drainFd = [&](int fd, bool isStderr) {
+    if (fd < 0) {
+      return;
+    }
+    while (true) {
+      memset(b, 0, static_cast<size_t>(drainBufSize));
+      const int rc = read(fd, b, static_cast<size_t>(drainBufSize));
+      if (rc > 0) {
+        forwardOutputToRouter(b, static_cast<size_t>(rc), isStderr);
+        continue;
+      }
+      break;
+    }
+  };
+  drainFd(masterFd, false);
+  drainFd(stderrFd, true);
+}
+
+void UserTerminalHandler::registerWithRouter() {
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
+  tui.set_ptyactive(ptyActive);
+  tui.set_hadreversetunnels(hadReverseTunnels);
+  if (disconnectTimeoutSeconds) {
+    tui.set_disconnect_timeout_seconds(*disconnectTimeoutSeconds);
+  }
+
+  routerFd = ServerFifoPath::detectAndConnect(routerEndpoint, socketHandler);
+  try {
+    socketHandler->writePacket(
+        routerFd,
+        Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+  } catch (...) {
+    socketHandler->close(routerFd);
+    routerFd = -1;
+    throw;
+  }
+}
+
+int UserTerminalHandler::reconnectRouter() {
+  if (routerFd >= 0) {
+    socketHandler->close(routerFd);
+    routerFd = -1;
+  }
+  if (pipeMode) {
+    // A restarted server can't tell that the stream is packet-framed.
+    LOG(INFO) << "Router connection lost; ending pipe command session.";
+    term->terminate();
+    term->handleSessionEnd();
+    lock_guard<recursive_mutex> guard(shutdownMutex);
+    shuttingDown = true;
+    return -1;
+  }
+  LOG(INFO) << "Router connection lost; the session stays alive and waits for "
+               "the router to come back.";
+  int backoffSec = 1;
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
+      }
+    }
+    try {
+      registerWithRouter();
+      socketHandler->minimizeKernelBuffering(routerFd);
+      LOG(INFO) << "Reconnected to the router; resuming the session.";
+      return routerFd;
+    } catch (const std::exception& re) {
+      VLOG(1) << "Router not available yet: " << re.what();
+    }
+    for (int a = 0; a < backoffSec; a++) {
+      sleep(1);
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return -1;
+      }
+    }
+    backoffSec = std::min(backoffSec * 2, 30);
+  }
+}
+
+void UserTerminalHandler::run() {
+  if (!ptyActive) {
+    while (true) {
+      {
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        if (shuttingDown) {
+          return;
+        }
+      }
+      // readPacket blocks until a full packet arrives; poll so shutdown works.
+      if (!socketHandler->hasData(routerFd)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      Packet termInitPacket;
+      try {
+        if (!socketHandler->readPacket(routerFd, &termInitPacket)) {
+          LOG(INFO) << "Router closed before pty setup; reconnecting.";
+          routerFd = reconnectRouter();
+          if (routerFd < 0) {
+            return;
+          }
+          continue;
+        }
+      } catch (const std::exception& ex) {
+        LOG(INFO) << "Router connection lost before pty setup: " << ex.what();
+        routerFd = reconnectRouter();
+        if (routerFd < 0) {
+          return;
+        }
+        continue;
+      }
+      if (termInitPacket.getHeader() != TerminalPacketType::TERMINAL_INIT) {
+        STFATAL << "Invalid terminal init packet header: "
+                << termInitPacket.getHeader();
+      }
+      TermInit ti = stringToProto<TermInit>(termInitPacket.getPayload());
+      hadReverseTunnels = ti.hadreversetunnels();
+      if (ti.has_disconnect_timeout_seconds()) {
+        disconnectTimeoutSeconds = ti.disconnect_timeout_seconds();
+      }
+      for (int a = 0; a < ti.environmentnames_size(); a++) {
+        setenv(ti.environmentnames(a).c_str(), ti.environmentvalues(a).c_str(),
+               true);
+      }
+      pipeMode = ti.no_pty();
+      if (pipeMode) {
+        if (!ti.has_command() || ti.command().empty()) {
+          STFATAL << "no_pty TermInit requires a non-empty command";
+        }
+        term = make_shared<PipeUserTerminal>(ti.command());
+        LOG(INFO) << "Starting raw pipe command session";
+      }
+      if (ti.no_shell()) {
+        // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
+        // flush of the server WriteBuffer is not followed by ~200KB of local
+        // backlog.
+        socketHandler->minimizeKernelBuffering(routerFd);
+        LOG(INFO) << "Starting idle session without a shell";
+        runIdleSession();
+        close(routerFd);
+        return;
+      }
+      break;
+    }
+  }
+
+  // Shrink the etterminal->etserver unix socket send buffer so a Ctrl+C
+  // flush of the server WriteBuffer is not followed by ~200KB of local
+  // backlog.
+  socketHandler->minimizeKernelBuffering(routerFd);
+
+  int masterfd = term->setup(routerFd);
+  VLOG(1) << "terminal opened " << masterfd
+          << (pipeMode ? " (pipe)" : " (pty)");
+  ptyActive = true;
+  runUserTerminal(masterfd);
+  socketHandler->close(routerFd);
+}
+
+void UserTerminalHandler::runIdleSession() {
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        return;
+      }
+    }
+    fd_set rfd;
+    FD_ZERO(&rfd);
+    FD_SET(routerFd, &rfd);
+    timeval tv;
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(routerFd + 1, &rfd, NULL, NULL, &tv);
+    if (!FD_ISSET(routerFd, &rfd)) {
+      continue;
+    }
+    char packetType = 0;
+    int rc = read(routerFd, &packetType, 1);
+    int readErrno = errno;
+    if (rc == -1) {
+      if (readErrno == EAGAIN || readErrno == EINTR) {
+        continue;
+      }
+      LOG(INFO) << "Idle session router read error: " << strerror(readErrno);
+      return;
+    }
+    if (rc == 0) {
+      LOG(INFO) << "Idle session router closed";
+      return;
+    }
+    switch (packetType) {
+      case TERMINAL_BUFFER:
+        socketHandler->readProto<TerminalBuffer>(routerFd, false);
+        break;
+      case TERMINAL_INFO:
+        socketHandler->readProto<TerminalInfo>(routerFd, false);
+        break;
+      case TERMINAL_CLOSE:
+        LOG(INFO) << "Idle session closed";
+        return;
+      default:
+        LOG(INFO) << "Idle session stopping on packet " << int(packetType);
+        return;
+    }
+  }
+}
+
+void UserTerminalHandler::runUserTerminal(int masterFd) {
+#define BUF_SIZE (16 * 1024)
+  char b[BUF_SIZE];
+
+  time_t lastSecond = time(NULL);
+  int64_t outputPerSecond = 0;
+
+  // The pty master / pipe fds are non-blocking (set by UserTerminal::setup).
+  // This loop is single-threaded, so we must never block inside the input
+  // write: the old blocking `RawSocketUtils::writeAll(masterFd, ...)` did, and
+  // a large burst of input (e.g. a pasted heredoc) echoes back, fills the pty
+  // output buffer, stalls the shell, and the shell then stops reading input
+  // -- so the write never completes and we also stop draining output: a
+  // deadlock that wedges the session past ~one pty buffer of input.  Instead we
+  // buffer pending input, drain it to the pty whenever it is writable, and keep
+  // reading output every iteration.  When the buffer fills we stop reading more
+  // input from the router, so backpressure reaches the client.
+  string pendingInput;
+  const size_t maxPendingInput = 256 * 1024;
+  const int inputFd = term->getInputFd();
+  int activeStderrFd = term->getStderrFd();
+
+  while (true) {
+    {
+      lock_guard<recursive_mutex> guard(shutdownMutex);
+      if (shuttingDown) {
+        break;
+      }
+    }
+    // Data structures needed for select() and
+    // non-blocking I/O.
+    fd_set rfd;
+    fd_set wfd;
+    timeval tv;
+
+    // Only read terminal output when the router can accept it, so
+    // backpressure reaches the shell instead of killing the session
+    const bool routerWritable = isSocketWritable(routerFd);
+
+    FD_ZERO(&rfd);
+    FD_ZERO(&wfd);
+    if (routerWritable) {
+      FD_SET(masterFd, &rfd);
+      if (activeStderrFd >= 0) {
+        FD_SET(activeStderrFd, &rfd);
+      }
+    }
+    // Stop pulling more input from the router once the pty-input buffer is
+    // full, so backpressure reaches the client instead of buffering without
+    // bound.
+    if (pendingInput.length() < maxPendingInput) {
+      FD_SET(routerFd, &rfd);
+    }
+    // Wake as soon as the pty/pipe can accept more of the buffered input.
+    if (!pendingInput.empty()) {
+      FD_SET(inputFd, &wfd);
+    }
+    int maxfd = max(masterFd, routerFd);
+    maxfd = max(maxfd, inputFd);
+    if (activeStderrFd >= 0) {
+      maxfd = max(maxfd, activeStderrFd);
+    }
+    tv.tv_sec = 0;
+    tv.tv_usec = 10000;
+    select(maxfd + 1, &rfd, &wfd, NULL, &tv);
+    VLOG(4) << "select is done";
+
+    time_t currentSecond = time(NULL);
+    if (lastSecond != currentSecond) {
+      outputPerSecond = 0;
+      lastSecond = currentSecond;
+    }
+
+    try {
+      // A background descendant can keep the PTY slave open after the login
+      // shell exits. End the ET session when the shell itself is gone, matching
+      // SSH behavior, rather than waiting for unrelated descendants. Drain any
+      // already-buffered output first (ignoring the rows/sec limit) so the
+      // client still receives the final shell bytes, then finishSession() so
+      // TERMINAL_EXIT_STATUS is delivered like the PTY EOF path.
+      if (term->sessionHasEnded()) {
+        LOG(INFO) << "Terminal shell exited";
+        try {
+          drainBufferedTerminalOutput(masterFd, activeStderrFd);
+        } catch (const std::exception& ex) {
+          LOG(INFO) << "Failed draining terminal output on shell exit: "
+                    << ex.what();
+        }
+        finishSession();
+        lock_guard<recursive_mutex> guard(shutdownMutex);
+        shuttingDown = true;
+        break;
+      }
+
+      // Check for data to receive; the received
+      // data includes also the data previously sent
+      // on the same master descriptor (line 90).
+      if (FD_ISSET(masterFd, &rfd) && (noratelimit || outputPerSecond < 1024)) {
+        // Read from terminal and write to client, with a limit in rows/sec
+        memset(b, 0, BUF_SIZE);
+        int rc = read(masterFd, b, BUF_SIZE);
+        int readErrno = errno;  // Save errno before any logging
+        if (rc > 0) {
+          VLOG(4) << "Read from terminal stdout";
+          string s(b, rc);
+          outputPerSecond += std::count(s.begin(), s.end(), '\n');
+          forwardOutputToRouter(b, static_cast<size_t>(rc), false);
+          VLOG(4) << "Write to client: "
+                  << std::count(s.begin(), s.end(), '\n');
+        } else if (rc == 0) {
+          LOG(INFO) << "Terminal session ended";
+          if (pipeMode) {
+            // sh may exec the last command after redirecting stdout away from
+            // the pipe (e.g. `...; cat >file`), which EOFs this reader while
+            // the child still blocks on stdin. Close stdin so waitid returns.
+            term->closeInput();
+          }
+          finishSession();
+          lock_guard<recursive_mutex> guard(shutdownMutex);
+          shuttingDown = true;
+          break;
+        } else if (readErrno == EAGAIN || readErrno == EWOULDBLOCK) {
+          // Transient error, retry
+          LOG(INFO) << "Terminal read temporarily unavailable, retrying...";
+          continue;
+        } else {
+          // Fatal read error - log with correct errno and exit gracefully
+          LOG(ERROR) << "Terminal read error: " << readErrno << " "
+                     << strerror(readErrno);
+          finishSession();
+          lock_guard<recursive_mutex> guard(shutdownMutex);
+          shuttingDown = true;
+          break;
+        }
+      }
+
+      if (activeStderrFd >= 0 && FD_ISSET(activeStderrFd, &rfd) &&
+          (noratelimit || outputPerSecond < 1024)) {
+        memset(b, 0, BUF_SIZE);
+        int rc = read(activeStderrFd, b, BUF_SIZE);
+        int readErrno = errno;
+        if (rc > 0) {
+          VLOG(4) << "Read from terminal stderr";
+          string s(b, rc);
+          outputPerSecond += std::count(s.begin(), s.end(), '\n');
+          forwardOutputToRouter(b, rc, true);
+        } else if (rc == 0) {
+          // stderr closed; keep pumping stdout until it ends.
+          activeStderrFd = -1;
+        } else if (readErrno != EAGAIN && readErrno != EWOULDBLOCK) {
+          LOG(ERROR) << "Terminal stderr read error: " << readErrno << " "
+                     << strerror(readErrno);
+        }
+      }
+
+      if (FD_ISSET(routerFd, &rfd)) {
+        char packetType;
+        int rc = read(routerFd, &packetType, 1);
+        int readErrno = errno;  // Save errno before any logging
+        if (rc == -1) {
+          if (readErrno == EAGAIN || readErrno == EINTR) {
+            continue;  // Transient error, retry
+          }
+          throw std::runtime_error(string("Router read error: ") +
+                                   strerror(readErrno));
+        }
+        if (rc == 0) {
+          routerFd = reconnectRouter();
+          if (routerFd < 0) {
+            break;
+          }
+          continue;
+        }
+        switch (packetType) {
+          case TERMINAL_BUFFER: {
+            TerminalBuffer tb =
+                socketHandler->readProto<TerminalBuffer>(routerFd, false);
+            VLOG(4) << "Read from router";
+            // Buffer the input; it is drained to the pty (non-blocking) below
+            // so a large burst can never block this loop.
+            pendingInput.append(tb.buffer());
+            break;
+          }
+          case TERMINAL_INFO: {
+            TerminalInfo ti =
+                socketHandler->readProto<TerminalInfo>(routerFd, false);
+            if (ti.command() == TerminalInfo::KILL_SESSION) {
+              if (ti.commandversion() != SESSION_KILL_COMMAND_VERSION) {
+                LOG(WARNING) << "Ignoring unsupported terminal command version "
+                             << ti.commandversion();
+                break;
+              }
+              term->terminate();
+              term->handleSessionEnd();
+              lock_guard<recursive_mutex> guard(shutdownMutex);
+              shuttingDown = true;
+              break;
+            }
+            winsize tmpwin;
+            tmpwin.ws_row = ti.row();
+            tmpwin.ws_col = ti.column();
+            tmpwin.ws_xpixel = ti.width();
+            tmpwin.ws_ypixel = ti.height();
+            term->setInfo(tmpwin);
+            break;
+          }
+          case TERMINAL_CLOSE: {
+            lock_guard<recursive_mutex> guard(shutdownMutex);
+            shuttingDown = true;
+            break;
+          }
+        }
+      }
+
+      // Drain buffered input to the pty/pipe without blocking.  A short write
+      // (the pty input buffer is full) just leaves the rest pending for the
+      // next iteration, so output keeps draining in the meantime.
+      if (!pendingInput.empty()) {
+        int rc = write(inputFd, pendingInput.data(), pendingInput.length());
+        int writeErrno = errno;  // Save errno before any logging
+        if (rc > 0) {
+          pendingInput.erase(0, rc);
+        } else if (rc < 0 && writeErrno != EAGAIN &&
+                   writeErrno != EWOULDBLOCK) {
+          // Fatal write error - log with correct errno and exit gracefully
+          LOG(ERROR) << "Terminal write error: " << writeErrno << " "
+                     << strerror(writeErrno);
+          finishSession();
+          lock_guard<recursive_mutex> guard(shutdownMutex);
+          shuttingDown = true;
+          break;
+        }
+      }
+    } catch (const std::exception& ex) {
+      // The pty is fine; wait for the router to come back.
+      LOG(INFO) << ex.what();
+      routerFd = reconnectRouter();
+      if (routerFd < 0) {
+        break;
+      }
+    }
+  }
+
+  term->cleanup();
+}
+}  // namespace et

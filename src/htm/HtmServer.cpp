@@ -1,187 +1,220 @@
 #include "HtmServer.hpp"
 
-#include "HtmHeaderCodes.hpp"
-#include "LogHandler.hpp"
-#include "MultiplexerState.hpp"
-#include "base64.h"
+#include "ControlCommands.hpp"
+#include "PlatformUtils.hpp"
 
 namespace et {
 HtmServer::HtmServer(shared_ptr<SocketHandler> _socketHandler,
                      const SocketEndpoint& endpoint)
     : IpcPairServer(_socketHandler, endpoint),
-      state(_socketHandler),
-      running(true) {}
+      skipLfAfterCr(false),
+      running(true),
+      paneDumpRequested(false) {
+  state.setWriter(&writer);
+}
+
+void HtmServer::handleClientData() {
+  char buf[4096];
+  int rc = socketHandler->read(endpointFd, buf, sizeof(buf));
+  if (rc <= 0) {
+    LOG(INFO) << "Client disconnect";
+    closeEndpoint();
+    writer.clearSocket();
+    return;
+  }
+  lineBuf.append(buf, static_cast<size_t>(rc));
+  // iTerm2's tmux gateway writes CR by default. Real tmux sees LF because the
+  // PTY has ICRNL; htm puts stdin in raw mode, so split on CR and LF here.
+  if (skipLfAfterCr) {
+    if (!lineBuf.empty() && lineBuf[0] == '\n') {
+      lineBuf.erase(0, 1);
+    }
+    skipLfAfterCr = false;
+  }
+  size_t pos = 0;
+  while (true) {
+    size_t termLen = 0;
+    size_t nl = string::npos;
+    for (size_t i = pos; i < lineBuf.size(); i++) {
+      if (lineBuf[i] == '\n') {
+        nl = i;
+        termLen = 1;
+        break;
+      }
+      if (lineBuf[i] == '\r') {
+        nl = i;
+        if (i + 1 < lineBuf.size() && lineBuf[i + 1] == '\n') {
+          termLen = 2;
+        } else {
+          termLen = 1;
+          skipLfAfterCr = (i + 1 == lineBuf.size());
+        }
+        break;
+      }
+    }
+    if (nl == string::npos) {
+      if (pos > 0) {
+        lineBuf.erase(0, pos);
+      }
+      break;
+    }
+    string line = lineBuf.substr(pos, nl - pos);
+    pos = nl + termLen;
+    processLine(line);
+    if (endpointFd < 0) {
+      lineBuf.clear();
+      return;
+    }
+  }
+}
+
+void HtmServer::processLine(const string& line) {
+  vector<string> commands = splitControlCommandList(line);
+  if (commands.empty()) {
+    commands.push_back(line);
+  }
+  for (const string& cmd : commands) {
+    LOG(INFO) << "control command: " << cmd;
+    ControlAction action = executeControlCommand(&state, &writer, cmd);
+    if (action == ControlAction::Error) {
+      // iTerm2 auto-fails the rest of a `;` command list after %error.
+      break;
+    }
+    if (action == ControlAction::Detach) {
+      endControlSession();
+      return;
+    }
+    if (action == ControlAction::KillServer) {
+      endControlSession();
+      running.store(false);
+      return;
+    }
+  }
+}
 
 void HtmServer::run() {
-  while (running) {
+  while (running.load()) {
     if (endpointFd < 0) {
-      std::this_thread::sleep_for(std::chrono::seconds(1));
-      pollAccept();
+      writePaneDumpIfRequested();
+      std::this_thread::sleep_for(std::chrono::milliseconds(50));
+      try {
+        pollAccept();
+      } catch (const std::exception& re) {
+        STERROR << re.what();
+        try {
+          closeEndpoint();
+        } catch (const std::exception& closeEx) {
+          LOG(INFO) << "closeEndpoint after accept/recover: " << closeEx.what();
+        }
+        writer.clearSocket();
+      }
       continue;
     }
 
     try {
-      char header;
-      // Data structures needed for select() and
-      // non-blocking I/O.
-      fd_set rfd;
-      timeval tv;
-
-      FD_ZERO(&rfd);
-      FD_SET(endpointFd, &rfd);
-      tv.tv_sec = 0;
-      tv.tv_usec = 10000;
-      select(endpointFd + 1, &rfd, NULL, NULL, &tv);
-
-      // Check for data to receive; the received
-      // data includes also the data previously sent
-      // on the same master descriptor (line 90).
-      if (FD_ISSET(endpointFd, &rfd)) {
-        LOG(INFO) << "READING FROM STDIN";
-        socketHandler->readAll(endpointFd, (char*)&header, 1, false);
-        LOG(INFO) << "Got message header: " << int(header);
-        int32_t length;
-        socketHandler->readB64(endpointFd, (char*)&length, 4);
-        LOG(INFO) << "READ LENGTH: " << length;
-        switch (header) {
-          case INSERT_KEYS: {
-            string uid = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &uid[0], uid.length(), false);
-            length -= uid.length();
-            LOG(INFO) << "READING FROM " << uid << ":" << length;
-            string data;
-            socketHandler->readB64EncodedLength(endpointFd, &data, length);
-            LOG(INFO) << "READ FROM " << uid << ":" << data << " " << length;
-            state.appendData(uid, data);
-            break;
-          }
-          case INSERT_DEBUG_KEYS: {
-            LOG(INFO) << "READING DEBUG: " << length;
-            string data(length, '\0');
-            socketHandler->readAll(endpointFd, &data[0], length, false);
-            if (data[0] == 'x') {
-              // x key pressed, exit
-              running = false;
-            }
-            if (data[0] == 27) {
-              // escape key pressed, disconnect
-              LOG(INFO) << "CLOSING ENDPOINT";
-              closeEndpoint();
-            }
-            if (data[0] == 'd') {
-              string jsonString = state.toJsonString();
-              LOG(INFO) << "Current State: " << jsonString;
-            }
-            break;
-          }
-          case NEW_TAB: {
-            string tabId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &tabId[0], tabId.length(),
-                                   false);
-            string paneId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
-                                   false);
-            state.newTab(tabId, paneId);
-            break;
-          }
-          case NEW_SPLIT: {
-            string sourceId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &sourceId[0], sourceId.length(),
-                                   false);
-            string paneId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
-                                   false);
-            char vertical;
-            socketHandler->readAll(endpointFd, &vertical, 1, false);
-            state.newSplit(sourceId, paneId, vertical == '1');
-            break;
-          }
-          case RESIZE_PANE: {
-            int32_t cols;
-            socketHandler->readB64(endpointFd, (char*)&cols, 4);
-            int32_t rows;
-            socketHandler->readB64(endpointFd, (char*)&rows, 4);
-            string paneId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
-                                   false);
-            state.resizePane(paneId, cols, rows);
-            break;
-          }
-          case CLIENT_CLOSE_PANE: {
-            string paneId = string(UUID_LENGTH, '0');
-            socketHandler->readAll(endpointFd, &paneId[0], paneId.length(),
-                                   false);
-            LOG(INFO) << "CLOSING PANE: " << paneId;
-            state.closePane(paneId);
-            if (state.numPanes() == 0) {
-              // No panes left
-              running = false;
-            }
-            break;
-          }
-          default: {
-            STFATAL << "Got unknown packet header: " << int(header);
-          }
+      // A hangup also reports readable; handleClientData() then sees EOF.
+      if (waitOnSocketData(endpointFd, 0, 10000)) {
+        handleClientData();
+      }
+      if (endpointFd > 0) {
+        state.pollOutput();
+        writePaneDumpIfRequested();
+        // Shell-exit of the last pane does not go through kill-pane; still
+        // end control mode the way tmux -CC does when no windows remain.
+        if (state.empty()) {
+          endControlSession();
+          running.store(false);
         }
       }
-
-      if (endpointFd > 0) {
-        state.update(endpointFd);
+    } catch (const std::exception& re) {
+      try {
+        closeEndpoint();
+      } catch (const std::exception& closeEx) {
+        LOG(INFO) << "closeEndpoint after disconnect: " << closeEx.what();
       }
-    } catch (std::runtime_error& re) {
-      STERROR << re.what();
-      closeEndpoint();
+      writer.clearSocket();
+      LOG(INFO) << "Client disconnect: " << re.what();
     }
   }
-  closeEndpoint();
-}
-
-void HtmServer::sendDebug(const string& msg) {
-  LOG(INFO) << "SENDING DEBUG LOG: " << msg;
-  unsigned char header = DEBUG_LOG;
-  int32_t length = Base64::EncodedLength(msg);
-  socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
-  socketHandler->writeB64(endpointFd, (const char*)&length, 4);
-  socketHandler->writeB64(endpointFd, &msg[0], msg.length());
+  try {
+    closeEndpoint();
+  } catch (const std::exception& closeEx) {
+    LOG(INFO) << "closeEndpoint on shutdown: " << closeEx.what();
+  }
+  writer.clearSocket();
+  state.stopAll();
 }
 
 void HtmServer::recover() {
-  // Start by writing ESC + [###q to put the client terminal into HTM mode
-  char buf[] = {
-      0x1b, 0x5b, '#', '#', '#', 'q',
-  };
-  socketHandler->writeAllOrThrow(endpointFd, buf, sizeof(buf), false);
-  fflush(stdout);
-  // Sleep to make sure the client can process the escape code
-  std::this_thread::sleep_for(std::chrono::microseconds(10 * 1000));
-
-  // Send the state
-  LOG(INFO) << "Starting terminal";
-
-  sendDebug("Initializing HTM, please wait...\n\r");
-
-  {
-    unsigned char header = INIT_STATE;
-    string jsonString = state.toJsonString();
-    int32_t length = jsonString.length();
-    VLOG(1) << "SENDING INIT: " << jsonString;
-    VLOG(1) << "SENDING INIT: " << length;
-    socketHandler->writeAllOrThrow(endpointFd, (const char*)&header, 1, false);
-    socketHandler->writeB64(endpointFd, (const char*)&length, 4);
-    socketHandler->writeAllOrThrow(endpointFd, &jsonString[0],
-                                   jsonString.length(), false);
-  }
-
-  state.sendTerminalBuffers(endpointFd);
-
-  sendDebug(
-      "HTM initialized.\n\rPress escape in this terminal to "
-      "disconnect.\n\rPress x in this terminal to shut down HTM\n\r");
+  writer.setSocket(socketHandler, endpointFd);
+  lineBuf.clear();
+  skipLfAfterCr = false;
+  // tmux -CC prints an empty server-originated block on attach. iTerm2 will not
+  // send refresh-client / list-windows until it sees this %end (flags 0).
+  writer.beginServerOriginated();
+  writer.end();
+  state.attachNotifications();
 }
 
-string HtmServer::getPipeName() {
-  uid_t myuid = getuid();
-  return string(GetTempDirectory() + "htm.") + to_string(myuid) +
-         string(".ipc");
+string HtmServer::getPaneDumpPath() {
+  return string(GetTempDirectory() + "htm.") + GetHtmIpcUser() +
+         string(".panes");
+}
+
+void HtmServer::writePaneDumpIfRequested() {
+  if (!paneDumpRequested.exchange(false)) {
+    return;
+  }
+  writePaneDumpFile(getPaneDumpPath(), state.dumpAllPanesText());
+}
+
+bool HtmServer::writePaneDumpFile(const string& path, const string& body) {
+  const string tmp = path + ".tmp";
+#ifdef WIN32
+  FILE* fp = fopen(tmp.c_str(), "w");
+#else
+  // The dump holds pane contents at a predictable path in the shared temp
+  // directory, so create it owner-only without following planted links.
+  const int fd = CreatePrivateFile(tmp);
+  FILE* fp = fd >= 0 ? fdopen(fd, "w") : nullptr;
+  if (fd >= 0 && !fp) {
+    ::close(fd);
+    ::remove(tmp.c_str());
+  }
+#endif
+  if (!fp) {
+    LOG(WARNING) << "pane dump open failed: " << tmp;
+    return false;
+  }
+  const bool written = fwrite(body.data(), 1, body.size(), fp) == body.size();
+  if (fclose(fp) != 0 || !written) {
+    LOG(WARNING) << "pane dump write failed: " << tmp;
+    ::remove(tmp.c_str());
+    return false;
+  }
+  std::error_code renameError;
+  fs::rename(tmp, path, renameError);
+  if (renameError) {
+    LOG(WARNING) << "pane dump rename failed: " << renameError.message();
+    ::remove(tmp.c_str());
+    return false;
+  }
+  return true;
+}
+
+string HtmServer::getShutdownEventName() {
+  return string("Local\\EternalTerminal.HtmShutdown.") + GetHtmIpcUser();
+}
+
+string HtmServer::getPaneDumpEventName() {
+  return string("Local\\EternalTerminal.HtmPaneDump.") + GetHtmIpcUser();
+}
+
+void HtmServer::endControlSession() {
+  const int64_t peer = controlClientPid(endpointFd);
+  writer.tryNotify("%exit");
+  closeEndpoint();
+  writer.clearSocket();
+  reapControlClient(peer);
 }
 }  // namespace et

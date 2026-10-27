@@ -3,6 +3,11 @@
 
 #include <fcntl.h>
 
+#include <algorithm>
+#include <atomic>
+#include <chrono>
+#include <thread>
+
 #include "Console.hpp"
 #include "ETerminal.pb.h"
 #include "PipeSocketHandler.hpp"
@@ -14,6 +19,8 @@ class FakeConsole : public Console {
   FakeConsole(shared_ptr<PipeSocketHandler> _socketHandler)
       : socketHandler(_socketHandler),
         getTerminalInfoCount(0),
+        terminalInfoAvailable(true),
+        automaticallyChangeTerminalInfo(true),
         clientServerFd(-1) {}
 
   virtual ~FakeConsole() {}
@@ -27,10 +34,10 @@ class FakeConsole : public Console {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (GetErrno() != EAGAIN) {
+        if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
           FATAL_FAIL(fd);
         } else {
-          ::usleep(100 * 1000);  // Sleep for client to connect
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       } else {
         break;
@@ -41,15 +48,19 @@ class FakeConsole : public Console {
     *serverClientFd = fd;
   }
 
-  virtual void setup() {
+  virtual void setup() override {
     fakeTerminalInfo.set_row(1);
     fakeTerminalInfo.set_column(1);
     fakeTerminalInfo.set_width(8);
     fakeTerminalInfo.set_height(10);
 
+#ifdef WIN32
+    pipePath = "et_test_console_" + genRandomAlphaNum(12) + ".ipc";
+#else
     string tmpPath = GetTempDirectory() + string("et_test_console_XXXXXXXX");
     pipeDirectory = string(mkdtemp(&tmpPath[0]));
     pipePath = string(pipeDirectory) + "/pipe";
+#endif
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
     {
@@ -59,41 +70,109 @@ class FakeConsole : public Console {
     std::thread serverListenThread(&FakeConsole::consoleListenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
-    ::usleep(1000 * 1000);
-    clientServerFd = socketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    int fd = socketHandler->connect(endpoint);
+    FATAL_FAIL(fd);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = fd;
+    }
     serverListenThread.join();
     FATAL_FAIL(serverClientFd);
     LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
   }
 
-  virtual void teardown() {
-    socketHandler->close(clientServerFd);
-    socketHandler->close(serverClientFd);
-    FATAL_FAIL(::remove(pipePath.c_str()));
+  virtual void teardown() override {
+    int localClientServerFd;
+    int localServerClientFd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      localClientServerFd = clientServerFd;
+      localServerClientFd = serverClientFd;
+      clientServerFd = -1;
+      serverClientFd = -1;
+    }
+    socketHandler->close(localClientServerFd);
+    socketHandler->close(localServerClientFd);
+    SocketEndpoint endpoint;
+    endpoint.set_name(pipePath);
+    socketHandler->stopListening(endpoint);
+#ifndef WIN32
     FATAL_FAIL(::remove(pipeDirectory.c_str()));
+#endif
   }
 
-  virtual TerminalInfo getTerminalInfo() {
+  virtual std::optional<TerminalInfo> getTerminalInfo() override {
+    lock_guard<recursive_mutex> lock(_mutex);
     getTerminalInfoCount++;
-    if (getTerminalInfoCount % 100 == 0) {
+    if (!terminalInfoAvailable) {
+      return std::nullopt;
+    }
+    if (automaticallyChangeTerminalInfo && getTerminalInfoCount % 100 == 0) {
       // Bump the terminal info
       fakeTerminalInfo.set_row(fakeTerminalInfo.row() + 1);
     }
     return fakeTerminalInfo;
   }
 
-  virtual int getFd() { return clientServerFd; }
+  void setTerminalInfoResult(const std::optional<TerminalInfo>& terminalInfo) {
+    lock_guard<recursive_mutex> lock(_mutex);
+    automaticallyChangeTerminalInfo = false;
+    terminalInfoAvailable = terminalInfo.has_value();
+    if (terminalInfo) {
+      fakeTerminalInfo = *terminalInfo;
+    }
+  }
+
+  virtual int getFd() override {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd;
+  }
+
+  void write(const string& data) override {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = clientServerFd;
+    }
+    socketHandler->writeAllOrThrow(fd, data.data(), data.size(), false);
+  }
+
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd >= 0 && serverClientFd >= 0;
+  }
 
   string getTerminalData(int count) {
     string s(count, '\0');
-    socketHandler->readAll(serverClientFd, &s[0], count, false);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    socketHandler->readAll(fd, &s[0], count, false);
     return s;
   }
 
+  bool hasTerminalData() {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    return fd >= 0 && socketHandler->hasData(fd);
+  }
+
   void simulateKeystrokes(const string& s) {
-    LOG(INFO) << "FDs: " << clientServerFd << " " << serverClientFd;
-    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
+    int localClientServerFd;
+    int localServerClientFd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      localClientServerFd = clientServerFd;
+      localServerClientFd = serverClientFd;
+    }
+    LOG(INFO) << "FDs: " << localClientServerFd << " " << localServerClientFd;
+    socketHandler->writeAllOrThrow(localServerClientFd, s.c_str(), s.length(),
                                    false);
   }
 
@@ -102,6 +181,8 @@ class FakeConsole : public Console {
   shared_ptr<PipeSocketHandler> socketHandler;
   TerminalInfo fakeTerminalInfo;
   int getTerminalInfoCount;
+  bool terminalInfoAvailable;
+  bool automaticallyChangeTerminalInfo;
   int serverClientFd;
   int clientServerFd;
   string pipeDirectory;
@@ -114,8 +195,10 @@ class FakeUserTerminal : public UserTerminal {
       : socketHandler(_socketHandler),
         serverClientFd(-1),
         clientServerFd(-1),
+        setInfoCount(0),
         didCleanUp(false),
-        didHandleSessionEnd(false) {
+        didHandleSessionEnd(false),
+        exitCode(0) {
     memset(&lastWinInfo, 0, sizeof(winsize));
   }
 
@@ -130,10 +213,10 @@ class FakeUserTerminal : public UserTerminal {
     while (true) {
       fd = socketHandler->accept(serverFd);
       if (fd == -1) {
-        if (GetErrno() != EAGAIN) {
+        if (GetErrno() != EAGAIN && GetErrno() != EWOULDBLOCK) {
           FATAL_FAIL(fd);
         } else {
-          ::usleep(100 * 1000);  // Sleep for client to connect
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
         }
       } else {
         break;
@@ -144,26 +227,52 @@ class FakeUserTerminal : public UserTerminal {
   }
 
   virtual int setup(int routerFd) {
-    string tmpPath =
-        GetTempDirectory() + string("et_test_userterminal_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
-    pipePath = string(pipeDirectory) + "/pipe";
+    (void)routerFd;
+    setupComplete.store(false);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      serverClientFd = -1;
+      clientServerFd = -1;
+    }
+#ifdef WIN32
+    pipePath = "et_test_userterminal_" + genRandomAlphaNum(12) + ".ipc";
     SocketEndpoint endpoint;
     endpoint.set_name(pipePath);
-    serverClientFd = -1;
     std::thread serverListenThread(&FakeUserTerminal::listenFn, this,
                                    socketHandler, endpoint, &serverClientFd);
     // Wait for server to spin up
-    ::usleep(1000 * 1000);
-    clientServerFd = socketHandler->connect(endpoint);
-    FATAL_FAIL(clientServerFd);
+    std::this_thread::sleep_for(std::chrono::seconds(1));
+    int connectedFd = socketHandler->connect(endpoint);
+    FATAL_FAIL(connectedFd);
     serverListenThread.join();
-    FATAL_FAIL(serverClientFd);
-    // Honor the UserTerminal contract: the handler polls this fd non-blocking.
-    int flags = fcntl(clientServerFd, F_GETFL, 0);
-    if (flags != -1) {
-      fcntl(clientServerFd, F_SETFL, flags | O_NONBLOCK);
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = connectedFd;
+      FATAL_FAIL(serverClientFd);
+      u_long nonBlocking = 1;
+      FATAL_FAIL(ioctlsocket(clientServerFd, FIONBIO, &nonBlocking));
+      FATAL_FAIL(ioctlsocket(serverClientFd, FIONBIO, &nonBlocking));
     }
+#else
+    // Use an anonymous socketpair so the fake PTY ends are never registered in
+    // PipeSocketHandler. Concurrent UTH ::read/::write and test-side drain then
+    // cannot race SocketHandler's fd-mutex map (Linux TSan abort after Catch
+    // success with no printed report).
+    int fds[2] = {-1, -1};
+    FATAL_FAIL(::socketpair(AF_UNIX, SOCK_STREAM, 0, fds));
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      clientServerFd = fds[0];
+      serverClientFd = fds[1];
+      for (int fd : {clientServerFd, serverClientFd}) {
+        int flags = fcntl(fd, F_GETFL, 0);
+        if (flags != -1) {
+          fcntl(fd, F_SETFL, flags | O_NONBLOCK);
+        }
+      }
+    }
+#endif
+    setupComplete.store(true, std::memory_order_release);
     return getFd();
   };
 
@@ -171,34 +280,210 @@ class FakeUserTerminal : public UserTerminal {
 
   };
 
-  virtual int getFd() { return clientServerFd; }
+  virtual int getFd() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return clientServerFd;
+  }
+
+  /** @brief True once setup() has published both pipe ends. */
+  bool isSetupComplete() const {
+    return setupComplete.load(std::memory_order_acquire);
+  }
 
   string getKeystrokes(int count) {
-    lock_guard<recursive_mutex> lock(_mutex);
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    // Do not hold _mutex across blocking I/O: writers call getFd() under the
+    // same mutex (FakeUserTerminalTest), which would otherwise deadlock.
     string s(count, '\0');
-    socketHandler->readAll(serverClientFd, &s[0], count, false);
+#ifdef WIN32
+    socketHandler->readAll(fd, &s[0], count, false);
+#else
+    size_t got = 0;
+    while (got < static_cast<size_t>(count)) {
+      ssize_t rc = ::read(fd, &s[got], count - got);
+      if (rc > 0) {
+        got += static_cast<size_t>(rc);
+        continue;
+      }
+      if (rc < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
+#endif
     return s;
   }
 
-  void simulateTerminalResponse(const string& s) {
-    lock_guard<recursive_mutex> lock(_mutex);
-    socketHandler->writeAllOrThrow(serverClientFd, s.c_str(), s.length(),
-                                   false);
+  /** @brief Non-blocking: returns true when keystrokes are readable. */
+  bool hasKeystrokes() {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    if (fd < 0) {
+      return false;
+    }
+    // Poll the raw fd: avoid SocketHandler map TOCTOU with the UTH thread.
+    return et::waitOnSocketData(fd, 0, 0);
   }
-  virtual void handleSessionEnd() { didHandleSessionEnd = true; }
-  virtual void cleanup() { didCleanUp = true; }
-  virtual void setInfo(const winsize& tmpwin) { lastWinInfo = tmpwin; }
+
+  /**
+   * @brief Read up to `maxCount` keystroke bytes, waiting at most `timeoutMs`.
+   * Returns whatever arrived (possibly empty) without hanging forever.
+   */
+  string drainKeystrokes(int maxCount, int timeoutMs) {
+    string got;
+    const auto deadline =
+        std::chrono::steady_clock::now() + std::chrono::milliseconds(timeoutMs);
+    while (static_cast<int>(got.size()) < maxCount &&
+           std::chrono::steady_clock::now() < deadline) {
+      if (!hasKeystrokes()) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+        continue;
+      }
+      int fd;
+      {
+        lock_guard<recursive_mutex> lock(_mutex);
+        fd = serverClientFd;
+      }
+      if (fd < 0) {
+        break;
+      }
+      char b[64];
+      int want = std::min(maxCount - static_cast<int>(got.size()), 64);
+      ssize_t rc = ::read(fd, b, want);
+      if (rc > 0) {
+        got.append(b, static_cast<size_t>(rc));
+      } else {
+        std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      }
+    }
+    return got;
+  }
+
+  void simulateTerminalResponse(const string& s) {
+    int fd;
+    {
+      lock_guard<recursive_mutex> lock(_mutex);
+      fd = serverClientFd;
+    }
+    if (fd < 0 || s.empty()) {
+      return;
+    }
+#ifdef WIN32
+    // Windows AF_UNIX needs SocketHandler (::write is not valid on sockets).
+    socketHandler->writeAllOrThrow(fd, s.c_str(), s.length(), false);
+#else
+    const char* p = s.data();
+    size_t left = s.size();
+    while (left > 0) {
+      ssize_t w = ::write(fd, p, left);
+      if (w > 0) {
+        p += w;
+        left -= static_cast<size_t>(w);
+        continue;
+      }
+      if (w < 0 &&
+          (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        continue;
+      }
+      break;
+    }
+#endif
+  }
+  virtual int handleSessionEnd() {
+    didHandleSessionEnd = true;
+    return exitCode;
+  }
+
+  void setExitCode(int code) { exitCode = code; }
+  virtual void terminate() {}
+  virtual void cleanup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    if (didCleanUp) {
+      return;
+    }
+#ifdef WIN32
+    if (clientServerFd >= 0) {
+      socketHandler->close(clientServerFd);
+      clientServerFd = -1;
+    }
+    if (serverClientFd >= 0) {
+      socketHandler->close(serverClientFd);
+      serverClientFd = -1;
+    }
+    if (!pipePath.empty()) {
+      SocketEndpoint endpoint;
+      endpoint.set_name(pipePath);
+      socketHandler->stopListening(endpoint);
+    }
+#else
+    // socketpair fds are not in SocketHandler's map.
+    if (clientServerFd >= 0) {
+      ::close(clientServerFd);
+      clientServerFd = -1;
+    }
+    if (serverClientFd >= 0) {
+      ::close(serverClientFd);
+      serverClientFd = -1;
+    }
+#endif
+    didCleanUp = true;
+  }
+  virtual void setInfo(const winsize& tmpwin) {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    lastWinInfo = tmpwin;
+    setInfoCount++;
+  }
+
+  int getSetInfoCount() {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    return setInfoCount;
+  }
+
+  winsize getLastWinInfo() {
+    lock_guard<recursive_mutex> lock(terminalInfoMutex);
+    return lastWinInfo;
+  }
+
+  bool wasCleanedUp() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return didCleanUp;
+  }
+  bool sessionEndHandled() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return didHandleSessionEnd;
+  }
+
+  /** @brief True once setup() has both pipe ends connected. */
+  bool isSetup() {
+    lock_guard<recursive_mutex> lock(_mutex);
+    return serverClientFd >= 0 && clientServerFd >= 0;
+  }
 
  protected:
   recursive_mutex _mutex;
+  // Keep geometry updates independent from blocking socket I/O under _mutex.
+  recursive_mutex terminalInfoMutex;
   shared_ptr<PipeSocketHandler> socketHandler;
   int serverClientFd;
   int clientServerFd;
   string pipeDirectory;
   string pipePath;
+  int setInfoCount;
   bool didCleanUp;
   bool didHandleSessionEnd;
+  int exitCode;
   winsize lastWinInfo;
+  std::atomic<bool> setupComplete{false};
 };
 }  // namespace et
 

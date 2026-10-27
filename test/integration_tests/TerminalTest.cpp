@@ -2,6 +2,7 @@
 #include <chrono>
 #include <future>
 
+#ifndef WIN32
 #if __APPLE__
 #include <util.h>
 #elif __FreeBSD__
@@ -9,10 +10,15 @@
 #else
 #include <pty.h>
 #endif
-#include <fcntl.h>
 #include <sys/wait.h>
 #include <termios.h>
+#endif
+#include <fcntl.h>
+#ifdef WIN32
+#include <io.h>
+#endif
 
+#include "BinaryStdioConsole.hpp"
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
 #include "SshSetupHandler.hpp"
@@ -20,9 +26,38 @@
 #include "TerminalClient.hpp"
 #include "TerminalServer.hpp"
 #include "TestHeaders.hpp"
+#include "TestSocketPair.hpp"
 #include "TunnelUtils.hpp"
 
 namespace et {
+
+void waitForFakeConsoleSetup(const shared_ptr<FakeConsole>& fakeConsole) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (fakeConsole->isSetup()) {
+      return;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  REQUIRE(fakeConsole->isSetup());
+}
+
+bool waitForTerminalInfo(const shared_ptr<FakeUserTerminal>& fakeUserTerminal,
+                         const TerminalInfo& expected) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (std::chrono::steady_clock::now() < deadline) {
+    winsize actual = fakeUserTerminal->getLastWinInfo();
+    if (actual.ws_row == expected.row() && actual.ws_col == expected.column() &&
+        actual.ws_xpixel == expected.width() &&
+        actual.ws_ypixel == expected.height()) {
+      return true;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  return false;
+}
 
 void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
                    shared_ptr<FakeUserTerminal> fakeUserTerminal,
@@ -55,6 +90,7 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
 
   string s(1024, '\0');
   for (int a = 0; a < 1024; a++) {
@@ -82,9 +118,11 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   const char* var1 = getenv("ET_TEST_VAR1");
   REQUIRE(var1 != nullptr);
   REQUIRE(string(var1) == "test_value_1");
+#ifndef WIN32
   const char* var2 = getenv("ET_TEST_VAR2_EMPTY");
   REQUIRE(var2 != nullptr);
   REQUIRE(string(var2) == "");
+#endif
 
   terminalClient->shutdown();
   terminalClientThread.join();
@@ -94,8 +132,66 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   uthThread.join();
   uth.reset();
 
+#ifdef WIN32
+  _putenv("ET_TEST_VAR1=");
+  _putenv("ET_TEST_VAR2_EMPTY=");
+#else
   unsetenv("ET_TEST_VAR1");
   unsetenv("ET_TEST_VAR2_EMPTY");
+#endif
+}
+
+void terminalInfoQueryFailureTest(
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    shared_ptr<FakeConsole> fakeConsole, const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
+
+  TerminalInfo terminalInfo;
+  terminalInfo.set_row(24);
+  terminalInfo.set_column(80);
+  terminalInfo.set_width(640);
+  terminalInfo.set_height(480);
+  fakeConsole->setTerminalInfoResult(terminalInfo);
+  REQUIRE(waitForTerminalInfo(fakeUserTerminal, terminalInfo));
+
+  int setInfoCount = fakeUserTerminal->getSetInfoCount();
+  fakeConsole->setTerminalInfoResult(std::nullopt);
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  REQUIRE(fakeUserTerminal->getSetInfoCount() == setInfoCount);
+
+  fakeConsole->setTerminalInfoResult(terminalInfo);
+  std::this_thread::sleep_for(std::chrono::milliseconds(250));
+  REQUIRE(fakeUserTerminal->getSetInfoCount() == setInfoCount);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
 }
 
 // A UserTerminal backed by a *real* pty running `cat`, so the test exercises
@@ -103,6 +199,77 @@ void readWriteTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
 // and cannot reproduce the input-write deadlock -- which is exactly why that
 // bug went unnoticed.  `cat` echoes input back byte-for-byte; the pty is raw +
 // no-echo so the round-trip is exactly 1:1.
+#ifdef WIN32
+// Windows has no forkpty: echo through a loopback socket pair instead. The
+// handler pumps the returned fd exactly like a pty master (bidirectional),
+// and the background thread plays the role of `cat`, echoing input back
+// byte-for-byte so the round-trip is exactly 1:1.
+class RealPtyEchoTerminal : public UserTerminal {
+ public:
+  RealPtyEchoTerminal() : cleanedUp(false) { fds[0] = fds[1] = -1; }
+  virtual ~RealPtyEchoTerminal() { cleanup(); }
+
+  virtual int setup(int /*routerFd*/) {
+    if (test::createTestSocketPair(fds) != 0) {
+      STFATAL << "Failed to create echo socket pair";
+    }
+    running = true;
+    echoThread = thread([this]() {
+      char buf[4096];
+      while (running.load()) {
+        int n = ::recv(fds[1], buf, sizeof(buf), 0);
+        if (n <= 0) {
+          break;
+        }
+        int off = 0;
+        while (off < n) {
+          int m = ::send(fds[1], buf + off, n - off, 0);
+          if (m <= 0) {
+            break;
+          }
+          off += m;
+        }
+        if (off < n) {
+          break;
+        }
+      }
+    });
+    return fds[0];
+  }
+  virtual void runTerminal() {}
+  virtual int handleSessionEnd() { return 0; }
+  virtual void terminate() {}
+  virtual void cleanup() {
+    lock_guard<mutex> guard(cleanupMutex);
+    if (cleanedUp) {
+      return;
+    }
+    cleanedUp = true;
+    running = false;
+    if (fds[1] >= 0) {
+      // Unblocks the echo thread's recv so join() below completes.
+      test::closeTestFd(fds[1]);
+      fds[1] = -1;
+    }
+    if (echoThread.joinable()) {
+      echoThread.join();
+    }
+    if (fds[0] >= 0) {
+      test::closeTestFd(fds[0]);
+      fds[0] = -1;
+    }
+  }
+  virtual int getFd() { return fds[0]; }
+  virtual void setInfo(const winsize& /*tmpwin*/) {}
+
+ private:
+  int fds[2];
+  thread echoThread;
+  atomic<bool> running{false};
+  mutex cleanupMutex;
+  bool cleanedUp;
+};
+#else
 class RealPtyEchoTerminal : public UserTerminal {
  public:
   RealPtyEchoTerminal() : masterFd(-1), childPid(-1) {}
@@ -130,7 +297,12 @@ class RealPtyEchoTerminal : public UserTerminal {
     return masterFd;
   }
   virtual void runTerminal() {}
-  virtual void handleSessionEnd() {}
+  virtual int handleSessionEnd() { return 0; }
+  virtual void terminate() {
+    if (childPid > 0) {
+      kill(childPid, SIGHUP);
+    }
+  }
   virtual void cleanup() {
     if (masterFd >= 0) {
       close(masterFd);
@@ -149,6 +321,7 @@ class RealPtyEchoTerminal : public UserTerminal {
   int masterFd;
   pid_t childPid;
 };
+#endif
 
 // Pushes a payload much larger than one pty buffer through the real handler and
 // a real pty, and requires that every byte echoes back within a deadline.  The
@@ -181,6 +354,7 @@ void largeInputNoDeadlockTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   thread terminalClientThread(
       [terminalClient]() { terminalClient->run("", false); });
   sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
 
   // Before the bulk test, confirm the full client -> pty(`cat`) -> client echo
   // pipe is actually live, and drain anything the connection produced during
@@ -265,6 +439,312 @@ void largeInputNoDeadlockTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
   uth.reset();
 }
 
+// A Console whose descriptor is a regular file opened read/write, reproducing
+// what nohup(1) hands a backgrounded client: output lands in the file, and
+// reads of the same descriptor always return EOF.
+class FileBackedConsole : public Console {
+ public:
+  FileBackedConsole() : fd(-1) {
+    directory = test::makeTempDir("et_test_nohup");
+    path = directory + "/nohup.out";
+#ifdef WIN32
+    fd = _open(path.c_str(), _O_RDWR | _O_CREAT | _O_APPEND,
+               _S_IREAD | _S_IWRITE);
+#else
+    fd = ::open(path.c_str(), O_RDWR | O_CREAT | O_APPEND, 0600);
+#endif
+    FATAL_FAIL(fd);
+  }
+
+  virtual ~FileBackedConsole() {}
+
+  virtual void setup() override {}
+
+  virtual void teardown() override {
+    if (fd >= 0) {
+#ifdef WIN32
+      _close(fd);
+#else
+      ::close(fd);
+#endif
+      fd = -1;
+    }
+    ::remove(path.c_str());
+    test::removeTempDir(directory);
+  }
+
+  virtual std::optional<TerminalInfo> getTerminalInfo() override {
+    TerminalInfo ti;
+    ti.set_row(24);
+    ti.set_column(80);
+    ti.set_width(640);
+    ti.set_height(480);
+    return ti;
+  }
+
+  virtual int getFd() override { return fd; }
+
+  void write(const string& data) override {
+#ifdef WIN32
+    // The base-class write() targets the Win32 console, but this double must
+    // capture output in the backing file, mirroring the Unix path where the
+    // base implementation writes to getFd().
+    if (!data.empty()) {
+      _write(fd, data.data(), static_cast<unsigned int>(data.size()));
+    }
+#else
+    Console::write(data);
+#endif
+  }
+
+  string readBackContents() {
+    string contents;
+#ifdef WIN32
+    int readFd = _open(path.c_str(), _O_RDONLY);
+#else
+    int readFd = ::open(path.c_str(), O_RDONLY);
+#endif
+    if (readFd < 0) {
+      return contents;
+    }
+    char buf[4096];
+    int rc;
+#ifdef WIN32
+    while ((rc = _read(readFd, buf, sizeof(buf))) > 0) {
+      contents.append(buf, rc);
+    }
+    _close(readFd);
+#else
+    while ((rc = ::read(readFd, buf, sizeof(buf))) > 0) {
+      contents.append(buf, rc);
+    }
+    ::close(readFd);
+#endif
+    return contents;
+  }
+
+ protected:
+  int fd;
+  string directory;
+  string path;
+};
+
+// A client whose console descriptor is not a tty must keep running: it can no
+// longer accept keyboard input, but the session and its port forwards have to
+// survive so a backgrounded client is not torn down the moment the first
+// console read returns EOF.  Console::getFd() is STDOUT_FILENO, so any
+// launcher that points stdout at something other than the tty -- nohup(1), a
+// shell redirect, a service manager -- lands here.
+void nonTtyConsoleKeepsSessionAliveTest(
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  auto fileConsole = make_shared<FileBackedConsole>();
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fileConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+  sleep(3);
+
+  // Pre-fix, the first console read returned EOF and run() exited within
+  // milliseconds of the connection coming up.
+  REQUIRE(!runReturned.load());
+
+  // The session is not merely alive, it is still usable: remote output has to
+  // reach the same descriptor.
+  const string remoteOutput = "ET_NOHUP_OUTPUT_MARKER";
+  fakeUserTerminal->simulateTerminalResponse(remoteOutput);
+
+  std::promise<bool> sawOutputPromise;
+  auto sawOutputFuture = sawOutputPromise.get_future();
+  thread readThread([&sawOutputPromise, fileConsole, remoteOutput]() {
+    while (fileConsole->readBackContents().find(remoteOutput) == string::npos) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    }
+    sawOutputPromise.set_value(true);
+  });
+  bool sawOutput = sawOutputFuture.wait_for(std::chrono::seconds(30)) ==
+                   std::future_status::ready;
+  REQUIRE(sawOutput);
+  if (sawOutput) {
+    readThread.join();
+  } else {
+    readThread.detach();
+  }
+
+  REQUIRE(!runReturned.load());
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
+}
+
+#ifndef WIN32
+// VS Code Remote-SSH "terminal mode" runs `et -T host sh << 'EOSSH'` inside a
+// terminal: stdout is a tty, stdin is a heredoc that hits EOF once the script
+// is read. That EOF must stop console input, not end the session.
+void pipedStdinWithTtyStdoutKeepsSessionAliveTest(
+    shared_ptr<PipeSocketHandler> routerSocketHandler,
+    shared_ptr<FakeUserTerminal> fakeUserTerminal,
+    SocketEndpoint serverEndpoint,
+    shared_ptr<SocketHandler> clientSocketHandler,
+    shared_ptr<SocketHandler> clientPipeSocketHandler,
+    const SocketEndpoint& routerEndpoint) {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  int ptyMaster = -1;
+  int ptySlave = -1;
+  FATAL_FAIL(openpty(&ptyMaster, &ptySlave, nullptr, nullptr, nullptr));
+  int stdinPipe[2];
+  FATAL_FAIL(::pipe(stdinPipe));
+  const string script = "echo hi\n";
+  FATAL_FAIL(::write(stdinPipe[1], script.data(), script.size()));
+  ::close(stdinPipe[1]);
+
+  const int savedStdin = ::dup(STDIN_FILENO);
+  const int savedStdout = ::dup(STDOUT_FILENO);
+  FATAL_FAIL(savedStdin);
+  FATAL_FAIL(savedStdout);
+  fflush(stdout);
+  FATAL_FAIL(::dup2(stdinPipe[0], STDIN_FILENO));
+  FATAL_FAIL(::dup2(ptySlave, STDOUT_FILENO));
+  ::close(stdinPipe[0]);
+  ::close(ptySlave);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, serverEndpoint, id, passkey,
+      make_shared<BinaryStdioConsole>(), false, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+
+  const auto setupDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (!fakeUserTerminal->isSetupComplete() &&
+         std::chrono::steady_clock::now() < setupDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  const string received = fakeUserTerminal->getKeystrokes(script.size());
+  sleep(2);
+  const bool aliveAfterEof = !runReturned.load();
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  fflush(stdout);
+  FATAL_FAIL(::dup2(savedStdin, STDIN_FILENO));
+  FATAL_FAIL(::dup2(savedStdout, STDOUT_FILENO));
+  ::close(savedStdin);
+  ::close(savedStdout);
+  ::close(ptyMaster);
+
+  uth->shutdown();
+  uthThread.join();
+  uth.reset();
+
+  REQUIRE(received == script);
+  REQUIRE(aliveAfterEof);
+}
+#endif
+
+void closeOnHangupTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                       shared_ptr<FakeUserTerminal> fakeUserTerminal,
+                       SocketEndpoint serverEndpoint,
+                       shared_ptr<SocketHandler> clientSocketHandler,
+                       shared_ptr<SocketHandler> clientPipeSocketHandler,
+                       const SocketEndpoint& routerEndpoint) {
+  TerminalClient::resetHangupClose();
+  TerminalClient::configureCloseOnHangup(true);
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto uth = shared_ptr<UserTerminalHandler>(
+      new UserTerminalHandler(routerSocketHandler, fakeUserTerminal, true,
+                              routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  auto fileConsole = make_shared<FileBackedConsole>();
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fileConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+
+  std::atomic<bool> runReturned(false);
+  thread terminalClientThread([terminalClient, &runReturned]() {
+    terminalClient->run("", false);
+    runReturned = true;
+  });
+  sleep(2);
+
+  REQUIRE(!runReturned.load());
+
+#ifdef WIN32
+  // Exercise the Windows console control handler directly.
+  BOOL handled = TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT);
+  REQUIRE(handled == TRUE);
+#else
+  TerminalClient::requestHangupClose(0);
+#endif
+
+  REQUIRE(TerminalClient::waitForHangupClose(5000));
+
+  terminalClientThread.join();
+  REQUIRE(runReturned.load());
+  terminalClient.reset();
+
+  uthThread.join();
+  uth.reset();
+
+#ifdef WIN32
+  TerminalClient::configureCloseOnHangup(false);
+  REQUIRE(TerminalClient::consoleCtrlHandler(CTRL_CLOSE_EVENT) == FALSE);
+#endif
+
+  TerminalClient::resetHangupClose();
+}
+
 class LogInterceptHandler : public el::LogDispatchCallback {
  public:
   void handle(const el::LogDispatchData* data) {
@@ -301,6 +781,62 @@ class LogInterceptHandler : public el::LogDispatchCallback {
   std::function<void()> interceptCallback;
 };
 
+#ifdef WIN32
+class PartialFailurePipeSocketHandler : public PipeSocketHandler {
+ public:
+  void failNextWriteContaining(const string& output) {
+    lock_guard<mutex> guard(failureMutex);
+    outputToFail = output;
+    partialFd = -1;
+    partialWriteDone = false;
+    targetWriteFailed = false;
+  }
+
+  bool didFailTargetWrite() {
+    lock_guard<mutex> guard(failureMutex);
+    return targetWriteFailed;
+  }
+
+  ssize_t write(int fd, const void* buf, size_t count) override {
+    bool sendPartial = false;
+    bool failWrite = false;
+    {
+      lock_guard<mutex> guard(failureMutex);
+      if (!outputToFail.empty() && !partialWriteDone &&
+          count >= outputToFail.size() &&
+          std::search(static_cast<const char*>(buf),
+                      static_cast<const char*>(buf) + count,
+                      outputToFail.begin(), outputToFail.end()) !=
+              static_cast<const char*>(buf) + count) {
+        partialWriteDone = true;
+        partialFd = fd;
+        sendPartial = true;
+      } else if (partialWriteDone && fd == partialFd) {
+        outputToFail.clear();
+        partialFd = -1;
+        targetWriteFailed = true;
+        failWrite = true;
+      }
+    }
+    if (sendPartial) {
+      return PipeSocketHandler::write(fd, buf, 1);
+    }
+    if (failWrite) {
+      SetErrno(EPIPE);
+      return -1;
+    }
+    return PipeSocketHandler::write(fd, buf, count);
+  }
+
+ private:
+  mutex failureMutex;
+  string outputToFail;
+  int partialFd = -1;
+  bool partialWriteDone = false;
+  bool targetWriteFailed = false;
+};
+#endif
+
 class EndToEndTestFixture {
  public:
   EndToEndTestFixture() {
@@ -311,7 +847,11 @@ class EndToEndTestFixture {
     clientSocketHandler.reset(new PipeSocketHandler());
     clientPipeSocketHandler.reset(new PipeSocketHandler());
     serverSocketHandler.reset(new PipeSocketHandler());
+#ifdef WIN32
+    routerSocketHandler.reset(new PartialFailurePipeSocketHandler());
+#else
     routerSocketHandler.reset(new PipeSocketHandler());
+#endif
     el::Helpers::setThreadName("Main");
     consoleSocketHandler.reset(new PipeSocketHandler());
     fakeConsole.reset(new FakeConsole(consoleSocketHandler));
@@ -319,8 +859,7 @@ class EndToEndTestFixture {
     userTerminalSocketHandler.reset(new PipeSocketHandler());
     fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
 
-    string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipeDirectory = test::makeTempDir("etserver_test");
 
     routerPipePath = string(pipeDirectory) + "/pipe_router";
     routerEndpoint.set_name(routerPipePath);
@@ -345,9 +884,9 @@ class EndToEndTestFixture {
     clientSocketHandler.reset();
     clientPipeSocketHandler.reset();
     routerSocketHandler.reset();
-    FATAL_FAIL(::remove(routerPipePath.c_str()));
-    FATAL_FAIL(::remove(serverPipePath.c_str()));
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    removeOrMissing(routerPipePath);
+    removeOrMissing(serverPipePath);
+    test::removeTempDir(pipeDirectory);
 
     el::Helpers::uninstallLogDispatchCallback<LogInterceptHandler>(
         "LogInterceptHandler");
@@ -358,7 +897,11 @@ class EndToEndTestFixture {
 
   shared_ptr<PipeSocketHandler> consoleSocketHandler;
   shared_ptr<PipeSocketHandler> userTerminalSocketHandler;
+#ifdef WIN32
+  shared_ptr<PartialFailurePipeSocketHandler> routerSocketHandler;
+#else
   shared_ptr<PipeSocketHandler> routerSocketHandler;
+#endif
 
   shared_ptr<SocketHandler> serverSocketHandler;
   shared_ptr<SocketHandler> clientSocketHandler;
@@ -425,11 +968,142 @@ TEST_CASE_METHOD(EndToEndTestFixture, "EndToEndTest",
                 routerEndpoint);
 }
 
+#ifdef WIN32
+TEST_CASE_METHOD(EndToEndTestFixture, "WindowsOutputSurvivesFailedWrite",
+                 "[EndToEndTest][integration][windows]") {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto handler = make_shared<UserTerminalHandler>(
+      routerSocketHandler, fakeUserTerminal, true, routerEndpoint,
+      id + "/" + passkey);
+  thread handlerThread([handler]() { handler->run(); });
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+  waitForFakeConsoleSetup(fakeConsole);
+
+  const auto terminalDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (!fakeUserTerminal->isSetup() &&
+         std::chrono::steady_clock::now() < terminalDeadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+  const bool terminalWasSetup = fakeUserTerminal->isSetup();
+
+  const string marker = "ET_WINDOWS_PENDING_OUTPUT";
+  if (terminalWasSetup) {
+    routerSocketHandler->failNextWriteContaining(marker);
+    fakeUserTerminal->simulateTerminalResponse(marker);
+  }
+
+  string received;
+  bool terminalSurvivedReconnect = false;
+  const auto outputDeadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(30);
+  while (fakeUserTerminal->isSetup() &&
+         std::chrono::steady_clock::now() < outputDeadline) {
+    while (fakeConsole->hasTerminalData()) {
+      received += fakeConsole->getTerminalData(1);
+    }
+    if (received == marker) {
+      terminalSurvivedReconnect =
+          fakeUserTerminal->isSetup() && !fakeUserTerminal->wasCleanedUp();
+      break;
+    }
+    std::this_thread::sleep_for(std::chrono::milliseconds(10));
+  }
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  handler->shutdown();
+  handlerThread.join();
+  handler.reset();
+
+  REQUIRE(terminalWasSetup);
+  REQUIRE(routerSocketHandler->didFailTargetWrite());
+  REQUIRE(received == marker);
+  REQUIRE(terminalSurvivedReconnect);
+  REQUIRE(fakeUserTerminal->wasCleanedUp());
+  REQUIRE_FALSE(fakeUserTerminal->isSetup());
+}
+#endif
+
+TEST_CASE_METHOD(EndToEndTestFixture, "TerminalKillAcknowledged",
+                 "[TerminalKill][integration]") {
+  const string id = genRandomAlphaNum(16);
+  const string passkey = genRandomAlphaNum(32);
+  auto handler = make_shared<UserTerminalHandler>(
+      routerSocketHandler, fakeUserTerminal, true, routerEndpoint,
+      id + "/" + passkey);
+  thread handlerThread([handler]() { handler->run(); });
+
+  bool acknowledged = false;
+  try {
+    TerminalClient client(clientSocketHandler, clientPipeSocketHandler,
+                          serverEndpoint, id, passkey, nullptr, false, "", "",
+                          false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}, false,
+                          "", {}, "", 3, false);
+    acknowledged = client.killSession(15);
+  } catch (...) {
+    handler->shutdown();
+    handlerThread.join();
+    throw;
+  }
+
+  handler->shutdown();
+  handlerThread.join();
+  REQUIRE(acknowledged);
+  REQUIRE(fakeUserTerminal->sessionEndHandled());
+  REQUIRE(fakeUserTerminal->wasCleanedUp());
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "TerminalInfoQueryFailure",
+                 "[EndToEndTest][integration]") {
+  terminalInfoQueryFailureTest(routerSocketHandler, fakeUserTerminal,
+                               serverEndpoint, clientSocketHandler,
+                               clientPipeSocketHandler, fakeConsole,
+                               routerEndpoint);
+}
+
 TEST_CASE_METHOD(EndToEndTestFixture, "LargeInputNoDeadlock",
                  "[EndToEndTest][integration]") {
   largeInputNoDeadlockTest(routerSocketHandler, serverEndpoint,
                            clientSocketHandler, clientPipeSocketHandler,
                            fakeConsole, routerEndpoint);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "NonTtyConsoleKeepsSessionAlive",
+                 "[EndToEndTest][integration]") {
+  nonTtyConsoleKeepsSessionAliveTest(routerSocketHandler, fakeUserTerminal,
+                                     serverEndpoint, clientSocketHandler,
+                                     clientPipeSocketHandler, routerEndpoint);
+}
+
+#ifndef WIN32
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "PipedStdinWithTtyStdoutKeepsSessionAlive",
+                 "[EndToEndTest][integration]") {
+  pipedStdinWithTtyStdoutKeepsSessionAliveTest(
+      routerSocketHandler, fakeUserTerminal, serverEndpoint,
+      clientSocketHandler, clientPipeSocketHandler, routerEndpoint);
+}
+#endif
+
+TEST_CASE_METHOD(EndToEndTestFixture, "CloseOnHangup",
+                 "[EndToEndTest][integration]") {
+  closeOnHangupTest(routerSocketHandler, fakeUserTerminal, serverEndpoint,
+                    clientSocketHandler, clientPipeSocketHandler,
+                    routerEndpoint);
 }
 
 void simultaneousTerminalConnectionTest(
@@ -576,6 +1250,304 @@ TEST_CASE_METHOD(EndToEndTestFixture, "TerminalConnectSimultaneous",
         clientPipeSocketHandler, fakeConsole, routerEndpoint);
   }
 }
+
+#ifndef WIN32
+// Console that refuses all writeSome calls until openGate(). If the client
+// stops on EXIT_STATUS before consoleOut drains, run() finishes while the
+// gate is still closed and output is lost (BinaryStdioConsole / O_NONBLOCK).
+class GateWriteConsole : public FakeConsole {
+ public:
+  explicit GateWriteConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (!gateOpen.load()) {
+      return 0;
+    }
+    const size_t n = std::min(s.size(), size_t(64));
+    ssize_t rc = ::write(getFd(), s.data(), n);
+    if (rc < 0) {
+      if (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR) {
+        return 0;
+      }
+      throw std::runtime_error(string("console write failed: ") +
+                               strerror(errno));
+    }
+    {
+      lock_guard<mutex> lock(writtenMutex);
+      written.append(s.data(), static_cast<size_t>(rc));
+    }
+    return static_cast<size_t>(rc);
+  }
+
+  void openGate() { gateOpen.store(true); }
+
+  string writtenSnapshot() {
+    lock_guard<mutex> lock(writtenMutex);
+    return written;
+  }
+
+ private:
+  std::atomic<bool> gateOpen{false};
+  mutex writtenMutex;
+  string written;
+};
+
+// Console that returns 0 (would-block) until armHardFail(), then throws on
+// writeSome like a closed pipe (EPIPE). Used to cover the post-loop consoleOut
+// drain path that sits outside the main-loop try/catch.
+class HardWriteFailConsole : public FakeConsole {
+ public:
+  explicit HardWriteFailConsole(shared_ptr<PipeSocketHandler> socketHandler)
+      : FakeConsole(socketHandler) {}
+
+  size_t writeSome(const string& s) override {
+    if (s.empty()) {
+      return 0;
+    }
+    if (failHard.load()) {
+      throw std::runtime_error("console write failed: Broken pipe");
+    }
+    return 0;
+  }
+
+  void armHardFail() { failHard.store(true); }
+
+ private:
+  std::atomic<bool> failHard{false};
+};
+
+// Shell child that exits immediately with a fixed status so the client can
+// observe TERMINAL_EXIT_STATUS over a real pty session.
+class RealPtyFixedExitTerminal : public UserTerminal {
+ public:
+  explicit RealPtyFixedExitTerminal(int code, const string& fullScript = "")
+      : masterFd(-1), childPid(-1), exitCode(code), fullScript(fullScript) {}
+  virtual ~RealPtyFixedExitTerminal() { cleanup(); }
+
+  virtual int setup(int /*routerFd*/) {
+    // Allocate before fork: the child must not use heap locks inherited from
+    // the other threads in this test process.
+    const string script = fullScript.empty()
+                              ? ("sleep 2; exit " + to_string(exitCode))
+                              : fullScript;
+    const char* scriptArg = script.c_str();
+    childPid = forkpty(&masterFd, NULL, NULL, NULL);
+    if (childPid == -1) {
+      FATAL_FAIL(childPid);
+    }
+    if (childPid == 0) {
+      // Give the client time to connect and enter run() before exiting by
+      // default; callers can supply a full script (e.g. print then exit).
+      execl("/bin/sh", "sh", "-c", scriptArg, (char*)NULL);
+      _exit(127);
+    }
+    int flags = fcntl(masterFd, F_GETFL, 0);
+    if (flags != -1) {
+      fcntl(masterFd, F_SETFL, flags | O_NONBLOCK);
+    }
+    return masterFd;
+  }
+  virtual void runTerminal() {}
+  virtual int handleSessionEnd() {
+    if (childPid <= 0) {
+      return 0;
+    }
+    int status = 0;
+    FATAL_FAIL(waitpid(childPid, &status, 0));
+    childPid = -1;
+    if (WIFEXITED(status)) {
+      return WEXITSTATUS(status);
+    }
+    if (WIFSIGNALED(status)) {
+      return 128 + WTERMSIG(status);
+    }
+    return 0;
+  }
+  virtual void terminate() {
+    if (childPid > 0) {
+      kill(childPid, SIGHUP);
+    }
+  }
+  virtual void cleanup() {
+    if (masterFd >= 0) {
+      close(masterFd);
+      masterFd = -1;
+    }
+    if (childPid > 0) {
+      int status = 0;
+      waitpid(childPid, &status, 0);
+      childPid = -1;
+    }
+  }
+  virtual int getFd() { return masterFd; }
+  virtual void setInfo(const winsize& /*tmpwin*/) {}
+
+ private:
+  int masterFd;
+  pid_t childPid;
+  int exitCode;
+  string fullScript;
+};
+
+void remoteExitStatusTest(shared_ptr<PipeSocketHandler> routerSocketHandler,
+                          SocketEndpoint serverEndpoint,
+                          shared_ptr<SocketHandler> clientSocketHandler,
+                          shared_ptr<SocketHandler> clientPipeSocketHandler,
+                          shared_ptr<FakeConsole> fakeConsole,
+                          const SocketEndpoint& routerEndpoint,
+                          const string& command, int expectedStatus,
+                          const string& fullScript = "") {
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, fullScript);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, command, &runStatus]() {
+    runStatus = terminalClient->run(command, false);
+  });
+  terminalClientThread.join();
+  REQUIRE(runStatus == expectedStatus);
+
+  uth->shutdown();
+  uthThread.join();
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_CommandPath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // -c path: client must exit with the remote shell's status (42).
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint,
+                       "true", 42);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture, "RemoteExitStatus_InteractivePath",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // No command: keep today's success exit even when the remote exits 42.
+  remoteExitStatusTest(routerSocketHandler, serverEndpoint, clientSocketHandler,
+                       clientPipeSocketHandler, fakeConsole, routerEndpoint, "",
+                       0);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_DrainsConsoleOutBeforeStop",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // writeSome may return 0 (BinaryStdioConsole / O_NONBLOCK). EXIT_STATUS must
+  // not stop the loop until consoleOut is empty.
+  const string marker(2048, 'M');
+  auto gatedConsole = make_shared<GateWriteConsole>(consoleSocketHandler);
+  // Stable size avoids unrelated TERMINAL_INFO noise while the gate is closed.
+  TerminalInfo stableInfo;
+  stableInfo.set_row(24);
+  stableInfo.set_column(80);
+  stableInfo.set_width(8);
+  stableInfo.set_height(16);
+  gatedConsole->setTerminalInfoResult(stableInfo);
+  fakeConsole = gatedConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, gatedConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runFinished{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runFinished]() {
+    runStatus = terminalClient->run("true", false);
+    runFinished.store(true);
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes are still gated.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Bug: shuttingDown on EXIT_STATUS finishes run() before the gate opens.
+  const bool finishedEarly = runFinished.load();
+
+  gatedConsole->openGate();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(finishedEarly);
+  REQUIRE(runStatus == 42);
+  REQUIRE(gatedConsole->writtenSnapshot().find(marker) != string::npos);
+}
+
+TEST_CASE_METHOD(EndToEndTestFixture,
+                 "RemoteExitStatus_HardWriteErrorDuringFinalDrain",
+                 "[EndToEndTest][integration][RemoteExitStatus]") {
+  // Hard write errors (EPIPE/EBADF) during the post-loop consoleOut drain must
+  // not throw out of run() after EXIT_STATUS has already been received.
+  // Leave FakeConsole auto-resizes on: blocked consoleOut makes the client
+  // loop spin and send late TERMINAL_INFO after pty EOF — server must still
+  // forward EXIT_STATUS (macOS CI previously saw runStatus 0).
+  const string marker(2048, 'M');
+  auto failConsole = make_shared<HardWriteFailConsole>(consoleSocketHandler);
+  fakeConsole = failConsole;
+
+  auto fakeSubprocessUtils = make_shared<FakeSubprocessUtils>();
+  auto sshSetupHandler = make_shared<FakeSshSetupHandler>(fakeSubprocessUtils);
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  string script = "sleep 2; printf '%s' '" + marker + "'; exit 42";
+  auto realPty = make_shared<RealPtyFixedExitTerminal>(42, script);
+  auto uth = shared_ptr<UserTerminalHandler>(new UserTerminalHandler(
+      routerSocketHandler, realPty, true, routerEndpoint, id + "/" + passkey));
+  thread uthThread([uth]() { uth->run(); });
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, failConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  atomic<bool> runThrew{false};
+  int runStatus = -1;
+  thread terminalClientThread([terminalClient, &runStatus, &runThrew]() {
+    try {
+      runStatus = terminalClient->run("true", false);
+    } catch (const std::runtime_error&) {
+      runThrew.store(true);
+    }
+  });
+
+  // Wait until output + EXIT_STATUS have arrived while writes still return 0.
+  std::this_thread::sleep_for(std::chrono::seconds(4));
+  // Arm EPIPE: in-loop writeSome throws (caught), then post-loop drain throws
+  // outside the try/catch unless that path stops draining and returns status.
+  failConsole->armHardFail();
+  terminalClientThread.join();
+  uth->shutdown();
+  uthThread.join();
+
+  REQUIRE_FALSE(runThrew.load());
+  REQUIRE(runStatus == 42);
+}
+#endif
 
 // TODO: Multiple clients
 

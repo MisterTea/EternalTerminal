@@ -27,9 +27,12 @@ class Packet {
    * @brief Deserializes a packet from its raw byte representation.
    */
   explicit Packet(const string& serializedPacket) {
+    if (serializedPacket.size() < HEADER_SIZE) {
+      throw MalformedPacketError("Serialized packet shorter than its header");
+    }
     encrypted = serializedPacket[0];
     header = serializedPacket[1];
-    payload = serializedPacket.substr(2);
+    payload = serializedPacket.substr(HEADER_SIZE);
   }
 
   /**
@@ -41,7 +44,9 @@ class Packet {
       encrypted = false;
       payload = cryptoHandler->decrypt(payload);
     } else {
-      STFATAL << "Tried to decrypt a packet that wasn't encrypted";
+      // Peer-controlled framing: sever this connection, not the process.
+      throw MalformedPacketError(
+          "Received an unencrypted packet on an encrypted connection");
     }
   }
 
@@ -79,9 +84,10 @@ class Packet {
     return s;
   }
 
- protected:
   /** @brief Size of the non-payload portion of the serialized packet. */
   static const int HEADER_SIZE = 2;
+
+ protected:
   /** @brief Tracks whether the payload has been encrypted. */
   bool encrypted;
   /** @brief Application-specific packet type value stored as a byte. */

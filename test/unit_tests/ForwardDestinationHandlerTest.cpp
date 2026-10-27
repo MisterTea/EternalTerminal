@@ -71,6 +71,33 @@ class MockSocketHandler : public SocketHandler {
 };
 }  // namespace
 
+TEST_CASE("ForwardDestinationHandler closes its socket on destruction",
+          "[ForwardDestinationHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  { ForwardDestinationHandler handler(socketHandler, 42, 123); }
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
+TEST_CASE("ForwardDestinationHandler does not close released sockets twice",
+          "[ForwardDestinationHandler]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  {
+    ForwardDestinationHandler handler(socketHandler, 42, 123);
+    SECTION("Explicit close") {
+      handler.close();
+      handler.close();
+    }
+    SECTION("Peer EOF") {
+      socketHandler->enqueueHasData(true);
+      socketHandler->enqueueRead(0);
+      std::vector<PortForwardData> data;
+      handler.update(&data);
+    }
+    CHECK(handler.getFd() == -1);
+  }
+  CHECK(socketHandler->closedFds == std::vector<int>{42});
+}
+
 TEST_CASE("ForwardDestinationHandler forwards outbound payloads",
           "[ForwardDestinationHandler]") {
   auto socketHandler = std::make_shared<MockSocketHandler>();
@@ -159,4 +186,22 @@ TEST_CASE("ForwardDestinationHandler ignores transient EAGAIN reads",
   REQUIRE(responses.empty());
   REQUIRE(handler.getFd() == 70);
   REQUIRE(socketHandler->closedFds.empty());
+}
+
+TEST_CASE("ForwardDestinationHandler yields after a bounded data batch",
+          "[ForwardDestinationHandler][issue298]") {
+  auto socketHandler = std::make_shared<MockSocketHandler>();
+  ForwardDestinationHandler handler(socketHandler, /*fd=*/71, /*socketId=*/6);
+
+  const string chunk(16 * 1024, 'x');
+  for (int i = 0; i < 5; ++i) {
+    socketHandler->enqueueHasData(true);
+    socketHandler->enqueueRead(chunk.size(), chunk);
+  }
+
+  std::vector<PortForwardData> responses;
+  handler.update(&responses);
+
+  REQUIRE(responses.size() == 4);
+  REQUIRE(socketHandler->performedReads.size() == 4);
 }

@@ -13,9 +13,7 @@ class UnixSocketHandler : public SocketHandler {
   UnixSocketHandler();
   virtual ~UnixSocketHandler() {}
 
-  /**
-   * @brief Blocks with select() until the fd becomes readable.
-   */
+  /** @brief Blocks until the fd becomes readable or the timeout expires. */
   virtual bool waitForData(int fd, int64_t sec, int64_t usec);
   /** @brief Queries whether the descriptor currently has readable bytes. */
   virtual bool hasData(int fd);
@@ -33,6 +31,9 @@ class UnixSocketHandler : public SocketHandler {
    * server (EAGAIN/EWOULDBLOCK, ECONNABORTED, EINTR).
    */
   static bool isTransientAcceptError(int err);
+  /** @brief True when accept(2) failed because descriptors or kernel memory
+   * ran out (EMFILE/ENFILE/ENOMEM/ENOBUFS), which a peer can provoke. */
+  static bool isResourceExhausted(int err);
   /** @brief Closes the descriptor and removes it from the tracked set. */
   virtual void close(int fd);
   /** @brief Returns all actively tracked sockets. */
@@ -55,6 +56,8 @@ class UnixSocketHandler : public SocketHandler {
    * @brief Toggles blocking mode on a descriptor.
    */
   void setBlocking(int sockFd, bool blocking);
+  /** @brief Native socket write, suppressing SIGPIPE where supported. */
+  static ssize_t writeSocketSome(int fd, const char* buf, size_t count);
 
   /** @brief Mutex per active socket to ensure serial read/write. */
   map<int, shared_ptr<recursive_mutex>> activeSocketMutexes;

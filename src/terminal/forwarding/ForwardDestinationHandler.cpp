@@ -2,24 +2,52 @@
 
 namespace et {
 ForwardDestinationHandler::ForwardDestinationHandler(
-    shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId)
-    : socketHandler(_socketHandler), fd(_fd), socketId(_socketId) {}
+    shared_ptr<SocketHandler> _socketHandler, int _fd, int _socketId,
+    unique_ptr<AgentSessionBindReplies> _bindReplies)
+    : socketHandler(_socketHandler),
+      fd(_fd),
+      socketId(_socketId),
+      bindReplies(std::move(_bindReplies)) {}
 
-void ForwardDestinationHandler::close() { socketHandler->close(fd); }
+ForwardDestinationHandler::~ForwardDestinationHandler() { close(); }
+
+void ForwardDestinationHandler::close() {
+  if (fd >= 0) {
+    int closedFd = fd;
+    fd = -1;
+    socketHandler->close(closedFd);
+  }
+}
 
 void ForwardDestinationHandler::write(const string& s) {
+  if (writeShutdown || fd < 0) {
+    return;
+  }
   VLOG(1) << "Writing " << s.length() << " bytes to port destination";
   socketHandler->writeAllOrReturn(fd, s.c_str(), s.length());
 }
 
-void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
+void ForwardDestinationHandler::shutdownWrite() {
+  if (writeShutdown || fd < 0) {
+    return;
+  }
+  writeShutdown = true;
+  ::shutdown(fd, SHUT_WR);
+}
+
+void ForwardDestinationHandler::update(vector<PortForwardData>* retval,
+                                       const set<int>* readyFds) {
   if (fd == -1) {
     return;
   }
+  if (readyFds != nullptr && readyFds->count(fd) == 0) {
+    return;
+  }
 
-  while (socketHandler->hasData(fd)) {
-    char buf[1024];
-    int bytesRead = socketHandler->read(fd, buf, 1024);
+  size_t bytesThisUpdate = 0;
+  while (bytesThisUpdate < MAX_BYTES_PER_UPDATE && socketHandler->hasData(fd)) {
+    char buf[16 * 1024];
+    int bytesRead = socketHandler->read(fd, buf, sizeof(buf));
     auto readErrno = GetErrno();
     if (bytesRead == -1 && (readErrno == EAGAIN || readErrno == EWOULDBLOCK)) {
       // Bail for now
@@ -36,8 +64,25 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
       VLOG(1) << "Got close reading socket " << socketId;
       pwd.set_closed(true);
     } else {
-      VLOG(1) << "Reading " << bytesRead << " bytes from socket " << socketId;
-      pwd.set_buffer(string(buf, bytesRead));
+      bytesThisUpdate += bytesRead;
+      string data;
+      if (!bindReplies) {
+        data.assign(buf, bytesRead);
+      } else if (!bindReplies->consume(string(buf, bytesRead), &data)) {
+        // Already logged; the stream cannot be resynchronized.
+        pwd.set_error("invalid ssh agent reply to session binding");
+        readErrno = EPROTO;
+        bytesRead = -1;
+      }
+      if (bytesRead > 0 && data.empty()) {
+        // Only bind replies so far.
+        continue;
+      }
+      if (bytesRead > 0) {
+        VLOG(1) << "Reading " << data.length() << " bytes from socket "
+                << socketId;
+        pwd.set_buffer(data);
+      }
     }
     retval->push_back(pwd);
     if (bytesRead < 1) {
@@ -46,8 +91,7 @@ void ForwardDestinationHandler::update(vector<PortForwardData>* retval) {
         STERROR << "Socket " << socketId << " closed with error " << readErrno
                 << ' ' << strerror(readErrno);
       }
-      socketHandler->close(fd);
-      fd = -1;
+      close();
       break;
     }
   }

@@ -20,10 +20,14 @@ class ServerClientConnection : public Connection {
   virtual ~ServerClientConnection();
 
   /**
-   * @brief Tears down the old socket (if any) and attempts recovery on the new
-   * fd.
+   * @brief Attempts recovery on the new fd; closes the old socket only after
+   * recover succeeds.
+   *
+   * Returns false without touching the live session if another reconnect for
+   * this client is already in flight.
    */
-  bool recoverClient(int newSocketFd);
+  bool recoverClient(int newSocketFd, bool forceReset = false,
+                     const string& resetSalt = string());
 
   /**
    * @brief Constant-time comparison of the stored key and a supplied passkey.
@@ -31,6 +35,13 @@ class ServerClientConnection : public Connection {
   bool verifyPasskey(const string& targetKey);
 
  protected:
+  /**
+   * @brief Set while a reconnect is mid-handshake.
+   *
+   * Lets a second reconnect be refused rather than queued, since queueing it
+   * would occupy a handler thread for as long as the first one blocks.
+   */
+  std::atomic<bool> recoveryInFlight;
 };
 }  // namespace et
 

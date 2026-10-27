@@ -1,4 +1,5 @@
 #include <atomic>
+#include <chrono>
 
 #include "FakeConsole.hpp"
 #include "FakeSshSetupHandler.hpp"
@@ -212,8 +213,7 @@ class ServerEndToEndTestFixture {
     userTerminalSocketHandler.reset(new PipeSocketHandler());
     fakeUserTerminal.reset(new FakeUserTerminal(userTerminalSocketHandler));
 
-    string tmpPath = GetTempDirectory() + string("etserver_test_XXXXXXXX");
-    pipeDirectory = string(mkdtemp(&tmpPath[0]));
+    pipeDirectory = test::makeTempDir("etserver_test");
 
     routerPipePath = string(pipeDirectory) + "/pipe_router";
     routerEndpoint.set_name(routerPipePath);
@@ -272,11 +272,11 @@ class ServerEndToEndTestFixture {
     clientSocketHandler.reset();
     clientPipeSocketHandler.reset();
     routerSocketHandler.reset();
-    FATAL_FAIL(::remove(routerPipePath.c_str()));
-    FATAL_FAIL(::remove(serverPipePath.c_str()));
-    FATAL_FAIL(::remove(jumphostRouterPipePath.c_str()));
-    FATAL_FAIL(::remove(jumphostServerPipePath.c_str()));
-    FATAL_FAIL(::remove(pipeDirectory.c_str()));
+    removeOrMissing(routerPipePath);
+    removeOrMissing(serverPipePath);
+    removeOrMissing(jumphostRouterPipePath);
+    removeOrMissing(jumphostServerPipePath);
+    test::removeTempDir(pipeDirectory);
   }
 
  protected:
@@ -479,6 +479,95 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerDataTransferTest",
   sshSetupHandler->shutdownHandler();
 }
 
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerInterruptDoesNotDropSmallOutput",
+                 "[ServerInterruptDoesNotDropSmallOutput][integration]") {
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  const string before = "hello";
+  fakeUserTerminal->simulateTerminalResponse(before);
+  REQUIRE(fakeConsole->getTerminalData(before.length()) == before);
+
+  fakeConsole->simulateKeystrokes(string(1, '\x03'));
+  REQUIRE(fakeUserTerminal->getKeystrokes(1) == string(1, '\x03'));
+
+  const string after = "world";
+  fakeUserTerminal->simulateTerminalResponse(after);
+  REQUIRE(fakeConsole->getTerminalData(after.length()) == after);
+
+  // Connected drain path: a modest burst (well under the flush threshold)
+  // must still be delivered losslessly.
+  const string burst(8 * 1024, 'B');
+  fakeUserTerminal->simulateTerminalResponse(burst);
+  REQUIRE(fakeConsole->getTerminalData(burst.length()) == burst);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerDisconnectDoesNotStallAt64KB",
+                 "[ServerDisconnectDoesNotStallAt64KB][integration]") {
+  auto [id, passkey] = sshSetupHandler->SetupSsh(
+      "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(
+      new TerminalClient(clientSocketHandler, clientPipeSocketHandler,
+                         serverEndpoint, id, passkey, fakeConsole, false, "",
+                         "", false, "", MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+  sleep(1);
+
+  // More than the 64KB always-on-backpressure stall from PR #730, well
+  // under the 64MB disconnect buffer. If disconnect incorrectly stopped
+  // reading the PTY at 64KB, this write would block.
+  const size_t floodBytes = 256 * 1024;
+  std::atomic<bool> done{false};
+  thread floodThread([this, floodBytes, &done]() {
+    try {
+      fakeUserTerminal->simulateTerminalResponse(string(floodBytes, 'X'));
+      done = true;
+    } catch (const std::exception&) {
+    }
+  });
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (!done && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  if (!done) {
+    floodThread.detach();
+  } else {
+    floodThread.join();
+  }
+  REQUIRE(done);
+
+  sshSetupHandler->shutdownHandler();
+}
+
 TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerJumphostTest",
                  "[ServerJumphostTest][integration]") {
   // The destination terminal is already set up in the fixture at
@@ -526,6 +615,227 @@ TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerJumphostTest",
   terminalClient->shutdown();
   terminalClientThread.join();
   terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(
+    ServerEndToEndTestFixture, "ServerJumphostInterruptDoesNotDropSmallOutput",
+    "[ServerJumphostInterruptDoesNotDropSmallOutput][integration]") {
+  auto [id, passkey] =
+      sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
+                                "jumphost:2023", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, jumphostServerEndpoint, id,
+      passkey, fakeConsole, true, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  const string before = "hello";
+  fakeUserTerminal->simulateTerminalResponse(before);
+  REQUIRE(fakeConsole->getTerminalData(before.length()) == before);
+
+  fakeConsole->simulateKeystrokes(string(1, '\x03'));
+  REQUIRE(fakeUserTerminal->getKeystrokes(1) == string(1, '\x03'));
+
+  const string after = "world";
+  fakeUserTerminal->simulateTerminalResponse(after);
+  REQUIRE(fakeConsole->getTerminalData(after.length()) == after);
+
+  const string burst(8 * 1024, 'B');
+  fakeUserTerminal->simulateTerminalResponse(burst);
+  REQUIRE(fakeConsole->getTerminalData(burst.length()) == burst);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+
+  sshSetupHandler->shutdownHandler();
+}
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture,
+                 "ServerJumphostDisconnectDoesNotStallAt64KB",
+                 "[ServerJumphostDisconnectDoesNotStallAt64KB][integration]") {
+  auto [id, passkey] =
+      sshSetupHandler->SetupSsh("", "localhost", "localhost", 2022,
+                                "jumphost:2023", "", false, 0, "", "", {});
+
+  sleep(1);
+
+  shared_ptr<TerminalClient> terminalClient(new TerminalClient(
+      clientSocketHandler, clientPipeSocketHandler, jumphostServerEndpoint, id,
+      passkey, fakeConsole, true, "", "", false, "",
+      MAX_CLIENT_KEEP_ALIVE_DURATION, {}));
+  thread terminalClientThread(
+      [terminalClient]() { terminalClient->run("", false); });
+  sleep(3);
+
+  terminalClient->shutdown();
+  terminalClientThread.join();
+  terminalClient.reset();
+  sleep(1);
+
+  const size_t floodBytes = 256 * 1024;
+  std::atomic<bool> done{false};
+  thread floodThread([this, floodBytes, &done]() {
+    try {
+      fakeUserTerminal->simulateTerminalResponse(string(floodBytes, 'X'));
+      done = true;
+    } catch (const std::exception&) {
+    }
+  });
+
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(15);
+  while (!done && std::chrono::steady_clock::now() < deadline) {
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+  }
+  if (!done) {
+    floodThread.detach();
+  } else {
+    floodThread.join();
+  }
+  REQUIRE(done);
+
+  sshSetupHandler->shutdownHandler();
+}
+
+namespace {
+// Performs the challenge handshake against the shared in-process server and
+// returns the connected fd. Retries briefly because a freshly registered
+// terminal may not have reached the server's key store yet.
+int rawChallengeHandshake(const shared_ptr<SocketHandler>& handler,
+                          const SocketEndpoint& serverEndpoint,
+                          const string& id, const string& passkey) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (std::chrono::steady_clock::now() < deadline) {
+    const int fd = handler->connect(serverEndpoint);
+    if (fd < 0) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    et::ConnectRequest request;
+    request.set_clientid(id);
+    request.set_version(PROTOCOL_VERSION);
+    request.set_supportschallenge(true);
+    handler->writeProto(fd, request, true);
+
+    et::ConnectResponse challenge;
+    try {
+      challenge = handler->readProto<et::ConnectResponse>(
+          fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    } catch (const std::runtime_error&) {
+      handler->close(fd);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    if (challenge.authchallenge().empty()) {
+      // Not registered yet (RETRY_LATER/INVALID_KEY): retry. Note that an
+      // unset status field reads as the first declared enum value
+      // (NEW_CLIENT), so only the challenge's presence distinguishes the
+      // challenge leg of the handshake.
+      handler->close(fd);
+      std::this_thread::sleep_for(std::chrono::milliseconds(100));
+      continue;
+    }
+    et::ConnectAuth auth;
+    auth.set_proof(CryptoHandler::connectionProof(passkey, id, PROTOCOL_VERSION,
+                                                  challenge.authchallenge(),
+                                                  /*resetIntent=*/false));
+    handler->writeProto(fd, auth, true);
+    et::ConnectResponse final = handler->readProto<et::ConnectResponse>(
+        fd, true, SocketHandler::MAX_HANDSHAKE_PROTO_LENGTH);
+    REQUIRE(final.status() == NEW_CLIENT);
+    return fd;
+  }
+  throw std::runtime_error("raw handshake could not complete in time");
+}
+
+// Sends one BackedReader-framed session packet with the client's nonce
+// direction, optionally encrypted.
+void sendRawSessionPacket(const shared_ptr<SocketHandler>& handler, int fd,
+                          const string& passkey, uint8_t header,
+                          const string& payload, bool encrypt) {
+  auto crypto = make_shared<CryptoHandler>(passkey, CLIENT_SERVER_NONCE_MSB);
+  Packet packet(header, payload);
+  if (encrypt) {
+    packet.encrypt(crypto);
+  }
+  const string serialized = packet.serialize();
+  const uint32_t networkLength = htonl((uint32_t)serialized.size());
+  handler->writeAllOrReturn(fd, &networkLength, sizeof(networkLength));
+  handler->writeAllOrReturn(fd, serialized.data(), serialized.size());
+}
+
+// Waits for the server to close `fd`, discarding anything it sends first.
+bool waitForServerClose(const shared_ptr<SocketHandler>& handler, int fd) {
+  const auto deadline =
+      std::chrono::steady_clock::now() + std::chrono::seconds(10);
+  while (std::chrono::steady_clock::now() < deadline) {
+    if (!handler->hasData(fd)) {
+      std::this_thread::sleep_for(std::chrono::milliseconds(10));
+      continue;
+    }
+    char buf[256];
+    if (handler->read(fd, buf, sizeof(buf)) <= 0) {
+      return true;
+    }
+  }
+  return false;
+}
+}  // namespace
+
+TEST_CASE_METHOD(ServerEndToEndTestFixture, "ServerSurvivesMalformedPackets",
+                 "[ServerSurvivesMalformedPackets][integration]") {
+  // Each variant must sever only the offending connection; the server runs
+  // in this process, so an abort would kill the test.
+  struct Variant {
+    const char* name;
+    uint8_t header;
+    string payload;
+    bool encrypt;
+  };
+  const vector<Variant> variants = {
+      // Wrong first packet header (not INITIAL_PAYLOAD).
+      {"wrong-header", TerminalPacketType::KEEP_ALIVE, "", true},
+      // INITIAL_PAYLOAD whose body is not valid protobuf (wire type 7).
+      {"garbage-protobuf", EtPacketType::INITIAL_PAYLOAD, "\x0f", true},
+      // Session packet with the encrypted flag clear.
+      {"unencrypted-flag", TerminalPacketType::TERMINAL_BUFFER, "aaaa", false},
+  };
+
+  for (const auto& variant : variants) {
+    sshSetupHandler->addFakeUserTerminal(
+        "localhost", 2022,
+        make_shared<FakeUserTerminal>(make_shared<PipeSocketHandler>()));
+    auto [id, passkey] = sshSetupHandler->SetupSsh(
+        "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+    auto handler = make_shared<PipeSocketHandler>();
+    const int fd = rawChallengeHandshake(handler, serverEndpoint, id, passkey);
+
+    sendRawSessionPacket(handler, fd, passkey, variant.header, variant.payload,
+                         variant.encrypt);
+    INFO(variant.name);
+    REQUIRE(waitForServerClose(handler, fd));
+    handler->close(fd);
+
+    // The shared server must still accept and authenticate new sessions.
+    sshSetupHandler->addFakeUserTerminal(
+        "localhost", 2022,
+        make_shared<FakeUserTerminal>(make_shared<PipeSocketHandler>()));
+    auto [id2, passkey2] = sshSetupHandler->SetupSsh(
+        "", "localhost", "localhost", 2022, "", "", false, 0, "", "", {});
+    auto handler2 = make_shared<PipeSocketHandler>();
+    const int fd2 =
+        rawChallengeHandshake(handler2, serverEndpoint, id2, passkey2);
+    handler2->close(fd2);
+  }
 
   sshSetupHandler->shutdownHandler();
 }

@@ -1,49 +1,73 @@
-#ifndef WIN32
+#include <chrono>
+
 #include "ETerminal.pb.h"
+#include "FdPoller.hpp"
 #include "PipeSocketHandler.hpp"
 #include "TestHeaders.hpp"
 #include "UserTerminalRouter.hpp"
 
 using namespace et;
 
+namespace {
+struct RouterEndpoint {
+  string directory;
+  string path;
+
+  RouterEndpoint() {
+#ifdef WIN32
+    path = "et_test_router_" + genRandomAlphaNum(12) + ".ipc";
+#else
+    string tmpPath = GetTempDirectory() + string("et_test_router_XXXXXXXX");
+    directory = string(mkdtemp(&tmpPath[0]));
+    path = directory + "/router_pipe";
+#endif
+  }
+
+  void cleanup(const shared_ptr<PipeSocketHandler>& socketHandler) {
+    SocketEndpoint endpoint;
+    endpoint.set_name(path);
+    socketHandler->stopListening(endpoint);
+    removeOrMissing(path);
+#ifndef WIN32
+    FATAL_FAIL(::remove(directory.c_str()));
+#endif
+  }
+};
+}  // namespace
+
 TEST_CASE("UserTerminalRouter constructor creates server",
           "[UserTerminalRouter]") {
   auto socketHandler = std::make_shared<PipeSocketHandler>();
 
-  string tmpPath = GetTempDirectory() + string("et_test_router_ctor_XXXXXXXX");
-  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
-  string pipePath = pipeDirectory + "/router_pipe";
+  RouterEndpoint testEndpoint;
 
   SocketEndpoint routerEndpoint;
-  routerEndpoint.set_name(pipePath);
+  routerEndpoint.set_name(testEndpoint.path);
 
   UserTerminalRouter router(socketHandler, routerEndpoint);
 
   // Verify that the server fd was created
   REQUIRE(router.getServerFd() >= 0);
 
+#ifndef WIN32
   // Verify that the pipe file was created with correct permissions
   struct stat st;
-  REQUIRE(stat(pipePath.c_str(), &st) == 0);
+  REQUIRE(stat(testEndpoint.path.c_str(), &st) == 0);
   // Check that the file has read/write/execute for user, group, and others
   REQUIRE((st.st_mode & (S_IRWXU | S_IRWXG | S_IRWXO)) != 0);
+#endif
 
-  socketHandler->close(router.getServerFd());
-  FATAL_FAIL(::remove(pipePath.c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  testEndpoint.cleanup(socketHandler);
 }
 
 TEST_CASE("UserTerminalRouter acceptNewConnection with no client",
           "[UserTerminalRouter]") {
   auto socketHandler = std::make_shared<PipeSocketHandler>();
 
-  string tmpPath =
-      GetTempDirectory() + string("et_test_router_noaccept_XXXXXXXX");
-  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
-  string pipePath = pipeDirectory + "/router_pipe";
+  RouterEndpoint testEndpoint;
 
   SocketEndpoint routerEndpoint;
-  routerEndpoint.set_name(pipePath);
+  routerEndpoint.set_name(testEndpoint.path);
 
   UserTerminalRouter router(socketHandler, routerEndpoint);
 
@@ -53,30 +77,412 @@ TEST_CASE("UserTerminalRouter acceptNewConnection with no client",
   REQUIRE(result.id == "");
   REQUIRE(result.key == "");
 
-  socketHandler->close(router.getServerFd());
-  FATAL_FAIL(::remove(pipePath.c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  testEndpoint.cleanup(socketHandler);
 }
 
 TEST_CASE("UserTerminalRouter getSocketHandler returns handler",
           "[UserTerminalRouter]") {
   auto socketHandler = std::make_shared<PipeSocketHandler>();
 
-  string tmpPath =
-      GetTempDirectory() + string("et_test_router_getsock_XXXXXXXX");
-  string pipeDirectory = string(mkdtemp(&tmpPath[0]));
-  string pipePath = pipeDirectory + "/router_pipe";
+  RouterEndpoint testEndpoint;
 
   SocketEndpoint routerEndpoint;
-  routerEndpoint.set_name(pipePath);
+  routerEndpoint.set_name(testEndpoint.path);
 
   UserTerminalRouter router(socketHandler, routerEndpoint);
 
   REQUIRE(router.getSocketHandler() == socketHandler);
 
-  socketHandler->close(router.getServerFd());
-  FATAL_FAIL(::remove(pipePath.c_str()));
-  FATAL_FAIL(::remove(pipeDirectory.c_str()));
+  testEndpoint.cleanup(socketHandler);
 }
 
+#ifndef WIN32
+namespace {
+class CountingPipeSocketHandler : public PipeSocketHandler {
+ public:
+  void close(int fd) override {
+    {
+      lock_guard<mutex> guard(closeCountsMutex);
+      closeCounts[fd]++;
+    }
+    PipeSocketHandler::close(fd);
+  }
+
+  int closeCount(int fd) const {
+    lock_guard<mutex> guard(closeCountsMutex);
+    const auto it = closeCounts.find(fd);
+    return it == closeCounts.end() ? 0 : it->second;
+  }
+
+ private:
+  mutable mutex closeCountsMutex;
+  map<int, int> closeCounts;
+};
+
+class InspectableUserTerminalRouter : public UserTerminalRouter {
+ public:
+  using UserTerminalRouter::UserTerminalRouter;
+
+  int terminalFd(const string& id) {
+    lock_guard<recursive_mutex> guard(routerMutex);
+    return idInfoMap.at(id).fd();
+  }
+
+  void expirePending() {
+    for (auto& entry : pendingRegistrations) {
+      entry.second.started -= REGISTRATION_TIMEOUT;
+    }
+  }
+  size_t pendingCount() const { return pendingRegistrations.size(); }
+  pair<int64_t, int64_t> registeredUidGid(const string& id) {
+    lock_guard<recursive_mutex> guard(routerMutex);
+    return {idInfoMap.at(id).uid(), idInfoMap.at(id).gid()};
+  }
+};
+
+// Session passkeys must be exactly crypto_secretbox_KEYBYTES bytes.
+string key32(const string& seed) {
+  string key = seed;
+  while (key.size() < crypto_secretbox_KEYBYTES) {
+    key += seed;
+  }
+  key.resize(crypto_secretbox_KEYBYTES);
+  return key;
+}
+
+int registerFakeTerminal(shared_ptr<PipeSocketHandler> socketHandler,
+                         UserTerminalRouter& router,
+                         const SocketEndpoint& routerEndpoint, const string& id,
+                         const string& passkey, bool ptyActive,
+                         IdKeyPair* accepted) {
+  int terminalFd = socketHandler->connect(routerEndpoint);
+  REQUIRE(terminalFd >= 0);
+  TerminalUserInfo tui;
+  tui.set_id(id);
+  tui.set_passkey(passkey);
+  tui.set_uid(getuid());
+  tui.set_gid(getgid());
+  tui.set_ptyactive(ptyActive);
+  socketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+  *accepted = router.acceptNewConnection();
+  return terminalFd;
+}
+}  // namespace
+
+TEST_CASE("UserTerminalRouter tracks ptyactive registrations",
+          "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<PipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+
+  UserTerminalRouter router(socketHandler, routerEndpoint);
+  REQUIRE_FALSE(router.isPtyActive("missing"));
+  auto missingConnection = make_shared<ServerClientConnection>(
+      socketHandler, "missing", -1, "0123456789abcdef0123456789abcdef");
+  REQUIRE_FALSE(router.tryGetInfoForConnection(missingConnection));
+
+  IdKeyPair accepted;
+  int fdA = registerFakeTerminal(socketHandler, router, routerEndpoint,
+                                 "term-a", key32("key-a"), false, &accepted);
+  REQUIRE(accepted.id == "term-a");
+  REQUIRE(accepted.key == key32("key-a"));
+  REQUIRE_FALSE(router.isPtyActive("term-a"));
+
+  int fdB = registerFakeTerminal(socketHandler, router, routerEndpoint,
+                                 "term-b", key32("key-b"), true, &accepted);
+  REQUIRE(accepted.id == "term-b");
+  REQUIRE(router.isPtyActive("term-b"));
+
+  socketHandler->close(fdA);
+  socketHandler->close(fdB);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter replaces dead registrations only",
+          "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  IdKeyPair accepted;
+  int fdOwner =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
+  REQUIRE(accepted.id == "term");
+  REQUIRE(accepted.key == key32("owner-key"));
+  const int supersededRouterFd = router.terminalFd("term");
+
+  int fdDup =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("attacker-key"), true, &accepted);
+  REQUIRE(accepted.id == "");
+  REQUIRE(router.isPtyActive("term"));
+  socketHandler->close(fdDup);
+
+  int fdSameKey =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE(router.terminalFd("term") == supersededRouterFd);
+  socketHandler->close(fdSameKey);
+
+  socketHandler->close(fdOwner);
+  int fdWrongKey =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           "attacker-key", true, &accepted);
+  CHECK(accepted.id.empty());
+  CHECK(router.terminalFd("term") == supersededRouterFd);
+  CHECK(socketHandler->closeCount(supersededRouterFd) == 0);
+  socketHandler->close(fdWrongKey);
+  int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,
+                                   "term", key32("owner-key"), true, &accepted);
+  REQUIRE(accepted.id == "term");
+  REQUIRE(accepted.key == key32("owner-key"));
+  REQUIRE(router.isPtyActive("term"));
+  REQUIRE(socketHandler->closeCount(supersededRouterFd) == 1);
+
+  socketHandler->close(fdNew);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter removeTerminal frees the id",
+          "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  IdKeyPair accepted;
+  int fdOwner =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "term",
+                           key32("owner-key"), true, &accepted);
+  REQUIRE(accepted.id == "term");
+
+  const int routerFd = router.terminalFd("term");
+  const UserTerminalRouter& constRouter = router;
+  REQUIRE(constRouter.isCurrentRegistration("term", routerFd));
+  REQUIRE_FALSE(constRouter.isCurrentRegistration("term", routerFd + 1));
+  const auto removalStarted = std::chrono::steady_clock::now();
+  REQUIRE(router.removeTerminal("term", routerFd));
+  const auto removalElapsed = std::chrono::steady_clock::now() - removalStarted;
+  REQUIRE(removalElapsed < std::chrono::milliseconds(500));
+  REQUIRE_FALSE(constRouter.isCurrentRegistration("term", routerFd));
+  REQUIRE_FALSE(router.isPtyActive("term"));
+  REQUIRE(socketHandler->closeCount(routerFd) == 1);
+
+  int fdNew = registerFakeTerminal(socketHandler, router, routerEndpoint,
+                                   "term", key32("owner-key"), true, &accepted);
+  REQUIRE(accepted.id == "term");
+
+  socketHandler->close(fdOwner);
+  socketHandler->close(fdNew);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter rejects registrations with invalid credentials",
+          "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  IdKeyPair accepted;
+  int fdShort =
+      registerFakeTerminal(socketHandler, router, routerEndpoint,
+                           "short-key-term", "short", true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+  REQUIRE_FALSE(router.isPtyActive("short-key-term"));
+  socketHandler->close(fdShort);
+
+  int fdEmpty = registerFakeTerminal(socketHandler, router, routerEndpoint, "",
+                                     key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id.empty());
+  REQUIRE_FALSE(router.isPtyActive(""));
+  socketHandler->close(fdEmpty);
+
+  // A valid registration still succeeds afterwards.
+  int fdOk =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "ok-term",
+                           key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id == "ok-term");
+  socketHandler->close(fdOk);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter rejects malformed registration packets",
+          "[UserTerminalRouter]") {
+  // Each malformed packet must cost only the offending connection.
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  // Zero-length packet: an 8-byte zero length prefix.
+  int fdZero = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdZero >= 0);
+  const int64_t zero = 0;
+  socketHandler->writeAllOrThrow(fdZero, &zero, sizeof(zero), false);
+  IdKeyPair accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // Wrong packet header: valid framing, header is not TERMINAL_USER_INFO.
+  int fdHeader = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdHeader >= 0);
+  socketHandler->writePacket(
+      fdHeader, Packet(TerminalPacketType::TERMINAL_CLOSE, "junk"));
+  accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // TERMINAL_USER_INFO-framed packet whose payload is not valid protobuf
+  // ("junk" = field 13, wire type 2, length 117 with 2 bytes remaining).
+  int fdProto = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdProto >= 0);
+  socketHandler->writePacket(
+      fdProto, Packet(TerminalPacketType::TERMINAL_USER_INFO, "junk"));
+  accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id.empty());
+  REQUIRE(accepted.key.empty());
+
+  // The router still accepts a valid registration afterwards.
+  int fdOk =
+      registerFakeTerminal(socketHandler, router, routerEndpoint, "still-alive",
+                           key32("valid-key"), true, &accepted);
+  REQUIRE(accepted.id == "still-alive");
+  socketHandler->close(fdOk);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE(
+    "UserTerminalRouter overrides self-asserted uid/gid with peer "
+    "credentials",
+    "[UserTerminalRouter]") {
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  // Assert ids other than our own; the router must store the real ones.
+  int terminalFd = socketHandler->connect(routerEndpoint);
+  REQUIRE(terminalFd >= 0);
+  TerminalUserInfo tui;
+  tui.set_id("forged-uid-term");
+  tui.set_passkey(key32("valid-key"));
+  tui.set_uid(getuid() == 0 ? 1 : 0);
+  tui.set_gid(getgid() == 0 ? 1 : 0);
+  tui.set_ptyactive(true);
+  socketHandler->writePacket(
+      terminalFd,
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui)));
+
+  IdKeyPair accepted = router.acceptNewConnection();
+  REQUIRE(accepted.id == "forged-uid-term");
+  const auto [storedUid, storedGid] =
+      router.registeredUidGid("forged-uid-term");
+  REQUIRE(storedUid == static_cast<int64_t>(getuid()));
+  REQUIRE(storedGid == static_cast<int64_t>(getgid()));
+
+  socketHandler->close(terminalFd);
+  testEndpoint.cleanup(socketHandler);
+}
+
+TEST_CASE("UserTerminalRouter reclaims silent registrations",
+          "[UserTerminalRouter]") {
+  // A connection that never sends its registration packet previously
+  // blocked acceptNewConnection forever on the single accept-loop thread.
+  // Incomplete registrations must leave that loop free to serve other peers.
+  auto socketHandler = std::make_shared<CountingPipeSocketHandler>();
+
+  RouterEndpoint testEndpoint;
+  SocketEndpoint routerEndpoint;
+  routerEndpoint.set_name(testEndpoint.path);
+  InspectableUserTerminalRouter router(socketHandler, routerEndpoint);
+
+  int fdSilent = socketHandler->connect(routerEndpoint);
+  REQUIRE(fdSilent >= 0);
+
+  const auto start = std::chrono::steady_clock::now();
+  REQUIRE(router.acceptNewConnection().id.empty());
+  REQUIRE(std::chrono::steady_clock::now() - start < std::chrono::seconds(1));
+  IdKeyPair accepted;
+  const int good =
+      registerFakeTerminal(socketHandler, router, routerEndpoint,
+                           "alongside-silent", key32("good"), false, &accepted);
+  REQUIRE(accepted.id == "alongside-silent");
+  REQUIRE(router.pendingCount() == 1);
+  router.expirePending();
+  REQUIRE(router.acceptNewConnection().id.empty());
+  REQUIRE(router.pendingCount() == 0);
+  socketHandler->close(fdSilent);
+  socketHandler->close(good);
+
+  // A registration may arrive in arbitrary fragments. Its last fragment
+  // may share a socket read with terminal data, which belongs to the session.
+  const int fragmented = socketHandler->connect(routerEndpoint);
+  REQUIRE(fragmented >= 0);
+  TerminalUserInfo tui;
+  tui.set_id("fragmented");
+  tui.set_passkey(key32("key"));
+  const string body =
+      Packet(TerminalPacketType::TERMINAL_USER_INFO, protoToString(tui))
+          .serialize();
+  const int64_t length = body.size();
+  socketHandler->writeAllOrThrow(fragmented, &length, 3, false);
+  REQUIRE(router.acceptNewConnection().id.empty());
+  uint64_t generation = 0;
+  const auto pending = router.pendingRegistrationFds(generation);
+  REQUIRE(pending.has_value());
+  REQUIRE(pending->size() == 1);
+  FdPoller poller;
+  poller.setFds(*pending);
+  socketHandler->writeAllOrThrow(fragmented,
+                                 reinterpret_cast<const char*>(&length) + 3,
+                                 sizeof(length) - 3, false);
+  socketHandler->writeAllOrThrow(fragmented, body.data(), 1, false);
+  // The pending descriptor wakes the poller without another connection or
+  // waiting for the server's periodic deadline tick.
+  REQUIRE(poller.wait(1000).readable == *pending);
+  REQUIRE(router.acceptNewConnection().id.empty());
+  socketHandler->writeAllOrThrow(fragmented, body.data() + 1, body.size() - 1,
+                                 false);
+  socketHandler->writePacket(
+      fragmented,
+      Packet(TerminalPacketType::TERMINAL_BUFFER, "following terminal data"));
+  REQUIRE(router.acceptNewConnection().id == "fragmented");
+  const auto completed = router.pendingRegistrationFds(generation);
+  REQUIRE(completed.has_value());
+  REQUIRE(completed->empty());
+  Packet following;
+  REQUIRE(
+      socketHandler->readPacket(router.terminalFd("fragmented"), &following));
+  REQUIRE(following.getHeader() == TerminalPacketType::TERMINAL_BUFFER);
+  REQUIRE(following.getPayload() == "following terminal data");
+  socketHandler->close(fragmented);
+
+  testEndpoint.cleanup(socketHandler);
+}
 #endif

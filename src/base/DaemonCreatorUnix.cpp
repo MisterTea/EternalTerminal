@@ -1,0 +1,92 @@
+#include "DaemonCreator.hpp"
+#include "SecureFileUnix.hpp"
+
+namespace et {
+void DaemonCreator::writePidFile(const string& path, int processId) {
+  private_storage::replaceFile(path, to_string(processId) + "\n");
+}
+
+int DaemonCreator::createSessionLeader() {
+  // daemon(3) has been deprecated on macOS since 10.5. This matches
+  // daemon(0, 0): the parent exits, and the child is a session leader whose
+  // working directory is / and whose standard streams are /dev/null.
+  switch (fork()) {
+    case -1:
+      return -1;
+    case 0:
+      break;
+    default:
+      _exit(0);
+  }
+
+  if (setsid() == -1) {
+    return -1;
+  }
+
+  if (chdir("/") != 0) {
+    return -1;
+  }
+
+  const int nullFd = open("/dev/null", O_RDWR);
+  if (nullFd != -1) {
+    dup2(nullFd, STDIN_FILENO);
+    dup2(nullFd, STDOUT_FILENO);
+    dup2(nullFd, STDERR_FILENO);
+    if (nullFd > STDERR_FILENO) {
+      close(nullFd);
+    }
+  }
+  return 0;
+}
+
+int DaemonCreator::create(bool parentExit, string childPidFile) {
+  pid_t pid;
+
+  /* Fork off the parent process */
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0) exit(EXIT_FAILURE);
+
+  /* Success: Return so the parent can continue */
+  if (pid > 0) {
+    if (parentExit) {
+      exit(EXIT_SUCCESS);
+    }
+    return PARENT;
+  }
+
+  /* On success: The child process becomes session leader */
+  if (setsid() < 0) exit(EXIT_FAILURE);
+
+  /* Catch, ignore and handle signals */
+  signal(SIGHUP, SIG_IGN);
+
+  /* Fork off for the second time*/
+  pid = fork();
+
+  /* An error occurred */
+  if (pid < 0) exit(EXIT_FAILURE);
+
+  /* Success: Let the parent terminate */
+  if (pid > 0) exit(EXIT_SUCCESS);
+
+  /* Child process, write pid file */
+  if (childPidFile != "") {
+    writePidFile(childPidFile, getpid());
+  }
+
+  /* Change the working directory to the root directory */
+  /* or another appropriated directory */
+  FATAL_FAIL(chdir("/"));
+
+  auto fd = open("/dev/null", O_WRONLY | O_CREAT, 0666);
+  dup2(fd, STDOUT_FILENO);
+  dup2(fd, STDERR_FILENO);
+
+  auto fd2 = open("/dev/null", O_RDONLY);
+  dup2(fd2, STDIN_FILENO);
+
+  return CHILD;
+}
+}  // namespace et
